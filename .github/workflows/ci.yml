@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  web-and-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm --filter @rakazo/adapters check
+      - run: pnpm --filter @rakazo/api check
+      - run: pnpm --filter @rakazo/worker check
+      - run: pnpm --filter @rakazo/web check
+      - run: pnpm --filter @rakazo/web build
+      - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts apps/api/src/env.test.ts
+
+  agentscope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --project services/agentscope --frozen
+      - run: uv run --project services/agentscope pytest services/agentscope/tests
