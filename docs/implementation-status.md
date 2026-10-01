@@ -90,7 +90,7 @@ Verified in 22 Python tests with real AgentScope 2.0.9 and a local OpenAI-compat
 
 Verified in the TypeScript application suites: 2,426 adapter tests, 472 API tests and 394 Web tests passed. They cover callback authentication/trusted identity, MCP routing and approval, routine scheduling, file/artifact persistence, memory tools, approval replay/idempotency, and frontend/API event contracts. Full repository type checking and the Web production build also passed.
 
-The AgentScope, API, worker and Web Compose images were built from this checkout. PostgreSQL and AgentScope health checks passed, `/internal/health` reported `runtime: agentscope`, and the worker connected to the queue with the AgentScope composition root.
+The AgentScope, API, worker and Web Compose images were built from this checkout in the fixed, independent `workpal` Compose project. PostgreSQL and AgentScope health checks passed, `/internal/health` on the verification port (`127.0.0.1:13100`) reported `runtime: agentscope`, the Web sign-in route returned 200 on `127.0.0.1:15173`, and the worker connected to the queue with the AgentScope composition root. The port overrides were used only because the untouched Palpal stack owns the default 3100/5173 ports.
 
 Not claimed as externally verified:
 

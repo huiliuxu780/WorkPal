@@ -41,6 +41,8 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml up --build
 
 Open <http://127.0.0.1:5173>. Compose runs PostgreSQL, Web, API, worker, sandbox supervisor and AgentScope. The Python service is private to the Compose network; per-run bearer callbacks return to separate API/worker bridge ports.
 
+The Compose project name is fixed to `workpal`, so its containers and PostgreSQL volume cannot collide with Palpal/Rakazo checkouts whose Compose directory has the same basename. Set `API_HOST_PORT` and `WEB_HOST_PORT` in `.env` if the default host ports are already occupied, and update the three public URLs to match.
+
 To stop without deleting PostgreSQL data:
 
 ```bash
