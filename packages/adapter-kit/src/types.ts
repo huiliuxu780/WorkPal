@@ -409,6 +409,8 @@ export interface AgentRunRequest {
   threadId: string;
   runId: string;
   sourceMessageId?: string | null;
+  /** Backend-selected auxiliary executions are stateless and do not share the chat lease. */
+  executionScope?: "chat" | "auto-review" | "history-compaction";
   prompt: string;
   instructions: string;
   history: Array<{

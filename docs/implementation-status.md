@@ -2,6 +2,26 @@
 
 This document distinguishes code paths, protocol tests, and live external verification. A saved setting or a rendered control is not counted as an implemented execution feature.
 
+## Review corrections after `38de62f`
+
+`38de62f` did not satisfy complete migration acceptance. Review reproduced four execution-contract defects: missing final text, helper/chat lock contention, helper pollution of durable chat state, and EOF being treated as success. These are now addressed together:
+
+- Completed Python runs emit `done.text`, including an explicit empty string for a completed silent response. Unknown/incomplete AgentScope reply endings are errors even when `allowSilentEmpty` is set.
+- The backend marks approval and history-compaction requests with `executionScope`. Chat retains its user/space/bot/thread lease; each helper has its own run-scoped lease. This does not weaken same-chat concurrency protection.
+- Helpers initialize only from their supplied history and never load or save the durable chat snapshot, nor claim chat steering. Existing snapshots and `lastSourceMessageId` remain untouched.
+- Approval/protected-input, ask, takeover and subagent pauses emit a `paused` wire terminal. The adapter consumes that internal terminal without fabricating a chat completion or changing the Web event contract.
+- The adapter rejects EOF without a terminal, missing completion text, duplicate terminals and events after a terminal. It withholds `done` until the stream has been fully validated.
+
+The new cross-language integration suite invokes the actual TypeScript approval and compaction consumers, adapter, FastAPI service and AgentScope 2.0.9. While the main agent waits on its backend shell callback, both helpers return usable results, a competing chat receives 409, and the persisted chat snapshot is byte-identical before/after each helper. It also verifies approval pause without completion/state writes. Its local model server supplies deterministic protocol responses; this is not paid-provider or full Web acceptance.
+
+Run it after `cd services/agentscope && uv sync --frozen`, then from the project root:
+
+```bash
+pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts
+```
+
+The integration suite skips explicitly when the project Python virtual environment is absent; a skipped run is not verification.
+
 ## Reuse map
 
 Directly copied from Palpal, without a visual redesign:
@@ -86,9 +106,9 @@ Frontend edit map:
 
 ## Verification status
 
-Verified in 22 Python tests with real AgentScope 2.0.9 and a local OpenAI-compatible protocol server (the model response itself is deterministic): all advertised API-key model constructors, model/tool/model loop, exact external call IDs, multimodal tool results, Skill on-demand reading, temporary AgentScope subagent, steering, approval pause, state restart, stale-write rejection and tenant isolation.
+Verified in 25 Python tests with real AgentScope 2.0.9 and a local OpenAI-compatible protocol server (the model response itself is deterministic): all advertised API-key model constructors, model/tool/model loop, exact external call IDs, multimodal tool results, Skill on-demand reading, temporary AgentScope subagent, steering, approval pause, state restart, stale-write rejection, tenant isolation, auxiliary snapshot isolation and rejection of unfinished silent runs.
 
-Verified in the TypeScript application suites: 2,426 adapter tests, 472 API tests and 394 Web tests passed. They cover callback authentication/trusted identity, MCP routing and approval, routine scheduling, file/artifact persistence, memory tools, approval replay/idempotency, and frontend/API event contracts. Full repository type checking and the Web production build also passed.
+The adapter suite was rerun after the review fixes: 2,433 tests passed and 25 skipped, including two real Python consumer integrations and invalid-stream terminal regressions. API/Web were also rerun: 472/394 passed (868 including the two consumer integrations in that command). They cover callback authentication/trusted identity, MCP routing and approval, routine scheduling, file/artifact persistence, memory tools, approval replay/idempotency, and frontend/API event contracts. Full repository type checking passed again after these fixes; the rebuilt application Docker image also passed the Web production build.
 
 The AgentScope, API, worker and Web Compose images were built from this checkout in the fixed, independent `workpal` Compose project. PostgreSQL and AgentScope health checks passed, `/internal/health` on the verification port (`127.0.0.1:13100`) reported `runtime: agentscope`, the Web sign-in route returned 200 on `127.0.0.1:15173`, and the worker connected to the queue with the AgentScope composition root. The port overrides were used only because the untouched Palpal stack owns the default 3100/5173 ports.
 

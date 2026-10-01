@@ -362,6 +362,7 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
       botId: thread.botId,
       threadId,
       runId: `compact:${threadId}:${fromSeqExclusive}`,
+      executionScope: "history-compaction",
       prompt,
       instructions: [
         formatCurrentTimeInstruction(),

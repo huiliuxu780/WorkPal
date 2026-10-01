@@ -87,6 +87,7 @@ class RunRequest(WireModel):
     bot_id: str
     thread_id: str
     run_id: str
+    execution_scope: Literal["chat", "auto-review", "history-compaction"] = "chat"
     source_message_id: str | None = None
     identity: BridgeIdentity | None = None
     prompt: str

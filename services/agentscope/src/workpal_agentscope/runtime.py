@@ -854,14 +854,14 @@ async def execute_run(request: RunRequest, store: StateStore) -> AsyncIterator[W
         raise RuntimeError("Run identity does not match the trusted application context")
     if request.tool_bridge is not None:
         _validate_bridge(request)
-    initial_steering = await _claim_steering(request, seen_steering_ids)
+    persistent = request.execution_scope == "chat"
+    initial_steering = await _claim_steering(request, seen_steering_ids) if persistent else []
     user_id = identity.user_id
     space_id = identity.space_id
-    snapshot = store.load(
-        request.bot_id,
-        request.thread_id,
-        user_id,
-        space_id,
+    snapshot = (
+        store.load(request.bot_id, request.thread_id, user_id, space_id)
+        if persistent
+        else None
     )
     if snapshot:
         state = _restored_state(
@@ -901,11 +901,13 @@ async def execute_run(request: RunRequest, store: StateStore) -> AsyncIterator[W
     tool_names: dict[str, str] = {}
     tool_arguments: dict[str, str] = {}
     completed = False
+    final_text = ""
 
     while True:
         external: RequireExternalExecutionEvent | None = None
         async for event in agent.reply_stream(next_input):
             if isinstance(event, TextBlockDeltaEvent):
+                final_text += event.delta
                 yield WireEvent(type="text", text=event.delta)
             elif isinstance(event, ToolCallStartEvent):
                 tool_names[event.tool_call_id] = event.tool_call_name
@@ -950,12 +952,14 @@ async def execute_run(request: RunRequest, store: StateStore) -> AsyncIterator[W
             args = _parse_tool_args(call.input)
             if call.name == "ask_user":
                 yield _ask_event(args)
+                yield WireEvent(type="paused", reason="ask")
                 return
             if call.name == "request_takeover":
                 yield WireEvent(
                     type="takeover",
                     reason=str(args.get("reason") or "I need you on the screen."),
                 )
+                yield WireEvent(type="paused", reason="takeover")
                 return
             if call.name == "run_subagent":
                 outcome: _SubagentOutcome | None = None
@@ -972,6 +976,7 @@ async def execute_run(request: RunRequest, store: StateStore) -> AsyncIterator[W
                 if outcome is None:
                     raise RuntimeError("Subagent ended without a result")
                 if outcome.paused:
+                    yield WireEvent(type="paused", reason="subagent")
                     return
                 results.append(
                     ToolResultBlock(
@@ -990,10 +995,11 @@ async def execute_run(request: RunRequest, store: StateStore) -> AsyncIterator[W
             )
             if paused:
                 yield WireEvent(type="progress", text=f"{call.name} waiting for approval", activity=True)
+                yield WireEvent(type="paused", reason="approval-or-secret")
                 return
             if result is not None:
                 results.append(result)
-        steering = await _claim_steering(request, seen_steering_ids)
+        steering = await _claim_steering(request, seen_steering_ids) if persistent else []
         if steering and results:
             _append_steering_to_result(results[-1], steering)
         next_input = ExternalExecutionResultEvent(
@@ -1001,27 +1007,16 @@ async def execute_run(request: RunRequest, store: StateStore) -> AsyncIterator[W
             execution_results=results,
         )
 
-    if completed:
-        store.save(
-            request.bot_id,
-            request.thread_id,
-            state,
-            user_id=user_id,
-            space_id=space_id,
-            last_source_message_id=request.source_message_id,
-            previous_revision=snapshot.revision if snapshot else 0,
-        )
-        yield WireEvent(type="done")
-    elif request.allow_silent_empty:
-        store.save(
-            request.bot_id,
-            request.thread_id,
-            state,
-            user_id=user_id,
-            space_id=space_id,
-            last_source_message_id=request.source_message_id,
-            previous_revision=snapshot.revision if snapshot else 0,
-        )
-        yield WireEvent(type="done")
-    else:
+    if not completed:
         raise RuntimeError(request.empty_response_text or "AgentScope run ended without completing")
+    if persistent:
+        store.save(
+            request.bot_id,
+            request.thread_id,
+            state,
+            user_id=user_id,
+            space_id=space_id,
+            last_source_message_id=request.source_message_id,
+            previous_revision=snapshot.revision if snapshot else 0,
+        )
+    yield WireEvent(type="done", text=final_text)

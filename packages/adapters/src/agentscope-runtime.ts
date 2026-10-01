@@ -10,7 +10,10 @@ import type {
   ConnectorTool,
 } from "@rakazo/adapter-kit";
 
-type AgentScopeWireEvent = AgentRuntimeEvent | { type: "error"; message: string };
+type AgentScopeWireEvent =
+  | AgentRuntimeEvent
+  | { type: "paused"; reason: string }
+  | { type: "error"; message: string };
 
 export interface AgentScopeAgentRuntimeOptions {
   baseUrl?: string;
@@ -386,6 +389,7 @@ function serializableRequest(
     botId: request.botId,
     threadId: request.threadId,
     runId: request.runId,
+    executionScope: request.executionScope ?? "chat",
     sourceMessageId: request.sourceMessageId,
     identity,
     prompt: request.prompt,
@@ -534,6 +538,28 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let terminal: "done" | "paused" | undefined;
+      let completion: Extract<AgentRuntimeEvent, { type: "done" }> | undefined;
+      const accept = (event: AgentScopeWireEvent): AgentRuntimeEvent | undefined => {
+        if (event.type === "error") throw new Error(event.message);
+        if (terminal) throw new Error("AgentScope returned an event after its terminal event");
+        if (event.type === "paused") {
+          if (typeof event.reason !== "string" || !event.reason.trim()) {
+            throw new Error("AgentScope returned a malformed pause event");
+          }
+          terminal = "paused";
+          return undefined;
+        }
+        if (event.type === "done") {
+          if (typeof event.text !== "string") {
+            throw new Error("AgentScope completion is missing its final text");
+          }
+          terminal = "done";
+          completion = event;
+          return undefined;
+        }
+        return event;
+      };
       for (;;) {
         const { done, value } = await reader.read();
         buffer += decoder.decode(value, { stream: !done });
@@ -542,19 +568,19 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
           const line = buffer.slice(0, newline).trim();
           buffer = buffer.slice(newline + 1);
           if (line) {
-            const event = parseWireEvent(line);
-            if (event.type === "error") throw new Error(event.message);
-            yield event;
+            const event = accept(parseWireEvent(line));
+            if (event) yield event;
           }
           newline = buffer.indexOf("\n");
         }
         if (done) break;
       }
       if (buffer.trim()) {
-        const event = parseWireEvent(buffer.trim());
-        if (event.type === "error") throw new Error(event.message);
-        yield event;
+        const event = accept(parseWireEvent(buffer.trim()));
+        if (event) yield event;
       }
+      if (!terminal) throw new Error("AgentScope stream ended without a completion or pause event");
+      if (completion) yield completion;
     } finally {
       if (bridgeRegistration) this.toolBridge.unregister(request.runId);
       this.active.delete(request.runId);

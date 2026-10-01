@@ -68,7 +68,7 @@ describe("AgentScopeAgentRuntime", () => {
         [
           JSON.stringify({ type: "text", text: "hel" }),
           JSON.stringify({ type: "text", text: "lo" }),
-          JSON.stringify({ type: "done" }),
+          JSON.stringify({ type: "done", text: "hello" }),
           "",
         ].join("\n"),
       );
@@ -80,7 +80,7 @@ describe("AgentScopeAgentRuntime", () => {
     expect(events).toEqual([
       { type: "text", text: "hel" },
       { type: "text", text: "lo" },
-      { type: "done" },
+      { type: "done", text: "hello" },
     ]);
     expect(fixture.requests).toHaveLength(1);
     expect(fixture.requests[0]).toMatchObject({
@@ -92,7 +92,7 @@ describe("AgentScopeAgentRuntime", () => {
   it("serializes scoped skills for AgentScope on-demand loading", async () => {
     const fixture = await listen((_request, response) => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });
-      response.end(`${JSON.stringify({ type: "done" })}\n`);
+      response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
     });
     const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
     const next = runRequest();
@@ -127,7 +127,7 @@ describe("AgentScopeAgentRuntime", () => {
   it("rejects a run without trusted application identity", async () => {
     const fixture = await listen((_request, response) => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });
-      response.end(`${JSON.stringify({ type: "done" })}\n`);
+      response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
     });
     const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
     await expect(async () => {
@@ -217,7 +217,7 @@ describe("AgentScopeAgentRuntime", () => {
         expect(callback.status).toBe(200);
         expect(await callback.json()).toEqual({ status: "ok", result: { stdout: "/workspace" } });
         response.writeHead(200, { "content-type": "application/x-ndjson" });
-        response.end(`${JSON.stringify({ type: "done" })}\n`);
+        response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
       })();
     });
     const executeTool = vi.fn(async () => ({ stdout: "/workspace" }));
@@ -259,7 +259,7 @@ describe("AgentScopeAgentRuntime", () => {
     const events: AgentRuntimeEvent[] = [];
     for await (const event of runtime.run(request, context)) events.push(event);
 
-    expect(events).toEqual([{ type: "done" }]);
+    expect(events).toEqual([{ type: "done", text: "" }]);
     expect(executeTool).toHaveBeenCalledWith("shell", { command: "pwd" }, "call-7");
     expect(onToolCompleted).toHaveBeenCalledWith(
       expect.objectContaining({ name: "shell", executionId: "call-7" }),
@@ -281,7 +281,7 @@ describe("AgentScopeAgentRuntime", () => {
   it("encodes image bytes instead of leaking Uint8Array object keys onto the wire", async () => {
     const fixture = await listen((_request, response) => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });
-      response.end(`${JSON.stringify({ type: "done" })}\n`);
+      response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
     });
     const request = runRequest("run-image");
     request.currentTurnImages = [
@@ -294,5 +294,47 @@ describe("AgentScopeAgentRuntime", () => {
     expect(fixture.requests[0]).toMatchObject({
       currentTurnImages: [{ name: "pixel.png", mimeType: "image/png", data: "AQID" }],
     });
+  });
+
+  it.each([
+    [{ type: "text", text: "unfinished" }],
+    [{ type: "done" }],
+    [
+      { type: "done", text: "finished" },
+      { type: "text", text: "late" },
+    ],
+    [
+      { type: "done", text: "finished" },
+      { type: "error", message: "save failed" },
+    ],
+  ])("rejects incomplete or invalid terminal streams: %j", async (...wire) => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(wire.map((event) => JSON.stringify(event)).join("\n"));
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const events: AgentRuntimeEvent[] = [];
+    await expect(async () => {
+      for await (const event of runtime.run(runRequest(), runContext())) events.push(event);
+    }).rejects.toThrow();
+    expect(events.some((event) => event.type === "done")).toBe(false);
+  });
+
+  it("accepts an explicit approval pause without publishing completion", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(
+        [
+          { type: "progress", text: "waiting for approval", activity: true },
+          { type: "paused", reason: "approval-or-secret" },
+        ]
+          .map((event) => JSON.stringify(event))
+          .join("\n"),
+      );
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const events: AgentRuntimeEvent[] = [];
+    for await (const event of runtime.run(runRequest(), runContext())) events.push(event);
+    expect(events).toEqual([{ type: "progress", text: "waiting for approval", activity: true }]);
   });
 });

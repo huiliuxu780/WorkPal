@@ -365,6 +365,7 @@ async def test_real_agentscope_tool_loop_and_state_restore(
         event.text or "" for event in events if event.type == "text"
     )
     assert events[-1].type == "done"
+    assert events[-1].text == "AgentScope used the approved clock tool."
 
     restored = StateStore(tmp_path).load("bot-1", "thread-1", "user-1", "space-1")
     assert restored is not None
@@ -392,6 +393,57 @@ async def test_model_oauth_is_rejected_before_execution(
     payload["model"]["oauth"] = {"credential": {"accessToken": "must-not-cross-boundary"}}
     with pytest.raises(ValueError, match="OAuth"):
         _ = [event async for event in execute_run(RunRequest.model_validate(payload), StateStore(tmp_path))]
+
+
+@pytest.mark.parametrize("scope", ["auto-review", "history-compaction"])
+async def test_auxiliary_execution_never_reads_or_writes_chat_snapshot(
+    tmp_path: Path,
+    model_server: tuple[str, list[dict[str, object]]],
+    monkeypatch: pytest.MonkeyPatch,
+    scope: str,
+) -> None:
+    store = StateStore(tmp_path)
+    store.save(
+        "bot-1", "thread-1",
+        AgentState(context=[UserMsg(name="user", content="PRIVATE_CHAT_MARKER")]),
+        user_id="user-1", space_id="space-1", last_source_message_id="message-1",
+    )
+    original_files = {path: path.read_bytes() for path in tmp_path.rglob("*.json")}
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Auxiliary execution accessed durable chat state")
+
+    monkeypatch.setattr(store, "load", forbidden)
+    monkeypatch.setattr(store, "save", forbidden)
+    auxiliary = request(model_server[0], run_id=f"helper-{scope}")
+    auxiliary.execution_scope = scope
+    auxiliary.source_message_id = None
+    auxiliary.history = []
+    auxiliary.prompt = f"HELPER_MARKER_{scope}"
+    events = [event async for event in execute_run(auxiliary, store)]
+    assert events[-1].type == "done"
+    assert events[-1].text
+    assert "PRIVATE_CHAT_MARKER" not in json.dumps(model_server[1])
+    assert original_files == {path: path.read_bytes() for path in tmp_path.rglob("*.json")}
+
+
+async def test_silent_permission_does_not_convert_unfinished_reply_to_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnfinishedAgent:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def reply_stream(self, _input: object):
+            if False:
+                yield None
+
+    monkeypatch.setattr("workpal_agentscope.runtime.Agent", UnfinishedAgent)
+    incomplete = request("http://127.0.0.1:1/v1")
+    incomplete.allow_silent_empty = True
+    with pytest.raises(RuntimeError, match="without completing"):
+        _ = [event async for event in execute_run(incomplete, StateStore(tmp_path))]
+    assert not list(tmp_path.rglob("*.json"))
 
 
 async def test_agentscope_skill_is_registered_and_read_on_demand(
@@ -513,8 +565,9 @@ async def test_approval_pause_does_not_save_half_executed_agentscope_state(
         )
     ]
 
-    assert events[-1].type == "progress"
-    assert "waiting for approval" in (events[-1].text or "")
+    assert events[-1].type == "paused"
+    assert events[-1].reason == "approval-or-secret"
+    assert any("waiting for approval" in (event.text or "") for event in events)
     assert StateStore(tmp_path).load("bot-1", "thread-1", "user-1", "space-1") is None
 
 

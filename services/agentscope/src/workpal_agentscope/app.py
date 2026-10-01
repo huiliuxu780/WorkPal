@@ -18,8 +18,8 @@ from .state_store import StateStore
 
 app = FastAPI(title="WorkPal AgentScope", version=__version__)
 _state_store = StateStore(Path(os.environ.get("AGENTSCOPE_STATE_DIR", "./data/agentscope-state")))
-_active_runs: dict[str, asyncio.Task[object]] = {}
-_active_threads: set[str] = set()
+_active_runs: dict[str, asyncio.Task[object] | None] = {}
+_active_threads: set[tuple[str, ...]] = set()
 _active_lock = asyncio.Lock()
 
 
@@ -40,12 +40,25 @@ async def health() -> dict[str, object]:
 
 @app.post("/v1/runs")
 async def run(request: RunRequest) -> StreamingResponse:
+    if request.identity is None:
+        raise HTTPException(status_code=422, detail="Trusted application identity is required")
+    # Chat holds its durable state lease. Auxiliary runs are isolated by run ID, even when
+    # invoked while the parent is waiting for a tool; they never touch durable chat state.
+    scope = (
+        request.identity.user_id,
+        request.identity.space_id,
+        request.bot_id,
+        request.thread_id,
+        request.execution_scope,
+        "" if request.execution_scope == "chat" else request.run_id,
+    )
     async with _active_lock:
         if request.run_id in _active_runs:
             raise HTTPException(status_code=409, detail="Run is already active")
-        if request.thread_id in _active_threads:
+        if scope in _active_threads:
             raise HTTPException(status_code=409, detail="Thread already has an active run")
-        _active_threads.add(request.thread_id)
+        _active_threads.add(scope)
+        _active_runs[request.run_id] = None
 
     async def stream():
         task = asyncio.current_task()
@@ -63,7 +76,7 @@ async def run(request: RunRequest) -> StreamingResponse:
         finally:
             async with _active_lock:
                 _active_runs.pop(request.run_id, None)
-                _active_threads.discard(request.thread_id)
+                _active_threads.discard(scope)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 

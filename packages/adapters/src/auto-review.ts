@@ -292,6 +292,7 @@ export async function runAutoReviewJudge(input: {
         botId: input.botId,
         threadId: input.threadId,
         runId: `${input.runId}:auto-review`,
+        executionScope: "auto-review",
         prompt: input.prompt,
         instructions: [
           formatCurrentTimeInstruction(),
