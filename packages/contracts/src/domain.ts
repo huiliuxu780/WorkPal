@@ -1064,6 +1064,12 @@ export const ModelCatalogEntrySchema = z.object({
   signIn: ModelOAuthSignInModeSchema.optional(),
   reasoning: z.boolean().optional(),
   thinkingLevels: z.array(ThinkingLevelSchema).optional(),
+  /** Whether the configured execution runtime can actually invoke this provider. */
+  runtimeAvailable: z.boolean().optional(),
+  /** User-facing reason when runtimeAvailable is false. */
+  unavailableReason: z.string().optional(),
+  /** OAuth can be narrower than API-key support for providers that offer both. */
+  oauthAvailable: z.boolean().optional(),
   /** Catalog stand-in so a provider appears before the user enters a real model id. */
   placeholder: z.boolean().optional(),
 });

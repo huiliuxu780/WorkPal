@@ -31,6 +31,7 @@ import type {
 } from "@rakazo/adapters";
 import {
   acquireComputerExecutionLease,
+  agentScopeSupportsProvider,
   applyCodexLiveCatalog,
   applyTeachingDesktopInput,
   archiveBot,
@@ -946,10 +947,25 @@ export function createRouter(deps: RouterDeps) {
               refreshExpiredCredential(context.actor, secretId, CHATGPT_OAUTH_PROVIDER),
           },
         );
-        return [
+        const catalog = [
           ...(live.size > 0 ? applyCodexLiveCatalog(available, auth, live) : available),
           scriptedCatalogEntry,
         ];
+        if (deps.env.agentRuntime !== "agentscope") return catalog;
+        return catalog.map((entry) => {
+          const apiKeyUsable = entry.auth !== "oauth" && agentScopeSupportsProvider(entry.provider);
+          const unavailableReason = !agentScopeSupportsProvider(entry.provider)
+            ? "This provider does not have an AgentScope model adapter in this deployment."
+            : entry.auth === "oauth"
+              ? "Subscription OAuth model credentials cannot be used by AgentScope. Connect an API-key provider instead."
+              : undefined;
+          return {
+            ...entry,
+            runtimeAvailable: apiKeyUsable,
+            oauthAvailable: false,
+            ...(unavailableReason ? { unavailableReason } : {}),
+          };
+        });
       }),
       credentials: authed.models.credentials.handler(async ({ context }) => {
         const rows = await deps.prisma.userModelCredential.findMany({
@@ -989,6 +1005,11 @@ export function createRouter(deps: RouterDeps) {
         });
       }),
       connect: authed.models.connect.handler(async ({ context, input }) => {
+        if (deps.env.agentRuntime === "agentscope" && !agentScopeSupportsProvider(input.provider)) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "This model provider is not supported by the AgentScope runtime.",
+          });
+        }
         let plaintext: string;
         try {
           let previousPlaintext: string | undefined;
@@ -1050,6 +1071,12 @@ export function createRouter(deps: RouterDeps) {
         },
       ),
       beginOAuth: authed.models.beginOAuth.handler(async ({ context, input }) => {
+        if (deps.env.agentRuntime === "agentscope") {
+          throw new ORPCError("BAD_REQUEST", {
+            message:
+              "Subscription OAuth model credentials cannot be used by AgentScope. Connect an API-key provider instead.",
+          });
+        }
         return deps.oauthLogins.begin({
           userId: context.actor.userId,
           spaceId: context.actor.spaceId,
@@ -1104,6 +1131,45 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       setDefault: authed.models.setDefault.handler(async ({ context, input }) => {
+        if (deps.env.agentRuntime === "agentscope" && !agentScopeSupportsProvider(input.provider)) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "This model provider is not supported by the AgentScope runtime.",
+          });
+        }
+        if (deps.env.agentRuntime === "agentscope") {
+          const selectedCredential = await findModelCredential(
+            deps.prisma,
+            context.actor,
+            input.provider,
+            input.modelId,
+          );
+          if (selectedCredential) {
+            const secret = await deps.prisma.secret.findFirst({
+              where: {
+                id: selectedCredential.secretId,
+                userId: context.actor.userId,
+                spaceId: null,
+              },
+              select: { ciphertext: true },
+            });
+            if (secret) {
+              try {
+                const stored = parseModelSecret(
+                  deps.secrets.load(secret.ciphertext, selectedCredential.secretId),
+                );
+                if (stored.kind === "oauth") {
+                  throw new ORPCError("BAD_REQUEST", {
+                    message:
+                      "This saved OAuth credential cannot be used by AgentScope. Replace it with an API key.",
+                  });
+                }
+              } catch (error) {
+                if (error instanceof ORPCError) throw error;
+                // The existing transaction path reports unreadable credentials consistently.
+              }
+            }
+          }
+        }
         const loadSpaceModelState = async (
           client: Pick<PrismaClient, "spaceModelPreference" | "userModelCredential">,
         ) => {

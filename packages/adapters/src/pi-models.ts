@@ -33,6 +33,9 @@ export function listPiCatalog(): PiCatalogEntry[] {
 
 let cachedCatalog: PiCatalogEntry[] | undefined;
 
+export const DASHSCOPE_PROVIDER_ID = "dashscope";
+export const DASHSCOPE_MODEL_IDS = ["qwen3.8-flash", "qwen3.8-max"] as const;
+
 function buildPiCatalog(): PiCatalogEntry[] {
   const models = registerOpenAiCompatibleCatalog(registerLocalProvider(builtinModels()));
   const entries: PiCatalogEntry[] = [];
@@ -72,6 +75,20 @@ function buildPiCatalog(): PiCatalogEntry[] {
       });
     }
   }
+
+  entries.push(
+    ...DASHSCOPE_MODEL_IDS.map((id) => ({
+      provider: DASHSCOPE_PROVIDER_ID,
+      providerName: "Alibaba Cloud Model Studio",
+      id,
+      label: id === "qwen3.8-flash" ? "Qwen3.8 Flash" : "Qwen3.8 Max",
+      billing: "Uses your Alibaba Cloud Model Studio API key.",
+      auth: "api-key" as const,
+      subscription: false,
+      reasoning: true,
+      thinkingLevels: ["off", "low", "medium", "xhigh"] as ThinkingLevel[],
+    })),
+  );
 
   const envDefaultModel = process.env.PI_DEFAULT_MODEL?.trim();
   const envDefaultProvider = process.env.PI_DEFAULT_PROVIDER?.trim() || "openrouter";

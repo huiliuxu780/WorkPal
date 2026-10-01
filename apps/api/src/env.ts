@@ -38,6 +38,9 @@ export interface AppEnv {
   cursorApiKey: string | undefined;
   agentRuntime: string;
   agentScopeUrl: string;
+  agentScopeToolBridgeBindHost: string | undefined;
+  agentScopeToolBridgePort: number | undefined;
+  agentScopeToolBridgeUrl: string | undefined;
   deploymentModelKey: string | undefined;
   e2bApiKey: string | undefined;
   daytonaApiKey: string | undefined;
@@ -129,6 +132,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     cursorApiKey: optional(source.CURSOR_API_KEY),
     agentRuntime: source.AGENT_RUNTIME ?? "agentscope",
     agentScopeUrl: source.AGENTSCOPE_URL ?? "http://127.0.0.1:8090",
+    agentScopeToolBridgeBindHost: source.AGENTSCOPE_TOOL_BRIDGE_BIND_HOST,
+    agentScopeToolBridgePort: source.AGENTSCOPE_TOOL_BRIDGE_PORT
+      ? Number(source.AGENTSCOPE_TOOL_BRIDGE_PORT)
+      : undefined,
+    agentScopeToolBridgeUrl: optional(source.AGENTSCOPE_TOOL_BRIDGE_URL),
     // Provider, model and key resolve together: see resolveDeploymentModel.
     deploymentModelKey: deploymentModel.key,
     e2bApiKey: source.E2B_API_KEY,

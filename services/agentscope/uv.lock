@@ -2629,6 +2629,7 @@ source = { editable = "." }
 dependencies = [
     { name = "agentscope" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "uvicorn" },
 ]
 
@@ -2643,6 +2644,7 @@ dev = [
 requires-dist = [
     { name = "agentscope", specifier = "==2.0.9" },
     { name = "fastapi", specifier = "==0.142.2" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "uvicorn", specifier = "==0.54.0" },
 ]
 

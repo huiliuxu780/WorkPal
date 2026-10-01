@@ -274,7 +274,10 @@ export function BotSettings({
   const seenOptions = new Set<string>();
   for (const credential of credentials) {
     const providerModels = catalog.filter(
-      (entry) => entry.provider === credential.provider && !entry.placeholder,
+      (entry) =>
+        entry.provider === credential.provider &&
+        !entry.placeholder &&
+        entry.runtimeAvailable !== false,
     );
     const credentialInCatalog = Boolean(
       credential.modelId && providerModels.some((entry) => entry.id === credential.modelId),

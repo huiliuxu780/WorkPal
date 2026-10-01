@@ -194,8 +194,9 @@ export function ModelSettingsOverlay({
   const isActive =
     me?.defaultProvider === selected?.provider &&
     me?.defaultModel === (isOpenAiCompatible ? modelId.trim() : selected?.id);
+  const runtimeAvailable = selected?.runtimeAvailable !== false;
   const acceptsKey = selected?.auth !== "oauth";
-  const subscriptionSignIn = selected?.signIn !== undefined;
+  const subscriptionSignIn = selected?.signIn !== undefined && selected.oauthAvailable !== false;
   const busy = pending !== null || oauthPending;
   const effectiveBaseUrl = baseUrl.trim();
   const openAiCompatibleReady = openAiCompatibleConnectReady({
@@ -660,6 +661,12 @@ export function ModelSettingsOverlay({
                 </p>
               ) : null}
 
+              {!runtimeAvailable && selected.unavailableReason ? (
+                <p className="mt-3 text-sm leading-[1.5] text-destructive">
+                  {selected.unavailableReason}
+                </p>
+              ) : null}
+
               {!isOpenAiCompatible ? (
                 <div className="mt-5 rounded-xl border border-border px-4 py-3">
                   <div className="text-[12.5px] uppercase tracking-[0.08em] text-muted-foreground/80">
@@ -815,6 +822,7 @@ export function ModelSettingsOverlay({
                     size="sm"
                     disabled={
                       busy ||
+                      !runtimeAvailable ||
                       (isOpenAiCompatible
                         ? !openAiCompatibleReady
                         : !builtinLimitSave && apiKey.trim().length < 8)
@@ -850,7 +858,7 @@ export function ModelSettingsOverlay({
                     variant="secondary"
                     className="rounded-full"
                     size="sm"
-                    disabled={busy || (isOpenAiCompatible && !modelId.trim())}
+                    disabled={busy || !runtimeAvailable || (isOpenAiCompatible && !modelId.trim())}
                     onClick={() => void setModelDefault()}
                   >
                     {pending === "default" ? (

@@ -4037,6 +4037,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 .join("\n\n"),
               history: runtimeHistory,
               currentTurnImages,
+              skills: agentSkills.map((skill) => ({
+                id: skill.id,
+                name: skill.name,
+                description: skill.description,
+                content: skill.content,
+              })),
               tools,
               model: {
                 provider: runModelProvider,

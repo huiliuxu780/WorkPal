@@ -345,7 +345,12 @@ export async function createApp(
     env.agentRuntime === "scripted"
       ? new ScriptedAgentRuntime()
       : env.agentRuntime === "agentscope"
-        ? new AgentScopeAgentRuntime({ baseUrl: env.agentScopeUrl })
+        ? new AgentScopeAgentRuntime({
+            baseUrl: env.agentScopeUrl,
+            toolBridgeBindHost: env.agentScopeToolBridgeBindHost,
+            toolBridgePort: env.agentScopeToolBridgePort,
+            toolBridgeUrl: env.agentScopeToolBridgeUrl,
+          })
         : (() => {
             throw new Error(
               `Unsupported AGENT_RUNTIME=${env.agentRuntime}; use agentscope (production) or scripted (tests)`,

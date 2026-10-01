@@ -419,6 +419,13 @@ export interface AgentRunRequest {
     images?: AgentInputImage[];
   }>;
   currentTurnImages?: AgentInputImage[];
+  /** User-scoped Agent Skills made available to the runtime for on-demand reading. */
+  skills?: Array<{
+    id?: string;
+    name: string;
+    description: string;
+    content: string;
+  }>;
   tools: ConnectorTool[];
   model: AgentRunModel;
   /** Resolve an explicitly requested helper model within the active user and space scope. */

@@ -83,7 +83,14 @@ async function main() {
     process.env.AGENT_RUNTIME === "scripted"
       ? new ScriptedAgentRuntime()
       : (process.env.AGENT_RUNTIME ?? "agentscope") === "agentscope"
-        ? new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL })
+        ? new AgentScopeAgentRuntime({
+            baseUrl: process.env.AGENTSCOPE_URL,
+            toolBridgeBindHost: process.env.AGENTSCOPE_TOOL_BRIDGE_BIND_HOST,
+            toolBridgePort: process.env.AGENTSCOPE_TOOL_BRIDGE_PORT
+              ? Number(process.env.AGENTSCOPE_TOOL_BRIDGE_PORT)
+              : undefined,
+            toolBridgeUrl: process.env.AGENTSCOPE_TOOL_BRIDGE_URL,
+          })
         : (() => {
             throw new Error(
               `Unsupported AGENT_RUNTIME=${process.env.AGENT_RUNTIME}; use agentscope (production) or scripted (tests)`,

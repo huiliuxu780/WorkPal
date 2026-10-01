@@ -182,7 +182,8 @@ export function OnboardingPage() {
 
   const selected = modelsForProvider.find((entry) => entry.id === modelId) ?? modelsForProvider[0];
   const isOpenAiCompatible = provider === OPENAI_COMPATIBLE_PROVIDER_ID;
-  const subscriptionSignIn = selected?.signIn !== undefined;
+  const runtimeAvailable = selected?.runtimeAvailable !== false;
+  const subscriptionSignIn = selected?.signIn !== undefined && selected.oauthAvailable !== false;
   const acceptsKey = selected?.auth !== "oauth";
   const signInLabel = selected?.oauthLabel ?? t`Sign in`;
   const openAiCompatibleReady = openAiCompatibleConnectReady({
@@ -191,6 +192,7 @@ export function OnboardingPage() {
   });
   const canSaveModel = Boolean(
     selected &&
+      runtimeAvailable &&
       modelId.trim() &&
       !oauthPending &&
       (isOpenAiCompatible ? openAiCompatibleReady : acceptsKey && apiKey.trim()),
@@ -557,6 +559,11 @@ export function OnboardingPage() {
                 </>
               )}
             </div>
+            {!runtimeAvailable && selected?.unavailableReason ? (
+              <p className="mt-4 text-sm leading-[1.5] text-destructive">
+                {selected.unavailableReason}
+              </p>
+            ) : null}
             {subscriptionSignIn ? (
               <div className="mt-4">
                 {oauth ? (

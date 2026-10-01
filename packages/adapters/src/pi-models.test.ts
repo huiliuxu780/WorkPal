@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { catalogModelLabel, listPiCatalog, scriptedCatalogEntry } from "./pi-models.js";
 
 describe("Pi model catalog", () => {
+  it("adds the AgentScope-native Alibaba Cloud Model Studio models", () => {
+    const qwen = listPiCatalog().filter((entry) => entry.provider === "dashscope");
+    expect(qwen.map((entry) => entry.id)).toEqual(["qwen3.8-flash", "qwen3.8-max"]);
+    expect(qwen.every((entry) => entry.auth === "api-key" && entry.reasoning)).toBe(true);
+  });
   it("keeps the custom catalog independent of server model IDs", () => {
     const custom = listPiCatalog().filter((entry) => entry.provider === "openai-compatible");
     expect(custom).toHaveLength(1);

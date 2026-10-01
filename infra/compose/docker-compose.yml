@@ -102,6 +102,9 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       AGENT_RUNTIME: agentscope
       AGENTSCOPE_URL: http://agentscope:8090
+      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: 0.0.0.0
+      AGENTSCOPE_TOOL_BRIDGE_PORT: "8092"
+      AGENTSCOPE_TOOL_BRIDGE_URL: http://api:8092
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
@@ -141,6 +144,9 @@ services:
       SCREEN_PROXY_SECRET: ""
       AGENT_RUNTIME: agentscope
       AGENTSCOPE_URL: http://agentscope:8090
+      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: 0.0.0.0
+      AGENTSCOPE_TOOL_BRIDGE_PORT: "8091"
+      AGENTSCOPE_TOOL_BRIDGE_URL: http://worker:8091
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
