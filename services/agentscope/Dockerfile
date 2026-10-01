@@ -1,6 +1,7 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
+ENV UV_HTTP_TIMEOUT=300 UV_HTTP_RETRIES=5
 COPY services/agentscope/pyproject.toml services/agentscope/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY services/agentscope/src ./src

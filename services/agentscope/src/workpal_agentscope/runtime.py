@@ -67,7 +67,6 @@ from .contracts import (
 from .state_store import StateStore
 
 RUNTIME_TIME_TOOL = "runtime_current_time"
-SPECIAL_PAUSE_TOOLS = {"ask_user", "request_takeover"}
 DELEGATION_TOOL_NAMES = {
     "run_subagent",
     "spawn_bot",

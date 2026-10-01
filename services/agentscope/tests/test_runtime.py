@@ -11,7 +11,7 @@ from agentscope.message import UserMsg
 from agentscope.state import AgentState
 
 from workpal_agentscope.contracts import RunRequest
-from workpal_agentscope.runtime import execute_run
+from workpal_agentscope.runtime import _build_model, execute_run
 from workpal_agentscope.state_store import StateStore
 
 
@@ -315,6 +315,40 @@ def request(base_url: str, run_id: str = "run-1", source_id: str = "message-1") 
             },
         },
     )
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        "openai",
+        "openrouter",
+        "openai-compatible",
+        "local",
+        "dashscope",
+        "anthropic",
+        "google",
+        "xai",
+        "deepseek",
+        "minimax",
+        "minimax-cn",
+        "moonshotai",
+        "moonshotai-cn",
+    ],
+)
+def test_supported_api_key_provider_builds_an_agentscope_model(provider: str) -> None:
+    payload = request("http://127.0.0.1:1/v1").model_dump(by_alias=True)
+    payload["model"].update(
+        {
+            "provider": provider,
+            "id": "fixture-model",
+            "baseUrl": (
+                "http://127.0.0.1:1/v1"
+                if provider in {"openai-compatible", "local"}
+                else None
+            ),
+        },
+    )
+    assert _build_model(RunRequest.model_validate(payload)) is not None
 
 
 async def test_real_agentscope_tool_loop_and_state_restore(
