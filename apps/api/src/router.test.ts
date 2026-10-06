@@ -95,7 +95,24 @@ describe("account preferences", () => {
     });
   });
 
-  it("rejects avatar styles outside robot|organic", async () => {
+  it("returns the bloub avatar style from me without collapsing it", async () => {
+    const { actor, handler } = preferencesDeps("bloub");
+
+    const { response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/me", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({ avatarStyle: "bloub" }),
+    });
+  });
+
+  it("rejects avatar styles outside robot|organic|bloub", async () => {
     const { update, actor, handler } = preferencesDeps("robot");
 
     const { response } = await handler.handle(

@@ -5,14 +5,7 @@ import type { RunActivityRow } from "@rakazo/contracts";
 import { useEffect, useState } from "react";
 import { activityLineText } from "../lib/activity-view";
 import { rpc } from "../lib/rpc";
-
-function statusTone(status: RunActivityRow["status"]): string {
-  if (status === "failed") return "text-destructive";
-  if (status === "cancelled") return "text-muted-foreground";
-  if (status === "completed") return "text-success";
-  if (status === "waiting_input" || status === "waiting_takeover") return "text-warning";
-  return "text-foreground";
-}
+import { runStatusLabel, runStatusTextClass } from "../lib/run-status";
 
 type ActivityListProps = {
   onOpenRun: (run: RunActivityRow) => void;
@@ -94,9 +87,9 @@ export function ActivityList({ onOpenRun }: ActivityListProps) {
 function ActivityRow({ run, onOpen }: { run: RunActivityRow; onOpen: () => void }) {
   const { t } = useLingui();
   const title = run.groupName ? `${run.botName} · ${run.groupName}` : run.botName;
-  const label = statusLabel(run.status);
+  const label = runStatusLabel(run.status);
   const activityLabel = t`${title}, ${label}`;
-  const tone = statusTone(run.status);
+  const tone = runStatusTextClass(run.status);
   // §27: the server-projected current activity leads; the prompt snippet is
   // the fallback, never a second vocabulary.
   const snippet = activityLineText(run);
@@ -145,25 +138,3 @@ function formatRelativeTime(iso: string, now = new Date()): string {
   return date.toLocaleDateString(i18n.locale || "en", { month: "short", day: "numeric" });
 }
 
-function statusLabel(status: RunActivityRow["status"]): string {
-  switch (status) {
-    case "queued":
-      return t`Queued`;
-    case "leased":
-      return t`Starting`;
-    case "running":
-      return t`Running`;
-    case "waiting_input":
-      return t`Needs input`;
-    case "waiting_takeover":
-      return t`Needs takeover`;
-    case "completed":
-      return t`Done`;
-    case "failed":
-      return t`Failed`;
-    case "cancelled":
-      return t`Cancelled`;
-    default:
-      return status;
-  }
-}

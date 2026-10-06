@@ -37,6 +37,11 @@ msgstr "{0} (10 MiB üzeri)"
 msgid "{0} {unitLabel}"
 msgstr "{0} {unitLabel}"
 
+#. placeholder {0}: attempts.length
+#: src/components/RunDetailsPanel.tsx
+msgid "{0} attempts"
+msgstr ""
+
 #. placeholder {0}: block.name
 #: src/pages/shell/message-cards.tsx
 msgid "{0} connection"
@@ -403,6 +408,10 @@ msgstr "Her zaman izinli"
 msgid "Answer"
 msgstr "Yanıtla"
 
+#: src/components/RunDetailsPanel.tsx
+msgid "Answer in thread"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "Answered"
 msgstr "Yanıtlandı"
@@ -531,6 +540,11 @@ msgstr ""
 msgid "Attachment"
 msgstr "Ek"
 
+#. placeholder {0}: attempt.fence
+#: src/components/RunDetailsPanel.tsx
+msgid "Attempt {0}"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Authorization code or callback URL"
@@ -587,6 +601,11 @@ msgstr "Temel URL"
 msgid "Bearer token"
 msgstr "Bearer token"
 
+#: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Bloub"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Canlı masaüstü başlatılıyor…"
@@ -602,7 +621,6 @@ msgstr "bot"
 
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Shell.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Bot"
 msgstr "Bot"
 
@@ -658,14 +676,6 @@ msgstr "Sunucuya ulaşılamıyor."
 msgid "Cancel"
 msgstr "İptal"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "Cancel new bot"
-msgstr "Yeni botu iptal et"
-
-#: src/pages/GroupPanel.tsx
-msgid "Cancel new group"
-msgstr "Yeni grubu iptal et"
-
 #: src/pages/Shell.tsx
 msgid "Cancel reply"
 msgstr "Yanıtı iptal et"
@@ -675,7 +685,7 @@ msgid "cancelled"
 msgstr "iptal edildi"
 
 #: src/components/AskCard.tsx
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Cancelled"
 msgstr "İptal edildi"
 
@@ -737,10 +747,6 @@ msgstr ""
 msgid "Checkout has local changes. Clean it before updating."
 msgstr ""
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Choose a bot shape, color, or upload an image"
-msgstr "Bir bot şekli ve rengi seçin veya görüntü yükleyin"
-
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Choose a bot…"
 msgstr ""
@@ -754,8 +760,8 @@ msgid "Choose file"
 msgstr "Dosya seç"
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "Choose which connected model Rakazo uses."
-msgstr "Rakazo'nun hangi bağlı modeli kullanacağını seç."
+msgid "Choose which connected model {productName} uses."
+msgstr "{productName}'nun hangi bağlı modeli kullanacağını seç."
 
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
@@ -834,6 +840,7 @@ msgstr "Model ayarlarını kapat"
 msgid "Close navigation"
 msgstr "Gezinmeyi kapat"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Shell.tsx
 msgid "Close panel"
 msgstr "Paneli kapat"
@@ -866,12 +873,8 @@ msgid "Collapse {0}"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Color"
-msgstr "Renk"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Color {color}"
-msgstr "Renk {color}"
+msgid "Colour"
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Coming soon"
@@ -1032,6 +1035,10 @@ msgstr ""
 #: src/pages/Auth.tsx
 msgid "Continue with email"
 msgstr "E-posta ile devam et"
+
+#: src/pages/Shell.tsx
+msgid "Conversation model"
+msgstr ""
 
 #: src/pages/Shell.tsx
 msgid "Copy"
@@ -1472,8 +1479,8 @@ msgid "Create space"
 msgstr ""
 
 #: src/pages/Auth.tsx
-msgid "Create your Rakazo"
-msgstr "Rakazo hesabını oluştur"
+msgid "Create your {productName}"
+msgstr "{productName} hesabını oluştur"
 
 #: src/components/AskCard.tsx
 msgid "Created"
@@ -1676,7 +1683,7 @@ msgstr "Docker, ek güvenlik için bilgisayarına erişimi sınırlar. {hostLabe
 msgid "Don’t have an account?"
 msgstr "Hesabın yok mu?"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Done"
 msgstr "Bitti"
@@ -1736,6 +1743,11 @@ msgstr "Önce düzenle"
 #: src/pages/BotContextMenu.tsx
 msgid "Edit Profile"
 msgstr "Profili Düzenle"
+
+#. placeholder {0}: effects.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Effects · {0}"
+msgstr ""
 
 #: src/pages/Auth.tsx
 msgid "Email"
@@ -1799,6 +1811,11 @@ msgstr "Her ay"
 msgid "Every week"
 msgstr "Her hafta"
 
+#. placeholder {0}: history.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Execution history · {0}"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Executor token"
 msgstr "Executor belirteci"
@@ -1821,6 +1838,10 @@ msgstr "Dışa aktar"
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Bu haftanın listesini CRM'den dışa aktar ve ortak klasöre bırak"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Expression"
+msgstr ""
+
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "External conversation"
@@ -1836,7 +1857,7 @@ msgstr "Çok yüksek"
 msgid "failed"
 msgstr "başarısız"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Failed"
 msgstr "Başarısız"
 
@@ -1856,6 +1877,10 @@ msgstr "Başarısız oldu."
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Failure handling"
 msgstr "Hata yönetimi"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Feedback"
+msgstr "Geri bildirim"
 
 #: src/components/computer/FilesApp.tsx
 msgid "File is too large to upload."
@@ -1904,6 +1929,10 @@ msgstr "MCP bağlantısı tamamlanıyor…"
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Flag unexpected actions"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Follows bot notification settings"
 msgstr ""
 
 #: src/pages/Auth.tsx
@@ -1983,6 +2012,10 @@ msgstr "Üstbilgi değeri"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Hear a sample"
 msgstr "Örnek dinle"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Help"
+msgstr "Yardım"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Hi, this is how I'll sound when I read replies out loud."
@@ -2218,6 +2251,7 @@ msgid "Loading voice providers…"
 msgstr "Ses sağlayıcıları yükleniyor…"
 
 #: src/App.tsx
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Onboarding.tsx
@@ -2487,11 +2521,12 @@ msgstr "Gruba bir ad ver"
 msgid "Name this routine"
 msgstr ""
 
-#: src/pages/ActivityList.tsx
+#: src/components/RunDetailsPanel.tsx
+#: src/lib/run-status.ts
 msgid "Needs input"
 msgstr "Girdi bekliyor"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Needs takeover"
 msgstr "Devralma bekliyor"
 
@@ -2499,11 +2534,11 @@ msgstr "Devralma bekliyor"
 msgid "Needs you"
 msgstr ""
 
-#: src/pages/shell/bot-panel.tsx
+#: src/pages/Shell.tsx
 msgid "New bot"
 msgstr "Yeni bot"
 
-#: src/pages/GroupPanel.tsx
+#: src/pages/Shell.tsx
 msgid "New group"
 msgstr "Yeni grup"
 
@@ -2585,6 +2620,10 @@ msgstr ""
 msgid "No matching models"
 msgstr ""
 
+#: src/components/ModelTreePicker.tsx
+msgid "No matching providers"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "No MCP or API tool sources installed yet."
 msgstr "Henüz MCP veya API araç kaynağı kurulmadı."
@@ -2662,6 +2701,14 @@ msgstr "Henüz hatırlanan bir şey yok"
 msgid "Notifications"
 msgstr "Bildirimler"
 
+#: src/components/RunDetailsPanel.tsx
+msgid "Notifications off"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Notifications on"
+msgstr ""
+
 #: src/pages/ActivityList.tsx
 msgid "Now"
 msgstr "Şimdi"
@@ -2713,6 +2760,10 @@ msgstr "Aç"
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx
 msgid "Open {0}"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Open computer"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -2783,6 +2834,11 @@ msgstr "Kuruluş API anahtarı"
 msgid "Other model…"
 msgstr "Başka model…"
 
+#. placeholder {0}: artifacts.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Outputs · {0}"
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr ""
@@ -2816,8 +2872,8 @@ msgid "Paste a replacement key"
 msgstr "Yeni bir anahtar yapıştır"
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
-msgstr "Sunucundaki OpenAI uyumlu adresi yapıştır. Gerekirse Rakazo /v1 ekler."
+msgid "Paste the OpenAI-compatible address from your server. {productName} adds /v1 if needed."
+msgstr "Sunucundaki OpenAI uyumlu adresi yapıştır. Gerekirse {productName} /v1 ekler."
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Paste your API key"
@@ -2830,6 +2886,10 @@ msgstr ""
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "Kişisel kimlik bilgisi"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Pick the bloub shape, expression, and colour"
+msgstr ""
 
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
@@ -2851,6 +2911,10 @@ msgstr "{0} önizle"
 #: src/pages/Artifacts.tsx
 msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Privacy"
+msgstr "Gizlilik"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Private"
@@ -2882,7 +2946,7 @@ msgstr "Sağlayıcılar"
 msgid "Pull request"
 msgstr "Çekme isteği"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Queued"
 msgstr "Kuyrukta"
 
@@ -3142,8 +3206,8 @@ msgid "Retry screen"
 msgstr ""
 
 #: src/pages/McpOAuthCallback.tsx
-msgid "Return to Rakazo"
-msgstr "Rakazo'ya dön"
+msgid "Return to {productName}"
+msgstr "{productName}'ya dön"
 
 #. placeholder {0}: doc.revision
 #: src/pages/KnowledgeSection.tsx
@@ -3166,6 +3230,7 @@ msgstr ""
 msgid "Rotate key"
 msgstr ""
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 msgid "Routine"
@@ -3177,6 +3242,11 @@ msgstr "Rutinler"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+#: src/pages/Shell.tsx
+msgid "Run details"
 msgstr ""
 
 #: src/pages/RoutineEditor.tsx
@@ -3191,7 +3261,7 @@ msgstr ""
 msgid "running"
 msgstr "çalışıyor"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Running"
 msgstr "Çalışıyor"
 
@@ -3294,6 +3364,10 @@ msgstr ""
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Search providers"
 msgstr "Sağlayıcı ara"
+
+#: src/components/ModelTreePicker.tsx
+msgid "Search providers & models"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/SpaceSearch.tsx
@@ -3434,8 +3508,8 @@ msgid "Sign in"
 msgstr "Oturum aç"
 
 #: src/pages/Auth.tsx
-msgid "Sign in to Rakazo"
-msgstr "Rakazo'da oturum aç"
+msgid "Sign in to {productName}"
+msgstr "{productName}'da oturum aç"
 
 #: src/pages/Auth.tsx
 #: src/pages/Welcome.tsx
@@ -3477,7 +3551,8 @@ msgstr ""
 msgid "Software update"
 msgstr ""
 
-#: src/pages/shell/bot-panel.tsx
+#: src/components/ModelTreePicker.tsx
+#: src/pages/Shell.tsx
 msgid "Space default"
 msgstr "Alan varsayılanı"
 
@@ -3509,7 +3584,7 @@ msgstr "Konuşma modeli"
 msgid "Start recording"
 msgstr "Kaydı başlat"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Starting"
 msgstr "Başlıyor"
 
@@ -3518,6 +3593,10 @@ msgstr "Başlıyor"
 #: src/pages/Onboarding.tsx
 msgid "Starting…"
 msgstr "Başlatılıyor…"
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Step details are in the thread transcript."
+msgstr ""
 
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
@@ -3552,6 +3631,7 @@ msgstr "Güvenle saklanır. Burada gösterilmez."
 msgid "Stream replies"
 msgstr "Yanıtları akışla göster"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Shell.tsx
 msgid "subagent"
 msgstr "alt ajan"
@@ -3627,6 +3707,10 @@ msgstr ""
 msgid "The API did not come back. Refresh this page."
 msgstr ""
 
+#: src/components/RunDetailsPanel.tsx
+msgid "The bot is waiting for computer takeover."
+msgstr ""
+
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "The selected memory provider is not available in this build."
 msgstr "Seçilen hafıza sağlayıcısı bu sürümde kullanılamıyor."
@@ -3693,8 +3777,8 @@ msgid "This server is already connected. Disconnect it first to authorize again.
 msgstr "Bu sunucu zaten bağlı. Yeniden yetkilendirmek için önce bağlantısını kes."
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "This subscription sign-in is not available in Rakazo yet. Use a deployment credential or choose another provider."
-msgstr "Bu abonelik girişi Rakazo'da henüz kullanılamıyor. Bir dağıtım kimlik bilgisi kullan veya başka bir sağlayıcı seç."
+msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
+msgstr "Bu abonelik girişi {productName}'da henüz kullanılamıyor. Bir dağıtım kimlik bilgisi kullan veya başka bir sağlayıcı seç."
 
 #: src/pages/Artifacts.tsx
 msgid "This week"
@@ -3735,6 +3819,10 @@ msgstr ""
 #: src/pages/PluginsOverlay.tsx
 msgid "Treg token"
 msgstr "Treg token'ı"
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Triggered by you"
+msgstr ""
 
 #: src/pages/Onboarding.tsx
 msgid "Try again"
@@ -3950,6 +4038,7 @@ msgstr "Ne zaman kullanılır"
 msgid "Where should bots run?"
 msgstr "Botlar nerede çalışsın?"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Auth.tsx
 msgid "Working…"
 msgstr "Çalışıyor…"

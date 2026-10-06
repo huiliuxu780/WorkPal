@@ -1,5 +1,7 @@
 import type { TransactionalEmail, TransactionalEmailProvider } from "@rakazo/adapter-kit";
+import { PRODUCT_BRAND } from "@rakazo/core";
 import nodemailer, { type Transporter } from "nodemailer";
+import addressparser from "nodemailer/lib/addressparser/index.js";
 
 export interface SmtpEmailConfig {
   url: string;
@@ -17,6 +19,7 @@ interface SmtpEmailDependencies {
 /** SMTP delivery works with SES, Resend, and self-hosted mail servers. */
 export class SmtpEmailProvider implements TransactionalEmailProvider {
   private readonly transport: Transporter;
+  private readonly sender: { name: string; address: string };
   private readonly retryDelaysMs: readonly number[];
   private readonly drainTimeoutMs: number;
   private readonly sleep: (delayMs: number, signal: AbortSignal) => Promise<void>;
@@ -24,16 +27,18 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
   private readonly shutdown = new AbortController();
   private accepting = true;
 
-  constructor(
-    private readonly config: SmtpEmailConfig,
-    dependencies: SmtpEmailDependencies = {},
-  ) {
+  constructor(config: SmtpEmailConfig, dependencies: SmtpEmailDependencies = {}) {
     const secureUrl = secureSmtpUrl(config.url);
     const protocol = safeProtocol(secureUrl);
     if (protocol !== "smtp:" && protocol !== "smtps:") {
       throw new Error("SMTP_URL must use smtp:// or smtps://");
     }
     if (!config.from.trim()) throw new Error("EMAIL_FROM is required when SMTP_URL is configured");
+    const addresses = addressparser(config.from, { flatten: true });
+    if (addresses.length !== 1 || !addresses[0]?.address) {
+      throw new Error("EMAIL_FROM must contain one sender address");
+    }
+    this.sender = { name: PRODUCT_BRAND.name, address: addresses[0].address };
     this.transport =
       dependencies.transport ??
       (dependencies.createTransport ?? nodemailer.createTransport)(secureUrl);
@@ -86,7 +91,7 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
       }
       try {
         await this.transport.sendMail({
-          from: this.config.from,
+          from: this.sender,
           to: message.to,
           subject: message.subject,
           text: message.text,

@@ -37,6 +37,11 @@ msgstr "{0} (über 10 MiB)"
 msgid "{0} {unitLabel}"
 msgstr "{0} {unitLabel}"
 
+#. placeholder {0}: attempts.length
+#: src/components/RunDetailsPanel.tsx
+msgid "{0} attempts"
+msgstr ""
+
 #. placeholder {0}: block.name
 #: src/pages/shell/message-cards.tsx
 msgid "{0} connection"
@@ -403,6 +408,10 @@ msgstr "Immer erlaubt"
 msgid "Answer"
 msgstr "Antwort"
 
+#: src/components/RunDetailsPanel.tsx
+msgid "Answer in thread"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "Answered"
 msgstr "Beantwortet"
@@ -531,6 +540,11 @@ msgstr "{path} angehängt"
 msgid "Attachment"
 msgstr "Anhang"
 
+#. placeholder {0}: attempt.fence
+#: src/components/RunDetailsPanel.tsx
+msgid "Attempt {0}"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Authorization code or callback URL"
@@ -587,6 +601,11 @@ msgstr "Basis-URL"
 msgid "Bearer token"
 msgstr "Bearer-Token"
 
+#: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Bloub"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Live-Desktop wird gestartet…"
@@ -602,7 +621,6 @@ msgstr "Bot"
 
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Shell.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Bot"
 msgstr "Bot"
 
@@ -658,14 +676,6 @@ msgstr "Server nicht erreichbar."
 msgid "Cancel"
 msgstr "Abbrechen"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "Cancel new bot"
-msgstr "Neuen Bot abbrechen"
-
-#: src/pages/GroupPanel.tsx
-msgid "Cancel new group"
-msgstr "Neue Gruppe abbrechen"
-
 #: src/pages/Shell.tsx
 msgid "Cancel reply"
 msgstr "Antwort abbrechen"
@@ -675,7 +685,7 @@ msgid "cancelled"
 msgstr "abgebrochen"
 
 #: src/components/AskCard.tsx
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Cancelled"
 msgstr "Abgebrochen"
 
@@ -737,10 +747,6 @@ msgstr ""
 msgid "Checkout has local changes. Clean it before updating."
 msgstr ""
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Choose a bot shape, color, or upload an image"
-msgstr "Wähle eine Bot-Form und Farbe oder lade ein Bild hoch"
-
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Choose a bot…"
 msgstr ""
@@ -754,8 +760,8 @@ msgid "Choose file"
 msgstr "Datei wählen"
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "Choose which connected model Rakazo uses."
-msgstr "Wähle das verbundene Modell aus, das Rakazo verwendet."
+msgid "Choose which connected model {productName} uses."
+msgstr "Wähle das verbundene Modell aus, das {productName} verwendet."
 
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
@@ -834,6 +840,7 @@ msgstr "Modelleinstellungen schließen"
 msgid "Close navigation"
 msgstr "Navigation schließen"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Shell.tsx
 msgid "Close panel"
 msgstr "Panel schließen"
@@ -866,12 +873,8 @@ msgid "Collapse {0}"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Color"
-msgstr "Farbe"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Color {color}"
-msgstr "Farbe {color}"
+msgid "Colour"
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Coming soon"
@@ -1032,6 +1035,10 @@ msgstr ""
 #: src/pages/Auth.tsx
 msgid "Continue with email"
 msgstr "Mit E-Mail fortfahren"
+
+#: src/pages/Shell.tsx
+msgid "Conversation model"
+msgstr ""
 
 #: src/pages/Shell.tsx
 msgid "Copy"
@@ -1472,8 +1479,8 @@ msgid "Create space"
 msgstr ""
 
 #: src/pages/Auth.tsx
-msgid "Create your Rakazo"
-msgstr "Dein Rakazo erstellen"
+msgid "Create your {productName}"
+msgstr "Dein {productName} erstellen"
 
 #: src/components/AskCard.tsx
 msgid "Created"
@@ -1676,7 +1683,7 @@ msgstr "Docker begrenzt für mehr Sicherheit den Zugriff auf deinen Computer. We
 msgid "Don’t have an account?"
 msgstr "Du hast noch kein Konto?"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Done"
 msgstr "Fertig"
@@ -1736,6 +1743,11 @@ msgstr "Zuerst bearbeiten"
 #: src/pages/BotContextMenu.tsx
 msgid "Edit Profile"
 msgstr "Profil bearbeiten"
+
+#. placeholder {0}: effects.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Effects · {0}"
+msgstr ""
 
 #: src/pages/Auth.tsx
 msgid "Email"
@@ -1799,6 +1811,11 @@ msgstr "Jeden Monat"
 msgid "Every week"
 msgstr "Jede Woche"
 
+#. placeholder {0}: history.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Execution history · {0}"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Executor token"
 msgstr "Executor-Token"
@@ -1821,6 +1838,10 @@ msgstr "Exportieren"
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Exportiere die Liste dieser Woche aus dem CRM und lege sie im freigegebenen Ordner ab"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Expression"
+msgstr ""
+
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "External conversation"
@@ -1836,7 +1857,7 @@ msgstr "Sehr hoch"
 msgid "failed"
 msgstr "fehlgeschlagen"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Failed"
 msgstr "Fehlgeschlagen"
 
@@ -1856,6 +1877,10 @@ msgstr "Fehlgeschlagen."
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Failure handling"
 msgstr "Fehlerbehandlung"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Feedback"
+msgstr "Feedback"
 
 #: src/components/computer/FilesApp.tsx
 msgid "File is too large to upload."
@@ -1904,6 +1929,10 @@ msgstr "MCP-Verbindung wird abgeschlossen…"
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Flag unexpected actions"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Follows bot notification settings"
 msgstr ""
 
 #: src/pages/Auth.tsx
@@ -1983,6 +2012,10 @@ msgstr "Header-Wert"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Hear a sample"
 msgstr "Beispiel anhören"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Help"
+msgstr "Hilfe"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Hi, this is how I'll sound when I read replies out loud."
@@ -2218,6 +2251,7 @@ msgid "Loading voice providers…"
 msgstr "Stimmanbieter werden geladen…"
 
 #: src/App.tsx
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Onboarding.tsx
@@ -2487,11 +2521,12 @@ msgstr "Gruppe benennen"
 msgid "Name this routine"
 msgstr ""
 
-#: src/pages/ActivityList.tsx
+#: src/components/RunDetailsPanel.tsx
+#: src/lib/run-status.ts
 msgid "Needs input"
 msgstr "Eingabe erforderlich"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Needs takeover"
 msgstr "Übernahme erforderlich"
 
@@ -2499,11 +2534,11 @@ msgstr "Übernahme erforderlich"
 msgid "Needs you"
 msgstr ""
 
-#: src/pages/shell/bot-panel.tsx
+#: src/pages/Shell.tsx
 msgid "New bot"
 msgstr "Neuer Bot"
 
-#: src/pages/GroupPanel.tsx
+#: src/pages/Shell.tsx
 msgid "New group"
 msgstr "Neue Gruppe"
 
@@ -2585,6 +2620,10 @@ msgstr ""
 msgid "No matching models"
 msgstr "Keine passenden Modelle"
 
+#: src/components/ModelTreePicker.tsx
+msgid "No matching providers"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "No MCP or API tool sources installed yet."
 msgstr "Noch keine MCP- oder API-Toolquellen installiert."
@@ -2662,6 +2701,14 @@ msgstr "Noch nichts gemerkt"
 msgid "Notifications"
 msgstr "Benachrichtigungen"
 
+#: src/components/RunDetailsPanel.tsx
+msgid "Notifications off"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Notifications on"
+msgstr ""
+
 #: src/pages/ActivityList.tsx
 msgid "Now"
 msgstr "Jetzt"
@@ -2713,6 +2760,10 @@ msgstr "Öffnen"
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx
 msgid "Open {0}"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Open computer"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -2783,6 +2834,11 @@ msgstr "Organisations-API-Schlüssel"
 msgid "Other model…"
 msgstr "Anderes Modell…"
 
+#. placeholder {0}: artifacts.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Outputs · {0}"
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr ""
@@ -2816,8 +2872,8 @@ msgid "Paste a replacement key"
 msgstr "Ersatzschlüssel einfügen"
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
-msgstr "Füge die OpenAI-kompatible Adresse deines Servers ein. Rakazo ergänzt /v1 bei Bedarf."
+msgid "Paste the OpenAI-compatible address from your server. {productName} adds /v1 if needed."
+msgstr "Füge die OpenAI-kompatible Adresse deines Servers ein. {productName} ergänzt /v1 bei Bedarf."
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Paste your API key"
@@ -2830,6 +2886,10 @@ msgstr ""
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "Persönliche Zugangsdaten"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Pick the bloub shape, expression, and colour"
+msgstr ""
 
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
@@ -2851,6 +2911,10 @@ msgstr "Vorschau von {0}"
 #: src/pages/Artifacts.tsx
 msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Privacy"
+msgstr "Datenschutz"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Private"
@@ -2882,7 +2946,7 @@ msgstr "Anbieter"
 msgid "Pull request"
 msgstr "Pull Request"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Queued"
 msgstr "In Warteschlange"
 
@@ -3142,8 +3206,8 @@ msgid "Retry screen"
 msgstr ""
 
 #: src/pages/McpOAuthCallback.tsx
-msgid "Return to Rakazo"
-msgstr "Zurück zu Rakazo"
+msgid "Return to {productName}"
+msgstr "Zurück zu {productName}"
 
 #. placeholder {0}: doc.revision
 #: src/pages/KnowledgeSection.tsx
@@ -3166,6 +3230,7 @@ msgstr ""
 msgid "Rotate key"
 msgstr ""
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 msgid "Routine"
@@ -3177,6 +3242,11 @@ msgstr "Routinen"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+#: src/pages/Shell.tsx
+msgid "Run details"
 msgstr ""
 
 #: src/pages/RoutineEditor.tsx
@@ -3191,7 +3261,7 @@ msgstr ""
 msgid "running"
 msgstr "läuft"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Running"
 msgstr "Läuft"
 
@@ -3294,6 +3364,10 @@ msgstr "Modelle suchen"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Search providers"
 msgstr "Anbieter suchen"
+
+#: src/components/ModelTreePicker.tsx
+msgid "Search providers & models"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/SpaceSearch.tsx
@@ -3434,8 +3508,8 @@ msgid "Sign in"
 msgstr "Anmelden"
 
 #: src/pages/Auth.tsx
-msgid "Sign in to Rakazo"
-msgstr "Bei Rakazo anmelden"
+msgid "Sign in to {productName}"
+msgstr "Bei {productName} anmelden"
 
 #: src/pages/Auth.tsx
 #: src/pages/Welcome.tsx
@@ -3477,7 +3551,8 @@ msgstr ""
 msgid "Software update"
 msgstr ""
 
-#: src/pages/shell/bot-panel.tsx
+#: src/components/ModelTreePicker.tsx
+#: src/pages/Shell.tsx
 msgid "Space default"
 msgstr "Space-Standard"
 
@@ -3509,7 +3584,7 @@ msgstr "Sprachmodell"
 msgid "Start recording"
 msgstr "Aufnahme starten"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Starting"
 msgstr "Startet"
 
@@ -3518,6 +3593,10 @@ msgstr "Startet"
 #: src/pages/Onboarding.tsx
 msgid "Starting…"
 msgstr "Wird gestartet…"
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Step details are in the thread transcript."
+msgstr ""
 
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
@@ -3552,6 +3631,7 @@ msgstr "Sicher gespeichert. Hier nie angezeigt."
 msgid "Stream replies"
 msgstr "Antworten streamen"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Shell.tsx
 msgid "subagent"
 msgstr "Subagent"
@@ -3627,6 +3707,10 @@ msgstr ""
 msgid "The API did not come back. Refresh this page."
 msgstr ""
 
+#: src/components/RunDetailsPanel.tsx
+msgid "The bot is waiting for computer takeover."
+msgstr ""
+
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "The selected memory provider is not available in this build."
 msgstr "Der ausgewählte Erinnerungsanbieter ist in diesem Build nicht verfügbar."
@@ -3693,8 +3777,8 @@ msgid "This server is already connected. Disconnect it first to authorize again.
 msgstr "Dieser Server ist bereits verbunden. Trenne zuerst die Verbindung, um ihn erneut zu autorisieren."
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "This subscription sign-in is not available in Rakazo yet. Use a deployment credential or choose another provider."
-msgstr "Diese Abonnementanmeldung ist in Rakazo noch nicht verfügbar. Verwende Zugangsdaten der Bereitstellung oder wähle einen anderen Anbieter."
+msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
+msgstr "Diese Abonnementanmeldung ist in {productName} noch nicht verfügbar. Verwende Zugangsdaten der Bereitstellung oder wähle einen anderen Anbieter."
 
 #: src/pages/Artifacts.tsx
 msgid "This week"
@@ -3735,6 +3819,10 @@ msgstr ""
 #: src/pages/PluginsOverlay.tsx
 msgid "Treg token"
 msgstr "Treg-Token"
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Triggered by you"
+msgstr ""
 
 #: src/pages/Onboarding.tsx
 msgid "Try again"
@@ -3950,6 +4038,7 @@ msgstr "Einsatzzeitpunkt"
 msgid "Where should bots run?"
 msgstr "Wo sollen Bots ausgeführt werden?"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Auth.tsx
 msgid "Working…"
 msgstr "Wird verarbeitet…"

@@ -10,7 +10,7 @@ export type ComputerMode = z.infer<typeof ComputerModeSchema>;
 export const MemoryScopeSchema = z.enum(["isolated", "shared"]);
 export type MemoryScopeValue = z.infer<typeof MemoryScopeSchema>;
 
-export const AvatarStyleSchema = z.enum(["robot", "organic"]);
+export const AvatarStyleSchema = z.enum(["robot", "organic", "bloub"]);
 export type AvatarStyle = z.infer<typeof AvatarStyleSchema>;
 
 export const ThinkingLevelSchema = z.enum([

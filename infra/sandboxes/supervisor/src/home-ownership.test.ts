@@ -13,7 +13,11 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertComputerHomeWritable, assertOpenedDirectoryBeneathRoot } from "./home-ownership.js";
+import {
+  assertComputerHomeWritable,
+  assertHomeEntryPermissions,
+  assertOpenedDirectoryBeneathRoot,
+} from "./home-ownership.js";
 
 const roots: string[] = [];
 const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
@@ -67,7 +71,7 @@ describe("computer home ownership", () => {
     await chmod(file, 0o400);
 
     const stat = await lstat(home);
-    await expect(assertComputerHomeWritable(home, stat.uid + 1, stat.gid + 1)).rejects.toThrow(
+    await expect(assertHomeEntryPermissions(home, stat.uid + 1, stat.gid + 1)).rejects.toThrow(
       /chown -R/,
     );
   });
@@ -82,7 +86,7 @@ describe("computer home ownership", () => {
     await chmod(file, 0o644);
 
     const stat = await lstat(file);
-    await expect(assertComputerHomeWritable(home, stat.uid, stat.gid)).resolves.toBeUndefined();
+    await expect(assertHomeEntryPermissions(home, stat.uid, stat.gid)).resolves.toBeUndefined();
   });
 
   it("accepts sandbox-owned read-only git object files", async () => {
@@ -95,7 +99,7 @@ describe("computer home ownership", () => {
     await chmod(object, 0o444);
 
     const stat = await lstat(object);
-    await expect(assertComputerHomeWritable(home, stat.uid, stat.gid)).resolves.toBeUndefined();
+    await expect(assertHomeEntryPermissions(home, stat.uid, stat.gid)).resolves.toBeUndefined();
   });
 
   it("rejects a read-only file owned by someone else", async () => {
@@ -109,7 +113,7 @@ describe("computer home ownership", () => {
     await chmod(file, 0o444);
 
     const stat = await lstat(file);
-    await expect(assertComputerHomeWritable(home, stat.uid + 1, stat.gid + 1)).rejects.toThrow(
+    await expect(assertHomeEntryPermissions(home, stat.uid + 1, stat.gid + 1)).rejects.toThrow(
       /chown -R/,
     );
   });
@@ -124,7 +128,7 @@ describe("computer home ownership", () => {
     await chmod(file, 0o000);
 
     const stat = await lstat(file);
-    await expect(assertComputerHomeWritable(home, stat.uid, stat.gid)).rejects.toThrow(/chown -R/);
+    await expect(assertHomeEntryPermissions(home, stat.uid, stat.gid)).rejects.toThrow(/chown -R/);
   });
 
   it("rejects an owner-owned world-writable file the owner cannot write", async () => {
@@ -137,7 +141,7 @@ describe("computer home ownership", () => {
     await chmod(file, 0o002);
 
     const stat = await lstat(file);
-    await expect(assertComputerHomeWritable(home, stat.uid, stat.gid)).rejects.toThrow(/chown -R/);
+    await expect(assertHomeEntryPermissions(home, stat.uid, stat.gid)).rejects.toThrow(/chown -R/);
   });
 
   it("rejects an owner-owned directory that is not writable", async () => {
@@ -148,8 +152,22 @@ describe("computer home ownership", () => {
     await chmod(home, 0o555);
 
     const stat = await lstat(home);
-    await expect(assertComputerHomeWritable(home, stat.uid, stat.gid)).rejects.toThrow(/chown -R/);
+    await expect(assertHomeEntryPermissions(home, stat.uid, stat.gid)).rejects.toThrow(/chown -R/);
   });
+
+  it.skipIf(process.platform !== "darwin")(
+    "accepts host permission bits on darwin, where virtiofs remaps them for containers",
+    async () => {
+      const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-darwin-virtiofs-"));
+      roots.push(parent);
+      const home = path.join(parent, "home");
+      await mkdir(home);
+      await chmod(home, 0o755);
+
+      // A container running as uid 1000 can still write through the VM mount.
+      await expect(assertComputerHomeWritable(home, 1000, 1000)).resolves.toBeUndefined();
+    },
+  );
 
   it("does not follow symlinks while checking host-run compatibility", async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-writable-link-"));
@@ -162,7 +180,7 @@ describe("computer home ownership", () => {
     await symlink(outside, path.join(home, "link"));
 
     const stat = await lstat(home);
-    await expect(assertComputerHomeWritable(home, stat.uid, stat.gid)).resolves.toBeUndefined();
+    await expect(assertHomeEntryPermissions(home, stat.uid, stat.gid)).resolves.toBeUndefined();
   });
 
   it.skipIf(process.platform !== "linux")(

@@ -1245,8 +1245,12 @@ describe("graphical computer spec", () => {
   });
 
   it("uses the host identity for host-run bind mounts without ever using root", () => {
-    expect(hostComputerUser(501, 20)).toBe("501:20");
-    expect(hostComputerUser(0, 0)).toBe("1000:1000");
+    expect(hostComputerUser(501, 20, "linux")).toBe("501:20");
+    expect(hostComputerUser(0, 0, "linux")).toBe("1000:1000");
+  });
+
+  it("uses the image user on darwin, where host uids have no passwd entry in the computer image", () => {
+    expect(hostComputerUser(501, 20, "darwin")).toBe("1000:1000");
   });
 
   it("uses the container IP only for the internal screen network topology", () => {

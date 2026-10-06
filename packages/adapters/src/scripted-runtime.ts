@@ -1,3 +1,4 @@
+import { PRODUCT_BRAND } from "@rakazo/core";
 import type {
   AdapterContext,
   AgentRunRequest,
@@ -490,7 +491,7 @@ code-b
         toolCalls: [
           {
             name: "destination.write",
-            args: { collection: "notes", title: "Rakazo result", body: prompt },
+            args: { collection: "notes", title: `${PRODUCT_BRAND.name} result`, body: prompt },
           },
         ],
         complete: true,

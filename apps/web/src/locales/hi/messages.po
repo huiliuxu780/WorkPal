@@ -37,6 +37,11 @@ msgstr "{0} (10 MiB से अधिक)"
 msgid "{0} {unitLabel}"
 msgstr "{0} {unitLabel}"
 
+#. placeholder {0}: attempts.length
+#: src/components/RunDetailsPanel.tsx
+msgid "{0} attempts"
+msgstr ""
+
 #. placeholder {0}: block.name
 #: src/pages/shell/message-cards.tsx
 msgid "{0} connection"
@@ -403,6 +408,10 @@ msgstr "हमेशा अनुमत"
 msgid "Answer"
 msgstr "उत्तर"
 
+#: src/components/RunDetailsPanel.tsx
+msgid "Answer in thread"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "Answered"
 msgstr "उत्तर दिया गया"
@@ -531,6 +540,11 @@ msgstr ""
 msgid "Attachment"
 msgstr "अटैचमेंट"
 
+#. placeholder {0}: attempt.fence
+#: src/components/RunDetailsPanel.tsx
+msgid "Attempt {0}"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Authorization code or callback URL"
@@ -587,6 +601,11 @@ msgstr "बेस URL"
 msgid "Bearer token"
 msgstr "बियरर टोकन"
 
+#: src/pages/AccountSettingsOverlay.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Bloub"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "लाइव डेस्कटॉप शुरू हो रहा है…"
@@ -602,7 +621,6 @@ msgstr "बॉट"
 
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Shell.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Bot"
 msgstr "बॉट"
 
@@ -658,14 +676,6 @@ msgstr "सर्वर तक नहीं पहुंचा जा सका�
 msgid "Cancel"
 msgstr "रद्द करें"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "Cancel new bot"
-msgstr "नया बॉट रद्द करें"
-
-#: src/pages/GroupPanel.tsx
-msgid "Cancel new group"
-msgstr "नया समूह रद्द करें"
-
 #: src/pages/Shell.tsx
 msgid "Cancel reply"
 msgstr "उत्तर रद्द करें"
@@ -675,7 +685,7 @@ msgid "cancelled"
 msgstr "रद्द"
 
 #: src/components/AskCard.tsx
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Cancelled"
 msgstr "रद्द किया गया"
 
@@ -737,10 +747,6 @@ msgstr ""
 msgid "Checkout has local changes. Clean it before updating."
 msgstr ""
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Choose a bot shape, color, or upload an image"
-msgstr "बॉट का आकार और रंग चुनें, या छवि अपलोड करें"
-
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Choose a bot…"
 msgstr ""
@@ -754,8 +760,8 @@ msgid "Choose file"
 msgstr "फ़ाइल चुनें"
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "Choose which connected model Rakazo uses."
-msgstr "चुनें कि Rakazo किस कनेक्टेड मॉडल का उपयोग करे।"
+msgid "Choose which connected model {productName} uses."
+msgstr "चुनें कि {productName} किस कनेक्टेड मॉडल का उपयोग करे।"
 
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
@@ -834,6 +840,7 @@ msgstr "मॉडल सेटिंग्स बंद करें"
 msgid "Close navigation"
 msgstr "नेविगेशन बंद करें"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Shell.tsx
 msgid "Close panel"
 msgstr "पैनल बंद करें"
@@ -866,12 +873,8 @@ msgid "Collapse {0}"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Color"
-msgstr "रंग"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Color {color}"
-msgstr "रंग {color}"
+msgid "Colour"
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Coming soon"
@@ -1032,6 +1035,10 @@ msgstr ""
 #: src/pages/Auth.tsx
 msgid "Continue with email"
 msgstr "ईमेल से जारी रखें"
+
+#: src/pages/Shell.tsx
+msgid "Conversation model"
+msgstr ""
 
 #: src/pages/Shell.tsx
 msgid "Copy"
@@ -1472,8 +1479,8 @@ msgid "Create space"
 msgstr ""
 
 #: src/pages/Auth.tsx
-msgid "Create your Rakazo"
-msgstr "अपना Rakazo बनाएं"
+msgid "Create your {productName}"
+msgstr "अपना {productName} बनाएं"
 
 #: src/components/AskCard.tsx
 msgid "Created"
@@ -1676,7 +1683,7 @@ msgstr "Docker अतिरिक्त सुरक्षा के लिए �
 msgid "Don’t have an account?"
 msgstr "खाता नहीं है?"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Done"
 msgstr "पूर्ण"
@@ -1736,6 +1743,11 @@ msgstr "पहले संपादित करें"
 #: src/pages/BotContextMenu.tsx
 msgid "Edit Profile"
 msgstr "प्रोफ़ाइल संपादित करें"
+
+#. placeholder {0}: effects.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Effects · {0}"
+msgstr ""
 
 #: src/pages/Auth.tsx
 msgid "Email"
@@ -1799,6 +1811,11 @@ msgstr "हर महीने"
 msgid "Every week"
 msgstr "हर सप्ताह"
 
+#. placeholder {0}: history.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Execution history · {0}"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Executor token"
 msgstr "Executor टोकन"
@@ -1821,6 +1838,10 @@ msgstr "एक्सपोर्ट करें"
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "CRM से इस सप्ताह की सूची एक्सपोर्ट करें और उसे साझा फ़ोल्डर में डालें"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Expression"
+msgstr ""
+
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "External conversation"
@@ -1836,7 +1857,7 @@ msgstr "अतिरिक्त उच्च"
 msgid "failed"
 msgstr "असफल"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Failed"
 msgstr "विफल"
 
@@ -1856,6 +1877,10 @@ msgstr "विफल।"
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Failure handling"
 msgstr "विफलता प्रबंधन"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Feedback"
+msgstr "प्रतिक्रिया"
 
 #: src/components/computer/FilesApp.tsx
 msgid "File is too large to upload."
@@ -1904,6 +1929,10 @@ msgstr "MCP कनेक्शन पूरा हो रहा है…"
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Flag unexpected actions"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Follows bot notification settings"
 msgstr ""
 
 #: src/pages/Auth.tsx
@@ -1983,6 +2012,10 @@ msgstr "हेडर मान"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Hear a sample"
 msgstr "एक नमूना सुनें"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Help"
+msgstr "मदद"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Hi, this is how I'll sound when I read replies out loud."
@@ -2218,6 +2251,7 @@ msgid "Loading voice providers…"
 msgstr "आवाज़ प्रोवाइडर्स लोड हो रहे हैं…"
 
 #: src/App.tsx
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Onboarding.tsx
@@ -2487,11 +2521,12 @@ msgstr "इस समूह को नाम दें"
 msgid "Name this routine"
 msgstr ""
 
-#: src/pages/ActivityList.tsx
+#: src/components/RunDetailsPanel.tsx
+#: src/lib/run-status.ts
 msgid "Needs input"
 msgstr "इनपुट चाहिए"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Needs takeover"
 msgstr "नियंत्रण लेना ज़रूरी"
 
@@ -2499,11 +2534,11 @@ msgstr "नियंत्रण लेना ज़रूरी"
 msgid "Needs you"
 msgstr ""
 
-#: src/pages/shell/bot-panel.tsx
+#: src/pages/Shell.tsx
 msgid "New bot"
 msgstr "नया बॉट"
 
-#: src/pages/GroupPanel.tsx
+#: src/pages/Shell.tsx
 msgid "New group"
 msgstr "नया समूह"
 
@@ -2585,6 +2620,10 @@ msgstr ""
 msgid "No matching models"
 msgstr ""
 
+#: src/components/ModelTreePicker.tsx
+msgid "No matching providers"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "No MCP or API tool sources installed yet."
 msgstr "अभी तक कोई MCP या API टूल स्रोत इंस्टॉल नहीं है।"
@@ -2662,6 +2701,14 @@ msgstr "अभी तक कुछ याद नहीं किया गया
 msgid "Notifications"
 msgstr "सूचनाएं"
 
+#: src/components/RunDetailsPanel.tsx
+msgid "Notifications off"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Notifications on"
+msgstr ""
+
 #: src/pages/ActivityList.tsx
 msgid "Now"
 msgstr "अभी"
@@ -2713,6 +2760,10 @@ msgstr "खोलें"
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx
 msgid "Open {0}"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Open computer"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -2783,6 +2834,11 @@ msgstr "संगठन API कुंजी"
 msgid "Other model…"
 msgstr "अन्य मॉडल…"
 
+#. placeholder {0}: artifacts.length
+#: src/components/RunDetailsPanel.tsx
+msgid "Outputs · {0}"
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr ""
@@ -2816,8 +2872,8 @@ msgid "Paste a replacement key"
 msgstr "बदलने के लिए नई कुंजी पेस्ट करें"
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
-msgstr "अपने सर्वर से OpenAI-संगत पता पेस्ट करें। ज़रूरत होने पर Rakazo /v1 जोड़ देता है।"
+msgid "Paste the OpenAI-compatible address from your server. {productName} adds /v1 if needed."
+msgstr "अपने सर्वर से OpenAI-संगत पता पेस्ट करें। ज़रूरत होने पर {productName} /v1 जोड़ देता है।"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Paste your API key"
@@ -2830,6 +2886,10 @@ msgstr ""
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "व्यक्तिगत क्रेडेंशियल"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Pick the bloub shape, expression, and colour"
+msgstr ""
 
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
@@ -2851,6 +2911,10 @@ msgstr "{0} का प्रीव्यू"
 #: src/pages/Artifacts.tsx
 msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Privacy"
+msgstr "गोपनीयता"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Private"
@@ -2882,7 +2946,7 @@ msgstr "प्रोवाइडर्स"
 msgid "Pull request"
 msgstr "पुल अनुरोध"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Queued"
 msgstr "कतार में"
 
@@ -3142,8 +3206,8 @@ msgid "Retry screen"
 msgstr ""
 
 #: src/pages/McpOAuthCallback.tsx
-msgid "Return to Rakazo"
-msgstr "Rakazo पर लौटें"
+msgid "Return to {productName}"
+msgstr "{productName} पर लौटें"
 
 #. placeholder {0}: doc.revision
 #: src/pages/KnowledgeSection.tsx
@@ -3166,6 +3230,7 @@ msgstr ""
 msgid "Rotate key"
 msgstr ""
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 msgid "Routine"
@@ -3177,6 +3242,11 @@ msgstr "रूटीन्स"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
+msgstr ""
+
+#: src/components/RunDetailsPanel.tsx
+#: src/pages/Shell.tsx
+msgid "Run details"
 msgstr ""
 
 #: src/pages/RoutineEditor.tsx
@@ -3191,7 +3261,7 @@ msgstr ""
 msgid "running"
 msgstr "चल रहा है"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Running"
 msgstr "चल रहा है"
 
@@ -3294,6 +3364,10 @@ msgstr ""
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Search providers"
 msgstr "प्रोवाइडर्स खोजें"
+
+#: src/components/ModelTreePicker.tsx
+msgid "Search providers & models"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/SpaceSearch.tsx
@@ -3434,8 +3508,8 @@ msgid "Sign in"
 msgstr "साइन इन करें"
 
 #: src/pages/Auth.tsx
-msgid "Sign in to Rakazo"
-msgstr "Rakazo में साइन इन करें"
+msgid "Sign in to {productName}"
+msgstr "{productName} में साइन इन करें"
 
 #: src/pages/Auth.tsx
 #: src/pages/Welcome.tsx
@@ -3477,7 +3551,8 @@ msgstr ""
 msgid "Software update"
 msgstr ""
 
-#: src/pages/shell/bot-panel.tsx
+#: src/components/ModelTreePicker.tsx
+#: src/pages/Shell.tsx
 msgid "Space default"
 msgstr "स्पेस डिफ़ॉल्ट"
 
@@ -3509,7 +3584,7 @@ msgstr "वाक् मॉडल"
 msgid "Start recording"
 msgstr "रिकॉर्डिंग शुरू करें"
 
-#: src/pages/ActivityList.tsx
+#: src/lib/run-status.ts
 msgid "Starting"
 msgstr "शुरू हो रहा है"
 
@@ -3518,6 +3593,10 @@ msgstr "शुरू हो रहा है"
 #: src/pages/Onboarding.tsx
 msgid "Starting…"
 msgstr "शुरू हो रहा है…"
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Step details are in the thread transcript."
+msgstr ""
 
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
@@ -3552,6 +3631,7 @@ msgstr "सुरक्षित रूप से संग्रहीत। �
 msgid "Stream replies"
 msgstr "जवाब स्ट्रीम करें"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Shell.tsx
 msgid "subagent"
 msgstr "सबएजेंट"
@@ -3627,6 +3707,10 @@ msgstr ""
 msgid "The API did not come back. Refresh this page."
 msgstr ""
 
+#: src/components/RunDetailsPanel.tsx
+msgid "The bot is waiting for computer takeover."
+msgstr ""
+
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "The selected memory provider is not available in this build."
 msgstr "चयनित मेमोरी प्रोवाइडर इस बिल्ड में उपलब्ध नहीं है।"
@@ -3693,8 +3777,8 @@ msgid "This server is already connected. Disconnect it first to authorize again.
 msgstr "यह सर्वर पहले से कनेक्टेड है। पुनः ऑथराइज़ करने के लिए पहले इसे डिस्कनेक्ट करें।"
 
 #: src/pages/ModelSettingsOverlay.tsx
-msgid "This subscription sign-in is not available in Rakazo yet. Use a deployment credential or choose another provider."
-msgstr "यह सब्सक्रिप्शन साइन-इन अभी Rakazo में उपलब्ध नहीं है। किसी डिप्लॉयमेंट क्रेडेंशियल का उपयोग करें या दूसरा प्रोवाइडर चुनें।"
+msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
+msgstr "यह सब्सक्रिप्शन साइन-इन अभी {productName} में उपलब्ध नहीं है। किसी डिप्लॉयमेंट क्रेडेंशियल का उपयोग करें या दूसरा प्रोवाइडर चुनें।"
 
 #: src/pages/Artifacts.tsx
 msgid "This week"
@@ -3735,6 +3819,10 @@ msgstr ""
 #: src/pages/PluginsOverlay.tsx
 msgid "Treg token"
 msgstr "Treg टोकन"
+
+#: src/components/RunDetailsPanel.tsx
+msgid "Triggered by you"
+msgstr ""
 
 #: src/pages/Onboarding.tsx
 msgid "Try again"
@@ -3950,6 +4038,7 @@ msgstr "कब उपयोग करें"
 msgid "Where should bots run?"
 msgstr "बॉट कहां चलने चाहिए?"
 
+#: src/components/RunDetailsPanel.tsx
 #: src/pages/Auth.tsx
 msgid "Working…"
 msgstr "काम चल रहा है…"

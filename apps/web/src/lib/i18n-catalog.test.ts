@@ -277,6 +277,30 @@ describe("lingui catalogs", () => {
     );
   });
 
+  it("translates product support links in every runtime catalog", () => {
+    const translations: Record<string, [help: string, feedback: string, privacy: string]> = {
+      en: ["Help", "Feedback", "Privacy"],
+      de: ["Hilfe", "Feedback", "Datenschutz"],
+      es: ["Ayuda", "Comentarios", "Privacidad"],
+      fr: ["Aide", "Commentaires", "Confidentialité"],
+      hi: ["मदद", "प्रतिक्रिया", "गोपनीयता"],
+      ko: ["도움말", "피드백", "개인정보 보호"],
+      "pt-BR": ["Ajuda", "Feedback", "Privacidade"],
+      ru: ["Помощь", "Обратная связь", "Конфиденциальность"],
+      tr: ["Yardım", "Geri bildirim", "Gizlilik"],
+      "zh-CN": ["帮助", "反馈", "隐私"],
+    };
+    for (const [locale, [help, feedback, privacy]] of Object.entries(translations)) {
+      const catalog = readFileSync(
+        fileURLToPath(new URL(`../locales/${locale}/messages.po`, import.meta.url)),
+        "utf8",
+      );
+      expect(catalog).toContain(`msgid "Help"\nmsgstr "${help}"`);
+      expect(catalog).toContain(`msgid "Feedback"\nmsgstr "${feedback}"`);
+      expect(catalog).toContain(`msgid "Privacy"\nmsgstr "${privacy}"`);
+    }
+  });
+
   it("translates the terminal empty state in every non-English catalog", () => {
     const translations: Record<string, string> = {
       de: "Noch keine Bot-Aktivität.",

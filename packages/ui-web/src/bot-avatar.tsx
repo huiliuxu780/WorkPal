@@ -1,6 +1,7 @@
 import type { GrokColorDef } from "@rakazo/core";
 import {
   ACTIVE_RUN_STATUSES,
+  PRODUCT_BRAND,
   avatarIdentitySeed,
   DEFAULT_GROK_BOT_COLOR,
   GROK_BOT_COLORS,
@@ -19,6 +20,7 @@ import type { CSSProperties } from "react";
 import { memo, useId, useMemo, useSyncExternalStore } from "react";
 import type { AvatarStyle } from "./avatar-style.js";
 import { useAvatarStyle } from "./avatar-style.js";
+import { BloubAvatar } from "./bloub-avatar.js";
 import { cn } from "./lib/utils.js";
 import "./styles.css";
 
@@ -57,12 +59,26 @@ export function parseBotAvatar(
   shapeIndex?: number;
   isImage: boolean;
   imageUrl?: string;
+  /** Avatar Studio choice: the bot uses the bloub avatar. */
+  bloub?: boolean;
+  bloubShape?: string;
+  bloubExpression?: string;
 } {
   if (!rawColor) return { color: "#F97316", isImage: false };
   // Only data: image URLs are rendered. Arbitrary http(s)/blob values in `color`
   // must not become <img src> (SSRF / tracking when other members view the bot).
   if (rawColor.startsWith("data:image/")) {
     return { color: "#F97316", isImage: true, imageUrl: rawColor };
+  }
+  if (rawColor.includes("::bloub")) {
+    const parts = rawColor.split("::");
+    return {
+      color: parts[0] || "#F97316",
+      isImage: false,
+      bloub: true,
+      ...(parts[2] ? { bloubShape: parts[2] } : {}),
+      ...(parts[3] ? { bloubExpression: parts[3] } : {}),
+    };
   }
   if (rawColor.includes("::shape_")) {
     const parts = rawColor.split("::shape_");
@@ -155,6 +171,22 @@ export const BotAvatar = memo(function BotAvatar({
         ) : null}
         <img src={parsed.imageUrl} alt="" className="h-full w-full object-cover" />
       </div>
+    );
+  }
+
+  // An explicit `::bloub` studio encoding wins over the account-wide style,
+  // exactly like an encoded studio shape does.
+  if (parsed.shapeIndex === undefined && (parsed.bloub || (variant ?? preferredVariant) === "bloub")) {
+    return (
+      <BloubAvatar
+        color={colorDef.hex}
+        shape={parsed.bloubShape}
+        expression={parsed.bloubExpression}
+        status={status}
+        size={size}
+        isWorking={isWorking}
+        className={className}
+      />
     );
   }
 
@@ -385,7 +417,7 @@ export function Wordmark({ className }: { className?: string }) {
         <span className="h-4 w-[7px] rounded-full bg-primary" />
       </div>
       <span className="font-[Aeonik,ui-sans-serif] text-[28px] tracking-tight text-foreground">
-        Rakazo
+        {PRODUCT_BRAND.name}
       </span>
     </div>
   );

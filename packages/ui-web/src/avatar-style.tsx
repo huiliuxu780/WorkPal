@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useContext } from "react";
 
-export type AvatarStyle = "robot" | "organic";
+export type AvatarStyle = "robot" | "organic" | "bloub";
 
 const AvatarStyleContext = createContext<AvatarStyle>("robot");
 

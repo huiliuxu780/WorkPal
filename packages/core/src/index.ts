@@ -1,3 +1,9 @@
+export {
+  brandedAsset,
+  PRODUCT_BRAND,
+  PRODUCT_USER_AGENT,
+  productWebManifest,
+} from "@rakazo/contracts";
 export * from "./action-approval.js";
 export * from "./agent-skill.js";
 export * from "./ai-consent.js";

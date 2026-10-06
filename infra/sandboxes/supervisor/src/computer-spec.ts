@@ -191,7 +191,15 @@ export function computerNetworkCreateOptions(botId: string, egress: ComputerEgre
   };
 }
 
-export function hostComputerUser(uid = process.getuid?.(), gid = process.getgid?.()): string {
+export function hostComputerUser(
+  uid = process.getuid?.(),
+  gid = process.getgid?.(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  // A darwin host uid (e.g. 501:20) has no passwd entry inside the computer
+  // image, and dbus aborts at startup for an unknown user; colima's virtiofs
+  // exposes bind mounts to every uid, so the image user is the right identity.
+  if (platform === "darwin") return COMPUTER_USER;
   if (uid === undefined || gid === undefined || uid === 0) return COMPUTER_USER;
   return `${uid}:${gid}`;
 }

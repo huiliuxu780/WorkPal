@@ -1,4 +1,10 @@
 import { t } from "@lingui/core/macro";
+import {
+  modelLabelFor,
+  modelOptionKey,
+  parseModelOptionKey,
+  useConnectedModelOptions,
+} from "../../lib/model-options";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   AgentSkillCatalogEntry,
@@ -6,7 +12,6 @@ import type {
   ComputerMode,
   Me,
   ModelCatalogEntry,
-  ModelCredential,
   ThinkingLevel,
   VoiceInfo,
 } from "@rakazo/contracts";
@@ -27,6 +32,7 @@ import {
 import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
+import { ModelTreePicker } from "../../components/ModelTreePicker";
 import { AvatarStudioPopover } from "./avatar-studio-popover";
 
 const ScratchpadSection = lazy(() =>
@@ -77,35 +83,50 @@ function ComputerModePicker({
 
 export function CreateBotForm({
   onCreate,
-  onCancel,
 }: {
   onCreate: (input: {
     name: string;
     title: string;
     description: string;
     computerMode: ComputerMode;
+    color?: string;
+    modelProvider?: string;
+    modelId?: string;
   }) => Promise<void>;
-  onCancel: () => void;
 }) {
   const { t } = useLingui();
   const ids = useId();
+  const [color, setColor] = useState("#3b93f0::bloub");
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [computerMode, setComputerMode] = useState<ComputerMode>("team");
+  const [modelKey, setModelKey] = useState("");
+  const [me, setMe] = useState<Me | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { catalog } = useConnectedModelOptions();
+  const spaceDefaultLabel = me?.defaultModel
+    ? (catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel)
+    : undefined;
+
+  useEffect(() => {
+    void rpc.me().then(setMe).catch(() => undefined);
+  }, []);
 
   async function handleSubmit() {
     if (!name.trim() || submitting) return;
     setError(null);
     setSubmitting(true);
     try {
+      const model = modelKey ? parseModelOptionKey(modelKey) : null;
       await onCreate({
         name: name.trim(),
         title: title.trim(),
         description: description.trim(),
         computerMode,
+        ...(color ? { color } : {}),
+        ...(model ? { modelProvider: model.provider, modelId: model.modelId } : {}),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : t`Could not create bot`);
@@ -116,14 +137,6 @@ export function CreateBotForm({
 
   return (
     <div data-testid="create-bot-form">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-[13.5px] text-muted-foreground">
-          <Trans>New bot</Trans>
-        </span>
-        <Button variant="ghost" size="icon-sm" aria-label={t`Cancel new bot`} onClick={onCancel}>
-          <X size={16} strokeWidth={1.8} />
-        </Button>
-      </div>
       {error ? (
         <p
           role="alert"
@@ -133,29 +146,39 @@ export function CreateBotForm({
           {error}
         </p>
       ) : null}
-      <label htmlFor={`${ids}-name`} className="mt-6 block text-[14px] text-muted-foreground">
-        <Trans>Name</Trans>
-        <Input
-          id={`${ids}-name`}
-          value={name}
-          maxLength={BOT_NAME_MAX_LENGTH}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t`Name this bot`}
-          className="mt-2"
+      <div className="flex justify-center pb-1 pt-1">
+        <AvatarStudioPopover
+          value={color}
+          identity={`new-bot-${ids}`}
+          onChange={setColor}
+          size={76}
         />
-      </label>
-      <label htmlFor={`${ids}-title`} className={fieldLabelClass}>
-        <Trans>Title</Trans>
-        <Input
-          id={`${ids}-title`}
-          value={title}
-          maxLength={BOT_TITLE_MAX_LENGTH}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder={t`Describe what this bot does`}
-          className="mt-2"
-        />
-      </label>
-      <label htmlFor={`${ids}-description`} className={fieldLabelClass}>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label htmlFor={`${ids}-name`} className="block text-[14px] text-muted-foreground">
+          <Trans>Name</Trans>
+          <Input
+            id={`${ids}-name`}
+            value={name}
+            maxLength={BOT_NAME_MAX_LENGTH}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t`Name this bot`}
+            className="mt-2"
+          />
+        </label>
+        <label htmlFor={`${ids}-title`} className="block text-[14px] text-muted-foreground">
+          <Trans>Title</Trans>
+          <Input
+            id={`${ids}-title`}
+            value={title}
+            maxLength={BOT_TITLE_MAX_LENGTH}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={t`Describe what this bot does`}
+            className="mt-2"
+          />
+        </label>
+      </div>
+      <label htmlFor={`${ids}-description`} className="mt-3 block text-[14px] text-muted-foreground">
         <Trans>Description</Trans>
         <Textarea
           id={`${ids}-description`}
@@ -163,25 +186,37 @@ export function CreateBotForm({
           maxLength={BOT_DESCRIPTION_MAX_LENGTH}
           onChange={(e) => setDescription(e.target.value)}
           placeholder={t`What this bot is for`}
-          rows={4}
-          className="mt-2"
+          rows={3}
+          className="mt-2 min-h-16 resize-none"
         />
       </label>
-      <div data-testid="create-bot-computer">
-        <ComputerModePicker
-          value={computerMode}
-          onChange={setComputerMode}
-          teamTestId="create-bot-team"
-          privateTestId="create-bot-private"
-        />
+      <div className="mt-3 grid grid-cols-2 items-start gap-3">
+        <div className="text-[14px] text-muted-foreground">
+          <Trans>Model</Trans>
+          <div className="mt-2">
+            <ModelTreePicker
+              value={modelKey ? parseModelOptionKey(modelKey) : null}
+              spaceDefaultLabel={spaceDefaultLabel}
+              onChange={(next) => {
+                setModelKey(next ? modelOptionKey(next.provider, next.modelId) : "");
+              }}
+            />
+          </div>
+        </div>
+        <div data-testid="create-bot-computer">
+          <ComputerModePicker
+            value={computerMode}
+            onChange={setComputerMode}
+            teamTestId="create-bot-team"
+            privateTestId="create-bot-private"
+          />
+        </div>
       </div>
-      <Button
-        className="mt-5"
-        disabled={!name.trim() || submitting}
-        onClick={() => void handleSubmit()}
-      >
-        {submitting ? <Trans>Creating…</Trans> : <Trans>Create</Trans>}
-      </Button>
+      <div className="mt-5 flex justify-end">
+        <Button disabled={!name.trim() || submitting} onClick={() => void handleSubmit()}>
+          {submitting ? <Trans>Creating…</Trans> : <Trans>Create</Trans>}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -232,10 +267,7 @@ export function BotSettings({
     bot.modelProvider && bot.modelId ? modelOptionKey(bot.modelProvider, bot.modelId) : "",
   );
   const [thinkingLevel, setThinkingLevel] = useState(bot.thinkingLevel ?? "");
-  const [credentials, setCredentials] = useState<ModelCredential[]>([]);
-  const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const [me, setMe] = useState<Me | null>(null);
-  const [modelMetaReady, setModelMetaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const saveQueueRef = useRef(Promise.resolve());
@@ -248,65 +280,22 @@ export function BotSettings({
       notifyOnFinish?: boolean;
     }) => Promise<void>
   >(async () => undefined);
+  const {
+    options: connectedOptions,
+    credentials,
+    catalog,
+    ready: modelMetaReady,
+  } = useConnectedModelOptions();
   useEffect(() => {
     void rpc.voice
       .voices({})
       .then(setVoices)
       .catch(() => setVoices([]));
-    void Promise.all([rpc.models.credentials(), rpc.models.list(), rpc.me()])
-      .then(([nextCredentials, nextCatalog, nextMe]) => {
-        setCredentials(nextCredentials);
-        setCatalog(nextCatalog);
-        setMe(nextMe);
-        // Only mark ready on success — a failed catalog load must not clear
-        // an existing thinkingLevel override on save.
-        setModelMetaReady(true);
-      })
+    void rpc
+      .me()
+      .then(setMe)
       .catch(() => undefined);
   }, []);
-
-  const connectedOptions: Array<{
-    key: string;
-    provider: string;
-    modelId: string;
-    label: string;
-  }> = [];
-  const seenOptions = new Set<string>();
-  for (const credential of credentials) {
-    const providerModels = catalog.filter(
-      (entry) =>
-        entry.provider === credential.provider &&
-        !entry.placeholder &&
-        entry.runtimeAvailable !== false,
-    );
-    const credentialInCatalog = Boolean(
-      credential.modelId && providerModels.some((entry) => entry.id === credential.modelId),
-    );
-    // Catalog providers expand to every model for that connection. Free-form
-    // credentials (model id not in the catalog) stay a single connected pair.
-    const options =
-      credential.modelId && !credentialInCatalog
-        ? [
-            {
-              key: modelOptionKey(credential.provider, credential.modelId),
-              provider: credential.provider,
-              modelId: credential.modelId,
-              label: `${credential.label} · ${credential.modelId}`,
-            },
-          ]
-        : providerModels.map((entry) => ({
-            key: modelOptionKey(entry.provider, entry.id),
-            provider: entry.provider,
-            modelId: entry.id,
-            label: `${entry.providerName ?? entry.provider} · ${entry.label}`,
-          }));
-    for (const option of options) {
-      if (seenOptions.has(option.key)) continue;
-      seenOptions.add(option.key);
-      connectedOptions.push(option);
-    }
-  }
-
   const effectiveProvider = modelKey
     ? parseModelOptionKey(modelKey)?.provider
     : (me?.defaultProvider ?? null);
@@ -495,32 +484,20 @@ export function BotSettings({
         </Suspense>
         <label htmlFor={`${ids}-model`} className={fieldLabelClass}>
           <Trans>Model</Trans>
-          <NativeSelect
-            id={`${ids}-model`}
-            className="mt-2 w-full"
-            value={modelKey}
-            onChange={(event) => {
-              setModelKey(event.target.value);
-              setThinkingLevel("");
-            }}
-          >
-            <NativeSelectOption value="">
-              {t`Space default`}
-              {me?.defaultModel
-                ? ` (${catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel})`
-                : ""}
-            </NativeSelectOption>
-            {modelKey && !connectedOptions.some((option) => option.key === modelKey) ? (
-              <NativeSelectOption value={modelKey}>
-                {parseModelOptionKey(modelKey)?.modelId ?? modelKey}
-              </NativeSelectOption>
-            ) : null}
-            {connectedOptions.map((option) => (
-              <NativeSelectOption key={option.key} value={option.key}>
-                {option.label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <div className="mt-2">
+            <ModelTreePicker
+              value={modelKey ? parseModelOptionKey(modelKey) : null}
+              spaceDefaultLabel={
+                me?.defaultModel
+                  ? (catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel)
+                  : undefined
+              }
+              onChange={(next) => {
+                setModelKey(next ? modelOptionKey(next.provider, next.modelId) : "");
+                setThinkingLevel("");
+              }}
+            />
+          </div>
         </label>
         {thinkingOptions.length ? (
           <label htmlFor={`${ids}-thinking`} className={fieldLabelClass}>
@@ -631,10 +608,6 @@ export function BotSettings({
   );
 }
 
-function modelOptionKey(provider: string, modelId: string) {
-  return `${provider}::${modelId}`;
-}
-
 function thinkingLevelLabel(level: ThinkingLevel) {
   if (level === "xhigh") return t`Extra high`;
   if (level === "low") return t`Low`;
@@ -643,12 +616,6 @@ function thinkingLevelLabel(level: ThinkingLevel) {
   if (level === "minimal") return t`Minimal`;
   if (level === "max") return t`Max`;
   return `${level.slice(0, 1).toUpperCase()}${level.slice(1)}`;
-}
-
-function parseModelOptionKey(key: string) {
-  const separator = key.indexOf("::");
-  if (separator <= 0) return null;
-  return { provider: key.slice(0, separator), modelId: key.slice(separator + 2) };
 }
 
 function catalogLabel(

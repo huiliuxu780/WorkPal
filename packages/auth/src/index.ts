@@ -1,3 +1,4 @@
+import { PRODUCT_BRAND } from "@rakazo/core";
 import type { TransactionalEmail, TransactionalEmailProvider } from "@rakazo/adapter-kit";
 import {
   allowlistedSignupAdmission,
@@ -206,7 +207,7 @@ async function claimUnverifiedFirstAccount(prisma: PrismaClient, userId: string)
 
 export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   return betterAuth({
-    appName: "Rakazo",
+    appName: `${PRODUCT_BRAND.name}`,
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: buildTrustedOrigins(env),
@@ -427,9 +428,9 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
 export function verificationEmail(email: string, url: string): TransactionalEmail {
   return {
     to: email,
-    subject: "Verify your Rakazo email",
-    text: `Verify your email, then return to Rakazo to sign in:\n\n${url}\n\nThis link expires in one hour. If you did not register, ignore this email.`,
-    html: `<p><a href="${escapeHtml(url)}">Verify email</a>, then return to Rakazo to sign in.</p><p>This link expires in one hour. If you did not register, ignore this email.</p>`,
+    subject: `Verify your ${PRODUCT_BRAND.name} email`,
+    text: `Verify your email, then return to ${PRODUCT_BRAND.name} to sign in:\n\n${url}\n\nThis link expires in one hour. If you did not register, ignore this email.\n\n— ${PRODUCT_BRAND.name}`,
+    html: `<p><a href="${escapeHtml(url)}">Verify email</a>, then return to ${PRODUCT_BRAND.name} to sign in.</p><p>This link expires in one hour. If you did not register, ignore this email.</p><p>— ${PRODUCT_BRAND.name}</p>`,
   };
 }
 
@@ -442,16 +443,18 @@ export function passwordResetEmail(
   const safeUrl = escapeHtml(resetUrl);
   return {
     to: user.email,
-    subject: "Reset your Rakazo password",
+    subject: `Reset your ${PRODUCT_BRAND.name} password`,
     text: [
       `Hi ${name},`,
       "",
-      "Reset your Rakazo password using this link:",
+      `Reset your ${PRODUCT_BRAND.name} password using this link:`,
       resetUrl,
       "",
       "This link expires in one hour. If you did not request this, you can ignore this email.",
+      "",
+      `— ${PRODUCT_BRAND.name}`,
     ].join("\n"),
-    html: `<p>Hi ${safeName},</p><p>Reset your Rakazo password:</p><p><a href="${safeUrl}">Reset password</a></p><p>This link expires in one hour. If you did not request this, you can ignore this email.</p>`,
+    html: `<p>Hi ${safeName},</p><p>Reset your ${PRODUCT_BRAND.name} password:</p><p><a href="${safeUrl}">Reset password</a></p><p>This link expires in one hour. If you did not request this, you can ignore this email.</p><p>— ${PRODUCT_BRAND.name}</p>`,
   };
 }
 

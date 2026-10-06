@@ -67,11 +67,9 @@ function MemberPicker({
 
 export function CreateGroupForm({
   bots,
-  onCancel,
   onCreate,
 }: {
   bots: Bot[];
-  onCancel: () => void;
   onCreate: (input: { name: string; botIds: string[] }) => Promise<void>;
 }) {
   const { t } = useLingui();
@@ -96,20 +94,6 @@ export function CreateGroupForm({
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-[13.5px] text-muted-foreground">
-          <Trans>New group</Trans>
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t`Cancel new group`}
-          onClick={onCancel}
-          className="text-muted-foreground"
-        >
-          <X />
-        </Button>
-      </div>
       {error ? (
         <p role="alert" className="mb-3 text-[13px] text-destructive">
           {error}

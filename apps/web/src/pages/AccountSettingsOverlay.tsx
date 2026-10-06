@@ -1,5 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { AvatarStyle } from "@rakazo/contracts";
+import { PRODUCT_BRAND } from "@rakazo/core";
 import { BotAvatar, Button, Field, FieldLabel, Input, Label, Switch, Toggle } from "@rakazo/ui-web";
 import { ChevronDown } from "lucide-react";
 import {
@@ -145,8 +146,8 @@ export function GeneralSettingsPanels({
         <h3 className="text-[15px] font-medium text-foreground">
           <Trans>Avatars</Trans>
         </h3>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {(["robot", "organic"] as const).map((style) => (
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          {(["robot", "organic", "bloub"] as const).map((style) => (
             <Toggle
               key={style}
               variant="outline"
@@ -162,7 +163,15 @@ export function GeneralSettingsPanels({
                 size={32}
                 variant={style}
               />
-              <span>{style === "robot" ? <Trans>Robot</Trans> : <Trans>Organic</Trans>}</span>
+              <span>
+                {style === "robot" ? (
+                  <Trans>Robot</Trans>
+                ) : style === "organic" ? (
+                  <Trans>Organic</Trans>
+                ) : (
+                  <Trans>Bloub</Trans>
+                )}
+              </span>
             </Toggle>
           ))}
         </div>
@@ -225,6 +234,17 @@ export function GeneralSettingsPanels({
           <ApprovalRulesSettings />
         </div>
       </details>
+      <nav aria-label={PRODUCT_BRAND.name} className="flex gap-4 text-sm text-muted-foreground">
+        <a href={PRODUCT_BRAND.links.help} target="_blank" rel="noopener noreferrer">
+          <Trans>Help</Trans>
+        </a>
+        <a href={PRODUCT_BRAND.links.feedback} target="_blank" rel="noopener noreferrer">
+          <Trans>Feedback</Trans>
+        </a>
+        <a href={PRODUCT_BRAND.links.privacy} target="_blank" rel="noopener noreferrer">
+          <Trans>Privacy</Trans>
+        </a>
+      </nav>
     </div>
   );
 }

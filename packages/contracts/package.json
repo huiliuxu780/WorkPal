@@ -9,6 +9,11 @@
       "development": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./brand": {
+      "types": "./src/brand.ts",
+      "development": "./src/brand.ts",
+      "default": "./src/brand.ts"
+    },
     "./local-settings": "./src/local-settings.js"
   },
   "scripts": {

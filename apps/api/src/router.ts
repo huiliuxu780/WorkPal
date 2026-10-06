@@ -219,7 +219,7 @@ import {
   promptFocus,
   startOnboarding,
 } from "./onboarding.js";
-import { listSpaceRuns } from "./runs.js";
+import { getRunDetail, listSpaceRuns } from "./runs.js";
 import { addScreenProxyCapability } from "./screen-proxy.js";
 import { querySpaceSearch } from "./search.js";
 import { withSerializableRetry } from "./serializable-retry.js";
@@ -5477,6 +5477,11 @@ export function createRouter(deps: RouterDeps) {
       list: authed.runs.list.handler(async ({ context, input }) => ({
         runs: await listSpaceRuns(deps.prisma, context.actor, input.filter),
       })),
+      detail: authed.runs.detail.handler(async ({ context, input }) => {
+        const detail = await getRunDetail(deps.prisma, context.actor, input.runId);
+        if (!detail) throw new Error(`Run not found: ${input.runId}`);
+        return detail;
+      }),
     },
     voice: {
       catalog: authed.voice.catalog.handler(async () => listVoiceCatalog()),
@@ -5779,7 +5784,10 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     computerHost: computerHostFor(setup.settings?.computerHost, deps.env.sandboxProvider),
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
-    avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
+    avatarStyle:
+      user.avatarStyle === "organic" || user.avatarStyle === "bloub"
+        ? user.avatarStyle
+        : "robot",
   };
 }
 
