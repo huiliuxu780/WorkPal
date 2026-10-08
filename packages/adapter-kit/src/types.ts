@@ -408,6 +408,12 @@ export interface AgentRunModel {
 export interface AgentCollaborationContext {
   role: "owner" | "support" | "handoff_owner";
   fromBotName?: string;
+  /**
+   * True when this run was woken by a delegated outcome (result/status)
+   * returning to the bot that requested it. The runtime renders resumption
+   * wording instead of the plain identity lines.
+   */
+  receivingOutcome?: boolean;
 }
 
 /**

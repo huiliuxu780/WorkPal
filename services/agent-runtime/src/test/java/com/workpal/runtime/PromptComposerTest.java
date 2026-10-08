@@ -112,6 +112,25 @@ class PromptComposerTest {
         assertTrue(collaboration < runtime, "collaboration context must precede runtime context");
     }
 
+    @Test void outcomeResumptionRendersRolePreservingIdentities() throws Exception {
+        String owner = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"owner\",\"receivingOutcome\":true}"));
+        assertTrue(owner.contains("Another persistent bot has returned work you delegated."));
+        assertTrue(owner.contains("You remain the response owner."));
+        assertTrue(owner.contains("Incorporate the actual result"));
+
+        String support = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"support\",\"receivingOutcome\":true}"));
+        assertTrue(support.contains("You are still supporting the original owner."));
+        assertTrue(support.contains("return your completed result upstream"));
+        assertFalse(support.contains("You are supporting the requesting agent"));
+
+        String handoff = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"handoff_owner\",\"fromBotName\":\"Alice\",\"receivingOutcome\":true}"));
+        assertTrue(handoff.contains("Alice transferred ownership of this stage to you."));
+        assertTrue(handoff.contains("Another persistent bot has returned work you delegated"));
+    }
+
     @Test void auxiliaryScopesGetNoCollaborationIdentity() throws Exception {
         String body = """
                 {"botId":"bot-1","threadId":"turn-routing:1","runId":"turn-routing:1","executionScope":"turn-routing",

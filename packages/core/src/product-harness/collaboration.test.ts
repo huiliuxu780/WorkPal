@@ -4,6 +4,7 @@ import {
   collaborationContextRole,
   collaborationFromOrchestration,
   handoffCollaboration,
+  outcomeResumptionCollaboration,
   handoffDepthExceeded,
   isAcknowledgementLoop,
   isHandoffBounceBack,
@@ -169,6 +170,36 @@ describe("collaboration lineage in the orchestration snapshot (§5)", () => {
         }),
       )?.source,
     ).toBe("handoff");
+  });
+});
+
+describe("outcomeResumptionCollaboration (P1 role preservation)", () => {
+  it("preserves the requester's role in the resumed lineage", () => {
+    expect(
+      outcomeResumptionCollaboration({
+        role: "owner",
+        fromBotId: "bob",
+        parentRunId: "run-bob",
+        handoffDepth: 1,
+        messageHop: 2,
+      }),
+    ).toEqual({
+      role: "owner",
+      source: "bot_message",
+      fromBotId: "bob",
+      parentRunId: "run-bob",
+      handoffDepth: 1,
+      messageHop: 2,
+    });
+    expect(
+      outcomeResumptionCollaboration({
+        role: "support",
+        fromBotId: "charlie",
+        parentRunId: "run-charlie",
+        handoffDepth: 0,
+        messageHop: 3,
+      }).role,
+    ).toBe("support");
   });
 });
 

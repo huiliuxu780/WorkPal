@@ -75,7 +75,7 @@ public record RunRequest(
      * runtime never infers identity from message content.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Collaboration(String role, String fromBotName) {}
+    public record Collaboration(String role, String fromBotName, Boolean receivingOutcome) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Identity(String userId, String spaceId, String botId, String threadId, String runId) {}

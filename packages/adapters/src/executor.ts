@@ -4075,6 +4075,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
               collaborationContext: {
                 role: collaborationRole,
                 ...(collaborationFromBotName ? { fromBotName: collaborationFromBotName } : {}),
+                // Woken by a delegated result/status coming back: the runtime
+                // tells the owner to incorporate and answer, or the support
+                // bot to fold it in and return upstream — never "you are
+                // supporting the returning bot".
+                ...(peerMessage?.intent === "result" || peerMessage?.intent === "status"
+                  ? { receivingOutcome: true }
+                  : {}),
               },
               prompt,
               instructions: userTurnInstructions({

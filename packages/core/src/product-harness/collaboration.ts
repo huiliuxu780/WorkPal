@@ -66,19 +66,21 @@ export function supportCollaboration(input: {
 }
 
 /**
- * Lineage of an owner's resume run woken by a delegated outcome. The hop is
- * technically a bot_message, but the recipient is the ORIGINAL owner taking
- * the result back into its user-facing answer — ownership never moved, so the
- * role stays "owner" and the run gets the owner-grade execution policy.
+ * Lineage of a resume run woken by a delegated outcome returning to the bot
+ * that requested it. The hop is technically a bot_message, but message_bot
+ * never moves ownership: the recipient resumes with the SAME collaboration
+ * role it held when it delegated — an owner stays an owner, a support bot
+ * stays a support bot (nested delegation must not promote it).
  */
-export function ownerResumptionCollaboration(input: {
+export function outcomeResumptionCollaboration(input: {
+  role: CollaborationRole;
   fromBotId: string;
   parentRunId: string;
   handoffDepth: number;
   messageHop: number;
 }): CollaborationLineageV1 {
   return {
-    role: "owner",
+    role: input.role,
     source: "bot_message",
     fromBotId: input.fromBotId,
     parentRunId: input.parentRunId,

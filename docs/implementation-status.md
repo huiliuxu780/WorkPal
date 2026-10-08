@@ -54,7 +54,7 @@ background permission are enforced in the spawn repository (a hard count and
 throw, not a prompt), and helpers keep only read-only backend tools. Plan,
 Subagent and Background remain AgentScope-owned; Phase 2 adds no new engine.
 
-## Product Harness Phase 3 — Persistent Bot Collaboration: COMPLETE
+## Product Harness Phase 3 — Persistent Bot Collaboration: IN PROGRESS
 
 Four concepts are now frozen and runtime-enforced: the Response Owner answers
 the user; a Support Bot does delegated partial work and returns it;
@@ -67,8 +67,9 @@ stage ownership. Every collaboration Run persists an immutable
   background off) and the `<collaboration-context>` support identity derived
   from the snapshot — never guessed from prompts. Their results return to the
   requester automatically through the existing outcome-return path, and the
-  outcome-return hop preserves the ORIGINAL owner's identity and owner-grade
-  policy so the owner incorporates the result and answers the user.
+  outcome-return hop restores the REQUESTER's persisted role and execution
+  policy: an owner resumes as owner, a nested support requester stays
+  support (message_bot never moves ownership in either direction).
 - Handoff runs record `source: handoff` with `handoffDepth + 1`, emit
   `thread.turn.handed_off`, and the originating run's final-answer suppression
   is unchanged. `MAX_HANDOFF_DEPTH = 2` is a hard product-layer tool error;
@@ -84,6 +85,6 @@ stage ownership. Every collaboration Run persists an immutable
   handoff selection rules live in the platform instructions.
 
 Phase status: Phase 1 (who answers) COMPLETE, Phase 2 (how the owner may
-execute) COMPLETE, Phase 3 (how persistent agents collaborate) COMPLETE.
-Next: Phase 4 — Activity / UX projection of routing, planning, drill and
-collaboration events.
+execute) COMPLETE, Phase 3 (how persistent agents collaborate) pending final
+CI/review on the outcome-return role-preservation fix. Next: Phase 4 —
+Activity / UX projection of routing, planning, drill and collaboration events.

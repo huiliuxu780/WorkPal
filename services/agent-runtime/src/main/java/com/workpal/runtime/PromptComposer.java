@@ -39,19 +39,32 @@ public final class PromptComposer {
      */
     static String collaborationContextSection(RunRequest request) {
         if (!request.isChat()) return "";
-        String from = request.collaborationContext() != null
-                && !RunRequest.blank(request.collaborationContext().fromBotName())
-                ? request.collaborationContext().fromBotName()
+        RunRequest.Collaboration collaboration = request.collaborationContext();
+        String from = collaboration != null && !RunRequest.blank(collaboration.fromBotName())
+                ? collaboration.fromBotName()
                 : "the requesting agent";
+        // A delegated outcome returning to its requester resumes that bot's
+        // existing role; it must not read as "now supporting the responder".
+        boolean resumption = collaboration != null && Boolean.TRUE.equals(collaboration.receivingOutcome());
         String body = switch (request.collaborationRole()) {
-            case "support" -> "You are supporting " + from + " for this stage.\n"
-                    + "Return useful work to " + from + ".\n"
-                    + "Do not take over the user-facing conversation.";
+            case "support" -> resumption
+                    ? "You are still supporting the original owner.\n"
+                        + "Incorporate this result into your delegated work and return your completed result upstream."
+                    : "You are supporting " + from + " for this stage.\n"
+                        + "Return useful work to " + from + ".\n"
+                        + "Do not take over the user-facing conversation.";
             case "handoff_owner" -> from + " transferred ownership of this stage to you.\n"
                     + "You now own this stage and should reply directly in the shared thread.\n"
-                    + "Do not hand it back merely to report completion.";
-            default -> "You are the response owner for this stage.\n"
-                    + "You are responsible for the final user-facing outcome.";
+                    + "Do not hand it back merely to report completion."
+                    + (resumption
+                        ? "\nAnother persistent bot has returned work you delegated; incorporate the actual result."
+                        : "");
+            default -> resumption
+                    ? "Another persistent bot has returned work you delegated.\n"
+                        + "You remain the response owner.\n"
+                        + "Incorporate the actual result and continue the user's task or answer the user."
+                    : "You are the response owner for this stage.\n"
+                        + "You are responsible for the final user-facing outcome.";
         };
         return "<collaboration-context>\n" + body + "\n</collaboration-context>";
     }

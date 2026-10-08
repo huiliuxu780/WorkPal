@@ -12,10 +12,14 @@ import {
   collaborationFromOrchestration,
   isAcknowledgementLoop,
   nextBotMessageHop,
-  ownerResumptionCollaboration,
+  outcomeResumptionCollaboration,
+  parseRunOrchestration,
   resolveBotAddress,
   supportCollaboration,
   turnExecutionForSource,
+  turnPolicySourceForTrigger,
+  type CollaborationRole,
+  type OrchestrationExecutionV1,
 } from "@rakazo/core";
 import {
   appendEventInTransaction,
@@ -158,6 +162,40 @@ export async function messageBot(
 
   const targetThreadId = target.thread.id;
 
+  // A returned delegated outcome restores the requester's previous role and
+  // execution policy — resolved from persisted Product Harness lineage, never
+  // from prompt text or intent strings. Nested support requesters stay
+  // support; only owners resume as owners. An unresolvable requester keeps
+  // the safe support default (never a silent promotion).
+  let resumptionRole: CollaborationRole = "support";
+  let resumptionExecution: OrchestrationExecutionV1 = turnExecutionForSource("bot_message");
+  let resumptionDepth: number | null = null;
+  if (returnsToSender && sourceContext?.returnToMessageId) {
+    const outbound = await deps.prisma.message.findUnique({
+      where: { id: sourceContext.returnToMessageId },
+      select: { runId: true },
+    });
+    const requesterRun = outbound?.runId
+      ? await deps.prisma.run.findUnique({
+          where: { id: outbound.runId },
+          select: { orchestration: true, trigger: true },
+        })
+      : null;
+    if (requesterRun) {
+      const snapshot = parseRunOrchestration(requesterRun.orchestration);
+      resumptionRole =
+        snapshot?.collaboration?.role ??
+        snapshot?.ownership.mode ??
+        (turnPolicySourceForTrigger(requesterRun.trigger) === "bot_message"
+          ? "support"
+          : "owner");
+      resumptionExecution =
+        snapshot?.execution ??
+        turnExecutionForSource(resumptionRole === "support" ? "bot_message" : "chat");
+      resumptionDepth = snapshot?.collaboration?.handoffDepth ?? null;
+    }
+  }
+
   // A tool call can be re-executed after a lease expiry, so a delivery has to be
   // replayable: without this the recipient is messaged twice and woken twice.
   const deliveryKey = input.deliveryKey ? `bot-message:${input.deliveryKey}` : undefined;
@@ -286,11 +324,14 @@ export async function messageBot(
           handoffDepth: lineage?.handoffDepth ?? 0,
           messageHop: hop,
         };
-        // An automatic outcome return wakes the ORIGINAL owner, not a new
-        // support bot: that run must keep owner identity and owner-grade
-        // policy so it can incorporate the result and answer the user.
         const collaboration = returnsToSender
-          ? ownerResumptionCollaboration(lineageInput)
+          ? outcomeResumptionCollaboration({
+              role: resumptionRole,
+              fromBotId: sender.id,
+              parentRunId: run.id,
+              handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
+              messageHop: hop,
+            })
           : supportCollaboration(lineageInput);
         const nextRun = await tx.run.create({
           data: {
@@ -309,8 +350,8 @@ export async function messageBot(
               kind: "bot_message",
               ownerBotId: target.id,
               responseMode: "single",
-              ownershipMode: returnsToSender ? "owner" : "support",
-              execution: turnExecutionForSource(returnsToSender ? "chat" : "bot_message"),
+              ownershipMode: returnsToSender ? resumptionRole : "support",
+              execution: returnsToSender ? resumptionExecution : turnExecutionForSource("bot_message"),
               collaboration,
             }),
           },
