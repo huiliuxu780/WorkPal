@@ -46,6 +46,9 @@ export const ACTIVITY_EVENT_TYPES = [
   "thread.collaboration.requested",
   "thread.collaboration.result",
   "thread.turn.handed_off",
+  "computer.takeover.requested",
+  "computer.takeover.granted",
+  "computer.takeover.released",
 ] as const;
 
 const MAX_DETAIL_CHARS = 200;
@@ -231,6 +234,29 @@ export function reduceActivity(
         status: "waiting",
         title: activityLabels.waitingInput,
       });
+    case "computer.takeover.requested":
+      // Live parity with the replay seed: a run needing takeover must read
+      // "Needs you to take over" immediately, not only after a refresh.
+      return upsert(items, {
+        ...base,
+        id: `run:${runId ?? event.seq}`,
+        kind: "waiting_takeover",
+        status: "waiting",
+        title: activityLabels.needsTakeover,
+      });
+    case "computer.takeover.granted":
+    case "computer.takeover.released": {
+      // Only a run still shown as needing takeover flips back to working;
+      // terminal items stay terminal.
+      const id = `run:${runId ?? event.seq}`;
+      const existing = items.find((item) => item.id === id);
+      if (!existing || existing.kind !== "waiting_takeover") return items;
+      return patch(items, id, {
+        kind: "working",
+        status: "running",
+        title: activityLabels.working,
+      });
+    }
     case "thread.progress": {
       if (payload?.activity !== true) return items;
       const label = planProgressLabel(String(payload?.text ?? ""));

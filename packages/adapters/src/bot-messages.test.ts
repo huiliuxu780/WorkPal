@@ -844,6 +844,13 @@ describe("collaboration lineage (Product Harness Phase 3)", () => {
     );
     const requested = events.filter((event) => event.data.type === "thread.collaboration.requested");
     expect(requested).toHaveLength(1);
+    // A request is the SENDER's activity: it lives in the sender's thread on
+    // the sender's run, so the owner's live view shows it without a refresh.
+    expect(requested[0]!.data).toMatchObject({
+      threadId: "thread-sender",
+      botId: "bot-sender",
+      runId: "run-1",
+    });
     expect(requested[0]!.data.payload).toEqual({
       fromBotId: "bot-sender",
       toBotId: "bot-target",

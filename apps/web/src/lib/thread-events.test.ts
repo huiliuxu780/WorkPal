@@ -1723,6 +1723,35 @@ describe("activity projection reduction (Phase 4)", () => {
     expect(cleared?.activity).toEqual([]);
   });
 
+  it("flips the run activity to takeover live, matching the replay seed", () => {
+    const run = threadRun("run-1");
+    const running: ThreadSnapshot = {
+      ...snapshot([]),
+      run,
+      activeRuns: [run],
+      activity: [
+        {
+          id: "run:run-1",
+          runId: "run-1",
+          botId: "bot-1",
+          threadId: "thread-1",
+          kind: "working",
+          status: "running",
+          title: "Working",
+        },
+      ],
+    };
+    const next = reduceThreadSnapshot(
+      running,
+      event({ type: "computer.takeover.requested", seq: 8 }),
+    );
+    expect(next?.activity?.[0]).toMatchObject({
+      kind: "waiting_takeover",
+      status: "waiting",
+      title: "Needs you to take over",
+    });
+  });
+
   it("keeps reference identity for activity no-ops", () => {
     const started = reduceThreadSnapshot(
       snapshot([]),

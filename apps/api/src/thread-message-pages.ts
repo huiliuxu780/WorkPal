@@ -144,7 +144,11 @@ export function shouldForwardPeerThreadEvent(event: {
     event.type === "run.failed" ||
     event.type === "run.cancelled" ||
     event.type === "run.waiting_input" ||
-    event.type === "computer.takeover.requested"
+    event.type === "computer.takeover.requested" ||
+    // Phase 4: collaboration activity belongs to the delegating turn's live
+    // view; dropping it here would make live and refreshed snapshots diverge.
+    event.type === "thread.collaboration.requested" ||
+    event.type === "thread.collaboration.result"
   ) {
     return true;
   }

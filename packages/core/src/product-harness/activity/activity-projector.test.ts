@@ -241,6 +241,41 @@ describe("projectActivity (§49)", () => {
     expect(handoffs[0]).toMatchObject({ title: "Handed this to Finance", runId: "run-1" });
   });
 
+  it("projects the takeover lifecycle live, matching the replay seed", () => {
+    const items = projectActivity(
+      [event("run.started", { trigger: "user" }), event("computer.takeover.requested", {})],
+      context,
+    );
+    expect(items.find((item) => item.id === "run:run-1")).toMatchObject({
+      kind: "waiting_takeover",
+      status: "waiting",
+      title: "Needs you to take over",
+    });
+    const granted = projectActivity(
+      [
+        event("run.started", { trigger: "user" }),
+        event("computer.takeover.requested", {}),
+        event("computer.takeover.granted", {}),
+      ],
+      context,
+    );
+    expect(granted.find((item) => item.id === "run:run-1")).toMatchObject({
+      kind: "working",
+      status: "running",
+    });
+    // A terminal run is never revived by a late takeover release.
+    const done = projectActivity(
+      [
+        event("run.started", { trigger: "user" }),
+        event("computer.takeover.requested", {}),
+        event("run.completed", {}),
+        event("computer.takeover.released", {}),
+      ],
+      context,
+    );
+    expect(done.find((item) => item.id === "run:run-1")).toMatchObject({ kind: "completed" });
+  });
+
   it("maps waiting states without duplicating dedicated UI (cases 12, 13)", () => {
     const items = projectActivity([event("run.waiting_input", {})], context);
     expect(items.find((item) => item.id === "run:run-1")).toMatchObject({

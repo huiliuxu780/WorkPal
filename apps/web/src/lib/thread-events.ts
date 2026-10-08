@@ -260,6 +260,8 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "run.started" ||
     event.type === "run.waiting_input" ||
     event.type === "computer.takeover.requested" ||
+    event.type === "computer.takeover.granted" ||
+    event.type === "computer.takeover.released" ||
     // Phase 4: collaboration and helper lifecycle events project into
     // snapshot.activity through the same core reducer the server replay uses.
     event.type === "thread.turn.handed_off" ||
@@ -285,6 +287,8 @@ function isActivityEventType(type: string): boolean {
  * so React can bail out of re-rendering.
  */
 const ACTIVITY_ONLY_EVENT_TYPES = new Set<string>([
+  "computer.takeover.granted",
+  "computer.takeover.released",
   "subagent.started",
   "subagent.progress",
   "subagent.completed",

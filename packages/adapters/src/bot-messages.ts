@@ -374,14 +374,17 @@ export async function messageBot(
           runId: run.id,
           payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
         });
-        // Structured collaboration event for observability and the Phase 4
-        // Activity UI. No chain-of-thought, only routing metadata.
+        // Structured collaboration events for observability and the Phase 4
+        // Activity UI (no chain-of-thought, routing metadata only). A request
+        // is the SENDER's activity: it lives in the sender's thread on the
+        // sender's run, so the delegating owner's live view shows "Asked X
+        // for help". A result belongs to the thread it returns to.
         await appendEventInTransaction(tx, {
           spaceId: run.spaceId,
-          threadId: targetThreadId,
-          botId: target.id,
+          threadId: returnsToSender ? targetThreadId : run.threadId,
+          botId: returnsToSender ? target.id : run.botId,
           type: intent === "result" ? "thread.collaboration.result" : "thread.collaboration.requested",
-          runId: nextRun.id,
+          runId: returnsToSender ? nextRun.id : run.id,
           payload: {
             fromBotId: sender.id,
             toBotId: target.id,

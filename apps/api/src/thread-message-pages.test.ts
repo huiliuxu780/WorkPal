@@ -20,6 +20,14 @@ describe("thread message pages", () => {
 
   it("forwards peer waiting, ask, and text events on an open thread", () => {
     expect(shouldForwardPeerThreadEvent({ type: "run.waiting_input", payload: {} })).toBe(true);
+    // Phase 4: collaboration activity must reach open threads live, or the
+    // inline projection diverges from the refreshed snapshot.
+    expect(
+      shouldForwardPeerThreadEvent({ type: "thread.collaboration.requested", payload: {} }),
+    ).toBe(true);
+    expect(
+      shouldForwardPeerThreadEvent({ type: "thread.collaboration.result", payload: {} }),
+    ).toBe(true);
     expect(shouldForwardPeerThreadEvent({ type: "computer.takeover.requested", payload: {} })).toBe(
       true,
     );

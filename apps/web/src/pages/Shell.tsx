@@ -3523,7 +3523,7 @@ export function ShellPage() {
             activity={inlineActivity}
             activityActionCount={activityActionCount}
             backgroundTasks={backgroundActivity}
-            onCancelBackgroundTask={cancelBackgroundTask}
+            onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
             showActivityAvatars={inGroup}
             activityBotColors={activityBotColors}
             onLoadOlder={loadOlder}
