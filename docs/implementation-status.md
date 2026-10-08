@@ -89,7 +89,7 @@ execute) COMPLETE, Phase 3 (how persistent agents collaborate) COMPLETE.
 Next: Phase 4 — Activity / UX projection of routing, planning, drill and
 collaboration events.
 
-## Product Harness Phase 4 — Activity / UX Projection: IN PROGRESS
+## Product Harness Phase 4 — Activity / UX Projection: COMPLETE
 
 One projection layer, no third activity system: `packages/core/src/product-harness/activity/`
 folds persisted Product Events, run state and `BackgroundAgentTask` rows into
@@ -111,3 +111,14 @@ events, 20 background rows per thread).
 - All labels come from one vocabulary module; runtime internals
   (plan_enter, agent_spawn, raw event names) never reach user-facing text,
   enforced by projection tests. No chain-of-thought is projected.
+- Review-round parity fixes: collaboration events forward through the
+  peer-run subscription filter and a request is recorded in the sender's
+  thread on the sender's run (the delegating owner sees "Asked X for help"
+  live); the computer takeover lifecycle projects live so "Needs you to take
+  over" matches the replay seed; group background cards omit Cancel because
+  cancellation is bot-target only.
+
+Product Harness status: Phase 1 (who answers) COMPLETE, Phase 2 (how the
+owner may execute) COMPLETE, Phase 3 (how persistent agents collaborate)
+COMPLETE, Phase 4 (how users understand execution) COMPLETE. Next: Phase 5 —
+Harness Observability & Evaluation.
