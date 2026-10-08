@@ -71,7 +71,6 @@ import {
   messagingDmSurfaceNote,
   nextCronDateAcross,
   nextFence,
-  PRODUCT_BRAND,
   planActionGate,
   promptInvokesSkill,
   redactSecrets,

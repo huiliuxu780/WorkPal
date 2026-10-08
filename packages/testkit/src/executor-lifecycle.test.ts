@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { PRODUCT_BRAND } from "@rakazo/core";
 import { approvalEffectKey } from "@rakazo/core/node/approval-effect-key";
 import { createThreadEvents, createThreadMessage, loadRunHistoryMessages } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -95,7 +94,7 @@ describeIntegration("run executor lifecycle", () => {
   it("records an uncertain result without replaying an interrupted external effect", async () => {
     const prompt = "write this to the destination crm as a note";
     const seeded = await seedRun("uncertain-effect", prompt);
-    const args = { collection: "notes", title: `${PRODUCT_BRAND.name} result`, body: prompt };
+    const args = { collection: "notes", title: "WorkPal result", body: prompt };
     const executionId = approvalEffectKey(seeded.run.id, "destination.write", args);
     await handles.prisma.externalEffect.create({
       data: {
@@ -133,7 +132,7 @@ describeIntegration("run executor lifecycle", () => {
   it("recreates the approval pause when an intended effect was interrupted before the card", async () => {
     const prompt = "write this to the destination crm as a note";
     const seeded = await seedRun("interrupted-before-approval", prompt);
-    const args = { collection: "notes", title: `${PRODUCT_BRAND.name} result`, body: prompt };
+    const args = { collection: "notes", title: "WorkPal result", body: prompt };
     const executionId = approvalEffectKey(seeded.run.id, "destination.write", args);
     const effect = await handles.prisma.externalEffect.create({
       data: {
