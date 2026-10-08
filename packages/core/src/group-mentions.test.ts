@@ -81,13 +81,16 @@ describe("resolveGroupTargetBotIds", () => {
     ).toEqual(["b"]);
   });
 
-  it("picks the first member when unmentioned", () => {
+  it("returns no target when unmentioned — the caller resolves the turn", () => {
+    // Member order is not a routing signal anymore: an empty result means
+    // "no explicit target", which the Product Harness routes through the
+    // Group Router and the group lead instead of members[0].
     expect(
       resolveGroupTargetBotIds({
         text: "hello team",
         members,
       }),
-    ).toEqual(["a"]);
+    ).toEqual([]);
   });
 });
 

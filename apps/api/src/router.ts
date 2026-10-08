@@ -3,6 +3,7 @@ import { implement, ORPCError } from "@orpc/server";
 import type {
   AdapterContext,
   AgentHomeStore,
+  AgentRuntime,
   ArtifactStore,
   ConnectorCatalogItem,
   JobPublisher,
@@ -125,6 +126,7 @@ import {
 import {
   ACTIVE_RUN_STATUSES,
   AttachmentValidationError,
+  buildRunOrchestration,
   CALL_CLIENT_NONCE_PREFIX,
   callClientNonce,
   containsSecret,
@@ -235,6 +237,7 @@ import {
 } from "./thread-message-pages.js";
 import {
   reactToThreadMessage,
+  resolveGroupTurnOwner,
   resolveThreadTarget,
   sendThreadMessage,
   setThreadUnreadState,
@@ -242,6 +245,7 @@ import {
   threadHead,
   threadSnapshot,
 } from "./thread-target.js";
+import { createTurnRoutingProvider, type TurnRoutingProvider } from "./turn-routing.js";
 import {
   disconnectVoiceCredential,
   listVoiceCatalog,
@@ -529,6 +533,15 @@ export interface RouterDeps {
   remoteConnectors?: RemoteConnectorDependencies;
   artifacts: ArtifactStore;
   dataDir: string;
+  /** Agent runtime used by the Group Router auxiliary execution. */
+  runtime?: AgentRuntime;
+  /**
+   * Product Harness group turn routing. Injected for tests; when absent it is
+   * built from `runtime` + deployment model config. When `runtime` is also
+   * absent (scripted tests), turn ownership resolves deterministically:
+   * explicit target, else the group lead — never members[0].
+   */
+  turnRouting?: TurnRoutingProvider;
   purgeRuntimeBotState?: (identity: {
     userId: string;
     spaceId: string;
@@ -654,6 +667,19 @@ export function createRouter(deps: RouterDeps) {
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
   const groupRepos = createGroupRepos(deps.prisma);
+  const turnRouting =
+    deps.turnRouting ??
+    createTurnRoutingProvider({
+      prisma: deps.prisma,
+      // The scripted runtime is the deterministic test executor: never feed
+      // it a routing prompt pretending to be a real model decision. With no
+      // runtime the provider routes unaddressed turns straight to the lead.
+      runtime: deps.env.agentRuntime === "scripted" ? undefined : deps.runtime,
+      secrets: deps.secrets,
+      deploymentProvider: deps.env.defaultProvider,
+      deploymentModel: deps.env.defaultModel,
+      deploymentModelKey: deps.env.deploymentModelKey,
+    });
   const taughtSkills = createTaughtSkillsService({
     prisma: deps.prisma,
     events: deps.events,
@@ -1873,7 +1899,7 @@ export function createRouter(deps: RouterDeps) {
         if (target.kind === "bot") {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
         }
-        return sendThreadMessage(deps, context.actor, target, input);
+        return sendThreadMessage({ ...deps, turnRouting }, context.actor, target, input);
       }),
       react: authed.threads.react.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
@@ -1992,6 +2018,19 @@ export function createRouter(deps: RouterDeps) {
           }
           return { ok: true as const };
         }
+        const preRouting = await turnRouting
+          .preRoute({
+            spaceId: context.actor.spaceId,
+            userId: context.actor.userId,
+            groupId: target.groupId,
+            threadId: target.threadId,
+            text: input.text,
+            explicitMentionIds: [],
+          })
+          .catch((error) => {
+            getLogger().error("group follow-up pre-routing failed", error);
+            return null;
+          });
         const committed = await deps.prisma.$transaction(async (tx) => {
           if (input.clientNonce) {
             const existing = await tx.message.findUnique({
@@ -2008,9 +2047,56 @@ export function createRouter(deps: RouterDeps) {
               archivedAt: null,
               thread: { id: target.threadId },
             },
-            include: { members: { orderBy: { createdAt: "asc" } } },
+            include: {
+              members: {
+                where: { bot: { archivedAt: null } },
+                orderBy: { createdAt: "asc" },
+                select: { bot: { select: { id: true, name: true } } },
+              },
+            },
           });
-          const botId = group?.members[0]?.botId;
+          if (!group) throw new IsolationError();
+          // Product Harness: the follow-up turn resolves its owner like any
+          // other group turn — explicit mention text, else the pre-routed
+          // owner, else the lead. First-member routing is gone.
+          const turnOwner = await resolveGroupTurnOwner({
+            tx,
+            groupId: target.groupId,
+            leadBotId: group.leadBotId,
+            members: group.members.map((member) => ({
+              botId: member.bot.id,
+              name: member.bot.name,
+            })),
+            text: input.text,
+            explicitMentionIds: [],
+            preRouting,
+          });
+          // A follow-up continues existing work: it must never manufacture a
+          // fresh multi-agent reply. When the resolver produced multiple
+          // owners, collapse to exactly one — the previous response owner if
+          // it is one of them, else the group lead if it is one of them,
+          // else the first owner. Everything persisted (Run orchestration and
+          // thread.turn.routed) truthfully records "single".
+          let botId = turnOwner.ownerBotIds[0];
+          let responseMode = turnOwner.responseMode;
+          if (botId && turnOwner.ownerBotIds.length > 1) {
+            const previous = await tx.run.findFirst({
+              where: {
+                threadId: target.threadId,
+                botId: { in: turnOwner.ownerBotIds },
+                status: { in: [...ACTIVE_RUN_STATUSES] },
+              },
+              orderBy: { createdAt: "desc" },
+              select: { botId: true },
+            });
+            const leadBotId = group.leadBotId;
+            botId =
+              previous?.botId ??
+              (leadBotId && turnOwner.ownerBotIds.includes(leadBotId)
+                ? leadBotId
+                : turnOwner.ownerBotIds[0])!;
+            responseMode = "single";
+          }
           if (!botId) throw new IsolationError();
           const blocks = [{ kind: "text" as const, text: input.text }];
           const message = await createThreadMessageInTransaction(tx, {
@@ -2049,6 +2135,12 @@ export function createRouter(deps: RouterDeps) {
                 status: "queued",
                 trigger: "follow_up",
                 sourceMessageId: message.id,
+                orchestration: buildRunOrchestration({
+                  kind: turnOwner.kind,
+                  ownerBotId: botId,
+                  responseMode: responseMode,
+                  reasonCode: turnOwner.reasonCode ?? null,
+                }),
               },
               select: { id: true },
             });
@@ -2071,6 +2163,20 @@ export function createRouter(deps: RouterDeps) {
             type: "thread.message.created",
             runId: run?.id ?? active?.id,
             payload: { messageId: message.id, role: "user", blocks },
+          });
+          await appendEventInTransaction(tx, {
+            spaceId: context.actor.spaceId,
+            threadId: target.threadId,
+            botId,
+            type: "thread.turn.routed",
+            runId: run?.id ?? active?.id,
+            payload: {
+              messageId: message.id,
+              ownerBotId: botId,
+              routeKind: turnOwner.kind,
+              responseMode: responseMode,
+              ...(turnOwner.reasonCode ? { reasonCode: turnOwner.reasonCode } : {}),
+            },
           });
           await touchGroupUpdatedAt(tx, target.groupId);
           return { runId: run?.id, eventSeq: event.seq };

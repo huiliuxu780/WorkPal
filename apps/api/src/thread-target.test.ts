@@ -2225,7 +2225,7 @@ describe("sendThreadMessage", () => {
     expect(result).toMatchObject({ runId: "run-1", taskId: "task-1" });
     expect(tx.message.findFirst).toHaveBeenCalledWith({
       where: { id: "parent", threadId: "thread-1" },
-      select: { id: true, blocks: true, role: true },
+      select: { id: true, blocks: true, role: true, botId: true },
     });
     expect(tx.message.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -3280,5 +3280,420 @@ describe("stopThreadRuns", () => {
     expect(transaction.event.deleteMany).not.toHaveBeenCalled();
     expect(transaction.thread.update).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () => {
+  type MemberSeed = { id: string; name: string };
+
+  function groupSendHarness(options: {
+    members: MemberSeed[];
+    leadBotId?: string | null;
+    activeRuns?: Array<{ id: string; taskId: string; botId: string; status: string; trigger: string }>;
+    reply?: { id: string; role: string; botId: string | null };
+    preRoute?: ReturnType<typeof vi.fn>;
+    transactionFailsOnce?: boolean;
+  }) {
+    const createdRuns: Array<Record<string, unknown>> = [];
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
+      thread: {
+        update: vi.fn(async ({ data }: { data: { nextMessageSeq?: unknown } }) =>
+          data.nextMessageSeq ? { nextMessageSeq: 2 } : { nextEventSeq: 4 },
+        ),
+      },
+      message: {
+        create: vi.fn().mockResolvedValue({
+          id: "msg-1",
+          threadId: "thread-1",
+          seq: 1,
+          role: "user",
+          blocks: [{ kind: "text", text: "x" }],
+          botId: null,
+          replyToMessageId: null,
+          runId: null,
+          createdAt: new Date(),
+        }),
+        findFirst: vi.fn().mockResolvedValue(options.reply ?? null),
+        findMany: vi.fn().mockResolvedValue([]),
+        update: vi.fn().mockResolvedValue({ id: "msg-1" }),
+      },
+      run: {
+        findMany: vi.fn().mockResolvedValue(options.activeRuns ?? []),
+        findUnique: vi.fn().mockResolvedValue({ status: "queued", startedAt: null }),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          createdRuns.push(data);
+          return {
+            id: `run-${String(data.botId)}`,
+            taskId: String(data.taskId),
+            botId: String(data.botId),
+            status: "queued",
+          };
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      task: {
+        create: vi.fn().mockResolvedValue({ id: "task-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      steeringMessage: { create: vi.fn() },
+      event: {
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+      },
+      chatGroup: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "group-1",
+          leadBotId: options.leadBotId === undefined ? null : options.leadBotId,
+          members: options.members.map((member) => ({
+            bot: { id: member.id, name: member.name, color: null },
+          })),
+        }),
+        update: vi.fn().mockResolvedValue({ id: "group-1" }),
+      },
+    };
+    let first = true;
+    const prisma = {
+      message: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => {
+        if (options.transactionFailsOnce && first) {
+          first = false;
+          throw { code: "P2034" };
+        }
+        return callback(tx);
+      }),
+    } as unknown as PrismaClient;
+    const turnRouting = options.preRoute
+      ? ({ preRoute: options.preRoute } as never)
+      : undefined;
+    const actor = { spaceId: "workspace-1", userId: "user-1" } as Actor;
+    const target = {
+      kind: "group",
+      groupId: "group-1",
+      groupName: "Group",
+      threadId: "thread-1",
+      leadBotId: options.leadBotId ?? null,
+      members: [],
+      memberBotIds: options.members.map((member) => member.id),
+    } as unknown as ThreadTarget;
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    return { tx, prisma, actor, target, turnRouting, createdRuns, enqueue };
+  }
+
+  async function sendGroup(
+    harness: ReturnType<typeof groupSendHarness>,
+    input: { text?: string; mentions?: string[]; replyToMessageId?: string; clientNonce: string },
+  ) {
+    return sendThreadMessage(
+      {
+        prisma: harness.prisma,
+        events: { notify: vi.fn().mockResolvedValue(undefined) } as never,
+        jobs: { enqueue: harness.enqueue } as never,
+        ...(harness.turnRouting ? { turnRouting: harness.turnRouting } : {}),
+      },
+      harness.actor,
+      harness.target,
+      input,
+    );
+  }
+
+  function routedEventCalls(tx: { event: { create: ReturnType<typeof vi.fn> } }) {
+    return tx.event.create.mock.calls
+      .map(([arg]) => arg as { data: { type: string; payload: Record<string, unknown> } })
+      .filter((arg) => arg.data.type === "thread.turn.routed")
+      .map((arg) => arg.data.payload);
+  }
+
+  it("gives an explicitly mentioned turn to that bot alone, without routing", async () => {
+    const preRoute = vi.fn().mockResolvedValue(null);
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      preRoute,
+    });
+
+    const result = await sendGroup(harness, { text: "@Beta review this", clientNonce: "n-mention" });
+
+    expect(result).toMatchObject({ runId: "run-bot-b" });
+    expect(harness.createdRuns).toHaveLength(1);
+    expect(harness.createdRuns[0]).toMatchObject({
+      botId: "bot-b",
+      orchestration: {
+        version: "v1",
+        routing: { kind: "explicit_mention" },
+        ownership: { mode: "owner", ownerBotId: "bot-b" },
+        responseMode: "single",
+      },
+    });
+    expect(routedEventCalls(harness.tx)).toEqual([
+      { messageId: "msg-1", ownerBotId: "bot-b", routeKind: "explicit_mention", responseMode: "single" },
+    ]);
+    // Provider pre-routing returns null for explicit turns, so no router runs.
+    expect(preRoute).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives a replied turn to the replied bot", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      reply: { id: "parent", role: "bot", botId: "bot-b" },
+    });
+
+    const result = await sendGroup(harness, {
+      text: "and the second quarter?",
+      replyToMessageId: "parent",
+      clientNonce: "n-reply",
+    });
+
+    expect(result).toMatchObject({ runId: "run-bot-b" });
+    expect(harness.createdRuns[0]).toMatchObject({
+      botId: "bot-b",
+      orchestration: expect.objectContaining({
+        routing: { kind: "reply_target" },
+        responseMode: "single",
+      }),
+    });
+  });
+
+  it("routes an unaddressed group turn to the router-selected specialist only", async () => {
+    const preRoute = vi.fn().mockResolvedValue({
+      routeKind: "group_router",
+      ownerBotIds: ["bot-b"],
+      responseMode: "single",
+      reasonCode: "specialist_match",
+    });
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      preRoute,
+    });
+
+    const result = await sendGroup(harness, { text: "看看这套架构合理吗", clientNonce: "n-router" });
+
+    expect(result).toMatchObject({ runId: "run-bot-b" });
+    expect(harness.createdRuns).toHaveLength(1);
+    expect(harness.createdRuns[0]).toMatchObject({
+      botId: "bot-b",
+      orchestration: {
+        version: "v1",
+        routing: { kind: "group_router", reasonCode: "specialist_match" },
+        ownership: { mode: "owner", ownerBotId: "bot-b" },
+        responseMode: "single",
+      },
+    });
+    expect(routedEventCalls(harness.tx)).toEqual([
+      {
+        messageId: "msg-1",
+        ownerBotId: "bot-b",
+        routeKind: "group_router",
+        responseMode: "single",
+        reasonCode: "specialist_match",
+      },
+    ]);
+  });
+
+  it("falls back to the lead when routing failed, and the send still succeeds", async () => {
+    const preRoute = vi.fn().mockResolvedValue({
+      routeKind: "fallback_lead",
+      ownerBotIds: ["bot-a"],
+      responseMode: "single",
+      reasonCode: "fallback_lead",
+    });
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      preRoute,
+    });
+
+    const result = await sendGroup(harness, { text: "help with the plan", clientNonce: "n-lead" });
+
+    expect(result).toMatchObject({ runId: "run-bot-a" });
+    expect(harness.createdRuns[0]).toMatchObject({
+      botId: "bot-a",
+      orchestration: expect.objectContaining({
+        routing: expect.objectContaining({ kind: "fallback_lead" }),
+      }),
+    });
+  });
+
+  it("drops a router owner that left the group before commit and repairs the stored lead", async () => {
+    const preRoute = vi.fn().mockResolvedValue({
+      routeKind: "group_router",
+      ownerBotIds: ["bot-b"],
+      responseMode: "single",
+      reasonCode: "specialist_match",
+    });
+    // bot-b was removed concurrently: locked membership only holds bot-a + bot-c.
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-c", name: "Gamma" },
+      ],
+      leadBotId: "bot-b",
+      preRoute,
+    });
+
+    const result = await sendGroup(harness, { text: "any thoughts?", clientNonce: "n-stale-owner" });
+
+    expect(result).toMatchObject({ runId: "run-bot-a" });
+    expect(harness.tx.chatGroup.update).toHaveBeenCalledWith({
+      where: { id: "group-1" },
+      data: { leadBotId: "bot-a" },
+    });
+  });
+
+  it("keeps @everyone as all-member multi wake with per-run multi snapshots", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+
+    const result = await sendGroup(harness, { text: "@everyone 分别说说", clientNonce: "n-everyone" });
+
+    expect(result.runIds.sort()).toEqual(["run-bot-a", "run-bot-b"]);
+    expect(harness.createdRuns).toHaveLength(2);
+    for (const run of harness.createdRuns) {
+      expect(run.orchestration).toMatchObject({ responseMode: "multi", routing: { kind: "explicit_multi" } });
+    }
+    expect(routedEventCalls(harness.tx)).toEqual([
+      {
+        messageId: "msg-1",
+        ownerBotId: "bot-a",
+        ownerBotIds: ["bot-a", "bot-b"],
+        routeKind: "explicit_multi",
+        responseMode: "multi",
+      },
+    ]);
+  });
+
+  it("repairs a missing lead deterministically to the first active member", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: null,
+    });
+
+    const result = await sendGroup(harness, { text: "hello team", clientNonce: "n-nolead" });
+
+    expect(result).toMatchObject({ runId: "run-bot-a" });
+    expect(harness.tx.chatGroup.update).toHaveBeenCalledWith({
+      where: { id: "group-1" },
+      data: { leadBotId: "bot-a" },
+    });
+  });
+
+  it("reuses the same routing decision across a serialized transaction retry", async () => {
+    const preRoute = vi.fn().mockResolvedValue({
+      routeKind: "group_router",
+      ownerBotIds: ["bot-b"],
+      responseMode: "single",
+      reasonCode: "specialist_match",
+    });
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      preRoute,
+      transactionFailsOnce: true,
+    });
+
+    const result = await sendGroup(harness, { text: "review the API design", clientNonce: "n-retry" });
+
+    expect(preRoute).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ runId: "run-bot-b" });
+    expect(harness.createdRuns).toHaveLength(1);
+  });
+
+  it("stamps a single-bot thread's run with the direct ownership snapshot", async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
+      thread: {
+        update: vi.fn(async ({ data }: { data: { nextMessageSeq?: unknown } }) =>
+          data.nextMessageSeq ? { nextMessageSeq: 2 } : { nextEventSeq: 4 },
+        ),
+      },
+      message: {
+        create: vi.fn().mockResolvedValue({
+          id: "msg-1",
+          threadId: "thread-1",
+          seq: 1,
+          role: "user",
+          blocks: [{ kind: "text", text: "hi" }],
+          botId: null,
+          replyToMessageId: null,
+          runId: null,
+          createdAt: new Date(),
+        }),
+        findMany: vi.fn().mockResolvedValue([]),
+        update: vi.fn().mockResolvedValue({ id: "msg-1" }),
+      },
+      run: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue({ status: "queued", startedAt: null }),
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: "run-1", taskId: "task-1", botId: "bot-1", status: "queued" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      task: {
+        create: vi.fn().mockResolvedValue({ id: "task-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      steeringMessage: { create: vi.fn() },
+      event: {
+        create: vi.fn().mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+      },
+    };
+    const prisma = {
+      message: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+
+    await sendThreadMessage(
+      {
+        prisma,
+        events: { notify: vi.fn().mockResolvedValue(undefined) } as never,
+        jobs: { enqueue: vi.fn().mockResolvedValue(undefined) } as never,
+      },
+      { spaceId: "workspace-1", userId: "user-1" } as Actor,
+      { kind: "bot", botId: "bot-1", threadId: "thread-1", bot: { computer: null } } as ThreadTarget,
+      { text: "hi", clientNonce: "n-direct" },
+    );
+
+    expect(tx.run.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        botId: "bot-1",
+        orchestration: {
+          version: "v1",
+          routing: { kind: "direct" },
+          ownership: { mode: "owner", ownerBotId: "bot-1" },
+          responseMode: "single",
+        },
+      }),
+    });
+    // Single-bot threads never emit routing events: the owner is the thread itself.
+    expect(tx.event.create.mock.calls.every(([arg]) => arg.data.type !== "thread.turn.routed")).toBe(
+      true,
+    );
   });
 });

@@ -506,6 +506,7 @@ export async function createApp(
     home,
     secrets,
     oauthLogins,
+    runtime,
     integrationSettings,
     mcpOAuth,
     composio: stack.composio,

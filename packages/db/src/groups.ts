@@ -6,6 +6,7 @@ import {
   type GroupMember,
   type SpaceGroup,
 } from "@rakazo/contracts";
+import { selectGroupLead } from "@rakazo/core";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
@@ -336,6 +337,9 @@ export function createGroupRepos(prisma: PrismaClient) {
             spaceId: actor.spaceId,
             userId: actor.userId,
             name: input.name.trim(),
+            // Product Harness: creation order becomes the initial lead —
+            // explicit fallback metadata, not the routing algorithm.
+            leadBotId: members[0]?.botId ?? null,
           },
         });
         await tx.chatGroupMember.createMany({
@@ -424,12 +428,23 @@ export function createGroupRepos(prisma: PrismaClient) {
             data: members.map((member) => ({ groupId: input.groupId, botId: member.botId })),
           });
         }
+        // Product Harness lead maintenance: membership changes never leave a
+        // group pointing at a removed or archived lead. Deterministic order:
+        // the stored lead when still an active member, else the first active
+        // member in membership order.
+        const leadCandidates = members
+          ? members.map((member) => member.botId)
+          : current.members
+              .filter((member) => member.bot.archivedAt === null)
+              .map((member) => member.botId);
+        const nextLead = selectGroupLead(current.leadBotId, leadCandidates);
         await tx.chatGroup.update({
           where: { id: input.groupId },
           data: {
             updatedAt: new Date(),
             pinned: input.pinned,
             sectionId: input.sectionId,
+            ...(nextLead ? { leadBotId: nextLead.botId } : {}),
           },
         });
         return tx.chatGroup

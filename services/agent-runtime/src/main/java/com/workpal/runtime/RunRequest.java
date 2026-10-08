@@ -86,7 +86,7 @@ public record RunRequest(
         if (model.oauth != null && !model.oauth.isNull()) {
             throw new IllegalArgumentException("OAuth model credentials are unavailable to AgentScope Java");
         }
-        if (executionScope != null && !List.of("chat", "auto-review", "history-compaction").contains(executionScope)) {
+        if (executionScope != null && !List.of("chat", "auto-review", "history-compaction", "turn-routing").contains(executionScope)) {
             throw new IllegalArgumentException("Unsupported execution scope");
         }
         if (sessionGeneration != null && sessionGeneration < 0) {

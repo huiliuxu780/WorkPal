@@ -3177,3 +3177,231 @@ describe("groups.archive", () => {
     expect(calls).toEqual(["cancel run work", "release screen", "expire lease"]);
   });
 });
+
+describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
+  it("routes a plain follow-up to the group lead, never members[0]", async () => {
+    const createdRuns: Array<Record<string, unknown>> = [];
+    const groupRow = {
+      id: "group-1",
+      spaceId: "workspace-1",
+      userId: "user-1",
+      archivedAt: null,
+      leadBotId: "bot-lead",
+      thread: { id: "thread-1" },
+      members: [
+        { bot: { id: "bot-first", name: "First", color: null, runs: [] } },
+        { bot: { id: "bot-lead", name: "Lead", color: null, runs: [] } },
+      ],
+    };
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
+      thread: {
+        update: vi.fn(async ({ data }: { data: { nextMessageSeq?: unknown } }) =>
+          data.nextMessageSeq ? { nextMessageSeq: 2 } : { nextEventSeq: 4 },
+        ),
+      },
+      message: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({
+          id: "msg-1",
+          threadId: "thread-1",
+          seq: 1,
+          role: "user",
+          blocks: [{ kind: "text", text: "sounds good" }],
+          botId: null,
+          replyToMessageId: null,
+          runId: null,
+          createdAt: new Date(),
+        }),
+        update: vi.fn().mockResolvedValue({ id: "msg-1" }),
+      },
+      run: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findUnique: vi.fn().mockResolvedValue({ status: "queued", startedAt: null }),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          createdRuns.push(data);
+          return { id: "run-lead" };
+        }),
+      },
+      task: { create: vi.fn().mockResolvedValue({ id: "task-1" }) },
+      steeringMessage: { create: vi.fn() },
+      event: {
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+      },
+      chatGroup: {
+        findFirst: vi.fn().mockResolvedValue(groupRow),
+        update: vi.fn().mockResolvedValue({ id: "group-1" }),
+      },
+    };
+    const prisma = {
+      chatGroup: tx.chatGroup,
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+    const preRoute = vi.fn().mockResolvedValue(null);
+    const deps = {
+      prisma,
+      events: { notify: vi.fn().mockResolvedValue(undefined) },
+      jobs: { enqueue: vi.fn().mockResolvedValue(undefined) },
+      turnRouting: { preRoute },
+      env: {
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@rakazo.test",
+      isDeploymentOwner: true,
+    } satisfies Actor;
+    const handler = new RPCHandler(createRouter(deps));
+
+    const { matched, response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/threads/followUp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: { groupId: "group-1", text: "sounds good" } }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(matched).toBe(true);
+    expect(response.status).toBe(200);
+    // The lead owns the follow-up even though "bot-first" is the earliest member.
+    expect(createdRuns).toHaveLength(1);
+    expect(createdRuns[0]).toMatchObject({
+      botId: "bot-lead",
+      orchestration: expect.objectContaining({
+        ownership: { mode: "owner", ownerBotId: "bot-lead" },
+        responseMode: "single",
+      }),
+    });
+    const routed = tx.event.create.mock.calls
+      .map(([arg]) => arg as { data: { type: string; payload: Record<string, unknown> } })
+      .filter((arg) => arg.data.type === "thread.turn.routed")
+      .map((arg) => arg.data.payload);
+    expect(routed).toEqual([
+      expect.objectContaining({ messageId: "msg-1", ownerBotId: "bot-lead", routeKind: "fallback_lead" }),
+    ]);
+  });
+
+  it("collapses a multi follow-up to the previous response owner and persists single", async () => {
+    const createdRuns: Array<Record<string, unknown>> = [];
+    const groupRow = {
+      id: "group-1",
+      spaceId: "workspace-1",
+      userId: "user-1",
+      archivedAt: null,
+      leadBotId: "bot-lead",
+      thread: { id: "thread-1" },
+      members: [
+        { bot: { id: "bot-first", name: "First", color: null, runs: [] } },
+        { bot: { id: "bot-lead", name: "Lead", color: null, runs: [] } },
+      ],
+    };
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
+      thread: {
+        update: vi.fn(async ({ data }: { data: { nextMessageSeq?: unknown } }) =>
+          data.nextMessageSeq ? { nextMessageSeq: 2 } : { nextEventSeq: 4 },
+        ),
+      },
+      message: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({
+          id: "msg-1",
+          threadId: "thread-1",
+          seq: 1,
+          role: "user",
+          blocks: [{ kind: "text", text: "@everyone 分别说说" }],
+          botId: null,
+          replyToMessageId: null,
+          runId: null,
+          createdAt: new Date(),
+        }),
+        update: vi.fn().mockResolvedValue({ id: "msg-1" }),
+      },
+      run: {
+        // First findFirst: previous-owner lookup inside the multi collapse.
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({ botId: "bot-first" })
+          .mockResolvedValue(null),
+        findUnique: vi.fn().mockResolvedValue({ status: "queued", startedAt: null }),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          createdRuns.push(data);
+          return { id: "run-prev" };
+        }),
+      },
+      task: { create: vi.fn().mockResolvedValue({ id: "task-1" }) },
+      steeringMessage: { create: vi.fn() },
+      event: {
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+      },
+      chatGroup: {
+        findFirst: vi.fn().mockResolvedValue(groupRow),
+        update: vi.fn().mockResolvedValue({ id: "group-1" }),
+      },
+    };
+    const prisma = {
+      chatGroup: tx.chatGroup,
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { notify: vi.fn().mockResolvedValue(undefined) },
+      jobs: { enqueue: vi.fn().mockResolvedValue(undefined) },
+      turnRouting: { preRoute: vi.fn().mockResolvedValue(null) },
+      env: {
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@rakazo.test",
+      isDeploymentOwner: true,
+    } satisfies Actor;
+    const handler = new RPCHandler(createRouter(deps));
+
+    const { response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/threads/followUp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          json: { groupId: "group-1", text: "@everyone 分别说说", clientNonce: "nonce-multi" },
+        }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(response.status).toBe(200);
+    // Exactly one Run despite the multi-owner resolution, and the persisted
+    // mode is truthfully single.
+    expect(createdRuns).toHaveLength(1);
+    expect(createdRuns[0]).toMatchObject({
+      botId: "bot-first",
+      orchestration: expect.objectContaining({ responseMode: "single" }),
+    });
+    const routed = tx.event.create.mock.calls
+      .map(([arg]) => arg as { data: { type: string; payload: Record<string, unknown> } })
+      .filter((arg) => arg.data.type === "thread.turn.routed")
+      .map((arg) => arg.data.payload);
+    expect(routed).toEqual([
+      expect.objectContaining({ ownerBotId: "bot-first", responseMode: "single" }),
+    ]);
+  });
+});
