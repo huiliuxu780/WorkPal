@@ -113,11 +113,11 @@ class PromptComposerTest {
     }
 
     @Test void auxiliaryScopesGetNoCollaborationIdentity() throws Exception {
-        String body = \"\"\"
+        String body = """
                 {"botId":"bot-1","threadId":"turn-routing:1","runId":"turn-routing:1","executionScope":"turn-routing",
                  "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"turn-routing:1","runId":"turn-routing:1"},
                  "prompt":"route","model":{"provider":"p","id":"m"}}
-                \"\"\";
+                """;
         RunRequest request = JSON.readValue(body, RunRequest.class);
         assertEquals("", PromptComposer.collaborationContextSection(request));
     }
