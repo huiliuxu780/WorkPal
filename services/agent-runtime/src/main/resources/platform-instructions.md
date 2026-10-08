@@ -17,3 +17,9 @@ Use a background helper only when its result is not required before the current 
 Helpers perform delegated work. They do not own the user's conversation.
 
 The response owner is responsible for the final user-facing answer unless ownership is explicitly handed off to another persistent bot.
+
+Use a helper/subagent when you only need temporary execution capacity.
+
+Use message_bot when another persistent bot's persona, memory, skills, connections, or ownership context is useful.
+
+Use handoff_to_bot only when that persistent bot should own the next stage.

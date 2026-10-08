@@ -28,7 +28,8 @@ public record RunRequest(
         String emptyResponseText,
         Integer sessionGeneration,
         String resumeAnswer,
-        TurnPolicy turnPolicy) {
+        TurnPolicy turnPolicy,
+        Collaboration collaborationContext) {
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
             String sourceMessageId, Identity identity, String prompt, String productName,
@@ -37,7 +38,7 @@ public record RunRequest(
             RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null, null);
     }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
@@ -48,7 +49,7 @@ public record RunRequest(
             String resumeAnswer) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null, null);
     }
 
     /**
@@ -67,6 +68,14 @@ public record RunRequest(
         @JsonIgnoreProperties(ignoreUnknown = true)
         public record Ownership(String mode, String ownerBotId) {}
     }
+
+    /**
+     * Product Harness Phase 3 collaboration identity, derived by the backend
+     * from the run's immutable lineage snapshot. Rendered into the prompt; the
+     * runtime never infers identity from message content.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Collaboration(String role, String fromBotName) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Identity(String userId, String spaceId, String botId, String threadId, String runId) {}
@@ -194,6 +203,13 @@ public record RunRequest(
 
     public String routingKind() {
         return turnPolicy == null || blank(turnPolicy.routingKind()) ? scope() : turnPolicy.routingKind();
+    }
+
+    public String collaborationRole() {
+        if (collaborationContext != null && !blank(collaborationContext.role())) {
+            return collaborationContext.role();
+        }
+        return supportOwnership() ? "support" : "owner";
     }
 
     public static boolean blank(String value) { return value == null || value.isBlank(); }

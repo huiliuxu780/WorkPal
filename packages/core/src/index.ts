@@ -24,6 +24,7 @@ export * from "./farewell.js";
 export * from "./featured-connectors.js";
 export * from "./group-mentions.js";
 export * from "./http-response.js";
+export * from "./product-harness/collaboration.js";
 export * from "./product-harness/group-routing.js";
 export * from "./product-harness/orchestration.js";
 export * from "./product-harness/response-owner.js";

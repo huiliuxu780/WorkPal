@@ -28,6 +28,8 @@ function deps(
     /** Simulate a unique (threadId, clientNonce) race after both retries miss. */
     uniqueConflictOnCommit?: boolean;
     transactionConflictOnce?: boolean;
+    /** Blocks of messages this run already sent (duplicate-delivery guard). */
+    sentBlocks?: unknown[];
   } = {},
 ) {
   const enqueue = vi.fn().mockResolvedValue(undefined);
@@ -71,7 +73,12 @@ function deps(
           ],
         ),
     },
-    message: { findUnique: messageFindUnique, findMany: vi.fn().mockResolvedValue([]) },
+    message: {
+      findUnique: messageFindUnique,
+      findMany: vi
+        .fn()
+        .mockResolvedValue(options.sentBlocks ? [{ blocks: options.sentBlocks }] : []),
+    },
     run: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     $transaction: vi.fn(async (fn: (client: unknown) => unknown) => {
       transactionAttempts += 1;
@@ -650,5 +657,195 @@ describe("automatic outcome return", () => {
     expect(returned).toBe(true);
     expect(harness.enqueue).not.toHaveBeenCalled();
     expect(harness.deps.prisma.run.updateMany).toHaveBeenCalled();
+  });
+});
+
+describe("collaboration lineage (Product Harness Phase 3)", () => {
+  it("persists the support snapshot on the delegated run", async () => {
+    const harness = deps();
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Analyze these numbers",
+    });
+
+    expect(harness.tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          trigger: "bot_message",
+          orchestration: {
+            version: "v1",
+            routing: { kind: "bot_message" },
+            ownership: { mode: "support", ownerBotId: "bot-target" },
+            responseMode: "single",
+            execution: {
+              interactive: false,
+              planning: "disabled",
+              delegation: { mode: "auto", background: false, maxChildren: 3, maxDepth: 1 },
+            },
+            collaboration: {
+              role: "support",
+              source: "bot_message",
+              fromBotId: "bot-sender",
+              parentRunId: "run-1",
+              handoffDepth: 0,
+              messageHop: 1,
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("inherits the sender's handoff depth into the support lineage", async () => {
+    const harness = deps();
+
+    await messageBot(
+      harness.deps,
+      {
+        ...run,
+        orchestration: {
+          version: "v1",
+          routing: { kind: "handoff" },
+          ownership: { mode: "owner", ownerBotId: "bot-sender" },
+          responseMode: "single",
+          collaboration: {
+            role: "owner",
+            source: "handoff",
+            fromBotId: "bot-x",
+            parentRunId: "run-x",
+            handoffDepth: 2,
+            messageHop: 0,
+          },
+        },
+      },
+      sender,
+      { bot_id: "bot-target", message: "Check the budget" },
+    );
+
+    const call = harness.tx.run.create.mock.calls[0]![0] as {
+      data: { orchestration: { collaboration: { handoffDepth: number } } };
+    };
+    expect(call.data.orchestration.collaboration.handoffDepth).toBe(2);
+  });
+
+  it("emits thread.collaboration.requested for a delegation", async () => {
+    const harness = deps();
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Analyze these numbers",
+    });
+
+    const events = harness.tx.event.create.mock.calls.map(
+      ([arg]) => arg as { data: { type: string; payload: Record<string, unknown> } },
+    );
+    const requested = events.filter((event) => event.data.type === "thread.collaboration.requested");
+    expect(requested).toHaveLength(1);
+    expect(requested[0]!.data.payload).toEqual({
+      fromBotId: "bot-sender",
+      toBotId: "bot-target",
+      fromRunId: "run-1",
+      toRunId: "run-2",
+      intent: "request",
+      handoffDepth: 0,
+    });
+  });
+
+  it("emits thread.collaboration.result when a result is delivered", async () => {
+    const harness = deps();
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Here is the analysis",
+      intent: "result",
+    });
+
+    const events = harness.tx.event.create.mock.calls.map(
+      ([arg]) => arg as { data: { type: string } },
+    );
+    expect(events.some((event) => event.data.type === "thread.collaboration.result")).toBe(true);
+    expect(events.some((event) => event.data.type === "thread.collaboration.requested")).toBe(false);
+  });
+
+  it("refuses an acknowledgement-only reply from a run woken by a result", async () => {
+    const harness = deps({
+      hopBlocks: [
+        {
+          kind: "bot_message_received",
+          fromBotId: "bot-target",
+          fromBotName: "Analyst",
+          text: "The analysis is done: 42",
+          hop: 1,
+          intent: "result",
+        },
+      ],
+    });
+    const wokenRun = { ...run, sourceMessageId: "msg-wake" };
+
+    for (const intent of ["fyi", "status"] as const) {
+      await expect(
+        messageBot(harness.deps, wokenRun, sender, {
+          bot_id: "bot-target",
+          message: "Got it, thanks",
+          intent,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error:
+          "Do not acknowledge a result — incorporate it and answer the user. Message this bot only with a substantive question or new information.",
+      });
+    }
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("still allows a substantive follow-up question to the waker", async () => {
+    const harness = deps({
+      hopBlocks: [
+        {
+          kind: "bot_message_received",
+          fromBotId: "bot-target",
+          fromBotName: "Analyst",
+          text: "done",
+          hop: 1,
+          intent: "result",
+        },
+      ],
+    });
+    const wokenRun = { ...run, sourceMessageId: "msg-wake" };
+
+    await expect(
+      messageBot(harness.deps, wokenRun, sender, {
+        bot_id: "bot-target",
+        message: "Which quarter did the 42 come from?",
+        intent: "question",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("refuses to repeat the same message to the same bot within one run", async () => {
+    const harness = deps({
+      sentBlocks: [
+        {
+          kind: "bot_message_sent",
+          toBotId: "bot-target",
+          toBotName: "Analyst",
+          text: "Analyze these numbers",
+          intent: "request",
+        },
+      ],
+    });
+
+    await expect(
+      messageBot(harness.deps, run, sender, {
+        bot_id: "bot-target",
+        message: "Analyze these numbers",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error:
+        "This exact message was already sent to this bot in the current run. Do not repeat the same information.",
+    });
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
   });
 });

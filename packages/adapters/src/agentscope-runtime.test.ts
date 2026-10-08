@@ -107,6 +107,7 @@ describe("AgentScopeAgentRuntime", () => {
       ownership: { mode: "support", ownerBotId: "bot-lead" },
       routing: { kind: "bot_message" },
     };
+    next.collaborationContext = { role: "support", fromBotName: "Alice" };
     for await (const _event of runtime.run(next, runContext())) {
       // drain
     }
@@ -118,6 +119,7 @@ describe("AgentScopeAgentRuntime", () => {
         ownership: { mode: "support", ownerBotId: "bot-lead" },
         routingKind: "bot_message",
       },
+      collaborationContext: { role: "support", fromBotName: "Alice" },
     });
   });
 
