@@ -5,7 +5,6 @@ import {
   normalizeOpenAiToolParameters,
   openAiToolParametersNeedNormalization,
 } from "./openai-tool-parameters.js";
-import { parametersFor } from "./pi-runtime.js";
 
 describe("normalizeOpenAiToolParameters", () => {
   it("conjoins referenced fields with sibling constraints and follows local reference chains", () => {
@@ -206,11 +205,11 @@ describe("openAiToolParametersNeedNormalization", () => {
   });
 });
 
-describe("parametersFor OpenAI wire fidelity", () => {
+describe("OpenAI tool schema normalization", () => {
   it("serializes zero-argument tools with type object and empty properties", () => {
     const tool = builtinAgentTools.find((entry) => entry.name === "list_secrets");
     if (!tool) throw new Error("missing list_secrets");
-    const wire = JSON.parse(JSON.stringify(parametersFor(tool))) as {
+    const wire = normalizeOpenAiToolParameters(tool.inputSchema) as {
       type?: unknown;
       properties?: unknown;
     };
@@ -221,7 +220,7 @@ describe("parametersFor OpenAI wire fidelity", () => {
   it("serializes request_secret as one object with both destinations and no root union", () => {
     const tool = builtinAgentTools.find((entry) => entry.name === "request_secret");
     if (!tool) throw new Error("missing request_secret");
-    const wire = JSON.parse(JSON.stringify(parametersFor(tool))) as Record<string, unknown>;
+    const wire = normalizeOpenAiToolParameters(tool.inputSchema);
     expect(wire.type).toBe("object");
     expect(Object.keys(wire.properties as object).sort()).toEqual([
       "connectionId",
@@ -237,7 +236,7 @@ describe("parametersFor OpenAI wire fidelity", () => {
 
   it("never sends a root union for any builtin tool", () => {
     for (const tool of builtinAgentTools) {
-      const wire = JSON.parse(JSON.stringify(parametersFor(tool))) as Record<string, unknown>;
+      const wire = normalizeOpenAiToolParameters(tool.inputSchema);
       for (const key of ["oneOf", "anyOf", "allOf"]) {
         expect(wire, tool.name).not.toHaveProperty(key);
       }

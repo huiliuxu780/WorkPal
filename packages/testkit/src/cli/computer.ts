@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { computerTestSandbox } from "../computer-test-config.js";
+import { startJavaRuntime } from "./java-runtime.js";
 import { runProcess } from "./process.js";
 
 async function main() {
@@ -17,6 +18,7 @@ async function main() {
   }
   const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-computer-e2e-run-"));
   const database = await new PostgreSqlContainer("postgres:16-alpine").start();
+  const runtime = await startJavaRuntime(dataDir);
   const env = {
     ...process.env,
     DATABASE_URL: database.getConnectionUri(),
@@ -29,7 +31,8 @@ async function main() {
     COMPOSIO_API_KEY: "",
     WAKEUP_DRIVER: "memory",
     SANDBOX_PROVIDER: sandbox.provider,
-    AGENT_RUNTIME: "pi",
+    AGENT_RUNTIME: "agentscope",
+    AGENTSCOPE_URL: runtime.url,
     BETTER_AUTH_SECRET: "computer-e2e-auth-secret-32chars",
     ENCRYPTION_KEY: "computer-e2e-encryption-key-32chars",
     SANDBOX_SUPERVISOR_TOKEN: "computer-e2e-supervisor-token-32chars",
@@ -56,6 +59,7 @@ async function main() {
       env,
     );
   } finally {
+    await runtime.stop();
     await database.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true });
   }

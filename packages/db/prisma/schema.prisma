@@ -592,6 +592,7 @@ model Run {
   usageRecords         UsageRecord[]
   steeringMessages     SteeringMessage[]
   externalMessage      ExternalMessage?
+  backgroundTasks       BackgroundAgentTask[]
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
@@ -604,6 +605,31 @@ model Run {
   @@index([threadId, status, createdAt])
   @@index([routineId])
   @@map("runs")
+}
+
+/// Product projection only. AgentScope WorkspaceTaskRepository owns execution and reminders.
+model BackgroundAgentTask {
+  taskId       String    @id
+  parentRunId  String
+  parentRun    Run       @relation(fields: [parentRunId], references: [id], onDelete: Cascade)
+  userId       String
+  spaceId      String
+  botId        String
+  threadId     String
+  agentId      String
+  sessionId    String
+  toolNames    Json
+  status       String
+  startedAt    DateTime  @default(now())
+  heartbeatAt  DateTime  @default(now())
+  finishedAt   DateTime?
+  expiresAt    DateTime
+  result       String?   @db.Text
+  error        String?   @db.Text
+
+  @@index([spaceId, threadId, status])
+  @@index([parentRunId])
+  @@map("background_agent_tasks")
 }
 
 model SteeringMessage {

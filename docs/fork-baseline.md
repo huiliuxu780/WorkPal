@@ -268,17 +268,21 @@ packages/adapter-kit/src/interfaces.ts
 packages/adapter-kit/src/types.ts
           |
           v
-PiAgentRuntime
-packages/adapters/src/pi-runtime.ts
+AgentScopeRuntime
+packages/adapters/src/agentscope-runtime.ts
+          |
+          v
+AgentScope Java HarnessAgent
+services/agent-runtime/
 ```
 
 `AgentRuntime.run(request, context)` receives prompt/history/model/tool callbacks, emits a typed
 stream of text/progress/tool/ask/takeover/usage/checkpoint/subagent/done events, and supports
 `abort(runId)`. The Executor owns database leases, idempotency/effects, tool execution, computer
-acquisition, checkpoint persistence, notifications and final state transitions. Pi owns the Pi
-session/agent loop and adapts Pi output to the neutral event types.
+acquisition, checkpoint persistence, notifications and final state transitions. AgentScope Java owns the
+session and tool loop. The TypeScript adapter maps Java streaming events to the neutral product types.
 
-If a future runtime is introduced, prefer a new implementation beside `pi-runtime.ts`, bind it in
+If a future runtime is introduced, prefer a new implementation beside `agentscope-runtime.ts`, bind it in
 the API/Worker composition roots, and add adapter conformance tests. Changes may be needed in
 `packages/adapters` and, only if the abstraction is insufficient, narrowly in `adapter-kit`.
 Contracts, Prisma models, Executor semantics, Routine semantics, Web/API payloads and Computer
@@ -343,7 +347,7 @@ Required baseline toolchain: a supported Node release from root `package.json` (
 `http://127.0.0.1:5173`.
 
 For no-key smoke tests only, `AGENT_RUNTIME=scripted` exercises the full API -> Worker -> Run ->
-Computer pipeline with deterministic responses. This is not a substitute for Pi/model verification.
+Computer pipeline with deterministic responses. This is not a substitute for Java Harness/model verification.
 
 ## Production / Docker commands
 
@@ -355,11 +359,11 @@ docker compose --env-file .env \
   up -d --build
 ```
 
-The default source Compose intentionally forces `AGENT_RUNTIME=pi`. Published-image installation,
+The default source Compose uses `AGENT_RUNTIME=agentscope` with the Java Harness service. Published-image installation,
 single-VM production hardening, TLS, backups and upgrade commands are maintained in
 `docs/self-host.md`; do not infer production readiness from a successful local Compose boot alone.
 
-## Baseline verification
+## Historical baseline verification (before Java migration)
 
 Verified on 2026-10-01:
 
@@ -372,7 +376,7 @@ Verified on 2026-10-01:
   for the local Colima environment;
 - `pnpm test:e2e`: 158 tests ran; 153 passed, 4 failed and 1 was skipped;
 - source stack started Web, API, Worker and sandbox supervisor;
-- `pnpm test:pi`: 2 files and 10 offline Pi/runtime tests passed;
+- the former `pnpm test:pi` suite passed 2 files and 10 offline Pi/runtime tests;
 - source Compose built all application/supervisor/computer images, started the full stack, reported
   PostgreSQL healthy, and returned HTTP 200 from Web and API `/health`;
 - UI/API smoke covered signup, sign-in, Bot creation/open, persistent Thread, message send, Run
@@ -380,8 +384,8 @@ Verified on 2026-10-01:
 - Graphile Worker logged successful `run.continue` consumption;
 - after a full app-service restart, the Bot, Thread and messages remained present.
 
-The smoke runtime was `scripted` because no external model credential was required. Pi remains the
-configured Compose runtime and is covered separately by the repository's offline Pi test path.
+The smoke runtime was `scripted` because no external model credential was required. These results
+predate the Java migration and do not verify the current AgentScope Harness path.
 
 ## Known issues and observations
 

@@ -529,6 +529,21 @@ export interface RouterDeps {
   remoteConnectors?: RemoteConnectorDependencies;
   artifacts: ArtifactStore;
   dataDir: string;
+  purgeRuntimeBotState?: (identity: {
+    userId: string;
+    spaceId: string;
+    botId: string;
+  }) => Promise<void>;
+  cancelRuntimeBackgroundTask?: (
+    taskId: string,
+    identity: {
+      userId: string;
+      spaceId: string;
+      botId: string;
+      threadId: string;
+      runId: string;
+    },
+  ) => Promise<boolean>;
   /** Present when the external messaging surface is enabled. */
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
@@ -1590,6 +1605,7 @@ export function createRouter(deps: RouterDeps) {
             jobs: deps.jobs,
             artifacts: deps.artifacts,
             dataDir: deps.dataDir,
+            purgeRuntimeBotState: deps.purgeRuntimeBotState,
           },
           bot,
           {
@@ -1874,6 +1890,38 @@ export function createRouter(deps: RouterDeps) {
         await stopThreadRuns(deps, context.actor, target);
         return { ok: true as const };
       }),
+      cancelBackgroundTask: authed.threads.cancelBackgroundTask.handler(
+        async ({ context, input }) => {
+          const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+          if (target.kind !== "bot" || !deps.cancelRuntimeBackgroundTask) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "Background task cancellation is unavailable.",
+            });
+          }
+          const task = await deps.prisma.backgroundAgentTask.findFirst({
+            where: {
+              taskId: input.taskId,
+              userId: context.actor.userId,
+              spaceId: context.actor.spaceId,
+              botId: target.botId,
+              threadId: target.threadId,
+              status: "running",
+            },
+          });
+          if (!task)
+            throw new ORPCError("NOT_FOUND", { message: "Background task is not running." });
+          const cancelled = await deps.cancelRuntimeBackgroundTask(task.taskId, {
+            userId: task.userId,
+            spaceId: task.spaceId,
+            botId: task.botId,
+            threadId: task.threadId,
+            runId: task.parentRunId,
+          });
+          if (!cancelled)
+            throw new ORPCError("NOT_FOUND", { message: "Background task is no longer active." });
+          return { ok: true as const };
+        },
+      ),
       clear: authed.threads.clear.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         const contextBotId = target.kind === "bot" ? target.botId : target.memberBotIds[0];

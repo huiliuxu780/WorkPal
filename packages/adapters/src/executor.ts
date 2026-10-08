@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AdapterContext,
+  AgentBackgroundTask,
   AgentHomeStore,
   AgentModelOAuthCredential,
   AgentRunRequest,
@@ -70,6 +71,7 @@ import {
   messagingDmSurfaceNote,
   nextCronDateAcross,
   nextFence,
+  PRODUCT_BRAND,
   planActionGate,
   promptInvokesSkill,
   redactSecrets,
@@ -3916,6 +3918,39 @@ export function createRunExecutor(deps: ExecutorDeps) {
         ]
           .filter(Boolean)
           .join("\n\n");
+        const answeredAskMessages = scripted
+          ? []
+          : await deps.prisma.message.findMany({
+              where: { runId, role: "bot" },
+              orderBy: { seq: "desc" },
+              take: 8,
+              select: { blocks: true },
+            });
+        let resumeAnswer: string | undefined;
+        let foundAsk = false;
+        for (const message of answeredAskMessages) {
+          if (!Array.isArray(message.blocks)) continue;
+          for (const block of [...message.blocks].reverse()) {
+            if (
+              block &&
+              typeof block === "object" &&
+              !Array.isArray(block) &&
+              "kind" in block &&
+              block.kind === "ask"
+            ) {
+              foundAsk = true;
+              if (
+                "status" in block &&
+                block.status === "answered" &&
+                "answer" in block &&
+                typeof block.answer === "string"
+              )
+                resumeAnswer = block.answer;
+              break;
+            }
+          }
+          if (foundAsk) break;
+        }
         const historicalContext: AgentRunRequest["history"] = [];
         if (compactedHistory.usedLocalSummary && compactedHistory.summary) {
           historicalContext.push({
@@ -4009,6 +4044,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
               botId: bot.id,
               threadId: thread.id,
               runId,
+              sessionGeneration: thread.historyCompactionGeneration,
+              resumeAnswer,
               sourceMessageId: run.sourceMessageId,
               prompt,
               instructions: userTurnInstructions({
@@ -4086,6 +4123,248 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   completion,
                   runSecrets,
                 ),
+              registerBackgroundTask: scripted
+                ? undefined
+                : async (task: AgentBackgroundTask) => {
+                    if (
+                      task.parentRunId !== runId ||
+                      task.userId !== run.userId ||
+                      task.spaceId !== run.spaceId ||
+                      task.botId !== bot.id ||
+                      task.threadId !== thread.id ||
+                      task.toolNames.some(
+                        (name) => !tools.some((tool) => tool.name === name && tool.readOnly),
+                      )
+                    ) {
+                      throw new Error(
+                        "Background task identity or tools do not match the parent run",
+                      );
+                    }
+                    const [currentRun, member] = await Promise.all([
+                      deps.prisma.run.findFirst({
+                        where: {
+                          id: runId,
+                          userId: run.userId,
+                          spaceId: run.spaceId,
+                          botId: bot.id,
+                          threadId: thread.id,
+                          status: "running",
+                        },
+                        select: { id: true },
+                      }),
+                      deps.prisma.spaceMember.findUnique({
+                        where: {
+                          spaceId_userId: {
+                            spaceId: run.spaceId,
+                            userId: run.userId,
+                          },
+                        },
+                        select: { id: true },
+                      }),
+                    ]);
+                    if (!currentRun || !member)
+                      throw new Error("Parent run is no longer authorized");
+                    await deps.prisma.backgroundAgentTask.create({
+                      data: {
+                        taskId: task.taskId,
+                        parentRunId: runId,
+                        userId: task.userId,
+                        spaceId: task.spaceId,
+                        botId: task.botId,
+                        threadId: task.threadId,
+                        agentId: task.agentId,
+                        sessionId: task.sessionId,
+                        toolNames: task.toolNames,
+                        status: "running",
+                        expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
+                      },
+                    });
+                    await deps.events.append({
+                      spaceId: run.spaceId,
+                      threadId: thread.id,
+                      botId: bot.id,
+                      runId,
+                      type: "subagent.started",
+                      payload: { taskId: task.taskId, agentId: task.agentId },
+                    });
+                    await deps.events.append({
+                      spaceId: run.spaceId,
+                      threadId: thread.id,
+                      botId: bot.id,
+                      runId,
+                      type: "thread.subagent",
+                      payload: {
+                        agentId: task.taskId,
+                        name: task.agentId,
+                        task: "delegated task",
+                        status: "running",
+                      },
+                    });
+                  },
+              authorizeBackgroundTool: scripted
+                ? undefined
+                : async (task, name) => {
+                    const [record, member, activeBot, activeThread] = await Promise.all([
+                      deps.prisma.backgroundAgentTask.findUnique({
+                        where: { taskId: task.taskId },
+                      }),
+                      deps.prisma.spaceMember.findUnique({
+                        where: {
+                          spaceId_userId: {
+                            spaceId: task.spaceId,
+                            userId: task.userId,
+                          },
+                        },
+                        select: { id: true },
+                      }),
+                      deps.prisma.bot.findFirst({
+                        where: { id: task.botId, spaceId: task.spaceId, archivedAt: null },
+                        select: { id: true },
+                      }),
+                      deps.prisma.thread.findFirst({
+                        where: {
+                          id: task.threadId,
+                          spaceId: task.spaceId,
+                          botId: task.botId,
+                          historyCompactionGeneration: thread.historyCompactionGeneration,
+                        },
+                        select: { id: true },
+                      }),
+                    ]);
+                    if (
+                      !record ||
+                      !member ||
+                      !activeBot ||
+                      !activeThread ||
+                      record.status !== "running" ||
+                      record.expiresAt <= new Date() ||
+                      record.parentRunId !== task.parentRunId ||
+                      record.userId !== task.userId ||
+                      record.spaceId !== task.spaceId ||
+                      record.botId !== task.botId ||
+                      record.threadId !== task.threadId ||
+                      record.agentId !== task.agentId ||
+                      record.sessionId !== task.sessionId ||
+                      !task.toolNames.includes(name) ||
+                      !Array.isArray(record.toolNames) ||
+                      !record.toolNames.includes(name)
+                    )
+                      return false;
+                    const selectedTool = tools.find((tool) => tool.name === name);
+                    if (
+                      !selectedTool?.readOnly ||
+                      name === "run_subagent" ||
+                      PAGE_BROWSER_TOOL_NAMES.has(name) ||
+                      name.startsWith("computer_") ||
+                      name.startsWith("browser_")
+                    )
+                      return false;
+                    // A disconnected account cannot remain usable through a captured run context.
+                    if (connectedPlugins.length) {
+                      const activeConnections = await deps.prisma.connection.findMany({
+                        where: {
+                          id: { in: connectedPlugins.map((connection) => connection.id) },
+                          spaceId: task.spaceId,
+                          userId: task.userId,
+                          status: "connected",
+                        },
+                        select: { id: true },
+                      });
+                      if (activeConnections.length !== connectedPlugins.length) return false;
+                    }
+                    return true;
+                  },
+              onBackgroundTaskEvent: scripted
+                ? undefined
+                : async (event) => {
+                    const { task, status } = event;
+                    const safeResult = event.result
+                      ? redactSecrets(event.result, runSecrets)
+                      : undefined;
+                    const safeError = event.error
+                      ? redactSecrets(event.error, runSecrets)
+                      : undefined;
+                    if (status === "running") {
+                      const updated = await deps.prisma.backgroundAgentTask.updateMany({
+                        where: { taskId: task.taskId, status: "running" },
+                        data: { heartbeatAt: new Date() },
+                      });
+                      if (!updated.count || !event.progress) return;
+                      await deps.events.append({
+                        spaceId: task.spaceId,
+                        threadId: task.threadId,
+                        botId: task.botId,
+                        runId: task.parentRunId,
+                        type: "subagent.progress",
+                        payload: {
+                          taskId: task.taskId,
+                          agentId: task.agentId,
+                          progress: event.progress ?? "working",
+                        },
+                      });
+                      return;
+                    }
+                    const updated = await deps.prisma.backgroundAgentTask.updateMany({
+                      where: {
+                        taskId: task.taskId,
+                        parentRunId: task.parentRunId,
+                        status: "running",
+                      },
+                      data: {
+                        status,
+                        finishedAt: new Date(),
+                        result: safeResult,
+                        error: safeError,
+                      },
+                    });
+                    if (!updated.count) return;
+                    await deps.events.append({
+                      spaceId: task.spaceId,
+                      threadId: task.threadId,
+                      botId: task.botId,
+                      runId: task.parentRunId,
+                      type: `subagent.${status}` as
+                        | "subagent.completed"
+                        | "subagent.failed"
+                        | "subagent.cancelled",
+                      payload: {
+                        taskId: task.taskId,
+                        agentId: task.agentId,
+                        result: safeResult,
+                        error: safeError,
+                      },
+                    });
+                    await deps.events.append({
+                      spaceId: task.spaceId,
+                      threadId: task.threadId,
+                      botId: task.botId,
+                      runId: task.parentRunId,
+                      type: "thread.subagent",
+                      payload: {
+                        agentId: task.taskId,
+                        name: task.agentId,
+                        task: "delegated task",
+                        status,
+                        result: safeResult ?? safeError,
+                      },
+                    });
+                    await publishMessage(
+                      deps,
+                      run,
+                      "bot",
+                      [
+                        {
+                          kind: "subagent",
+                          agentId: task.taskId,
+                          name: task.agentId,
+                          task: "delegated task",
+                          status,
+                          result: safeResult ?? safeError,
+                        },
+                      ],
+                      true,
+                    );
+                  },
               claimSteering: scripted
                 ? undefined
                 : async (seenIds) => {
@@ -4966,7 +5245,7 @@ export function userTurnInstructions(parts: {
     "create_space proposes a new privacy boundary inside the current organization. Use it when the user asks to create a space or separate data between teams or projects. It always pauses for explicit user approval; never claim the space exists before the tool succeeds.",
     "spawn_bot creates a lasting regular bot (own chat, computer, memory) that appears in the user's bot list. If the user asked to create a bot, call spawn_bot once and stop. Do not run_subagent to demo it.",
     "update_bot updates this bot's own name (chat header / list label), title, description, avatar, and notifyOnFinish. When the user asks you to rename yourself, change your title or description, change your profile picture, or turn finish notifications on or off, call update_bot — do not claim you changed them without the tool. Pass color for a hex or encoded shape, artifact_id for an image in this space, or use_attached_image when they attached a picture on this message.",
-    "run_subagent is a short helper inside this turn only. It is not a bot, has no thread, and does not show in the list. Use it for parallel work you will summarize here.",
+    "run_subagent is an isolated helper, not a bot or a new thread. A native AgentScope helper can finish synchronously or continue in the background; report a background task as running until its result arrives in a later turn.",
     parts.botDirectory,
     "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
     parts.pluginLine,

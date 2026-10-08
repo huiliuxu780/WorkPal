@@ -26,7 +26,7 @@ import { BrowserStoppedReleaseError } from "./computer-screens.js";
 import { toComputerRef } from "./computer-support.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
 import { resolveAgentHomePath } from "./home.js";
-import { removePiBotSessions } from "./pi-session.js";
+import { removeLegacyBotSessions } from "./legacy-session-cleanup.js";
 
 export function confirmSpawnedBotName(confirmName: string, botName: string) {
   if (confirmName !== botName) {
@@ -200,6 +200,11 @@ type BotLifecycleDeps = {
   jobs: JobPublisher;
   dataDir?: string;
   artifacts?: ArtifactStore;
+  purgeRuntimeBotState?: (identity: {
+    userId: string;
+    spaceId: string;
+    botId: string;
+  }) => Promise<void>;
 };
 
 type LifecycleBot = {
@@ -368,7 +373,11 @@ export async function destroyBot(
     await deps.sandbox.destroy(toComputerRef(dedicated), context).catch(() => undefined);
   }
   // Keep the bot deletion transaction from committing if raw transcript cleanup fails.
-  await removePiBotSessions(deps.dataDir, bot.userId, bot.id);
+  await removeLegacyBotSessions(deps.dataDir, bot.userId, bot.id);
+  if (deps.purgeRuntimeBotState) {
+    if (!bot.userId) throw new Error("userId is required to purge AgentScope bot state");
+    await deps.purgeRuntimeBotState({ userId: bot.userId, spaceId: bot.spaceId, botId: bot.id });
+  }
   const deletion = await withTransactionRetry(() =>
     deps.prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string; webhookSecretId: string | null }>>`

@@ -190,7 +190,7 @@ describe("model setup gate", () => {
   }
 
   it("refuses to start a run when no model is configured", async () => {
-    const { actor, handler } = modelGateDeps({ agentRuntime: "pi" });
+    const { actor, handler } = modelGateDeps({ agentRuntime: "agentscope" });
 
     const response = await call(handler, actor, "threads/send", {
       botId: "bot-1",
@@ -219,7 +219,7 @@ describe("model setup gate", () => {
 
   it("accepts a deployment model key as model configuration", async () => {
     const { actor, handler } = modelGateDeps({
-      agentRuntime: "pi",
+      agentRuntime: "agentscope",
       deploymentModelKey: "fake-deployment-key",
     });
 
@@ -233,7 +233,7 @@ describe("model setup gate", () => {
 
   it("does not accept a stored deployment cipher the executor cannot use", async () => {
     const { actor, handler } = modelGateDeps({
-      agentRuntime: "pi",
+      agentRuntime: "agentscope",
       deploymentModelCredentialCipher: "legacy-ciphertext",
     });
 
@@ -1389,7 +1389,7 @@ describe("model credential persistence", () => {
         webOrigin: "http://127.0.0.1:5173",
         screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
-        agentRuntime: "pi",
+        agentRuntime: "agentscope",
       },
     } as unknown as RouterDeps;
     return { upsert, finish, deps, handler: new RPCHandler(createRouter(deps)) };
@@ -1447,17 +1447,17 @@ describe("model credential persistence", () => {
     const { upsert, handler } = persistDeps({ envDefaultModel: "null" });
 
     const response = await call(handler, "models/connect", {
-      provider: "test-provider",
+      provider: "openai",
       apiKey: "sk-test-key-123",
       modelId: undefined,
     });
     expect(response.status).toBe(200);
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({ modelId: null }),
-        update: expect.objectContaining({ modelId: null }),
-      }),
-    );
+    const persisted = upsert.mock.calls[0]?.[0] as {
+      create: { modelId: string | null };
+      update: { modelId: string | null };
+    };
+    expect(persisted.create.modelId).not.toBe("null");
+    expect(persisted.update.modelId).toBe(persisted.create.modelId);
   });
 
   it("rejects an API key for ChatGPT-subscription Codex before persisting", async () => {
@@ -1472,7 +1472,7 @@ describe("model credential persistence", () => {
     await expect(response.json()).resolves.toEqual({
       json: expect.objectContaining({
         code: "BAD_REQUEST",
-        message: expect.stringContaining("ChatGPT subscription sign-in is required"),
+        message: "This model provider is not supported by the AgentScope runtime.",
       }),
     });
     expect(deps.secrets.put).not.toHaveBeenCalled();

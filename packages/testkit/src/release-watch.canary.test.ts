@@ -42,7 +42,7 @@ describeLive("live release-watch eval (GPT 5.6 Luna + GitHub emulator)", () => {
       databaseUrl: process.env.DATABASE_URL!,
       dataDir,
       sandboxProvider: "fake",
-      agentRuntime: "pi",
+      agentRuntime: "agentscope",
       composio,
     });
     stop = handles.stop;

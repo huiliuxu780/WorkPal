@@ -43,7 +43,7 @@ export const COMPOSE_PROJECT_NAME_OVERRIDE_ENV = "RAKAZO_COMPOSE_PROJECT_NAME";
  * the update, and recreating it would kill the run half way through. `postgres` and `caddy` are
  * absent because neither uses the Rakazo image.
  */
-export const RECREATED_SERVICES = ["api", "worker", "web"] as const;
+export const RECREATED_SERVICES = ["agentscope", "api", "worker", "web"] as const;
 
 const IMAGE_TAG = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 const IMAGE_NAME_SEGMENT = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -346,14 +346,14 @@ export function resolveInstallKind(input: {
 
 /** Exact host commands from docs/self-host.md for Compose on a published release tag. */
 export const COMPOSE_PULL_UPGRADE_COMMANDS = [
-  "docker compose --env-file .env -f infra/compose/docker-compose.prod.yml pull api worker web",
-  "docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never api worker web",
+  "docker compose --env-file .env -f infra/compose/docker-compose.prod.yml pull agentscope api worker web",
+  "docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never agentscope api worker web",
 ] as const;
 
 /** Exact host commands from docs/self-host.md for Compose on the default `local` tag. */
 export const COMPOSE_LOCAL_BUILD_UPGRADE_COMMANDS = [
   "git pull",
-  "GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never --build api worker web",
+  "GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never --build agentscope api worker web",
 ] as const;
 
 /** @deprecated Prefer {@link COMPOSE_PULL_UPGRADE_COMMANDS}; kept for call-site clarity in tests. */

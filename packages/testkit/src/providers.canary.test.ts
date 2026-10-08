@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  AgentScopeAgentRuntime,
   BoxSandboxProvider,
   CreateOSSandboxProvider,
   E2BSandboxProvider,
-  PiAgentRuntime,
 } from "@rakazo/adapters";
 import type { RunStatus } from "@rakazo/contracts";
 import { isTerminal } from "@rakazo/core";
@@ -18,14 +18,14 @@ if (process.env.VERIFY_PROVIDERS) loadRootEnv();
 const liveE2b = Boolean(process.env.VERIFY_PROVIDERS && process.env.E2B_API_KEY);
 const liveBox = Boolean(process.env.VERIFY_PROVIDERS && process.env.BOX_API_KEY);
 const liveCreateos = Boolean(process.env.VERIFY_PROVIDERS && process.env.CREATEOS_SANDBOX_API_KEY);
-const livePi = Boolean(process.env.VERIFY_PROVIDERS && process.env.OPENROUTER_API_KEY);
-const livePiApp = Boolean(livePi && process.env.DATABASE_URL);
+const liveAgentScope = Boolean(process.env.VERIFY_PROVIDERS && process.env.OPENROUTER_API_KEY);
+const liveAgentScopeApp = Boolean(liveAgentScope && process.env.DATABASE_URL);
 
 const describeE2b = liveE2b ? describe : describe.skip;
 const describeBox = liveBox ? describe : describe.skip;
 const describeCreateos = liveCreateos ? describe : describe.skip;
-const describePi = livePi ? describe : describe.skip;
-const describePiApp = livePiApp ? describe : describe.skip;
+const describeAgentScope = liveAgentScope ? describe : describe.skip;
+const describeAgentScopeApp = liveAgentScopeApp ? describe : describe.skip;
 
 describeE2b("live E2B canary", () => {
   it("provisions a desktop, runs a command, and destroys it", async () => {
@@ -164,15 +164,15 @@ describeCreateos("live CreateOS canary", () => {
   }, 600_000);
 });
 
-describePi("live OpenRouter / Pi canary", () => {
+describeAgentScope("live OpenRouter / AgentScope Java canary", () => {
   it("streams a reply from deepseek/deepseek-v4-flash-0731", async () => {
-    const runtime = new PiAgentRuntime();
+    const runtime = new AgentScopeAgentRuntime();
     let text = "";
     for await (const event of runtime.run(
       {
         botId: "canary",
         threadId: "canary",
-        runId: `pi-${Date.now()}`,
+        runId: `agentscope-${Date.now()}`,
         prompt: "Reply with exactly the word pong and nothing else.",
         instructions: "You are a concise test bot. Do not call tools.",
         history: [],
@@ -199,7 +199,7 @@ describePi("live OpenRouter / Pi canary", () => {
   }, 90_000);
 });
 
-describePiApp("live OpenRouter product journey", () => {
+describeAgentScopeApp("live OpenRouter product journey", () => {
   let stop: (() => Promise<void>) | undefined;
   let dataDir: string | undefined;
 
@@ -218,7 +218,7 @@ describePiApp("live OpenRouter product journey", () => {
       databaseUrl: process.env.DATABASE_URL!,
       dataDir,
       sandboxProvider: "fake",
-      agentRuntime: "pi",
+      agentRuntime: "agentscope",
     });
     stop = handles.stop;
     const stamp = Date.now();
@@ -226,7 +226,7 @@ describePiApp("live OpenRouter product journey", () => {
     const signup = await handles.app.request("/api/auth/sign-up/email", {
       method: "POST",
       headers: { "content-type": "application/json", origin: "http://127.0.0.1:5173" },
-      body: JSON.stringify({ email, password: "password12", name: "Pi Canary" }),
+      body: JSON.stringify({ email, password: "password12", name: "AgentScope Canary" }),
     });
     expect(signup.status).toBeLessThan(400);
     const cookie = sessionCookieHeader(signup);

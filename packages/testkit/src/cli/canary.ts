@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { startJavaRuntime } from "./java-runtime.js";
 
 async function main() {
   loadRootEnv();
@@ -16,7 +17,9 @@ async function main() {
 
   const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-canary-"));
   let postgres: StartedPostgreSqlContainer | undefined;
+  let runtime: Awaited<ReturnType<typeof startJavaRuntime>> | undefined;
   try {
+    runtime = await startJavaRuntime(dataDir);
     if (runOpenRouter) postgres = await new PostgreSqlContainer("postgres:16-alpine").start();
     const env = {
       ...process.env,
@@ -24,12 +27,12 @@ async function main() {
       REALTIME_DATABASE_URL: postgres?.getConnectionUri() ?? "",
       VERIFY_PROVIDERS: "1",
       WAKEUP_DRIVER: "memory",
-      AGENT_RUNTIME: "pi",
+      AGENT_RUNTIME: "agentscope",
+      AGENTSCOPE_URL: runtime.url,
       SANDBOX_PROVIDER: "fake",
       CLOUD_AGENT_PROVIDER: "emulator",
       COMPOSIO_API_KEY: "",
       CURSOR_API_KEY: "",
-      MAX_TOOL_CALLS_PER_TURN: "24",
       BETTER_AUTH_SECRET: "provider-canary-auth-secret-at-least-32-characters",
       ENCRYPTION_KEY: "provider-canary-encryption-key-at-least-32-characters",
       SANDBOX_SUPERVISOR_TOKEN: "provider-canary-supervisor-token-at-least-32-characters",
@@ -54,6 +57,7 @@ async function main() {
     );
   } finally {
     try {
+      await runtime?.stop();
       await postgres?.stop();
     } finally {
       await rm(dataDir, { recursive: true, force: true });

@@ -9,4 +9,4 @@
 - 未实现能力必须失败或禁用，不得用模拟结果冒充真实执行。
 - 不提交 `.env`、密钥、真实用户数据、私有 URL 或本机身份信息。提交前检查 `git status` 和 diff。
 - UI 继续使用 `@rakazo/ui-tokens`、`@rakazo/ui-web`、`@rakazo/chat-ui` 和 `apps/web/src/components/ai/`，保持现有视觉语言。
-- Python 服务使用 `uv` 和 `services/agentscope/pyproject.toml`；TypeScript 使用仓库锁定的 pnpm。修改后至少运行受影响包的类型检查和定向测试。
+- Java Agent Runtime 使用 JDK 21、Maven 与 `services/agent-runtime/pom.xml`；TypeScript 使用仓库锁定的 pnpm。修改后至少运行受影响包的类型检查和定向测试。

@@ -66,20 +66,19 @@ services:
   agentscope:
     build:
       context: ../..
-      dockerfile: services/agentscope/Dockerfile
+      dockerfile: services/agent-runtime/Dockerfile
     environment:
-      AGENTSCOPE_STATE_DIR: /data/agentscope-state
+      AGENT_RUNTIME_DATA_DIR: /data/agent-runtime
     volumes:
-      - ../../data:/data
+      - agentstate:/data/agent-runtime
     healthcheck:
       test:
         [
           "CMD",
-          "uv",
-          "run",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2)",
+          "java",
+          "-cp",
+          "/app/runtime.jar",
+          "com.workpal.runtime.RuntimeHealthcheck",
         ]
       interval: 3s
       timeout: 5s
@@ -182,3 +181,4 @@ services:
 
 volumes:
   pgdata:
+  agentstate:

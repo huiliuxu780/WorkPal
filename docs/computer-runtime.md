@@ -3,14 +3,14 @@
 Rakazo keeps the agent runtime and the computer runtime separate:
 
 ```text
-chat/API -> one Pi agent session -> Rakazo computer tools -> SandboxProvider -> E2B / Daytona / Box
+chat/API -> AgentScope Java session -> WorkPal computer tools -> SandboxProvider -> E2B / Daytona / Box
                                                    |-> Docker
                                                    |-> desktop/fake
 
 SandboxProvider workspace <-> AgentHomeStore <-> Rakazo-owned DATA_DIR
 ```
 
-Pi runs in the Rakazo API/worker process. It is not installed in, or executed by, E2B. The built-in tools are ordinary Pi tools, not Claude- or MCP-specific tools, so any model exposed through Pi can call them. Screen operation still requires a model that can accept image tool results and reason about screenshots.
+AgentScope Java runs as a private service. Computer tools remain in the API/worker and execute through the authorized Tool Bridge; they are not installed in E2B. Screen operation still requires a model that accepts image tool results and reasons about screenshots.
 
 ## Computer contract
 
@@ -92,7 +92,7 @@ Docker computers include `uv` for rootless Python CLI installs. Run `uv tool ins
 ## Verification
 
 The [agent verification guide](agent-verification.md) also describes a deterministic
-contacts-export replay through real Pi, with either a stateful fake computer or
+contacts-export replay through AgentScope Java, with either a stateful fake computer or
 real Docker Chromium. It requires no inference and complements the vision
 acceptance test below.
 

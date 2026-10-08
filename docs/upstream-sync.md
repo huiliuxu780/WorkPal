@@ -74,7 +74,7 @@ git log --left-right --graph --oneline develop...upstream/main
 4. Preserve upstream behavior unless a fork decision is documented. Do not use conflict resolution
    as an opportunity for cleanup or redesign.
 5. Run the proportional test matrix: `pnpm check`, `pnpm lint`, `pnpm test`, then relevant
-   integration, E2E, Pi and topology tests for touched boundaries.
+   integration, E2E, AgentScope Java and topology tests for touched boundaries.
 6. Re-run the baseline smoke path for authentication, Bot/Thread/Run, Routine, Worker and Computer.
 7. Record the new upstream SHA and any intentionally retained fork divergence in the sync change.
 

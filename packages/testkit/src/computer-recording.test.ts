@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { PortableFile } from "@rakazo/adapter-kit";
 import { FakeSandboxProvider } from "@rakazo/adapters";
@@ -37,8 +38,12 @@ const recorded = (steps: ContactsRecordedStep[]): ContactsRecording => ({
 
 async function setup() {
   const sandbox = new FakeSandboxProvider();
-  const context = computerReplayContext();
-  const computer = await sandbox.provision({ botId: "fixture-bot", homePath: "/fixture" }, context);
+  const context = {
+    ...computerReplayContext(),
+    operationId: randomUUID(),
+    botId: `fixture-${randomUUID()}`,
+  };
+  const computer = await sandbox.provision({ botId: context.botId, homePath: "/fixture" }, context);
   const browser = new ContactsBrowserFixture(sandbox);
   return {
     sandbox,
@@ -52,7 +57,8 @@ async function setup() {
   };
 }
 
-describe("sanitized real-model computer recordings", () => {
+const describeRuntime = process.env.AGENTSCOPE_URL ? describe : describe.skip;
+describeRuntime("sanitized real-model computer recordings", () => {
   it("replays the captured Luna/OpenRouter + Docker export with an independent artifact oracle", async () => {
     const recording = parseContactsRecording(
       JSON.parse(
@@ -184,7 +190,7 @@ describe("sanitized real-model computer recordings", () => {
     }
   });
 
-  it("aborts a real Pi HTTP stream after the download and resumes without repeating the side effect", async () => {
+  it("aborts a real AgentScope HTTP stream after the download and resumes without repeating the side effect", async () => {
     const fixture = await setup();
     const controller = new AbortController();
     const interruptedContext = { ...fixture.context, signal: controller.signal };
@@ -201,7 +207,7 @@ describe("sanitized real-model computer recordings", () => {
         controller.abort();
       },
     };
-    const emulator = await startModelEmulator({ steps });
+    const emulator = await startModelEmulator({ apiKey: "local", steps });
     try {
       const recorder = createContactsRecorder(
         fixture.sandbox,

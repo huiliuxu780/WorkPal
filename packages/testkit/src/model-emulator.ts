@@ -36,7 +36,7 @@ export interface ModelEmulatorStep {
 }
 
 /**
- * A loopback-only model protocol fixture. Pi itself and its HTTP/SSE transport
+ * A loopback-only model protocol fixture. AgentScope and its HTTP/SSE transport
  * stay real. This tests execution, not whether a model can choose these actions.
  * Always call assertComplete: a runtime can consume a provider failure without
  * propagating the original fixture assertion.

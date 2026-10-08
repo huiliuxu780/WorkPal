@@ -325,6 +325,9 @@ export const appContract = {
       )
       .output(z.object({ ok: z.literal(true) })),
     stop: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
+    cancelBackgroundTask: oc
+      .input(threadTarget.safeExtend({ taskId: Id }))
+      .output(z.object({ ok: z.literal(true) })),
     followUp: oc
       .input(
         threadTarget.safeExtend({

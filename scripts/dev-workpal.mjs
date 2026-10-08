@@ -33,20 +33,27 @@ function stop(code = 0) {
 process.on("SIGINT", () => stop(130));
 process.on("SIGTERM", () => stop(143));
 
-start(
-  "uv",
-  [
-    "run",
-    "--project",
-    "services/agentscope",
-    "uvicorn",
-    "workpal_agentscope.app:app",
-    "--host",
-    "127.0.0.1",
-    "--port",
-    process.env.AGENTSCOPE_PORT ?? "8090",
-    "--reload",
-  ],
-  "agentscope",
+const build = spawn(
+  "mvn",
+  ["-q", "-f", "services/agent-runtime/pom.xml", "package", "-DskipTests"],
+  {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+  },
 );
+children.push(build);
+build.on("error", (error) => {
+  console.error(`[agent-runtime] failed to build: ${error.message}`);
+  stop(1);
+});
+build.on("exit", (code) => {
+  if (stopping) return;
+  if (code !== 0) {
+    console.error(`[agent-runtime] build exited (${code ?? "unknown"})`);
+    stop(code ?? 1);
+    return;
+  }
+  start("java", ["-jar", "services/agent-runtime/target/agent-runtime-0.1.0.jar"], "agent-runtime");
+});
 start("pnpm", ["run", "dev:app"], "web-stack");

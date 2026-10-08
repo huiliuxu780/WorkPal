@@ -6,12 +6,12 @@ import type {
   SandboxProvider,
 } from "@rakazo/adapter-kit";
 import {
+  AgentScopeAgentRuntime,
   browserActFromTool,
   browserNavigateFromTool,
   browserSnapshotFromTool,
   builtinAgentTools,
   observationToolResult,
-  PiAgentRuntime,
 } from "@rakazo/adapters";
 import { CONTACTS_CSV, CONTACTS_PATH, EXPORT_FIXTURE_URL } from "./computer-replay-fixture.js";
 import {
@@ -32,7 +32,7 @@ export function computerReplayContext(): AdapterContext {
   };
 }
 
-/** Real Pi and production tool helpers; excludes database executor, authorization, and UI. */
+/** Real AgentScope Java and production tool helpers; excludes database executor, authorization, and UI. */
 export async function runComputerReplay(
   sandbox: SandboxProvider,
   browser: BrowserProvider,
@@ -69,6 +69,7 @@ export async function runComputerReplay(
       return tool(id, "browser_act", { actions: [{ kind: "click", ref: target.ref }] });
     }, expectedId);
   const emulator = await startModelEmulator({
+    apiKey: "local",
     steps: [
       step(tool("navigate", "browser_navigate", { url: EXPORT_FIXTURE_URL })),
       step(tool("snapshot-contacts", "browser_snapshot", {}), "navigate"),
@@ -88,12 +89,9 @@ export async function runComputerReplay(
           const result = request.messages.findLast((message) => message.role === "tool");
           assert.equal(result?.tool_call_id, "observe");
           assert.match(String(result?.content), /computer observed/);
-          // Shared OpenAI-compatible connections currently advertise text-only.
-          // Protect the explicit fallback; do not pretend this tests image understanding.
-          assert.match(
-            String(result?.content),
-            /tool image omitted: model does not support images/,
-          );
+          // The replay checks the real screenshot separately; this fixture does
+          // not assert that a text-only model interpreted the pixels.
+          assert.match(String(result?.content), /image file is returned/);
         },
         response: tool("read-csv", "read_file", { path: CONTACTS_PATH }),
       },
@@ -112,7 +110,7 @@ export async function runComputerReplay(
       "computer_observe",
       "read_file",
     ]);
-    for await (const event of new PiAgentRuntime().run(
+    for await (const event of new AgentScopeAgentRuntime().run(
       {
         botId: context.botId!,
         threadId: "fixture-thread",

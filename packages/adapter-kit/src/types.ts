@@ -411,6 +411,10 @@ export interface AgentRunRequest {
   sourceMessageId?: string | null;
   /** Backend-selected auxiliary executions are stateless and do not share the chat lease. */
   executionScope?: "chat" | "auto-review" | "history-compaction";
+  /** Product thread-clear generation. A new generation starts a fresh Harness session. */
+  sessionGeneration?: number;
+  /** Answer recorded for a paused native Harness tool in this Run. */
+  resumeAnswer?: string;
   prompt: string;
   instructions: string;
   history: Array<{
@@ -449,8 +453,32 @@ export interface AgentRunRequest {
   ) => Promise<unknown>;
   /** Called after a tool returns; implementations must not persist raw result contents. */
   onToolCompleted?: (completion: AgentToolCompletion) => Promise<void> | void;
+  /** Product-owned projection and authorization for a native Harness background task. */
+  registerBackgroundTask?: (task: AgentBackgroundTask) => Promise<void>;
+  authorizeBackgroundTool?: (task: AgentBackgroundTask, name: string) => Promise<boolean>;
+  onBackgroundTaskEvent?: (event: AgentBackgroundTaskEvent) => Promise<void>;
   /** Atomically claim durable user steering at the runtime's next safe turn boundary. */
   claimSteering?: (seenIds: string[]) => Promise<AgentSteeringMessage[]>;
+}
+
+export interface AgentBackgroundTask {
+  taskId: string;
+  agentId: string;
+  sessionId: string;
+  parentRunId: string;
+  userId: string;
+  spaceId: string;
+  botId: string;
+  threadId: string;
+  toolNames: string[];
+}
+
+export interface AgentBackgroundTaskEvent {
+  task: AgentBackgroundTask;
+  status: "running" | "completed" | "failed" | "cancelled";
+  progress?: string;
+  result?: string;
+  error?: string;
 }
 
 export interface ScriptedTurn {
@@ -495,7 +523,7 @@ export type AgentRuntimeEvent =
       agentId: string;
       name: string;
       task: string;
-      status: "running" | "completed" | "failed";
+      status: "running" | "completed" | "failed" | "cancelled";
       progress?: string;
       result?: string;
     }

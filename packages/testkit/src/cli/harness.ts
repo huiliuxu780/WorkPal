@@ -1,9 +1,10 @@
 import { execSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
+import { startJavaRuntime } from "./java-runtime.js";
 import { runProcess } from "./process.js";
 
 loadRootEnv();
@@ -28,8 +29,8 @@ if (!["fake", "e2b", "daytona", "box"].includes(sandboxProvider)) {
 if (integration && sandboxProvider !== "fake") {
   throw new Error("Integration tests only support the fake sandbox");
 }
-if (agentRuntime !== "pi" && agentRuntime !== "scripted") {
-  throw new Error('Runtime must be "pi" or "scripted"');
+if (agentRuntime !== "agentscope" && agentRuntime !== "scripted") {
+  throw new Error('Runtime must be "agentscope" or "scripted"');
 }
 if (sandboxProvider === "e2b" && !process.env.E2B_API_KEY) {
   throw new Error("E2B_API_KEY is required when --sandbox=e2b");
@@ -46,6 +47,8 @@ async function main() {
   const reportDir = path.resolve("test-report", mode);
   await mkdir(reportDir, { recursive: true });
   const container = await new PostgreSqlContainer("postgres:16-alpine").start();
+  let javaRuntime: Awaited<ReturnType<typeof startJavaRuntime>> | undefined;
+  let javaRuntimeDirectory: string | undefined;
   try {
     const databaseUrl = container.getConnectionUri();
     const apiPort = Number(process.env.API_PORT ?? 3110);
@@ -77,6 +80,11 @@ async function main() {
     process.env.SIGNUPS_ENABLED = "true";
     process.env.SIGNUP_ALLOWLIST = "";
     process.env.CI = "1";
+    if (integration || agentRuntime === "agentscope") {
+      javaRuntimeDirectory = await mkdtemp(path.join(reportDir, "runtime-"));
+      javaRuntime = await startJavaRuntime(javaRuntimeDirectory, process.env);
+      process.env.AGENTSCOPE_URL = javaRuntime.url;
+    }
 
     execSync("pnpm --filter @rakazo/db generate", { stdio: "inherit", env: process.env });
     execSync("pnpm --filter @rakazo/db exec prisma migrate deploy", {
@@ -87,7 +95,8 @@ async function main() {
 
     if (integration) {
       const suites = [
-        "packages/testkit/src/pi-offline.postgres.test.ts",
+        "packages/testkit/src/agentscope-offline.postgres.test.ts",
+        "packages/testkit/src/history-compaction-agentscope.test.ts",
         "packages/testkit/src/computer-approval.postgres.test.ts",
         "packages/testkit/src/eval-history.postgres.test.ts",
         "packages/testkit/src/eval-customer-support.postgres.test.ts",
@@ -126,7 +135,9 @@ async function main() {
         if (result.exitCode !== 0)
           throw new Error("Isolated integration database operation failed");
       };
-      for (const [index, suite] of suites.entries()) {
+      const selectedSuites = e2eSpec ? suites.filter((suite) => suite.includes(e2eSpec)) : suites;
+      if (selectedSuites.length === 0) throw new Error(`No integration suite matches ${e2eSpec}`);
+      for (const [index, suite] of selectedSuites.entries()) {
         const database = `integration_${index}`;
         await databaseCommand(`CREATE DATABASE "${database}" TEMPLATE "${template}"`);
         const suiteUrl = new URL(databaseUrl);
@@ -283,6 +294,8 @@ async function main() {
       }
     }
   } finally {
+    await javaRuntime?.stop();
+    if (javaRuntimeDirectory) await rm(javaRuntimeDirectory, { recursive: true, force: true });
     await container.stop().catch(() => undefined);
   }
 }

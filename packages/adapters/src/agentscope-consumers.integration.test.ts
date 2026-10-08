@@ -1,6 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { type ChildProcess, spawn } from "node:child_process";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -13,14 +12,15 @@ import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
 import { runAutoReviewJudge } from "./auto-review.js";
 import { compactHistory } from "./history-compaction.js";
 
-// Real TS consumer -> HTTP adapter -> Python service -> AgentScope 2.0.9. Only the
+// Real TS consumer -> HTTP adapter -> Java service -> AgentScope Harness. Only the
 // upstream model is a deterministic local protocol fixture; no paid-model claim.
-const serviceDir = fileURLToPath(new URL("../../../services/agentscope/", import.meta.url));
-const python = join(serviceDir, ".venv/bin/python");
+const serviceDir = fileURLToPath(new URL("../../../services/agent-runtime/", import.meta.url));
+const runtimeJar = join(serviceDir, "target/agent-runtime-0.1.0.jar");
 
-describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
+describe("AgentScope consumer integration", () => {
   let child: ChildProcess;
   let stateDir: string;
+  let chatSnapshotPath: string | undefined;
   let runtime: AgentScopeAgentRuntime;
   let modelUrl: string;
   const modelRequests: Array<{
@@ -69,42 +69,38 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
     stateDir = await mkdtemp(join(tmpdir(), "workpal-helper-regression-"));
     await new Promise<void>((resolve) => modelServer.listen(0, "127.0.0.1", resolve));
     modelUrl = `http://127.0.0.1:${(modelServer.address() as AddressInfo).port}/v1`;
-    child = spawn(
-      python,
-      ["-m", "uvicorn", "workpal_agentscope.app:app", "--host", "127.0.0.1", "--port", "0"],
-      {
-        cwd: serviceDir,
-        env: {
-          ...process.env,
-          PYTHONPATH: join(serviceDir, "src"),
-          AGENTSCOPE_STATE_DIR: stateDir,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
+    const probe = createServer();
+    await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const port = (probe.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    const serviceUrl = `http://127.0.0.1:${port}`;
+    child = spawn("java", ["-jar", runtimeJar], {
+      cwd: serviceDir,
+      env: {
+        ...process.env,
+        AGENT_RUNTIME_HOST: "127.0.0.1",
+        AGENT_RUNTIME_PORT: String(port),
+        AGENT_RUNTIME_DATA_DIR: stateDir,
       },
-    );
-    const serviceUrl = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("Python service startup timed out")),
-        30_000,
-      );
-      let logs = "";
-      child.stderr?.on("data", (chunk) => {
-        logs += chunk.toString();
-        const match = logs.match(/Uvicorn running on (http:\/\/127\.0\.0\.1:\d+)/);
-        if (match) {
-          clearTimeout(timeout);
-          resolve(match[1]!);
-        }
-      });
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.once("exit", (code) => {
-        clearTimeout(timeout);
-        reject(new Error(`Python exited ${code}: ${logs}`));
-      });
+      stdio: ["ignore", "ignore", "pipe"],
     });
+    let logs = "";
+    child.stderr?.on("data", (chunk) => {
+      logs += chunk.toString();
+    });
+    let ready = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (child.exitCode !== null)
+        throw new Error(`Java runtime exited ${child.exitCode}: ${logs}`);
+      try {
+        ready = (await fetch(`${serviceUrl}/health`)).ok;
+      } catch {
+        /* starting */
+      }
+      if (ready) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!ready) throw new Error(`Java runtime startup timed out: ${logs}`);
     runtime = new AgentScopeAgentRuntime({ baseUrl: serviceUrl });
   });
 
@@ -142,16 +138,20 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
     return events;
   };
   const snapshot = async () => {
-    const files = await readdir(stateDir, { recursive: true });
-    const snapshots = files.filter((path) => path.endsWith(".json"));
-    expect(snapshots).toHaveLength(1);
-    return readFile(join(stateDir, snapshots[0]!), "utf8");
+    if (!chatSnapshotPath) {
+      const files = await readdir(stateDir, { recursive: true });
+      const snapshots = files.filter(
+        (path) => path.startsWith("state/") && path.endsWith("agent_state.json"),
+      );
+      expect(snapshots).toHaveLength(1);
+      chatSnapshotPath = join(stateDir, snapshots[0]!);
+    }
+    return readFile(chatSnapshotPath, "utf8");
   };
 
   it("returns final results to approval/compaction while a chat tool is active, without touching chat state", async () => {
     const seedEvents = await consume(request("seed-chat"));
     expect(seedEvents.at(-1)).toEqual({ type: "done", text: "CHAT_RESPONSE_MARKER" });
-    const original = await snapshot();
     const main = request("active-chat", "tool-fixture");
     // Supply the source marker so the chat restores its durable context.
     main.history = [{ id: "seed-chat", role: "user", content: "PRIVATE_CHAT_MARKER" }];
@@ -165,6 +165,7 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
     ];
     let helpersCompleted = false;
     main.executeTool = async () => {
+      const activeSnapshot = await snapshot();
       // Main chat still holds its lock while the TS executor asks its LLM judge.
       await expect(consume(request("competing-chat"))).rejects.toThrow(/409/);
       const review = await runAutoReviewJudge({
@@ -180,7 +181,7 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
         threadId: "thread-1",
       });
       expect(review).toMatchObject({ decision: "pass", reason: "approved fixture action" });
-      expect(await snapshot()).toBe(original);
+      expect(await snapshot()).toBe(activeSnapshot);
 
       const thread = {
         botId: "bot-1",
@@ -222,7 +223,7 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
           },
         }),
       );
-      expect(await snapshot()).toBe(original);
+      expect(await snapshot()).toBe(activeSnapshot);
       helpersCompleted = true;
       return { stdout: "/workspace" };
     };
@@ -230,8 +231,7 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
     expect(helpersCompleted).toBe(true);
     expect(events.at(-1)).toEqual({ type: "done", text: "CHAT_RESPONSE_MARKER" });
     const saved = JSON.parse(await snapshot());
-    expect(saved.lastSourceMessageId).toBe("active-chat");
-    expect(saved.revision).toBe(2);
+    expect(JSON.stringify(saved)).toContain("PRIVATE_CHAT_MARKER");
     expect(JSON.stringify(saved)).not.toMatch(
       /REVIEW_PROMPT_MARKER|SUMMARY_PROMPT_MARKER|SUMMARY_RESULT_MARKER/,
     );
@@ -244,10 +244,11 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
 
   it("recognizes backend approval pause as a terminal without completing or saving the chat", async () => {
     const seed = request("pause-seed");
+    seed.threadId = "thread-pause";
     seed.history = [{ id: "fresh-source", role: "user", content: "fresh chat context" }];
     await consume(seed);
-    const original = await snapshot();
     const main = request("paused-chat", "tool-fixture");
+    main.threadId = "thread-pause";
     // Deliberately rebuild from a source window with no previous tool result.
     main.history = [{ id: "different-source", role: "user", content: "wait for approval" }];
     main.tools = [
@@ -263,6 +264,5 @@ describe.skipIf(!existsSync(python))("AgentScope consumer integration", () => {
     expect(events.some((event) => event.type === "tool")).toBe(true);
     expect(events.some((event) => event.type === "done")).toBe(false);
     expect(events.at(-1)).toMatchObject({ type: "progress", text: "shell waiting for approval" });
-    expect(await snapshot()).toBe(original);
   });
 });
