@@ -128,7 +128,31 @@ export function createTurnRoutingProvider(deps: {
         const resolved = await resolveAuxJudgeModel(deps, leadBot);
         if (resolved) {
           const decision = await runGroupRouter({
-            config: { runtime: deps.runtime, model: resolved.model, timeoutMs: deps.routerTimeoutMs },
+            config: {
+              runtime: deps.runtime,
+              model: resolved.model,
+              timeoutMs: deps.routerTimeoutMs,
+              // Router tokens are real model spend: persist them through the
+              // same usage accounting path normal runs and the engagement
+              // judge use, or group-chat cost is systematically underreported.
+              onUsage: async (usage) => {
+                await deps.prisma.usageRecord
+                  .create({
+                    data: {
+                      spaceId: input.spaceId,
+                      botId: leadBot.id,
+                      userId: input.userId,
+                      provider: usage.provider,
+                      model: usage.model,
+                      inputTokens: usage.inputTokens,
+                      outputTokens: usage.outputTokens,
+                      cacheReadTokens: usage.cacheReadTokens,
+                      cacheWriteTokens: usage.cacheWriteTokens,
+                    },
+                  })
+                  .catch((error) => getLogger().error("group router usage record", error));
+              },
+            },
             routing: {
               message: input.text,
               members,

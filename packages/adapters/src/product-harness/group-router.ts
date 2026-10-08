@@ -22,17 +22,33 @@ import {
 /** Classification is a tiny task: a short bound beats making the user wait. */
 export const GROUP_ROUTER_DEFAULT_TIMEOUT_MS = 8_000;
 
-export type GroupRouterConfig = {
-  runtime: AgentRuntime;
-  model: AgentRunModel | null;
-  timeoutMs?: number;
-};
-
 export type GroupRouterIdentity = {
   spaceId: string;
   userId: string;
   /** Bot identity the auxiliary execution is attributed to (the validated lead). */
   botId: string;
+};
+
+/** Token usage the routing call reports for backend accounting (AGENTS.md audit). */
+export type GroupRouterUsage = {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+};
+
+export type GroupRouterConfig = {
+  runtime: AgentRuntime;
+  model: AgentRunModel | null;
+  timeoutMs?: number;
+  /**
+   * Best-effort sink for `usage` events. Router tokens are real model spend and
+   * must reach the same accounting path as normal runs; a persistence failure
+   * must never fail the routing decision itself.
+   */
+  onUsage?: (usage: GroupRouterUsage) => void | Promise<void>;
 };
 
 function extractJsonObject(text: string): unknown {
@@ -86,6 +102,21 @@ export async function runGroupRouter(input: {
         signal,
       },
     )) {
+      if (event.type === "usage") {
+        try {
+          await input.config.onUsage?.({
+            provider: event.provider,
+            model: event.model,
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+            cacheReadTokens: event.cacheReadTokens,
+            cacheWriteTokens: event.cacheWriteTokens,
+          });
+        } catch {
+          // Accounting is best effort: a failed persist must not cost the
+          // routing decision the user is waiting on.
+        }
+      }
       if (event.type === "done" && event.text) text = event.text;
     }
   } catch {

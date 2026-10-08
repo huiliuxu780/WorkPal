@@ -11,7 +11,7 @@ const routing = { message: "which CRM should we buy?", members, leadBotId: "fina
 const identity = { spaceId: "space-1", userId: "user-1", botId: "finance" };
 const model = { provider: "openai", id: "gpt-mini" };
 
-function fakeRuntime(outputs: Array<{ text?: string; throw?: Error }>) {
+function fakeRuntime(outputs: Array<{ text?: string; usage?: Record<string, unknown>; throw?: Error }>) {
   const requests: AgentRunRequest[] = [];
   let call = 0;
   const runtime = {
@@ -21,6 +21,7 @@ function fakeRuntime(outputs: Array<{ text?: string; throw?: Error }>) {
       const output = outputs[call++] ?? { throw: new Error("no scripted output") };
       return (async function* () {
         if (output.throw) throw output.throw;
+        if (output.usage) yield { type: "usage", ...output.usage };
         yield { type: "done", text: output.text ?? "" };
       })();
     },
@@ -96,6 +97,59 @@ describe("runGroupRouter", () => {
   it("returns null on runtime failure and never throws at the caller", async () => {
     const { runtime } = fakeRuntime([{ throw: new Error("upstream timeout") }]);
     await expect(runGroupRouter({ config: { runtime, model }, routing, identity })).resolves.toBeNull();
+  });
+
+  it("reports usage events through the accounting callback", async () => {
+    const usage = {
+      provider: "openai",
+      model: "gpt-mini",
+      inputTokens: 120,
+      outputTokens: 14,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    };
+    const { runtime } = fakeRuntime([
+      {
+        usage,
+        text: '{"ownerBotId":"coding","responseMode":"single","reasonCode":"specialist_match","confidence":"high"}',
+      },
+    ]);
+    const seen: unknown[] = [];
+    const decision = await runGroupRouter({
+      config: { runtime, model, onUsage: (value) => void seen.push(value) },
+      routing,
+      identity,
+    });
+    expect(decision?.ownerBotId).toBe("coding");
+    expect(seen).toEqual([usage]);
+  });
+
+  it("keeps the decision even when usage persistence fails", async () => {
+    const { runtime } = fakeRuntime([
+      {
+        usage: {
+          provider: "openai",
+          model: "gpt-mini",
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        text: '{"ownerBotId":"finance","responseMode":"single","reasonCode":"generalist_match","confidence":"low"}',
+      },
+    ]);
+    const decision = await runGroupRouter({
+      config: {
+        runtime,
+        model,
+        onUsage: () => {
+          throw new Error("audit row rejected");
+        },
+      },
+      routing,
+      identity,
+    });
+    expect(decision?.ownerBotId).toBe("finance");
   });
 
   it("skips the model call entirely when no router model is resolvable", async () => {

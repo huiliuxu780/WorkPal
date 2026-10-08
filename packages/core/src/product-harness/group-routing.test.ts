@@ -109,12 +109,18 @@ describe("selectGroupLead", () => {
     });
   });
 
-  it("deterministically replaces a stale or missing lead with the first active member", () => {
+  it("replaces a stale or missing lead by lowest bot id, independent of query order", () => {
+    // Members re-created via createMany share one timestamp, so repair must
+    // not depend on membership query order: every order repairs to "coding".
     expect(selectGroupLead("archived-bot", ["finance", "coding"])).toEqual({
-      botId: "finance",
+      botId: "coding",
       repaired: true,
     });
-    expect(selectGroupLead(null, ["coding", "finance"])).toEqual({
+    expect(selectGroupLead("archived-bot", ["coding", "finance"])).toEqual({
+      botId: "coding",
+      repaired: true,
+    });
+    expect(selectGroupLead(null, ["finance", "coding"])).toEqual({
       botId: "coding",
       repaired: true,
     });
