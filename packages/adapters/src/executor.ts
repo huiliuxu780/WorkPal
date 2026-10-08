@@ -81,6 +81,7 @@ import {
   toolRequiresApproval,
   toolRequiresExplicitApproval,
   truncatedPlainText,
+  turnPolicyFromRun,
   unattendedTriggerToolRequiresApproval,
   userTurnMessageForRun,
 } from "@rakazo/core";
@@ -4046,6 +4047,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
               sessionGeneration: thread.historyCompactionGeneration,
               resumeAnswer,
               sourceMessageId: run.sourceMessageId,
+              // Product Harness Phase 2: the runtime receives this Run's
+              // immutable execution policy — the persisted orchestration
+              // snapshot when present (a retry reuses it verbatim), else the
+              // deterministic fallback derived from the Run's trigger.
+              turnPolicy: turnPolicyFromRun({
+                trigger: run.trigger,
+                ownerBotId: bot.id,
+                orchestration: run.orchestration,
+              }),
               prompt,
               instructions: userTurnInstructions({
                 botInstructions: runIdentityInstruction(bot, run.trigger),

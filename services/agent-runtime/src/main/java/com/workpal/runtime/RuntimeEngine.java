@@ -63,6 +63,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import reactor.core.Disposable;
 import reactor.core.Disposables;
@@ -76,6 +77,14 @@ public final class RuntimeEngine {
     private final Path workspaceRoot;
     private final ConcurrentHashMap<String, RunningAgent> running = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BackgroundHandle> background = new ConcurrentHashMap<>();
+    /**
+     * TurnPolicy helper budget per session slot, shared across every attempt of
+     * the same Run: the session key embeds the run id, so a retry or resume
+     * continues the count instead of letting each attempt spawn maxChildren
+     * fresh helpers. Terminal attempts are removed in execute()'s finally;
+     * paused attempts keep their budget for the resume.
+     */
+    private final ConcurrentHashMap<String, AtomicInteger> spawnBudgets = new ConcurrentHashMap<>();
 
     private record RunningAgent(HarnessAgent agent, RuntimeContext context, Disposable.Swap stream) {}
     private record BackgroundHandle(RunRequest request, HarnessAgent agent, RuntimeContext context,
@@ -117,6 +126,8 @@ public final class RuntimeEngine {
         JsonFileAgentStateStore store = new JsonFileAgentStateStore(stateRoot.resolve(hash(request.botId())));
         String userSlot = tenant;
         String sessionSlot = session;
+        AtomicInteger spawnBudget = spawnBudgets.computeIfAbsent(sessionSlot, key -> new AtomicInteger());
+        boolean pausedForResume = false;
         AgentState loaded = store.get(userSlot, sessionSlot, "agent_state", AgentState.class).orElse(null);
         boolean fresh = loaded == null;
         List<ToolUseBlock> pendingFromPreviousAttempt = pendingToolCalls(loaded);
@@ -127,8 +138,11 @@ public final class RuntimeEngine {
         var permissions = PermissionContextState.builder().mode(PermissionMode.DEFAULT);
         List<String> backendToolNames = new ArrayList<>();
         List<String> childToolNames = new ArrayList<>();
+        // TurnPolicy (Product Harness Phase 2): native delegation requires both
+        // the backend offering run_subagent and the policy allowing it.
         boolean allowSubagents = request.tools() != null
-                && request.tools().stream().anyMatch(tool -> "run_subagent".equals(tool.name()));
+                && request.tools().stream().anyMatch(tool -> "run_subagent".equals(tool.name()))
+                && request.delegationAllowed();
         if (request.tools() != null) {
             for (RunRequest.ToolDefinition tool : request.tools()) {
                 if ("run_subagent".equals(tool.name())) continue;
@@ -139,18 +153,23 @@ public final class RuntimeEngine {
                         tool.name(), null, PermissionBehavior.ALLOW, "workpal-run-allowlist"));
             }
         }
-        List<String> harnessTools = new ArrayList<>(List.of("plan_enter", "plan_write",
-                "load_skill_through_path"));
+        List<String> harnessTools = new ArrayList<>();
+        // TurnPolicy: a disabled planning mode hides the whole native plan
+        // surface, so non-interactive runs cannot stall on plan approval.
+        if (request.planningAllowed()) harnessTools.addAll(List.of("plan_enter", "plan_write"));
+        harnessTools.add("load_skill_through_path");
         if (allowSubagents) harnessTools.addAll(List.of("agent_spawn", "agent_send", "agent_list",
                 "task_output", "task_cancel", "task_list"));
         for (String name : harnessTools) permissions.addAllowRule(name,
                 new PermissionRule(name, null, PermissionBehavior.ALLOW, "workpal-harness"));
-        permissions.addAskRule("plan_exit", new PermissionRule(
-                "plan_exit", null, PermissionBehavior.ASK, "workpal-plan-approval"));
+        if (request.planningAllowed()) {
+            permissions.addAskRule("plan_exit", new PermissionRule(
+                    "plan_exit", null, PermissionBehavior.ASK, "workpal-plan-approval"));
+        }
         ToolsConfig toolFilter = new ToolsConfig();
         List<String> visibleTools = new ArrayList<>(backendToolNames);
         visibleTools.addAll(harnessTools);
-        visibleTools.add("plan_exit");
+        if (request.planningAllowed()) visibleTools.add("plan_exit");
         toolFilter.setAllow(visibleTools);
         toolFilter.setDeny(List.of("web_fetch", "web_search", "memory_save", "memory_search",
                 "memory_get", "session_search", "session_list", "session_history",
@@ -172,11 +191,12 @@ public final class RuntimeEngine {
                 .disableShellTool()
                 .disableMemoryTools()
                 .disableMemoryHooks()
-                .disableDefaultWorkspaceSkills()
-                .enablePlanMode();
+                .disableDefaultWorkspaceSkills();
+        if (request.planningAllowed()) builder.enablePlanMode();
         if (allowSubagents) {
             builder.taskRepository(new InterruptibleTaskRepository(
-                    new WorkspaceManager(workspace), hash(request.botId())));
+                    new WorkspaceManager(workspace), hash(request.botId()),
+                    request.backgroundAllowed(), request.maxChildren(), spawnBudget));
             builder.subagent(SubagentDeclaration.builder()
                     .name("helper")
                     .description("Complete a focused delegated task using the parent's authorized capabilities.")
@@ -237,7 +257,10 @@ public final class RuntimeEngine {
             } else {
                 input = resumeTools(pendingFromPreviousAttempt, request, bridge, sink, seenSteering, true);
             }
-            if (input == null) return;
+            if (input == null) {
+                pausedForResume = true;
+                return;
+            }
         } else {
             input = new ArrayList<>();
             if (fresh && request.history() != null) {
@@ -277,6 +300,7 @@ public final class RuntimeEngine {
                 String name = mapper.toolNames.getOrDefault(pausedToolCalls.iterator().next(), "Tool");
                 sink.emit(Map.of("type", "progress", "text", name + " waiting for approval", "activity", true));
                 sink.emit(Map.of("type", "paused", "reason", "approval-or-secret"));
+                pausedForResume = true;
                 return;
             }
             if (mapper.confirm != null) {
@@ -286,6 +310,7 @@ public final class RuntimeEngine {
                         "actions", List.of(Map.of("id", "approve", "label", "Approve"),
                                 Map.of("id", "reject", "label", "Reject"))));
                 sink.emit(Map.of("type", "paused", "reason", "approval"));
+                pausedForResume = true;
                 return;
             }
             if (mapper.external == null) {
@@ -297,13 +322,20 @@ public final class RuntimeEngine {
                 return;
             }
             input = resumeTools(mapper.external.getToolCalls(), request, bridge, sink, seenSteering, false);
-            if (input == null) return;
+            if (input == null) {
+                pausedForResume = true;
+                return;
+            }
         }
         throw new IllegalStateException("AgentScope exceeded the external tool resume limit");
         } finally {
             bridge.closeForeground();
             running.remove(request.runId(), active);
             if (temporaryDeliveryRepository) deliveryRepository.shutdown();
+            // Terminal attempts release the shared helper budget; a paused run
+            // keeps it so the resume cannot spawn a fresh maxChildren batch.
+            if (!pausedForResume) spawnBudgets.remove(sessionSlot, spawnBudget);
+            if (spawnBudgets.size() > 8192) spawnBudgets.clear();
         }
     }
 

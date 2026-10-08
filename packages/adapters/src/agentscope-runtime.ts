@@ -544,6 +544,25 @@ function serializableRequest(
     threadId: request.threadId,
     runId: request.runId,
     executionScope: request.executionScope ?? "chat",
+    // Product Harness Turn Policy: flattened to the runtime wire shape; the
+    // runtime enforces it and never re-derives it.
+    turnPolicy: request.turnPolicy
+      ? {
+          interactive: request.turnPolicy.interaction.interactive,
+          planning: request.turnPolicy.planning.mode,
+          delegation: {
+            mode: request.turnPolicy.delegation.mode,
+            background: request.turnPolicy.delegation.background,
+            maxChildren: request.turnPolicy.delegation.maxChildren,
+            maxDepth: request.turnPolicy.delegation.maxDepth,
+          },
+          ownership: {
+            mode: request.turnPolicy.ownership.mode,
+            ownerBotId: request.turnPolicy.ownership.ownerBotId,
+          },
+          routingKind: request.turnPolicy.routing.kind,
+        }
+      : undefined,
     sessionGeneration: request.sessionGeneration ?? 0,
     resumeAnswer: request.resumeAnswer,
     sourceMessageId: request.sourceMessageId,

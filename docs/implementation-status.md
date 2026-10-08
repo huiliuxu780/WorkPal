@@ -23,3 +23,33 @@ An authenticated local acceptance run used the configured DashScope `qwen3.8-fla
 Restart semantics: local model/tool operations in progress are not resumed by AgentScope 2.0.3. A Java instance change or sustained loss of health fails active WorkPal projections; a Worker loss is detected after two minutes without a task heartbeat. Native task records remain on disk for honest inspection and the next main turn. Task credentials expire after one hour; long-running children must fail rather than gain an indefinite bearer. Background `agent_send(timeout_seconds=0)` is rejected because its native response omits the child session needed for task-bound authorization. Third-party MCP, OAuth and remote sandbox vendors require their own reachable endpoints and credentials.
 
 The migration branch is pushed as PR #2. GitHub Actions on the branch and PR passed TypeScript/Web checks, Java tests, integration and Web E2E tests, and Docker image build. The next phase is WorkPal Product Harness: Intent and complexity routing, automatic Plan, Drill, Agent routing, and group-chat speaking policy.
+
+## Product Harness Phase 1 — Response Owner: COMPLETE
+
+Every group user turn now resolves to exactly one response owner (or an
+intentional multi when the user explicitly addresses several bots). Precedence
+is deterministic: explicit mention > reply target > @everyone/separate-answer
+wording > the Group Router (the single isolated model call, run only for an
+otherwise unaddressed group turn, as a stateless `turn-routing` auxiliary
+execution with no tools/skills/history and a fresh per-run session key) > the
+group `leadBotId`. The implicit `members[0]` wake is removed from send and
+follow-up paths; a group now stores `leadBotId`, which self-heals when it is no
+longer an active member. Each routed Run carries an immutable
+`orchestration` snapshot (routing, ownership, response mode) that retries reuse
+verbatim; every resolved turn emits a `thread.turn.routed` thread event. No
+`TurnDecision` table was added. This phase did not touch execution strategy or
+UI. Follow-up turns that resolve to multiple owners collapse to a single
+previous owner/lead and persist `responseMode: "single"` truthfully.
+
+## Product Harness Phase 2 — Turn Policy: COMPLETE
+
+Phase 2 adds the internal per-Run execution policy (`TurnPolicy`) that says how
+the owning Agent may act this turn (interactive, planning, delegation,
+background, ownership) without any user-facing mode selector. It is derived
+deterministically from the Run trigger and its orchestration snapshot, stored
+in the same `orchestration` JSON `execution` block, sent to the Java runtime on
+`RunRequest.turnPolicy`, and enforced at the real runtime boundary: the native
+plan/subagent tool surface is hidden per policy, the helper budget and
+background permission are enforced in the spawn repository (a hard count and
+throw, not a prompt), and helpers keep only read-only backend tools. Plan,
+Subagent and Background remain AgentScope-owned; Phase 2 adds no new engine.

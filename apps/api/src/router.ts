@@ -134,6 +134,7 @@ import {
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
+  turnExecutionForSource,
 } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
@@ -566,6 +567,9 @@ export interface RouterDeps {
     defaultProvider: string;
     defaultModel: string;
     deploymentModelKey?: string;
+    /** PRODUCT_HARNESS_ROUTER_MODEL ("provider/model") for the Group Router. */
+    productHarnessRouterModel?: string;
+    productHarnessRouterApiKey?: string;
     webOrigin: string;
     privacyPolicyUrl?: string;
     screenProxySecret: string;
@@ -679,6 +683,8 @@ export function createRouter(deps: RouterDeps) {
       deploymentProvider: deps.env.defaultProvider,
       deploymentModel: deps.env.defaultModel,
       deploymentModelKey: deps.env.deploymentModelKey,
+      routerModel: deps.env.productHarnessRouterModel,
+      routerApiKey: deps.env.productHarnessRouterApiKey,
     });
   const taughtSkills = createTaughtSkillsService({
     prisma: deps.prisma,
@@ -2140,6 +2146,7 @@ export function createRouter(deps: RouterDeps) {
                   ownerBotId: botId,
                   responseMode: responseMode,
                   reasonCode: turnOwner.reasonCode ?? null,
+                  execution: turnExecutionForSource("chat"),
                 }),
               },
               select: { id: true },

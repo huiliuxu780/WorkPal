@@ -3688,6 +3688,11 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
           routing: { kind: "direct" },
           ownership: { mode: "owner", ownerBotId: "bot-1" },
           responseMode: "single",
+          execution: {
+            interactive: true,
+            planning: "auto",
+            delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
+          },
         },
       }),
     });

@@ -404,6 +404,26 @@ export interface AgentRunModel {
   };
 }
 
+/**
+ * Product Harness Turn Policy as carried on a run request. Mirrors the pure
+ * `@rakazo/core` turn-policy shape (adapter-kit cannot import core, so the
+ * structural contract lives here). `serializableRequest` flattens it to the
+ * runtime's wire shape; the runtime never re-derives routing.
+ */
+export interface AgentTurnPolicy {
+  version: "v1";
+  interaction: { interactive: boolean };
+  planning: { mode: "disabled" | "auto" };
+  delegation: {
+    mode: "disabled" | "auto";
+    background: boolean;
+    maxChildren: number;
+    maxDepth: number;
+  };
+  ownership: { mode: "owner" | "support"; ownerBotId: string };
+  routing: { kind: string };
+}
+
 export interface AgentRunRequest {
   botId: string;
   threadId: string;
@@ -411,6 +431,13 @@ export interface AgentRunRequest {
   sourceMessageId?: string | null;
   /** Backend-selected auxiliary executions are stateless and do not share the chat lease. */
   executionScope?: "chat" | "auto-review" | "history-compaction" | "turn-routing";
+  /**
+   * Product Harness Phase 2 immutable execution policy for this Run
+   * (turn-policy wire shape). The runtime enforces it — plan and subagent
+   * capability visibility, background spawns and the helper budget — and
+   * never re-derives it. Absent means the runtime's per-scope defaults.
+   */
+  turnPolicy?: AgentTurnPolicy;
   /** Product thread-clear generation. A new generation starts a fresh Harness session. */
   sessionGeneration?: number;
   /** Answer recorded for a paused native Harness tool in this Run. */

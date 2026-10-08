@@ -238,3 +238,113 @@ describe("createTurnRoutingProvider", () => {
     await expect(provider.preRoute(baseInput())).resolves.toBeNull();
   });
 });
+
+describe("resolveTurnRoutingModel (ProductHarnessModelResolver)", () => {
+  const leadBot = {
+    id: "bot-lead",
+    spaceId: "space-1",
+    userId: "user-1",
+    modelProvider: null,
+    modelId: null,
+  };
+
+  it("parses PRODUCT_HARNESS_ROUTER_MODEL as provider/model", async () => {
+    const { parseProductHarnessRouterModel } = await import("./turn-routing.js");
+    expect(parseProductHarnessRouterModel("openai/gpt-mini")).toEqual({
+      provider: "openai",
+      id: "gpt-mini",
+    });
+    expect(parseProductHarnessRouterModel("gateway/openai/gpt")).toEqual({
+      provider: "gateway",
+      id: "openai/gpt",
+    });
+    expect(parseProductHarnessRouterModel("gpt-only")).toBeNull();
+    expect(parseProductHarnessRouterModel("/id")).toBeNull();
+    expect(parseProductHarnessRouterModel("provider/")).toBeNull();
+    expect(parseProductHarnessRouterModel(undefined)).toBeNull();
+    expect(parseProductHarnessRouterModel("")).toBeNull();
+  });
+
+  it("prefers the configured router model with its explicit key", async () => {
+    const { resolveTurnRoutingModel } = await import("./turn-routing.js");
+    const model = await resolveTurnRoutingModel(
+      {
+        prisma: prismaMock(),
+        secrets: {} as never,
+        deploymentProvider: "openai",
+        deploymentModel: "gpt-mini",
+        deploymentModelKey: "deployment-key",
+        routerModel: "anthropic/claude-small",
+        routerApiKey: "router-key",
+      },
+      leadBot,
+    );
+    expect(model).toEqual({ provider: "anthropic", id: "claude-small", apiKey: "router-key" });
+  });
+
+  it("uses the deployment key when the configured provider is the deployment provider", async () => {
+    const { resolveTurnRoutingModel } = await import("./turn-routing.js");
+    const model = await resolveTurnRoutingModel(
+      {
+        prisma: prismaMock(),
+        secrets: {} as never,
+        deploymentProvider: "openai",
+        deploymentModel: "gpt-mini",
+        deploymentModelKey: "deployment-key",
+        routerModel: "openai/gpt-nano",
+      },
+      leadBot,
+    );
+    expect(model).toEqual({ provider: "openai", id: "gpt-nano", apiKey: "deployment-key" });
+  });
+
+  it("falls through an unusable configured model to the deployment default", async () => {
+    const { resolveTurnRoutingModel } = await import("./turn-routing.js");
+    const model = await resolveTurnRoutingModel(
+      {
+        prisma: prismaMock(),
+        secrets: {} as never,
+        deploymentProvider: "openai",
+        deploymentModel: "gpt-mini",
+        deploymentModelKey: "deployment-key",
+        routerModel: "missing-provider/missing-model",
+      },
+      leadBot,
+    );
+    expect(model).toEqual({ provider: "openai", id: "gpt-mini", apiKey: "deployment-key" });
+  });
+
+  it("treats OAuth-backed models as unusable for routing", async () => {
+    const { usableRouterModel } = await import("./turn-routing.js");
+    expect(usableRouterModel(null)).toBeNull();
+    expect(
+      usableRouterModel({
+        provider: "subscription",
+        id: "claude",
+        oauth: { credential: { accessToken: "x" } } as never,
+      }),
+    ).toBeNull();
+    expect(usableRouterModel({ provider: "openai", id: "gpt-mini", apiKey: "k" })).toEqual({
+      provider: "openai",
+      id: "gpt-mini",
+      apiKey: "k",
+    });
+  });
+
+  it("resolves through the lead connection chain when nothing configured fits", async () => {
+    const { resolveTurnRoutingModel } = await import("./turn-routing.js");
+    const model = await resolveTurnRoutingModel(
+      {
+        prisma: prismaMock(),
+        secrets: {} as never,
+        deploymentProvider: "openai",
+        deploymentModel: "gpt-mini",
+        deploymentModelKey: undefined,
+      },
+      leadBot,
+    );
+    // Judge chain still resolves the deployment default (key comes from the
+    // deployment provider match inside that path).
+    expect(model).toEqual({ provider: "openai", id: "gpt-mini" });
+  });
+});

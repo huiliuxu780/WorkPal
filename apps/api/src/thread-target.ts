@@ -21,6 +21,7 @@ import {
   resolveExplicitTurnOwner,
   runFailureError,
   selectGroupLead,
+  turnExecutionForSource,
   type GroupRouterReasonCode,
   type ResolvedTurnOwner,
   type ResponseMode,
@@ -882,6 +883,7 @@ export async function sendThreadMessage(
               kind: "direct",
               ownerBotId: target.botId,
               responseMode: "single",
+              execution: turnExecutionForSource("chat"),
             }),
           },
         });
@@ -1043,6 +1045,7 @@ export async function sendThreadMessage(
               ownerBotId: botId,
               responseMode: turnOwner.responseMode,
               reasonCode: turnOwner.reasonCode,
+              execution: turnExecutionForSource("chat"),
             }),
           },
         });
