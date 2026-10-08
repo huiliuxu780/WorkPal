@@ -48,7 +48,7 @@ jobs:
       - run: pnpm --filter @rakazo/testkit check
       - run: pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts
       - run: pnpm test:integration --spec=agentscope-offline.postgres.test.ts
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
 
   agent-runtime-image:
