@@ -562,6 +562,27 @@ describe("automatic outcome return", () => {
     expect(harness.tx.run.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ trigger: "bot_message" }) }),
     );
+    // The outcome hop wakes the ORIGINAL owner: it must not be branded a
+    // support run, or the runtime would tell the owner not to answer the user.
+    const create = harness.tx.run.create.mock.calls[0]![0] as {
+      data: {
+        orchestration: {
+          ownership: { mode: string };
+          execution: { planning: string; interactive: boolean };
+          collaboration: { role: string; source: string; fromBotId: string };
+        };
+      };
+    };
+    expect(create.data.orchestration.ownership.mode).toBe("owner");
+    expect(create.data.orchestration.execution).toMatchObject({
+      interactive: true,
+      planning: "auto",
+    });
+    expect(create.data.orchestration.collaboration).toMatchObject({
+      role: "owner",
+      source: "bot_message",
+      fromBotId: "bot-sender",
+    });
     expect(harness.tx.run.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: { in: ["completed", "failed"] } }),

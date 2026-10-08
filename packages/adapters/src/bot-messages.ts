@@ -12,6 +12,7 @@ import {
   collaborationFromOrchestration,
   isAcknowledgementLoop,
   nextBotMessageHop,
+  ownerResumptionCollaboration,
   resolveBotAddress,
   supportCollaboration,
   turnExecutionForSource,
@@ -279,12 +280,18 @@ export async function messageBot(
           },
         });
         const lineage = collaborationFromOrchestration(run.orchestration);
-        const collaboration = supportCollaboration({
+        const lineageInput = {
           fromBotId: sender.id,
           parentRunId: run.id,
           handoffDepth: lineage?.handoffDepth ?? 0,
           messageHop: hop,
-        });
+        };
+        // An automatic outcome return wakes the ORIGINAL owner, not a new
+        // support bot: that run must keep owner identity and owner-grade
+        // policy so it can incorporate the result and answer the user.
+        const collaboration = returnsToSender
+          ? ownerResumptionCollaboration(lineageInput)
+          : supportCollaboration(lineageInput);
         const nextRun = await tx.run.create({
           data: {
             spaceId: run.spaceId,
@@ -302,8 +309,8 @@ export async function messageBot(
               kind: "bot_message",
               ownerBotId: target.id,
               responseMode: "single",
-              ownershipMode: "support",
-              execution: turnExecutionForSource("bot_message"),
+              ownershipMode: returnsToSender ? "owner" : "support",
+              execution: turnExecutionForSource(returnsToSender ? "chat" : "bot_message"),
               collaboration,
             }),
           },

@@ -65,6 +65,28 @@ export function supportCollaboration(input: {
   };
 }
 
+/**
+ * Lineage of an owner's resume run woken by a delegated outcome. The hop is
+ * technically a bot_message, but the recipient is the ORIGINAL owner taking
+ * the result back into its user-facing answer — ownership never moved, so the
+ * role stays "owner" and the run gets the owner-grade execution policy.
+ */
+export function ownerResumptionCollaboration(input: {
+  fromBotId: string;
+  parentRunId: string;
+  handoffDepth: number;
+  messageHop: number;
+}): CollaborationLineageV1 {
+  return {
+    role: "owner",
+    source: "bot_message",
+    fromBotId: input.fromBotId,
+    parentRunId: input.parentRunId,
+    handoffDepth: input.handoffDepth,
+    messageHop: input.messageHop,
+  };
+}
+
 /** Lineage of a handoff recipient: the new owner of this stage. */
 export function handoffCollaboration(input: {
   fromBotId: string;
