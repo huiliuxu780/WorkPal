@@ -22,7 +22,13 @@ export type TurnRouteKind =
   /** The Group Router selected the owner for an otherwise unaddressed group turn. */
   | "group_router"
   /** Routing fell back to the group lead (no router, or router failure). */
-  | "fallback_lead";
+  | "fallback_lead"
+  /** Phase 2+: another persistent bot transferred ownership of this stage. */
+  | "handoff"
+  /** Phase 2+: a persistent bot asked this bot to handle part of its turn. */
+  | "bot_message"
+  /** Phase 2+: routine / webhook / messaging / intro / post-call continuation. */
+  | "automation";
 
 export type ResolvedTurnOwner = {
   kind: TurnRouteKind;

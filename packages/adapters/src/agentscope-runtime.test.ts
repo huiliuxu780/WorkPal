@@ -87,6 +87,38 @@ describe("AgentScopeAgentRuntime", () => {
       runId: "run-1",
       model: { provider: "openai-compatible", apiKey: "fixture-key" },
     });
+    // Without an explicit policy the wire stays policy-free; the runtime's
+    // per-scope defaults apply (legacy resume compatibility).
+    expect((fixture.requests[0] as { turnPolicy?: unknown }).turnPolicy).toBeUndefined();
+  });
+
+  it("flattens the Product Harness TurnPolicy to the runtime wire shape", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const next = runRequest();
+    next.turnPolicy = {
+      version: "v1",
+      interaction: { interactive: false },
+      planning: { mode: "disabled" },
+      delegation: { mode: "auto", background: false, maxChildren: 2, maxDepth: 1 },
+      ownership: { mode: "support", ownerBotId: "bot-lead" },
+      routing: { kind: "bot_message" },
+    };
+    for await (const _event of runtime.run(next, runContext())) {
+      // drain
+    }
+    expect(fixture.requests[0]).toMatchObject({
+      turnPolicy: {
+        interactive: false,
+        planning: "disabled",
+        delegation: { mode: "auto", background: false, maxChildren: 2, maxDepth: 1 },
+        ownership: { mode: "support", ownerBotId: "bot-lead" },
+        routingKind: "bot_message",
+      },
+    });
   });
 
   it("serializes scoped skills for AgentScope on-demand loading", async () => {

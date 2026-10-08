@@ -127,8 +127,11 @@ public final class RuntimeEngine {
         var permissions = PermissionContextState.builder().mode(PermissionMode.DEFAULT);
         List<String> backendToolNames = new ArrayList<>();
         List<String> childToolNames = new ArrayList<>();
+        // TurnPolicy (Product Harness Phase 2): native delegation requires both
+        // the backend offering run_subagent and the policy allowing it.
         boolean allowSubagents = request.tools() != null
-                && request.tools().stream().anyMatch(tool -> "run_subagent".equals(tool.name()));
+                && request.tools().stream().anyMatch(tool -> "run_subagent".equals(tool.name()))
+                && request.delegationAllowed();
         if (request.tools() != null) {
             for (RunRequest.ToolDefinition tool : request.tools()) {
                 if ("run_subagent".equals(tool.name())) continue;
@@ -139,18 +142,23 @@ public final class RuntimeEngine {
                         tool.name(), null, PermissionBehavior.ALLOW, "workpal-run-allowlist"));
             }
         }
-        List<String> harnessTools = new ArrayList<>(List.of("plan_enter", "plan_write",
-                "load_skill_through_path"));
+        List<String> harnessTools = new ArrayList<>();
+        // TurnPolicy: a disabled planning mode hides the whole native plan
+        // surface, so non-interactive runs cannot stall on plan approval.
+        if (request.planningAllowed()) harnessTools.addAll(List.of("plan_enter", "plan_write"));
+        harnessTools.add("load_skill_through_path");
         if (allowSubagents) harnessTools.addAll(List.of("agent_spawn", "agent_send", "agent_list",
                 "task_output", "task_cancel", "task_list"));
         for (String name : harnessTools) permissions.addAllowRule(name,
                 new PermissionRule(name, null, PermissionBehavior.ALLOW, "workpal-harness"));
-        permissions.addAskRule("plan_exit", new PermissionRule(
-                "plan_exit", null, PermissionBehavior.ASK, "workpal-plan-approval"));
+        if (request.planningAllowed()) {
+            permissions.addAskRule("plan_exit", new PermissionRule(
+                    "plan_exit", null, PermissionBehavior.ASK, "workpal-plan-approval"));
+        }
         ToolsConfig toolFilter = new ToolsConfig();
         List<String> visibleTools = new ArrayList<>(backendToolNames);
         visibleTools.addAll(harnessTools);
-        visibleTools.add("plan_exit");
+        if (request.planningAllowed()) visibleTools.add("plan_exit");
         toolFilter.setAllow(visibleTools);
         toolFilter.setDeny(List.of("web_fetch", "web_search", "memory_save", "memory_search",
                 "memory_get", "session_search", "session_list", "session_history",
@@ -172,11 +180,12 @@ public final class RuntimeEngine {
                 .disableShellTool()
                 .disableMemoryTools()
                 .disableMemoryHooks()
-                .disableDefaultWorkspaceSkills()
-                .enablePlanMode();
+                .disableDefaultWorkspaceSkills();
+        if (request.planningAllowed()) builder.enablePlanMode();
         if (allowSubagents) {
             builder.taskRepository(new InterruptibleTaskRepository(
-                    new WorkspaceManager(workspace), hash(request.botId())));
+                    new WorkspaceManager(workspace), hash(request.botId()),
+                    request.backgroundAllowed(), request.maxChildren()));
             builder.subagent(SubagentDeclaration.builder()
                     .name("helper")
                     .description("Complete a focused delegated task using the parent's authorized capabilities.")
