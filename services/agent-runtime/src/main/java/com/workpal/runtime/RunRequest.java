@@ -173,9 +173,11 @@ public record RunRequest(
     }
 
     public int maxChildren() {
+        // An explicit zero means "no helpers this turn" and must be preserved;
+        // only an absent or nonsensical (negative) value falls back to the default.
         if (turnPolicy == null || turnPolicy.delegation() == null
                 || turnPolicy.delegation().maxChildren() == null
-                || turnPolicy.delegation().maxChildren() <= 0) {
+                || turnPolicy.delegation().maxChildren() < 0) {
             return 3;
         }
         return turnPolicy.delegation().maxChildren();

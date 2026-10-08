@@ -18,13 +18,18 @@ final class InterruptibleTaskRepository extends WorkspaceTaskRepository {
     private final ConcurrentHashMap<String, Thread> localWorkers = new ConcurrentHashMap<>();
     private final boolean backgroundAllowed;
     private final int maxChildren;
-    private final AtomicInteger children = new AtomicInteger();
+    /**
+     * Shared with the engine across every attempt of the same Run so a retry or
+     * resume cannot reset the per-turn helper budget.
+     */
+    private final AtomicInteger children;
 
     InterruptibleTaskRepository(WorkspaceManager workspace, String parentAgentId,
-            boolean backgroundAllowed, int maxChildren) {
+            boolean backgroundAllowed, int maxChildren, AtomicInteger children) {
         super(workspace, parentAgentId);
         this.backgroundAllowed = backgroundAllowed;
         this.maxChildren = maxChildren;
+        this.children = children;
     }
 
     @Override public BackgroundTask putTask(RuntimeContext context, String taskId, String agentId,

@@ -63,6 +63,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import reactor.core.Disposable;
 import reactor.core.Disposables;
@@ -76,6 +77,14 @@ public final class RuntimeEngine {
     private final Path workspaceRoot;
     private final ConcurrentHashMap<String, RunningAgent> running = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BackgroundHandle> background = new ConcurrentHashMap<>();
+    /**
+     * TurnPolicy helper budget per session slot, shared across every attempt of
+     * the same Run: the session key embeds the run id, so a retry or resume
+     * continues the count instead of letting each attempt spawn maxChildren
+     * fresh helpers. Terminal attempts are removed in execute()'s finally;
+     * paused attempts keep their budget for the resume.
+     */
+    private final ConcurrentHashMap<String, AtomicInteger> spawnBudgets = new ConcurrentHashMap<>();
 
     private record RunningAgent(HarnessAgent agent, RuntimeContext context, Disposable.Swap stream) {}
     private record BackgroundHandle(RunRequest request, HarnessAgent agent, RuntimeContext context,
@@ -117,6 +126,8 @@ public final class RuntimeEngine {
         JsonFileAgentStateStore store = new JsonFileAgentStateStore(stateRoot.resolve(hash(request.botId())));
         String userSlot = tenant;
         String sessionSlot = session;
+        AtomicInteger spawnBudget = spawnBudgets.computeIfAbsent(sessionSlot, key -> new AtomicInteger());
+        boolean pausedForResume = false;
         AgentState loaded = store.get(userSlot, sessionSlot, "agent_state", AgentState.class).orElse(null);
         boolean fresh = loaded == null;
         List<ToolUseBlock> pendingFromPreviousAttempt = pendingToolCalls(loaded);
@@ -185,7 +196,7 @@ public final class RuntimeEngine {
         if (allowSubagents) {
             builder.taskRepository(new InterruptibleTaskRepository(
                     new WorkspaceManager(workspace), hash(request.botId()),
-                    request.backgroundAllowed(), request.maxChildren()));
+                    request.backgroundAllowed(), request.maxChildren(), spawnBudget));
             builder.subagent(SubagentDeclaration.builder()
                     .name("helper")
                     .description("Complete a focused delegated task using the parent's authorized capabilities.")
@@ -246,7 +257,10 @@ public final class RuntimeEngine {
             } else {
                 input = resumeTools(pendingFromPreviousAttempt, request, bridge, sink, seenSteering, true);
             }
-            if (input == null) return;
+            if (input == null) {
+                pausedForResume = true;
+                return;
+            }
         } else {
             input = new ArrayList<>();
             if (fresh && request.history() != null) {
@@ -286,6 +300,7 @@ public final class RuntimeEngine {
                 String name = mapper.toolNames.getOrDefault(pausedToolCalls.iterator().next(), "Tool");
                 sink.emit(Map.of("type", "progress", "text", name + " waiting for approval", "activity", true));
                 sink.emit(Map.of("type", "paused", "reason", "approval-or-secret"));
+                pausedForResume = true;
                 return;
             }
             if (mapper.confirm != null) {
@@ -295,6 +310,7 @@ public final class RuntimeEngine {
                         "actions", List.of(Map.of("id", "approve", "label", "Approve"),
                                 Map.of("id", "reject", "label", "Reject"))));
                 sink.emit(Map.of("type", "paused", "reason", "approval"));
+                pausedForResume = true;
                 return;
             }
             if (mapper.external == null) {
@@ -306,13 +322,20 @@ public final class RuntimeEngine {
                 return;
             }
             input = resumeTools(mapper.external.getToolCalls(), request, bridge, sink, seenSteering, false);
-            if (input == null) return;
+            if (input == null) {
+                pausedForResume = true;
+                return;
+            }
         }
         throw new IllegalStateException("AgentScope exceeded the external tool resume limit");
         } finally {
             bridge.closeForeground();
             running.remove(request.runId(), active);
             if (temporaryDeliveryRepository) deliveryRepository.shutdown();
+            // Terminal attempts release the shared helper budget; a paused run
+            // keeps it so the resume cannot spawn a fresh maxChildren batch.
+            if (!pausedForResume) spawnBudgets.remove(sessionSlot, spawnBudget);
+            if (spawnBudgets.size() > 8192) spawnBudgets.clear();
         }
     }
 

@@ -94,11 +94,16 @@ class RunRequestPolicyTest {
         assertFalse(request.delegationAllowed());
     }
 
-    @Test void zeroBudgetFallsBackToDefaultThree() throws Exception {
-        RunRequest request = parsed(
+    @Test void explicitZeroBudgetIsPreservedAndNegativesFallBack() throws Exception {
+        RunRequest zero = parsed(
                 "\"turnPolicy\":{\"interactive\":true,\"planning\":\"auto\","
                         + "\"delegation\":{\"mode\":\"auto\",\"background\":true,\"maxChildren\":0,\"maxDepth\":1},"
                         + "\"ownership\":{\"mode\":\"owner\",\"ownerBotId\":\"bot-1\"},\"routingKind\":\"direct\"}");
-        assertEquals(3, request.maxChildren());
+        assertEquals(0, zero.maxChildren(), "zero means no helpers and must not become three");
+        RunRequest negative = parsed(
+                "\"turnPolicy\":{\"interactive\":true,\"planning\":\"auto\","
+                        + "\"delegation\":{\"mode\":\"auto\",\"background\":true,\"maxChildren\":-2,\"maxDepth\":1},"
+                        + "\"ownership\":{\"mode\":\"owner\",\"ownerBotId\":\"bot-1\"},\"routingKind\":\"direct\"}");
+        assertEquals(3, negative.maxChildren());
     }
 }
