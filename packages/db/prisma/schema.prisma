@@ -385,6 +385,7 @@ model Bot {
   steeringMessages  SteeringMessage[]
   mcpServers        BotMcpServer[]
   groupMembers      ChatGroupMember[]
+  ledGroups         ChatGroup[]         @relation("ChatGroupLeadBot")
   botSecrets BotSecret[]
 
   externalConversations ExternalConversation[]
@@ -437,6 +438,10 @@ model ChatGroup {
   pinned     Boolean           @default(false)
   sectionId  String?
   section    BotSection?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  /// Product Harness routing/coordination fallback owner. Nullable: membership and
+  /// liveness are validated at routing time and self-healed to an active member.
+  leadBotId  String?
+  leadBot    Bot?              @relation("ChatGroupLeadBot", fields: [leadBotId], references: [id], onDelete: SetNull)
   archivedAt DateTime?
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
@@ -568,6 +573,8 @@ model Run {
   userId               String
   status               String
   trigger              String
+  /// Immutable Product Harness decision captured when the Run was created.
+  orchestration        Json?
   modelProvider        String?
   modelId              String?
   error                String?

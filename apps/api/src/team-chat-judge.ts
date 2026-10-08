@@ -120,12 +120,30 @@ interface ModelTeamChatEngagementJudgeDeps {
   timeoutMs?: number;
 }
 
+export type AuxJudgeModelDeps = {
+  prisma: PrismaClient;
+  secrets: EncryptedSecretStore;
+  deploymentProvider: string;
+  deploymentModel: string;
+  deploymentModelKey?: string;
+  providerOverride?: string;
+  modelOverride?: string;
+};
+
+export type AuxJudgeModelBot = {
+  id: string;
+  spaceId: string;
+  userId: string;
+  modelProvider: string | null;
+  modelId: string | null;
+};
+
 export class ModelTeamChatEngagementJudge implements TeamChatEngagementJudge {
   constructor(private readonly deps: ModelTeamChatEngagementJudgeDeps) {}
 
   async decide(input: TeamChatEngagementInput): Promise<TeamChatEngagementDecision> {
     try {
-      const resolved = await this.resolveModel(input.bot);
+      const resolved = await resolveAuxJudgeModel(this.deps, input.bot);
       if (!resolved) return { act: false };
       const prompt = renderTeamChatEngagementPrompt({
         botName: input.bot.name,
@@ -185,128 +203,128 @@ export class ModelTeamChatEngagementJudge implements TeamChatEngagementJudge {
       return { act: false };
     }
   }
+}
 
-  private async resolveModel(bot: TeamChatEngagementInput["bot"]): Promise<{
-    model: {
-      provider: string;
-      id: string;
-      apiKey?: string;
-      baseUrl?: string;
-      oauth?: AgentRunModel["oauth"];
-    };
-  } | null> {
-    const settings = await this.deps.prisma.deploymentSettings.findUnique({
-      where: { id: "default" },
-    });
-    const scope = { userId: bot.userId, spaceId: bot.spaceId };
-    const defaultCredential = await findDefaultModelCredential(this.deps.prisma, scope);
-    const requestedProvider = this.deps.providerOverride ?? bot.modelProvider;
-    const requestedModel = this.deps.modelOverride ?? bot.modelId;
-    const overrideCredential = requestedProvider
-      ? await findModelCredential(this.deps.prisma, scope, requestedProvider)
-      : null;
-    const explicitJudgeOverride = Boolean(this.deps.providerOverride && this.deps.modelOverride);
-    const useOverride = Boolean(
-      requestedProvider && requestedModel && (explicitJudgeOverride || overrideCredential),
-    );
-    const credential = useOverride ? overrideCredential : defaultCredential;
-    const provider =
-      (useOverride ? requestedProvider : null) ??
-      credential?.provider ??
-      settings?.defaultModelProvider ??
-      this.deps.deploymentProvider;
-    const modelId =
-      (useOverride ? requestedModel : null) ??
-      credential?.defaultModel ??
-      settings?.defaultModelId ??
-      this.deps.deploymentModel;
-    if (!provider || !modelId) return null;
+export async function resolveAuxJudgeModel(deps: AuxJudgeModelDeps, bot: AuxJudgeModelBot): Promise<{
+  model: {
+    provider: string;
+    id: string;
+    apiKey?: string;
+    baseUrl?: string;
+    oauth?: AgentRunModel["oauth"];
+  };
+} | null> {
+  const settings = await deps.prisma.deploymentSettings.findUnique({
+    where: { id: "default" },
+  });
+  const scope = { userId: bot.userId, spaceId: bot.spaceId };
+  const defaultCredential = await findDefaultModelCredential(deps.prisma, scope);
+  const requestedProvider = deps.providerOverride ?? bot.modelProvider;
+  const requestedModel = deps.modelOverride ?? bot.modelId;
+  const overrideCredential = requestedProvider
+    ? await findModelCredential(deps.prisma, scope, requestedProvider)
+    : null;
+  const explicitJudgeOverride = Boolean(deps.providerOverride && deps.modelOverride);
+  const useOverride = Boolean(
+    requestedProvider && requestedModel && (explicitJudgeOverride || overrideCredential),
+  );
+  const credential = useOverride ? overrideCredential : defaultCredential;
+  const provider =
+    (useOverride ? requestedProvider : null) ??
+    credential?.provider ??
+    settings?.defaultModelProvider ??
+    deps.deploymentProvider;
+  const modelId =
+    (useOverride ? requestedModel : null) ??
+    credential?.defaultModel ??
+    settings?.defaultModelId ??
+    deps.deploymentModel;
+  if (!provider || !modelId) return null;
 
-    if (!credential) {
-      const apiKey =
-        provider === this.deps.deploymentProvider ? this.deps.deploymentModelKey : undefined;
-      return { model: { provider, id: modelId, ...(apiKey ? { apiKey } : {}) } };
-    }
-
-    const secret = await this.deps.prisma.secret.findFirst({
-      where: { id: credential.secretId, userId: bot.userId, spaceId: null },
-    });
-    if (!secret) return null;
-    const persist = async (plaintext: string) => {
-      const stored = await this.deps.secrets.put(
-        plaintext,
-        {
-          operationId: "team-chat-judge-credential",
-          traceId: "team-chat-judge-credential",
-          spaceId: bot.spaceId,
-          userId: bot.userId,
-          botId: bot.id,
-          signal: new AbortController().signal,
-        },
-        secret.id,
-      );
-      await this.deps.prisma.secret.update({
-        where: { id: secret.id },
-        data: { ciphertext: stored.ciphertext },
-      });
-    };
-    // Same fences as the run path: a stale failure must not delete material a
-    // concurrent refresh or reconnect already persisted.
-    const retire = (
-      _reason: ModelCredentialRetireReason,
-      _detail: string | undefined,
-      failed?: ModelCredentialFailedState,
-    ) =>
-      retireModelCredential(this.deps.prisma, {
-        userId: bot.userId,
-        credentialId: credential.id,
-        secretId: credential.secretId,
-        matchesFailedSecret: failed
-          ? matchesFailedOAuthSecret(
-              (ciphertext, secretId) => this.deps.secrets.load(ciphertext, secretId),
-              failed,
-            )
-          : undefined,
-      });
-    const plaintext = this.deps.secrets.load(secret.ciphertext, secret.id);
-    const auth = await resolveModelAuth(plaintext, provider, { persist, retire });
-    const parsed = auth.secret;
-    const limit = parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {};
-    if (parsed.kind === "oauth") {
-      return {
-        model: {
-          provider,
-          id: modelId,
-          ...limit,
-          oauth: {
-            credential: { ...parsed.credential },
-            persist: async (credential) => {
-              await persist(
-                serializeModelSecret({
-                  kind: "oauth",
-                  credential: toOAuthCredential(credential),
-                  ...limit,
-                }),
-              );
-            },
-            retire,
-          },
-        },
-      };
-    }
-    if (parsed.kind === "openai_compatible") {
-      return {
-        model: {
-          provider,
-          id: modelId,
-          apiKey: parsed.apiKey,
-          baseUrl: parsed.baseUrl,
-          ...limit,
-        },
-      };
-    }
-    return { model: { provider, id: modelId, apiKey: auth.apiKey, ...limit } };
+  if (!credential) {
+    const apiKey =
+      provider === deps.deploymentProvider ? deps.deploymentModelKey : undefined;
+    return { model: { provider, id: modelId, ...(apiKey ? { apiKey } : {}) } };
   }
+
+  const secret = await deps.prisma.secret.findFirst({
+    where: { id: credential.secretId, userId: bot.userId, spaceId: null },
+  });
+  if (!secret) return null;
+  const persist = async (plaintext: string) => {
+    const stored = await deps.secrets.put(
+      plaintext,
+      {
+        operationId: "team-chat-judge-credential",
+        traceId: "team-chat-judge-credential",
+        spaceId: bot.spaceId,
+        userId: bot.userId,
+        botId: bot.id,
+        signal: new AbortController().signal,
+      },
+      secret.id,
+    );
+    await deps.prisma.secret.update({
+      where: { id: secret.id },
+      data: { ciphertext: stored.ciphertext },
+    });
+  };
+  // Same fences as the run path: a stale failure must not delete material a
+  // concurrent refresh or reconnect already persisted.
+  const retire = (
+    _reason: ModelCredentialRetireReason,
+    _detail: string | undefined,
+    failed?: ModelCredentialFailedState,
+  ) =>
+    retireModelCredential(deps.prisma, {
+      userId: bot.userId,
+      credentialId: credential.id,
+      secretId: credential.secretId,
+      matchesFailedSecret: failed
+        ? matchesFailedOAuthSecret(
+            (ciphertext, secretId) => deps.secrets.load(ciphertext, secretId),
+            failed,
+          )
+        : undefined,
+    });
+  const plaintext = deps.secrets.load(secret.ciphertext, secret.id);
+  const auth = await resolveModelAuth(plaintext, provider, { persist, retire });
+  const parsed = auth.secret;
+  const limit = parsed.maxTokens !== undefined ? { maxTokens: parsed.maxTokens } : {};
+  if (parsed.kind === "oauth") {
+    return {
+      model: {
+        provider,
+        id: modelId,
+        ...limit,
+        oauth: {
+          credential: { ...parsed.credential },
+          persist: async (credential) => {
+            await persist(
+              serializeModelSecret({
+                kind: "oauth",
+                credential: toOAuthCredential(credential),
+                ...limit,
+              }),
+            );
+          },
+          retire,
+        },
+      },
+    };
+  }
+  if (parsed.kind === "openai_compatible") {
+    return {
+      model: {
+        provider,
+        id: modelId,
+        apiKey: parsed.apiKey,
+        baseUrl: parsed.baseUrl,
+        ...limit,
+      },
+    };
+  }
+  return { model: { provider, id: modelId, apiKey: auth.apiKey, ...limit } };
 }
 
 function truncate(value: string, max: number): string {

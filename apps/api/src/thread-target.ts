@@ -13,12 +13,18 @@ import {
 } from "@rakazo/contracts";
 import {
   ACTIVE_RUN_STATUSES,
+  buildRunOrchestration,
   callIdFromClientNonce,
   isActive,
   isConversationalRun,
   projectMessages,
-  resolveGroupTargetBotIds,
+  resolveExplicitTurnOwner,
   runFailureError,
+  selectGroupLead,
+  type GroupRouterReasonCode,
+  type ResolvedTurnOwner,
+  type ResponseMode,
+  type TurnRouteKind,
 } from "@rakazo/core";
 import { deriveMessageQuote } from "@rakazo/core/message-quote";
 import {
@@ -45,6 +51,7 @@ import {
 import { resolveBusyBotName, toComputerStatus } from "./computer-status.js";
 import { withSerializableRetry } from "./serializable-retry.js";
 import { loadMessagePage } from "./thread-message-pages.js";
+import type { GroupTurnPreRouting, TurnRoutingProvider } from "./turn-routing.js";
 
 export type ThreadTarget =
   | {
@@ -58,6 +65,8 @@ export type ThreadTarget =
       groupId: string;
       threadId: string;
       groupName: string;
+      /** Product Harness routing/coordination fallback owner (null until self-healed). */
+      leadBotId: string | null;
       members: GroupMember[];
       memberBotIds: string[];
     };
@@ -273,11 +282,69 @@ async function lockAndLoadGroupMembers(
     },
   });
   if (!group || group.members.length < GROUP_MEMBER_MIN) throw new IsolationError();
-  return group.members.map((member) => ({
-    botId: member.bot.id,
-    name: member.bot.name,
-    color: member.bot.color,
-  }));
+  return {
+    leadBotId: group.leadBotId,
+    members: group.members.map((member) => ({
+      botId: member.bot.id,
+      name: member.bot.name,
+      color: member.bot.color,
+    })),
+  };
+}
+
+/**
+ * Resolve the response owner for one group turn against locked membership.
+ * Precedence (Product Harness §2): explicit mention > reply target > the
+ * pre-computed router owner (re-validated, never re-consulted) > the group
+ * lead. A lead that is no longer an active member is deterministically
+ * replaced and the stored leadBotId is repaired in the same transaction.
+ * The Run rows created for this turn each carry an immutable orchestration
+ * snapshot, so a retry or continuation reads back the same decision instead
+ * of routing.
+ */
+export async function resolveGroupTurnOwner(input: {
+  tx: Prisma.TransactionClient;
+  groupId: string;
+  leadBotId: string | null;
+  members: readonly { botId: string; name: string }[];
+  text: string;
+  explicitMentionIds: readonly string[];
+  replyAuthorBotId?: string;
+  preRouting: GroupTurnPreRouting | null;
+}): Promise<ResolvedTurnOwner & { reasonCode?: GroupRouterReasonCode }> {
+  const deterministic = resolveExplicitTurnOwner({
+    text: input.text,
+    members: input.members.map((member) => ({ id: member.botId, name: member.name })),
+    explicitMentionIds: input.explicitMentionIds,
+    replyTargetBotId: input.replyAuthorBotId ?? null,
+  });
+  if (!("unresolved" in deterministic)) return deterministic;
+
+  const memberBotIds = new Set(input.members.map((member) => member.botId));
+  const routed = input.preRouting?.ownerBotIds.filter((botId) => memberBotIds.has(botId)) ?? [];
+  if (input.preRouting && routed.length) {
+    return {
+      kind: input.preRouting.routeKind,
+      ownerBotIds: routed,
+      responseMode: input.preRouting.responseMode,
+      reasonCode: input.preRouting.reasonCode,
+    };
+  }
+
+  const lead = selectGroupLead(input.leadBotId, [...memberBotIds]);
+  if (!lead) throw new IsolationError("Group send did not resolve a turn owner");
+  if (lead.repaired) {
+    await input.tx.chatGroup.update({
+      where: { id: input.groupId },
+      data: { leadBotId: lead.botId },
+    });
+  }
+  return {
+    kind: "fallback_lead",
+    ownerBotIds: [lead.botId],
+    responseMode: "single",
+    reasonCode: "fallback_lead",
+  };
 }
 
 export async function resolveThreadTarget(
@@ -311,6 +378,7 @@ export async function resolveThreadTarget(
       groupId: group.id,
       threadId: group.thread.id,
       groupName: group.name,
+      leadBotId: group.leadBotId,
       members,
       memberBotIds: members.map((member) => member.botId),
     };
@@ -597,6 +665,8 @@ export async function sendThreadMessage(
     prisma: PrismaClient;
     events: ThreadEvents;
     jobs: JobPublisher;
+    /** Product Harness group turn routing. Absent only in tests/single-bot sends. */
+    turnRouting?: TurnRoutingProvider;
   },
   actor: Actor,
   target: ThreadTarget,
@@ -618,20 +688,43 @@ export async function sendThreadMessage(
   if (requestedReplyQuote && !input.replyToMessageId) {
     throw new ORPCError("BAD_REQUEST", { message: "replyQuote requires replyToMessageId." });
   }
+  // Product Harness: resolve group turn ownership once, before the serializable
+  // transaction. withSerializableRetry may re-run commit(), and a re-run must
+  // reuse this decision — a retry never re-routes. The provider contains its
+  // own failures; routing decides who answers, it never costs the user the send.
+  const preRouting =
+    target.kind === "group" && deps.turnRouting
+      ? await deps.turnRouting
+          .preRoute({
+            spaceId: actor.spaceId,
+            userId: actor.userId,
+            groupId: target.groupId,
+            threadId: target.threadId,
+            text: input.text ?? "",
+            explicitMentionIds: splitMentionTargets(input.mentions).botMentionIds,
+            replyToMessageId: input.replyToMessageId,
+          })
+          .catch((error) => {
+            getLogger().error("group turn pre-routing failed", error);
+            return null;
+          })
+      : null;
 
   const commit = () =>
     deps.prisma.$transaction(async (tx) => {
       let replyToMessageId: string | undefined;
       let replyQuote: string | undefined;
+      let replyAuthorBotId: string | undefined;
       if (input.replyToMessageId) {
         const reply = await tx.message.findFirst({
           where: { id: input.replyToMessageId, threadId: target.threadId },
-          select: { id: true, blocks: true, role: true },
+          select: { id: true, blocks: true, role: true, botId: true },
         });
         // A deleted or paged-out parent must not lose the send: drop to a
         // plain reply, same as quote verification failing below.
         if (reply) {
           replyToMessageId = input.replyToMessageId;
+          if (reply.role === "bot" && reply.botId) replyAuthorBotId = reply.botId;
           // Persist only text derived from the authoritative parent. A
           // mismatch or a derivation failure still sends a plain reply so
           // quote verification cannot lose a message.
@@ -785,6 +878,11 @@ export async function sendThreadMessage(
             trigger: "user",
             clientNonce: sendRunClientNonce(input.clientNonce, message.id),
             sourceMessageId: message.id,
+            orchestration: buildRunOrchestration({
+              kind: "direct",
+              ownerBotId: target.botId,
+              responseMode: "single",
+            }),
           },
         });
         await tx.message.update({ where: { id: message.id }, data: { runId: run.id } });
@@ -812,14 +910,22 @@ export async function sendThreadMessage(
         return { message, runs: [run], eventSeq: event.seq };
       }
 
-      const members = await lockAndLoadGroupMembers(tx, actor, target);
+      const { leadBotId, members } = await lockAndLoadGroupMembers(tx, actor, target);
       const memberBotIds = members.map((member) => member.botId);
       const mentionTargets = splitMentionTargets(input.mentions);
-      const targetBotIds = resolveGroupTargetBotIds({
+      // Product Harness ownership precedence over locked membership:
+      // explicit mention > reply target > pre-computed router owner > group lead.
+      const turnOwner = await resolveGroupTurnOwner({
+        tx,
+        groupId: target.groupId,
+        leadBotId,
+        members,
         text: input.text ?? "",
-        members: members.map((member) => ({ id: member.botId, name: member.name })),
-        explicitMentions: mentionTargets.botMentionIds,
+        explicitMentionIds: mentionTargets.botMentionIds,
+        replyAuthorBotId,
+        preRouting,
       });
+      const targetBotIds = turnOwner.ownerBotIds;
       const { blocks: attachmentBlocks, artifacts } = await resolveGroupSendAttachments(
         { prisma: tx },
         actor,
@@ -932,6 +1038,12 @@ export async function sendThreadMessage(
             trigger: "user",
             clientNonce: sendRunClientNonce(input.clientNonce, message.id, botId),
             sourceMessageId: message.id,
+            orchestration: buildRunOrchestration({
+              kind: turnOwner.kind,
+              ownerBotId: botId,
+              responseMode: turnOwner.responseMode,
+              reasonCode: turnOwner.reasonCode,
+            }),
           },
         });
         runs.push(run);
@@ -967,6 +1079,24 @@ export async function sendThreadMessage(
           runIds: runs.map((run) => run.id),
           replyToMessageId,
           replyQuote,
+        },
+      });
+      // Durable routing decision: one thread.turn.routed per resolved group
+      // turn. Observability and later UI projection read this event; the Run
+      // rows carry the same decision in their immutable orchestration snapshot.
+      await appendEventInTransaction(tx, {
+        spaceId: actor.spaceId,
+        threadId: target.threadId,
+        botId: eventBotId,
+        type: "thread.turn.routed",
+        runId: firstRun?.id ?? activeRuns[0]?.id,
+        payload: {
+          messageId: message.id,
+          ownerBotId: turnOwner.ownerBotIds[0] ?? null,
+          ...(turnOwner.ownerBotIds.length > 1 ? { ownerBotIds: turnOwner.ownerBotIds } : {}),
+          routeKind: turnOwner.kind,
+          responseMode: turnOwner.responseMode,
+          ...(turnOwner.reasonCode ? { reasonCode: turnOwner.reasonCode } : {}),
         },
       });
       return { message, runs, eventSeq: event.seq };

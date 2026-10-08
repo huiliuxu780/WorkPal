@@ -49,10 +49,9 @@ export function resolveGroupTargetBotIds(input: {
     }
   }
 
-  if (targetIds.size === 0 && input.members[0]) {
-    targetIds.add(input.members[0].id);
-  }
-
+  // An empty result means "no explicit target" (unresolved). Member order is
+  // not a routing signal: the Product Harness resolves unaddressed group turns
+  // through the Group Router and the group lead, never through members[0].
   return [...targetIds];
 }
 

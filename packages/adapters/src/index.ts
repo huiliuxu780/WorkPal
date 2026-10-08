@@ -92,6 +92,7 @@ export * from "./pi-oauth.js";
 export * from "./pi-openai-compatible-provider.js";
 export * from "./pipedream-connector.js";
 export * from "./private-endpoint.js";
+export * from "./product-harness/group-router.js";
 export * from "./realtime.js";
 export * from "./release-watch.js";
 export * from "./remote-mcp.js";

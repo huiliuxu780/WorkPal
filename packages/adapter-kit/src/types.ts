@@ -410,7 +410,7 @@ export interface AgentRunRequest {
   runId: string;
   sourceMessageId?: string | null;
   /** Backend-selected auxiliary executions are stateless and do not share the chat lease. */
-  executionScope?: "chat" | "auto-review" | "history-compaction";
+  executionScope?: "chat" | "auto-review" | "history-compaction" | "turn-routing";
   /** Product thread-clear generation. A new generation starts a fresh Harness session. */
   sessionGeneration?: number;
   /** Answer recorded for a paused native Harness tool in this Run. */
