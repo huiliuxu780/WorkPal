@@ -3,6 +3,7 @@ import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { RunActivityRow } from "@rakazo/contracts";
 import { useEffect, useState } from "react";
+import { activityLineText } from "../lib/activity-view";
 import { rpc } from "../lib/rpc";
 
 function statusTone(status: RunActivityRow["status"]): string {
@@ -96,6 +97,9 @@ function ActivityRow({ run, onOpen }: { run: RunActivityRow; onOpen: () => void 
   const label = statusLabel(run.status);
   const activityLabel = t`${title}, ${label}`;
   const tone = statusTone(run.status);
+  // §27: the server-projected current activity leads; the prompt snippet is
+  // the fallback, never a second vocabulary.
+  const snippet = activityLineText(run);
   return (
     <button
       type="button"
@@ -115,9 +119,9 @@ function ActivityRow({ run, onOpen }: { run: RunActivityRow; onOpen: () => void 
           </span>
         </div>
         <div className="mt-0.5 flex items-baseline gap-2">
-          {run.promptSnippet ? (
+          {snippet ? (
             <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-              {run.promptSnippet}
+              {snippet}
             </span>
           ) : null}
           <span className={`ms-auto shrink-0 text-xs ${tone}`}>{label}</span>

@@ -1647,6 +1647,124 @@ describe("computer event reduction", () => {
   });
 });
 
+describe("activity projection reduction (Phase 4)", () => {
+  it("folds collaboration events into snapshot.activity with real bot names", () => {
+    const next = reduceThreadSnapshot(
+      snapshot([]),
+      event({
+        type: "thread.collaboration.requested",
+        seq: 11,
+        botId: "bot-b",
+        runId: "run-2",
+        payload: {
+          fromBotId: "bot-1",
+          toBotId: "bot-b",
+          fromRunId: "run-1",
+          toRunId: "run-2",
+          intent: "request",
+        },
+      }),
+      { botNames: { "bot-1": "Alice", "bot-b": "Finance" } },
+    );
+    expect(next?.activity).toEqual([
+      expect.objectContaining({
+        id: "collab:run-2",
+        kind: "delegation",
+        status: "running",
+        title: "Asked Finance for help",
+        runId: "run-1",
+      }),
+    ]);
+    expect(next?.cursor).toBe(11);
+  });
+
+  it("closes the delegation when the result returns", () => {
+    let state = reduceThreadSnapshot(
+      snapshot([]),
+      event({
+        type: "thread.collaboration.requested",
+        seq: 11,
+        botId: "bot-b",
+        runId: "run-2",
+        payload: { fromBotId: "bot-1", toBotId: "bot-b", fromRunId: "run-1", toRunId: "run-2", intent: "request" },
+      }),
+      { botNames: { "bot-b": "Finance" } },
+    );
+    state = reduceThreadSnapshot(
+      state,
+      event({
+        type: "thread.collaboration.result",
+        seq: 12,
+        botId: "bot-1",
+        runId: "run-3",
+        payload: { fromBotId: "bot-b", toBotId: "bot-1", fromRunId: "run-2", toRunId: "run-3", intent: "result" },
+      }),
+      { botNames: { "bot-b": "Finance" } },
+    );
+    expect(state?.activity?.map((item) => [item.id, item.status, item.title])).toEqual([
+      ["collab:run-2", "completed", "Asked Finance for help"],
+      ["result:run-3", "completed", "Finance returned a result"],
+    ]);
+  });
+
+  it("clears projected activity when the thread is cleared", () => {
+    const withActivity = reduceThreadSnapshot(
+      snapshot([]),
+      event({
+        type: "thread.collaboration.requested",
+        seq: 11,
+        botId: "bot-b",
+        runId: "run-2",
+        payload: { fromBotId: "bot-1", toBotId: "bot-b", fromRunId: "run-1", toRunId: "run-2" },
+      }),
+    );
+    expect(withActivity?.activity?.length).toBe(1);
+    const cleared = reduceThreadSnapshot(withActivity, event({ type: "thread.cleared", seq: 12 }));
+    expect(cleared?.activity).toEqual([]);
+  });
+
+  it("flips the run activity to takeover live, matching the replay seed", () => {
+    const run = threadRun("run-1");
+    const running: ThreadSnapshot = {
+      ...snapshot([]),
+      run,
+      activeRuns: [run],
+      activity: [
+        {
+          id: "run:run-1",
+          runId: "run-1",
+          botId: "bot-1",
+          threadId: "thread-1",
+          kind: "working",
+          status: "running",
+          title: "Working",
+        },
+      ],
+    };
+    const next = reduceThreadSnapshot(
+      running,
+      event({ type: "computer.takeover.requested", seq: 8 }),
+    );
+    expect(next?.activity?.[0]).toMatchObject({
+      kind: "waiting_takeover",
+      status: "waiting",
+      title: "Needs you to take over",
+    });
+  });
+
+  it("keeps reference identity for activity no-ops", () => {
+    const started = reduceThreadSnapshot(
+      snapshot([]),
+      event({ type: "subagent.started", seq: 5, payload: { taskId: "t1", agentId: "h1" } }),
+    );
+    const progressed = reduceThreadSnapshot(
+      started,
+      event({ type: "subagent.progress", seq: 6, payload: { taskId: "t1", agentId: "h1", progress: "reading" } }),
+    );
+    expect(progressed).toBe(started);
+  });
+});
+
 function snapshot(messages: ThreadMessage[], olderCursor: number | null = null): ThreadSnapshot {
   return {
     botId: "bot-1",

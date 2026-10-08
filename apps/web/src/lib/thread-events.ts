@@ -8,8 +8,10 @@ import type {
   ThreadSnapshot,
 } from "@rakazo/contracts";
 import {
+  ACTIVITY_EVENT_TYPES,
   isActive,
   isRunTerminalEvent,
+  reduceActivity,
   mergeThreadHistory,
   prependThreadHistoryPage,
   progressMessageId,
@@ -258,11 +260,77 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "run.started" ||
     event.type === "run.waiting_input" ||
     event.type === "computer.takeover.requested" ||
+    event.type === "computer.takeover.granted" ||
+    event.type === "computer.takeover.released" ||
+    // Phase 4: collaboration and helper lifecycle events project into
+    // snapshot.activity through the same core reducer the server replay uses.
+    event.type === "thread.turn.handed_off" ||
+    event.type === "thread.collaboration.requested" ||
+    event.type === "thread.collaboration.result" ||
+    event.type === "subagent.started" ||
+    event.type === "subagent.progress" ||
+    event.type === "subagent.completed" ||
+    event.type === "subagent.failed" ||
+    event.type === "subagent.cancelled" ||
     isRunTerminalEvent(event)
   );
 }
 
+function isActivityEventType(type: string): boolean {
+  return (ACTIVITY_EVENT_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Activity events the base snapshot reducer does not model at all. Only these
+ * may advance the cursor from the activity wrapper; for events the base does
+ * handle, its reference-stable no-op verdict (duplicate/stale) is respected
+ * so React can bail out of re-rendering.
+ */
+const ACTIVITY_ONLY_EVENT_TYPES = new Set<string>([
+  "computer.takeover.granted",
+  "computer.takeover.released",
+  "subagent.started",
+  "subagent.progress",
+  "subagent.completed",
+  "subagent.failed",
+  "subagent.cancelled",
+  "thread.collaboration.requested",
+  "thread.collaboration.result",
+  "thread.turn.handed_off",
+]);
+
 export function reduceThreadSnapshot(
+  prev: ThreadSnapshot | null,
+  event: ProductEvent,
+  activityContext?: { botNames?: Readonly<Record<string, string>> },
+): ThreadSnapshot | null {
+  const base = reduceThreadSnapshotBase(prev, event);
+  if (!base) return base;
+  if (event.type === "thread.cleared") {
+    return base.activity?.length ? { ...base, activity: [] } : base;
+  }
+  if (!isActivityEventType(event.type)) return base;
+  const baseNoop = base === prev;
+  if (baseNoop && !ACTIVITY_ONLY_EVENT_TYPES.has(event.type)) {
+    // The base judged this event redundant (duplicate run state, stale seq);
+    // keep its reference-stable no-op.
+    return prev;
+  }
+  // Replay == live (§5): the identical core reducer folds this event into the
+  // projected activity the server snapshot was built with.
+  const activity = reduceActivity(base.activity ?? [], event, {
+    threadId: base.threadId,
+    botNames: activityContext?.botNames,
+  });
+  if (baseNoop && activity === base.activity) return prev;
+  return {
+    ...base,
+    cursor: baseNoop ? Math.max(base.cursor, event.seq) : base.cursor,
+    activity,
+  };
+}
+
+function reduceThreadSnapshotBase(
   prev: ThreadSnapshot | null,
   event: ProductEvent,
 ): ThreadSnapshot | null {

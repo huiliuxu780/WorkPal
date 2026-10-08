@@ -26,6 +26,27 @@ export const RunActivityRowSchema = z.object({
   ]),
   notificationsEnabled: z.boolean(),
   promptSnippet: z.string(),
+  /** Projected current activity (§28); sidebar prefers it over promptSnippet. */
+  activity: z
+    .object({
+      kind: z.enum([
+        "working",
+        "planning",
+        "approval",
+        "tool",
+        "research",
+        "delegation",
+        "handoff",
+        "background",
+        "waiting_input",
+        "waiting_takeover",
+        "completed",
+        "failed",
+        "cancelled",
+      ]),
+      text: z.string(),
+    })
+    .optional(),
   updatedAt: z.string(),
 });
 export type RunActivityRow = z.infer<typeof RunActivityRowSchema>;

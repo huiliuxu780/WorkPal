@@ -199,6 +199,7 @@ describe("threadSnapshot", () => {
       },
     ]);
     const tx = {
+      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
@@ -258,9 +259,10 @@ describe("threadSnapshot", () => {
       completedAt: new Date("2026-08-23T00:00:01.000Z"),
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
     };
-    const findManyEvents = vi.fn();
+    const findManyEvents = vi.fn().mockResolvedValue([]);
     const findFirstRun = botRunFindFirst([run]);
     const tx = {
+      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
@@ -309,7 +311,12 @@ describe("threadSnapshot", () => {
         error: "Provider is not configured: openrouter",
       }),
     );
-    expect(findManyEvents).not.toHaveBeenCalled();
+    // Only the bounded activity projection may query events for an inactive
+    // run — never the live-events fold.
+    expect(findManyEvents).toHaveBeenCalledTimes(1);
+    expect(
+      (findManyEvents.mock.calls[0]![0] as { where: { runId?: unknown } }).where.runId,
+    ).toBeUndefined();
   });
 
   it("prefers a waiting peer ask over a concurrent user run", async () => {
@@ -347,6 +354,7 @@ describe("threadSnapshot", () => {
           $transaction: vi.fn(async (callback: (client: unknown) => unknown) =>
             callback({
               $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
+              backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
               message: { findMany: vi.fn().mockResolvedValue([]) },
               event: {
                 findFirst: vi.fn().mockResolvedValue(null),
@@ -401,11 +409,12 @@ describe("threadSnapshot", () => {
     };
     const findFirstRun = botRunFindFirst([failed, completed]);
     const tx = {
+      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
         findFirst: vi.fn().mockResolvedValue(null),
-        findMany: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
       },
       run: { findFirst: findFirstRun },
     };
@@ -434,9 +443,10 @@ describe("threadSnapshot", () => {
   });
 
   it("does not return a cancelled or completed run", async () => {
-    const findManyEvents = vi.fn();
+    const findManyEvents = vi.fn().mockResolvedValue([]);
     const findFirstRun = botRunFindFirst([]);
     const tx = {
+      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
@@ -467,7 +477,12 @@ describe("threadSnapshot", () => {
       }),
     );
     expect(snapshot.run).toBeNull();
-    expect(findManyEvents).not.toHaveBeenCalled();
+    // Only the bounded activity projection may query events for an inactive
+    // run — never the live-events fold.
+    expect(findManyEvents).toHaveBeenCalledTimes(1);
+    expect(
+      (findManyEvents.mock.calls[0]![0] as { where: { runId?: unknown } }).where.runId,
+    ).toBeUndefined();
   });
   it("returns a group's latest failed run so a refresh keeps its error", async () => {
     const run = {
@@ -943,6 +958,7 @@ function groupRunFindMany(input: { active?: unknown[]; terminals?: unknown[] }) 
 
 function groupPrisma(findManyRuns: ReturnType<typeof groupRunFindMany>) {
   const tx = {
+      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
     $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
     message: { findMany: vi.fn().mockResolvedValue([]) },
     event: {

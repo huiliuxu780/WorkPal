@@ -137,6 +137,14 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
+import { RunActivityDisclosure } from "../components/activity/RunActivityDisclosure";
+import {
+  backgroundActivityItems,
+  inlineActivityItems,
+  liveActivityItems,
+} from "../lib/activity-view";
+import type { ActivityItem } from "@rakazo/contracts";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -1297,7 +1305,7 @@ export function ShellPage() {
         }
       },
       applyEvent: (event) =>
-        applyThreadEvent(event, commitSnapshot, commitComputer, snapshotRef, computerRef),
+        applyThreadEvent(event, commitSnapshot, commitComputer, snapshotRef, computerRef, botsRef),
       onEvent: (event, initial) => {
         const currentBot = botsRef.current.find((bot) => bot.id === active.id);
         notifyBrowserForEvent(
@@ -1407,6 +1415,7 @@ export function ShellPage() {
           },
           snapshotRef,
           computerRef,
+          botsRef,
         ),
       onEvent: (event, initial) => {
         const eventBot = botsRef.current.find((bot) => bot.id === event.botId);
@@ -1793,6 +1802,36 @@ export function ShellPage() {
       status: run.status,
     };
   });
+  // Phase 4 activity projection: live inline rows (tools stay in the steps
+  // card, handoffs keep their conversation marker), background cards that
+  // outlive the parent run, and the total action count for the summary line.
+  const liveActivityAll = useMemo(() => liveActivityItems(activeSnapshot), [activeSnapshot]);
+  const inlineActivity = useMemo(() => inlineActivityItems(liveActivityAll), [liveActivityAll]);
+  const activityActionCount = useMemo(
+    () => liveActivityAll.reduce((total, item) => total + (item.kind === "tool" ? (item.count ?? 1) : 1), 0),
+    [liveActivityAll],
+  );
+  const backgroundActivity = useMemo(
+    () => backgroundActivityItems(activeSnapshot),
+    [activeSnapshot],
+  );
+  const activityBotColors = useMemo(
+    () => Object.fromEntries(bots.map((bot) => [bot.id, bot.color])),
+    [bots],
+  );
+  async function cancelBackgroundTask(taskId: string) {
+    try {
+      if (activeGroupId.current) {
+        await rpc.threads.cancelBackgroundTask({ groupId: activeGroupId.current, taskId });
+        await refreshGroupThread(activeGroupId.current);
+      } else if (activeBotId.current) {
+        await rpc.threads.cancelBackgroundTask({ botId: activeBotId.current, taskId });
+        await refreshThread(activeBotId.current);
+      }
+    } catch (error) {
+      console.error("cancel background task failed", error);
+    }
+  }
   const resolveTranscriptMemberName = useCallback(
     (botId: string | undefined) => memberName(transcriptMembers, botId),
     [transcriptMembers],
@@ -3481,6 +3520,12 @@ export function ShellPage() {
             answerableAskMessageId={answerableAskMessageId}
             running={transcriptRunning}
             workingBots={workingBots}
+            activity={inlineActivity}
+            activityActionCount={activityActionCount}
+            backgroundTasks={backgroundActivity}
+            onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
+            showActivityAvatars={inGroup}
+            activityBotColors={activityBotColors}
             onLoadOlder={loadOlder}
             onOpenBot={openBot}
             onAnswer={answerMessage}
@@ -4545,6 +4590,12 @@ const Transcript = memo(function Transcript({
   answerableAskMessageId,
   running,
   workingBots,
+  activity,
+  activityActionCount,
+  backgroundTasks,
+  onCancelBackgroundTask,
+  showActivityAvatars,
+  activityBotColors,
   onLoadOlder,
   onOpenBot,
   onAnswer,
@@ -4574,6 +4625,12 @@ const Transcript = memo(function Transcript({
   answerableAskMessageId: string | null;
   running: boolean;
   workingBots: GroupAvatarMember[];
+  activity?: ActivityItem[];
+  activityActionCount?: number;
+  backgroundTasks?: ActivityItem[];
+  onCancelBackgroundTask?: (taskId: string) => void;
+  showActivityAvatars?: boolean;
+  activityBotColors?: Record<string, string>;
   onLoadOlder: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
@@ -4966,6 +5023,20 @@ const Transcript = memo(function Transcript({
             </div>
           );
         })}
+        {activity && activity.length > 0 ? (
+          <div className="px-1 py-0.5" data-testid="run-activity-container">
+            <RunActivityDisclosure
+              items={activity}
+              live={running}
+              actionCount={activityActionCount}
+              showAvatars={showActivityAvatars}
+              botColors={activityBotColors}
+            />
+          </div>
+        ) : null}
+        {backgroundTasks && backgroundTasks.length > 0 ? (
+          <BackgroundTaskActivity items={backgroundTasks} onCancel={onCancelBackgroundTask} />
+        ) : null}
         {running &&
         !messages.some(
           (message) =>
@@ -6024,10 +6095,18 @@ function applyThreadEvent(
   commitComputer: (next: ComputerStatus | null) => void,
   snapshotRef: MutableRefObject<ThreadSnapshot | null>,
   computerRef: MutableRefObject<ComputerStatus | null>,
+  botsRef?: MutableRefObject<Array<{ id: string; name: string }>>,
 ) {
   publishComputerCommand(event);
   if (isThreadSnapshotEvent(event)) {
-    const next = reduceThreadSnapshot(snapshotRef.current, event);
+    // Activity labels name real bots; resolve ids from the group members and
+    // the roster so live reduction matches the server-side replay.
+    const botNames: Record<string, string> = {};
+    for (const member of snapshotRef.current?.members ?? []) {
+      if (member.botId && member.name) botNames[member.botId] = member.name;
+    }
+    for (const bot of botsRef?.current ?? []) botNames[bot.id] = bot.name;
+    const next = reduceThreadSnapshot(snapshotRef.current, event, { botNames });
     commitSnapshot(next);
   }
   if (isComputerStatusEvent(event)) {
