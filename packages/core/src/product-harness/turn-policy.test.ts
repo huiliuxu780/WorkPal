@@ -16,7 +16,16 @@ describe("turnPolicySourceForTrigger", () => {
     expect(turnPolicySourceForTrigger("reaction")).toBe("chat");
     expect(turnPolicySourceForTrigger("bot_message")).toBe("bot_message");
     expect(turnPolicySourceForTrigger("handoff")).toBe("handoff");
-    for (const trigger of ["routine", "webhook", "messaging", "created", "call_end", "skill"]) {
+    for (const trigger of [
+      "routine",
+      "webhook",
+      "messaging",
+      "created",
+      "call_end",
+      "skill",
+      "cloud_agent",
+      "spawn",
+    ]) {
       expect(turnPolicySourceForTrigger(trigger)).toBe("automation");
     }
     expect(turnPolicySourceForTrigger("something-new")).toBe("chat");

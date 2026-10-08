@@ -46,6 +46,7 @@ function prismaMock(overrides: {
     message: { findFirst: vi.fn().mockResolvedValue(overrides.reply ?? null) },
     deploymentSettings: { findUnique: vi.fn().mockResolvedValue(null) },
     spaceModelPreference: { findFirst: vi.fn().mockResolvedValue(null) },
+    usageRecord: { create: vi.fn().mockResolvedValue({ id: "usage-1" }) },
   } as unknown as PrismaClient;
 }
 
@@ -57,6 +58,15 @@ function fakeRuntime(text: string | Error) {
       requests.push(request);
       return (async function* () {
         if (text instanceof Error) throw text;
+        yield {
+          type: "usage",
+          provider: "openai",
+          model: "gpt-mini",
+          inputTokens: 200,
+          outputTokens: 30,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        };
         yield { type: "done", text };
       })();
     },
@@ -137,6 +147,18 @@ describe("createTurnRoutingProvider", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.executionScope).toBe("turn-routing");
     expect(requests[0]?.prompt).toContain("id=finance");
+    // Routing spend reaches the same usage accounting path as normal runs.
+    expect(prisma.usageRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        spaceId: "space-1",
+        userId: "user-1",
+        botId: "finance",
+        provider: "openai",
+        model: "gpt-mini",
+        inputTokens: 200,
+        outputTokens: 30,
+      }),
+    });
   });
 
   it("falls back to the lead on router failure — never throws at the sender", async () => {
@@ -191,7 +213,7 @@ describe("createTurnRoutingProvider", () => {
     });
   });
 
-  it("deterministically replaces a stale lead with the first active member", async () => {
+  it("replaces a stale lead deterministically by lowest bot id", async () => {
     const prisma = prismaMock({ leadBotId: "archived-lead" });
     const provider = createTurnRoutingProvider({
       prisma,
@@ -201,7 +223,7 @@ describe("createTurnRoutingProvider", () => {
     });
 
     const routed = await provider.preRoute(baseInput());
-    expect(routed?.ownerBotIds).toEqual(["finance"]);
+    expect(routed?.ownerBotIds).toEqual(["coding"]);
   });
 
   it("returns null for a group with no active members", async () => {
@@ -290,6 +312,23 @@ describe("resolveTurnRoutingModel (ProductHarnessModelResolver)", () => {
       leadBot,
     );
     expect(model).toEqual({ provider: "openai", id: "gpt-mini", apiKey: "deployment-key" });
+  });
+
+  it("treats OAuth-backed models as unusable for routing", async () => {
+    const { usableRouterModel } = await import("./turn-routing.js");
+    expect(usableRouterModel(null)).toBeNull();
+    expect(
+      usableRouterModel({
+        provider: "subscription",
+        id: "claude",
+        oauth: { credential: { accessToken: "x" } } as never,
+      }),
+    ).toBeNull();
+    expect(usableRouterModel({ provider: "openai", id: "gpt-mini", apiKey: "k" })).toEqual({
+      provider: "openai",
+      id: "gpt-mini",
+      apiKey: "k",
+    });
   });
 
   it("resolves through the lead connection chain when nothing configured fits", async () => {

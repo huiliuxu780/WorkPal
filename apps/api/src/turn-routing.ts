@@ -133,7 +133,31 @@ export function createTurnRoutingProvider(deps: {
         const model = await resolveTurnRoutingModel(deps, leadBot);
         if (model) {
           const decision = await runGroupRouter({
-            config: { runtime: deps.runtime, model, timeoutMs: deps.routerTimeoutMs },
+            config: {
+              runtime: deps.runtime,
+              model,
+              timeoutMs: deps.routerTimeoutMs,
+              // Router tokens are real model spend: persist them through the
+              // same usage accounting path normal runs and the engagement
+              // judge use, or group-chat cost is systematically underreported.
+              onUsage: async (usage) => {
+                await deps.prisma.usageRecord
+                  .create({
+                    data: {
+                      spaceId: input.spaceId,
+                      botId: leadBot.id,
+                      userId: input.userId,
+                      provider: usage.provider,
+                      model: usage.model,
+                      inputTokens: usage.inputTokens,
+                      outputTokens: usage.outputTokens,
+                      cacheReadTokens: usage.cacheReadTokens,
+                      cacheWriteTokens: usage.cacheWriteTokens,
+                    },
+                  })
+                  .catch((error) => getLogger().error("group router usage record", error));
+              },
+            },
             routing: {
               message: input.text,
               members,
@@ -190,6 +214,17 @@ export function parseProductHarnessRouterModel(
   return { provider, id };
 }
 
+/**
+ * The AgentScope runtime rejects subscription OAuth models before the request
+ * is sent, so an OAuth result is unusable for routing: the priority chain
+ * must continue to the next source instead of silently failing the model call.
+ */
+export function usableRouterModel(
+  model: AgentRunModel | null | undefined,
+): AgentRunModel | null {
+  return model && !model.oauth ? model : null;
+}
+
 export async function resolveTurnRoutingModel(
   deps: TurnRoutingModelDeps,
   leadBot: AuxJudgeModelBot,
@@ -218,9 +253,11 @@ export async function resolveTurnRoutingModel(
         modelOverride: configured.id,
       };
       const resolved = await resolveAuxJudgeModel(overrideDeps, leadBot);
-      if (resolved) return resolved.model;
+      const usable = usableRouterModel(resolved?.model);
+      if (usable) return usable;
     }
-    // An unusable configured model must not break routing; fall through.
+    // An unusable configured model (missing key or OAuth-backed) must not
+    // break routing nor short-circuit the chain; fall through.
   }
 
   if (deps.deploymentProvider && deps.deploymentModel && deps.deploymentModelKey) {
@@ -232,5 +269,5 @@ export async function resolveTurnRoutingModel(
   }
 
   const resolved = await resolveAuxJudgeModel(deps, leadBot);
-  return resolved?.model ?? null;
+  return usableRouterModel(resolved?.model);
 }

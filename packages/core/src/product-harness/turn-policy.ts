@@ -43,7 +43,9 @@ export type TurnPolicySource = "chat" | "bot_message" | "handoff" | "automation"
 
 /**
  * Run triggers whose work must never stall waiting for interactive approval:
- * scheduled, inbound, ambient, intro and post-call continuations.
+ * scheduled, inbound, ambient, intro, post-call continuation, cloud-agent
+ * notification and spawned-child runs. (`resume` never appears on a created
+ * Run row — resumed Runs keep their original trigger.)
  */
 const AUTOMATION_TRIGGERS = new Set([
   "routine",
@@ -52,6 +54,8 @@ const AUTOMATION_TRIGGERS = new Set([
   "created",
   "call_end",
   "skill",
+  "cloud_agent",
+  "spawn",
 ]);
 
 export function turnPolicySourceForTrigger(trigger: string): TurnPolicySource {

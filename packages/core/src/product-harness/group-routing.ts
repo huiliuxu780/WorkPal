@@ -116,10 +116,12 @@ export function buildGroupRouterPrompt(input: GroupRouterInput): string {
 }
 
 /**
- * Deterministic lead selection over the current active membership
- * (caller passes members in durable membership order). When the stored lead
- * is missing or no longer an active member, the first active member becomes
- * the new lead and `repaired` signals the caller to persist the fix.
+ * Deterministic lead selection over the current active membership. When the
+ * stored lead is missing or no longer an active member, the replacement is
+ * the first bot id in sorted order — NOT query/membership order: members
+ * re-created by an edit share one `now()` timestamp, so `createdAt` alone is
+ * not a total order and could self-heal the same group to different owners.
+ * `repaired` signals the caller to persist the fix.
  */
 export function selectGroupLead(
   leadBotId: string | null,
@@ -129,5 +131,6 @@ export function selectGroupLead(
   if (leadBotId && activeMemberBotIds.includes(leadBotId)) {
     return { botId: leadBotId, repaired: false };
   }
-  return { botId: activeMemberBotIds[0]!, repaired: true };
+  const [first] = [...activeMemberBotIds].sort();
+  return { botId: first!, repaired: true };
 }
