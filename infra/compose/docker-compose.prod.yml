@@ -31,6 +31,32 @@ services:
       timeout: 5s
       retries: 20
 
+  agentscope:
+    image: ${RAKAZO_AGENT_RUNTIME_IMAGE:-ghcr.io/elie222/rakazo/agent-runtime}:${RAKAZO_IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: services/agent-runtime/Dockerfile
+    restart: unless-stopped
+    init: true
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 1536m
+    environment:
+      AGENT_RUNTIME_DATA_DIR: /data/agent-runtime
+    volumes:
+      - agentstate:/data/agent-runtime
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/app/runtime.jar", "com.workpal.runtime.RuntimeHealthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   api:
     # The tag is what the updater moves. `docker compose pull` fetches it, `up -d` recreates onto
     # it, and the previous tag stays in .env so a rollback is one redeploy rather than a rebuild.
@@ -69,7 +95,11 @@ services:
       CLOUD_AGENT_SPACE_ID: ${CLOUD_AGENT_SPACE_ID:-}
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       WAKEUP_DRIVER: graphile
-      AGENT_RUNTIME: pi
+      AGENT_RUNTIME: agentscope
+      AGENTSCOPE_URL: http://agentscope:8090
+      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: 0.0.0.0
+      AGENTSCOPE_TOOL_BRIDGE_PORT: "8092"
+      AGENTSCOPE_TOOL_BRIDGE_URL: http://api:8092
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
@@ -88,6 +118,8 @@ services:
       - control
     depends_on:
       postgres:
+        condition: service_healthy
+      agentscope:
         condition: service_healthy
     healthcheck:
       test:
@@ -129,7 +161,11 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       SCREEN_PROXY_SECRET: ""
       WAKEUP_DRIVER: graphile
-      AGENT_RUNTIME: pi
+      AGENT_RUNTIME: agentscope
+      AGENTSCOPE_URL: http://agentscope:8090
+      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: 0.0.0.0
+      AGENTSCOPE_TOOL_BRIDGE_PORT: "8091"
+      AGENTSCOPE_TOOL_BRIDGE_URL: http://worker:8091
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
@@ -146,6 +182,8 @@ services:
       postgres:
         condition: service_healthy
       api:
+        condition: service_healthy
+      agentscope:
         condition: service_healthy
 
   web:
@@ -279,6 +317,7 @@ services:
 volumes:
   pgdata:
   appdata:
+  agentstate:
   caddydata:
   caddyconfig:
 

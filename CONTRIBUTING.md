@@ -16,8 +16,8 @@ required secrets, and startup commands.
 | `pnpm test:e2e` | Playwright against the emulated API. Needs Docker. |
 | `pnpm test:topology` | Local product-path smoke: Docker computer + Graphile worker recovery. Needs Docker. Not PR CI. |
 | `pnpm test:canary` | Live provider canaries. Needs keys. Not PR CI. |
-| `pnpm test:pi` | Real Pi against a local HTTP model fixture: streaming, tool round trips, failures and cancellation. No keys. |
-| `pnpm test:computer-replay` | Real Pi and Docker Chromium against a local model fixture. Needs the computer image; no keys or Electron windows. |
+| `pnpm test:agentscope` | Java HarnessAgent against a local HTTP model fixture: streaming, tool bridge, skills, plans, subagents and cancellation. No keys. |
+| `pnpm test:computer-replay` | AgentScope Java and Docker Chromium against a local model fixture. Needs the computer image; no keys. |
 | `pnpm test:evals --list` | List agent-quality cases. Add `--live` and a model connection to measure repeated real-model task success. |
 | `pnpm test:computer` | Real vision model + E2B desktop. Needs keys; see [computer verification](docs/computer-runtime.md#verification). Not PR CI. |
 | `pnpm check` | TypeScript (`tsc`) across the monorepo. |
@@ -66,7 +66,7 @@ For the separate real-model desktop acceptance test, see
 - **Never** paste API keys, tokens, or passwords in issues or PRs.
 - Use placeholders in examples (`your-openrouter-key`, etc.).
 
-The product path is **Pi + Docker + Graphile**. Emulator settings (`AGENT_RUNTIME=scripted`, `SANDBOX_PROVIDER=fake`, `WAKEUP_DRIVER=memory`) are for tests only.
+The product path is **AgentScope Java + Docker + Graphile**. Emulator settings (`AGENT_RUNTIME=scripted`, `SANDBOX_PROVIDER=fake`, `WAKEUP_DRIVER=memory`) are for tests only.
 
 **Integrations** can use [Composio](https://composio.dev/) or Pipedream Connect as optional managed
 app catalogs. Users can also install HTTPS MCP servers (including Treg) and bounded OpenAPI tool

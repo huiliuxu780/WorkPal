@@ -78,7 +78,73 @@ async function main() {
   const events = createThreadEvents(prisma, realtime, {
     runSecretWriter: createRunSecretWriter(secrets),
   });
+  // Task credentials and callbacks live in the Worker process. A stopped Worker cannot
+  // resume a native local supplier; expire its projection after missed heartbeats.
+  const reconcileBackgroundTasks = async () => {
+    const now = new Date();
+    const missedHeartbeat = new Date(now.getTime() - 120_000);
+    const stale = await prisma.backgroundAgentTask.findMany({
+      where: {
+        status: "running",
+        OR: [{ heartbeatAt: { lt: missedHeartbeat } }, { expiresAt: { lt: now } }],
+      },
+      take: 100,
+    });
+    for (const task of stale) {
+      const updated = await prisma.backgroundAgentTask.updateMany({
+        where: {
+          taskId: task.taskId,
+          status: "running",
+          OR: [{ heartbeatAt: { lt: missedHeartbeat } }, { expiresAt: { lt: now } }],
+        },
+        data: {
+          status: "failed",
+          finishedAt: now,
+          error: "Runtime worker stopped or task credential expired; execution cannot resume",
+        },
+      });
+      if (!updated.count) continue;
+      await events.append({
+        spaceId: task.spaceId,
+        threadId: task.threadId,
+        botId: task.botId,
+        runId: task.parentRunId,
+        type: "subagent.failed",
+        payload: {
+          taskId: task.taskId,
+          agentId: task.agentId,
+          error: "Runtime worker stopped or task credential expired",
+        },
+      });
+      await events.append({
+        spaceId: task.spaceId,
+        threadId: task.threadId,
+        botId: task.botId,
+        runId: task.parentRunId,
+        type: "thread.subagent",
+        payload: {
+          agentId: task.taskId,
+          name: task.agentId,
+          task: "delegated task",
+          status: "failed",
+          result: "Runtime worker stopped or task credential expired",
+        },
+      });
+    }
+  };
+  const taskSweep = setInterval(() => {
+    void reconcileBackgroundTasks().catch((error) =>
+      logger.error("background task reconciliation", error),
+    );
+  }, 60_000);
+  taskSweep.unref?.();
+  void reconcileBackgroundTasks().catch((error) =>
+    logger.error("background task reconciliation", error),
+  );
   const dataDir = process.env.DATA_DIR ?? "./data";
+  if (process.env.NODE_ENV === "production" && process.env.AGENT_RUNTIME === "scripted") {
+    throw new Error("The scripted agent runtime is reserved for deterministic tests");
+  }
   const runtime =
     process.env.AGENT_RUNTIME === "scripted"
       ? new ScriptedAgentRuntime()

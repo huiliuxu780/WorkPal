@@ -8,6 +8,7 @@ import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { EVAL_CASES } from "../evals/cases.js";
 import { emptyTrial, redact, summarize, validateControls } from "../evals/report.js";
+import { startJavaRuntime } from "./java-runtime.js";
 
 async function main() {
   const { values } = parseArgs({
@@ -95,7 +96,9 @@ async function main() {
   // This CLI owns a disposable database. Never migrate or evaluate against an inherited database.
   const dataDir = mkdtempSync(path.join(tmpdir(), "rakazo-evals-"));
   let postgres: StartedPostgreSqlContainer | undefined;
+  let runtime: Awaited<ReturnType<typeof startJavaRuntime>> | undefined;
   try {
+    runtime = await startJavaRuntime(dataDir);
     postgres = await new PostgreSqlContainer("postgres:16-alpine").start();
     const databaseUrl = postgres.getConnectionUri();
     Object.assign(process.env, {
@@ -111,9 +114,9 @@ async function main() {
       SIGNUPS_ENABLED: "true",
       SIGNUP_ALLOWLIST: "",
       SANDBOX_PROVIDER: "fake",
-      AGENT_RUNTIME: "pi",
+      AGENT_RUNTIME: "agentscope",
+      AGENTSCOPE_URL: runtime.url,
       DATA_DIR: dataDir,
-      MAX_TOOL_CALLS_PER_TURN: String(controls.maxToolCalls),
       WEB_PROVIDER: "fake",
       LOG_LEVEL: "off",
       COMPOSIO_API_KEY: "",
@@ -156,7 +159,7 @@ async function main() {
             realtimeDatabaseUrl: databaseUrl,
             dataDir: path.join(dataDir, `${scenario.id}-${planned.trial}`),
             sandboxProvider: "fake",
-            agentRuntime: "pi",
+            agentRuntime: "agentscope",
             wakeupDriver: "memory",
             composio,
             messaging,
@@ -201,6 +204,7 @@ async function main() {
     }
     if (trials.some((r) => r.status !== "passed")) process.exitCode = 1;
   } finally {
+    await runtime?.stop();
     try {
       await postgres?.stop();
     } finally {

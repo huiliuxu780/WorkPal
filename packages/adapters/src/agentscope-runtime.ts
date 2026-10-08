@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import type {
   AdapterContext,
+  AgentBackgroundTask,
   AgentRunRequest,
   AgentRuntime,
   AgentRuntimeEvent,
@@ -24,6 +25,8 @@ export interface AgentScopeAgentRuntimeOptions {
 
 interface ActiveBridgeRun {
   token: string;
+  foregroundOpen: boolean;
+  tasks: Map<string, { task: AgentBackgroundTask; token: string; expiresAt: number }>;
   request: AgentRunRequest;
   tools: Map<string, ConnectorTool>;
   identity: {
@@ -37,10 +40,15 @@ interface ActiveBridgeRun {
 
 interface ToolBridgeCall {
   runId: string;
+  taskId?: string;
+  agentId?: string;
+  sessionId?: string;
   name: string;
   executionId: string;
   args: Record<string, unknown>;
 }
+
+const BACKGROUND_TOKEN_TTL_MS = 60 * 60 * 1_000;
 
 const TRUSTED_SERVICE_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]", "agentscope"]);
 const TRUSTED_BRIDGE_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]", "api", "worker"]);
@@ -189,6 +197,8 @@ class AgentScopeToolBridge {
     context: Partial<AdapterContext> | undefined,
   ): Promise<{
     url: string;
+    taskUrl: string;
+    taskEventUrl: string;
     steeringUrl?: string;
     modelUrl?: string;
     token: string;
@@ -220,12 +230,16 @@ class AgentScopeToolBridge {
     };
     this.active.set(request.runId, {
       token,
+      foregroundOpen: true,
+      tasks: new Map(),
       request,
       tools: new Map(request.tools.map((tool) => [tool.name, tool])),
       identity,
     });
     return {
       url: endpoint(url, "/v1/tool-executions").toString(),
+      taskUrl: endpoint(url, "/v1/background-tasks").toString(),
+      taskEventUrl: endpoint(url, "/v1/background-tasks/events").toString(),
       ...(request.claimSteering ? { steeringUrl: endpoint(url, "/v1/steering").toString() } : {}),
       ...(request.resolveModel
         ? { modelUrl: endpoint(url, "/v1/model-resolutions").toString() }
@@ -236,7 +250,44 @@ class AgentScopeToolBridge {
   }
 
   unregister(runId: string) {
-    this.active.delete(runId);
+    const run = this.active.get(runId);
+    if (!run) return;
+    run.foregroundOpen = false;
+    if (run.tasks.size === 0) this.active.delete(runId);
+  }
+
+  taskCount(): number {
+    return [...this.active.values()].reduce((count, run) => count + run.tasks.size, 0);
+  }
+
+  async heartbeatBackgroundTasks(): Promise<void> {
+    for (const run of this.active.values()) {
+      for (const entry of run.tasks.values()) {
+        if (Date.now() >= entry.expiresAt) {
+          await this.failBackgroundTasks("Background task credential expired");
+          return;
+        }
+        await run.request.onBackgroundTaskEvent?.({ task: entry.task, status: "running" });
+      }
+    }
+  }
+
+  async failBackgroundTasks(reason: string): Promise<void> {
+    for (const [runId, run] of this.active) {
+      for (const [taskId, entry] of run.tasks) {
+        try {
+          await run.request.onBackgroundTaskEvent?.({
+            task: entry.task,
+            status: "failed",
+            error: reason,
+          });
+          run.tasks.delete(taskId);
+        } catch {
+          // Leave the registration in place for the next reconciliation attempt.
+        }
+      }
+      if (!run.foregroundOpen && run.tasks.size === 0) this.active.delete(runId);
+    }
   }
 
   private start(): Promise<URL> {
@@ -263,7 +314,13 @@ class AgentScopeToolBridge {
   private async handle(request: IncomingMessage, response: ServerResponse) {
     if (
       request.method !== "POST" ||
-      !["/v1/tool-executions", "/v1/steering", "/v1/model-resolutions"].includes(request.url ?? "")
+      ![
+        "/v1/tool-executions",
+        "/v1/steering",
+        "/v1/model-resolutions",
+        "/v1/background-tasks",
+        "/v1/background-tasks/events",
+      ].includes(request.url ?? "")
     ) {
       writeJson(response, 404, { error: "not found" });
       return;
@@ -278,8 +335,83 @@ class AgentScopeToolBridge {
       const run = this.active.get(runId);
       const authorization = request.headers.authorization ?? "";
       const presented = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-      if (!run || !secureTokenEquals(run.token, presented)) {
+      if (!run) {
         writeJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      const taskId = (body as { taskId?: unknown }).taskId;
+      const background = typeof taskId === "string" ? run.tasks.get(taskId) : undefined;
+      const isBackgroundCall =
+        request.url === "/v1/background-tasks/events" ||
+        (request.url === "/v1/tool-executions" && typeof taskId === "string");
+      if (isBackgroundCall) {
+        if (
+          !background ||
+          Date.now() >= background.expiresAt ||
+          !secureTokenEquals(background.token, presented)
+        ) {
+          writeJson(response, 401, { error: "background task credential expired or invalid" });
+          return;
+        }
+      } else if (!run.foregroundOpen || !secureTokenEquals(run.token, presented)) {
+        writeJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      if (request.url === "/v1/background-tasks") {
+        const raw = body as { taskId?: unknown; agentId?: unknown; sessionId?: unknown };
+        if (
+          typeof raw.taskId !== "string" ||
+          !/^task_[\w-]{8,100}$/.test(raw.taskId) ||
+          typeof raw.agentId !== "string" ||
+          typeof raw.sessionId !== "string" ||
+          !raw.sessionId.trim() ||
+          run.tasks.has(raw.taskId) ||
+          !run.request.registerBackgroundTask ||
+          !run.request.authorizeBackgroundTool ||
+          !run.request.onBackgroundTaskEvent
+        ) {
+          writeJson(response, 422, { error: "invalid background task registration" });
+          return;
+        }
+        const task: AgentBackgroundTask = {
+          taskId: raw.taskId,
+          agentId: raw.agentId,
+          sessionId: raw.sessionId,
+          parentRunId: run.identity.runId,
+          userId: run.identity.userId,
+          spaceId: run.identity.spaceId,
+          botId: run.identity.botId,
+          threadId: run.identity.threadId,
+          toolNames: [...run.tools.values()]
+            .filter((tool) => tool.readOnly && tool.name !== "run_subagent")
+            .map((tool) => tool.name),
+        };
+        await run.request.registerBackgroundTask(task);
+        const credential = randomBytes(32).toString("base64url");
+        const expiresAt = Date.now() + BACKGROUND_TOKEN_TTL_MS;
+        run.tasks.set(task.taskId, { task, token: credential, expiresAt });
+        writeJson(response, 200, { token: credential, expiresAt });
+        return;
+      }
+      if (request.url === "/v1/background-tasks/events") {
+        const status = (body as { status?: unknown }).status;
+        if (!background || !["completed", "failed", "cancelled"].includes(String(status))) {
+          writeJson(response, 422, { error: "invalid background task event" });
+          return;
+        }
+        await run.request.onBackgroundTaskEvent!({
+          task: background.task,
+          status: status as "completed" | "failed" | "cancelled",
+          ...((body as { result?: unknown }).result != null
+            ? { result: String((body as { result: unknown }).result).slice(0, 100_000) }
+            : {}),
+          ...((body as { error?: unknown }).error != null
+            ? { error: String((body as { error: unknown }).error).slice(0, 2_000) }
+            : {}),
+        });
+        run.tasks.delete(background.task.taskId);
+        if (!run.foregroundOpen && run.tasks.size === 0) this.active.delete(runId);
+        writeJson(response, 200, { ok: true });
         return;
       }
       if (request.url === "/v1/steering") {
@@ -335,6 +467,19 @@ class AgentScopeToolBridge {
         writeJson(response, 403, { error: `Tool ${call.name} is not authorized for this run` });
         return;
       }
+      if (background) {
+        if (
+          call.agentId !== background.task.agentId ||
+          call.sessionId !== background.task.sessionId ||
+          !background.task.toolNames.includes(call.name) ||
+          !call.executionId.startsWith(`subagent:${call.sessionId}:`) ||
+          !run.request.authorizeBackgroundTool ||
+          !(await run.request.authorizeBackgroundTool(background.task, call.name))
+        ) {
+          writeJson(response, 403, { error: "background task or tool is no longer authorized" });
+          return;
+        }
+      }
       const startedAt = Date.now();
       let result: unknown;
       let failure: unknown;
@@ -366,6 +511,15 @@ class AgentScopeToolBridge {
         } catch {
           // Audit callbacks are best effort and must not alter tool behavior.
         }
+        if (background) {
+          void run.request
+            .onBackgroundTaskEvent?.({
+              task: background.task,
+              status: "running",
+              progress: `${call.name} ${failure === undefined ? "completed" : "failed"}`,
+            })
+            .catch(() => undefined);
+        }
       }
     } catch (error) {
       writeJson(response, 400, {
@@ -390,6 +544,8 @@ function serializableRequest(
     threadId: request.threadId,
     runId: request.runId,
     executionScope: request.executionScope ?? "chat",
+    sessionGeneration: request.sessionGeneration ?? 0,
+    resumeAnswer: request.resumeAnswer,
     sourceMessageId: request.sourceMessageId,
     identity,
     prompt: request.prompt,
@@ -441,6 +597,10 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
   private readonly baseUrl: URL;
   private readonly active = new Map<string, AbortController>();
   private readonly toolBridge: AgentScopeToolBridge;
+  private serviceInstanceId?: string;
+  private healthFailures = 0;
+  private healthCheckRunning = false;
+  private lastTaskHeartbeatAt = 0;
 
   constructor(options: AgentScopeAgentRuntimeOptions = {}) {
     this.baseUrl = serviceUrl(options.baseUrl);
@@ -450,6 +610,42 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       options.toolBridgePort ?? 0,
       advertised,
     );
+    const monitor = setInterval(() => {
+      void this.checkBackgroundRuntime();
+    }, 10_000);
+    monitor.unref?.();
+  }
+
+  private async checkBackgroundRuntime(): Promise<void> {
+    if (this.healthCheckRunning || this.toolBridge.taskCount() === 0) return;
+    this.healthCheckRunning = true;
+    try {
+      const response = await fetch(endpoint(this.baseUrl, "/health"), {
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (!response.ok) throw new Error("Agent runtime health unavailable");
+      const body = (await response.json()) as { instanceId?: string };
+      if (this.serviceInstanceId && body.instanceId && body.instanceId !== this.serviceInstanceId) {
+        await this.toolBridge.failBackgroundTasks(
+          "Java runtime restarted; in-flight task cannot resume",
+        );
+      }
+      if (body.instanceId) this.serviceInstanceId = body.instanceId;
+      if (Date.now() - this.lastTaskHeartbeatAt >= 30_000) {
+        await this.toolBridge.heartbeatBackgroundTasks();
+        this.lastTaskHeartbeatAt = Date.now();
+      }
+      this.healthFailures = 0;
+    } catch {
+      this.healthFailures++;
+      if (this.healthFailures >= 3) {
+        await this.toolBridge.failBackgroundTasks(
+          "Java runtime unavailable; in-flight task cannot resume",
+        );
+      }
+    } finally {
+      this.healthCheckRunning = false;
+    }
   }
 
   describe() {
@@ -459,6 +655,38 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       adapterVersion: "0.2.0",
       capabilities: { streaming: true, compaction: true, tools: true, scripted: false },
     };
+  }
+
+  async deleteBotState(identity: {
+    userId: string;
+    spaceId: string;
+    botId: string;
+  }): Promise<void> {
+    const response = await fetch(endpoint(this.baseUrl, "/v1/state/bots"), {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(identity),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`AgentScope state cleanup failed (${response.status})`);
+  }
+
+  async cancelBackgroundTask(
+    taskId: string,
+    identity: ActiveBridgeRun["identity"],
+  ): Promise<boolean> {
+    const response = await fetch(
+      endpoint(this.baseUrl, `/v1/background-tasks/${encodeURIComponent(taskId)}`),
+      {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(identity),
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error(`AgentScope task cancellation failed (${response.status})`);
+    return ((await response.json()) as { cancelled: boolean }).cancelled;
   }
 
   async abort(runId: string): Promise<void> {
@@ -533,6 +761,13 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
         const detail = (await response.text()).slice(0, 1_000);
         throw new Error(`AgentScope service returned ${response.status}: ${detail}`);
       }
+      const instanceId = response.headers.get("x-agent-runtime-instance");
+      if (this.serviceInstanceId && instanceId && instanceId !== this.serviceInstanceId) {
+        await this.toolBridge.failBackgroundTasks(
+          "Java runtime restarted; in-flight task cannot resume",
+        );
+      }
+      if (instanceId) this.serviceInstanceId = instanceId;
       if (!response.body) throw new Error("AgentScope service returned an empty response body");
 
       const reader = response.body.getReader();

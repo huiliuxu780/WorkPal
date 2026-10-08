@@ -48,6 +48,29 @@ services:
     volumes:
       - appdata:/data
 
+  agentscope:
+    # No Java runtime image is published by this repository yet; require an operator-provided image.
+    image: ${RAKAZO_AGENT_RUNTIME_IMAGE:?Set a published Java agent-runtime image}:${RAKAZO_IMAGE_TAG:-edge}
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 1536m
+    environment:
+      AGENT_RUNTIME_DATA_DIR: /data/agent-runtime
+    volumes:
+      - agentstate:/data/agent-runtime
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/app/runtime.jar", "com.workpal.runtime.RuntimeHealthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   # Runs from the app image. Not published as its own image and not exposed on the host:
   # access to the supervisor is equivalent to control of the Docker host.
   supervisor:
@@ -131,7 +154,11 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
-      AGENT_RUNTIME: pi
+      AGENT_RUNTIME: agentscope
+      AGENTSCOPE_URL: http://agentscope:8090
+      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: 0.0.0.0
+      AGENTSCOPE_TOOL_BRIDGE_PORT: "8092"
+      AGENTSCOPE_TOOL_BRIDGE_URL: http://api:8092
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
@@ -152,6 +179,8 @@ services:
       data-init:
         condition: service_completed_successfully
       supervisor:
+        condition: service_healthy
+      agentscope:
         condition: service_healthy
     healthcheck:
       test:
@@ -188,7 +217,11 @@ services:
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       SCREEN_PROXY_SECRET: ""
       WAKEUP_DRIVER: graphile
-      AGENT_RUNTIME: pi
+      AGENT_RUNTIME: agentscope
+      AGENTSCOPE_URL: http://agentscope:8090
+      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: 0.0.0.0
+      AGENTSCOPE_TOOL_BRIDGE_PORT: "8091"
+      AGENTSCOPE_TOOL_BRIDGE_URL: http://worker:8091
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
@@ -209,6 +242,8 @@ services:
       supervisor:
         condition: service_healthy
       api:
+        condition: service_healthy
+      agentscope:
         condition: service_healthy
 
   web:
@@ -242,6 +277,7 @@ services:
 volumes:
   pgdata:
   appdata:
+  agentstate:
 
 networks:
   app:

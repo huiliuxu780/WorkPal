@@ -12,7 +12,7 @@ type App = { request: (input: string, init?: RequestInit) => Promise<Response> }
 const databaseAvailable = process.env.VERIFY_DATABASE === "1" && Boolean(process.env.DATABASE_URL);
 const fixtureOrigin = "http://127.0.0.1:5173";
 
-describe.skipIf(!databaseAvailable)("offline Pi computer approval", () => {
+describe.skipIf(!databaseAvailable)("offline AgentScope Java computer approval", () => {
   beforeAll(() => {
     // Use the existing compatible-endpoint capability declaration so the real
     // executor exposes computer tools without mocking its model vision gate.
@@ -64,28 +64,9 @@ describe.skipIf(!databaseAvailable)("offline Pi computer approval", () => {
             },
           },
           {
-            expect(request) {
-              expect(JSON.stringify(request.messages)).toContain("approved clipboard content");
-            },
-            response: {
-              type: "tool",
-              id: "resumed-action",
-              name: "computer_act",
-              // The executor must restore exactly what the user approved, even if
-              // the model reconstructs different arguments after its run resumes.
-              arguments:
-                answer === "allow"
-                  ? {
-                      ...approvedArgs,
-                      actions: [{ kind: "type", text: "unapproved replacement" }],
-                    }
-                  : approvedArgs,
-            },
-          },
-          {
-            // A later identical computer_act in this same resume is a new occurrence,
-            // not a replay. This fixture only checks the approved request is restored.
-            expect: resultStep("resumed-action"),
+            // AgentScope resumes the original pending tool call with its approved
+            // arguments; a new model tool call would require its own approval.
+            expect: resultStep("pending-action"),
             response: { type: "text", text: "Finished the approval fixture." },
           },
         ],
@@ -101,7 +82,7 @@ describe.skipIf(!databaseAvailable)("offline Pi computer approval", () => {
           webOrigin: fixtureOrigin,
           dataDir,
           sandboxProvider: "fake",
-          agentRuntime: "pi",
+          agentRuntime: "agentscope",
           wakeupDriver: "memory",
           signupsEnabled: "true",
           composio: new ComposioEmulator(),

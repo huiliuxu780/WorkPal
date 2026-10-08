@@ -371,7 +371,7 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
       history: [],
       tools: [],
       model,
-      // An empty summarizer response must reach the retry guard below, not become Pi's
+      // An empty summarizer response must reach the retry guard below, not become a
       // user-facing fallback text and advance the cursor without preserving any history.
       allowSilentEmpty: true,
     },

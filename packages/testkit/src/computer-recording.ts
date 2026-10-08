@@ -7,12 +7,12 @@ import type {
   SandboxProvider,
 } from "@rakazo/adapter-kit";
 import {
+  AgentScopeAgentRuntime,
   browserActFromTool,
   browserNavigateFromTool,
   browserSnapshotFromTool,
   builtinAgentTools,
   observationToolResult,
-  PiAgentRuntime,
 } from "@rakazo/adapters";
 import { computerReplayContext, waitForReplayFile } from "./computer-replay.js";
 import {
@@ -145,7 +145,7 @@ export async function executeContactsJourney(
   recorder: ReturnType<typeof createContactsRecorder>,
   context: AdapterContext,
 ) {
-  for await (const _event of new PiAgentRuntime().run(
+  for await (const _event of new AgentScopeAgentRuntime().run(
     {
       botId: context.botId!,
       threadId: "fixture-thread",
@@ -188,7 +188,7 @@ export function createContactsReplayBrowser(
   return new ContactsBrowserFixture(sandbox, { downloadFailures });
 }
 
-/** Replays decisions through real Pi/HTTP; production browser helpers still produce every effect. */
+/** Replays decisions through AgentScope Java; production browser helpers still produce every effect. */
 export async function replayContactsRecording(
   recording: ContactsRecording,
   sandbox: SandboxProvider,
@@ -198,7 +198,10 @@ export async function replayContactsRecording(
 ) {
   const record = parseContactsRecording(recording);
   const recorder = createContactsRecorder(sandbox, browser, computer, context);
-  const emulator = await startModelEmulator({ steps: contactsReplaySteps(record) });
+  const emulator = await startModelEmulator({
+    apiKey: "local",
+    steps: contactsReplaySteps(record),
+  });
   try {
     await executeContactsJourney(emulator.model, recorder, context);
     emulator.assertComplete();

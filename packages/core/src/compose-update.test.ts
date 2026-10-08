@@ -193,11 +193,11 @@ describe("strategy and mode selection", () => {
       ...COMPOSE_MANUAL_UPGRADE_COMMANDS,
       "# Local tag (rebuild from checkout)",
       "git pull",
-      "GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never --build api worker web",
+      "GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never --build agentscope api worker web",
     ]);
     expect(manualUpgradeCommands("compose", { imageTag: "local" })).toEqual([
       "git pull",
-      "GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never --build api worker web",
+      "GIT_SHA=$(git rev-parse HEAD) docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d --wait --pull never --build agentscope api worker web",
     ]);
     expect(manualUpgradeCommands("compose", { imageTag: "sha-abc" })).toEqual([
       ...COMPOSE_MANUAL_UPGRADE_COMMANDS,
@@ -220,6 +220,7 @@ describe("compose argv construction", () => {
         "--file",
         ...target.composeFiles,
         "pull",
+        "agentscope",
         "api",
         "worker",
         "web",
@@ -268,7 +269,8 @@ describe("compose argv construction", () => {
   });
 
   it("falls back to the built-in services when the target names none", () => {
-    expect(composeUpArgv({ ...target, services: [] }).args.slice(-3)).toEqual([
+    expect(composeUpArgv({ ...target, services: [] }).args.slice(-4)).toEqual([
+      "agentscope",
       "api",
       "worker",
       "web",
@@ -330,6 +332,7 @@ describe("compose argv construction", () => {
 
   it("never recreates the updater, which is the process running the update", () => {
     expect(RECREATED_SERVICES).not.toContain("updater");
+    expect(RECREATED_SERVICES).toContain("agentscope");
     for (const invocation of [composeUpArgv(target), composePullArgv(target)]) {
       expect(invocation.args).not.toContain("updater");
       expect(invocation.args).not.toContain("postgres");
@@ -338,7 +341,7 @@ describe("compose argv construction", () => {
 
   it("names the services explicitly so a bare up cannot sweep the whole project", () => {
     const args = composeUpArgv(target).args;
-    expect(args.slice(-3)).toEqual(["api", "worker", "web"]);
+    expect(args.slice(-4)).toEqual(["agentscope", "api", "worker", "web"]);
   });
 });
 

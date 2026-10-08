@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { serve } from "@hono/node-server";
@@ -58,6 +58,9 @@ describe.skipIf(process.env.RUN_COMPUTER_REPLAY_DOCKER !== "1")(
         };
         const homePath = path.join(process.env.DATA_DIR, "homes", context.botId);
         await mkdir(homePath, { recursive: true });
+        // Colima's bind mount can map the host UID to a different container UID.
+        // This is an isolated, disposable replay fixture, not a product bot home.
+        if (process.platform === "darwin") await chmod(homePath, 0o777);
         let computer: ComputerRef | undefined;
         let ownedNetwork: string | undefined;
         try {

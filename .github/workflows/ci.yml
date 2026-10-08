@@ -29,9 +29,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-java@v4
         with:
-          python-version: "3.12"
-          enable-cache: true
-      - run: uv sync --project services/agentscope --frozen
-      - run: uv run --project services/agentscope pytest services/agentscope/tests
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: services/agent-runtime/pom.xml
+      - run: mvn -B -f services/agent-runtime/pom.xml package
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm --filter @rakazo/testkit check
+      - run: pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts
+      - run: pnpm test:integration --spec=agentscope-offline.postgres.test.ts
+      - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
+
+  agent-runtime-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Java runtime image and publish on main
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/agent-runtime/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ghcr.io/${{ github.repository_owner }}/workpal-agent-runtime:edge

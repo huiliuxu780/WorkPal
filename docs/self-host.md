@@ -4,7 +4,7 @@ The signed-in product is a long-running API, a Graphile Worker, Postgres, and a 
 
 ## Local (source checkout)
 
-Same as the README quick start: `.env` from `.env.example`, Postgres via Compose, `pnpm sandbox:build`, `pnpm dev`, then [http://127.0.0.1:5173](http://127.0.0.1:5173) (or `http://localhost:5173` — both loopback hosts are trusted). Electron: `pnpm --filter @rakazo/desktop dev` while that stack is up, choosing **Existing instance** with that address. The desktop app's **This computer** option instead installs and runs the published images itself with Docker Compose (see [Published images](#published-images-no-checkout)), using port 45173 by default so it can run alongside `pnpm dev`. If that port is occupied, the app selects and remembers another loopback port. The managed API gets a Docker-assigned loopback port; all desktop traffic uses the web origin.
+Same as the README quick start: `.env` from `.env.example`, Postgres via Compose, `pnpm sandbox:build`, `pnpm dev`, then [http://127.0.0.1:5173](http://127.0.0.1:5173) (or `http://localhost:5173` — both loopback hosts are trusted). The Java Harness service starts with the Web, API, worker and supervisor. The source Compose stack can build the Java image from this checkout.
 
 For source development in WSL, keep the checkout and `data` directory in the Linux filesystem (for example, `~/rakazo`), and run `pnpm dev` as your normal user. The host-run supervisor matches bot container UID/GID to that user. If Docker Desktop container IPs are unreachable, set `SANDBOX_CONTROL_VIA_LOOPBACK=true` in `.env`; this publishes the token-protected control service on a random loopback port. Leave this unset for the Compose-hosted supervisor.
 
@@ -12,8 +12,7 @@ Compose bot homes mount only their own subdirectory of the application volume us
 
 ## Published images (no checkout)
 
-Pull Postgres and `ghcr.io/elie222/rakazo/app` into any empty folder. No clone or image build.
-Requires Docker Engine 26+ (API 1.45+ for bot home volume subpaths), the Compose plugin, curl, and OpenSSL.
+The inherited pull-only installer requires a separately published Java runtime image in addition to the application and computer images. CI builds the Java image on pull requests and publishes `ghcr.io/huiliuxu780/workpal-agent-runtime:edge` on pushes to `main`; until that first main build succeeds, set `RAKAZO_AGENT_RUNTIME_IMAGE` to another image you have built and published from `services/agent-runtime`, or use source Compose. The pull-only stack fails before startup when this variable is absent. It requires Docker Engine 26+ (API 1.45+ for bot home volume subpaths), the Compose plugin, curl, and OpenSSL.
 
 ```bash
 mkdir -p rakazo && cd rakazo &&
@@ -232,11 +231,10 @@ Optional:
 SIGNUPS_ENABLED=true
 SIGNUP_ALLOWLIST=you@example.com,@company.com
 SANDBOX_PROVIDER=docker   # or none, e2b, daytona, createos, box. Keep fake only for pnpm test.
-AGENT_RUNTIME=pi          # Keep scripted only for pnpm test.
+AGENT_RUNTIME=agentscope  # Java Harness; use scripted only for deterministic tests.
 WAKEUP_DRIVER=graphile
 SANDBOX_IDLE_MS=600000    # pause the bot computer after 10 minutes idle
 SANDBOX_COMMAND_TIMEOUT_MS=300000 # stop a shell command after 5 minutes
-MAX_TOOL_CALLS_PER_TURN=  # optional Pi turn tool-call fuse; unset/0 = unlimited
 E2B_API_KEY=              # when SANDBOX_PROVIDER=e2b
 DAYTONA_API_KEY=          # when SANDBOX_PROVIDER=daytona
 CREATEOS_SANDBOX_API_KEY= # when SANDBOX_PROVIDER=createos
@@ -388,7 +386,7 @@ SIGNUPS_ENABLED=true
 SIGNUP_ALLOWLIST=owner@example.com,reviewer@example.com
 # e2b, daytona, or box
 SANDBOX_PROVIDER=e2b
-AGENT_RUNTIME=pi
+AGENT_RUNTIME=agentscope
 WAKEUP_DRIVER=graphile
 DATA_DIR=/data
 # Absolute path of this checkout as the Docker daemon sees it. /srv/rakazo is the Linux default;
@@ -410,7 +408,7 @@ curl --fail https://app.example.com/health
 ```
 
 **Build, do not pull, for a first deployment.** `RAKAZO_IMAGE_TAG` ships as `local`, a tag no
-registry serves, so the commands above build `api`, `worker`, and `web` from the checkout you just
+registry serves, so the commands above build `agentscope`, `api`, `worker`, and `web` from the checkout you just
 cloned. The opt-in command under [Updater sidecar](#updater-sidecar) builds `updater` when needed.
 
 The public `/health` only reports liveness. Runtime, sandbox, and revision details stay on the API
@@ -589,22 +587,22 @@ application traffic queued indefinitely.
 
 ### Published images and tags
 
-`.github/workflows/publish-server-image.yml` publishes to `ghcr.io/<owner>/<repo>/…`, derived from
-`${{ github.repository }}` rather than hardcoded, so a fork's CI fills the fork's own namespace. For
-this repository that is:
+The inherited image table below describes the upstream Rakazo images. WorkPal CI publishes the Java runtime on `main` after the Docker build succeeds. Until the first publication, source Compose remains available. The pull-only `docker-compose.images.yml` requires
+`RAKAZO_AGENT_RUNTIME_IMAGE` to be set to an image you have published; it fails early if unset.
 
 | Image | Contents |
 | --- | --- |
 | `ghcr.io/elie222/rakazo/app` | api, worker, web, and sandbox supervisor — one image, multiple commands |
 | `ghcr.io/elie222/rakazo/computer` | Linux desktop used as each bot computer |
 | `ghcr.io/elie222/rakazo/updater` | the updater sidecar, plus the Docker CLI |
+| `ghcr.io/huiliuxu780/workpal-agent-runtime` after its first successful main build | WorkPal Java Harness runtime |
 
 `infra/compose/docker-compose.images.yml` is the no-checkout path for those app and computer tags
 plus Postgres. The supervisor runs from the app image on the internal network only (not a separate
 published supervisor image, and no host port). Production Compose (`docker-compose.prod.yml`) can
 also pull the same app tags once `RAKAZO_IMAGE_TAG` is set to a published value.
 
-If you deploy from your own fork, set `RAKAZO_IMAGE` and `RAKAZO_UPDATER_IMAGE` to your namespace —
+If you deploy from your own fork, set `RAKAZO_IMAGE`, `RAKAZO_AGENT_RUNTIME_IMAGE` and `RAKAZO_UPDATER_IMAGE` to your namespace —
 your CI cannot publish into someone else's.
 
 | Tag | Published on | Moves? |
@@ -718,7 +716,7 @@ rest. Otherwise an update leaves that service running the previous code:
 RAKAZO_UPDATE_SERVICES=supervisor
 ```
 
-These names are appended to the built-in `api`, `worker`, `web`, never substituted for them, so no
+These names are appended to the built-in `agentscope`, `api`, `worker`, `web`, never substituted for them, so no
 value here can drop a core service from an update.
 
 The value therefore has to be the path **the daemon** sees, which is not always the path your shell

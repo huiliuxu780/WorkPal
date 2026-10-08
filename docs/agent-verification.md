@@ -7,12 +7,12 @@ model can demonstrate that it chooses a useful action for a natural request.
 | Layer | Real components | Stand-ins | Command |
 | --- | --- | --- | --- |
 | Existing fast tests | Product functions and contracts | Scripted agent, services, sandbox | `pnpm test` |
-| Pi protocol regressions | Pi agent loop, HTTP/SSE parsing, tool dispatch | Loopback model endpoint, tool effects | `pnpm test:pi` |
-| Pi product journey | API, saved model connection, Postgres, executor, Pi | Model endpoint, sandbox, connectors | `pnpm test:integration` |
-| Computer replay | Pi, browser tool handlers, page state | Model endpoint, browser and sandbox | `pnpm test` |
-| Docker computer replay | Pi, supervisor, Chromium, page helper, downloads and files | Model endpoint, local fixture website | `pnpm test:computer-replay` |
-| Agent quality | Product API, Postgres, executor, Pi, real model | Sandbox and connected services | `pnpm test:evals --live ...` |
-| Vision acceptance | Product API, Pi, real vision model, Box or E2B desktop | Fixture website | `pnpm test:computer` |
+| Java runtime regressions | AgentScope HarnessAgent, model stream, Tool Bridge, Skill, Plan, subagent | Loopback model and tool endpoints | `pnpm test:agentscope` |
+| Product journey | API, saved model connection, Postgres, executor, AgentScope Java | Model endpoint, sandbox, connectors | `pnpm test:integration` |
+| Computer replay | AgentScope Java, browser tool handlers, page state | Model endpoint, browser and sandbox | `pnpm test:computer-replay` |
+| Docker computer replay | AgentScope Java, supervisor, Chromium, page helper, downloads and files | Model endpoint, local fixture website | `pnpm test:computer-replay` |
+| Agent quality | Product API, Postgres, executor, AgentScope Java, real model | Sandbox and connected services | `pnpm test:evals --live ...` |
+| Vision acceptance | Product API, AgentScope Java, real vision model, Box or E2B desktop | Fixture website | `pnpm test:computer` |
 
 Default and PR tests never require paid inference. Nightly runs only the web
 tests with emulated providers. Docker topology and browser replay have a manual
@@ -21,18 +21,26 @@ command. Nightly verification never starts computer sandboxes or requests model
 or sandbox credentials.
 Missing live credentials mean **not run**, not a passing model evaluation.
 
-## Deterministic Pi tests
+On 2026-10-08 a local acceptance used the existing encrypted WorkPal DashScope
+`qwen3.8-flash` connection through the Java Harness runtime. Chat, one backend
+tool call, Skill loading, Plan enter/write/exit with approval and a resumed Run,
+and synchronous subagent delegation succeeded. The deterministic product and
+Web suites remain separate evidence for API/Worker/UI routing. No credential
+value or user data was written to the repository.
+
+## Deterministic AgentScope tests
 
 `packages/testkit/src/model-emulator.ts` serves a loopback OpenAI-compatible
-stream through Rakazo's existing generic connection. It does not replace Pi.
+stream through WorkPal's existing generic connection. The Java HarnessAgent and its state store run for real.
 Each step validates the actual request before streaming a response, and tests
 must assert that all expected steps were consumed without unexpected requests.
 The next request must contain the tool result from real execution.
 
-Coverage includes fragmented tool arguments, tool failures, rejected model
-requests, interrupted streams, cancellation of a quiet stream, and concurrent
-connections. The Postgres journey also verifies the persisted run, message and
-file through the product boundary.
+Java tests cover streaming, session resume and isolation, Tool Bridge callbacks,
+Skill allow-lists, native Plan approval, subagent execution, cancellation and provider
+construction. The Postgres journey verifies the persisted run, message and file
+through the product boundary. It uses a local model fixture and does not establish
+real-provider availability.
 
 ## Computer replay
 
@@ -45,7 +53,7 @@ The emulator models page state; it does not advance just because another tool
 was called. The Docker lane executes the same scenario against real Chromium
 and the production supervisor/page-browser helper. It checks a real screenshot
 and browser-created file. The generic compatible model fixture is text-only;
-Pi's image-omission behavior is checked explicitly. Vision interpretation is
+Text-only model image handling is checked explicitly. Vision interpretation is
 covered by the separate real-model acceptance test.
 
 ```bash
@@ -62,11 +70,12 @@ to an existing browser. It owns and cleans up its test resources. It exercises
 the runtime and computer boundary; it does not claim UI, approval, or database
 executor coverage.
 
-The suite includes authored failure scenarios and a contacts-export recording
-captured with Luna through OpenRouter against real Docker Chromium. Replay uses
-the HTTP model emulator with real Pi and resolves fresh page references. Tests
-cover cancellation, a transient download failure, workspace restoration, and
-an interrupted model stream after export without duplicating the export.
+The repository also contains authored failure scenarios and a contacts-export recording
+captured with Luna through OpenRouter against real Docker Chromium. Docker replay uses
+the HTTP model emulator with AgentScope Java and resolves fresh page references. The
+Docker test verifies one real export, the downloaded CSV and a screenshot. Separate
+deterministic replay tests cover cancellation, a transient download failure, workspace
+restoration, and an interrupted model stream after export without duplicating the export.
 Separate Postgres integration tests verify that computer actions wait for
 approval, execute the approved payload once, and have no effects after denial.
 

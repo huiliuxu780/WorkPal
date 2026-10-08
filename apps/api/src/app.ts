@@ -57,7 +57,7 @@ import {
   pushTokenPath,
   reconcileCloudAgents,
   reconcileComputerUpdates,
-  removePiUserSessions,
+  removeLegacyUserSessions,
   ScriptedAgentRuntime,
   SmtpEmailProvider,
   SpaceMemoryProviderResolver,
@@ -165,6 +165,9 @@ export async function createApp(
     ...envOverrides
   } = overrides;
   const env = { ...loadEnv(process.env), ...envOverrides };
+  if (process.env.NODE_ENV === "production" && env.agentRuntime === "scripted") {
+    throw new Error("The scripted agent runtime is reserved for deterministic tests");
+  }
   const logger = loggerOverride ?? createServiceLogger({ service: SERVICE_NAMES.api });
   installLogger(logger);
   const created = prismaOverride
@@ -356,6 +359,24 @@ export async function createApp(
               `Unsupported AGENT_RUNTIME=${env.agentRuntime}; use agentscope (production) or scripted (tests)`,
             );
           })();
+  const purgeRuntimeBotState =
+    runtime instanceof AgentScopeAgentRuntime
+      ? (identity: { userId: string; spaceId: string; botId: string }) =>
+          runtime.deleteBotState(identity)
+      : undefined;
+  const cancelRuntimeBackgroundTask =
+    runtime instanceof AgentScopeAgentRuntime
+      ? (
+          taskId: string,
+          identity: {
+            userId: string;
+            spaceId: string;
+            botId: string;
+            threadId: string;
+            runId: string;
+          },
+        ) => runtime.cancelBackgroundTask(taskId, identity)
+      : undefined;
   const notifications = new ExpoPushProvider(env.dataDir);
   const auth = createAuth(prisma, {
     secret: env.authSecret,
@@ -374,7 +395,7 @@ export async function createApp(
       await Promise.all(
         bots.map((bot) =>
           destroyBot(
-            { prisma, sandbox, home, jobs, artifacts, dataDir: env.dataDir },
+            { prisma, sandbox, home, jobs, artifacts, dataDir: env.dataDir, purgeRuntimeBotState },
             bot,
             {
               operationId: `account-delete:${userId}`,
@@ -388,7 +409,7 @@ export async function createApp(
           ),
         ),
       );
-      await removePiUserSessions(env.dataDir, userId);
+      await removeLegacyUserSessions(env.dataDir, userId);
       await rm(pushTokenPath(env.dataDir, userId), { force: true }).catch(() => undefined);
     },
   });
@@ -492,6 +513,8 @@ export async function createApp(
     remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
+    purgeRuntimeBotState,
+    cancelRuntimeBackgroundTask,
     messaging: {
       enabled: Boolean(messaging),
       providers: messaging?.platforms().map((platform) => platform.provider) ?? [],
