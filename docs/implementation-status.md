@@ -53,3 +53,37 @@ plan/subagent tool surface is hidden per policy, the helper budget and
 background permission are enforced in the spawn repository (a hard count and
 throw, not a prompt), and helpers keep only read-only backend tools. Plan,
 Subagent and Background remain AgentScope-owned; Phase 2 adds no new engine.
+
+## Product Harness Phase 3 — Persistent Bot Collaboration: COMPLETE
+
+Four concepts are now frozen and runtime-enforced: the Response Owner answers
+the user; a Support Bot does delegated partial work and returns it;
+`message_bot` delegates without moving ownership; `handoff_to_bot` transfers
+stage ownership. Every collaboration Run persists an immutable
+`orchestration.collaboration` lineage (`role`, `source`, `fromBotId`,
+`parentRunId`, `handoffDepth`, `messageHop`); retries reuse it verbatim.
+
+- Support runs carry the support TurnPolicy snapshot (planning disabled,
+  background off) and the `<collaboration-context>` support identity derived
+  from the snapshot — never guessed from prompts. Their results return to the
+  requester automatically through the existing outcome-return path, and the
+  outcome-return hop preserves the ORIGINAL owner's identity and owner-grade
+  policy so the owner incorporates the result and answers the user.
+- Handoff runs record `source: handoff` with `handoffDepth + 1`, emit
+  `thread.turn.handed_off`, and the originating run's final-answer suppression
+  is unchanged. `MAX_HANDOFF_DEPTH = 2` is a hard product-layer tool error;
+  bouncing a stage back to its sender is rejected unless the user posted a new
+  instruction after the handoff.
+- `thread.collaboration.requested` / `thread.collaboration.result` events give
+  Phase 4 structured, chain-of-thought-free activity data.
+- Anti-loop rules: a run woken by a result/status cannot ack its waker with
+  fyi/status; identical message repeats within one run are refused; fyi may
+  stay silent; `BOT_MESSAGE_MAX_HOPS = 6` remains the outer bound.
+- Tool availability: support bots keep `message_bot` but never see
+  `handoff_to_bot`; handoff stays group-only; helpers vs message_bot vs
+  handoff selection rules live in the platform instructions.
+
+Phase status: Phase 1 (who answers) COMPLETE, Phase 2 (how the owner may
+execute) COMPLETE, Phase 3 (how persistent agents collaborate) COMPLETE.
+Next: Phase 4 — Activity / UX projection of routing, planning, drill and
+collaboration events.
