@@ -12,6 +12,7 @@ import {
   type ThreadSnapshot,
 } from "@rakazo/contracts";
 import {
+  ACTIVITY_EVENT_TYPES,
   ACTIVE_RUN_STATUSES,
   buildRunOrchestration,
   callIdFromClientNonce,
@@ -23,6 +24,9 @@ import {
   selectGroupLead,
   turnExecutionForSource,
   userTurnCollaboration,
+  projectActivity,
+  type ActivityItem,
+  type ActivityRunContext,
   type GroupRouterReasonCode,
   type ResolvedTurnOwner,
   type ResponseMode,
@@ -74,6 +78,91 @@ export type ThreadTarget =
     };
 
 const THREAD_MESSAGE_PAGE_SIZE = 100;
+/** §34: activity is auxiliary reading material — bounded, never full history. */
+const ACTIVITY_EVENT_LIMIT = 100;
+const ACTIVITY_BACKGROUND_LIMIT = 20;
+
+/**
+ * Bounded activity projection for a snapshot: recent activity events plus the
+ * durable background task rows, folded through the shared core reducer so the
+ * server replay and the client's live SSE reduction produce the same items.
+ */
+async function loadThreadActivity(
+  tx: Prisma.TransactionClient,
+  threadId: string,
+  knownNames: Record<string, string>,
+  runs: ActivityRunContext[],
+): Promise<ActivityItem[]> {
+  const [events, tasks] = await Promise.all([
+    tx.event.findMany({
+      where: { threadId, type: { in: [...ACTIVITY_EVENT_TYPES] } },
+      orderBy: { seq: "desc" },
+      take: ACTIVITY_EVENT_LIMIT,
+      select: { type: true, botId: true, seq: true, createdAt: true, runId: true, payload: true },
+    }),
+    tx.backgroundAgentTask.findMany({
+      where: { threadId },
+      orderBy: { startedAt: "desc" },
+      take: ACTIVITY_BACKGROUND_LIMIT,
+      select: {
+        taskId: true,
+        parentRunId: true,
+        botId: true,
+        status: true,
+        startedAt: true,
+        finishedAt: true,
+        error: true,
+      },
+    }),
+  ]);
+  const ordered = events.reverse();
+  const botIds = new Set<string>();
+  for (const event of ordered) {
+    botIds.add(event.botId);
+    const payload = event.payload as Record<string, unknown> | null;
+    for (const key of ["fromBotId", "toBotId"]) {
+      const value = payload?.[key];
+      if (typeof value === "string" && value) botIds.add(value);
+    }
+  }
+  for (const task of tasks) botIds.add(task.botId);
+  const names: Record<string, string> = { ...knownNames };
+  const missing = [...botIds].filter((id) => !(id in names));
+  if (missing.length > 0) {
+    const bots = await tx.bot.findMany({
+      where: { id: { in: missing } },
+      select: { id: true, name: true },
+    });
+    for (const bot of bots) names[bot.id] = bot.name;
+  }
+  return projectActivity(
+    ordered.map((event) => ({
+      type: event.type,
+      botId: event.botId,
+      seq: event.seq,
+      createdAt: event.createdAt.toISOString(),
+      runId: event.runId,
+      payload:
+        event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+          ? (event.payload as Record<string, unknown>)
+          : undefined,
+    })),
+    {
+      threadId,
+      botNames: names,
+      runs,
+      backgroundTasks: tasks.map((task) => ({
+        taskId: task.taskId,
+        parentRunId: task.parentRunId,
+        botId: task.botId,
+        status: task.status,
+        startedAt: task.startedAt?.toISOString() ?? null,
+        finishedAt: task.finishedAt?.toISOString() ?? null,
+        error: task.error,
+      })),
+    },
+  );
+}
 const RUNS_NEEDING_CONTINUE = new Set(["queued", "waiting_takeover"]);
 
 const STEERABLE_RUN_STATUSES = new Set(["queued", "leased", "running", "waiting_takeover"]);
@@ -483,7 +572,22 @@ export async function threadSnapshot(
                 orderBy: { seq: "asc" },
               })
             : [];
-        return { messagePage, last, run: currentRun, liveEvents };
+        const activity = await loadThreadActivity(
+          tx,
+          target.threadId,
+          { [target.botId]: target.bot.name },
+          currentRun
+            ? [
+                {
+                  runId: currentRun.id,
+                  botId: currentRun.botId,
+                  status: currentRun.status,
+                  startedAt: currentRun.startedAt?.toISOString() ?? null,
+                },
+              ]
+            : [],
+        );
+        return { messagePage, last, run: currentRun, liveEvents, activity };
       }),
     ]);
     return {
@@ -494,6 +598,7 @@ export async function threadSnapshot(
       olderCursor: core.messagePage.olderCursor,
       run: core.run ? mapRun(core.run) : null,
       computer: toComputerStatus(target.botId, target.bot.computer, busyBotName),
+      activity: core.activity,
     };
   }
 
@@ -548,12 +653,24 @@ export async function threadSnapshot(
             orderBy: { seq: "asc" },
           })
         : [];
+    const activity = await loadThreadActivity(
+      tx,
+      target.threadId,
+      Object.fromEntries(target.members.map((member) => [member.botId, member.name])),
+      activeRuns.map((run) => ({
+        runId: run.id,
+        botId: run.botId,
+        status: run.status,
+        startedAt: run.startedAt?.toISOString() ?? null,
+      })),
+    );
     return {
       messagePage,
       last,
       activeRuns,
       terminalRun: pickLatestTerminalRun(recentTerminals),
       liveEvents,
+      activity,
     };
   });
   const primaryActiveRun = pickPrimaryActiveRun(core.activeRuns);
@@ -574,6 +691,7 @@ export async function threadSnapshot(
           ? mapRun(primaryActiveRun)
           : null,
     activeRuns: core.activeRuns.map(mapRun),
+    activity: core.activity,
   };
 }
 

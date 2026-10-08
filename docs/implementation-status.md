@@ -88,3 +88,26 @@ Phase status: Phase 1 (who answers) COMPLETE, Phase 2 (how the owner may
 execute) COMPLETE, Phase 3 (how persistent agents collaborate) COMPLETE.
 Next: Phase 4 — Activity / UX projection of routing, planning, drill and
 collaboration events.
+
+## Product Harness Phase 4 — Activity / UX Projection: IN PROGRESS
+
+One projection layer, no third activity system: `packages/core/src/product-harness/activity/`
+folds persisted Product Events, run state and `BackgroundAgentTask` rows into
+`ActivityItem[]` through a single pure reducer, so server replay and client
+SSE reduction produce identical state (Replay == Live). No new tables — the
+Event log stays the source of truth; history is bounded (last 100 activity
+events, 20 background rows per thread).
+
+- `ThreadSnapshot.activity` (optional, backward compatible) and
+  `RunActivityRow.activity` carry the projection; the sidebar prefers it over
+  prompt snippets and falls back when absent.
+- Thread inline strip extends the existing disclosure interaction (open while
+  live, "Done · N actions" folded when finished) and never duplicates the
+  tools steps card, the handoff marker block, or inline helper cards.
+- Background cards persist past parent-run completion and refresh, with
+  Cancel wired to the existing `threads.cancelBackgroundTask` endpoint.
+- Collaboration renders as "Asked X for help" / "X returned a result" /
+  "Handed this to X" from Phase 3 events; routing events stay hidden.
+- All labels come from one vocabulary module; runtime internals
+  (plan_enter, agent_spawn, raw event names) never reach user-facing text,
+  enforced by projection tests. No chain-of-thought is projected.
