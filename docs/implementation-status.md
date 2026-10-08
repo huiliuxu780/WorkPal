@@ -41,7 +41,7 @@ verbatim; every resolved turn emits a `thread.turn.routed` thread event. No
 UI. Follow-up turns that resolve to multiple owners collapse to a single
 previous owner/lead and persist `responseMode: "single"` truthfully.
 
-## Product Harness Phase 2 — Turn Policy: IN PROGRESS
+## Product Harness Phase 2 — Turn Policy: COMPLETE
 
 Phase 2 adds the internal per-Run execution policy (`TurnPolicy`) that says how
 the owning Agent may act this turn (interactive, planning, delegation,
