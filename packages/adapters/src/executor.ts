@@ -48,6 +48,8 @@ import {
   appendTextSegment,
   appendToolCallSegment,
   applyJudgeDecision,
+  collaborationContextRole,
+  collaborationFromOrchestration,
   assertTransition,
   blocksToAgentHistoryText,
   botMessageAllowsSilence,
@@ -4039,6 +4041,20 @@ export function createRunExecutor(deps: ExecutorDeps) {
         }
 
         try {
+          // Product Harness Phase 3: the collaboration identity comes from the
+          // immutable lineage snapshot (or the trigger for pre-Phase-3 rows),
+          // never from prompt content.
+          const collaborationLineage = collaborationFromOrchestration(run.orchestration);
+          const collaborationRole = collaborationContextRole(collaborationLineage, run.trigger);
+          const collaborationFromBotName =
+            collaborationRole === "owner" || !collaborationLineage?.fromBotId
+              ? undefined
+              : (
+                  await deps.prisma.bot.findUnique({
+                    where: { id: collaborationLineage.fromBotId },
+                    select: { name: true },
+                  })
+                )?.name;
           const runtimeEvents = deps.runtime.run(
             {
               botId: bot.id,
@@ -4056,6 +4072,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 ownerBotId: bot.id,
                 orchestration: run.orchestration,
               }),
+              collaborationContext: {
+                role: collaborationRole,
+                ...(collaborationFromBotName ? { fromBotName: collaborationFromBotName } : {}),
+                // Woken by a delegated result/status coming back: the runtime
+                // tells the owner to incorporate and answer, or the support
+                // bot to fold it in and return upstream — never "you are
+                // supporting the returning bot".
+                ...(peerMessage?.intent === "result" || peerMessage?.intent === "status"
+                  ? { receivingOutcome: true }
+                  : {}),
+              },
               prompt,
               instructions: userTurnInstructions({
                 botInstructions: runIdentityInstruction(bot, run.trigger),

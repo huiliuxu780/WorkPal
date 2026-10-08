@@ -2,6 +2,8 @@ package com.workpal.runtime;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The system prompt's provenance is visible here and in platform-instructions.md.
@@ -19,12 +21,52 @@ public final class PromptComposer {
         String bot = RunRequest.blank(request.instructions())
                 ? "You are a concise, capable assistant."
                 : request.instructions();
-        return String.join("\n\n",
+        List<String> sections = new ArrayList<>(List.of(
                 "<platform>\n" + PLATFORM + "\n</platform>",
                 turnPolicySection(request),
-                "<bot-instructions>\n" + bot + "\n</bot-instructions>",
-                "<runtime-context>\nProduct: " + product + "\nExecution scope: " + request.scope()
-                        + "\n</runtime-context>");
+                "<bot-instructions>\n" + bot + "\n</bot-instructions>"));
+        String collaboration = collaborationContextSection(request);
+        if (!collaboration.isEmpty()) sections.add(collaboration);
+        sections.add("<runtime-context>\nProduct: " + product + "\nExecution scope: " + request.scope()
+                + "\n</runtime-context>");
+        return String.join("\n\n", sections);
+    }
+
+    /**
+     * Phase 3 collaboration identity (§21). The backend derives the role from
+     * the immutable lineage snapshot; this section only renders it. Auxiliary
+     * executions get no collaboration identity.
+     */
+    static String collaborationContextSection(RunRequest request) {
+        if (!request.isChat()) return "";
+        RunRequest.Collaboration collaboration = request.collaborationContext();
+        String from = collaboration != null && !RunRequest.blank(collaboration.fromBotName())
+                ? collaboration.fromBotName()
+                : "the requesting agent";
+        // A delegated outcome returning to its requester resumes that bot's
+        // existing role; it must not read as "now supporting the responder".
+        boolean resumption = collaboration != null && Boolean.TRUE.equals(collaboration.receivingOutcome());
+        String body = switch (request.collaborationRole()) {
+            case "support" -> resumption
+                    ? "You are still supporting the original owner.\n"
+                        + "Incorporate this result into your delegated work and return your completed result upstream."
+                    : "You are supporting " + from + " for this stage.\n"
+                        + "Return useful work to " + from + ".\n"
+                        + "Do not take over the user-facing conversation.";
+            case "handoff_owner" -> from + " transferred ownership of this stage to you.\n"
+                    + "You now own this stage and should reply directly in the shared thread.\n"
+                    + "Do not hand it back merely to report completion."
+                    + (resumption
+                        ? "\nAnother persistent bot has returned work you delegated; incorporate the actual result."
+                        : "");
+            default -> resumption
+                    ? "Another persistent bot has returned work you delegated.\n"
+                        + "You remain the response owner.\n"
+                        + "Incorporate the actual result and continue the user's task or answer the user."
+                    : "You are the response owner for this stage.\n"
+                        + "You are responsible for the final user-facing outcome.";
+        };
+        return "<collaboration-context>\n" + body + "\n</collaboration-context>";
     }
 
     static String turnPolicySection(RunRequest request) {

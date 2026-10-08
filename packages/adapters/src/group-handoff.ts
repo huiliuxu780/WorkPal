@@ -1,6 +1,18 @@
 import { runContinueJob } from "@rakazo/adapter-kit";
 import { MessageBlock } from "@rakazo/contracts";
-import { botMessageHopExhausted, nextBotMessageHop, renderGroupMembersContext } from "@rakazo/core";
+import {
+  botMessageHopExhausted,
+  buildRunOrchestration,
+  collaborationFromOrchestration,
+  HANDOFF_BOUNCE_ERROR,
+  HANDOFF_DEPTH_ERROR,
+  handoffCollaboration,
+  isHandoffBounceBack,
+  MAX_HANDOFF_DEPTH,
+  nextBotMessageHop,
+  renderGroupMembersContext,
+  turnExecutionForSource,
+} from "@rakazo/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
@@ -53,7 +65,11 @@ export async function handoffToGroupBot(
           userId: run.userId,
           status: "running",
         },
-        select: { id: true, sourceMessage: { select: { blocks: true } } },
+        select: {
+          id: true,
+          orchestration: true,
+          sourceMessage: { select: { blocks: true, seq: true } },
+        },
       }),
     ]);
     if (!group || !activeSource) return { error: "source run is no longer active" } as const;
@@ -104,11 +120,32 @@ export async function handoffToGroupBot(
     const sourceHandoff = sourceBlocks.find(
       (block): block is Extract<MessageBlock, { kind: "handoff" }> => block.kind === "handoff",
     );
-    if (sourceHandoff?.fromBotId === targetId) {
-      return {
-        error:
-          "do not hand this stage back to its sender; post the result in the shared thread instead",
-      } as const;
+    // §14 bounce-back: the lineage snapshot is authoritative; the handoff
+    // block is the pre-Phase-3 fallback. A genuine new user instruction after
+    // the handoff releases the rule.
+    const lineage = collaborationFromOrchestration(activeSource.orchestration);
+    const bouncedFrom = lineage?.fromBotId ?? sourceHandoff?.fromBotId ?? null;
+    let hasNewUserInstruction = false;
+    if (bouncedFrom === targetId && activeSource.sourceMessage) {
+      const newer = await tx.message.findFirst({
+        where: {
+          threadId: run.threadId,
+          role: "user",
+          seq: { gt: activeSource.sourceMessage.seq },
+        },
+        select: { id: true },
+      });
+      hasNewUserInstruction = Boolean(newer);
+    }
+    if (isHandoffBounceBack({ targetBotId: targetId, fromBotId: bouncedFrom, hasNewUserInstruction })) {
+      return { error: HANDOFF_BOUNCE_ERROR } as const;
+    }
+    // §13 hard ownership-transfer budget per user turn: Alice→Bob is depth 1,
+    // Bob→Charlie depth 2, a third transfer is a tool error, not a prompt hint.
+    const currentDepth = lineage?.handoffDepth ?? sourceHandoff?.hop ?? 0;
+    const handoffDepth = currentDepth + 1;
+    if (handoffDepth > MAX_HANDOFF_DEPTH) {
+      return { error: HANDOFF_DEPTH_ERROR } as const;
     }
     const hop = nextBotMessageHop(sourceHandoff?.hop);
     if (botMessageHopExhausted(hop)) {
@@ -153,6 +190,19 @@ export async function handoffToGroupBot(
         status: "queued",
         trigger: "follow_up",
         sourceMessageId: message.id,
+        // §11: the target run is the NEW OWNER of this stage; the snapshot
+        // carries the lineage and the owner-grade execution policy.
+        orchestration: buildRunOrchestration({
+          kind: "handoff",
+          ownerBotId: targetId,
+          responseMode: "single",
+          execution: turnExecutionForSource("handoff"),
+          collaboration: handoffCollaboration({
+            fromBotId: run.botId,
+            parentRunId: run.id,
+            handoffDepth,
+          }),
+        }),
       },
     });
     const event = await appendEventInTransaction(tx, {
@@ -166,6 +216,21 @@ export async function handoffToGroupBot(
         fromBotId: run.botId,
         toBotId: targetId,
         text: input.message,
+      },
+    });
+    // §11/§25 structured ownership-transfer event (Phase 4 consumes this).
+    await appendEventInTransaction(tx, {
+      spaceId: run.spaceId,
+      threadId: run.threadId,
+      botId: targetId,
+      type: "thread.turn.handed_off",
+      runId: nextRun.id,
+      payload: {
+        fromBotId: run.botId,
+        toBotId: targetId,
+        fromRunId: run.id,
+        toRunId: nextRun.id,
+        handoffDepth,
       },
     });
     await touchGroupUpdatedAt(tx, groupId);

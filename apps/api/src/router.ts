@@ -135,6 +135,7 @@ import {
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
   turnExecutionForSource,
+  userTurnCollaboration,
 } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
@@ -2147,6 +2148,7 @@ export function createRouter(deps: RouterDeps) {
                   responseMode: responseMode,
                   reasonCode: turnOwner.reasonCode ?? null,
                   execution: turnExecutionForSource("chat"),
+                  collaboration: userTurnCollaboration(),
                 }),
               },
               select: { id: true },

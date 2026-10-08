@@ -257,6 +257,7 @@ export function createJobReconciler(
             botId: true,
             userId: true,
             sourceMessageId: true,
+            orchestration: true,
             status: true,
             error: true,
             bot: { select: { name: true } },

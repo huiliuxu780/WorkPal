@@ -404,6 +404,18 @@ export interface AgentRunModel {
   };
 }
 
+/** Product Harness collaboration identity carried on a run request. */
+export interface AgentCollaborationContext {
+  role: "owner" | "support" | "handoff_owner";
+  fromBotName?: string;
+  /**
+   * True when this run was woken by a delegated outcome (result/status)
+   * returning to the bot that requested it. The runtime renders resumption
+   * wording instead of the plain identity lines.
+   */
+  receivingOutcome?: boolean;
+}
+
 /**
  * Product Harness Turn Policy as carried on a run request. Mirrors the pure
  * `@rakazo/core` turn-policy shape (adapter-kit cannot import core, so the
@@ -438,6 +450,12 @@ export interface AgentRunRequest {
    * never re-derives it. Absent means the runtime's per-scope defaults.
    */
   turnPolicy?: AgentTurnPolicy;
+  /**
+   * Product Harness Phase 3 collaboration identity for the prompt composition
+   * (owner / support / handoff owner). Derived from the run's immutable
+   * lineage snapshot by the backend; the runtime only renders it.
+   */
+  collaborationContext?: AgentCollaborationContext;
   /** Product thread-clear generation. A new generation starts a fresh Harness session. */
   sessionGeneration?: number;
   /** Answer recorded for a paused native Harness tool in this Run. */

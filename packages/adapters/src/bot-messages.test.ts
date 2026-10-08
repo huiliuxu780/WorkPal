@@ -28,6 +28,13 @@ function deps(
     /** Simulate a unique (threadId, clientNonce) race after both retries miss. */
     uniqueConflictOnCommit?: boolean;
     transactionConflictOnce?: boolean;
+    /** Blocks of messages this run already sent (duplicate-delivery guard). */
+    sentBlocks?: unknown[];
+    /** Run id recorded on the wake message (requester resolution for outcome returns). */
+    requesterRunId?: string | null;
+    /** Orchestration snapshot of the requester run (role restoration source). */
+    requesterOrchestration?: unknown;
+    requesterTrigger?: string;
   } = {},
 ) {
   const enqueue = vi.fn().mockResolvedValue(undefined);
@@ -37,7 +44,7 @@ function deps(
     .mockImplementation(async (args: { where?: { threadId_clientNonce?: unknown } }) =>
       args?.where?.threadId_clientNonce
         ? (options.alreadyDelivered ?? null)
-        : { blocks: options.hopBlocks ?? [] },
+        : { blocks: options.hopBlocks ?? [], runId: options.requesterRunId ?? null },
     );
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([{ id: "thread" }]),
@@ -71,8 +78,23 @@ function deps(
           ],
         ),
     },
-    message: { findUnique: messageFindUnique, findMany: vi.fn().mockResolvedValue([]) },
-    run: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    message: {
+      findUnique: messageFindUnique,
+      findMany: vi
+        .fn()
+        .mockResolvedValue(options.sentBlocks ? [{ blocks: options.sentBlocks }] : []),
+    },
+    run: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUnique: vi.fn().mockResolvedValue(
+        options.requesterRunId
+          ? {
+              orchestration: options.requesterOrchestration ?? null,
+              trigger: options.requesterTrigger ?? "user",
+            }
+          : null,
+      ),
+    },
     $transaction: vi.fn(async (fn: (client: unknown) => unknown) => {
       transactionAttempts += 1;
       if (options.transactionConflictOnce && transactionAttempts === 1) {
@@ -530,6 +552,79 @@ describe("hardening", () => {
   });
 });
 
+const ownerRequesterSnapshot = {
+  version: "v1",
+  routing: { kind: "explicit_mention" },
+  ownership: { mode: "owner", ownerBotId: "bot-target" },
+  responseMode: "single",
+  execution: {
+    interactive: true,
+    planning: "auto",
+    delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
+  },
+  collaboration: {
+    role: "owner",
+    source: "user",
+    fromBotId: null,
+    parentRunId: null,
+    handoffDepth: 0,
+    messageHop: 0,
+  },
+};
+
+const supportRequesterSnapshot = {
+  version: "v1",
+  routing: { kind: "bot_message" },
+  ownership: { mode: "support", ownerBotId: "bot-mid" },
+  responseMode: "single",
+  execution: {
+    interactive: false,
+    planning: "disabled",
+    delegation: { mode: "auto", background: false, maxChildren: 3, maxDepth: 1 },
+  },
+  collaboration: {
+    role: "support",
+    source: "bot_message",
+    fromBotId: "bot-target",
+    parentRunId: "run-alice",
+    handoffDepth: 0,
+    messageHop: 1,
+  },
+};
+
+const handoffOwnerSnapshot = {
+  version: "v1",
+  routing: { kind: "handoff" },
+  ownership: { mode: "owner", ownerBotId: "bot-target" },
+  responseMode: "single",
+  execution: {
+    interactive: true,
+    planning: "auto",
+    delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
+  },
+  collaboration: {
+    role: "owner",
+    source: "handoff",
+    fromBotId: "bot-a",
+    parentRunId: "run-a",
+    handoffDepth: 2,
+    messageHop: 0,
+  },
+};
+
+function readCreatedOrchestration(harness: ReturnType<typeof deps>) {
+  const call = harness.tx.run.create.mock.calls[0]![0] as {
+    data: {
+      orchestration: {
+        ownership: { mode: string; ownerBotId: string };
+        execution: { interactive: boolean; planning: string };
+        collaboration: { role: string; source: string; fromBotId: string; handoffDepth: number; messageHop: number };
+      };
+    };
+  };
+  return call.data.orchestration;
+}
+
 describe("automatic outcome return", () => {
   it("routes a delegated run's final text back to its coordinator", async () => {
     const harness = deps({
@@ -544,6 +639,8 @@ describe("automatic outcome return", () => {
           returnToMessageId: "message-request",
         },
       ],
+      requesterRunId: "run-alice",
+      requesterOrchestration: ownerRequesterSnapshot,
     });
     const returned = await returnBotMessageOutcome(
       harness.deps,
@@ -555,6 +652,18 @@ describe("automatic outcome return", () => {
     expect(harness.tx.run.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ trigger: "bot_message" }) }),
     );
+    // The outcome hop restores the REQUESTER's role: an owner requester
+    // resumes as owner with its owner-grade policy (never branded support).
+    const orchestration = readCreatedOrchestration(harness);
+    expect(orchestration.ownership.mode).toBe("owner");
+    expect(orchestration.execution).toMatchObject({ interactive: true, planning: "auto" });
+    expect(orchestration.collaboration).toMatchObject({
+      role: "owner",
+      source: "bot_message",
+      fromBotId: "bot-sender",
+      parentRunId: "run-1",
+      messageHop: 2,
+    });
     expect(harness.tx.run.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: { in: ["completed", "failed"] } }),
@@ -650,5 +759,366 @@ describe("automatic outcome return", () => {
     expect(returned).toBe(true);
     expect(harness.enqueue).not.toHaveBeenCalled();
     expect(harness.deps.prisma.run.updateMany).toHaveBeenCalled();
+  });
+});
+
+describe("collaboration lineage (Product Harness Phase 3)", () => {
+  it("persists the support snapshot on the delegated run", async () => {
+    const harness = deps();
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Analyze these numbers",
+    });
+
+    expect(harness.tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          trigger: "bot_message",
+          orchestration: {
+            version: "v1",
+            routing: { kind: "bot_message" },
+            ownership: { mode: "support", ownerBotId: "bot-target" },
+            responseMode: "single",
+            execution: {
+              interactive: false,
+              planning: "disabled",
+              delegation: { mode: "auto", background: false, maxChildren: 3, maxDepth: 1 },
+            },
+            collaboration: {
+              role: "support",
+              source: "bot_message",
+              fromBotId: "bot-sender",
+              parentRunId: "run-1",
+              handoffDepth: 0,
+              messageHop: 1,
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("inherits the sender's handoff depth into the support lineage", async () => {
+    const harness = deps();
+
+    await messageBot(
+      harness.deps,
+      {
+        ...run,
+        orchestration: {
+          version: "v1",
+          routing: { kind: "handoff" },
+          ownership: { mode: "owner", ownerBotId: "bot-sender" },
+          responseMode: "single",
+          collaboration: {
+            role: "owner",
+            source: "handoff",
+            fromBotId: "bot-x",
+            parentRunId: "run-x",
+            handoffDepth: 2,
+            messageHop: 0,
+          },
+        },
+      },
+      sender,
+      { bot_id: "bot-target", message: "Check the budget" },
+    );
+
+    const call = harness.tx.run.create.mock.calls[0]![0] as {
+      data: { orchestration: { collaboration: { handoffDepth: number } } };
+    };
+    expect(call.data.orchestration.collaboration.handoffDepth).toBe(2);
+  });
+
+  it("emits thread.collaboration.requested for a delegation", async () => {
+    const harness = deps();
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Analyze these numbers",
+    });
+
+    const events = harness.tx.event.create.mock.calls.map(
+      ([arg]) => arg as { data: { type: string; payload: Record<string, unknown> } },
+    );
+    const requested = events.filter((event) => event.data.type === "thread.collaboration.requested");
+    expect(requested).toHaveLength(1);
+    expect(requested[0]!.data.payload).toEqual({
+      fromBotId: "bot-sender",
+      toBotId: "bot-target",
+      fromRunId: "run-1",
+      toRunId: "run-2",
+      intent: "request",
+      handoffDepth: 0,
+    });
+  });
+
+  it("emits thread.collaboration.result when a result is delivered", async () => {
+    const harness = deps();
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Here is the analysis",
+      intent: "result",
+    });
+
+    const events = harness.tx.event.create.mock.calls.map(
+      ([arg]) => arg as { data: { type: string } },
+    );
+    expect(events.some((event) => event.data.type === "thread.collaboration.result")).toBe(true);
+    expect(events.some((event) => event.data.type === "thread.collaboration.requested")).toBe(false);
+  });
+
+  it("refuses an acknowledgement-only reply from a run woken by a result", async () => {
+    const harness = deps({
+      hopBlocks: [
+        {
+          kind: "bot_message_received",
+          fromBotId: "bot-target",
+          fromBotName: "Analyst",
+          text: "The analysis is done: 42",
+          hop: 1,
+          intent: "result",
+        },
+      ],
+    });
+    const wokenRun = { ...run, sourceMessageId: "msg-wake" };
+
+    for (const intent of ["fyi", "status"] as const) {
+      await expect(
+        messageBot(harness.deps, wokenRun, sender, {
+          bot_id: "bot-target",
+          message: "Got it, thanks",
+          intent,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error:
+          "Do not acknowledge a result — incorporate it and answer the user. Message this bot only with a substantive question or new information.",
+      });
+    }
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("still allows a substantive follow-up question to the waker", async () => {
+    const harness = deps({
+      hopBlocks: [
+        {
+          kind: "bot_message_received",
+          fromBotId: "bot-target",
+          fromBotName: "Analyst",
+          text: "done",
+          hop: 1,
+          intent: "result",
+        },
+      ],
+    });
+    const wokenRun = { ...run, sourceMessageId: "msg-wake" };
+
+    await expect(
+      messageBot(harness.deps, wokenRun, sender, {
+        bot_id: "bot-target",
+        message: "Which quarter did the 42 come from?",
+        intent: "question",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("refuses to repeat the same message to the same bot within one run", async () => {
+    const harness = deps({
+      sentBlocks: [
+        {
+          kind: "bot_message_sent",
+          toBotId: "bot-target",
+          toBotName: "Analyst",
+          text: "Analyze these numbers",
+          intent: "request",
+        },
+      ],
+    });
+
+    await expect(
+      messageBot(harness.deps, run, sender, {
+        bot_id: "bot-target",
+        message: "Analyze these numbers",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error:
+        "This exact message was already sent to this bot in the current run. Do not repeat the same information.",
+    });
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("outcome-return role preservation (P1)", () => {
+  const requestHopBlocks = [
+    {
+      kind: "bot_message_received",
+      fromBotId: "bot-target",
+      fromBotName: "Coordinator",
+      text: "research this",
+      hop: 1,
+      intent: "request",
+      returnToMessageId: "message-request",
+    },
+  ];
+
+  it("keeps a nested support requester in support (no promotion to owner)", async () => {
+    const harness = deps({
+      hopBlocks: requestHopBlocks,
+      requesterRunId: "run-bob",
+      requesterOrchestration: supportRequesterSnapshot,
+    });
+
+    const returned = await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "Charlie's answer: 7.",
+    );
+
+    expect(returned).toBe(true);
+    const orchestration = readCreatedOrchestration(harness);
+    expect(orchestration.ownership.mode).toBe("support");
+    expect(orchestration.execution).toMatchObject({ interactive: false, planning: "disabled" });
+    expect(orchestration.collaboration).toMatchObject({
+      role: "support",
+      source: "bot_message",
+      fromBotId: "bot-sender",
+    });
+  });
+
+  it("preserves a handoff owner's role and stage depth", async () => {
+    const harness = deps({
+      hopBlocks: requestHopBlocks,
+      requesterRunId: "run-handoff-owner",
+      requesterOrchestration: handoffOwnerSnapshot,
+    });
+
+    await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "The numbers check out.",
+    );
+
+    const orchestration = readCreatedOrchestration(harness);
+    expect(orchestration.ownership.mode).toBe("owner");
+    expect(orchestration.execution).toMatchObject({ interactive: true, planning: "auto" });
+    expect(orchestration.collaboration).toMatchObject({
+      role: "owner",
+      handoffDepth: 2,
+      messageHop: 2,
+    });
+  });
+
+  it("applies the same preservation rule to status returns", async () => {
+    const harness = deps({
+      hopBlocks: requestHopBlocks,
+      requesterRunId: "run-alice",
+      requesterOrchestration: ownerRequesterSnapshot,
+    });
+
+    await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "Halfway there; initial numbers look good.",
+      "status",
+    );
+
+    const orchestration = readCreatedOrchestration(harness);
+    expect(orchestration.ownership.mode).toBe("owner");
+    expect(orchestration.collaboration.role).toBe("owner");
+  });
+
+  it("derives owner for a legacy user-triggered requester without a snapshot", async () => {
+    const harness = deps({
+      hopBlocks: requestHopBlocks,
+      requesterRunId: "run-legacy",
+      requesterOrchestration: null,
+      requesterTrigger: "user",
+    });
+
+    await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "Legacy answer.",
+    );
+
+    const orchestration = readCreatedOrchestration(harness);
+    expect(orchestration.ownership.mode).toBe("owner");
+    expect(orchestration.execution).toMatchObject({ planning: "auto" });
+  });
+
+  it("derives support for a legacy bot_message-triggered requester", async () => {
+    const harness = deps({
+      hopBlocks: requestHopBlocks,
+      requesterRunId: "run-legacy-support",
+      requesterOrchestration: null,
+      requesterTrigger: "bot_message",
+    });
+
+    await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "Nested legacy answer.",
+    );
+
+    expect(readCreatedOrchestration(harness).ownership.mode).toBe("support");
+  });
+
+  it("never promotes to owner when the requester run cannot be resolved", async () => {
+    const harness = deps({
+      hopBlocks: requestHopBlocks,
+      // no requesterRunId: the reply linkage is broken
+    });
+
+    await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "Answer with a broken chain.",
+    );
+
+    expect(readCreatedOrchestration(harness).ownership.mode).toBe("support");
+  });
+
+  it("still brands an unsolicited result as support (no owner role leak)", async () => {
+    const harness = deps();
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Unsolicited findings",
+      intent: "result",
+    });
+
+    const orchestration = readCreatedOrchestration(harness);
+    expect(orchestration.ownership.mode).toBe("support");
+    expect(orchestration.collaboration.role).toBe("support");
+  });
+
+  it("replays an idempotent outcome return without a second continuation run", async () => {
+    const harness = deps({
+      hopBlocks: requestHopBlocks,
+      requesterRunId: "run-alice",
+      requesterOrchestration: ownerRequesterSnapshot,
+      alreadyDelivered: { id: "message-delivered" },
+    });
+
+    const returned = await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "The answer is 42.",
+    );
+
+    expect(returned).toBe(true);
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+    expect(harness.enqueue).not.toHaveBeenCalled();
   });
 });

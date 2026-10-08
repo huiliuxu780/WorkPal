@@ -1,3 +1,4 @@
+import type { CollaborationLineageV1 } from "./collaboration.js";
 import type { GroupRouterReasonCode } from "./group-routing.js";
 import type { ResponseMode, TurnRouteKind } from "./response-owner.js";
 
@@ -37,6 +38,8 @@ export type RunOrchestrationV1 = {
   responseMode: ResponseMode;
   /** Absent on Phase 1 rows; readers must fall back to trigger-derived policy. */
   execution?: OrchestrationExecutionV1;
+  /** Phase 3 collaboration lineage; absent on pre-Phase-3 rows. */
+  collaboration?: CollaborationLineageV1;
 };
 
 const TURN_ROUTE_KINDS: readonly TurnRouteKind[] = [
@@ -58,6 +61,7 @@ export function buildRunOrchestration(input: {
   reasonCode?: GroupRouterReasonCode | null;
   ownershipMode?: "owner" | "support";
   execution?: OrchestrationExecutionV1 | null;
+  collaboration?: CollaborationLineageV1 | null;
 }): RunOrchestrationV1 {
   const orchestration: RunOrchestrationV1 = {
     version: RUN_ORCHESTRATION_VERSION,
@@ -67,7 +71,31 @@ export function buildRunOrchestration(input: {
   };
   if (input.reasonCode) orchestration.routing.reasonCode = input.reasonCode;
   if (input.execution) orchestration.execution = input.execution;
+  if (input.collaboration) orchestration.collaboration = input.collaboration;
   return orchestration;
+}
+
+export function parseCollaborationLineage(value: unknown): CollaborationLineageV1 | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.role !== "owner" && raw.role !== "support") return null;
+  if (raw.source !== "user" && raw.source !== "bot_message" && raw.source !== "handoff") return null;
+  if (raw.fromBotId !== null && typeof raw.fromBotId !== "string") return null;
+  if (raw.parentRunId !== null && typeof raw.parentRunId !== "string") return null;
+  if (typeof raw.handoffDepth !== "number" || !Number.isInteger(raw.handoffDepth) || raw.handoffDepth < 0) {
+    return null;
+  }
+  if (typeof raw.messageHop !== "number" || !Number.isInteger(raw.messageHop) || raw.messageHop < 0) {
+    return null;
+  }
+  return {
+    role: raw.role,
+    source: raw.source,
+    fromBotId: raw.fromBotId ?? null,
+    parentRunId: raw.parentRunId ?? null,
+    handoffDepth: raw.handoffDepth,
+    messageHop: raw.messageHop,
+  };
 }
 
 function isTurnRouteKind(value: unknown): value is TurnRouteKind {
@@ -140,6 +168,11 @@ export function parseRunOrchestration(value: unknown): RunOrchestrationV1 | null
   if (raw.execution !== undefined && raw.execution !== null) {
     const execution = parseOrchestrationExecution(raw.execution);
     if (execution) orchestration.execution = execution;
+  }
+  // Same tolerance for the Phase 3 lineage block.
+  if (raw.collaboration !== undefined && raw.collaboration !== null) {
+    const collaboration = parseCollaborationLineage(raw.collaboration);
+    if (collaboration) orchestration.collaboration = collaboration;
   }
   return orchestration;
 }

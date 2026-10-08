@@ -563,6 +563,13 @@ function serializableRequest(
           routingKind: request.turnPolicy.routing.kind,
         }
       : undefined,
+    collaborationContext: request.collaborationContext
+      ? {
+          role: request.collaborationContext.role,
+          fromBotName: request.collaborationContext.fromBotName,
+          receivingOutcome: request.collaborationContext.receivingOutcome,
+        }
+      : undefined,
     sessionGeneration: request.sessionGeneration ?? 0,
     resumeAnswer: request.resumeAnswer,
     sourceMessageId: request.sourceMessageId,

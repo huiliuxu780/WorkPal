@@ -1,13 +1,25 @@
 import { runContinueJob } from "@rakazo/adapter-kit";
 import type { BotMessageIntent, MessageBlock } from "@rakazo/contracts";
 import {
+  ACK_LOOP_ERROR,
   BOT_MESSAGE_MAX_LENGTH,
+  DUPLICATE_MESSAGE_ERROR,
   botMessageContext,
   botMessageHopExhausted,
   buildBotMessageWakePrompt,
+  buildRunOrchestration,
   clampBotMessage,
+  collaborationFromOrchestration,
+  isAcknowledgementLoop,
   nextBotMessageHop,
+  outcomeResumptionCollaboration,
+  parseRunOrchestration,
   resolveBotAddress,
+  supportCollaboration,
+  turnExecutionForSource,
+  turnPolicySourceForTrigger,
+  type CollaborationRole,
+  type OrchestrationExecutionV1,
 } from "@rakazo/core";
 import {
   appendEventInTransaction,
@@ -68,6 +80,8 @@ export async function messageBot(
     botId: string;
     userId: string;
     sourceMessageId?: string | null;
+    /** Immutable Product Harness snapshot of the sending run (lineage source). */
+    orchestration?: unknown;
   },
   sender: { id: string; name: string },
   input: {
@@ -118,8 +132,69 @@ export async function messageBot(
         "bot-to-bot message limit reached for this chain; report back to the user instead of messaging another bot",
     };
   }
+  // §15 anti-loop rules. The automatic outcome return is exempt: it is the
+  // sanctioned path back to the requester, guarded by returnsToSender and its
+  // per-run delivery key.
+  if (!options?.allowTerminalSource) {
+    if (
+      isAcknowledgementLoop({
+        wokeIntent: sourceContext?.intent,
+        targetsWaker: sourceContext?.fromBotId === target.id,
+        intent,
+      })
+    ) {
+      return { ok: false as const, error: ACK_LOOP_ERROR };
+    }
+    const sentByThisRun = await deps.prisma.message.findMany({
+      where: { threadId: run.threadId, runId: run.id },
+      select: { blocks: true },
+    });
+    const duplicated = sentByThisRun.some((sent) =>
+      (Array.isArray(sent.blocks) ? (sent.blocks as MessageBlock[]) : []).some(
+        (block) =>
+          block.kind === "bot_message_sent" &&
+          block.toBotId === target.id &&
+          block.text.trim() === message,
+      ),
+    );
+    if (duplicated) return { ok: false as const, error: DUPLICATE_MESSAGE_ERROR };
+  }
 
   const targetThreadId = target.thread.id;
+
+  // A returned delegated outcome restores the requester's previous role and
+  // execution policy — resolved from persisted Product Harness lineage, never
+  // from prompt text or intent strings. Nested support requesters stay
+  // support; only owners resume as owners. An unresolvable requester keeps
+  // the safe support default (never a silent promotion).
+  let resumptionRole: CollaborationRole = "support";
+  let resumptionExecution: OrchestrationExecutionV1 = turnExecutionForSource("bot_message");
+  let resumptionDepth: number | null = null;
+  if (returnsToSender && sourceContext?.returnToMessageId) {
+    const outbound = await deps.prisma.message.findUnique({
+      where: { id: sourceContext.returnToMessageId },
+      select: { runId: true },
+    });
+    const requesterRun = outbound?.runId
+      ? await deps.prisma.run.findUnique({
+          where: { id: outbound.runId },
+          select: { orchestration: true, trigger: true },
+        })
+      : null;
+    if (requesterRun) {
+      const snapshot = parseRunOrchestration(requesterRun.orchestration);
+      resumptionRole =
+        snapshot?.collaboration?.role ??
+        snapshot?.ownership.mode ??
+        (turnPolicySourceForTrigger(requesterRun.trigger) === "bot_message"
+          ? "support"
+          : "owner");
+      resumptionExecution =
+        snapshot?.execution ??
+        turnExecutionForSource(resumptionRole === "support" ? "bot_message" : "chat");
+      resumptionDepth = snapshot?.collaboration?.handoffDepth ?? null;
+    }
+  }
 
   // A tool call can be re-executed after a lease expiry, so a delivery has to be
   // replayable: without this the recipient is messaged twice and woken twice.
@@ -242,6 +317,22 @@ export async function messageBot(
             status: "queued",
           },
         });
+        const lineage = collaborationFromOrchestration(run.orchestration);
+        const lineageInput = {
+          fromBotId: sender.id,
+          parentRunId: run.id,
+          handoffDepth: lineage?.handoffDepth ?? 0,
+          messageHop: hop,
+        };
+        const collaboration = returnsToSender
+          ? outcomeResumptionCollaboration({
+              role: resumptionRole,
+              fromBotId: sender.id,
+              parentRunId: run.id,
+              handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
+              messageHop: hop,
+            })
+          : supportCollaboration(lineageInput);
         const nextRun = await tx.run.create({
           data: {
             spaceId: run.spaceId,
@@ -252,6 +343,17 @@ export async function messageBot(
             status: "queued",
             trigger: "bot_message",
             sourceMessageId: inbound.id,
+            // Support identity is Product Harness data, never prompt guesswork:
+            // the snapshot pins role/source/lineage and the Phase 2 execution
+            // policy for this delegated run.
+            orchestration: buildRunOrchestration({
+              kind: "bot_message",
+              ownerBotId: target.id,
+              responseMode: "single",
+              ownershipMode: returnsToSender ? resumptionRole : "support",
+              execution: returnsToSender ? resumptionExecution : turnExecutionForSource("bot_message"),
+              collaboration,
+            }),
           },
           select: { id: true },
         });
@@ -271,6 +373,23 @@ export async function messageBot(
           type: "thread.message.created",
           runId: run.id,
           payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
+        });
+        // Structured collaboration event for observability and the Phase 4
+        // Activity UI. No chain-of-thought, only routing metadata.
+        await appendEventInTransaction(tx, {
+          spaceId: run.spaceId,
+          threadId: targetThreadId,
+          botId: target.id,
+          type: intent === "result" ? "thread.collaboration.result" : "thread.collaboration.requested",
+          runId: nextRun.id,
+          payload: {
+            fromBotId: sender.id,
+            toBotId: target.id,
+            fromRunId: run.id,
+            toRunId: nextRun.id,
+            intent,
+            handoffDepth: collaboration.handoffDepth,
+          },
         });
         return {
           ok: true as const,
@@ -324,6 +443,7 @@ export async function returnBotMessageOutcome(
     botId: string;
     userId: string;
     sourceMessageId?: string | null;
+    orchestration?: unknown;
   },
   sender: { id: string; name: string },
   text: string,

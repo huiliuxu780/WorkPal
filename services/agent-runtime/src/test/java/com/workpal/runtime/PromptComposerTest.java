@@ -84,10 +84,70 @@ class PromptComposerTest {
         assertFalse(block.contains("response owner"));
     }
 
+    @Test void collaborationContextRendersOwnerSupportAndHandoffIdentities() throws Exception {
+        String owner = PromptComposer.collaborationContextSection(parsed(""));
+        assertTrue(owner.contains("<collaboration-context>"));
+        assertTrue(owner.contains("You are the response owner for this stage."));
+
+        String support = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"support\",\"fromBotName\":\"Alice\"}"));
+        assertTrue(support.contains("You are supporting Alice for this stage."));
+        assertTrue(support.contains("Return useful work to Alice."));
+        assertTrue(support.contains("Do not take over the user-facing conversation."));
+
+        String handoff = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"handoff_owner\",\"fromBotName\":\"Alice\"}"));
+        assertTrue(handoff.contains("Alice transferred ownership of this stage to you."));
+        assertTrue(handoff.contains("reply directly in the shared thread"));
+        assertTrue(handoff.contains("Do not hand it back merely to report completion."));
+    }
+
+    @Test void collaborationContextSitsBetweenBotInstructionsAndRuntimeContext() throws Exception {
+        String prompt = PromptComposer.compose(parsed(
+                "\"collaborationContext\":{\"role\":\"support\",\"fromBotName\":\"Alice\"}"));
+        int bot = prompt.indexOf("<bot-instructions>");
+        int collaboration = prompt.indexOf("<collaboration-context>");
+        int runtime = prompt.indexOf("<runtime-context>");
+        assertTrue(0 <= bot && bot < collaboration, "collaboration context must follow bot instructions");
+        assertTrue(collaboration < runtime, "collaboration context must precede runtime context");
+    }
+
+    @Test void outcomeResumptionRendersRolePreservingIdentities() throws Exception {
+        String owner = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"owner\",\"receivingOutcome\":true}"));
+        assertTrue(owner.contains("Another persistent bot has returned work you delegated."));
+        assertTrue(owner.contains("You remain the response owner."));
+        assertTrue(owner.contains("Incorporate the actual result"));
+
+        String support = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"support\",\"receivingOutcome\":true}"));
+        assertTrue(support.contains("You are still supporting the original owner."));
+        assertTrue(support.contains("return your completed result upstream"));
+        assertFalse(support.contains("You are supporting the requesting agent"));
+
+        String handoff = PromptComposer.collaborationContextSection(parsed(
+                "\"collaborationContext\":{\"role\":\"handoff_owner\",\"fromBotName\":\"Alice\",\"receivingOutcome\":true}"));
+        assertTrue(handoff.contains("Alice transferred ownership of this stage to you."));
+        assertTrue(handoff.contains("Another persistent bot has returned work you delegated"));
+    }
+
+    @Test void auxiliaryScopesGetNoCollaborationIdentity() throws Exception {
+        String body = """
+                {"botId":"bot-1","threadId":"turn-routing:1","runId":"turn-routing:1","executionScope":"turn-routing",
+                 "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"turn-routing:1","runId":"turn-routing:1"},
+                 "prompt":"route","model":{"provider":"p","id":"m"}}
+                """;
+        RunRequest request = JSON.readValue(body, RunRequest.class);
+        assertEquals("", PromptComposer.collaborationContextSection(request));
+    }
+
     @Test void platformInstructionsCarryTheShortExecutionStrategy() throws Exception {
         String prompt = PromptComposer.compose(parsed(""));
         assertTrue(prompt.contains("Use the simplest execution strategy"));
         assertTrue(prompt.contains("Do not create a plan for simple questions"));
         assertTrue(prompt.contains("Helpers perform delegated work"));
+        assertTrue(prompt.contains("Use a helper/subagent when you only need temporary execution capacity."));
+        assertTrue(prompt.contains("Use message_bot when another persistent bot"));
+        assertTrue(prompt.contains("Use handoff_to_bot only when that persistent bot should own the next stage."));
     }
 }

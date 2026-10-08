@@ -3693,6 +3693,14 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
             planning: "auto",
             delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
           },
+          collaboration: {
+            role: "owner",
+            source: "user",
+            fromBotId: null,
+            parentRunId: null,
+            handoffDepth: 0,
+            messageHop: 0,
+          },
         },
       }),
     });
