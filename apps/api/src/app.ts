@@ -527,6 +527,8 @@ export async function createApp(
       defaultModel: env.defaultModel,
       teamChatJudgeProvider: env.teamChatJudgeProvider,
       teamChatJudgeModel: env.teamChatJudgeModel,
+      productHarnessRouterModel: env.productHarnessRouterModel,
+      productHarnessRouterApiKey: env.productHarnessRouterApiKey,
       deploymentModelKey: env.deploymentModelKey,
       webOrigin: env.webOrigin,
       privacyPolicyUrl: env.privacyPolicyUrl,

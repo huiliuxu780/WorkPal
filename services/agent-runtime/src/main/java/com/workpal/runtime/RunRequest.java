@@ -27,7 +27,8 @@ public record RunRequest(
         Boolean allowSilentEmpty,
         String emptyResponseText,
         Integer sessionGeneration,
-        String resumeAnswer) {
+        String resumeAnswer,
+        TurnPolicy turnPolicy) {
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
             String sourceMessageId, Identity identity, String prompt, String productName,
@@ -36,7 +37,35 @@ public record RunRequest(
             RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null);
+    }
+
+    public RunRequest(String botId, String threadId, String runId, String executionScope,
+            String sourceMessageId, Identity identity, String prompt, String productName,
+            String instructions, List<HistoryMessage> history, List<InputImage> currentTurnImages,
+            List<SkillDefinition> skills, List<ToolDefinition> tools, ToolBridge toolBridge,
+            RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration,
+            String resumeAnswer) {
+        this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
+                instructions, history, currentTurnImages, skills, tools, toolBridge, model,
+                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null);
+    }
+
+    /**
+     * Product Harness Phase 2 immutable execution policy (wire shape from
+     * packages/core turn-policy). The runtime enforces it and never
+     * re-derives routing. Absent means per-scope defaults: chat keeps every
+     * native capability; auxiliary scopes are already capability-free.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record TurnPolicy(Boolean interactive, String planning, Delegation delegation,
+            Ownership ownership, String routingKind) {
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public record Delegation(String mode, Boolean background, Integer maxChildren, Integer maxDepth) {}
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public record Ownership(String mode, String ownerBotId) {}
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -122,6 +151,49 @@ public record RunRequest(
     public String scope() { return executionScope == null ? "chat" : executionScope; }
     public boolean isChat() { return "chat".equals(scope()); }
     public int generation() { return sessionGeneration == null ? 0 : sessionGeneration; }
+
+    /** Planning capability: chat scope only, unless the policy disables it. */
+    public boolean planningAllowed() {
+        if (!isChat()) return false;
+        return turnPolicy == null || turnPolicy.planning() == null || "auto".equals(turnPolicy.planning());
+    }
+
+    /** Delegation capability: chat scope only, backend must have offered run_subagent. */
+    public boolean delegationAllowed() {
+        if (!isChat()) return false;
+        if (turnPolicy == null || turnPolicy.delegation() == null) return true;
+        return turnPolicy.delegation().mode() == null || "auto".equals(turnPolicy.delegation().mode());
+    }
+
+    /** Background helper spawns; defaults to allowed with no policy. */
+    public boolean backgroundAllowed() {
+        if (!delegationAllowed()) return false;
+        if (turnPolicy == null || turnPolicy.delegation() == null) return true;
+        return !Boolean.FALSE.equals(turnPolicy.delegation().background());
+    }
+
+    public int maxChildren() {
+        if (turnPolicy == null || turnPolicy.delegation() == null
+                || turnPolicy.delegation().maxChildren() == null
+                || turnPolicy.delegation().maxChildren() <= 0) {
+            return 3;
+        }
+        return turnPolicy.delegation().maxChildren();
+    }
+
+    public boolean interactive() {
+        return turnPolicy == null || !Boolean.FALSE.equals(turnPolicy.interactive());
+    }
+
+    public boolean supportOwnership() {
+        return turnPolicy != null && turnPolicy.ownership() != null
+                && "support".equals(turnPolicy.ownership().mode());
+    }
+
+    public String routingKind() {
+        return turnPolicy == null || blank(turnPolicy.routingKind()) ? scope() : turnPolicy.routingKind();
+    }
+
     public static boolean blank(String value) { return value == null || value.isBlank(); }
     private static boolean equals(String a, String b) { return a != null && a.equals(b); }
 }

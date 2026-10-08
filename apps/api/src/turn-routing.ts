@@ -1,4 +1,4 @@
-import type { AgentRuntime } from "@rakazo/adapter-kit";
+import type { AgentRunModel, AgentRuntime } from "@rakazo/adapter-kit";
 import type { EncryptedSecretStore } from "@rakazo/adapters";
 import { runGroupRouter } from "@rakazo/adapters";
 import {
@@ -7,9 +7,9 @@ import {
   type GroupRouterReasonCode,
   type ResponseMode,
 } from "@rakazo/core";
-import type { PrismaClient } from "@rakazo/db";
+import { findModelCredential, type PrismaClient } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
-import { resolveAuxJudgeModel } from "./team-chat-judge.js";
+import { resolveAuxJudgeModel, type AuxJudgeModelBot } from "./team-chat-judge.js";
 
 /**
  * Product Harness Phase 1 — Turn Routing.
@@ -50,6 +50,10 @@ export function createTurnRoutingProvider(deps: {
   deploymentProvider: string;
   deploymentModel: string;
   deploymentModelKey?: string;
+  /** PRODUCT_HARNESS_ROUTER_MODEL ("provider/model") — priority 1 for routing. */
+  routerModel?: string;
+  /** PRODUCT_HARNESS_ROUTER_API_KEY — only needed for a remote router provider. */
+  routerApiKey?: string;
   routerTimeoutMs?: number;
 }): TurnRoutingProvider {
   return {
@@ -118,17 +122,18 @@ export function createTurnRoutingProvider(deps: {
       };
       if (!deps.runtime) return routed;
 
-      // Isolated auxiliary execution: the router resolves its model against
-      // the lead bot (its deployment-level default), sends no tools, no
-      // skills, no history, and never touches the chat session. Any failure
-      // — unresolved model, timeout, malformed JSON, invented id — falls
+      // Isolated auxiliary execution: the router resolves its model through
+      // the ProductHarnessModelResolver priority chain (configured harness
+      // model → deployment/default chain → lead), sends no tools, no skills,
+      // no history, and never touches the chat session. Any failure —
+      // unresolved model, timeout, malformed JSON, invented id — falls
       // through to the lead. A routing failure must never cost the send.
       try {
         const leadBot = members.find((member) => member.id === lead.botId) ?? members[0]!;
-        const resolved = await resolveAuxJudgeModel(deps, leadBot);
-        if (resolved) {
+        const model = await resolveTurnRoutingModel(deps, leadBot);
+        if (model) {
           const decision = await runGroupRouter({
-            config: { runtime: deps.runtime, model: resolved.model, timeoutMs: deps.routerTimeoutMs },
+            config: { runtime: deps.runtime, model, timeoutMs: deps.routerTimeoutMs },
             routing: {
               message: input.text,
               members,
@@ -151,4 +156,81 @@ export function createTurnRoutingProvider(deps: {
       return routed;
     },
   };
+}
+
+/**
+ * ProductHarnessModelResolver (Product Harness Phase 2, B11). Priority:
+ *   1. PRODUCT_HARNESS_ROUTER_MODEL ("provider/model"), usable through its
+ *      explicit key, a deployment-key match, or the lead space's connection
+ *      for that provider;
+ *   2. the deployment default model (with its key);
+ *   3. the group lead's model connection via the shared auxiliary chain;
+ *   4. null — the caller then routes deterministically to the lead.
+ * Model selection must never change ownership semantics.
+ */
+export type TurnRoutingModelDeps = {
+  prisma: PrismaClient;
+  secrets: EncryptedSecretStore;
+  deploymentProvider: string;
+  deploymentModel: string;
+  deploymentModelKey?: string;
+  routerModel?: string;
+  routerApiKey?: string;
+};
+
+export function parseProductHarnessRouterModel(
+  value: string | undefined | null,
+): { provider: string; id: string } | null {
+  if (!value) return null;
+  const separator = value.indexOf("/");
+  if (separator <= 0 || separator === value.length - 1) return null;
+  const provider = value.slice(0, separator).trim();
+  const id = value.slice(separator + 1).trim();
+  if (!provider || !id) return null;
+  return { provider, id };
+}
+
+export async function resolveTurnRoutingModel(
+  deps: TurnRoutingModelDeps,
+  leadBot: AuxJudgeModelBot,
+): Promise<AgentRunModel | null> {
+  const configured = parseProductHarnessRouterModel(deps.routerModel);
+  if (configured) {
+    if (deps.routerApiKey) {
+      return { provider: configured.provider, id: configured.id, apiKey: deps.routerApiKey };
+    }
+    if (configured.provider === deps.deploymentProvider && deps.deploymentModelKey) {
+      return {
+        provider: configured.provider,
+        id: configured.id,
+        apiKey: deps.deploymentModelKey,
+      };
+    }
+    const credential = await findModelCredential(deps.prisma, {
+      userId: leadBot.userId,
+      spaceId: leadBot.spaceId,
+    }, configured.provider).catch(() => null);
+    if (credential) {
+      // Decrypt through the shared auxiliary path (oauth/rotation intact).
+      const overrideDeps = {
+        ...deps,
+        providerOverride: configured.provider,
+        modelOverride: configured.id,
+      };
+      const resolved = await resolveAuxJudgeModel(overrideDeps, leadBot);
+      if (resolved) return resolved.model;
+    }
+    // An unusable configured model must not break routing; fall through.
+  }
+
+  if (deps.deploymentProvider && deps.deploymentModel && deps.deploymentModelKey) {
+    return {
+      provider: deps.deploymentProvider,
+      id: deps.deploymentModel,
+      apiKey: deps.deploymentModelKey,
+    };
+  }
+
+  const resolved = await resolveAuxJudgeModel(deps, leadBot);
+  return resolved?.model ?? null;
 }

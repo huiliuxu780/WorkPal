@@ -80,6 +80,13 @@ export interface AppEnv {
   /** Optional model override for ambient engagement judging. */
   teamChatJudgeProvider: string | undefined;
   teamChatJudgeModel: string | undefined;
+  /**
+   * Optional dedicated model for Product Harness auxiliary calls (Group
+   * Router): "provider/model" plus an optional key. Without it the harness
+   * falls back to the deployment default, then the group lead's model chain.
+   */
+  productHarnessRouterModel: string | undefined;
+  productHarnessRouterApiKey: string | undefined;
   defaultProvider: string;
   defaultModel: string;
   wakeupDriver: string;
@@ -173,6 +180,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     teamChatBotId: optional(source.TEAM_CHAT_BOT_ID) ?? optional(source.SLACK_RAKAZO_BOT_ID),
     teamChatJudgeProvider: optional(source.TEAM_CHAT_JUDGE_PROVIDER),
     teamChatJudgeModel: optional(source.TEAM_CHAT_JUDGE_MODEL),
+    productHarnessRouterModel: optional(source.PRODUCT_HARNESS_ROUTER_MODEL),
+    productHarnessRouterApiKey: optional(source.PRODUCT_HARNESS_ROUTER_API_KEY),
     defaultProvider: deploymentModel.provider,
     defaultModel: deploymentModel.model,
     wakeupDriver: source.WAKEUP_DRIVER ?? "graphile",
