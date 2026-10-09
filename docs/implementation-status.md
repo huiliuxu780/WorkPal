@@ -120,5 +120,8 @@ events, 20 background rows per thread).
 
 Product Harness status: Phase 1 (who answers) COMPLETE, Phase 2 (how the
 owner may execute) COMPLETE, Phase 3 (how persistent agents collaborate)
-COMPLETE, Phase 4 (how users understand execution) COMPLETE. Next: Phase 5 —
-Harness Observability & Evaluation.
+COMPLETE, Phase 4 (how users understand execution) COMPLETE — Product
+Harness v1 is COMPLETE. There is no Phase 5: further improvements (extra e2e
+coverage, a background-task label field, similar polish) are ordinary
+Execution UX hardening within the product-refinement stage, not a new
+harness phase.
