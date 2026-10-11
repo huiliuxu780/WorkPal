@@ -28,6 +28,8 @@ describe("toolRequiresApproval", () => {
     expect(toolRequiresApproval("create_space", false)).toBe(true);
     expect(toolRequiresExplicitApproval("create_space")).toBe(true);
     expect(toolRequiresExplicitApproval("archive_bot")).toBe(false);
+    expect(toolRequiresApproval("send_email", false)).toBe(true);
+    expect(toolRequiresExplicitApproval("send_email")).toBe(true);
   });
 
   it("does not gate read-only or local work", () => {
@@ -94,7 +96,7 @@ describe("resolveActionApprovalDetail", () => {
 
 describe("unattendedTriggerToolRequiresApproval", () => {
   it("forces approval for webhook-triggered local side effects", () => {
-    for (const name of ["shell", "write_file", "browser_act", "computer_act"]) {
+    for (const name of ["shell", "write_file", "browser_act", "computer_act", "send_email"]) {
       expect(unattendedTriggerToolRequiresApproval("webhook", name, false)).toBe(true);
     }
   });

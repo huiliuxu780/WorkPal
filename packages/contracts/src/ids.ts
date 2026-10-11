@@ -21,6 +21,13 @@ export const BOT_COLORS = [
   "#D9508A",
 ] as const;
 
+/**
+ * Default avatar for new bots: the Avatar Studio's first ball — the cercle
+ * shape in the palette's first colour (encre), neutral expression. Encoded in
+ * the `color::bloub::shape::expression` format the studio writes.
+ */
+export const DEFAULT_BOT_AVATAR_COLOR = "#0a0a0c::bloub::cercle::neutre";
+
 export const RunStatus = z.enum([
   "queued",
   "leased",

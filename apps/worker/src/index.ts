@@ -6,6 +6,7 @@ loadRootEnv();
 
 import {
   AgentScopeAgentRuntime,
+  AgentlyMailService,
   ChatSdkMessagingSurface,
   CodexCatalogCache,
   createBackgroundJobHandlers,
@@ -279,6 +280,10 @@ async function main() {
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
     cloudAgent,
+    mail:
+      process.env.AGENTLY_MAIL_ENABLED === "true"
+        ? new AgentlyMailService({ bin: (process.env.AGENTLY_MAIL_BIN ?? "").trim() || "agently-cli" })
+        : null,
   });
 
   const jobHandlers = createBackgroundJobHandlers({

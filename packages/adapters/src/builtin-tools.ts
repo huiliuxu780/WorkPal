@@ -405,6 +405,34 @@ export const builtinAgentTools: ConnectorTool[] = [
     inputSchema: z.toJSONSchema(z.object({ name: BotSecretName })),
   },
   {
+    name: "send_email",
+    description:
+      "Send a plain-text email from the deployment's connected Agently mailbox (one shared sender address; it is shown to the user on the approval card). Up to 20 recipients. Every send pauses for explicit user approval — never claim an email was sent before this tool returns ok. Only mail addresses the user asked you to reach.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        to: {
+          type: "array",
+          items: { type: "string", description: "Recipient email address." },
+          minItems: 1,
+          maxItems: 20,
+          description: "Recipient email addresses (1-20, unique).",
+        },
+        subject: {
+          type: "string",
+          maxLength: 200,
+          description: "Email subject (at most 200 characters).",
+        },
+        text: {
+          type: "string",
+          description: "Plain-text email body (at most 64 KB).",
+        },
+      },
+      required: ["to", "subject", "text"],
+    },
+    readOnly: false,
+  },
+  {
     name: "render_plot",
     description:
       'Render a chart from tabular data as a PNG and attach it to the chat. Backed by Observable Plot: bar, line, area, scatter, histogram, heatmap, box plot, facets, and more via a declarative JSON spec. Call with {"charts": true} FIRST to list every chart type with a complete runnable example spec ({"charts": "<keyword>"} searches), then copy the closest example and substitute your rows and columns. {"help": true} returns the full guide. Pass rows inline as data, or data_path for a .csv/.tsv/.json file in your home.',

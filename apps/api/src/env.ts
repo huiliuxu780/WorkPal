@@ -60,6 +60,9 @@ export interface AppEnv {
   smtpUrl: string | undefined;
   emailFrom: string | undefined;
   emailEmulator: boolean;
+  /** Deployment-level outgoing mail via the signed-in agently-cli mailbox. Default off. */
+  agentlyMailEnabled: boolean;
+  agentlyMailBin: string;
   slackBotToken: string | undefined;
   slackSigningSecret: string | undefined;
   whatsappAccessToken: string | undefined;
@@ -163,6 +166,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     smtpUrl: optional(source.SMTP_URL),
     emailFrom: optional(source.EMAIL_FROM),
     emailEmulator: source.EMAIL_EMULATOR === "true" && source.NODE_ENV !== "production",
+    agentlyMailEnabled: source.AGENTLY_MAIL_ENABLED === "true",
+    agentlyMailBin: (source.AGENTLY_MAIL_BIN ?? "").trim() || "agently-cli",
     slackBotToken: optional(source.SLACK_BOT_TOKEN),
     slackSigningSecret: optional(source.SLACK_SIGNING_SECRET),
     whatsappAccessToken: optional(source.WHATSAPP_ACCESS_TOKEN),

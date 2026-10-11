@@ -284,6 +284,21 @@ describe("run tool selection", () => {
     expect(names).not.toContain("computer_act");
   });
 
+  it("offers send_email only when the deployment connected an Agently mailbox", () => {
+    const base = {
+      graphicalToolsAllowed: false,
+      groupId: null,
+      trigger: "message",
+      semanticMemoryEnabled: false,
+      messagingChannelRun: false,
+    } as const;
+    const namesFor = (options: Partial<{ mailEnabled: boolean }>) =>
+      selectBuiltinToolsForRun({ ...base, ...options }).map((tool) => tool.name);
+    expect(namesFor({})).not.toContain("send_email");
+    expect(namesFor({ mailEnabled: false })).not.toContain("send_email");
+    expect(namesFor({ mailEnabled: true })).toContain("send_email");
+  });
+
   const toolNames = (
     trigger: string,
     groupId: string | null = null,
