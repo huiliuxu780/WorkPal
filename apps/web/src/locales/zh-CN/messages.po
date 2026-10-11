@@ -4078,3 +4078,55 @@ msgstr "你的名字"
 #: src/pages/Welcome.tsx
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "你的一支随时在线的 Agent 团队<0/>可以交给它们真正的工作。"
+
+#: src/lib/execution-status.ts
+msgid "Background task"
+msgstr "后台任务"
+
+#: src/lib/execution-status.ts
+msgid "Execution completed"
+msgstr "已完成"
+
+#: src/lib/execution-status.ts
+msgid "Execution failed"
+msgstr "执行失败"
+
+#: src/lib/execution-status.ts
+msgid "Executing"
+msgstr "正在执行"
+
+#: src/lib/execution-status.ts
+msgid "Planning"
+msgstr "正在规划"
+
+#: src/lib/execution-status.ts
+msgid "Running in background"
+msgstr "后台运行中"
+
+#: src/lib/execution-status.ts
+msgid "Status unknown"
+msgstr "状态未知"
+
+#: src/lib/execution-status.ts
+msgid "Stopped"
+msgstr "已停止"
+
+#: src/lib/execution-status.ts
+msgid "Temporarily blocked"
+msgstr "暂时受阻"
+
+#: src/lib/execution-status.ts
+msgid "Waiting for approval"
+msgstr "等待批准"
+
+#: src/lib/execution-status.ts
+msgid "Waiting for your reply"
+msgstr "等待你回复"
+
+#: src/lib/execution-status.ts
+msgid "Waiting for you to take control"
+msgstr "等待你接管"
+
+#: src/lib/execution-status.ts
+msgid "Waiting to start"
+msgstr "等待开始"

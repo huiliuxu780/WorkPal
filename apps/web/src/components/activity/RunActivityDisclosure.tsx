@@ -30,6 +30,7 @@ export function RunActivityDisclosure({
   live,
   actionCount,
   durationMs,
+  embedded = false,
   showAvatars = false,
   botColors,
 }: {
@@ -38,6 +39,8 @@ export function RunActivityDisclosure({
   /** Total actions including folded tool calls (summary line). */
   actionCount?: number;
   durationMs?: number;
+  /** Inside Execution Shell, where the outer Header already carries the Run status. */
+  embedded?: boolean;
   showAvatars?: boolean;
   botColors?: Readonly<Record<string, string>>;
 }) {
@@ -64,7 +67,9 @@ export function RunActivityDisclosure({
           live ? "text-foreground/75" : "text-muted-foreground"
         }`}
       >
-        {live ? (
+        {embedded ? (
+          <Plural value={actions} one="Activity · # action" other="Activity · # actions" />
+        ) : live ? (
           <Plural value={actions} one="Working… · # action" other="Working… · # actions" />
         ) : (
           <>

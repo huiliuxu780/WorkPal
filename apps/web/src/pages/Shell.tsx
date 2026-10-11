@@ -15,6 +15,7 @@ import type {
   Group,
   Me,
   ProductEvent,
+  Run,
   Routine,
   SearchHit,
   Space,
@@ -78,7 +79,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   GroupAvatar,
-  type GroupAvatarMember,
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
@@ -124,6 +124,7 @@ import {
 import {
   type ClipboardEvent,
   type DragEvent,
+  Fragment,
   lazy,
   type MutableRefObject,
   memo,
@@ -144,7 +145,8 @@ import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { RunActivityDisclosure } from "../components/activity/RunActivityDisclosure";
-import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { ExecutionShell } from "../components/ai/ExecutionShell";
+import { CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { RunPlanDisclosure } from "../components/ai/RunPlanDisclosure";
 import { RunStepsDisclosure } from "../components/ai/RunStepsDisclosure";
 import { RunTodoList } from "../components/ai/RunTodoList";
@@ -1837,28 +1839,11 @@ export function ShellPage() {
     },
     [bots, transcriptMembers],
   );
-  const workingBots: GroupAvatarMember[] = workingRuns.map((run) => {
-    const bot = resolveTranscriptBot(run.botId);
-    return {
-      botId: run.botId,
-      color: bot?.color ?? FALLBACK_BOT_COLOR,
-      name: bot?.name,
-      status: run.status,
-    };
-  });
   // Phase 4 activity projection: live inline rows (tools stay in the steps
-  // card, handoffs keep their conversation marker), background cards that
-  // outlive the parent run, and the total action count for the summary line.
+  // card, handoffs keep their conversation marker), and background cards that
+  // outlive the parent run.
   const liveActivityAll = useMemo(() => liveActivityItems(activeSnapshot), [activeSnapshot]);
   const inlineActivity = useMemo(() => inlineActivityItems(liveActivityAll), [liveActivityAll]);
-  const activityActionCount = useMemo(
-    () =>
-      liveActivityAll.reduce(
-        (total, item) => total + (item.kind === "tool" ? (item.count ?? 1) : 1),
-        0,
-      ),
-    [liveActivityAll],
-  );
   const backgroundActivity = useMemo(
     () => backgroundActivityItems(activeSnapshot),
     [activeSnapshot],
@@ -3615,15 +3600,14 @@ export function ShellPage() {
             plans={activeSnapshot?.plans}
             steps={activeSnapshot?.steps}
             todos={activeSnapshot?.todos}
-            activeRunIds={workingRuns.map((run) => run.id)}
+            runs={[...(activeSnapshot?.run ? [activeSnapshot.run] : []), ...(activeSnapshot?.activeRuns ?? [])]}
+            activeRunIds={currentRuns.filter((run) => isRunActive(run.status)).map((run) => run.id)}
             showToolActivity={showToolActivity}
             olderCursor={activeSnapshot?.olderCursor ?? null}
             loadingOlder={loadingOlder}
             answerableAskMessageId={answerableAskMessageId}
             running={transcriptRunning}
-            workingBots={workingBots}
             activity={inlineActivity}
-            activityActionCount={activityActionCount}
             backgroundTasks={backgroundActivity}
             onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
             showActivityAvatars={inGroup}
@@ -4723,15 +4707,14 @@ const Transcript = memo(function Transcript({
   plans,
   steps,
   todos,
+  runs,
   activeRunIds,
   showToolActivity,
   olderCursor,
   loadingOlder,
   answerableAskMessageId,
   running,
-  workingBots,
   activity,
-  activityActionCount,
   backgroundTasks,
   onCancelBackgroundTask,
   showActivityAvatars,
@@ -4762,15 +4745,14 @@ const Transcript = memo(function Transcript({
   plans?: ThreadSnapshot["plans"];
   steps?: ThreadSnapshot["steps"];
   todos?: ThreadSnapshot["todos"];
+  runs: Run[];
   activeRunIds: string[];
   showToolActivity: boolean;
   olderCursor: number | null;
   loadingOlder: boolean;
   answerableAskMessageId: string | null;
   running: boolean;
-  workingBots: GroupAvatarMember[];
   activity?: ActivityItem[];
-  activityActionCount?: number;
   backgroundTasks?: ActivityItem[];
   onCancelBackgroundTask?: (taskId: string) => void;
   showActivityAvatars?: boolean;
@@ -4853,12 +4835,100 @@ const Transcript = memo(function Transcript({
     }
     return anchors;
   }, [todos, steps, messageById, messages, activeRunIds]);
+  const executionsByAnchor = useMemo(() => {
+    type Execution = {
+      runId: string;
+      plan?: NonNullable<ThreadSnapshot["plans"]>[number];
+      steps?: NonNullable<ThreadSnapshot["steps"]>;
+      todos?: NonNullable<ThreadSnapshot["todos"]>;
+      activity: ActivityItem[];
+    };
+    const anchors = new Map<string, Map<string, Execution>>();
+    const get = (anchor: string, runId: string): Execution => {
+      const atAnchor = anchors.get(anchor) ?? new Map<string, Execution>();
+      anchors.set(anchor, atAnchor);
+      const entry = atAnchor.get(runId) ?? { runId, activity: [] };
+      atAnchor.set(runId, entry);
+      return entry;
+    };
+    const runAnchor = new Map<string, string>();
+    for (const [anchor, entries] of plansByAnchor) {
+      for (const plan of entries) {
+        get(anchor, plan.runId).plan = plan;
+        runAnchor.set(plan.runId, anchor);
+      }
+    }
+    for (const [anchor, entries] of stepsByAnchor) {
+      for (const [runId, runSteps] of entries) {
+        get(runAnchor.get(runId) ?? anchor, runId).steps = runSteps;
+        runAnchor.set(runId, runAnchor.get(runId) ?? anchor);
+      }
+    }
+    for (const [anchor, entries] of todosByAnchor) {
+      for (const [runId, runTodos] of entries) {
+        get(runAnchor.get(runId) ?? anchor, runId).todos = runTodos;
+        runAnchor.set(runId, runAnchor.get(runId) ?? anchor);
+      }
+    }
+    for (const item of activity ?? []) {
+      if (!item.runId || item.kind === "background") continue;
+      const anchor = runAnchor.get(item.runId) ??
+        [...messages].reverse().find((message) => message.runId === item.runId && message.role === "bot")?.id ??
+        (activeRunIds.includes(item.runId) ? "__tail" : null);
+      if (!anchor) continue;
+      get(anchor, item.runId).activity.push(item);
+      runAnchor.set(item.runId, anchor);
+    }
+    for (const run of runs) {
+      if (isRunActive(run.status) && !runAnchor.has(run.id)) {
+        const waiting = run.status === "waiting_input" || run.status === "waiting_takeover";
+        const interventionMessage = waiting
+          ? [...messages].reverse().find((message) => message.runId === run.id && message.role === "bot")
+          : null;
+        get(interventionMessage?.id ?? "__tail", run.id);
+      }
+    }
+    // The last bot message is usually the final answer. Keep the execution
+    // immediately before it when no source message anchored the Run earlier.
+    const positioned = new Map<string, Map<string, Execution>>();
+    for (const [anchor, entries] of anchors) {
+      for (const [runId, entry] of entries) {
+        const message = messageById.get(anchor);
+        const run = runs.find((candidate) => candidate.id === runId);
+        const beforeAnswer = message?.role === "bot" && run &&
+          (!isRunActive(run.status) || run.status === "waiting_input" || run.status === "waiting_takeover");
+        const key = beforeAnswer ? `before:${anchor}` : anchor;
+        const target = positioned.get(key) ?? new Map<string, Execution>();
+        target.set(runId, entry);
+        positioned.set(key, target);
+      }
+    }
+    return positioned;
+  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs]);
+  const renderExecutions = (anchor: string) =>
+    [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
+      const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
+      const live = Boolean(run && isRunActive(run.status));
+      return (
+        <ExecutionShell key={execution.runId} run={run} activity={execution.activity}>
+          {execution.plan ? <RunPlanDisclosure plan={execution.plan} live={live} /> : null}
+          {execution.steps ? <RunStepsDisclosure steps={execution.steps} live={live} /> : null}
+          {execution.todos ? <RunTodoList todos={execution.todos} /> : null}
+          {execution.activity.length > 0 ? (
+            <div data-slot="activity">
+              <RunActivityDisclosure
+                items={execution.activity}
+                live={live}
+                embedded
+                showAvatars={showActivityAvatars}
+                botColors={activityBotColors}
+              />
+            </div>
+          ) : null}
+        </ExecutionShell>
+      );
+    });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
-  const workingBotName = workingBots.length === 1 ? workingBots[0]?.name : undefined;
-  const workingLabel =
-    workingBotName != null && workingBotName !== ""
-      ? t`${workingBotName} is working`
-      : t`Bots are working`;
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -5113,7 +5183,9 @@ const Transcript = memo(function Transcript({
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
           return (
-            <div
+            <Fragment key={message.id}>
+              {renderExecutions(`before:${message.id}`)}
+              <div
               key={message.id}
               data-message-id={message.id}
               className={peerReceipt ? "relative py-0.5" : "group/message relative hover:z-20"}
@@ -5213,63 +5285,14 @@ const Transcript = memo(function Transcript({
                   ))}
                 </div>
               ) : null}
-              {plansByAnchor.get(message.id)?.map((plan) => (
-                <RunPlanDisclosure
-                  key={plan.planId}
-                  plan={plan}
-                  live={activeRunIds.includes(plan.runId)}
-                />
-              ))}
-              {[...(stepsByAnchor.get(message.id)?.values() ?? [])].map((runSteps) => (
-                <RunStepsDisclosure
-                  key={runSteps[0]!.runId}
-                  steps={runSteps}
-                  live={activeRunIds.includes(runSteps[0]!.runId)}
-                />
-              ))}
-              {[...(todosByAnchor.get(message.id)?.values() ?? [])].map((runTodos) => (
-                <RunTodoList key={runTodos[0]!.runId} todos={runTodos} />
-              ))}
-            </div>
+              {renderExecutions(message.id)}
+              </div>
+            </Fragment>
           );
         })}
-        {plansByAnchor.get("__tail")?.map((plan) => (
-          <RunPlanDisclosure
-            key={plan.planId}
-            plan={plan}
-            live={activeRunIds.includes(plan.runId)}
-          />
-        ))}
-        {[...(stepsByAnchor.get("__tail")?.values() ?? [])].map((runSteps) => (
-          <RunStepsDisclosure key={runSteps[0]!.runId} steps={runSteps} live />
-        ))}
-        {[...(todosByAnchor.get("__tail")?.values() ?? [])].map((runTodos) => (
-          <RunTodoList key={runTodos[0]!.runId} todos={runTodos} />
-        ))}
-        {activity && activity.length > 0 ? (
-          <div className="px-1 py-0.5" data-testid="run-activity-container">
-            <RunActivityDisclosure
-              items={activity}
-              live={running}
-              actionCount={activityActionCount}
-              showAvatars={showActivityAvatars}
-              botColors={activityBotColors}
-            />
-          </div>
-        ) : null}
+        {renderExecutions("__tail")}
         {backgroundTasks && backgroundTasks.length > 0 ? (
           <BackgroundTaskActivity items={backgroundTasks} onCancel={onCancelBackgroundTask} />
-        ) : null}
-        {running &&
-        !messages.some(
-          (message) =>
-            message.id.startsWith("progress:") &&
-            message.blocks.some(
-              (block) =>
-                block.kind === "progress" && !isToolActivityBlock(block) && Boolean(block.text),
-            ),
-        ) ? (
-          <ActiveBotGlyph bots={workingBots} label={workingLabel} />
         ) : null}
       </div>
       {quoteDraft ? (
