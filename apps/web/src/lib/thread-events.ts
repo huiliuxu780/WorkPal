@@ -7,7 +7,11 @@ import type {
   ThreadMessagePage,
   ThreadSnapshot,
 } from "@rakazo/contracts";
-import { RunPlanRevisionSchema } from "@rakazo/contracts";
+import {
+  RunPlanRevisionSchema,
+  RunStepSnapshotSchema,
+  RunTodoSnapshotSchema,
+} from "@rakazo/contracts";
 import {
   ACTIVITY_EVENT_TYPES,
   isActive,
@@ -39,6 +43,24 @@ const runTriggers = new Set<Run["trigger"]>([
   "messaging",
   "cloud_agent",
   "created",
+]);
+
+const STEP_EVENT_TYPES = new Set([
+  "step.created",
+  "step.queued",
+  "step.started",
+  "step.completed",
+  "step.failed",
+  "step.retrying",
+  "step.skipped",
+  "step.cancelled",
+  "step.blocked",
+]);
+const TODO_EVENT_TYPES = new Set([
+  "todo.created",
+  "todo.updated",
+  "todo.resolved",
+  "todo.deferred",
 ]);
 
 function runFromStartedEvent(event: ProductEvent, previous: Run | undefined): Run {
@@ -254,6 +276,8 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "thread.cleared" ||
     event.type === "thread.progress" ||
     event.type === "plan.revised" ||
+    STEP_EVENT_TYPES.has(event.type) ||
+    TODO_EVENT_TYPES.has(event.type) ||
     event.type === "thread.subagent" ||
     event.type === "thread.cloud_agent" ||
     event.type === "agent.tool.called" ||
@@ -350,6 +374,8 @@ function reduceThreadSnapshotBase(
       run: null,
       activeRuns: [],
       plans: [],
+      steps: [],
+      todos: [],
     };
   }
   if (event.type === "plan.revised") {
@@ -368,6 +394,46 @@ function reduceThreadSnapshotBase(
         plan,
         ...(prev.plans ?? []).filter((candidate) => candidate.planId !== plan.planId),
       ].slice(0, 20),
+    };
+  }
+  if (STEP_EVENT_TYPES.has(event.type)) {
+    if (event.seq <= prev.cursor) return prev;
+    const parsed = RunStepSnapshotSchema.safeParse(event.payload);
+    if (!parsed.success || parsed.data.runId !== event.runId) return prev;
+    const step = parsed.data;
+    const previous = prev.steps?.find(
+      (candidate) => candidate.runId === step.runId && candidate.stepId === step.stepId,
+    );
+    if (previous && previous.revision >= step.revision) return { ...prev, cursor: event.seq };
+    return {
+      ...prev,
+      cursor: event.seq,
+      steps: [
+        step,
+        ...(prev.steps ?? []).filter(
+          (candidate) => candidate.runId !== step.runId || candidate.stepId !== step.stepId,
+        ),
+      ].slice(0, 200),
+    };
+  }
+  if (TODO_EVENT_TYPES.has(event.type)) {
+    if (event.seq <= prev.cursor) return prev;
+    const parsed = RunTodoSnapshotSchema.safeParse(event.payload);
+    if (!parsed.success || parsed.data.runId !== event.runId) return prev;
+    const todo = parsed.data;
+    const previous = prev.todos?.find(
+      (candidate) => candidate.runId === todo.runId && candidate.todoId === todo.todoId,
+    );
+    if (previous && previous.revision >= todo.revision) return { ...prev, cursor: event.seq };
+    return {
+      ...prev,
+      cursor: event.seq,
+      todos: [
+        todo,
+        ...(prev.todos ?? []).filter(
+          (candidate) => candidate.runId !== todo.runId || candidate.todoId !== todo.todoId,
+        ),
+      ].slice(0, 200),
     };
   }
   if (event.type === "run.started") {
@@ -497,6 +563,12 @@ function reduceThreadSnapshotBase(
     return {
       ...prev,
       cursor: event.seq,
+      steps: prev.steps?.map((step) =>
+        step.runId === event.runId &&
+        ["pending", "queued", "running", "retrying", "blocked"].includes(step.status)
+          ? { ...step, status: "unknown" as const }
+          : step,
+      ),
       messages: prev.messages.filter((message) => message.id !== progressMessageId(event)),
       members: updateMemberStatus(prev.members, event.botId, nextMemberRun?.status ?? "idle"),
       // A failed run stays in run (activeRuns already excludes it) so the transcript can say

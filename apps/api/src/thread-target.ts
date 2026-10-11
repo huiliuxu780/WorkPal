@@ -41,6 +41,8 @@ import {
   expireComputerExecutionLeases,
   IsolationError,
   loadCurrentRunPlans,
+  loadCurrentRunSteps,
+  loadCurrentRunTodos,
   lockOwnedGroup,
   type Prisma,
   type PrismaClient,
@@ -589,7 +591,9 @@ export async function threadSnapshot(
             : [],
         );
         const plans = await loadCurrentRunPlans(tx, target.threadId);
-        return { messagePage, last, run: currentRun, liveEvents, activity, plans };
+        const steps = await loadCurrentRunSteps(tx, target.threadId);
+        const todos = await loadCurrentRunTodos(tx, target.threadId);
+        return { messagePage, last, run: currentRun, liveEvents, activity, plans, steps, todos };
       }),
     ]);
     return {
@@ -602,6 +606,8 @@ export async function threadSnapshot(
       computer: toComputerStatus(target.botId, target.bot.computer, busyBotName),
       activity: core.activity,
       plans: core.plans,
+      steps: core.steps,
+      todos: core.todos,
     };
   }
 
@@ -668,6 +674,8 @@ export async function threadSnapshot(
       })),
     );
     const plans = await loadCurrentRunPlans(tx, target.threadId);
+    const steps = await loadCurrentRunSteps(tx, target.threadId);
+    const todos = await loadCurrentRunTodos(tx, target.threadId);
     return {
       messagePage,
       last,
@@ -676,6 +684,8 @@ export async function threadSnapshot(
       liveEvents,
       activity,
       plans,
+      steps,
+      todos,
     };
   });
   const primaryActiveRun = pickPrimaryActiveRun(core.activeRuns);
@@ -698,6 +708,8 @@ export async function threadSnapshot(
     activeRuns: core.activeRuns.map(mapRun),
     activity: core.activity,
     plans: core.plans,
+    steps: core.steps,
+    todos: core.todos,
   };
 }
 

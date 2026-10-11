@@ -4,6 +4,8 @@ import { ThreadMessageSchema } from "./events.js";
 import { Id, MemoryScope, RunStatus, SandboxKind, WaitKind } from "./ids.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
 import { RunPlanRevisionSchema } from "./run-plans.js";
+import { RunStepSnapshotSchema } from "./run-steps.js";
+import { RunTodoSnapshotSchema } from "./run-todos.js";
 
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
 export type ComputerMode = z.infer<typeof ComputerModeSchema>;
@@ -950,6 +952,8 @@ export const ThreadSnapshotSchema = z.object({
   activity: z.array(ActivityItemSchema).optional(),
   /** Current durable Plan revisions for recent executions; absent if no structured Plan was published. */
   plans: z.array(RunPlanRevisionSchema).optional(),
+  steps: z.array(RunStepSnapshotSchema).optional(),
+  todos: z.array(RunTodoSnapshotSchema).optional(),
 });
 export type ThreadSnapshot = z.infer<typeof ThreadSnapshotSchema>;
 
