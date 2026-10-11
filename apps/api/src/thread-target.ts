@@ -506,7 +506,7 @@ export async function threadSnapshot(
       }),
       deps.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR SHARE`;
-        const [messagePage, last, waitingRun, busyOrFailed] = await Promise.all([
+        const [messagePage, last, waitingRun, busyOrFailed, recentTerminals] = await Promise.all([
           loadMessagePage(tx, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
           tx.event.findFirst({
             where: { threadId: target.threadId },
@@ -533,6 +533,16 @@ export async function threadSnapshot(
             // The id tiebreak keeps ordering deterministic under equal
             // timestamps, matching the supersession probe below.
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          }),
+          tx.run.findMany({
+            where: {
+              botId: target.botId,
+              threadId: target.threadId,
+              trigger: { not: "bot_message" },
+              status: { in: ["failed", "completed", "cancelled"] },
+            },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            take: 50,
           }),
         ]);
         const run = waitingRun ?? busyOrFailed;
@@ -593,7 +603,7 @@ export async function threadSnapshot(
         const plans = await loadCurrentRunPlans(tx, target.threadId);
         const steps = await loadCurrentRunSteps(tx, target.threadId);
         const todos = await loadCurrentRunTodos(tx, target.threadId);
-        return { messagePage, last, run: currentRun, liveEvents, activity, plans, steps, todos };
+        return { messagePage, last, run: currentRun, recentTerminals, liveEvents, activity, plans, steps, todos };
       }),
     ]);
     return {
@@ -603,6 +613,7 @@ export async function threadSnapshot(
       messages: messagesWithLiveEvents(core.messagePage.messages, core.liveEvents),
       olderCursor: core.messagePage.olderCursor,
       run: core.run ? mapRun(core.run) : null,
+      recentRuns: core.recentTerminals.map(mapRun),
       computer: toComputerStatus(target.botId, target.bot.computer, busyBotName),
       activity: core.activity,
       plans: core.plans,
@@ -681,6 +692,7 @@ export async function threadSnapshot(
       last,
       activeRuns,
       terminalRun: pickLatestTerminalRun(recentTerminals),
+      recentTerminals,
       liveEvents,
       activity,
       plans,
@@ -706,6 +718,7 @@ export async function threadSnapshot(
           ? mapRun(primaryActiveRun)
           : null,
     activeRuns: core.activeRuns.map(mapRun),
+    recentRuns: core.recentTerminals.map(mapRun),
     activity: core.activity,
     plans: core.plans,
     steps: core.steps,

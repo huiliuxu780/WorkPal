@@ -209,7 +209,7 @@ describe("threadSnapshot", () => {
         findFirst: vi.fn().mockResolvedValue({ seq: 4 }),
         findMany: findManyEvents,
       },
-      run: { findFirst: botRunFindFirst([run]) },
+      run: { findFirst: botRunFindFirst([run]), findMany: vi.fn().mockResolvedValue([]) },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -275,7 +275,7 @@ describe("threadSnapshot", () => {
         findFirst: vi.fn().mockResolvedValue(null),
         findMany: findManyEvents,
       },
-      run: { findFirst: findFirstRun },
+      run: { findFirst: findFirstRun, findMany: vi.fn().mockResolvedValue([run]) },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -301,6 +301,9 @@ describe("threadSnapshot", () => {
         }),
       }),
     );
+    expect(snapshot.recentRuns).toEqual([
+      expect.objectContaining({ id: "run-failed", status: "failed" }),
+    ]);
     expect(findFirstRun).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -369,7 +372,7 @@ describe("threadSnapshot", () => {
                 findFirst: vi.fn().mockResolvedValue(null),
                 findMany: vi.fn().mockResolvedValue([]),
               },
-              run: { findFirst: botRunFindFirst([waitingPeer, olderUser]) },
+              run: { findFirst: botRunFindFirst([waitingPeer, olderUser]), findMany: vi.fn().mockResolvedValue([]) },
             }),
           ),
         } as unknown as PrismaClient,
@@ -428,7 +431,7 @@ describe("threadSnapshot", () => {
         findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
       },
-      run: { findFirst: findFirstRun },
+      run: { findFirst: findFirstRun, findMany: vi.fn().mockResolvedValue([]) },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -468,7 +471,7 @@ describe("threadSnapshot", () => {
         findFirst: vi.fn().mockResolvedValue(null),
         findMany: findManyEvents,
       },
-      run: { findFirst: findFirstRun },
+      run: { findFirst: findFirstRun, findMany: vi.fn().mockResolvedValue([]) },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -544,6 +547,9 @@ describe("threadSnapshot", () => {
       expect.objectContaining({ id: "run-failed", status: "failed", error: "member exploded" }),
     );
     expect(snapshot.activeRuns).toEqual([]);
+    expect(snapshot.recentRuns).toEqual([
+      expect.objectContaining({ id: "run-failed", status: "failed" }),
+    ]);
   });
 
   it("omits peer bot_message runs from group activeRuns and displayed terminal run", async () => {

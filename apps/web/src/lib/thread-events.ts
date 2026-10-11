@@ -560,6 +560,20 @@ function reduceThreadSnapshotBase(
     // it up in activeRuns as well or its error would be dropped with it.
     const endedRun =
       primaryEnded ?? prev.activeRuns?.find((candidate) => candidate.id === event.runId) ?? null;
+    const terminalStatus: RunStatus = event.type === "run.completed"
+      ? "completed"
+      : event.type === "run.cancelled"
+        ? "cancelled"
+        : "failed";
+    const terminalRun = endedRun && endedRun.trigger !== "bot_message"
+      ? {
+          ...endedRun,
+          status: terminalStatus,
+          waitKind: null,
+          error: terminalStatus === "failed" ? failure : null,
+          completedAt: event.createdAt,
+        }
+      : null;
     return {
       ...prev,
       cursor: event.seq,
@@ -580,6 +594,9 @@ function reduceThreadSnapshotBase(
             ? (activeRuns?.[0] ?? null)
             : prev.run,
       activeRuns,
+      recentRuns: terminalRun
+        ? [terminalRun, ...(prev.recentRuns ?? []).filter((run) => run.id !== terminalRun.id)].slice(0, 50)
+        : prev.recentRuns,
     };
   }
   if (event.type === "thread.progress") {
