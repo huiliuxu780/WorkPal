@@ -1,5 +1,6 @@
 import { t } from "@lingui/core/macro";
 import type { ActivityItem } from "@rakazo/contracts";
+import { useEffect, useState } from "react";
 
 /**
  * Phase 4 background task cards (§14/§38/§45). These outlive the parent run
@@ -22,8 +23,30 @@ export function BackgroundTaskActivity({
   onCancel,
 }: {
   items: readonly ActivityItem[];
-  onCancel?: (taskId: string) => void;
+  onCancel?: (taskId: string) => Promise<void>;
 }) {
+  const [cancelState, setCancelState] = useState<Record<string, "sending" | "accepted" | "error">>({});
+  useEffect(() => {
+    const activeIds = new Set(items.filter((item) => item.taskId).map((item) => item.taskId));
+    setCancelState((previous) => {
+      const next = Object.fromEntries(
+        Object.entries(previous).filter(([taskId]) => activeIds.has(taskId)),
+      ) as typeof previous;
+      return Object.keys(next).length === Object.keys(previous).length ? previous : next;
+    });
+  }, [items]);
+
+  async function requestCancel(taskId: string) {
+    if (!onCancel || cancelState[taskId] === "sending" || cancelState[taskId] === "accepted") return;
+    setCancelState((previous) => ({ ...previous, [taskId]: "sending" }));
+    try {
+      await onCancel(taskId);
+      setCancelState((previous) => ({ ...previous, [taskId]: "accepted" }));
+    } catch {
+      setCancelState((previous) => ({ ...previous, [taskId]: "error" }));
+    }
+  }
+
   if (items.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5 py-1" data-testid="background-tasks">
@@ -57,14 +80,26 @@ export function BackgroundTaskActivity({
             ) : null}
           </div>
           {item.taskId && onCancel ? (
-            <button
-              type="button"
-              data-testid="background-task-cancel"
-              onClick={() => onCancel(item.taskId!)}
-              className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs text-foreground/75 transition-colors hover:bg-accent"
-            >
-              {t`Cancel`}
-            </button>
+            <div className="flex shrink-0 flex-col items-end gap-0.5">
+              <button
+                type="button"
+                data-testid="background-task-cancel"
+                disabled={cancelState[item.taskId] === "sending" || cancelState[item.taskId] === "accepted"}
+                onClick={() => void requestCancel(item.taskId!)}
+                className="rounded-md border border-border px-2 py-0.5 text-xs text-foreground/75 transition-colors hover:bg-accent disabled:cursor-default disabled:opacity-60"
+              >
+                {cancelState[item.taskId] === "sending"
+                  ? t`Stopping…`
+                  : cancelState[item.taskId] === "accepted"
+                    ? t`Cancel requested`
+                    : t`Cancel`}
+              </button>
+              {cancelState[item.taskId] === "error" ? (
+                <span role="alert" className="text-xs text-destructive">
+                  {t`Could not stop this task. Try again.`}
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ))}

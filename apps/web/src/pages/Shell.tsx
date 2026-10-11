@@ -1854,16 +1854,20 @@ export function ShellPage() {
     [bots],
   );
   async function cancelBackgroundTask(taskId: string) {
-    try {
-      if (activeGroupId.current) {
-        await rpc.threads.cancelBackgroundTask({ groupId: activeGroupId.current, taskId });
-        await refreshGroupThread(activeGroupId.current);
-      } else if (activeBotId.current) {
-        await rpc.threads.cancelBackgroundTask({ botId: activeBotId.current, taskId });
-        await refreshThread(activeBotId.current);
-      }
-    } catch (error) {
-      console.error("cancel background task failed", error);
+    const groupId = activeGroupId.current;
+    const botId = activeBotId.current;
+    if (groupId) {
+      await rpc.threads.cancelBackgroundTask({ groupId, taskId });
+      await refreshGroupThread(groupId).catch((error) => {
+        console.error("refresh after background cancellation failed", error);
+      });
+    } else if (botId) {
+      await rpc.threads.cancelBackgroundTask({ botId, taskId });
+      await refreshThread(botId).catch((error) => {
+        console.error("refresh after background cancellation failed", error);
+      });
+    } else {
+      throw new Error("No active thread for background task cancellation");
     }
   }
   const resolveTranscriptMemberName = useCallback(
@@ -4767,7 +4771,7 @@ const Transcript = memo(function Transcript({
   running: boolean;
   activity?: ActivityItem[];
   backgroundTasks?: ActivityItem[];
-  onCancelBackgroundTask?: (taskId: string) => void;
+  onCancelBackgroundTask?: (taskId: string) => Promise<void>;
   showActivityAvatars?: boolean;
   activityBotColors?: Record<string, string>;
   onLoadOlder: () => void | Promise<void>;
