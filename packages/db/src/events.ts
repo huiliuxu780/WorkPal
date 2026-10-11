@@ -125,6 +125,8 @@ interface FinalizeRunBase {
   attemptId: string;
   leaseOwner: string;
   leaseFence: number;
+  /** Recovery only: refuse to end a Run if its original worker renewed the lease. */
+  requireLeaseExpiredAt?: Date;
 }
 
 export type FinalizeRunInput = FinalizeRunBase &
@@ -1258,6 +1260,9 @@ async function finalizeRunOnce(
         status: "running",
         leaseOwner: input.leaseOwner,
         leaseFence: input.leaseFence,
+        ...(input.requireLeaseExpiredAt
+          ? { leaseExpiresAt: { lte: input.requireLeaseExpiredAt } }
+          : {}),
       },
       data: {
         status: input.outcome,

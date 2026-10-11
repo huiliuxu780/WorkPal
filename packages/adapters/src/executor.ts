@@ -1156,11 +1156,66 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const run = await deps.prisma.run.findUnique({ where: { id: runId } });
       if (!run) return;
       if (isTerminal(run.status as RunStatus)) return;
+      const now = new Date();
+      if (
+        run.status === "running" && run.leaseOwner && run.leaseExpiresAt &&
+        run.leaseExpiresAt <= now
+      ) {
+        const attempt = await deps.prisma.attempt.findFirst({
+          where: { runId, fence: run.leaseFence, status: "running" },
+          select: { id: true },
+        });
+        if (attempt) {
+          await deps.runtime.abort(runId).catch(() => undefined);
+          const error = "Execution lease expired before the attempt finished; outcome unconfirmed";
+          const retry = await scheduleAutomaticRunRetry(deps.prisma, {
+            runId,
+            attemptId: attempt.id,
+            leaseOwner: run.leaseOwner,
+            leaseFence: run.leaseFence,
+            reason: "lease_lost",
+            error,
+          }, now);
+          if (retry) {
+            await deps.events.notify(run.threadId, retry.seq).catch((notifyError) =>
+              getLogger().error("lease-loss retry realtime notification", notifyError),
+            );
+            await deps.jobs.enqueue({ ...runContinueJob(runId), availableAt: retry.retryAt })
+              .catch((enqueueError) =>
+                getLogger().error("lease-loss retry enqueue failed; reconciler will recover", enqueueError),
+              );
+            return;
+          }
+          const failed = await deps.events.finalizeRun({
+            spaceId: run.spaceId,
+            threadId: run.threadId,
+            botId: run.botId,
+            runId,
+            taskId: run.taskId,
+            attemptId: attempt.id,
+            leaseOwner: run.leaseOwner,
+            leaseFence: run.leaseFence,
+            requireLeaseExpiredAt: now,
+            outcome: "failed",
+            error,
+          });
+          if (failed && failed.continuationRunId) {
+            await deps.jobs.enqueue(runContinueJob(failed.continuationRunId)).catch((enqueueError) =>
+              getLogger().error("lease-loss steering continuation enqueue failed", enqueueError),
+            );
+          }
+          return;
+        }
+        getLogger().error("expired running Run has no active Attempt; refusing automatic replay", {
+          runId,
+          leaseFence: run.leaseFence,
+        });
+        return;
+      }
       let { resumeCheckpoint, heldForTakeover, resumeHeldLease, takeoverResume } =
         takeoverContinuePlan(run);
 
       const fence = nextFence(run.leaseFence);
-      const now = new Date();
       const leased = await deps.prisma.run.updateMany({
         where: {
           id: runId,

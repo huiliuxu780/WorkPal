@@ -21,7 +21,7 @@ Baseline: `codex/clean-baseline` (`f9992e8`), based on PR #9 and the Java AgentS
 | 15 / 15.1 Card | `RunDetailsPanel` exists as a separate surface. | Inline Execution Card, same-Run expansion and Task Center view are absent. |
 | 16 Scenario validation | Design lab uses fixtures; Java tests and E2E cover narrower real flows, including structured Plan/Step publication. | Six scenarios need real normal/failure traces, including Routine and delivery. |
 | 17 Object model | `Thread`, `Task`, `Run`, `Routine`, `Artifact` exist; `Run.taskId` is required. | Product Task→Run retry, intervention identity and cross-surface links need alignment. |
-| 18 Control plane | Stacked PRs #11–#16 cover event envelope, wait reason, background delivery, reliability, budget bounds, capability rules and TurnPolicy v2. A real Java→Web trace now confirms proactive background-result delivery. | Trusted USD cost enforcement, lease-loss retry scheduling and the remaining Java→Web scenarios remain. |
+| 18 Control plane | Stacked PRs #11–#16 cover event envelope, wait reason, background delivery, reliability, budget bounds, capability rules and TurnPolicy v2. A real Java→Web trace confirms proactive background-result delivery. Expired running leases with a persisted Attempt now use the conservative retry gate. | Trusted USD cost enforcement, anomalous missing-Attempt lease repair and the remaining Java→Web scenarios remain. |
 
 ## Contract conflict to preserve
 
@@ -56,3 +56,4 @@ No percentage, completion summary, Plan item, semantic Step or external effect s
 - Task 11 corrects the existing helper card's raw status text and semantic tones. It does not claim the Chief collaboration slot is complete. See [helper-status-progress.md](./helper-status-progress.md).
 - Tasks 03/04/14/16 now have a real Java→Web structured Plan/Step browser trace, with one Shell and durable revisions. This is narrower than the full designed acceptance matrix. See [java-web-structured-acceptance.md](./java-web-structured-acceptance.md).
 - Tasks 10/18.2 now have a real Java→Web background delivery trace. The browser test starts a native background helper, waits for the durable outbox dispatch, and confirms one completed delivery Run without a new user message. See [background-delivery-acceptance.md](./background-delivery-acceptance.md).
+- Task 18.3 now routes expired running leases with an active Attempt through delayed safe retry, and ends unsafe attempts with an unconfirmed-outcome failure. A missing Attempt remains a repair case. See [lease-loss-progress.md](./lease-loss-progress.md).

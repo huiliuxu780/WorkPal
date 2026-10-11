@@ -1658,6 +1658,25 @@ description: Prepare standup notes
     );
   });
 
+  it("does not replay an expired running Run without an active Attempt", async () => {
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    const prisma = {
+      run: {
+        findUnique: vi.fn(async () => ({
+          id: "run-1", status: "running", leaseOwner: "lost-worker", leaseFence: 1,
+          leaseExpiresAt: new Date(Date.now() - 1_000),
+        })),
+        updateMany,
+      },
+      attempt: { findFirst: vi.fn(async () => null) },
+    } as unknown as PrismaClient;
+    const executor = createRunExecutor({ prisma } as Parameters<typeof createRunExecutor>[0]);
+
+    await executor.continueRun("run-1", "new-worker");
+
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it("does not claim a waiting takeover after a concurrent release writes the checkpoint", async () => {
     let row: { status: string; checkpoint: string | null } = {
       status: "waiting_takeover",

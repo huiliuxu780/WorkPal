@@ -25,7 +25,9 @@ export async function scheduleAutomaticRunRetry(
     if (
       run?.status !== "running" ||
       run.leaseOwner !== input.leaseOwner ||
-      run.leaseFence !== input.leaseFence
+      run.leaseFence !== input.leaseFence ||
+      (input.reason === "lease_lost" &&
+        (!run.leaseExpiresAt || run.leaseExpiresAt > now))
     )
       return null;
     const [completedAutoRetries, previousTool, effect] = await Promise.all([
@@ -76,6 +78,7 @@ export async function scheduleAutomaticRunRetry(
         status: "running",
         leaseOwner: input.leaseOwner,
         leaseFence: input.leaseFence,
+        ...(input.reason === "lease_lost" ? { leaseExpiresAt: { lte: now } } : {}),
       },
       data: {
         status: "queued",
