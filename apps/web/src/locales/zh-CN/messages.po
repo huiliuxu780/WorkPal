@@ -4214,3 +4214,15 @@ msgstr "结果待确认"
 #: src/lib/effect-view.ts
 msgid "Status unconfirmed"
 msgstr "状态未确认"
+
+#: src/components/AskCard.tsx
+msgid "Restored your unsent answer"
+msgstr "已恢复你上次未提交的填写"
+
+#: src/components/AskCard.tsx
+msgid "Submitting your answer…"
+msgstr "正在提交你的回复…"
+
+#: src/components/AskCard.tsx
+msgid "Answer accepted; syncing status…"
+msgstr "回复已由服务端接收，正在同步状态…"

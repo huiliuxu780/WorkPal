@@ -4,7 +4,8 @@ import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type { ThreadMessage } from "@rakazo/contracts";
 import { isApprovalAskBlock, isSecretAskBlock, selectedAskActionLabel } from "@rakazo/core";
 import { Button, Input } from "@rakazo/ui-web";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { availableAskDraftStorage, readAskDraft, writeAskDraft } from "../lib/ask-draft";
 
 export type AskBlock = Extract<ThreadMessage["blocks"][number], { kind: "ask" }>;
 
@@ -49,23 +50,50 @@ export function AskCard({
   block,
   canAnswer,
   onAnswer,
+  draftKey,
 }: {
   block: AskBlock;
   canAnswer: boolean;
   onAnswer: (text: string, username?: string) => Promise<void>;
+  draftKey?: string;
 }) {
   const { t } = useLingui();
-  const [editing, setEditing] = useState(false);
-  const [answer, setAnswer] = useState("");
-  const [username, setUsername] = useState("");
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const submitting = pendingAction !== null;
   const approvalActions = isApprovalAskBlock(block) ? block.actions : undefined;
   const askActions = block.actions;
   const secretInput = isSecretAskBlock(block);
+  const draftEnabled = Boolean(draftKey && !secretInput && !askActions?.length);
+  const initialDraft = useRef(
+    draftEnabled && block.status === "pending"
+      ? readAskDraft(availableAskDraftStorage(), draftKey!, false)
+      : "",
+  );
+  const [editing, setEditing] = useState(false);
+  const [answer, setAnswer] = useState(initialDraft.current);
+  const [username, setUsername] = useState("");
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const feedbackRef = useRef<HTMLParagraphElement | HTMLDivElement>(null);
+  const submittedHere = useRef(false);
+  const submitting = pendingAction !== null;
   const loginInput = secretInput && block.credential?.auth.type === "login";
   const secretLabel = loginInput ? t`Password` : secretFieldLabel(block.purpose);
+
+  useEffect(() => {
+    if (!draftKey || secretInput) return;
+    writeAskDraft(
+      availableAskDraftStorage(),
+      draftKey,
+      block.status === "pending" && draftEnabled ? answer : "",
+      false,
+    );
+  }, [answer, block.status, draftEnabled, draftKey, secretInput]);
+
+  useEffect(() => {
+    if (submittedHere.current && (submitting || acknowledged || error || block.status === "answered")) {
+      feedbackRef.current?.focus();
+    }
+  }, [submitting, acknowledged, error, block.status]);
 
   async function submitAnswer(value: string) {
     if (submitting) return;
@@ -73,14 +101,18 @@ export function AskCard({
     const submitUsername = loginInput ? username.trim() : undefined;
     if (loginInput && !submitUsername) return;
     const submitValue = secretInput ? value : value.trim();
+    submittedHere.current = true;
     setPendingAction(secretInput ? "submit" : submitValue);
     setError(null);
+    setAcknowledged(false);
     if (secretInput) {
       setAnswer("");
       setUsername("");
     }
     try {
       await onAnswer(submitValue, submitUsername);
+      setAcknowledged(true);
+      if (!secretInput) setAnswer("");
     } catch (err) {
       setError(
         !secretInput && err instanceof Error ? err.message : t`Could not submit this answer`,
@@ -109,7 +141,7 @@ export function AskCard({
         </pre>
       ) : null}
       {block.status === "answered" ? (
-        <div className="mt-3.5 text-[13.5px] font-medium text-success">
+        <div ref={feedbackRef} tabIndex={-1} className="mt-3.5 text-[13.5px] font-medium text-success focus:outline-none">
           {formatAnsweredState(
             block.answer,
             Boolean(approvalActions),
@@ -219,7 +251,19 @@ export function AskCard({
           </Button>
         </div>
       )}
-      {error ? <p className="mt-3 text-[13px] text-destructive">{error}</p> : null}
+      {draftEnabled && initialDraft.current && block.status === "pending" && !acknowledged ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t`Restored your unsent answer`}</p>
+      ) : null}
+      {block.status === "pending" && (submitting || acknowledged || error) ? (
+        <p
+          ref={feedbackRef}
+          tabIndex={-1}
+          role={error ? "alert" : "status"}
+          className={`mt-3 text-[13px] focus:outline-none ${error ? "text-destructive" : "text-muted-foreground"}`}
+        >
+          {error ?? (submitting ? t`Submitting your answer…` : t`Answer accepted; syncing status…`)}
+        </p>
+      ) : null}
     </div>
   );
 }
