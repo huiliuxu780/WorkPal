@@ -6659,9 +6659,17 @@ const MessageView = memo(function MessageView({
         if (block.kind === "subagent") {
           const running = block.status === "running";
           const failed = block.status === "failed";
+          const statusLabel = running
+            ? t`Working`
+            : block.status === "completed"
+              ? t`Done`
+              : failed
+                ? t`Could not finish`
+                : t`Cancelled`;
           return (
             <div
               key={i}
+              data-subagent-status={block.status}
               className="w-[min(420px,90%)] rounded-[18px] border border-border bg-muted px-[18px] py-4"
             >
               <div className="flex items-center justify-between gap-3">
@@ -6671,16 +6679,15 @@ const MessageView = memo(function MessageView({
                 <span
                   className={`rounded-full px-[11px] py-1 text-[13px] ${
                     failed
-                      ? "bg-destructive/15 text-destructive"
+                      ? "bg-warning/15 text-warning"
                       : running
-                        ? "bg-warning/15 text-warning"
-                        : "bg-success/15 text-success"
+                        ? "bg-foreground/5 text-foreground"
+                        : block.status === "completed"
+                          ? "bg-success/15 text-success"
+                          : "bg-muted text-muted-foreground"
                   }`}
-                  style={{
-                    animation: running ? "rkPulse 1.2s ease-in-out infinite" : undefined,
-                  }}
                 >
-                  {running ? <Trans>subagent</Trans> : block.status}
+                  {statusLabel}
                 </span>
               </div>
               <div className="mt-2 text-[13.5px] text-muted-foreground">{block.task}</div>
