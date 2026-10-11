@@ -119,6 +119,8 @@ export const ProductEventPayloadSchemas = {
   "approval.resolved": z.object({
     approvalEffectId: Id,
     decision: z.enum(["approved", "denied", "expired"]),
+    /** Older events lack this field; new decisions record the authorized Run owner. */
+    decidedByUserId: Id.optional(),
   }),
 } as const;
 

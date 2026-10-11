@@ -642,6 +642,9 @@ async function commitAnswerRunInput(
   let approvalUserId: string | null = null;
 
   if (approvalAsk) {
+    // A workspace member may view the thread, but only the Run owner can
+    // authorize or deny its external side effect.
+    if (run.userId !== input.answeredByUserId) return null;
     if (!pendingAsk.actions?.some((action) => action.id === input.answer)) return null;
     approvalEffect = await tx.externalEffect.findFirst({
       where: {
@@ -852,6 +855,7 @@ async function commitAnswerRunInput(
     payload: {
       approvalEffectId: approvalEffect!.id,
       decision: input.answer === "allow" || input.answer === "always" ? "approved" : "denied",
+      decidedByUserId: input.answeredByUserId,
     },
   });
   return { threadId: resolution.threadId, seq: resolution.seq };
