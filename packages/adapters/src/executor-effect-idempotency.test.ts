@@ -115,6 +115,7 @@ function fixture(runId = "run-1") {
       }),
     },
     bot: {
+      findUnique: vi.fn(async () => ({ capabilityRules: null, archivedAt: null })),
       findUniqueOrThrow: vi.fn(async () => ({
         id: run.botId,
         name: "Assistant",

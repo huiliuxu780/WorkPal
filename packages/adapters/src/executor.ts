@@ -169,6 +169,7 @@ import {
 } from "./auto-review.js";
 import { createAutoReviewProvider } from "./auto-review-factory.js";
 import { attachedImageArtifactIds, resolveUpdateBotAvatar } from "./bot-avatar.js";
+import { evaluateBotToolCapability } from "./capability-permission.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
 import {
   allowPrivateHttpSecretOrigins,
@@ -2068,6 +2069,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
           const declaredReadOnly = viaConnector
             ? (resolvedTool ?? connectorTools.get(name))?.readOnly
             : undefined;
+          // Re-read policy at the execution boundary, including approved replays.
+          // A changed deny rule must take effect without waiting for the next Run.
+          const capability = await evaluateBotToolCapability(
+            deps.prisma,
+            bot.id,
+            name,
+            args,
+            (resolvedTool ?? connectorTools.get(name))?.route?.resourceId,
+          );
+          const capabilityDecision = capability.decision;
+          if (capabilityDecision === "deny") {
+            return { error: capability.error ?? `Capability rule denied ${name}.` };
+          }
           const requiresUnattendedApproval = unattendedTriggerToolRequiresApproval(
             run.trigger,
             name,
@@ -2075,10 +2089,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             declaredReadOnly,
           );
           const requiresApprovalByDefault =
+            capabilityDecision === "ask" ||
             requiresUnattendedApproval ||
             toolRequiresApproval(name, viaConnector, declaredReadOnly);
           const requiresMandatoryApproval =
-            requiresUnattendedApproval || toolRequiresExplicitApproval(name);
+            capabilityDecision === "ask" || requiresUnattendedApproval || toolRequiresExplicitApproval(name);
           const connectorKind = connectorKindFromToolName(
             name,
             connectedPlugins.map((plugin) => plugin.provider),
