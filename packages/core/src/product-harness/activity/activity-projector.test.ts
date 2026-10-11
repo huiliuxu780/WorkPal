@@ -70,7 +70,12 @@ describe("projectActivity (§49)", () => {
       event("run.started", { trigger: "user" }),
       event("thread.progress", { text: "plan_enter", activity: true }),
       event("agent.tool.called", { name: "read_file", executionId: "t1" }),
-      event("agent.tool.completed", { name: "read_file", executionId: "t1", durationMs: 40, outcome: "succeeded" }),
+      event("agent.tool.completed", {
+        name: "read_file",
+        executionId: "t1",
+        durationMs: 40,
+        outcome: "succeeded",
+      }),
       event("thread.collaboration.requested", {
         fromBotId: "bot-a",
         toBotId: "bot-b",
@@ -90,9 +95,7 @@ describe("projectActivity (§49)", () => {
     const replayed = projectActivity(events, context);
     // Live: a client that snapshotted mid-run and then reduced the rest.
     const partial = projectActivity(events.slice(0, 4), context);
-    const live = events
-      .slice(4)
-      .reduce((items, e) => reduceActivity(items, e, context), partial);
+    const live = events.slice(4).reduce((items, e) => reduceActivity(items, e, context), partial);
     expect(live).toEqual(replayed);
     // Deterministic across reloads.
     expect(projectActivity(events, context)).toEqual(replayed);
@@ -132,9 +135,26 @@ describe("projectActivity (§49)", () => {
   it("folds subagent lifecycle into a single research item (case 4)", () => {
     const items = projectActivity(
       [
-        event("thread.subagent", { agentId: "helper-1", name: "helper", task: "delegated task", status: "running" }),
-        event("thread.subagent", { agentId: "helper-1", name: "helper", task: "delegated task", status: "running", progress: "reading" }),
-        event("thread.subagent", { agentId: "helper-1", name: "helper", task: "delegated task", status: "completed", result: "done" }),
+        event("thread.subagent", {
+          agentId: "helper-1",
+          name: "helper",
+          task: "delegated task",
+          status: "running",
+        }),
+        event("thread.subagent", {
+          agentId: "helper-1",
+          name: "helper",
+          task: "delegated task",
+          status: "running",
+          progress: "reading",
+        }),
+        event("thread.subagent", {
+          agentId: "helper-1",
+          name: "helper",
+          task: "delegated task",
+          status: "completed",
+          result: "done",
+        }),
       ],
       context,
     );
@@ -146,12 +166,21 @@ describe("projectActivity (§49)", () => {
   it("keeps background tasks alive past parent completion and refresh (case 5)", () => {
     const events = [
       event("subagent.started", { taskId: "bg-1", agentId: "helper" }),
-      event("thread.subagent", { agentId: "bg-1", name: "helper", task: "delegated task", status: "running" }),
+      event("thread.subagent", {
+        agentId: "bg-1",
+        name: "helper",
+        task: "delegated task",
+        status: "running",
+      }),
       event("run.completed", {}),
     ];
     const items = projectActivity(events, context);
     const background = items.find((item) => item.kind === "background");
-    expect(background).toMatchObject({ status: "running", title: "Working in background", taskId: "bg-1" });
+    expect(background).toMatchObject({
+      status: "running",
+      title: "Working in background",
+      taskId: "bg-1",
+    });
     expect(items.filter((item) => item.kind === "research")).toHaveLength(0); // no duplicate card
 
     // After a refresh the durable row re-seeds the same card.
@@ -161,7 +190,12 @@ describe("projectActivity (§49)", () => {
         { taskId: "bg-1", parentRunId: "run-1", botId: "bot-a", status: "running" },
       ],
     });
-    expect(reseeded[0]).toMatchObject({ id: "bg:bg-1", kind: "background", status: "running", runId: "run-1" });
+    expect(reseeded[0]).toMatchObject({
+      id: "bg:bg-1",
+      kind: "background",
+      status: "running",
+      runId: "run-1",
+    });
 
     const done = projectActivity(
       [...events, event("subagent.completed", { taskId: "bg-1", agentId: "helper", result: "x" })],
@@ -227,10 +261,21 @@ describe("projectActivity (§49)", () => {
   it("projects handoff exactly once even with the legacy event present (cases 8, 9)", () => {
     const items = projectActivity(
       [
-        event("group.handoff", { messageId: "m1", fromBotId: "bot-a", toBotId: "bot-b", text: "stage" }),
+        event("group.handoff", {
+          messageId: "m1",
+          fromBotId: "bot-a",
+          toBotId: "bot-b",
+          text: "stage",
+        }),
         event(
           "thread.turn.handed_off",
-          { fromBotId: "bot-a", toBotId: "bot-b", fromRunId: "run-1", toRunId: "run-2", handoffDepth: 1 },
+          {
+            fromBotId: "bot-a",
+            toBotId: "bot-b",
+            fromRunId: "run-1",
+            toRunId: "run-2",
+            handoffDepth: 1,
+          },
           { botId: "bot-b", runId: "run-2" },
         ),
       ],
@@ -398,5 +443,22 @@ describe("activity grouping (§35–§38)", () => {
     );
     expect(currentActivityLine(items, "run-1")).toEqual({ kind: "planning", text: "Planning" });
     expect(currentActivityLine(items, "run-unknown")).toBeNull();
+  });
+
+  it("keeps approval events as projection-only facts without a second card", () => {
+    const events = [
+      event("run.started"),
+      event("run.waiting_input", { waitKind: "approval" }),
+      event("approval.requested", { approvalEffectId: "effect-1" }),
+      event("approval.resolved", { approvalEffectId: "effect-1", decision: "approved" }),
+    ];
+    const replay = projectActivity(events, context);
+    const live = events.reduce(
+      (items, next) => reduceActivity(items, next, context),
+      [] as ActivityItem[],
+    );
+    expect(live).toEqual(replay);
+    expect(replay.filter((item) => item.kind === "approval")).toHaveLength(0);
+    expect(replay.filter((item) => item.kind === "waiting_input")).toHaveLength(1);
   });
 });

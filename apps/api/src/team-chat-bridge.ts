@@ -1073,6 +1073,7 @@ export class TeamChatBridge {
           },
           data: {
             status: "cancelled",
+            waitKind: null,
             completedAt: cancelledAt,
             leaseOwner: null,
             leaseExpiresAt: null,

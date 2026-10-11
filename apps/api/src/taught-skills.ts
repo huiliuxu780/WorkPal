@@ -121,7 +121,7 @@ async function cancelActiveRuns(
   });
   await deps.prisma.run.updateMany({
     where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
-    data: { status: "cancelled", completedAt: new Date() },
+    data: { status: "cancelled", waitKind: null, completedAt: new Date() },
   });
   await expireComputerExecutionLeases(deps.prisma, { botId });
   await deps.prisma.computer.updateMany({

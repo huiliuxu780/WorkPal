@@ -122,6 +122,7 @@ describeIntegration("reusable credential lifecycle", () => {
               where: { id: runId },
               data: {
                 status: "running",
+                waitKind: null,
                 leaseOwner: "interrupted-worker",
                 leaseExpiresAt: new Date(Date.now() - 60_000),
               },

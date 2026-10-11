@@ -1489,7 +1489,7 @@ describeJourneys("required product journeys", () => {
     expect(afterFirst).toBeGreaterThan(before);
     await prisma.run.update({
       where: { id: sent.runId },
-      data: { status: "running", completedAt: null },
+      data: { status: "running", waitKind: null, completedAt: null },
     });
     await executor.continueRun(sent.runId, "retry");
     expect(connector.records.length).toBe(afterFirst);
@@ -2156,7 +2156,7 @@ describeJourneys("required product journeys", () => {
     await prisma.$transaction([
       prisma.run.update({
         where: { id: concurrentRun.id },
-        data: { status: "cancelled", completedAt: new Date() },
+        data: { status: "cancelled", waitKind: null, completedAt: new Date() },
       }),
       prisma.task.update({ where: { id: concurrentTask.id }, data: { status: "cancelled" } }),
     ]);

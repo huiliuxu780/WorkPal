@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { BotAvatarValueSchema } from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
-import { Id, MemoryScope, RunStatus, SandboxKind } from "./ids.js";
+import { Id, MemoryScope, RunStatus, SandboxKind, WaitKind } from "./ids.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
 
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
@@ -844,6 +844,7 @@ export const RunSchema = z.object({
   threadId: Id,
   taskId: Id,
   status: RunStatus,
+  waitKind: WaitKind.nullable().optional(),
   trigger: z.enum([
     "user",
     "routine",

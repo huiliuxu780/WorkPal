@@ -23,7 +23,7 @@ An authenticated local acceptance run used the configured DashScope `qwen3.8-fla
 
 Restart semantics: local model/tool operations in progress are not resumed by AgentScope 2.0.3. A Java instance change or sustained loss of health fails active WorkPal projections; a Worker loss is detected after two minutes without a task heartbeat. Native task records remain on disk for honest inspection and the next main turn. Task credentials expire after one hour; long-running children must fail rather than gain an indefinite bearer. Background `agent_send(timeout_seconds=0)` is rejected because its native response omits the child session needed for task-bound authorization. Third-party MCP, OAuth and remote sandbox vendors require their own reachable endpoints and credentials.
 
-The migration branch is pushed as PR #2. GitHub Actions on the branch and PR passed TypeScript/Web checks, Java tests, integration and Web E2E tests, and Docker image build. The next phase is WorkPal Product Harness: Intent and complexity routing, automatic Plan, Drill, Agent routing, and group-chat speaking policy.
+The migration branch was pushed as PR #2. GitHub Actions on that branch and PR passed TypeScript/Web checks, Java tests, integration and Web E2E tests, and Docker image build. The current follow-up is Task18 Product Harness Completion, with the design-to-code gaps tracked in [task-implementation-audit.md](./task-implementation-audit.md).
 
 ## Product Harness Phase 1 — Response Owner: COMPLETE
 
@@ -126,3 +126,7 @@ Harness v1 is COMPLETE. There is no Phase 5: further improvements (extra e2e
 coverage, a background-task label field, similar polish) are ordinary
 Execution UX hardening within the product-refinement stage, not a new
 harness phase.
+
+## Task18 Product Harness Completion
+
+Task18.1 event envelope and Run wait reasons are implemented on the Task18 branch. New event types are declared, but delivery, retries, budgets, capability permissions and TurnPolicy v2 are not yet implemented. See [event-contract-v2.md](./task18-product-harness-completion/event-contract-v2.md) for the verified migration and compatibility behavior. The Execution Card and structured Plan/Steps described in Tasks 1–17 remain separate implementation gaps; Harness v1 completion does not imply those interfaces are complete.

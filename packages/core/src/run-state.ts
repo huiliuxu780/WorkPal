@@ -1,4 +1,4 @@
-import type { RunStatus } from "@rakazo/contracts";
+import type { RunStatus, WaitKind } from "@rakazo/contracts";
 
 export const ACTIVE_RUN_STATUSES = [
   "queued",
@@ -42,6 +42,12 @@ export function isActive(status: RunStatus): boolean {
 
 export function isTerminal(status: RunStatus): boolean {
   return TERMINAL.includes(status);
+}
+
+export function isValidWaitKind(status: RunStatus, waitKind: WaitKind | null): boolean {
+  if (status === "waiting_input") return waitKind === "input" || waitKind === "approval";
+  if (status === "waiting_takeover") return waitKind === "takeover";
+  return waitKind === null;
 }
 
 /** Whether a run's turn is part of the thread's conversation and may take user steering. */

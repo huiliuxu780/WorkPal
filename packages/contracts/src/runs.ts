@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { Id, RunStatus } from "./ids.js";
+import { Id, RunStatus, WaitKind } from "./ids.js";
 
 export const RunActivityRowSchema = z.object({
   runId: Id,
@@ -9,6 +9,7 @@ export const RunActivityRowSchema = z.object({
   groupName: z.string().nullable(),
   threadId: Id,
   status: RunStatus,
+  waitKind: WaitKind.nullable().optional(),
   trigger: z.enum([
     "user",
     "routine",
@@ -94,6 +95,7 @@ export const RunsDetailOutputSchema = z.object({
     botColor: z.string(),
     threadId: Id,
     status: RunStatus,
+    waitKind: WaitKind.nullable().optional(),
     trigger: RunActivityRowSchema.shape.trigger,
     notificationsEnabled: z.boolean(),
     promptSnippet: z.string(),

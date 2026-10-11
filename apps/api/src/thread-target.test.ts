@@ -958,7 +958,7 @@ function groupRunFindMany(input: { active?: unknown[]; terminals?: unknown[] }) 
 
 function groupPrisma(findManyRuns: ReturnType<typeof groupRunFindMany>) {
   const tx = {
-      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+    backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
     $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
     message: { findMany: vi.fn().mockResolvedValue([]) },
     event: {
@@ -1069,7 +1069,7 @@ describe("sendThreadMessage", () => {
     expect(tx.run.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: "waiting_input" }),
-        data: { status: "queued" },
+        data: { status: "queued", waitKind: null },
       }),
     );
     expect(tx.steeringMessage.create).not.toHaveBeenCalled();
@@ -1845,7 +1845,7 @@ describe("sendThreadMessage", () => {
     expect(tx.run.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: "run-routine", status: "waiting_input" }),
-        data: { status: "queued" },
+        data: { status: "queued", waitKind: null },
       }),
     );
     expect(tx.steeringMessage.create).not.toHaveBeenCalled();
@@ -1950,7 +1950,7 @@ describe("sendThreadMessage", () => {
     expect(tx.run.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: "run-webhook", status: "waiting_input" }),
-        data: { status: "queued" },
+        data: { status: "queued", waitKind: null },
       }),
     );
     expect(tx.steeringMessage.create).not.toHaveBeenCalled();
@@ -3305,7 +3305,13 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
   function groupSendHarness(options: {
     members: MemberSeed[];
     leadBotId?: string | null;
-    activeRuns?: Array<{ id: string; taskId: string; botId: string; status: string; trigger: string }>;
+    activeRuns?: Array<{
+      id: string;
+      taskId: string;
+      botId: string;
+      status: string;
+      trigger: string;
+    }>;
     reply?: { id: string; role: string; botId: string | null };
     preRoute?: ReturnType<typeof vi.fn>;
     transactionFailsOnce?: boolean;
@@ -3354,9 +3360,12 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       },
       steeringMessage: { create: vi.fn() },
       event: {
-        create: vi
-          .fn()
-          .mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+        create: vi.fn().mockResolvedValue({
+          id: "event-1",
+          seq: 4,
+          threadId: "thread-1",
+          createdAt: new Date(),
+        }),
       },
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue({
@@ -3380,9 +3389,7 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
         return callback(tx);
       }),
     } as unknown as PrismaClient;
-    const turnRouting = options.preRoute
-      ? ({ preRoute: options.preRoute } as never)
-      : undefined;
+    const turnRouting = options.preRoute ? ({ preRoute: options.preRoute } as never) : undefined;
     const actor = { spaceId: "workspace-1", userId: "user-1" } as Actor;
     const target = {
       kind: "group",
@@ -3432,7 +3439,10 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       preRoute,
     });
 
-    const result = await sendGroup(harness, { text: "@Beta review this", clientNonce: "n-mention" });
+    const result = await sendGroup(harness, {
+      text: "@Beta review this",
+      clientNonce: "n-mention",
+    });
 
     expect(result).toMatchObject({ runId: "run-bot-b" });
     expect(harness.createdRuns).toHaveLength(1);
@@ -3446,7 +3456,12 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       },
     });
     expect(routedEventCalls(harness.tx)).toEqual([
-      { messageId: "msg-1", ownerBotId: "bot-b", routeKind: "explicit_mention", responseMode: "single" },
+      {
+        messageId: "msg-1",
+        ownerBotId: "bot-b",
+        routeKind: "explicit_mention",
+        responseMode: "single",
+      },
     ]);
     // Provider pre-routing returns null for explicit turns, so no router runs.
     expect(preRoute).toHaveBeenCalledTimes(1);
@@ -3494,7 +3509,10 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       preRoute,
     });
 
-    const result = await sendGroup(harness, { text: "看看这套架构合理吗", clientNonce: "n-router" });
+    const result = await sendGroup(harness, {
+      text: "看看这套架构合理吗",
+      clientNonce: "n-router",
+    });
 
     expect(result).toMatchObject({ runId: "run-bot-b" });
     expect(harness.createdRuns).toHaveLength(1);
@@ -3562,7 +3580,10 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       preRoute,
     });
 
-    const result = await sendGroup(harness, { text: "any thoughts?", clientNonce: "n-stale-owner" });
+    const result = await sendGroup(harness, {
+      text: "any thoughts?",
+      clientNonce: "n-stale-owner",
+    });
 
     expect(result).toMatchObject({ runId: "run-bot-a" });
     expect(harness.tx.chatGroup.update).toHaveBeenCalledWith({
@@ -3580,12 +3601,18 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       leadBotId: "bot-a",
     });
 
-    const result = await sendGroup(harness, { text: "@everyone 分别说说", clientNonce: "n-everyone" });
+    const result = await sendGroup(harness, {
+      text: "@everyone 分别说说",
+      clientNonce: "n-everyone",
+    });
 
     expect(result.runIds.sort()).toEqual(["run-bot-a", "run-bot-b"]);
     expect(harness.createdRuns).toHaveLength(2);
     for (const run of harness.createdRuns) {
-      expect(run.orchestration).toMatchObject({ responseMode: "multi", routing: { kind: "explicit_multi" } });
+      expect(run.orchestration).toMatchObject({
+        responseMode: "multi",
+        routing: { kind: "explicit_multi" },
+      });
     }
     expect(routedEventCalls(harness.tx)).toEqual([
       {
@@ -3633,7 +3660,10 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       transactionFailsOnce: true,
     });
 
-    const result = await sendGroup(harness, { text: "review the API design", clientNonce: "n-retry" });
+    const result = await sendGroup(harness, {
+      text: "review the API design",
+      clientNonce: "n-retry",
+    });
 
     expect(preRoute).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ runId: "run-bot-b" });
@@ -3677,7 +3707,12 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       },
       steeringMessage: { create: vi.fn() },
       event: {
-        create: vi.fn().mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+        create: vi.fn().mockResolvedValue({
+          id: "event-1",
+          seq: 4,
+          threadId: "thread-1",
+          createdAt: new Date(),
+        }),
       },
     };
     const prisma = {
@@ -3692,7 +3727,12 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
         jobs: { enqueue: vi.fn().mockResolvedValue(undefined) } as never,
       },
       { spaceId: "workspace-1", userId: "user-1" } as Actor,
-      { kind: "bot", botId: "bot-1", threadId: "thread-1", bot: { computer: null } } as ThreadTarget,
+      {
+        kind: "bot",
+        botId: "bot-1",
+        threadId: "thread-1",
+        bot: { computer: null },
+      } as ThreadTarget,
       { text: "hi", clientNonce: "n-direct" },
     );
 
@@ -3721,8 +3761,8 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       }),
     });
     // Single-bot threads never emit routing events: the owner is the thread itself.
-    expect(tx.event.create.mock.calls.every(([arg]) => arg.data.type !== "thread.turn.routed")).toBe(
-      true,
-    );
+    expect(
+      tx.event.create.mock.calls.every(([arg]) => arg.data.type !== "thread.turn.routed"),
+    ).toBe(true);
   });
 });

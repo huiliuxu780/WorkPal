@@ -1,0 +1,11 @@
+# Product Event contract v2
+
+`Event.id` is the durable `eventId`; no second ID column exists. Every read maps it to both `id` (existing wire field) and `eventId` (v2 alias). `schemaVersion` is `1` for legacy rows and defaults to `1` on insert. New approval events use version `2`. Optional `causationId` names the event that caused another event; optional `parentRunId` names execution lineage. These values are metadata, not authorization.
+
+Order is determined exclusively by `Event.seq` within a Thread. The `@@unique([threadId, seq])` constraint and the locked Thread counter ensure one order across concurrent writers. The existing projection reducer rebuilds a snapshot from that sequence; the Web uses the same Activity reducer for live events. Unknown event types are ignored by old clients. `ProductEventSchema` accepts legacy JSON without the new fields, while database reads normalize absent version metadata to v1.
+
+The existing event ID provides transport identity. Business idempotency remains attached to the operation: approval events carry `approvalEffectId`, while external effects use their existing `idempotencyKey`. The approval request is appended only after the Run changes from `running` to `waiting_input`; the resolution is appended only while the effect is still `intended` and the Run is `waiting_input`. Both transitions and their events occur in one database transaction. Repeating an answer cannot emit a second resolution.
+
+`waitKind` distinguishes `input` and `approval` under `waiting_input`, and `takeover` under `waiting_takeover`; all other Run states clear it. Migration backfills existing waiting rows as `input` or `takeover`. Existing ask and takeover UI remains the only action surface.
+
+This slice declares `run.retried`, `budget.exceeded`, and `delivery.*` schemas for later Task 18 stages; declaration alone does not claim those behaviors exist. Prisma generation and TypeScript checks passed. The migration was applied to a fresh disposable PostgreSQL database with all 93 migrations, then separately reapplied against a disposable pre-v2 schema populated with three Run states and a legacy Event. The waiting states backfilled to `input` and `takeover`, the running state stayed null, and the legacy Event became version 1. Both disposable databases were removed after verification.
