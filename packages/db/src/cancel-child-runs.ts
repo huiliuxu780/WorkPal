@@ -1,12 +1,24 @@
 import { ACTIVE_RUN_STATUSES, parseRunOrchestration } from "@rakazo/core";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
-import type { Prisma, PrismaClient } from "./client.js";
+import { Prisma, type PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { appendEventInTransaction } from "./events.js";
 
-/** Reconcile children after any parent cancellation path, including an interrupted request. */
-export async function cancelChildrenOfCancelledRuns(prisma: PrismaClient) {
-  const candidates = await prisma.$queryRaw<Array<{ id: string; threadId: string }>>`
+/** Reconcile children after any parent cancellation path, including an interrupted request.
+ * With parent IDs, synchronously walk their full descendant tree for a user cancellation.
+ */
+export async function cancelChildrenOfCancelledRuns(
+  prisma: PrismaClient,
+  parentRunIds?: readonly string[],
+) {
+  if (parentRunIds?.length === 0) return [];
+  let frontier = parentRunIds ? [...new Set(parentRunIds)] : null;
+  const cancelled: Array<{ id: string; threadId: string; seq: number }> = [];
+  do {
+    const parentFilter = frontier
+      ? Prisma.sql`AND (child."orchestration" #>> '{collaboration,parentRunId}') IN (${Prisma.join(frontier)})`
+      : Prisma.empty;
+    const candidates = await prisma.$queryRaw<Array<{ id: string; threadId: string }>>`
     SELECT child."id", child."threadId"
     FROM "runs" child
     LEFT JOIN "runs" parent ON parent."id" =
@@ -14,11 +26,12 @@ export async function cancelChildrenOfCancelledRuns(prisma: PrismaClient) {
     WHERE (child."orchestration" #>> '{collaboration,parentRunId}') IS NOT NULL
       AND (parent."status" = 'cancelled' OR parent."id" IS NULL)
       AND child."status" IN ('queued', 'leased', 'running', 'waiting_input', 'waiting_takeover')
+      ${parentFilter}
     ORDER BY child."createdAt", child."id"
-    LIMIT 100
+    ${frontier ? Prisma.empty : Prisma.sql`LIMIT 100`}
   `;
-  const cancelled: Array<{ id: string; threadId: string; seq: number }> = [];
-  for (const candidate of candidates) {
+    const nextFrontier: string[] = [];
+    for (const candidate of candidates) {
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${candidate.threadId} FOR UPDATE`;
       const child = await tx.run.findUnique({ where: { id: candidate.id } });
@@ -49,7 +62,12 @@ export async function cancelChildrenOfCancelledRuns(prisma: PrismaClient) {
       });
       return { id: child.id, threadId: child.threadId, seq: event.seq };
     });
-    if (result) cancelled.push(result);
-  }
+      if (result) {
+        cancelled.push(result);
+        nextFrontier.push(result.id);
+      }
+    }
+    frontier = frontier ? nextFrontier : null;
+  } while (frontier && frontier.length > 0);
   return cancelled;
 }

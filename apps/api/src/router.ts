@@ -140,6 +140,7 @@ import {
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
   appendEventInTransaction,
+  cancelChildrenOfCancelledRuns,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
   CannotDeleteLastSpaceError,
@@ -582,6 +583,40 @@ export interface RouterDeps {
     integrationsCatalogUrl?: string;
     mcpAllowPrivateEndpoint?: boolean;
   };
+}
+
+async function cancelDescendantsNow(deps: RouterDeps, parentRunIds: readonly string[]) {
+  if (parentRunIds.length === 0) return;
+  const children = await cancelChildrenOfCancelledRuns(deps.prisma, parentRunIds);
+  if (children.length === 0) return;
+  const childIds = children.map((child) => child.id);
+  const background = deps.cancelRuntimeBackgroundTask
+    ? await deps.prisma.backgroundAgentTask.findMany({
+        where: { parentRunId: { in: childIds }, status: "cancelling" },
+      })
+    : [];
+  await Promise.all([
+    ...children.flatMap((child) => [
+      deps.jobs.cancel(runJobKey(child.id)),
+      deps.runtime?.abort(child.id),
+      deps.events.notify(child.threadId, child.seq),
+    ]),
+    ...background.map(async (task) => {
+      await deps.cancelRuntimeBackgroundTask!(task.taskId, {
+        userId: task.userId,
+        spaceId: task.spaceId,
+        botId: task.botId,
+        threadId: task.threadId,
+        runId: task.parentRunId,
+      });
+      await deps.prisma.backgroundAgentTask.updateMany({
+        where: { taskId: task.taskId, status: "cancelling" },
+        data: { status: "cancelled", finishedAt: new Date() },
+      });
+    }),
+  ].map((operation) => Promise.resolve(operation).catch((error) => {
+    getLogger().error("direct child Run revocation failed; Worker will reconcile", error);
+  })));
 }
 
 /** Bound for one provider sandbox destroy during Space deletion. Providers may
@@ -1920,7 +1955,8 @@ export function createRouter(deps: RouterDeps) {
       }),
       stop: authed.threads.stop.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-        await stopThreadRuns(deps, context.actor, target);
+        const { cancelledRunIds } = await stopThreadRuns(deps, context.actor, target);
+        await cancelDescendantsNow(deps, cancelledRunIds);
         return { ok: true as const };
       }),
       cancelBackgroundTask: authed.threads.cancelBackgroundTask.handler(
@@ -1965,6 +2001,7 @@ export function createRouter(deps: RouterDeps) {
           botId: contextBotId,
           ...(target.kind === "group" ? { groupId: target.groupId } : {}),
         });
+        await cancelDescendantsNow(deps, cancelledRunIds);
         const [configuredMemory] = await Promise.all([
           target.kind === "bot"
             ? deps.memoryProviders.resolve(context.actor.spaceId).catch((error) => {
