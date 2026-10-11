@@ -145,6 +145,7 @@ import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { RunActivityDisclosure } from "../components/activity/RunActivityDisclosure";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { RunPlanDisclosure } from "../components/ai/RunPlanDisclosure";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -3608,6 +3609,8 @@ export function ShellPage() {
             onScrollRequestHandled={clearScrollRequest}
             artifactTarget={transcriptArtifactTarget}
             messages={transcriptMessages}
+            plans={activeSnapshot?.plans}
+            activeRunIds={workingRuns.map((run) => run.id)}
             showToolActivity={showToolActivity}
             olderCursor={activeSnapshot?.olderCursor ?? null}
             loadingOlder={loadingOlder}
@@ -4712,6 +4715,8 @@ const Transcript = memo(function Transcript({
   onScrollRequestHandled,
   artifactTarget,
   messages,
+  plans,
+  activeRunIds,
   showToolActivity,
   olderCursor,
   loadingOlder,
@@ -4747,6 +4752,8 @@ const Transcript = memo(function Transcript({
   onScrollRequestHandled: () => void;
   artifactTarget: ArtifactTarget;
   messages: ThreadMessage[];
+  plans?: ThreadSnapshot["plans"];
+  activeRunIds: string[];
   showToolActivity: boolean;
   olderCursor: number | null;
   loadingOlder: boolean;
@@ -4788,6 +4795,21 @@ const Transcript = memo(function Transcript({
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  const plansByAnchor = useMemo(() => {
+    const anchors = new Map<string, NonNullable<ThreadSnapshot["plans"]>>();
+    for (const plan of plans ?? []) {
+      const source =
+        plan.sourceMessageId && messageById.has(plan.sourceMessageId) ? plan.sourceMessageId : null;
+      const lastBotMessage = [...messages]
+        .reverse()
+        .find((message) => message.runId === plan.runId && message.role === "bot");
+      const anchor =
+        source ?? lastBotMessage?.id ?? (activeRunIds.includes(plan.runId) ? "__tail" : null);
+      if (!anchor) continue;
+      anchors.set(anchor, [...(anchors.get(anchor) ?? []), plan]);
+    }
+    return anchors;
+  }, [plans, messageById, messages, activeRunIds]);
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
   const workingBotName = workingBots.length === 1 ? workingBots[0]?.name : undefined;
   const workingLabel =
@@ -4944,7 +4966,7 @@ const Transcript = memo(function Transcript({
 
   useLayoutEffect(() => {
     if (following.current) snapToEnd();
-  }, [messages, running, snapToEnd]);
+  }, [messages, plans, running, snapToEnd]);
 
   useLayoutEffect(() => {
     const button = jumpButtonRef.current;
@@ -5148,9 +5170,23 @@ const Transcript = memo(function Transcript({
                   ))}
                 </div>
               ) : null}
+              {plansByAnchor.get(message.id)?.map((plan) => (
+                <RunPlanDisclosure
+                  key={plan.planId}
+                  plan={plan}
+                  live={activeRunIds.includes(plan.runId)}
+                />
+              ))}
             </div>
           );
         })}
+        {plansByAnchor.get("__tail")?.map((plan) => (
+          <RunPlanDisclosure
+            key={plan.planId}
+            plan={plan}
+            live={activeRunIds.includes(plan.runId)}
+          />
+        ))}
         {activity && activity.length > 0 ? (
           <div className="px-1 py-0.5" data-testid="run-activity-container">
             <RunActivityDisclosure

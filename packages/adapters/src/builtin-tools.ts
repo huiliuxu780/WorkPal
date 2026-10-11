@@ -684,6 +684,40 @@ export const builtinAgentTools: ConnectorTool[] = [
     readOnly: true,
   },
   {
+    name: "publish_run_plan",
+    description:
+      "Publish or revise a user-visible structured Plan for this Run. Use only when a Plan helps explain a multi-stage goal. The first call has expectedRevision 0; later calls use the revision returned by this tool and include a changeReason. Keep item ids stable across revisions and mark removed work superseded or skipped. This records intent and reported progress, not proof of external effects. Do not copy plan_write Markdown into this tool.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expectedRevision: { type: "integer", minimum: 0 },
+        goal: { type: "string", maxLength: 1000 },
+        changeReason: { type: "string", maxLength: 500 },
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", maxLength: 64 },
+              title: { type: "string", maxLength: 200 },
+              status: {
+                type: "string",
+                enum: ["pending", "active", "completed", "skipped", "superseded", "unresolved"],
+              },
+              reason: { type: "string", maxLength: 500 },
+            },
+            required: ["id", "title", "status"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["expectedRevision", "goal", "items"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "scratchpad_list",
     description:
       "List this bot's scratchpad / open-work items (todos and parked work). By default omits completed items.",

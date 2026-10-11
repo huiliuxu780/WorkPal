@@ -3,6 +3,7 @@ import { BotAvatarValueSchema } from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
 import { Id, MemoryScope, RunStatus, SandboxKind, WaitKind } from "./ids.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
+import { RunPlanRevisionSchema } from "./run-plans.js";
 
 export const ComputerModeSchema = z.enum(["team", "dedicated"]);
 export type ComputerMode = z.infer<typeof ComputerModeSchema>;
@@ -947,6 +948,8 @@ export const ThreadSnapshotSchema = z.object({
   computer: ComputerStatusSchema.optional(),
   /** Projected activity for the current/recent runs (§33). Bounded (§34). */
   activity: z.array(ActivityItemSchema).optional(),
+  /** Current durable Plan revisions for recent executions; absent if no structured Plan was published. */
+  plans: z.array(RunPlanRevisionSchema).optional(),
 });
 export type ThreadSnapshot = z.infer<typeof ThreadSnapshotSchema>;
 

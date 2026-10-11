@@ -25,6 +25,43 @@ import {
 } from "./thread-events.js";
 
 describe("thread event reduction", () => {
+  it("replays structured Plan revisions without old or duplicate events replacing current state", () => {
+    const first = {
+      planId: "plan:run-1",
+      runId: "run-1",
+      sourceMessageId: null,
+      revisionId: "plan:run-1:1",
+      revision: 1,
+      goal: "Review source",
+      items: [{ id: "review", title: "Review", status: "active" }],
+      changeReason: null,
+      createdAt: "2026-08-16T00:00:01.000Z",
+    };
+    const revised = {
+      ...first,
+      revisionId: "plan:run-1:2",
+      revision: 2,
+      items: [{ id: "review", title: "Review", status: "completed" }],
+      changeReason: "Reviewed source",
+      createdAt: "2026-08-16T00:00:02.000Z",
+    };
+    const base = snapshot([]);
+    expect(isThreadSnapshotEvent(event({ type: "plan.revised", payload: first }))).toBe(true);
+    const one = reduceThreadSnapshot(base, event({ type: "plan.revised", seq: 4, payload: first }));
+    const two = reduceThreadSnapshot(
+      one,
+      event({ type: "plan.revised", seq: 5, payload: revised }),
+    );
+    expect(two?.plans).toEqual([revised]);
+    expect(reduceThreadSnapshot(two, event({ type: "plan.revised", seq: 4, payload: first }))).toBe(
+      two,
+    );
+    expect(
+      reduceThreadSnapshot(two, event({ type: "plan.revised", seq: 6, payload: first }))?.plans,
+    ).toEqual([revised]);
+    expect(reduceThreadSnapshot(two, event({ type: "thread.cleared", seq: 7 }))?.plans).toEqual([]);
+  });
+
   it("shows a committed direct send as queued before its snapshot refresh returns", () => {
     const initial = snapshot([message("user-1", [{ kind: "text", text: "Continue" }], 4)]);
 

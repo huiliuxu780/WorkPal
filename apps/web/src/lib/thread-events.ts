@@ -7,6 +7,7 @@ import type {
   ThreadMessagePage,
   ThreadSnapshot,
 } from "@rakazo/contracts";
+import { RunPlanRevisionSchema } from "@rakazo/contracts";
 import {
   ACTIVITY_EVENT_TYPES,
   isActive,
@@ -252,6 +253,7 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
   return (
     event.type === "thread.cleared" ||
     event.type === "thread.progress" ||
+    event.type === "plan.revised" ||
     event.type === "thread.subagent" ||
     event.type === "thread.cloud_agent" ||
     event.type === "agent.tool.called" ||
@@ -347,6 +349,25 @@ function reduceThreadSnapshotBase(
       olderCursor: null,
       run: null,
       activeRuns: [],
+      plans: [],
+    };
+  }
+  if (event.type === "plan.revised") {
+    if (event.seq <= prev.cursor) return prev;
+    const parsed = RunPlanRevisionSchema.safeParse(event.payload);
+    if (!parsed.success || parsed.data.runId !== event.runId) return prev;
+    const plan = parsed.data;
+    const previous = prev.plans?.find((candidate) => candidate.planId === plan.planId);
+    if (previous && previous.revision >= plan.revision) {
+      return { ...prev, cursor: event.seq };
+    }
+    return {
+      ...prev,
+      cursor: event.seq,
+      plans: [
+        plan,
+        ...(prev.plans ?? []).filter((candidate) => candidate.planId !== plan.planId),
+      ].slice(0, 20),
     };
   }
   if (event.type === "run.started") {

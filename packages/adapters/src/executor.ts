@@ -111,6 +111,7 @@ import {
   type Prisma,
   type PrismaClient,
   parseComputerMode,
+  publishRunPlan,
   retireModelCredential,
   SpaceLimitError,
   scheduleAutomaticRunRetry,
@@ -130,7 +131,6 @@ import {
 } from "./agent-environment.js";
 import type { AgentlyMailService } from "./agently-mail.js";
 import { AgentScopeTransientError } from "./agentscope-runtime.js";
-import { enforceRunBudgets } from "./run-budget-enforcement.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
 import {
   approvalPausedToolResult,
@@ -169,7 +169,6 @@ import {
 } from "./auto-review.js";
 import { createAutoReviewProvider } from "./auto-review-factory.js";
 import { attachedImageArtifactIds, resolveUpdateBotAvatar } from "./bot-avatar.js";
-import { evaluateBotToolCapability } from "./capability-permission.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
 import {
   allowPrivateHttpSecretOrigins,
@@ -188,6 +187,7 @@ import {
   browserSnapshotFromTool,
 } from "./browser-tools.js";
 import { agentConnectionTools, builtinAgentTools } from "./builtin-tools.js";
+import { evaluateBotToolCapability } from "./capability-permission.js";
 import { archiveSpawnedBot, spawnBot } from "./child-bots.js";
 import { type CloudAgentConnection, cloudAgentsEnabled } from "./cloud-agent-factory.js";
 import { executeCloudAgentTool } from "./cloud-agent-service.js";
@@ -288,6 +288,7 @@ import { actorMayUsePrivateEndpoint } from "./private-endpoint.js";
 import type { RemoteTransportDependencies } from "./remote-mcp.js";
 import { assertSafeRemoteUrl } from "./remote-mcp.js";
 import { loadReplyContext, messageToAgentHistoryText } from "./reply-context.js";
+import { enforceRunBudgets } from "./run-budget-enforcement.js";
 import {
   commitConsumedRunSecret,
   normalizeSecretAskPurpose,
@@ -1660,6 +1661,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const graphicalToolsAllowed = graphical && acceptsImages && !heldForTakeover;
         const pageBrowserAllowed =
           graphical && browser.describe().capabilities.page && !heldForTakeover;
+        const turnPolicy = turnPolicyFromRun({
+          trigger: run.trigger,
+          ownerBotId: bot.id,
+          orchestration: run.orchestration,
+          budgetOverride: run.budgetOverride,
+        });
         const builtins = [
           ...selectBuiltinToolsForRun({
             graphicalToolsAllowed,
@@ -1671,6 +1678,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             messagingChannelRun,
             voiceCall,
             mailEnabled: Boolean(deps.mail),
+            planningEnabled: turnPolicy.planning.mode === "auto",
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -2093,7 +2101,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             requiresUnattendedApproval ||
             toolRequiresApproval(name, viaConnector, declaredReadOnly);
           const requiresMandatoryApproval =
-            capabilityDecision === "ask" || requiresUnattendedApproval || toolRequiresExplicitApproval(name);
+            capabilityDecision === "ask" ||
+            requiresUnattendedApproval ||
+            toolRequiresExplicitApproval(name);
           const connectorKind = connectorKindFromToolName(
             name,
             connectedPlugins.map((plugin) => plugin.provider),
@@ -2938,6 +2948,31 @@ export function createRunExecutor(deps: ExecutorDeps) {
               userId: run.userId,
               ...(thread.groupId ? { threadId: thread.id } : {}),
               tools,
+            });
+          }
+          if (name === "publish_run_plan") {
+            const published = await publishRunPlan(
+              deps.prisma,
+              {
+                spaceId: run.spaceId,
+                threadId: thread.id,
+                botId: bot.id,
+                runId,
+                toolExecutionId: executionId,
+              },
+              args,
+            );
+            if (published.status === "conflict") {
+              return finish({
+                error: "Plan revision is stale; refresh the expected revision",
+                currentRevision: published.currentRevision,
+              });
+            }
+            await deps.events.notify(thread.id, published.seq);
+            return finish({
+              planId: published.plan.planId,
+              revision: published.plan.revision,
+              status: published.status,
             });
           }
           if (name === "scratchpad_list") {
@@ -4135,12 +4170,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               // immutable execution policy — the persisted orchestration
               // snapshot when present (a retry reuses it verbatim), else the
               // deterministic fallback derived from the Run's trigger.
-              turnPolicy: turnPolicyFromRun({
-                trigger: run.trigger,
-                ownerBotId: bot.id,
-                orchestration: run.orchestration,
-                budgetOverride: run.budgetOverride,
-              }),
+              turnPolicy,
               collaborationContext: {
                 role: collaborationRole,
                 ...(collaborationFromBotName ? { fromBotName: collaborationFromBotName } : {}),
@@ -4760,11 +4790,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 runId,
                 payload: { name: event.name, executionId: event.executionId },
               });
-              if (!scripted && await enforceRunBudgets({
-                prisma: deps.prisma,
-                events: deps.events,
-                runtime: deps.runtime,
-              }, new Date(), runId)) return;
+              if (
+                !scripted &&
+                (await enforceRunBudgets(
+                  {
+                    prisma: deps.prisma,
+                    events: deps.events,
+                    runtime: deps.runtime,
+                  },
+                  new Date(),
+                  runId,
+                ))
+              )
+                return;
               pendingToolNames.push(event.name);
               tryFlushPendingTools();
               const loopGuard = advanceToolCallLoopGuard(toolCallStreak, event.name, event.args);
@@ -4907,11 +4945,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   cacheWriteTokens: event.cacheWriteTokens,
                 },
               });
-              if (!scripted && await enforceRunBudgets({
-                prisma: deps.prisma,
-                events: deps.events,
-                runtime: deps.runtime,
-              }, new Date(), runId)) return;
+              if (
+                !scripted &&
+                (await enforceRunBudgets(
+                  {
+                    prisma: deps.prisma,
+                    events: deps.events,
+                    runtime: deps.runtime,
+                  },
+                  new Date(),
+                  runId,
+                ))
+              )
+                return;
             } else if (event.type === "done") {
               if (!assembled && event.text) {
                 if (publishedMidTurnUserMessage || discardedMidTurnNarration) {
@@ -5390,6 +5436,7 @@ export function selectBuiltinToolsForRun(options: {
   voiceCall?: boolean;
   /** send_email exists only when the deployment connected an Agently mailbox. */
   mailEnabled?: boolean;
+  planningEnabled?: boolean;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -5409,6 +5456,7 @@ export function selectBuiltinToolsForRun(options: {
   ).filter(
     (tool) =>
       (options.voiceCall || tool.name !== "end_call") &&
+      (options.planningEnabled || tool.name !== "publish_run_plan") &&
       (options.mailEnabled === true || tool.name !== "send_email") &&
       (!options.messagingChannelRun ||
         (!["remember", "save_memory", "recall_memory", "forget_memory", "task_catalog"].includes(

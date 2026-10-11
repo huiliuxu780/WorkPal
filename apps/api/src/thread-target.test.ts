@@ -200,6 +200,7 @@ describe("threadSnapshot", () => {
     ]);
     const tx = {
       backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+      runPlan: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
@@ -263,6 +264,7 @@ describe("threadSnapshot", () => {
     const findFirstRun = botRunFindFirst([run]);
     const tx = {
       backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+      runPlan: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
@@ -355,6 +357,7 @@ describe("threadSnapshot", () => {
             callback({
               $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
               backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+              runPlan: { findMany: vi.fn().mockResolvedValue([]) },
               message: { findMany: vi.fn().mockResolvedValue([]) },
               event: {
                 findFirst: vi.fn().mockResolvedValue(null),
@@ -410,6 +413,7 @@ describe("threadSnapshot", () => {
     const findFirstRun = botRunFindFirst([failed, completed]);
     const tx = {
       backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+      runPlan: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
@@ -447,6 +451,7 @@ describe("threadSnapshot", () => {
     const findFirstRun = botRunFindFirst([]);
     const tx = {
       backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+      runPlan: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
@@ -959,6 +964,7 @@ function groupRunFindMany(input: { active?: unknown[]; terminals?: unknown[] }) 
 function groupPrisma(findManyRuns: ReturnType<typeof groupRunFindMany>) {
   const tx = {
     backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+    runPlan: { findMany: vi.fn().mockResolvedValue([]) },
     $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
     message: { findMany: vi.fn().mockResolvedValue([]) },
     event: {

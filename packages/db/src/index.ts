@@ -15,6 +15,7 @@ export * from "./messaging.js";
 export * from "./model-credentials.js";
 export * from "./repos.js";
 export * from "./retry-runs.js";
+export * from "./run-plans.js";
 export * from "./scope.js";
 export * from "./spaces.js";
 export * from "./transaction-retry.js";
