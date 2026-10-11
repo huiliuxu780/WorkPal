@@ -572,6 +572,8 @@ function serializableRequest(
         }
       : undefined,
     sessionGeneration: request.sessionGeneration ?? 0,
+    excludeDeliveredTaskIds: request.excludeDeliveredTaskIds ?? [],
+    suppressNativeTaskReminders: request.suppressNativeTaskReminders ?? false,
     resumeAnswer: request.resumeAnswer,
     sourceMessageId: request.sourceMessageId,
     identity,

@@ -99,7 +99,9 @@ import {
   appendEventInTransaction,
   createSpaceForMember,
   createThreadMessageInTransaction,
+  currentThreadGeneration,
   effectiveMemoryScope,
+  enqueueDeliveryInTransaction,
   findDefaultModelCredential,
   findModelCredential,
   InvalidSpaceNameError,
@@ -1698,7 +1700,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
         // The intro turn confirms how a bot read its own role before anyone hands it
         // real work — it must not be able to act on that reading (shell, computer,
         // scheduling, spawning another bot, ...) before the user has assigned any task.
-        const tools = run.trigger === "created" ? [] : [...builtins, ...exposedConnectorTools];
+        const tools =
+          run.trigger === "created" || run.trigger === "delivery"
+            ? []
+            : [...builtins, ...exposedConnectorTools];
         const taskCatalogInstruction = tools.some((tool) => tool.name === "task_catalog")
           ? TASK_CATALOG_GUIDANCE
           : undefined;
@@ -4083,12 +4088,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     select: { name: true },
                   })
                 )?.name;
+          const outboxTasks = await deps.prisma.deliveryRecord.findMany({
+            where: {
+              threadId: thread.id,
+              backgroundTaskId: { not: null },
+              status: { in: ["pending", "claimed", "sent"] },
+            },
+            select: { backgroundTaskId: true },
+          });
           const runtimeEvents = deps.runtime.run(
             {
               botId: bot.id,
               threadId: thread.id,
               runId,
               sessionGeneration: thread.historyCompactionGeneration,
+              excludeDeliveredTaskIds: outboxTasks.flatMap((row) =>
+                row.backgroundTaskId ? [row.backgroundTaskId] : [],
+              ),
+              suppressNativeTaskReminders: run.trigger === "delivery",
               resumeAnswer,
               sourceMessageId: run.sourceMessageId,
               // Product Harness Phase 2: the runtime receives this Run's
@@ -4139,7 +4156,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 .join("\n\n"),
               history: runtimeHistory,
               currentTurnImages,
-              skills: agentSkills.map((skill) => ({
+              skills: (run.trigger === "delivery" ? [] : agentSkills).map((skill) => ({
                 id: skill.id,
                 name: skill.name,
                 description: skill.description,
@@ -4205,65 +4222,69 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         "Background task identity or tools do not match the parent run",
                       );
                     }
-                    const [currentRun, member] = await Promise.all([
-                      deps.prisma.run.findFirst({
+                    const eventSeq = await deps.prisma.$transaction(async (tx) => {
+                      // Serialize registration with clearThread so the saved generation
+                      // belongs to the conversation that actually started the task.
+                      await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${task.threadId} FOR UPDATE`;
+                      const stillRunning = await tx.run.findFirst({
                         where: {
                           id: runId,
                           userId: run.userId,
                           spaceId: run.spaceId,
                           botId: bot.id,
-                          threadId: thread.id,
+                          threadId: task.threadId,
                           status: "running",
                         },
                         select: { id: true },
-                      }),
-                      deps.prisma.spaceMember.findUnique({
-                        where: {
-                          spaceId_userId: {
-                            spaceId: run.spaceId,
-                            userId: run.userId,
-                          },
-                        },
+                      });
+                      const member = await tx.spaceMember.findUnique({
+                        where: { spaceId_userId: { spaceId: run.spaceId, userId: run.userId } },
                         select: { id: true },
-                      }),
-                    ]);
-                    if (!currentRun || !member)
-                      throw new Error("Parent run is no longer authorized");
-                    await deps.prisma.backgroundAgentTask.create({
-                      data: {
-                        taskId: task.taskId,
-                        parentRunId: runId,
-                        userId: task.userId,
-                        spaceId: task.spaceId,
-                        botId: task.botId,
-                        threadId: task.threadId,
-                        agentId: task.agentId,
-                        sessionId: task.sessionId,
-                        toolNames: task.toolNames,
-                        status: "running",
-                        expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
-                      },
+                      });
+                      if (!stillRunning || !member)
+                        throw new Error("Parent run is no longer authorized");
+                      const threadGeneration = await currentThreadGeneration(tx, task.threadId);
+                      await tx.backgroundAgentTask.create({
+                        data: {
+                          taskId: task.taskId,
+                          parentRunId: runId,
+                          userId: task.userId,
+                          spaceId: task.spaceId,
+                          botId: task.botId,
+                          threadId: task.threadId,
+                          threadGeneration,
+                          agentId: task.agentId,
+                          sessionId: task.sessionId,
+                          toolNames: task.toolNames,
+                          status: "running",
+                          expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
+                        },
+                      });
+                      await appendEventInTransaction(tx, {
+                        spaceId: run.spaceId,
+                        threadId: thread.id,
+                        botId: bot.id,
+                        runId,
+                        type: "subagent.started",
+                        payload: { taskId: task.taskId, agentId: task.agentId },
+                      });
+                      const event = await appendEventInTransaction(tx, {
+                        spaceId: run.spaceId,
+                        threadId: thread.id,
+                        botId: bot.id,
+                        runId,
+                        type: "thread.subagent",
+                        payload: {
+                          agentId: task.taskId,
+                          name: task.agentId,
+                          task: "delegated task",
+                          status: "running",
+                        },
+                      });
+                      return event.seq;
                     });
-                    await deps.events.append({
-                      spaceId: run.spaceId,
-                      threadId: thread.id,
-                      botId: bot.id,
-                      runId,
-                      type: "subagent.started",
-                      payload: { taskId: task.taskId, agentId: task.agentId },
-                    });
-                    await deps.events.append({
-                      spaceId: run.spaceId,
-                      threadId: thread.id,
-                      botId: bot.id,
-                      runId,
-                      type: "thread.subagent",
-                      payload: {
-                        agentId: task.taskId,
-                        name: task.agentId,
-                        task: "delegated task",
-                        status: "running",
-                      },
+                    await deps.events.notify(thread.id, eventSeq).catch((error) => {
+                      getLogger().error("background registration realtime notification", error);
                     });
                   },
               authorizeBackgroundTool: scripted
@@ -4350,85 +4371,131 @@ export function createRunExecutor(deps: ExecutorDeps) {
                       ? redactSecrets(event.error, runSecrets)
                       : undefined;
                     if (status === "running") {
-                      const updated = await deps.prisma.backgroundAgentTask.updateMany({
-                        where: { taskId: task.taskId, status: "running" },
-                        data: { heartbeatAt: new Date() },
+                      const eventSeq = await deps.prisma.$transaction(async (tx) => {
+                        await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${task.threadId} FOR UPDATE`;
+                        const record = await tx.backgroundAgentTask.findUnique({
+                          where: { taskId: task.taskId },
+                          select: { threadGeneration: true },
+                        });
+                        const updated = await tx.backgroundAgentTask.updateMany({
+                          where: { taskId: task.taskId, status: "running" },
+                          data: { heartbeatAt: new Date() },
+                        });
+                        if (!updated.count || !event.progress || !record) return null;
+                        if (
+                          record.threadGeneration !==
+                          (await currentThreadGeneration(tx, task.threadId))
+                        ) {
+                          return null;
+                        }
+                        const parent = await tx.run.findUnique({
+                          where: { id: task.parentRunId },
+                          select: { status: true },
+                        });
+                        if (!parent || parent.status === "cancelled") return null;
+                        const progress = await appendEventInTransaction(tx, {
+                          spaceId: task.spaceId,
+                          threadId: task.threadId,
+                          botId: task.botId,
+                          runId: task.parentRunId,
+                          type: "subagent.progress",
+                          payload: {
+                            taskId: task.taskId,
+                            agentId: task.agentId,
+                            progress: event.progress ?? "working",
+                          },
+                        });
+                        return progress.seq;
                       });
-                      if (!updated.count || !event.progress) return;
-                      await deps.events.append({
+                      if (eventSeq !== null) await deps.events.notify(task.threadId, eventSeq);
+                      return;
+                    }
+                    const eventSeq = await deps.prisma.$transaction(async (tx) => {
+                      await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${task.threadId} FOR UPDATE`;
+                      const record = await tx.backgroundAgentTask.findUnique({
+                        where: { taskId: task.taskId },
+                        select: { threadGeneration: true },
+                      });
+                      if (!record) return null;
+                      const updated = await tx.backgroundAgentTask.updateMany({
+                        where: {
+                          taskId: task.taskId,
+                          parentRunId: task.parentRunId,
+                          status: "running",
+                        },
+                        data: {
+                          status,
+                          finishedAt: new Date(),
+                          result: safeResult,
+                          error: safeError,
+                        },
+                      });
+                      if (!updated.count) return null;
+                      if (
+                        record.threadGeneration !==
+                        (await currentThreadGeneration(tx, task.threadId))
+                      ) {
+                        return null;
+                      }
+                      const parent = await tx.run.findUnique({
+                        where: { id: task.parentRunId },
+                        select: { status: true },
+                      });
+                      if (!parent || parent.status === "cancelled") return null;
+                      await appendEventInTransaction(tx, {
                         spaceId: task.spaceId,
                         threadId: task.threadId,
                         botId: task.botId,
                         runId: task.parentRunId,
-                        type: "subagent.progress",
+                        type: `subagent.${status}` as
+                          | "subagent.completed"
+                          | "subagent.failed"
+                          | "subagent.cancelled",
                         payload: {
                           taskId: task.taskId,
                           agentId: task.agentId,
-                          progress: event.progress ?? "working",
+                          result: safeResult,
+                          error: safeError,
                         },
                       });
-                      return;
-                    }
-                    const updated = await deps.prisma.backgroundAgentTask.updateMany({
-                      where: {
-                        taskId: task.taskId,
-                        parentRunId: task.parentRunId,
-                        status: "running",
-                      },
-                      data: {
-                        status,
-                        finishedAt: new Date(),
-                        result: safeResult,
-                        error: safeError,
-                      },
-                    });
-                    if (!updated.count) return;
-                    await deps.events.append({
-                      spaceId: task.spaceId,
-                      threadId: task.threadId,
-                      botId: task.botId,
-                      runId: task.parentRunId,
-                      type: `subagent.${status}` as
-                        | "subagent.completed"
-                        | "subagent.failed"
-                        | "subagent.cancelled",
-                      payload: {
-                        taskId: task.taskId,
-                        agentId: task.agentId,
-                        result: safeResult,
-                        error: safeError,
-                      },
-                    });
-                    await deps.events.append({
-                      spaceId: task.spaceId,
-                      threadId: task.threadId,
-                      botId: task.botId,
-                      runId: task.parentRunId,
-                      type: "thread.subagent",
-                      payload: {
-                        agentId: task.taskId,
-                        name: task.agentId,
-                        task: "delegated task",
-                        status,
-                        result: safeResult ?? safeError,
-                      },
-                    });
-                    await publishMessage(
-                      deps,
-                      run,
-                      "bot",
-                      [
-                        {
-                          kind: "subagent",
+                      await appendEventInTransaction(tx, {
+                        spaceId: task.spaceId,
+                        threadId: task.threadId,
+                        botId: task.botId,
+                        runId: task.parentRunId,
+                        type: "thread.subagent",
+                        payload: {
                           agentId: task.taskId,
                           name: task.agentId,
                           task: "delegated task",
                           status,
                           result: safeResult ?? safeError,
                         },
-                      ],
-                      true,
-                    );
+                      });
+                      const delivery = await enqueueDeliveryInTransaction(tx, {
+                        runId: task.parentRunId,
+                        backgroundTaskId: task.taskId,
+                        threadId: task.threadId,
+                        threadGeneration: record.threadGeneration,
+                        kind: "background_task",
+                        idempotencyKey: `${task.taskId}:background_task`,
+                      });
+                      if (!delivery) return null;
+                      const created = await appendEventInTransaction(tx, {
+                        spaceId: task.spaceId,
+                        threadId: task.threadId,
+                        botId: task.botId,
+                        runId: task.parentRunId,
+                        type: "delivery.created",
+                        payload: { deliveryId: delivery.id, sourceRunId: task.parentRunId },
+                      });
+                      return created.seq;
+                    });
+                    if (eventSeq !== null) {
+                      await deps.events.notify(task.threadId, eventSeq).catch((error) => {
+                        getLogger().error("background delivery realtime notification", error);
+                      });
+                    }
                   },
               claimSteering: scripted
                 ? undefined
@@ -5338,7 +5405,7 @@ export function userTurnInstructions(parts: {
     "create_space proposes a new privacy boundary inside the current organization. Use it when the user asks to create a space or separate data between teams or projects. It always pauses for explicit user approval; never claim the space exists before the tool succeeds.",
     "spawn_bot creates a lasting regular bot (own chat, computer, memory) that appears in the user's bot list. If the user asked to create a bot, call spawn_bot once and stop. Do not run_subagent to demo it.",
     "update_bot updates this bot's own name (chat header / list label), title, description, avatar, and notifyOnFinish. When the user asks you to rename yourself, change your title or description, change your profile picture, or turn finish notifications on or off, call update_bot — do not claim you changed them without the tool. Pass color for a hex or encoded shape, artifact_id for an image in this space, or use_attached_image when they attached a picture on this message.",
-    "run_subagent is an isolated helper, not a bot or a new thread. A native AgentScope helper can finish synchronously or continue in the background; report a background task as running until its result arrives in a later turn.",
+    "run_subagent is an isolated helper, not a bot or a new thread. A native AgentScope helper can finish synchronously or continue in the background; report a background task as running. The backend delivers its result when it finishes.",
     parts.botDirectory,
     "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
     parts.pluginLine,
@@ -5363,7 +5430,7 @@ export function threadContextForRun<T>(
 ) {
   // Routine runs stay isolated from thread history. The creation intro does
   // too: a message that arrives during it waits and is answered afterward.
-  if (trigger === "created" || trigger === "routine") {
+  if (trigger === "created" || trigger === "routine" || trigger === "delivery") {
     return {
       messages: [] as T[],
       summary: null,
@@ -5421,10 +5488,12 @@ export function runAllowsSilentEmpty(trigger: string): boolean {
 }
 
 export function runPromotesMidTurnNarration(trigger: string): boolean {
-  return trigger !== "routine";
+  return trigger !== "routine" && trigger !== "delivery";
 }
 
 export function runReplyGuidance(trigger: string): string {
+  if (trigger === "delivery")
+    return "Return one concise result message. Do not send progress updates.";
   return runAllowsSilentEmpty(trigger)
     ? ROUTINE_SILENT_REPLY_GUIDANCE
     : LONG_WORK_PROGRESS_GUIDANCE;

@@ -124,6 +124,15 @@ public final class ToolBridgeClient {
                 credential.token());
     }
 
+    public void publishHeartbeat(String taskId, String childSession)
+            throws IOException, InterruptedException {
+        if (request.toolBridge() == null || request.toolBridge().taskEventUrl() == null) return;
+        TaskCredential credential = taskCredentials.get(childSession).getNow(null);
+        if (credential == null || !credential.taskId().equals(taskId)) return;
+        post(request.toolBridge().taskEventUrl(), Map.of("runId", request.runId(),
+                "taskId", taskId, "status", "running"), credential.token());
+    }
+
     private JsonNode post(String url, Object body, String token) throws IOException, InterruptedException {
         validateUrl(url);
         HttpRequest call = HttpRequest.newBuilder(URI.create(url))

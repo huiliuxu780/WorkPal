@@ -29,7 +29,21 @@ public record RunRequest(
         Integer sessionGeneration,
         String resumeAnswer,
         TurnPolicy turnPolicy,
-        Collaboration collaborationContext) {
+        Collaboration collaborationContext,
+        List<String> excludeDeliveredTaskIds,
+        Boolean suppressNativeTaskReminders) {
+
+    public RunRequest(String botId, String threadId, String runId, String executionScope,
+            String sourceMessageId, Identity identity, String prompt, String productName,
+            String instructions, List<HistoryMessage> history, List<InputImage> currentTurnImages,
+            List<SkillDefinition> skills, List<ToolDefinition> tools, ToolBridge toolBridge,
+            RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration,
+            String resumeAnswer, TurnPolicy turnPolicy, Collaboration collaborationContext) {
+        this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
+                instructions, history, currentTurnImages, skills, tools, toolBridge, model,
+                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, turnPolicy,
+                collaborationContext, null, null);
+    }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
             String sourceMessageId, Identity identity, String prompt, String productName,
@@ -38,7 +52,7 @@ public record RunRequest(
             RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null, null, null, null);
     }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
@@ -49,7 +63,7 @@ public record RunRequest(
             String resumeAnswer) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null, null, null, null);
     }
 
     /**

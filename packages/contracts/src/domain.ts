@@ -848,6 +848,7 @@ export const RunSchema = z.object({
   trigger: z.enum([
     "user",
     "routine",
+    "delivery",
     "resume",
     "follow_up",
     "reaction",

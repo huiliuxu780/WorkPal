@@ -458,6 +458,10 @@ export interface AgentRunRequest {
   collaborationContext?: AgentCollaborationContext;
   /** Product thread-clear generation. A new generation starts a fresh Harness session. */
   sessionGeneration?: number;
+  /** Native task IDs already owned by the product delivery outbox. */
+  excludeDeliveredTaskIds?: string[];
+  /** Delivery summaries contain their own source data and must not consume native reminders. */
+  suppressNativeTaskReminders?: boolean;
   /** Answer recorded for a paused native Harness tool in this Run. */
   resumeAnswer?: string;
   prompt: string;
@@ -628,6 +632,7 @@ export interface BackgroundJobPayloads {
   "skill.teaching-expire": { skillId: string };
   "history.compact": { threadId: string };
   "messaging.deliver": { runId?: string };
+  "delivery.dispatch": Record<string, never>;
   /** Reconcile durable remote-agent intent; scope is loaded from the database. */
   "cloud_agent.poll": { agentId: string };
 }

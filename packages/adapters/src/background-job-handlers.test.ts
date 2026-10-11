@@ -12,12 +12,17 @@ import { createBackgroundJobHandlers } from "./background-job-handlers.js";
 import { createRunExecutor } from "./executor.js";
 import { compactHistory } from "./history-compaction.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
+import { dispatchOneDeliveryBatch, settleDeliveryRun } from "./result-delivery.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 
 vi.mock("./history-compaction.js", () => ({ compactHistory: vi.fn(async () => undefined) }));
 vi.mock("./messaging-delivery.js", () => ({
   deliverMessagingOutbound: vi.fn(async () => undefined),
   mirrorMessagingOutbound: vi.fn(async () => undefined),
+}));
+vi.mock("./result-delivery.js", () => ({
+  dispatchOneDeliveryBatch: vi.fn(async () => false),
+  settleDeliveryRun: vi.fn(async () => undefined),
 }));
 
 describe("createBackgroundJobHandlers", () => {
@@ -47,6 +52,11 @@ describe("createBackgroundJobHandlers", () => {
     });
 
     await handlers["run.continue"]({ runId: "run-1" });
+
+    expect(settleDeliveryRun).toHaveBeenCalledWith(
+      expect.objectContaining({ prisma: expect.anything(), jobs }),
+      "run-1",
+    );
 
     expect(mirrorMessagingOutbound).toHaveBeenCalledWith(
       expect.objectContaining({ prisma: expect.anything(), messaging: expect.anything(), jobs }),
@@ -97,6 +107,24 @@ describe("createBackgroundJobHandlers", () => {
       },
       "thread-1",
     );
+  });
+
+  it("drains due delivery batches", async () => {
+    vi.mocked(dispatchOneDeliveryBatch).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const handlers = createBackgroundJobHandlers({
+      executor: {} as ReturnType<typeof createRunExecutor>,
+      prisma: {} as PrismaClient,
+      sandbox: {} as SandboxProvider,
+      home: {} as AgentHomeStore,
+      jobs: {} as JobPublisher,
+      events: {} as ThreadEvents,
+      workerId: "worker-1",
+      runtime: {} as AgentRuntime,
+      secretStore: {} as EncryptedSecretStore,
+      memoryProviders: { resolve: vi.fn(async () => null) },
+    });
+    await handlers["delivery.dispatch"]({});
+    expect(dispatchOneDeliveryBatch).toHaveBeenCalledTimes(2);
   });
 
   it("resolves the deployment model when no user credential is configured", async () => {

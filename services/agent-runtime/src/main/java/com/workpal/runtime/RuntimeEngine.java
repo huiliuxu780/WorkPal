@@ -225,7 +225,12 @@ public final class RuntimeEngine {
         // A fresh HarnessAgent is built for each WorkPal Run. Its middleware renders the
         // persisted task summary, but 2.0.3 does not inject the terminal delivery into this
         // freshly restored agent's first model call. Read the same native repository here.
-        List<TaskDelivery> pendingDeliveries = deliveryRepository.findPendingDeliveries(context, sessionSlot);
+        Set<String> outboxTaskIds = request.excludeDeliveredTaskIds() == null
+                ? Set.of() : new HashSet<>(request.excludeDeliveredTaskIds());
+        List<TaskDelivery> pendingDeliveries = Boolean.TRUE.equals(request.suppressNativeTaskReminders())
+                ? List.of()
+                : deliveryRepository.findPendingDeliveries(context, sessionSlot)
+                        .stream().filter(delivery -> !outboxTaskIds.contains(delivery.taskId())).toList();
         // Harness registers its own Web tools after the caller's toolkit. Restore backend-owned
         // tools with colliding names so model calls still cross WorkPal authorization and audit.
         if (request.tools() != null) for (RunRequest.ToolDefinition tool : request.tools()) {
@@ -701,7 +706,14 @@ public final class RuntimeEngine {
         background.put(taskId, handle);
         Thread.ofVirtual().name("workpal-background-" + taskId).start(() -> {
             try {
-                while (!task.waitForCompletion(1_000)) { /* native TaskRepository owns execution */ }
+                long nextHeartbeat = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+                while (!task.waitForCompletion(1_000)) {
+                    if (System.nanoTime() >= nextHeartbeat) {
+                        try { bridge.publishHeartbeat(taskId, childSession); }
+                        catch (IOException ignored) { /* Worker sweep handles sustained loss. */ }
+                        nextHeartbeat = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+                    }
+                }
                 TaskStatus status = task.getTaskStatus();
                 String state = status == TaskStatus.CANCELLED ? "cancelled"
                         : status == TaskStatus.FAILED ? "failed" : "completed";

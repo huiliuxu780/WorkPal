@@ -18,6 +18,7 @@ describe("run state machine", () => {
     expect(isConversationalRun("follow_up")).toBe(true);
     expect(isConversationalRun("messaging")).toBe(true);
     expect(isConversationalRun("routine")).toBe(false);
+    expect(isConversationalRun("delivery")).toBe(false);
     expect(isConversationalRun("webhook")).toBe(false);
     expect(isConversationalRun("created")).toBe(false);
   });

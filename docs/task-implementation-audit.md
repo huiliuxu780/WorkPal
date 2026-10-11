@@ -35,3 +35,8 @@ Task 17 defines Routine trigger → new Task → Run and permits multiple Runs u
 4. Run the designed acceptance flows against production-backed paths (14, 16), record any remaining gaps, then merge in reviewable slices.
 
 No percentage, completion summary, Plan item, semantic Step or external effect should be rendered without a trusted source.
+
+## Implementation slices after the baseline audit
+
+- Task 18.1 adds versioned event envelope fields, typed delivery/approval events and `Run.waitKind` in PR #11.
+- Task 18.2 adds a durable background-result outbox and proactive Bot summary Run in the next stacked branch. The Routine path still writes its own result once. The remaining acceptance gate is the full Web scenario with a live Java runtime; see [delivery-design.md](./task18-product-harness-completion/delivery-design.md).

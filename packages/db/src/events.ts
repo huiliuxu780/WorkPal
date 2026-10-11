@@ -1365,6 +1365,19 @@ export async function eventsAfter(
   });
 }
 
+/** The most recent clear event is the only durable generation boundary. */
+export async function currentThreadGeneration(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  threadId: string,
+): Promise<number> {
+  const clear = await prisma.event.findFirst({
+    where: { threadId, type: "thread.cleared" },
+    orderBy: { seq: "desc" },
+    select: { seq: true },
+  });
+  return clear?.seq ?? 0;
+}
+
 export async function* followThreadEvents(
   prisma: PrismaClient,
   threadId: string,

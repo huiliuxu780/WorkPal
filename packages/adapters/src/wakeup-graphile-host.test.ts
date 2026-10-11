@@ -33,6 +33,7 @@ function handlers(): BackgroundJobHandlers {
     "skill.teaching-expire": vi.fn(async () => undefined),
     "history.compact": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
+    "delivery.dispatch": vi.fn(async () => undefined),
     "cloud_agent.poll": vi.fn(async () => undefined),
   };
 }

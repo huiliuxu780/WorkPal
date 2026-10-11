@@ -65,6 +65,23 @@ function expectNoInternals(items: readonly ActivityItem[]) {
 }
 
 describe("projectActivity (§49)", () => {
+  it("shows a durable delivery failure without exposing event names", () => {
+    const failed = event("delivery.failed", {
+      deliveryId: "delivery-1",
+      reason: "Model unavailable",
+    });
+    const projected = projectActivity([failed], context);
+    expect(projected).toEqual([
+      expect.objectContaining({
+        id: "delivery:delivery-1",
+        kind: "failed",
+        status: "failed",
+        title: "Result delivery failed",
+        detail: "Model unavailable",
+      }),
+    ]);
+    expectNoInternals(projected);
+  });
   it("replay equals live reduction (case 1 + 15)", () => {
     const events = [
       event("run.started", { trigger: "user" }),

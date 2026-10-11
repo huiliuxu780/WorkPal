@@ -18,6 +18,7 @@ describe("turnPolicySourceForTrigger", () => {
     expect(turnPolicySourceForTrigger("handoff")).toBe("handoff");
     for (const trigger of [
       "routine",
+      "delivery",
       "webhook",
       "messaging",
       "created",
@@ -121,7 +122,11 @@ describe("turnPolicyFromRun", () => {
         delegation: { mode: "auto", background: false, maxChildren: 1, maxDepth: 1 },
       },
     });
-    const policy = turnPolicyFromRun({ trigger: "user", ownerBotId: "other", orchestration: stored });
+    const policy = turnPolicyFromRun({
+      trigger: "user",
+      ownerBotId: "other",
+      orchestration: stored,
+    });
     // Even though the trigger says "user", the snapshot wins verbatim.
     expect(policy.planning.mode).toBe("disabled");
     expect(policy.delegation.background).toBe(false);
@@ -144,12 +149,36 @@ describe("turnPolicyFromRun", () => {
   });
 
   it("derives the policy from the trigger for legacy rows without a snapshot", () => {
-    const policy = turnPolicyFromRun({ trigger: "bot_message", ownerBotId: "bob", orchestration: null });
+    const policy = turnPolicyFromRun({
+      trigger: "bot_message",
+      ownerBotId: "bob",
+      orchestration: null,
+    });
     expect(policy.planning.mode).toBe("disabled");
     expect(policy.ownership.mode).toBe("support");
-    const routine = turnPolicyFromRun({ trigger: "routine", ownerBotId: "ops", orchestration: null });
+    const routine = turnPolicyFromRun({
+      trigger: "routine",
+      ownerBotId: "ops",
+      orchestration: null,
+    });
     expect(routing(routine)).toBe("automation");
-    const legacy = turnPolicyFromRun({ trigger: "user", ownerBotId: "alice", orchestration: { junk: 1 } });
+    const delivery = turnPolicyFromRun({
+      trigger: "delivery",
+      ownerBotId: "ops",
+      orchestration: null,
+    });
+    expect(delivery.interaction.interactive).toBe(false);
+    expect(delivery.delegation).toEqual({
+      mode: "disabled",
+      background: false,
+      maxChildren: 0,
+      maxDepth: 0,
+    });
+    const legacy = turnPolicyFromRun({
+      trigger: "user",
+      ownerBotId: "alice",
+      orchestration: { junk: 1 },
+    });
     expect(routing(legacy)).toBe("direct");
   });
 });

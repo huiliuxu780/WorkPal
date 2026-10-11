@@ -37,6 +37,7 @@ import {
   createGroupRepos,
   createRepos,
   createThreadMessageInTransaction,
+  currentThreadGeneration,
   expireComputerExecutionLeases,
   IsolationError,
   lockOwnedGroup,
@@ -91,6 +92,7 @@ async function loadThreadActivity(
   knownNames: Record<string, string>,
   runs: ActivityRunContext[],
 ): Promise<ActivityItem[]> {
+  const threadGeneration = await currentThreadGeneration(tx, threadId);
   const [events, tasks] = await Promise.all([
     tx.event.findMany({
       where: { threadId, type: { in: [...ACTIVITY_EVENT_TYPES] } },
@@ -99,7 +101,7 @@ async function loadThreadActivity(
       select: { type: true, botId: true, seq: true, createdAt: true, runId: true, payload: true },
     }),
     tx.backgroundAgentTask.findMany({
-      where: { threadId },
+      where: { threadId, threadGeneration },
       orderBy: { startedAt: "desc" },
       take: ACTIVITY_BACKGROUND_LIMIT,
       select: {
