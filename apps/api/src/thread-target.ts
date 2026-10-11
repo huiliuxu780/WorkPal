@@ -1312,6 +1312,10 @@ export async function stopThreadRuns(
       select: { id: true, botId: true },
     });
     const ids = cancelled.map((run) => run.id);
+    await tx.backgroundAgentTask?.updateMany({
+      where: { threadId: target.threadId, status: "running" },
+      data: { status: "cancelling" },
+    });
     await tx.steeringMessage.deleteMany({
       where: {
         botId: { in: target.kind === "bot" ? [target.botId] : target.memberBotIds },

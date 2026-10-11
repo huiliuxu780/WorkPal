@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { JobPublisher, JobWorkerHost } from "@rakazo/adapter-kit";
-import { deliveryDispatchJob } from "@rakazo/adapter-kit";
+import { deliveryDispatchJob, runJobKey } from "@rakazo/adapter-kit";
 import { ComposioConnector, IntegrationProviderSettings } from "@rakazo/adapters";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 
@@ -51,10 +51,12 @@ import {
 import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
 import {
   appendEventInTransaction,
+  cancelChildrenOfCancelledRuns,
   createDb,
   createThreadEvents,
   currentThreadGeneration,
   enqueueDeliveryInTransaction,
+  expireWaitingRuns,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
 } from "@rakazo/db";
@@ -177,6 +179,15 @@ async function main() {
   void reconcileBackgroundTasks().catch((error) =>
     logger.error("background task reconciliation", error),
   );
+  const waitSweep = setInterval(() => {
+    void expireWaitingRuns(prisma)
+      .then((expired) => Promise.all(expired.map((run) => events.notify(run.threadId, run.seq))))
+      .catch((error) => logger.error("waiting run timeout reconciliation", error));
+  }, 60_000);
+  waitSweep.unref?.();
+  void expireWaitingRuns(prisma)
+    .then((expired) => Promise.all(expired.map((run) => events.notify(run.threadId, run.seq))))
+    .catch((error) => logger.error("waiting run timeout reconciliation", error));
   const dataDir = process.env.DATA_DIR ?? "./data";
   if (process.env.NODE_ENV === "production" && process.env.AGENT_RUNTIME === "scripted") {
     throw new Error("The scripted agent runtime is reserved for deterministic tests");
@@ -198,6 +209,60 @@ async function main() {
               `Unsupported AGENT_RUNTIME=${process.env.AGENT_RUNTIME}; use agentscope (production) or scripted (tests)`,
             );
           })();
+  const reconcileCancelledChildren = async () => {
+    const cancelledRuns = await cancelChildrenOfCancelledRuns(prisma);
+    for (const cancelled of cancelledRuns) {
+      await Promise.all([
+        jobs.cancel(runJobKey(cancelled.id)).catch(() => undefined),
+        runtime.abort(cancelled.id).catch(() => undefined),
+        events.notify(cancelled.threadId, cancelled.seq),
+      ]);
+    }
+  };
+  const childCancellationSweep = setInterval(() => {
+    void reconcileCancelledChildren().catch((error) =>
+      logger.error("child Run cancellation reconciliation", error),
+    );
+  }, 10_000);
+  childCancellationSweep.unref?.();
+  void reconcileCancelledChildren().catch((error) =>
+    logger.error("child Run cancellation reconciliation", error),
+  );
+  const revokeCancelledBackgroundTasks = async () => {
+    if (!(runtime instanceof AgentScopeAgentRuntime)) return;
+    const tasks = await prisma.backgroundAgentTask.findMany({
+      where: { status: "cancelling" },
+      orderBy: { startedAt: "asc" },
+      take: 100,
+    });
+    for (const task of tasks) {
+      try {
+        // A 404 is already revoked. Keep the request durable on transport failure.
+        await runtime.cancelBackgroundTask(task.taskId, {
+          userId: task.userId,
+          spaceId: task.spaceId,
+          botId: task.botId,
+          threadId: task.threadId,
+          runId: task.parentRunId,
+        });
+        await prisma.backgroundAgentTask.updateMany({
+          where: { taskId: task.taskId, status: "cancelling" },
+          data: { status: "cancelled", finishedAt: new Date() },
+        });
+      } catch (error) {
+        logger.error("background task cancellation retry", error);
+      }
+    }
+  };
+  const cancellationSweep = setInterval(() => {
+    void revokeCancelledBackgroundTasks().catch((error) =>
+      logger.error("background task cancellation reconciliation", error),
+    );
+  }, 10_000);
+  cancellationSweep.unref?.();
+  void revokeCancelledBackgroundTasks().catch((error) =>
+    logger.error("background task cancellation reconciliation", error),
+  );
   // Same resolver the API uses, so both processes agree on provider, model and key.
   const { key: deploymentModelKey } = resolveDeploymentModel();
   const sandboxProvider = resolveSandboxProvider(process.env);
@@ -382,6 +447,9 @@ async function main() {
     stopping = true;
     clearInterval(deliverySweep);
     clearInterval(taskSweep);
+    clearInterval(waitSweep);
+    clearInterval(cancellationSweep);
+    clearInterval(childCancellationSweep);
     try {
       await reconciler.stop();
       await jobHost.stop();

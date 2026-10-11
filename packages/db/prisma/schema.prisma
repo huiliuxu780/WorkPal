@@ -585,6 +585,7 @@ model Run {
   leaseOwner           String?
   leaseFence           Int              @default(0)
   leaseExpiresAt       DateTime?
+  retryAt              DateTime?
   checkpoint           String?
   clientNonce          String?
   sourceMessageId      String?
@@ -608,6 +609,7 @@ model Run {
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
+  @@index([status, retryAt])
   @@index([status, updatedAt, id])
   @@index([botOutcomeReturnedAt, status])
   @@index([trigger, status, messagingMirroredAt, updatedAt])

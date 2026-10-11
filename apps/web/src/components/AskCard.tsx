@@ -118,7 +118,7 @@ export function AskCard({
             askActions,
           )}
         </div>
-      ) : !canAnswer ? (
+      ) : block.status === "expired" || !canAnswer ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-muted-foreground">
           <Trans>No longer active</Trans>
         </div>

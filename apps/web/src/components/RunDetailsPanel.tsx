@@ -155,7 +155,8 @@ export function RunDetailsPanel({
       const message = messages[i];
       if (!message) continue;
       for (const block of message.blocks) {
-        if (block.kind === "ask" && block.status !== "answered") return block;
+        if (block.kind === "ask" && block.status !== "answered" && block.status !== "expired")
+          return block;
       }
     }
     return null;

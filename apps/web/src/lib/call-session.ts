@@ -455,7 +455,9 @@ function reactToThread() {
   const lastBot = [...messages].reverse().find((message) => message.role === "bot");
   if (lastBot && !spokenMessageIds.has(lastBot.id) && replyFinished(lastBot)) {
     const text = speechFromBlocks(lastBot.blocks);
-    const ask = lastBot.blocks.find((block) => block.kind === "ask" && block.status !== "answered");
+    const ask = lastBot.blocks.find(
+      (block) => block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
+    );
     const secretAsk = ask && isSecretAskBlock(ask);
     if (text) {
       // Never spoken again, interrupted or not.
@@ -501,7 +503,11 @@ function pendingSecretAsk(snapshot: ThreadSnapshot | null) {
   const askMessage = snapshot?.messages.find((message) => message.id === askId);
   return Boolean(
     askMessage?.blocks.some(
-      (block) => block.kind === "ask" && isSecretAskBlock(block) && block.status !== "answered",
+      (block) =>
+        block.kind === "ask" &&
+        isSecretAskBlock(block) &&
+        block.status !== "answered" &&
+        block.status !== "expired",
     ),
   );
 }
@@ -511,7 +517,12 @@ function latestAskId(snapshot: ThreadSnapshot | null): string | null {
   for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
     const message = snapshot.messages[index];
     if (message?.runId !== snapshot.run.id) continue;
-    if (message.blocks.some((block) => block.kind === "ask" && block.status !== "answered")) {
+    if (
+      message.blocks.some(
+        (block) =>
+          block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
+      )
+    ) {
       return message.id;
     }
   }

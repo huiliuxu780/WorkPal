@@ -113,6 +113,7 @@ import {
   parseComputerMode,
   retireModelCredential,
   SpaceLimitError,
+  scheduleAutomaticRunRetry,
   type ThreadEvents,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
@@ -128,6 +129,7 @@ import {
   redactAgentCommandResult,
 } from "./agent-environment.js";
 import type { AgentlyMailService } from "./agently-mail.js";
+import { AgentScopeTransientError } from "./agentscope-runtime.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
 import {
   approvalPausedToolResult,
@@ -1159,7 +1161,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           id: runId,
           ...continueRunClaimFence(run),
           OR: [
-            { status: { in: ["queued", "waiting_input", "waiting_takeover"] } },
+            {
+              status: "queued",
+              OR: [{ retryAt: null }, { retryAt: { lte: now } }],
+            },
+            { status: { in: ["waiting_input", "waiting_takeover"] } },
             {
               status: { in: ["leased", "running"] },
               leaseExpiresAt: { lte: now },
@@ -1174,6 +1180,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           leaseExpiresAt: new Date(Date.now() + 5 * 60_000),
           error: null,
           checkpoint: null,
+          retryAt: null,
         },
       });
       if (leased.count !== 1) return;
@@ -4290,7 +4297,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               authorizeBackgroundTool: scripted
                 ? undefined
                 : async (task, name) => {
-                    const [record, member, activeBot, activeThread] = await Promise.all([
+                    const [record, member, activeBot, activeThread, parent] = await Promise.all([
                       deps.prisma.backgroundAgentTask.findUnique({
                         where: { taskId: task.taskId },
                       }),
@@ -4316,12 +4323,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         },
                         select: { id: true },
                       }),
+                      deps.prisma.run.findUnique({
+                        where: { id: task.parentRunId },
+                        select: { status: true },
+                      }),
                     ]);
                     if (
                       !record ||
                       !member ||
                       !activeBot ||
                       !activeThread ||
+                      !parent ||
+                      parent.status === "cancelled" ||
                       record.status !== "running" ||
                       record.expiresAt <= new Date() ||
                       record.parentRunId !== task.parentRunId ||
@@ -5044,6 +5057,35 @@ export function createRunExecutor(deps: ExecutorDeps) {
             error instanceof Error ? error.message : String(error),
             runSecrets,
           );
+          if (error instanceof AgentScopeTransientError) {
+            const retry = await scheduleAutomaticRunRetry(deps.prisma, {
+              runId,
+              attemptId: attempt.id,
+              leaseOwner: workerId,
+              leaseFence: fence,
+              reason: error.retryReason,
+              error: message,
+            });
+            if (retry) {
+              await deps.events
+                .notify(thread.id, retry.seq)
+                .catch((notifyError) =>
+                  getLogger().error("automatic Run retry realtime notification", notifyError),
+                );
+              await deps.jobs
+                .enqueue({
+                  ...runContinueJob(runId),
+                  availableAt: retry.retryAt,
+                })
+                .catch((enqueueError) =>
+                  getLogger().error(
+                    "automatic Run retry enqueue failed; reconciler will recover",
+                    enqueueError,
+                  ),
+                );
+              return;
+            }
+          }
           const failed = await deps.events.finalizeRun({
             spaceId: run.spaceId,
             threadId: thread.id,
@@ -5117,7 +5159,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               outcome: "failed",
               error: setupFailure,
             });
-            if (failed && failed.continuationRunId) {
+            if (failed?.continuationRunId) {
               await deps.jobs
                 .enqueue(runContinueJob(failed.continuationRunId))
                 .catch((error) => getLogger().error("steering continuation enqueue", error));

@@ -85,7 +85,10 @@ export const ProductEventPayloadSchemas = {
   "delivery.sent": z.object({ deliveryId: Id, messageId: Id }),
   "delivery.failed": z.object({ deliveryId: Id, reason: z.string() }),
   "approval.requested": z.object({ approvalEffectId: Id }),
-  "approval.resolved": z.object({ approvalEffectId: Id, decision: z.enum(["approved", "denied"]) }),
+  "approval.resolved": z.object({
+    approvalEffectId: Id,
+    decision: z.enum(["approved", "denied", "expired"]),
+  }),
 } as const;
 
 export function assertProductEventPayload(
@@ -153,7 +156,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     // an ask persisted before an owner toggles the private-HTTP flag still
     // validates on replay.
     credential: botSecretDestinationSchema({ allowPrivateHttpOrigin: true }).optional(),
-    status: z.enum(["pending", "answered"]).optional(),
+    status: z.enum(["pending", "answered", "expired"]).optional(),
     answer: z.string().optional(),
     actions: z
       .array(

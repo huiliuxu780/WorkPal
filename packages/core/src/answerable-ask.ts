@@ -18,7 +18,12 @@ export function latestAnswerableAskMessageId(snapshot: AskSnapshot | null): stri
   for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
     const message = snapshot.messages[index];
     if (!message?.runId || !waitingRunIds.has(message.runId)) continue;
-    if (message.blocks.some((block) => block.kind === "ask" && block.status !== "answered")) {
+    if (
+      message.blocks.some(
+        (block) =>
+          block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
+      )
+    ) {
       return message.id;
     }
   }

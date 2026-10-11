@@ -10,7 +10,28 @@ import type {
   AgentToolCompletion,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
-import { PRODUCT_BRAND } from "@rakazo/core";
+import { type AutomaticRetryReason, PRODUCT_BRAND } from "@rakazo/core";
+
+export class AgentScopeTransientError extends Error {
+  constructor(
+    public readonly retryReason: AutomaticRetryReason,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "AgentScopeTransientError";
+  }
+}
+
+function transientWireError(message: string): AgentScopeTransientError | null {
+  if (/\b(?:timeout|timed out)\b/i.test(message)) {
+    return new AgentScopeTransientError("llm_timeout", message);
+  }
+  if (/\b(?:500|502|503|504)\b/.test(message)) {
+    return new AgentScopeTransientError("provider_5xx", message);
+  }
+  return null;
+}
 
 type AgentScopeWireEvent =
   | AgentRuntimeEvent
@@ -775,20 +796,38 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       if (request.tools.length > 0 || request.claimSteering || request.resolveModel) {
         bridgeRegistration = await this.toolBridge.register(request, context);
       }
-      const response = await fetch(endpoint(this.baseUrl, "/v1/runs"), {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/x-ndjson" },
-        body: JSON.stringify(
-          serializableRequest(
-            request,
-            bridgeRegistration,
-            bridgeRegistration?.identity ?? identity,
+      let response: Response;
+      try {
+        response = await fetch(endpoint(this.baseUrl, "/v1/runs"), {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+          body: JSON.stringify(
+            serializableRequest(
+              request,
+              bridgeRegistration,
+              bridgeRegistration?.identity ?? identity,
+            ),
           ),
-        ),
-        signal,
-      });
+          signal,
+        });
+      } catch (error) {
+        if (signal.aborted) throw error;
+        throw new AgentScopeTransientError(
+          "network_error",
+          "AgentScope service connection failed",
+          {
+            cause: error,
+          },
+        );
+      }
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 1_000);
+        if (response.status >= 500) {
+          throw new AgentScopeTransientError(
+            "provider_5xx",
+            `AgentScope service returned ${response.status}: ${detail}`,
+          );
+        }
         throw new Error(`AgentScope service returned ${response.status}: ${detail}`);
       }
       const instanceId = response.headers.get("x-agent-runtime-instance");
@@ -806,7 +845,8 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       let terminal: "done" | "paused" | undefined;
       let completion: Extract<AgentRuntimeEvent, { type: "done" }> | undefined;
       const accept = (event: AgentScopeWireEvent): AgentRuntimeEvent | undefined => {
-        if (event.type === "error") throw new Error(event.message);
+        if (event.type === "error")
+          throw transientWireError(event.message) ?? new Error(event.message);
         if (terminal) throw new Error("AgentScope returned an event after its terminal event");
         if (event.type === "paused") {
           if (typeof event.reason !== "string" || !event.reason.trim()) {
@@ -826,7 +866,16 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
         return event;
       };
       for (;;) {
-        const { done, value } = await reader.read();
+        let next: ReadableStreamReadResult<Uint8Array>;
+        try {
+          next = await reader.read();
+        } catch (error) {
+          if (signal.aborted) throw error;
+          throw new AgentScopeTransientError("network_error", "AgentScope service stream failed", {
+            cause: error,
+          });
+        }
+        const { done, value } = next;
         buffer += decoder.decode(value, { stream: !done });
         let newline = buffer.indexOf("\n");
         while (newline >= 0) {

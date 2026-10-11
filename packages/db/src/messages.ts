@@ -1,4 +1,5 @@
 import type { MessageBlock } from "@rakazo/contracts";
+import { parseRunOrchestration } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
 import { withTransactionRetry } from "./transaction-retry.js";
 
@@ -102,10 +103,18 @@ export async function assertRunCanWriteHistory(
   if (!runId) return;
   const run = await tx.run.findUnique({
     where: { id: runId },
-    select: { status: true, startedAt: true },
+    select: { status: true, startedAt: true, orchestration: true },
   });
   if (!run || run.status === "cancelled") {
     throw new RunHistoryWriteError();
+  }
+  const parentRunId = parseRunOrchestration(run.orchestration)?.collaboration?.parentRunId;
+  if (parentRunId) {
+    const parent = await tx.run.findUnique({
+      where: { id: parentRunId },
+      select: { status: true },
+    });
+    if (!parent || parent.status === "cancelled") throw new RunHistoryWriteError();
   }
   return run;
 }
