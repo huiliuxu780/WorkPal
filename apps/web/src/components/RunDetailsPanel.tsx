@@ -1,9 +1,11 @@
 import { t } from "@lingui/core/macro";
 import type { Artifact, MessageBlock, RunsDetailOutput, ThreadSnapshot } from "@rakazo/contracts";
+import { toolActionLabel } from "@rakazo/core";
 import { BotAvatar, Button } from "@rakazo/ui-web";
 import { Bell, BellOff, ChevronRight, FileText, Monitor, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { formatRelativeTime } from "../lib/relative-time";
+import { effectView } from "../lib/effect-view";
 import { rpc } from "../lib/rpc";
 import {
   isRunActive,
@@ -22,15 +24,11 @@ type RunDetailsPanelProps = {
   onOpenComputer?: () => void;
 };
 
-const EFFECT_TONE_CLASS: Record<string, string> = {
-  completed: "text-success",
-  failed: "text-destructive",
-  ambiguous: "text-warning",
-};
-
-function effectToneClass(status: string): string {
-  return EFFECT_TONE_CLASS[status] ?? "text-muted-foreground";
-}
+const EFFECT_TONE_CLASS = {
+  neutral: "text-muted-foreground",
+  warning: "text-warning",
+  danger: "text-destructive",
+} as const;
 
 function attemptLabel(status: string): string {
   const known = [
@@ -463,31 +461,32 @@ export function RunDetailsPanel({
               <div className="mb-1.5 ps-[23px] text-[12.5px] font-medium text-muted-foreground/80">
                 {t`Effects · ${effects.length}`}
               </div>
-              {effects.map((effect) => (
-                <details key={effect.effectId} className="rounded-[10px]">
-                  <summary className="flex cursor-pointer list-none items-start gap-[13px] rounded-[10px] px-0.5 py-2 hover:bg-accent">
-                    <span
-                      className={`mt-1.5 size-2 shrink-0 rounded-full bg-current ${effectToneClass(effect.status)}`}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[12.5px] text-foreground">
-                        {effect.kind}
-                      </span>
+              {effects.map((effect) => {
+                const view = effectView(effect.status);
+                return (
+                  <div key={effect.effectId} className="rounded-[10px]">
+                    <div className="flex items-start gap-[13px] rounded-[10px] px-0.5 py-2">
                       <span
-                        className={`mt-0.5 block text-[12px] ${effectToneClass(effect.status)}`}
-                      >
-                        {effect.status}
+                        className={`mt-1.5 size-2 shrink-0 rounded-full bg-current ${EFFECT_TONE_CLASS[view.tone]}`}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12.5px] text-foreground">
+                          {toolActionLabel(effect.kind)}
+                        </span>
+                        <span className={`mt-0.5 block text-[12px] ${EFFECT_TONE_CLASS[view.tone]}`}>
+                          {view.label}
+                        </span>
+                        {view.note ? (
+                          <span className="mt-1 block text-xs text-muted-foreground">{view.note}</span>
+                        ) : null}
                       </span>
-                    </span>
-                    <span className="shrink-0 pt-0.5 font-mono text-[11.5px] text-muted-foreground/80">
-                      {formatRelativeTime(effect.createdAt)}
-                    </span>
-                  </summary>
-                  <pre className="mx-0.5 mb-2.5 ml-[23px] overflow-x-auto rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
-                    {JSON.stringify({ request: effect.request, result: effect.result }, null, 2)}
-                  </pre>
-                </details>
-              ))}
+                      <span className="shrink-0 pt-0.5 font-mono text-[11.5px] text-muted-foreground/80">
+                        {formatRelativeTime(effect.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
 

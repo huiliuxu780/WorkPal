@@ -3439,8 +3439,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (!deps.mail) {
               return finish({ error: "Email sending is not enabled for this deployment." });
             }
-            return finish(
-              await deps.mail.send(
+            const mailResult = await deps.mail.send(
                 {
                   to: Array.isArray(args.to)
                     ? args.to.map(String)
@@ -3452,8 +3451,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   text: typeof args.text === "string" ? args.text : String(args.text ?? ""),
                 },
                 context.signal,
-              ),
-            );
+              );
+            if ("uncertain" in mailResult && mailResult.uncertain && applied && claimedEffect) {
+              return settleUncertainEffect(deps.prisma, applied.effect.id, name);
+            }
+            return finish(mailResult);
           }
           if (name === "secret_request") {
             try {

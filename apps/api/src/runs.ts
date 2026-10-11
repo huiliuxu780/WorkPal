@@ -2,6 +2,7 @@ import {
   type Actor,
   MessageBlock,
   type RunActivityRow,
+  type RunEffectRow,
   type RunsDetailOutput,
 } from "@rakazo/contracts";
 import {
@@ -15,6 +16,21 @@ import type { PrismaClient } from "@rakazo/db";
 
 const RECENT_LIMIT = 20;
 const TERMINAL_STATUSES = ["completed", "failed", "cancelled"] as const;
+
+/** Raw effect request/result may contain credentials or private content. */
+export function publicRunEffect(effect: {
+  id: string;
+  kind: string;
+  status: string;
+  createdAt: Date;
+}): RunEffectRow {
+  return {
+    effectId: effect.id,
+    kind: effect.kind,
+    status: effect.status,
+    createdAt: effect.createdAt.toISOString(),
+  };
+}
 
 function promptSnippet(prompt: string, max = 120): string {
   const oneLine = prompt.replace(/\s+/g, " ").trim();
@@ -191,7 +207,10 @@ export async function getRunDetail(
       task: { select: { prompt: true } },
       thread: { select: { groupId: true } },
       attempts: { orderBy: { fence: "asc" } },
-      effects: { orderBy: { createdAt: "asc" } },
+      effects: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, kind: true, status: true, createdAt: true },
+      },
     },
   });
   if (!run) return null;
@@ -238,14 +257,7 @@ export async function getRunDetail(
       startedAt: attempt.startedAt.toISOString(),
       finishedAt: attempt.finishedAt?.toISOString() ?? null,
     })),
-    effects: run.effects.map((effect) => ({
-      effectId: effect.id,
-      kind: effect.kind,
-      status: effect.status,
-      request: effect.request,
-      result: effect.result ?? null,
-      createdAt: effect.createdAt.toISOString(),
-    })),
+    effects: run.effects.map(publicRunEffect),
     history: siblings.map((sibling) => ({
       runId: sibling.id,
       status: sibling.status as RunsDetailOutput["run"]["status"],

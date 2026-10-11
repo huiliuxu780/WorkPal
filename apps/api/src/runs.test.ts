@@ -1,6 +1,23 @@
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { activityNotificationsEnabled, activityPromptSnippet, listSpaceRuns } from "./runs.js";
+import { activityNotificationsEnabled, activityPromptSnippet, listSpaceRuns, publicRunEffect } from "./runs.js";
+
+describe("public effect boundary", () => {
+  it("does not serialize raw requests or results from the effect ledger", () => {
+    const rawEffect = {
+      id: "effect-1",
+      kind: "send_email",
+      status: "uncertain",
+      createdAt: new Date("2026-10-12T00:00:00Z"),
+      request: { password: "private-secret" },
+      result: { body: "private-mail" },
+    };
+    const effect = publicRunEffect(rawEffect);
+    expect(effect).toMatchObject({ effectId: "effect-1", status: "uncertain" });
+    expect(JSON.stringify(effect)).not.toContain("private-secret");
+    expect(JSON.stringify(effect)).not.toContain("private-mail");
+  });
+});
 
 describe("run activity copy", () => {
   it("presents structured agent messages instead of their internal wake prompt", () => {
