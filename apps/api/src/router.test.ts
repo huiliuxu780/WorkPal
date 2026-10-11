@@ -90,8 +90,9 @@ describe("account preferences", () => {
       where: { id: "user-1" },
       data: { avatarStyle: "organic" },
     });
+    // Bloub is the only style: me normalizes any stored value to bloub.
     await expect(response.json()).resolves.toEqual({
-      json: expect.objectContaining({ avatarStyle: "organic" }),
+      json: expect.objectContaining({ avatarStyle: "bloub" }),
     });
   });
 
@@ -128,7 +129,7 @@ describe("account preferences", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("coerces unknown stored avatar styles to robot on me", async () => {
+  it("coerces unknown stored avatar styles to bloub on me", async () => {
     const { actor, handler } = preferencesDeps("custom-cdn");
 
     const { response } = await handler.handle(
@@ -142,7 +143,7 @@ describe("account preferences", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      json: expect.objectContaining({ avatarStyle: "robot" }),
+      json: expect.objectContaining({ avatarStyle: "bloub" }),
     });
   });
 });

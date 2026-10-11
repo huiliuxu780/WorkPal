@@ -12,7 +12,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   parseBotAvatar,
@@ -344,7 +343,9 @@ export function AvatarStudioPopover({
                 )}
               </div>
 
-              <DialogFooter className="border-t border-border py-3 sm:justify-end">
+              {/* Plain footer bar: DialogFooter's -mx-4 -mb-4 assumes p-4 content,
+                  but this dialog is p-0 — the negative margin would overflow the edge. */}
+              <div className="flex items-center justify-end border-t border-border px-5 py-3">
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -353,7 +354,7 @@ export function AvatarStudioPopover({
                   <Check size={14} />
                   <Trans>Done</Trans>
                 </button>
-              </DialogFooter>
+              </div>
             </div>
           </div>
         </DialogContent>

@@ -3161,7 +3161,7 @@ export function ShellPage() {
                                   position: { x: event.clientX, y: event.clientY },
                                 });
                               }}
-                              className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-[10px] text-start ${
+                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-start ${
                                 item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
                               } ${
                                 selected ? "bg-sidebar-accent" : "group-hover/row:bg-sidebar-accent"
@@ -3176,7 +3176,7 @@ export function ShellPage() {
                                 <BotAvatar
                                   color={item.chat.color}
                                   identity={item.chat.id}
-                                  size={26}
+                                  size={36}
                                   status={
                                     activeBotLiveStatus && item.chat.id === active?.id
                                       ? activeBotLiveStatus
@@ -3190,12 +3190,12 @@ export function ShellPage() {
                                       ? (activeSnapshot.members ?? item.chat.members)
                                       : item.chat.members
                                   }
-                                  size={38}
+                                  size={36}
                                 />
                               )}
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-1.5">
-                                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <div className="flex min-w-0 items-baseline gap-1.5 overflow-hidden">
                                     <span
                                       dir="auto"
                                       data-roster-bot-name={item.kind === "bot" ? "" : undefined}
@@ -3205,6 +3205,14 @@ export function ShellPage() {
                                     >
                                       {item.chat.name}
                                     </span>
+                                    {item.kind === "bot" && item.chat.title ? (
+                                      <span
+                                        dir="auto"
+                                        className="shrink-0 text-[11.5px] font-normal text-muted-foreground"
+                                      >
+                                        {item.chat.title}
+                                      </span>
+                                    ) : null}
                                     {item.chat.unread ? (
                                       <span className="sr-only">
                                         <Trans> (unread)</Trans>
@@ -3223,16 +3231,9 @@ export function ShellPage() {
                                     ) : null}
                                   </div>
                                 </div>
-                                {item.kind === "bot" && item.chat.title ? (
-                                  <div className="mt-1 flex">
-                                    <span className="max-w-full truncate rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
-                                      {item.chat.title}
-                                    </span>
-                                  </div>
-                                ) : null}
                                 <div
                                   dir="auto"
-                                  className={`mt-1 line-clamp-2 text-[12.5px] break-words whitespace-normal ${
+                                  className={`mt-0.5 truncate text-[12.5px] ${
                                     item.chat.unread
                                       ? "font-medium text-foreground/75"
                                       : "text-muted-foreground/60"
@@ -4491,17 +4492,12 @@ export function ShellPage() {
             email={session.data?.user.email}
             usage={usage}
             initialSection={settingsSection}
-            avatarStyle={bootstrapMe?.avatarStyle ?? "robot"}
             isDeploymentOwner={bootstrapMe?.isDeploymentOwner === true}
             sandboxProvider={bootstrapMe?.sandboxProvider}
             messagingEnabled={messagingSurfaceEnabled}
             onOpenMessaging={() => {
               setSettingsOpen(false);
               setMessagingSettingsOpen(true);
-            }}
-            onAvatarStyleChange={async (avatarStyle) => {
-              const nextMe = await rpc.preferences.update({ avatarStyle });
-              setBootstrapMe(nextMe);
             }}
             memoryConfig={memoryProviderConfig}
             onMemoryConfigChange={(config) => {
@@ -4708,7 +4704,7 @@ export function ShellPage() {
   );
 
   return (
-    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>{shell}</AvatarStyleProvider>
+    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "bloub"}>{shell}</AvatarStyleProvider>
   );
 }
 

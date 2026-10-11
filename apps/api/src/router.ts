@@ -5784,10 +5784,9 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     computerHost: computerHostFor(setup.settings?.computerHost, deps.env.sandboxProvider),
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
-    avatarStyle:
-      user.avatarStyle === "organic" || user.avatarStyle === "bloub"
-        ? user.avatarStyle
-        : "robot",
+    // Bloub is the only avatar style; stored robot/organic values are legacy
+    // rows from before the migration and are normalized on read.
+    avatarStyle: "bloub" as const,
   };
 }
 

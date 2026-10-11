@@ -63,6 +63,37 @@ function readPaper(): string {
   return /^#[0-9a-fA-F]{3,6}$/.test(value) ? value : "#fafaf8";
 }
 
+const BLOUB_PAPER_LIGHT = "#fafaf8";
+const BLOUB_INK_DARK = "#0a0a0c";
+const EYE_MIN_LUMINANCE_GAP = 0.22;
+
+function relativeLuminance(hex: string): number | undefined {
+  const match = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!match) return undefined;
+  const digits = match[1]!;
+  const full = digits.length === 3 ? digits.split("").map((c) => c + c).join("") : digits;
+  const value = parseInt(full, 16);
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255].map((byte) => {
+    const s = byte / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+}
+
+/**
+ * Eyes are holes punched through the body and painted with the page paper.
+ * Dark themes make paper and ink luminance indistinguishable, so the holes
+ * vanish: when the gap collapses, paint them with the opposite pole of the
+ * body's own luminance instead. (Light-theme behaviour is unchanged.)
+ */
+export function bloubEyeColor(paper: string, ink: string): string {
+  const paperLum = relativeLuminance(paper);
+  const inkLum = relativeLuminance(ink);
+  if (paperLum === undefined || inkLum === undefined) return paper;
+  if (Math.abs(paperLum - inkLum) >= EYE_MIN_LUMINANCE_GAP) return paper;
+  return inkLum < 0.5 ? BLOUB_PAPER_LIGHT : BLOUB_INK_DARK;
+}
+
 function dotsMarkup(dots: ReturnType<BotEngine["sample"]>["dots"], ink: string, paper: string): string {
   return dots
     .map((dot) => {
@@ -88,6 +119,7 @@ export const BloubAvatar = memo(function BloubAvatar({
 }: BloubAvatarProps) {
   const uid = useId().replace(/[^a-zA-Z0-9-_]/g, "");
   const [reduced, setReduced] = useState(prefersReducedMotion);
+  const [paper, setPaper] = useState(readPaper);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const bodyRef = useRef<SVGPathElement>(null);
@@ -117,6 +149,18 @@ export const BloubAvatar = memo(function BloubAvatar({
     const onChange = () => setReduced(mq.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Theme flips change --background without a React re-render; track it so the
+  // eye fallback (bloubEyeColor) re-evaluates against the new paper.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const observer = new MutationObserver(() => setPaper(readPaper()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "class", "style"],
+    });
+    return () => observer.disconnect();
   }, []);
 
   const live = animated && !reduced;
@@ -239,10 +283,11 @@ export const BloubAvatar = memo(function BloubAvatar({
 
   // Static frame for reduced motion, upload previews, and first paint.
   const frame = bloubStaticFrame(shape, expression);
+  const eyeColor = bloubEyeColor(paper, color);
   return (
     <svg
       ref={svgRef}
-      viewBox="-158 -158 316 316"
+      viewBox="-115 -115 230 230"
       aria-hidden="true"
       className={cn("rakazo-bloub-avatar overflow-visible select-none", className)}
       data-working={isWorking}
@@ -289,7 +334,7 @@ export const BloubAvatar = memo(function BloubAvatar({
       <g ref={arcsBackRef} />
       <g ref={dotsBehindRef} />
       <g ref={bodyGroupRef}>
-        <path ref={paperRef} d={frame.bodyPath} style={{ fill: "var(--background)" }} />
+        <path ref={paperRef} d={frame.bodyPath} style={{ fill: eyeColor }} />
         <g mask={`url(#bloub-mask-${uid})`}>
           <rect x={-158} y={-158} width={316} height={316} fill={color} />
         </g>
