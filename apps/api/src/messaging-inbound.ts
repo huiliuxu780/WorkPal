@@ -1,8 +1,7 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import type { JobPublisher, MessagingInboundMessage } from "@rakazo/adapter-kit";
 import { messagingDeliverJob, runContinueJob } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
-import { parseMessagingCommand, sanitizeMessagingLabel } from "@rakazo/core";
+import { PRODUCT_BRAND, parseMessagingCommand, sanitizeMessagingLabel } from "@rakazo/core";
 import type {
   MessagingIdentityRequest,
   Prisma,

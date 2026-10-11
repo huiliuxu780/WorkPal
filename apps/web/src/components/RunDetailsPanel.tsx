@@ -4,14 +4,14 @@ import { BotAvatar, Button } from "@rakazo/ui-web";
 import { Bell, BellOff, ChevronRight, FileText, Monitor, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { formatRelativeTime } from "../lib/relative-time";
+import { rpc } from "../lib/rpc";
 import {
   isRunActive,
+  type RunStatusLike,
   runStatusLabel,
   runStatusPillClass,
   runStatusTextClass,
-  type RunStatusLike,
 } from "../lib/run-status";
-import { rpc } from "../lib/rpc";
 import { formatToolActivityDuration } from "../lib/tool-activity-view";
 import { formatElapsed } from "./ai/primitives";
 
@@ -168,9 +168,7 @@ export function RunDetailsPanel({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-[13.5px] text-muted-foreground">
-          {t`Run details`}
-        </span>
+        <span className="text-[13.5px] text-muted-foreground">{t`Run details`}</span>
         <div className="flex gap-1">
           {run ? (
             <Button
@@ -387,7 +385,10 @@ export function RunDetailsPanel({
                                   {block.task}
                                 </p>
                                 {block.result ? (
-                                  <p className="mt-2 text-[13.5px] leading-[1.5] text-foreground/75" dir="auto">
+                                  <p
+                                    className="mt-2 text-[13.5px] leading-[1.5] text-foreground/75"
+                                    dir="auto"
+                                  >
                                     {block.result}
                                   </p>
                                 ) : null}
@@ -435,7 +436,10 @@ export function RunDetailsPanel({
                 {t`Outputs · ${artifacts.length}`}
               </div>
               {artifacts.map((artifact) => (
-                <div key={artifact.id} className="flex items-start gap-2.5 rounded-lg px-0.5 py-[7px]">
+                <div
+                  key={artifact.id}
+                  className="flex items-start gap-2.5 rounded-lg px-0.5 py-[7px]"
+                >
                   <FileText
                     size={14}
                     strokeWidth={1.7}
@@ -479,11 +483,7 @@ export function RunDetailsPanel({
                     </span>
                   </summary>
                   <pre className="mx-0.5 mb-2.5 ml-[23px] overflow-x-auto rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
-                    {JSON.stringify(
-                      { request: effect.request, result: effect.result },
-                      null,
-                      2,
-                    )}
+                    {JSON.stringify({ request: effect.request, result: effect.result }, null, 2)}
                   </pre>
                 </details>
               ))}
@@ -497,11 +497,17 @@ export function RunDetailsPanel({
                 {t`Execution history · ${history.length}`}
               </div>
               {history.map((row) => (
-                <div key={row.runId} className="flex items-start gap-2.5 rounded-lg px-0.5 py-[7px]">
+                <div
+                  key={row.runId}
+                  className="flex items-start gap-2.5 rounded-lg px-0.5 py-[7px]"
+                >
                   <span
                     className={`mt-1.5 size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(row.status)}`}
                   />
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] text-foreground" dir="auto">
+                  <span
+                    className="min-w-0 flex-1 truncate text-[13.5px] text-foreground"
+                    dir="auto"
+                  >
                     {row.promptSnippet}
                   </span>
                   <span className="shrink-0 pt-0.5 font-mono text-[12px] text-muted-foreground/80">

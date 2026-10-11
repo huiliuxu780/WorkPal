@@ -1,10 +1,4 @@
 import { t } from "@lingui/core/macro";
-import {
-  modelLabelFor,
-  modelOptionKey,
-  parseModelOptionKey,
-  useConnectedModelOptions,
-} from "../../lib/model-options";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   AgentSkillCatalogEntry,
@@ -31,8 +25,14 @@ import {
 } from "@rakazo/ui-web";
 import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
-import { rpc } from "../../lib/rpc";
 import { ModelTreePicker } from "../../components/ModelTreePicker";
+import {
+  modelLabelFor,
+  modelOptionKey,
+  parseModelOptionKey,
+  useConnectedModelOptions,
+} from "../../lib/model-options";
+import { rpc } from "../../lib/rpc";
 import { AvatarStudioPopover } from "./avatar-studio-popover";
 
 const ScratchpadSection = lazy(() =>
@@ -111,7 +111,10 @@ export function CreateBotForm({
     : undefined;
 
   useEffect(() => {
-    void rpc.me().then(setMe).catch(() => undefined);
+    void rpc
+      .me()
+      .then(setMe)
+      .catch(() => undefined);
   }, []);
 
   async function handleSubmit() {
@@ -178,7 +181,10 @@ export function CreateBotForm({
           />
         </label>
       </div>
-      <label htmlFor={`${ids}-description`} className="mt-3 block text-[14px] text-muted-foreground">
+      <label
+        htmlFor={`${ids}-description`}
+        className="mt-3 block text-[14px] text-muted-foreground"
+      >
         <Trans>Description</Trans>
         <Textarea
           id={`${ids}-description`}

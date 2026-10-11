@@ -1,11 +1,10 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import type {
   AdapterContext,
   AgentRunRequest,
   AgentRuntime,
   AgentRuntimeEvent,
 } from "@rakazo/adapter-kit";
-import { abortableDelay, inferHandoffTargetName } from "@rakazo/core";
+import { abortableDelay, inferHandoffTargetName, PRODUCT_BRAND } from "@rakazo/core";
 
 const running = new Map<string, AbortController>();
 

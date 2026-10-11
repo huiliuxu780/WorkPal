@@ -1,13 +1,13 @@
 import { t } from "@lingui/core/macro";
 import { Trans } from "@lingui/react/macro";
 import {
-  BloubAvatar,
   BLOUB_COLORS,
   BLOUB_DEFAULT_COLOR,
   BLOUB_DEFAULT_EXPRESSION,
   BLOUB_DEFAULT_SHAPE,
   BLOUB_EXPRESSION_IDS,
   BLOUB_SHAPE_IDS,
+  BloubAvatar,
   BotAvatar,
   Dialog,
   DialogContent,
@@ -24,7 +24,9 @@ const BLOUB_INK = BLOUB_COLORS.find((c) => c.id === BLOUB_DEFAULT_COLOR)?.hex ??
 function studioCellClass(selected: boolean): string {
   return (
     "relative flex size-11 items-center justify-center rounded-xl transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover " +
-    (selected ? "ring-2 ring-primary ring-offset-2 ring-offset-popover bg-white/10" : "hover:bg-white/5")
+    (selected
+      ? "ring-2 ring-primary ring-offset-2 ring-offset-popover bg-white/10"
+      : "hover:bg-white/5")
   );
 }
 

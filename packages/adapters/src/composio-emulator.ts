@@ -1,10 +1,10 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import type {
   AdapterContext,
   ConnectorCall,
   ConnectorEvent,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
+import { PRODUCT_BRAND } from "@rakazo/core";
 import {
   type ComposioCatalogItem,
   type ComposioProvider,

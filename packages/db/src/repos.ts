@@ -1,8 +1,8 @@
 import {
   type Actor,
-  DEFAULT_BOT_AVATAR_COLOR,
   type Bot,
   type BotSection,
+  DEFAULT_BOT_AVATAR_COLOR,
   type MessageBlock,
   type SpaceBot,
 } from "@rakazo/contracts";

@@ -56,7 +56,13 @@ type RunActivityLine = NonNullable<RunActivityRow["activity"]>;
  */
 async function projectActiveRunActivities(
   prisma: PrismaClient,
-  rows: Array<{ id: string; botId: string; threadId: string; status: string; startedAt: Date | null }>,
+  rows: Array<{
+    id: string;
+    botId: string;
+    threadId: string;
+    status: string;
+    startedAt: Date | null;
+  }>,
 ): Promise<Map<string, RunActivityLine>> {
   const lines = new Map<string, RunActivityLine>();
   if (rows.length === 0) return lines;
@@ -139,30 +145,35 @@ export async function listSpaceRuns(
   });
 
   const activityLines =
-    filter === "active" ? await projectActiveRunActivities(prisma, rows) : new Map<string, RunActivityLine>();
+    filter === "active"
+      ? await projectActiveRunActivities(prisma, rows)
+      : new Map<string, RunActivityLine>();
 
   return rows.map((row) => {
     const activity = activityLines.get(row.id);
     return {
-    runId: row.id,
-    botId: row.botId,
-    botName: row.bot.name,
-    groupId: row.thread.groupId,
-    groupName: row.thread.group?.name ?? null,
-    threadId: row.threadId,
-    status: row.status as RunActivityRow["status"],
-    trigger: row.trigger as RunActivityRow["trigger"],
-    notificationsEnabled: activityNotificationsEnabled(row.thread.groupId, row.bot.notifyOnFinish),
-    promptSnippet: activityPromptSnippet({
-      trigger: row.trigger,
-      prompt: row.task.prompt,
-      sourceBlocks: row.sourceMessage?.blocks,
-    }),
-    updatedAt: (filter === "recent" && row.completedAt
-      ? row.completedAt
-      : row.updatedAt
-    ).toISOString(),
-    ...(activity ? { activity } : {}),
+      runId: row.id,
+      botId: row.botId,
+      botName: row.bot.name,
+      groupId: row.thread.groupId,
+      groupName: row.thread.group?.name ?? null,
+      threadId: row.threadId,
+      status: row.status as RunActivityRow["status"],
+      trigger: row.trigger as RunActivityRow["trigger"],
+      notificationsEnabled: activityNotificationsEnabled(
+        row.thread.groupId,
+        row.bot.notifyOnFinish,
+      ),
+      promptSnippet: activityPromptSnippet({
+        trigger: row.trigger,
+        prompt: row.task.prompt,
+        sourceBlocks: row.sourceMessage?.blocks,
+      }),
+      updatedAt: (filter === "recent" && row.completedAt
+        ? row.completedAt
+        : row.updatedAt
+      ).toISOString(),
+      ...(activity ? { activity } : {}),
     };
   });
 }

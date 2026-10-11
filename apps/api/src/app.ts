@@ -18,8 +18,8 @@ import type {
   RemoteConnectorDependencies,
 } from "@rakazo/adapters";
 import {
-  AgentScopeAgentRuntime,
   AgentlyMailService,
+  AgentScopeAgentRuntime,
   applyMessagingOutboundStatus,
   ChatSdkMessagingSurface,
   CodexCatalogCache,
@@ -323,9 +323,7 @@ export async function createApp(
       : localEmailEmulator);
   // Agent outgoing mail is a deployment-level Agently mailbox (agently-cli OAuth
   // in the host keychain). Disabled by default; enabling requires AGENTLY_MAIL_ENABLED=true.
-  const mail = env.agentlyMailEnabled
-    ? new AgentlyMailService({ bin: env.agentlyMailBin })
-    : null;
+  const mail = env.agentlyMailEnabled ? new AgentlyMailService({ bin: env.agentlyMailBin }) : null;
   const installed = new InstalledConnectorProvider(
     prisma,
     secrets,

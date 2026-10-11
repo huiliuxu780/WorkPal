@@ -1,4 +1,3 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import { randomUUID } from "node:crypto";
 import type {
   OAuthClientProvider,
@@ -12,6 +11,7 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { isLocalMcpHost } from "@rakazo/contracts";
+import { PRODUCT_BRAND } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { sanitizeConnectorError } from "./connector-safety.js";

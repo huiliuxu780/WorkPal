@@ -5,8 +5,8 @@ import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 loadRootEnv();
 
 import {
-  AgentScopeAgentRuntime,
   AgentlyMailService,
+  AgentScopeAgentRuntime,
   ChatSdkMessagingSurface,
   CodexCatalogCache,
   createBackgroundJobHandlers,
@@ -282,7 +282,9 @@ async function main() {
     cloudAgent,
     mail:
       process.env.AGENTLY_MAIL_ENABLED === "true"
-        ? new AgentlyMailService({ bin: (process.env.AGENTLY_MAIL_BIN ?? "").trim() || "agently-cli" })
+        ? new AgentlyMailService({
+            bin: (process.env.AGENTLY_MAIL_BIN ?? "").trim() || "agently-cli",
+          })
         : null,
   });
 

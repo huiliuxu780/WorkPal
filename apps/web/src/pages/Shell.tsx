@@ -3,6 +3,7 @@ import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown, LinkifiedText } from "@rakazo/chat-ui/web";
 import type {
+  ActivityItem,
   AgentSkillCatalogEntry,
   Bot,
   BotSection,
@@ -140,23 +141,10 @@ import {
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
-import {
-  modelLabelFor,
-  useConnectedModelOptions,
-} from "../lib/model-options";
-import { ModelTreePicker } from "../components/ModelTreePicker";
-import { RunDetailsPanel } from "../components/RunDetailsPanel";
-import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
 import { AskCard } from "../components/AskCard";
-import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { RunActivityDisclosure } from "../components/activity/RunActivityDisclosure";
-import {
-  backgroundActivityItems,
-  inlineActivityItems,
-  liveActivityItems,
-} from "../lib/activity-view";
-import type { ActivityItem } from "@rakazo/contracts";
+import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -168,6 +156,8 @@ import { CallCard } from "../components/call/CallCard";
 import { VoiceChatCard } from "../components/call/VoiceChatCard";
 import { ComputerWorkspace } from "../components/computer/ComputerWorkspace";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
+import { ModelTreePicker } from "../components/ModelTreePicker";
+import { RunDetailsPanel } from "../components/RunDetailsPanel";
 import {
   LIVE_TOOL_STEP_WINDOW,
   StandaloneToolActivity,
@@ -180,6 +170,11 @@ import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
 import { TeachComputerOverlayControl } from "../components/teach/TeachComputerOverlay";
 import { TeachRecordingChrome, TeachStopButton } from "../components/teach/TeachRecordingChrome";
 import { readActivityMode, writeActivityMode } from "../lib/activity-mode";
+import {
+  backgroundActivityItems,
+  inlineActivityItems,
+  liveActivityItems,
+} from "../lib/activity-view";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { authClient } from "../lib/auth";
 import { takeInitialBootstrap } from "../lib/bootstrap";
@@ -206,6 +201,7 @@ import { scheduleFocusPrompt } from "../lib/focus-prompt";
 import { localTimezone } from "../lib/local-timezone";
 import { copyableMessageText } from "../lib/message-text";
 import { messageProviderLabel } from "../lib/messaging";
+import { modelLabelFor, useConnectedModelOptions } from "../lib/model-options";
 import {
   isFileDrag,
   isFilePaste,
@@ -217,6 +213,7 @@ import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
+import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
 import { sharedInflight } from "../lib/shared-inflight";
 import {
   activeThreadRuns,
@@ -1785,9 +1782,7 @@ export function ShellPage() {
     activeSnapshot?.run?.status ?? currentRuns[0]?.status ?? active?.status;
   const { catalog: modelSwitchCatalog } = useConnectedModelOptions();
 
-  async function switchConversationModel(
-    next: { provider: string; modelId: string } | null,
-  ) {
+  async function switchConversationModel(next: { provider: string; modelId: string } | null) {
     if (!active) return;
     await rpc.bots
       .update({
@@ -1808,7 +1803,6 @@ export function ShellPage() {
       ),
     );
   }
-
 
   const answerableAskMessageId = latestAnswerableAskMessageId(activeSnapshot);
   const workingRuns = currentRuns.filter((run) =>
@@ -1854,7 +1848,11 @@ export function ShellPage() {
   const liveActivityAll = useMemo(() => liveActivityItems(activeSnapshot), [activeSnapshot]);
   const inlineActivity = useMemo(() => inlineActivityItems(liveActivityAll), [liveActivityAll]);
   const activityActionCount = useMemo(
-    () => liveActivityAll.reduce((total, item) => total + (item.kind === "tool" ? (item.count ?? 1) : 1), 0),
+    () =>
+      liveActivityAll.reduce(
+        (total, item) => total + (item.kind === "tool" ? (item.count ?? 1) : 1),
+        0,
+      ),
     [liveActivityAll],
   );
   const backgroundActivity = useMemo(

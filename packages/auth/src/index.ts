@@ -1,10 +1,10 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import type { TransactionalEmail, TransactionalEmailProvider } from "@rakazo/adapter-kit";
 import {
   allowlistedSignupAdmission,
   emailAllowed,
   firstAccountClaimDecision,
   isMessagingEmail,
+  PRODUCT_BRAND,
   parseAllowlist,
   signupPolicyFromEnv,
 } from "@rakazo/core";

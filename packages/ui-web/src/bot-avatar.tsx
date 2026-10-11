@@ -1,12 +1,12 @@
 import type { GrokColorDef } from "@rakazo/core";
 import {
   ACTIVE_RUN_STATUSES,
-  PRODUCT_BRAND,
   avatarIdentitySeed,
   DEFAULT_GROK_BOT_COLOR,
   GROK_BOT_COLORS,
   GROK_COLOR_LIST,
   organicAvatarPath,
+  PRODUCT_BRAND,
   resolvePersonaColorDef,
   SHIPPED_BOT_AVATAR_CENTER,
   SHIPPED_BOT_AVATAR_SHAPE_KEYS,
@@ -176,7 +176,10 @@ export const BotAvatar = memo(function BotAvatar({
 
   // An explicit `::bloub` studio encoding wins over the account-wide style,
   // exactly like an encoded studio shape does.
-  if (parsed.shapeIndex === undefined && (parsed.bloub || (variant ?? preferredVariant) === "bloub")) {
+  if (
+    parsed.shapeIndex === undefined &&
+    (parsed.bloub || (variant ?? preferredVariant) === "bloub")
+  ) {
     return (
       <BloubAvatar
         color={colorDef.hex}

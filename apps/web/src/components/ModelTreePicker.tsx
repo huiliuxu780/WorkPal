@@ -45,9 +45,11 @@ export function ModelTreePicker({
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    searchRef.current?.focus();
     const onDown = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -68,7 +70,8 @@ export function ModelTreePicker({
       const existing = byProvider.get(credential.provider);
       if (existing) {
         for (const model of models) {
-          if (!existing.models.some((m) => m.modelId === model.modelId)) existing.models.push(model);
+          if (!existing.models.some((m) => m.modelId === model.modelId))
+            existing.models.push(model);
         }
       } else {
         byProvider.set(credential.provider, {
@@ -82,8 +85,9 @@ export function ModelTreePicker({
   }, [credentials, options]);
 
   const selectedLabel = value
-    ? options.find((option) => option.provider === value.provider && option.modelId === value.modelId)
-        ?.modelLabel ?? value.modelId
+    ? (options.find(
+        (option) => option.provider === value.provider && option.modelId === value.modelId,
+      )?.modelLabel ?? value.modelId)
     : spaceDefaultLabel
       ? `${t`Space default`} (${spaceDefaultLabel})`
       : t`Space default`;
@@ -129,7 +133,10 @@ export function ModelTreePicker({
         <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
         <ChevronDown
           size={14}
-          className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+          className={cn(
+            "shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
         />
       </button>
 
@@ -144,7 +151,7 @@ export function ModelTreePicker({
           <div className="mb-1 flex items-center gap-2 border-b border-border px-2 py-1.5">
             <Search size={13} className="shrink-0 text-muted-foreground" />
             <input
-              autoFocus
+              ref={searchRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t`Search providers & models`}
@@ -210,7 +217,11 @@ export function ModelTreePicker({
                           className="flex w-full min-h-[28px] items-center gap-2 rounded-lg px-2 text-start text-[13px] hover:bg-accent"
                         >
                           <span className="min-w-0 flex-1 truncate">{model.modelLabel}</span>
-                          {selected ? <Check size={14} className="shrink-0" /> : <span className="w-3.5" />}
+                          {selected ? (
+                            <Check size={14} className="shrink-0" />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
                         </button>
                       );
                     })}

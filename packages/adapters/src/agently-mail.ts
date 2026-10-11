@@ -50,15 +50,13 @@ export function validateOutgoingMail(message: AgentlyMailMessage): string | unde
     recipients.length < 1 ||
     recipients.length > AGENTLY_MAIL_MAX_RECIPIENTS ||
     recipients.some(
-      (address) => address.length > 320 || !RECIPIENT_PATTERN.test(address) || address !== address.trim(),
+      (address) =>
+        address.length > 320 || !RECIPIENT_PATTERN.test(address) || address !== address.trim(),
     )
   ) {
     return `Provide 1-${AGENTLY_MAIL_MAX_RECIPIENTS} valid recipient email addresses.`;
   }
-  if (
-    message.to.length !== recipients.length ||
-    new Set(recipients).size !== recipients.length
-  ) {
+  if (message.to.length !== recipients.length || new Set(recipients).size !== recipients.length) {
     return "Recipient addresses must be non-empty and unique.";
   }
   const subject = message.subject;
@@ -105,8 +103,7 @@ function firstLine(value: string, limit: number): string {
 }
 
 function failureText(run: AgentlyMailRunResult, payload?: Record<string, unknown>): string {
-  const fromPayload =
-    payload && typeof payload.error === "string" ? payload.error : undefined;
+  const fromPayload = payload && typeof payload.error === "string" ? payload.error : undefined;
   const detail =
     fromPayload ||
     firstLine(run.stderr, 300) ||
@@ -191,7 +188,15 @@ export class AgentlyMailService {
     const invalid = validateOutgoingMail(message);
     if (invalid) return { error: invalid };
     const recipients = [...new Set(message.to.map((address) => address.trim()))];
-    const args = ["message", "+send", "--confirmed", "--subject", message.subject, "--body", message.text];
+    const args = [
+      "message",
+      "+send",
+      "--confirmed",
+      "--subject",
+      message.subject,
+      "--body",
+      message.text,
+    ];
     for (const address of recipients) args.push("--to", address);
     let run: AgentlyMailRunResult;
     try {
@@ -220,7 +225,9 @@ export class AgentlyMailService {
   }
 
   /** The primary alias of the signed-in mailbox. Never includes tokens. */
-  async account(signal: AbortSignal): Promise<{ email: string; name?: string } | { error: string }> {
+  async account(
+    signal: AbortSignal,
+  ): Promise<{ email: string; name?: string } | { error: string }> {
     let run: AgentlyMailRunResult;
     try {
       run = await this.invoke(["+me"], signal);

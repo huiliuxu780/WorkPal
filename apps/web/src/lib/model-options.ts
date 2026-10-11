@@ -105,5 +105,7 @@ export function modelLabelFor(
 ): string {
   if (!provider || !modelId) return "";
   const entry = catalog.find((item) => item.provider === provider && item.id === modelId);
-  return entry ? `${entry.providerName ?? entry.provider} · ${entry.label}` : `${provider} · ${modelId}`;
+  return entry
+    ? `${entry.providerName ?? entry.provider} · ${entry.label}`
+    : `${provider} · ${modelId}`;
 }
