@@ -4142,3 +4142,35 @@ msgstr "等待你接管"
 #: src/lib/execution-status.ts
 msgid "Waiting to start"
 msgstr "等待开始"
+
+#: src/lib/execution-activity.ts
+msgid "Activity paused while waiting for you"
+msgstr "当前活动已暂停更新，等待你处理"
+
+#: src/components/ai/ExecutionActivity.tsx
+msgid "Current activity"
+msgstr "当前活动"
+
+#: src/lib/execution-activity.ts
+msgid "Execution continues; no new activity update"
+msgstr "执行仍在进行，暂无新的活动更新"
+
+#: src/components/ai/ExecutionActivity.tsx
+msgid "Hide recent activity"
+msgstr "收起最近活动"
+
+#: src/lib/execution-activity.ts
+msgid "Multiple activities in progress"
+msgstr "多项活动正在进行"
+
+#: src/lib/execution-activity.ts
+msgid "Some activity statuses have not synchronized"
+msgstr "部分活动状态尚未同步"
+
+#: src/components/ai/ExecutionActivity.tsx
+msgid "View recent activity"
+msgstr "查看最近活动"
+
+#: src/components/ai/ExecutionActivity.tsx
+msgid "Earlier activities are not shown"
+msgstr "更早活动未显示"

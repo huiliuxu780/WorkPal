@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import type { RunStepSnapshot } from "@rakazo/contracts";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 const marks: Record<RunStepSnapshot["status"], string> = {
   pending: "○",
@@ -48,7 +48,7 @@ function visibleIndices(steps: readonly RunStepSnapshot[], all: boolean): Set<nu
   return indices;
 }
 
-export function RunStepsDisclosure({
+export const RunStepsDisclosure = memo(function RunStepsDisclosure({
   steps,
   live,
 }: {
@@ -164,4 +164,4 @@ export function RunStepsDisclosure({
       </details>
     </section>
   );
-}
+});

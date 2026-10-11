@@ -144,7 +144,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
-import { RunActivityDisclosure } from "../components/activity/RunActivityDisclosure";
+import { ExecutionActivity } from "../components/ai/ExecutionActivity";
 import { ExecutionShell } from "../components/ai/ExecutionShell";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { RunPlanDisclosure } from "../components/ai/RunPlanDisclosure";
@@ -4914,16 +4914,13 @@ const Transcript = memo(function Transcript({
           {execution.plan ? <RunPlanDisclosure plan={execution.plan} live={live} /> : null}
           {execution.steps ? <RunStepsDisclosure steps={execution.steps} live={live} /> : null}
           {execution.todos ? <RunTodoList todos={execution.todos} /> : null}
-          {execution.activity.length > 0 ? (
-            <div data-slot="activity">
-              <RunActivityDisclosure
-                items={execution.activity}
-                live={live}
-                embedded
-                showAvatars={showActivityAvatars}
-                botColors={activityBotColors}
-              />
-            </div>
+          {execution.activity.length > 0 || run?.status === "running" ? (
+            <ExecutionActivity
+              run={run}
+              items={execution.activity}
+              showAvatars={showActivityAvatars}
+              botColors={activityBotColors}
+            />
           ) : null}
         </ExecutionShell>
       );

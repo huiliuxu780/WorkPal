@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import type { RunPlanRevision } from "@rakazo/contracts";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 const statusText: Record<RunPlanRevision["items"][number]["status"], () => string> = {
   pending: () => t`Not started`,
@@ -33,7 +33,7 @@ function visibleIndices(plan: RunPlanRevision, expanded: boolean): Set<number> {
 }
 
 /** Displays a backend-published Plan only. Tool-call summaries and Markdown never enter this component. */
-export function RunPlanDisclosure({ plan, live }: { plan: RunPlanRevision; live: boolean }) {
+export const RunPlanDisclosure = memo(function RunPlanDisclosure({ plan, live }: { plan: RunPlanRevision; live: boolean }) {
   const [showAll, setShowAll] = useState(false);
   const [reasonId, setReasonId] = useState<string | null>(null);
   const visible = visibleIndices(plan, showAll);
@@ -132,4 +132,4 @@ export function RunPlanDisclosure({ plan, live }: { plan: RunPlanRevision; live:
       </details>
     </section>
   );
-}
+});
