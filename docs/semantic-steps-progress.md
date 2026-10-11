@@ -16,4 +16,4 @@ This slice adds product-level execution units without reclassifying tool calls. 
 - PostgreSQL migration and targeted Run Step/Todo tests passed, including idempotency, stale writes, invalid evidence, terminal transitions and clear-generation isolation.
 - API snapshot, web reducer, UI render and executor tests passed.
 - Full `pnpm test`: 4,773 passed; the same five pre-existing failures and missing Playwright publication workflow fixture remain. No Step/Todo failure was observed.
-- A full Attempt history/details API, trusted batch telemetry, Step evidence navigation, a complete Execution Shell and live Java→Web acceptance remain. Status and result summaries are Agent reports; external effects require separate confirmed evidence.
+- A full Attempt history/details API, trusted batch telemetry, Step evidence navigation, a complete Execution Shell and live Todo acceptance remain. A real Java→Web browser test now verifies a revised Step linked to its Plan item on one execution. Status and result summaries are Agent reports; external effects require separate confirmed evidence.
