@@ -20,6 +20,8 @@ services:
     image: ${RAKAZO_COMPUTER_IMAGE:-rakazo/computer}:${RAKAZO_COMPUTER_IMAGE_TAG:-local}
     build:
       context: ../sandboxes/computer
+      args:
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-deb.debian.org}
     pull_policy: build
     command: ["true"]
     network_mode: none
