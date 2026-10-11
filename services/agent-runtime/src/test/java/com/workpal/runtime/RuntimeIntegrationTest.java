@@ -46,6 +46,35 @@ class RuntimeIntegrationTest {
         } finally { model.stop(0); }
     }
 
+    @Test void refreshedApplicationSummaryReplacesThePreviousRunScopedCopy() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            String oldSummary = "WorkPal-owned compacted context through message sequence 49. OLD_SUMMARY";
+            String newSummary = "WorkPal-owned compacted context through message sequence 99. NEW_SUMMARY";
+            RunRequest first = withHistory(request(model.getAddress().getPort(), "summary-1",
+                    "user-1", "space-1", List.of(), null), oldSummary);
+            engine.execute(first, event -> {});
+            RunRequest second = withHistory(request(model.getAddress().getPort(), "summary-2",
+                    "user-1", "space-1", List.of(), null), newSummary);
+            engine.execute(second, event -> {});
+            String messages = modelRequests.getLast().path("messages").toString();
+            assertTrue(messages.contains("NEW_SUMMARY"), messages);
+            assertFalse(messages.contains("OLD_SUMMARY"), messages);
+            assertEquals(1, messages.split("NEW_SUMMARY", -1).length - 1, messages);
+            assertTrue(messages.contains("Hello from Java Harness."), messages);
+        } finally { model.stop(0); }
+    }
+
+    private static RunRequest withHistory(RunRequest base, String summary) {
+        return new RunRequest(base.botId(), base.threadId(), base.runId(), base.executionScope(),
+                base.sourceMessageId(), base.identity(), base.prompt(), base.productName(),
+                base.instructions(), List.of(new RunRequest.HistoryMessage(null, "user", summary, null)),
+                base.currentTurnImages(), base.skills(), base.tools(), base.toolBridge(), base.model(),
+                base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
+    }
+
     @Test void externalToolUsesTheAuthorizedBridgeAndReturnsToHarness() throws Exception {
         List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
         List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();

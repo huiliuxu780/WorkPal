@@ -61,6 +61,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -70,6 +71,9 @@ import reactor.core.Disposables;
 
 /** WorkPal protocol adapter around AgentScope's own reasoning and tool lifecycle. */
 public final class RuntimeEngine {
+    private static final Pattern COMPACTED_CONTEXT = Pattern.compile(
+            "^[^\\n]{1,80}-owned compacted context through message sequence ");
+    private static final String RECALLED_MEMORY = "Memory recalled from earlier conversations";
     @FunctionalInterface public interface EventSink { void emit(Map<String, Object> event) throws IOException; }
 
     private final ObjectMapper json;
@@ -131,6 +135,9 @@ public final class RuntimeEngine {
         AgentState loaded = store.get(userSlot, sessionSlot, "agent_state", AgentState.class).orElse(null);
         boolean fresh = loaded == null;
         List<ToolUseBlock> pendingFromPreviousAttempt = pendingToolCalls(loaded);
+        if (loaded != null && pendingFromPreviousAttempt.isEmpty()) {
+            refreshApplicationContext(loaded, request, store, userSlot, sessionSlot);
+        }
         RuntimeContext context = RuntimeContext.builder().userId(userSlot).sessionId(sessionSlot).build();
         ToolBridgeClient bridge = new ToolBridgeClient(json, request);
         Set<String> pausedToolCalls = ConcurrentHashMap.newKeySet();
@@ -337,6 +344,32 @@ public final class RuntimeEngine {
             if (!pausedForResume) spawnBudgets.remove(sessionSlot, spawnBudget);
             if (spawnBudgets.size() > 8192) spawnBudgets.clear();
         }
+    }
+
+    private static void refreshApplicationContext(AgentState loaded, RunRequest request,
+            JsonFileAgentStateStore store, String userSlot, String sessionSlot) {
+        if (request.history() == null) return;
+        List<RunRequest.HistoryMessage> current = request.history().stream()
+                .filter(item -> item.id() == null && "user".equals(item.role())
+                        && isApplicationContext(item.content()))
+                .toList();
+        if (current.isEmpty()) return;
+        // The application summary and recall are run-scoped. A restored Harness session can
+        // contain an older copy; replace it before the next model call instead of dropping
+        // all history before the application's compaction cursor.
+        loaded.contextMutable().removeIf(message -> message.getRole() == MsgRole.USER
+                && isApplicationContext(message.getTextContent()));
+        List<Msg> updated = new ArrayList<>();
+        for (RunRequest.HistoryMessage item : current) {
+            updated.add(userMessage(item.content(), item.images()));
+        }
+        loaded.contextMutable().addAll(0, updated);
+        store.save(userSlot, sessionSlot, "agent_state", loaded);
+    }
+
+    private static boolean isApplicationContext(String content) {
+        return content != null && (COMPACTED_CONTEXT.matcher(content).find()
+                || content.startsWith(RECALLED_MEMORY));
     }
 
     private static Msg taskReminder(List<TaskDelivery> deliveries) {
