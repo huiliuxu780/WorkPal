@@ -23,6 +23,7 @@ import {
   createWebProvider,
   databaseCapacityBackoffMs,
   EncryptedSecretStore,
+  enforceRunBudgets,
   ExpoPushProvider,
   GraphileJobPublisher,
   GraphileJobWorkerHost,
@@ -209,6 +210,15 @@ async function main() {
               `Unsupported AGENT_RUNTIME=${process.env.AGENT_RUNTIME}; use agentscope (production) or scripted (tests)`,
             );
           })();
+  const budgetSweep = setInterval(() => {
+    void enforceRunBudgets({ prisma, events, runtime }).catch((error) =>
+      logger.error("Run budget reconciliation", error),
+    );
+  }, 10_000);
+  budgetSweep.unref?.();
+  void enforceRunBudgets({ prisma, events, runtime }).catch((error) =>
+    logger.error("Run budget reconciliation", error),
+  );
   const reconcileCancelledChildren = async () => {
     const cancelledRuns = await cancelChildrenOfCancelledRuns(prisma);
     for (const cancelled of cancelledRuns) {
@@ -450,6 +460,7 @@ async function main() {
     clearInterval(waitSweep);
     clearInterval(cancellationSweep);
     clearInterval(childCancellationSweep);
+    clearInterval(budgetSweep);
     try {
       await reconciler.stop();
       await jobHost.stop();

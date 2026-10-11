@@ -63,4 +63,20 @@ describe("background result summary input", () => {
     expect(prompt.slice(prompt.indexOf("Failed or cancelled:"))).toContain("provider failed");
     expect(prompt).toContain("untrusted data");
   });
+
+  it("includes the actual failure reason for a scheduled Run result", () => {
+    const prompt = buildDeliveryPrompt(
+      [{
+        id: "budget-result",
+        runId: "run-budget",
+        kind: "run_result",
+        backgroundTaskId: null,
+        createdAt: new Date("2026-10-12T00:00:00Z"),
+      }],
+      new Map(),
+      new Map([["run-budget", { status: "failed", error: "budget_exceeded:duration_sec" }]]),
+    );
+    expect(prompt).toContain("Scheduled run: budget_exceeded:duration_sec");
+    expect(prompt.slice(prompt.indexOf("Failed or cancelled:"))).toContain("budget_exceeded:duration_sec");
+  });
 });

@@ -39,7 +39,7 @@ async function markStale(tx: Prisma.TransactionClient, records: DeliveryRow[], n
 }
 
 export function buildDeliveryPrompt(
-  records: Array<Pick<DeliveryRow, "id" | "kind" | "backgroundTaskId" | "createdAt">>,
+  records: Array<Pick<DeliveryRow, "id" | "kind" | "backgroundTaskId" | "createdAt"> & { runId?: string }>,
   backgroundTasks: Map<
     string,
     {
@@ -50,6 +50,7 @@ export function buildDeliveryPrompt(
       finishedAt: Date | null;
     }
   >,
+  sourceRuns: Map<string, { status: string; error: string | null }> = new Map(),
 ) {
   const ordered = [...records].sort((a, b) => {
     const at = a.backgroundTaskId ? backgroundTasks.get(a.backgroundTaskId)?.finishedAt : null;
@@ -61,12 +62,13 @@ export function buildDeliveryPrompt(
   const detailLimit = Math.min(12_000, Math.max(120, Math.floor(24_000 / ordered.length)));
   for (const [index, record] of ordered.entries()) {
     const task = record.backgroundTaskId ? backgroundTasks.get(record.backgroundTaskId) : undefined;
-    const label = (task?.agentId ?? "Background task").slice(0, 80);
-    const original = task?.result ?? task?.error ?? "No result details were recorded";
+    const sourceRun = record.runId ? sourceRuns.get(record.runId) : undefined;
+    const label = (task?.agentId ?? (record.kind === "run_result" ? "Scheduled run" : "Background task")).slice(0, 80);
+    const original = task?.result ?? task?.error ?? sourceRun?.error ?? "No result details were recorded";
     const detail =
       original.length > detailLimit ? `${original.slice(0, detailLimit)} [truncated]` : original;
     const line = `- Item ${index + 1}, ${label}: ${detail}`;
-    if (task?.status === "completed") completed.push(line);
+    if (task?.status === "completed" || sourceRun?.status === "completed") completed.push(line);
     else failed.push(line);
   }
   return [
@@ -141,7 +143,7 @@ export async function dispatchOneDeliveryBatch(deps: DeliveryDeps): Promise<bool
     await failBatch(deps, records, "Source Run is unavailable or cancelled");
     return true;
   }
-  const [bot, member, tasks] = await Promise.all([
+  const [bot, member, tasks, sourceRuns] = await Promise.all([
     deps.prisma.bot.findFirst({
       where: { id: source.botId, spaceId: source.spaceId, archivedAt: null },
       select: { id: true },
@@ -165,13 +167,21 @@ export async function dispatchOneDeliveryBatch(deps: DeliveryDeps): Promise<bool
         finishedAt: true,
       },
     }),
+    deps.prisma.run.findMany({
+      where: { id: { in: records.filter((row) => row.kind === "run_result").map((row) => row.runId) } },
+      select: { id: true, status: true, error: true },
+    }),
   ]);
   if (!bot || !member) {
     await failBatch(deps, records, "Bot or space membership is no longer active");
     return true;
   }
   const taskById = new Map(tasks.map((task) => [task.taskId, task]));
-  const prompt = buildDeliveryPrompt(records, taskById);
+  const prompt = buildDeliveryPrompt(
+    records,
+    taskById,
+    new Map(sourceRuns.map((run) => [run.id, run])),
+  );
   const runId = await deps.prisma.$transaction(async (tx) => {
     if (!(await lockThread(tx, first.threadId))) return null;
     if ((await currentThreadGeneration(tx, first.threadId)) !== first.threadGeneration) {
