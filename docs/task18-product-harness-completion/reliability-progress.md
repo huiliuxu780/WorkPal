@@ -6,7 +6,7 @@ This slice implements durable wait expiry, cancellation propagation, and a conse
 
 The Worker checks waiting Runs every minute. Approval and input waits expire after 24 hours, and computer takeover after 30 minutes. A Thread row lock serializes expiry with an answer. The Run and Task become `cancelled` with `error=wait_timeout`, waiting Attempts become cancelled, and the pending ask block becomes `expired` so Web and voice clients cannot submit it. An intended approval effect becomes `expired`, with `approval.resolved{decision:"expired"}` and `run.cancelled` in the same transaction. Repeated scans are idempotent. A cancelled waiting Run's background task projection becomes `cancelling` for native revocation.
 
-The timeout clock currently uses `Run.updatedAt`, which pause transitions stamp. An unrelated update to the waiting Run would move the deadline. A dedicated `waitStartedAt` is the remaining hardening step if future code writes waiting Runs for other reasons.
+The timeout clock now uses `Run.waitStartedAt`, stamped on entry to input, approval, or takeover waits. The migration copies `updatedAt` for waits already in progress, preserving their previous expiry clock. Later unrelated Run updates cannot extend the deadline. Re-entry into a wait stamps a new clock.
 
 ## Cancellation propagation
 

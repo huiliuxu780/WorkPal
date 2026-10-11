@@ -924,6 +924,7 @@ export async function pauseRunForInput(
       data: {
         status: "waiting_input",
         waitKind,
+        waitStartedAt: new Date(),
         leaseOwner: null,
         leaseExpiresAt: null,
         ...(input.budgetExceeded
@@ -1026,6 +1027,7 @@ export async function pauseRunForTakeover(
       data: {
         status: "waiting_takeover",
         waitKind: "takeover",
+        waitStartedAt: new Date(),
         leaseOwner: null,
         leaseExpiresAt: null,
         checkpoint: null,

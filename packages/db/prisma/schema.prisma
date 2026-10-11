@@ -577,6 +577,7 @@ model Run {
   userId               String
   status               String
   waitKind             String?
+  waitStartedAt        DateTime?
   trigger              String
   /// Immutable Product Harness decision captured when the Run was created.
   orchestration        Json?
@@ -616,6 +617,7 @@ model Run {
   @@index([status, leaseExpiresAt])
   @@index([status, retryAt])
   @@index([status, updatedAt, id])
+  @@index([status, waitStartedAt, id])
   @@index([botOutcomeReturnedAt, status])
   @@index([trigger, status, messagingMirroredAt, updatedAt])
   @@index([trigger, status, teamChatMirroredAt, updatedAt])

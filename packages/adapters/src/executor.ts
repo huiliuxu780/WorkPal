@@ -5863,6 +5863,7 @@ function computerRunRequeueData(
     status:
       heldForTakeover && !resumeCheckpoint ? ("waiting_takeover" as const) : ("queued" as const),
     waitKind: heldForTakeover && !resumeCheckpoint ? ("takeover" as const) : null,
+    waitStartedAt: heldForTakeover && !resumeCheckpoint ? new Date() : null,
     error,
     leaseOwner: null,
     leaseExpiresAt: null,
@@ -5888,6 +5889,7 @@ async function writeComputerRunRequeue(
   const releasedHold = {
     status: "queued" as const,
     waitKind: null,
+    waitStartedAt: null,
     error,
     leaseOwner: null,
     leaseExpiresAt: null,
