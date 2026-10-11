@@ -8,6 +8,7 @@ export type ExecutionDisplayStatus =
   | "approval"
   | "need_input"
   | "blocked"
+  | "takeover"
   | "done"
   | "failed"
   | "cancelled"
@@ -24,15 +25,14 @@ export type ExecutionStatusView = {
 export function deriveExecutionStatus(
   run: Run | null | undefined,
   activity: readonly ActivityItem[],
-  options: { confirmedRootBackground?: boolean } = {},
+  options: { confirmedRootBackground?: boolean; blockedReason?: string | null } = {},
 ): ExecutionStatusView {
   if (!run) {
     return { status: "unknown", label: i18n._("Status unknown"), detail: null, needsAttention: false };
   }
   const own = activity.filter((item) => item.runId === run.id);
-  const current = [...own]
-    .reverse()
-    .find((item) => item.status === "running" || item.status === "waiting");
+  const current = [...own].reverse().find((item) => item.status === "running");
+  const waiting = [...own].reverse().find((item) => item.status === "waiting");
   const summary = current?.title?.trim() || null;
   const background = options.confirmedRootBackground === true;
   const view = (
@@ -50,11 +50,15 @@ export function deriveExecutionStatus(
     return view("cancelled", i18n._("Stopped"), background ? i18n._("Background task") : null);
   if (run.status === "waiting_input") {
     if (run.waitKind === "approval")
-      return view("approval", i18n._("Waiting for approval"), summary, true);
-    return view("need_input", i18n._("Waiting for your reply"), summary, true);
+      return view("approval", i18n._("Waiting for approval"), waiting?.title?.trim() || null, true);
+    if (run.waitKind === "input")
+      return view("need_input", i18n._("Waiting for your reply"), waiting?.title?.trim() || null, true);
+    return view("unknown", i18n._("Status unknown"), null, true);
   }
   if (run.status === "waiting_takeover")
-    return view("blocked", i18n._("Temporarily blocked"), i18n._("Waiting for you to take control"), true);
+    return view("takeover", i18n._("Waiting for takeover"), i18n._("Open the computer to take control"), true);
+  if (options.blockedReason?.trim())
+    return view("blocked", i18n._("Temporarily blocked"), options.blockedReason.trim(), true);
 
   // A child BackgroundAgentTask does not make its parent Run a background Run.
   if (background) {
@@ -62,8 +66,8 @@ export function deriveExecutionStatus(
       ? view("background", i18n._("Background task"), i18n._("Waiting to start"))
       : view("background", i18n._("Running in background"), summary);
   }
-  if (run.status === "queued") return view("working", i18n._("Waiting to start"), summary);
-  if (run.status === "leased") return view("working", i18n._("Starting"), summary);
+  if (run.status === "queued") return view("unknown", i18n._("Execution queued"));
+  if (run.status === "leased") return view("working", i18n._("Executing"), i18n._("Starting"));
   if (current?.kind === "planning") return view("planning", i18n._("Planning"), summary);
   return view("working", i18n._("Executing"), summary);
 }

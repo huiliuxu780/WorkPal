@@ -35,4 +35,15 @@ describe("ExecutionShell", () => {
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("hidden");
   });
+
+  it("keeps a failed execution open while its child sections can fold", () => {
+    const html = renderToStaticMarkup(
+      <ExecutionShell run={run("failed")} activity={[]}>
+        <div>失败详情</div>
+      </ExecutionShell>,
+    );
+    expect(html).toContain('data-status="failed"');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).not.toContain(" inert=");
+  });
 });

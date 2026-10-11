@@ -10,6 +10,7 @@ const marks = {
   approval: "!",
   need_input: "?",
   blocked: "!",
+  takeover: "·",
   done: "✓",
   failed: "×",
   cancelled: "–",
@@ -23,6 +24,7 @@ const tones = {
   approval: "text-warning",
   need_input: "text-warning",
   blocked: "text-warning",
+  takeover: "text-warning",
   done: "text-success",
   failed: "text-destructive",
   cancelled: "text-muted-foreground",
@@ -40,11 +42,12 @@ export function ExecutionShell({
 }) {
   const status = deriveExecutionStatus(run, activity);
   const live = run && ["queued", "leased", "running", "waiting_input", "waiting_takeover"].includes(run.status);
-  const [expanded, setExpanded] = useState(Boolean(live));
+  const [expanded, setExpanded] = useState(Boolean(live) || run?.status === "failed");
   const detailsId = useId();
   useEffect(() => {
     if (status.needsAttention) setExpanded(true);
-    else if (["done", "failed", "cancelled"].includes(status.status)) setExpanded(false);
+    else if (status.status === "failed") setExpanded(true);
+    else if (status.status === "done" || status.status === "cancelled") setExpanded(false);
   }, [status.needsAttention, status.status]);
   const open = status.needsAttention || expanded;
   const hasDetail = Boolean(children) || Boolean(status.detail);
