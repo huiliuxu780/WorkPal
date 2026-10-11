@@ -1206,10 +1206,25 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           return;
         }
-        getLogger().error("expired running Run has no active Attempt; refusing automatic replay", {
+        await deps.runtime.abort(runId).catch(() => undefined);
+        const failed = await deps.events.finalizeRun({
+          spaceId: run.spaceId,
+          threadId: run.threadId,
+          botId: run.botId,
           runId,
+          taskId: run.taskId,
+          attemptId: null,
+          leaseOwner: run.leaseOwner,
           leaseFence: run.leaseFence,
+          requireLeaseExpiredAt: now,
+          outcome: "failed",
+          error: "Execution lease expired before its Attempt record was created; outcome unconfirmed",
         });
+        if (failed && failed.continuationRunId) {
+          await deps.jobs.enqueue(runContinueJob(failed.continuationRunId)).catch((enqueueError) =>
+            getLogger().error("missing-Attempt steering continuation enqueue failed", enqueueError),
+          );
+        }
         return;
       }
       let { resumeCheckpoint, heldForTakeover, resumeHeldLease, takeoverResume } =
@@ -1281,14 +1296,30 @@ export function createRunExecutor(deps: ExecutorDeps) {
         await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
         return;
       }
-      const attempt = await deps.prisma.attempt
-        .create({
-          data: { runId, fence, status: "running" },
+      const attempt = await deps.prisma
+        .$transaction(async (tx) => {
+          // Recovery also locks this Run before checking for a missing Attempt. Serialize
+          // creation with that check, then revalidate the lease under the lock.
+          await tx.$queryRaw`SELECT id FROM runs WHERE id = ${runId} FOR UPDATE`;
+          const claimed = await tx.run.findUnique({
+            where: { id: runId },
+            select: { status: true, leaseOwner: true, leaseFence: true, leaseExpiresAt: true },
+          });
+          if (
+            claimed?.status !== "running" || claimed.leaseOwner !== workerId ||
+            claimed.leaseFence !== fence || !claimed.leaseExpiresAt ||
+            claimed.leaseExpiresAt <= new Date()
+          ) return null;
+          return tx.attempt.create({ data: { runId, fence, status: "running" } });
         })
         .catch(async (error) => {
           await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
           throw error;
         });
+      if (!attempt) {
+        await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
+        return;
+      }
 
       let leaseValid = true;
       let lastLeaseCheckAt = 0;

@@ -1658,23 +1658,32 @@ description: Prepare standup notes
     );
   });
 
-  it("does not replay an expired running Run without an active Attempt", async () => {
+  it("fails an expired running Run without an active Attempt instead of replaying it", async () => {
     const updateMany = vi.fn(async () => ({ count: 1 }));
+    const finalizeRun = vi.fn(async () => ({ continuationRunId: null }));
     const prisma = {
       run: {
         findUnique: vi.fn(async () => ({
           id: "run-1", status: "running", leaseOwner: "lost-worker", leaseFence: 1,
+          spaceId: "space-1", threadId: "thread-1", botId: "bot-1", taskId: "task-1",
           leaseExpiresAt: new Date(Date.now() - 1_000),
         })),
         updateMany,
       },
       attempt: { findFirst: vi.fn(async () => null) },
     } as unknown as PrismaClient;
-    const executor = createRunExecutor({ prisma } as Parameters<typeof createRunExecutor>[0]);
+    const executor = createRunExecutor({
+      prisma,
+      runtime: { abort: vi.fn(async () => undefined) },
+      events: { finalizeRun },
+    } as unknown as Parameters<typeof createRunExecutor>[0]);
 
     await executor.continueRun("run-1", "new-worker");
 
     expect(updateMany).not.toHaveBeenCalled();
+    expect(finalizeRun).toHaveBeenCalledWith(expect.objectContaining({
+      runId: "run-1", attemptId: null, outcome: "failed", requireLeaseExpiredAt: expect.any(Date),
+    }));
   });
 
   it("does not claim a waiting takeover after a concurrent release writes the checkpoint", async () => {
@@ -1962,6 +1971,14 @@ description: Prepare standup notes
       agentSecret: { findMany: vi.fn(async () => []) },
       agentSkill: { findMany: vi.fn(async () => []) },
       scratchpadItem: { findMany: vi.fn(async () => []) },
+      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => callback({
+        $queryRaw: vi.fn(async () => [{ id: "run-1" }]),
+        run: { findUnique: vi.fn(async () => ({
+          status: "running", leaseOwner: "worker-1", leaseFence: 1,
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+        })) },
+        attempt: { create: vi.fn(async () => ({ id: "attempt-1" })) },
+      })),
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,

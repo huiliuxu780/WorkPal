@@ -37,7 +37,7 @@ describePostgres("expired Run lease recovery (PostgreSQL)", () => {
     await db.pool.end();
   });
 
-  async function expiredRun() {
+  async function expiredRun(withAttempt = true) {
     const task = await prisma.task.create({
       data: { spaceId: id, userId: id, botId, threadId, prompt: "Recover safely", status: "running" },
     });
@@ -48,7 +48,9 @@ describePostgres("expired Run lease recovery (PostgreSQL)", () => {
         leaseExpiresAt: new Date(Date.now() - 1_000),
       },
     });
-    await prisma.attempt.create({ data: { runId: run.id, fence: 1, status: "running" } });
+    if (withAttempt) {
+      await prisma.attempt.create({ data: { runId: run.id, fence: 1, status: "running" } });
+    }
     return run;
   }
 
@@ -96,5 +98,20 @@ describePostgres("expired Run lease recovery (PostgreSQL)", () => {
     expect(await prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(0);
     expect(await prisma.event.count({ where: { runId: run.id, type: "run.failed" } })).toBe(1);
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("fails a lost running lease with no Attempt and preserves the empty ledger", async () => {
+    const run = await expiredRun(false);
+    const { executor, enqueue, abort } = recoveryExecutor();
+
+    await executor.continueRun(run.id, "new-worker");
+
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "failed", error: expect.stringContaining("before its Attempt record"),
+    });
+    expect(await prisma.attempt.count({ where: { runId: run.id } })).toBe(0);
+    expect(await prisma.event.count({ where: { runId: run.id, type: "run.failed" } })).toBe(1);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(abort).toHaveBeenCalledWith(run.id);
   });
 });
