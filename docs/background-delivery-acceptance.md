@@ -1,0 +1,7 @@
+# Background delivery Java → Web acceptance
+
+The AgentScope browser suite now starts a native `agent_spawn` helper with `timeout_seconds: 0`. Java runs the child and reports its result through the authenticated background callback. The backend stores the result in the delivery outbox; the E2E harness schedules the same `delivery.dispatch` job handler used by the production Worker. After the merge window, that handler creates a delivery Run. The browser receives its summary without another user message.
+
+The browser test checks that the parent replies first, the background result arrives later, the user-message count stays constant, and exactly one completed delivery Run exists in the thread snapshot. A disposable PostgreSQL probe after the run showed one completed background task, one sent outbox record, one completed delivery Run and one `delivery.sent` event. The database was dropped after verification.
+
+The first E2E attempt exposed a test-harness gap: the child completed and its outbox row stayed pending because the harness did not schedule delivery dispatch. Adding the production job to the harness fixed the acceptance path. The targeted Chromium run passed in about 40 seconds; the full AgentScope browser suite then passed all five tests in about one minute on 2026-10-12. This verifies the in-process job handler and durable outbox, not deployment with a separate Worker process.
