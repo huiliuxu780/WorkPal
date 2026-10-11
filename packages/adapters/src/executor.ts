@@ -5159,7 +5159,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               outcome: "failed",
               error: setupFailure,
             });
-            if (failed?.continuationRunId) {
+            if (failed && failed.continuationRunId) {
               await deps.jobs
                 .enqueue(runContinueJob(failed.continuationRunId))
                 .catch((error) => getLogger().error("steering continuation enqueue", error));
