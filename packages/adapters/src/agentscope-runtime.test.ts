@@ -154,6 +154,38 @@ describe("AgentScopeAgentRuntime", () => {
     });
   });
 
+  it("serializes TurnPolicy v2 constraints without an action selector", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const next = runRequest();
+    next.turnPolicy = {
+      version: "v2",
+      interaction: { interactive: true },
+      planning: { mode: "auto" },
+      delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
+      ownership: { mode: "owner", ownerBotId: "bot-1" },
+      routing: { kind: "direct" },
+      budget: { maxTokens: 200_000, maxCostUsd: 1, maxDurationSec: 900, maxToolCalls: 50, maxChildAgents: 3, maxDepth: 1 },
+      approval: { timeoutSec: 86_400, onTimeout: "expire" },
+      retry: { maxAuto: 2, retryable: ["llm_timeout", "network_error"] },
+      subagent: { permissionInheritance: "subset-readonly" },
+    };
+    for await (const _event of runtime.run(next, runContext())) {
+      // drain
+    }
+    expect(fixture.requests[0]).toMatchObject({ turnPolicy: {
+      version: "v2",
+      budget: { maxTokens: 200_000, maxToolCalls: 50 },
+      approval: { timeoutSec: 86_400, onTimeout: "expire" },
+      retry: { maxAuto: 2 },
+      subagent: { permissionInheritance: "subset-readonly" },
+    } });
+    expect((fixture.requests[0] as { turnPolicy: Record<string, unknown> }).turnPolicy).not.toHaveProperty("action");
+  });
+
   it("serializes scoped skills for AgentScope on-demand loading", async () => {
     const fixture = await listen((_request, response) => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });

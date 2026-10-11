@@ -37,8 +37,8 @@ describe("resolveTurnPolicy", () => {
   it("gives an ordinary chat owner the full automatic policy", () => {
     expect(
       resolveTurnPolicy({ source: "chat", ownerBotId: "alice", routingKind: "group_router" }),
-    ).toEqual({
-      version: "v1",
+    ).toMatchObject({
+      version: "v2",
       interaction: { interactive: true },
       planning: { mode: "auto" },
       delegation: {
@@ -50,6 +50,12 @@ describe("resolveTurnPolicy", () => {
       ownership: { mode: "owner", ownerBotId: "alice" },
       routing: { kind: "group_router" },
     });
+    const policy = resolveTurnPolicy({ source: "chat", ownerBotId: "alice" });
+    expect(policy.budget).toMatchObject({ maxTokens: 200_000, maxToolCalls: 50 });
+    expect(policy.approval).toEqual({ timeoutSec: 86_400, onTimeout: "expire" });
+    expect(policy.retry).toMatchObject({ maxAuto: 2 });
+    expect(policy.subagent).toEqual({ permissionInheritance: "subset-readonly" });
+    expect(policy).not.toHaveProperty("action");
   });
 
   it("never lets bot_message cooperation stall on plan approval or backgrounds", () => {
@@ -79,7 +85,7 @@ describe("resolveTurnPolicy", () => {
 });
 
 describe("orchestration execution snapshot", () => {
-  it("round-trips the execution block through the v1 snapshot", () => {
+  it("round-trips v2 constraints in the immutable orchestration execution block", () => {
     const policy = resolveTurnPolicy({ source: "automation", ownerBotId: "ops" });
     const snapshot = buildRunOrchestration({
       kind: "automation",
@@ -88,10 +94,15 @@ describe("orchestration execution snapshot", () => {
       execution: orchestrationExecution(policy),
     });
     const parsed = parseRunOrchestration(JSON.parse(JSON.stringify(snapshot)));
-    expect(parsed?.execution).toEqual({
+    expect(parsed?.execution).toMatchObject({
+      version: "v2",
       interactive: false,
       planning: "disabled",
       delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
+      budget: { maxTokens: 500_000, maxToolCalls: 150 },
+      approval: { timeoutSec: 86_400, onTimeout: "expire" },
+      retry: { maxAuto: 2 },
+      subagent: { permissionInheritance: "subset-readonly" },
     });
   });
 
@@ -133,6 +144,39 @@ describe("turnPolicyFromRun", () => {
     expect(policy.delegation.maxChildren).toBe(1);
     expect(policy.ownership.ownerBotId).toBe("coding");
     expect(policy.routing.kind).toBe("group_router");
+    expect(policy.version).toBe("v2");
+    expect(policy.budget.maxTokens).toBe(200_000);
+    expect(policy.subagent.permissionInheritance).toBe("subset-readonly");
+  });
+
+  it("keeps a stored v2 budget and applies an explicit owner increase", () => {
+    const original = resolveTurnPolicy({ source: "chat", ownerBotId: "alice" });
+    original.budget.maxTokens = 120_000;
+    const orchestration = buildRunOrchestration({
+      kind: "direct", ownerBotId: "alice", responseMode: "single",
+      execution: orchestrationExecution(original),
+    });
+    const policy = turnPolicyFromRun({
+      trigger: "user", ownerBotId: "alice", orchestration,
+      budgetOverride: { maxTokens: 400_000 },
+    });
+    expect(policy.budget.maxTokens).toBe(400_000);
+    expect(policy.retry.maxAuto).toBe(2);
+  });
+
+  it("fails closed when a stored v2 constraint block is malformed", () => {
+    const orchestration = buildRunOrchestration({
+      kind: "direct", ownerBotId: "alice", responseMode: "single",
+      execution: orchestrationExecution(resolveTurnPolicy({ source: "chat", ownerBotId: "alice" })),
+    });
+    const corrupted = {
+      ...orchestration,
+      execution: { ...orchestration.execution, budget: { maxTokens: "unlimited" } },
+    };
+    const policy = turnPolicyFromRun({ trigger: "user", ownerBotId: "alice", orchestration: corrupted });
+    expect(policy.planning.mode).toBe("disabled");
+    expect(policy.delegation.maxChildren).toBe(0);
+    expect(policy.budget.maxChildAgents).toBe(0);
   });
 
   it("pins ownership and routing from a Phase 1 snapshot without an execution block", () => {

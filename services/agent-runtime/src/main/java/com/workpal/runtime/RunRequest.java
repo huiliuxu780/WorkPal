@@ -73,14 +73,28 @@ public record RunRequest(
      * native capability; auxiliary scopes are already capability-free.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record TurnPolicy(Boolean interactive, String planning, Delegation delegation,
-            Ownership ownership, String routingKind) {
+    public record TurnPolicy(String version, Boolean interactive, String planning, Delegation delegation,
+            Ownership ownership, String routingKind, Budget budget, Approval approval,
+            Retry retry, Subagent subagent) {
 
         @JsonIgnoreProperties(ignoreUnknown = true)
         public record Delegation(String mode, Boolean background, Integer maxChildren, Integer maxDepth) {}
 
         @JsonIgnoreProperties(ignoreUnknown = true)
         public record Ownership(String mode, String ownerBotId) {}
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public record Budget(Integer maxTokens, Double maxCostUsd, Integer maxDurationSec,
+                Integer maxToolCalls, Integer maxChildAgents, Integer maxDepth) {}
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public record Approval(Integer timeoutSec, String onTimeout) {}
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public record Retry(Integer maxAuto, List<String> retryable) {}
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public record Subagent(String permissionInheritance) {}
     }
 
     /**
@@ -144,6 +158,27 @@ public record RunRequest(
         if (sessionGeneration != null && sessionGeneration < 0) {
             throw new IllegalArgumentException("Session generation must be non-negative");
         }
+        if (turnPolicy != null && "v2".equals(turnPolicy.version())) {
+            TurnPolicy.Budget budget = turnPolicy.budget();
+            TurnPolicy.Approval approval = turnPolicy.approval();
+            TurnPolicy.Retry retry = turnPolicy.retry();
+            TurnPolicy.Subagent subagent = turnPolicy.subagent();
+            if (budget == null || budget.maxTokens() == null || budget.maxTokens() < 0
+                    || budget.maxCostUsd() == null || !Double.isFinite(budget.maxCostUsd()) || budget.maxCostUsd() < 0
+                    || budget.maxDurationSec() == null || budget.maxDurationSec() < 0
+                    || budget.maxToolCalls() == null || budget.maxToolCalls() < 0
+                    || budget.maxChildAgents() == null || budget.maxChildAgents() < 0
+                    || budget.maxDepth() == null || budget.maxDepth() < 0
+                    || approval == null || approval.timeoutSec() == null || approval.timeoutSec() < 0
+                    || !"expire".equals(approval.onTimeout())
+                    || retry == null || retry.maxAuto() == null || retry.maxAuto() < 0
+                    || retry.retryable() == null
+                    || subagent == null || !"subset-readonly".equals(subagent.permissionInheritance())) {
+                throw new IllegalArgumentException("Invalid v2 TurnPolicy constraints");
+            }
+        } else if (turnPolicy != null && turnPolicy.version() != null && !"v1".equals(turnPolicy.version())) {
+            throw new IllegalArgumentException("Unsupported TurnPolicy version");
+        }
         if (toolBridge != null) {
             if (toolBridge.identity == null || !identity.equals(toolBridge.identity) || blank(toolBridge.token)) {
                 throw new IllegalArgumentException("Tool bridge identity is missing or mismatched");
@@ -201,9 +236,15 @@ public record RunRequest(
         if (turnPolicy == null || turnPolicy.delegation() == null
                 || turnPolicy.delegation().maxChildren() == null
                 || turnPolicy.delegation().maxChildren() < 0) {
-            return 3;
+            return turnPolicy != null && turnPolicy.budget() != null
+                    && turnPolicy.budget().maxChildAgents() != null
+                    ? Math.min(3, Math.max(0, turnPolicy.budget().maxChildAgents())) : 3;
         }
-        return turnPolicy.delegation().maxChildren();
+        int delegated = turnPolicy.delegation().maxChildren();
+        if (turnPolicy.budget() != null && turnPolicy.budget().maxChildAgents() != null) {
+            return Math.min(delegated, Math.max(0, turnPolicy.budget().maxChildAgents()));
+        }
+        return delegated;
     }
 
     public boolean interactive() {

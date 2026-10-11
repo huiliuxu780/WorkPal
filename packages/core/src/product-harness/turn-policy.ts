@@ -1,4 +1,6 @@
-import { type OrchestrationExecutionV1, parseRunOrchestration } from "./orchestration.js";
+import { budgetWithOverride, runBudgetForInteraction, type RunBudget } from "../run-budget.js";
+import { RUN_RETRY_DELAYS_MS, type AutomaticRetryReason } from "../retry-policy.js";
+import { type OrchestrationExecutionV2, parseRunOrchestration } from "./orchestration.js";
 import type { TurnRouteKind } from "./response-owner.js";
 
 /**
@@ -18,7 +20,7 @@ export type TurnDelegationMode = "disabled" | "auto";
 
 export type TurnPolicyRoutingKind = TurnRouteKind;
 
-export type TurnPolicy = {
+export type TurnPolicyV1 = {
   version: "v1";
   interaction: { interactive: boolean };
   planning: { mode: TurnPlanningMode };
@@ -31,6 +33,42 @@ export type TurnPolicy = {
   ownership: { mode: "owner" | "support"; ownerBotId: string };
   routing: { kind: TurnPolicyRoutingKind };
 };
+
+export type TurnPolicy = Omit<TurnPolicyV1, "version"> & {
+  version: "v2";
+  budget: RunBudget;
+  approval: { timeoutSec: number; onTimeout: "expire" };
+  retry: { maxAuto: number; retryable: AutomaticRetryReason[] };
+  subagent: { permissionInheritance: "subset-readonly" };
+};
+
+export const DEFAULT_APPROVAL_TIMEOUT_SEC = 86_400;
+export const DEFAULT_RETRYABLE_REASONS: readonly AutomaticRetryReason[] = [
+  "llm_timeout", "network_error", "provider_5xx", "lease_lost",
+];
+
+function upgradeTurnPolicy(
+  legacy: TurnPolicyV1,
+  stored?: Pick<TurnPolicy, "budget" | "approval" | "retry" | "subagent">,
+  budgetOverride?: unknown,
+): TurnPolicy {
+  const budget = stored?.budget ?? runBudgetForInteraction(legacy.interaction.interactive);
+  return {
+    ...legacy,
+    version: "v2",
+    budget: {
+      ...budgetWithOverride(budget, budgetOverride),
+      maxChildAgents: Math.min(budget.maxChildAgents, legacy.delegation.maxChildren),
+      maxDepth: Math.min(budget.maxDepth, legacy.delegation.maxDepth),
+    },
+    approval: stored?.approval ?? { timeoutSec: DEFAULT_APPROVAL_TIMEOUT_SEC, onTimeout: "expire" },
+    retry: stored?.retry ?? {
+      maxAuto: RUN_RETRY_DELAYS_MS.length,
+      retryable: [...DEFAULT_RETRYABLE_REASONS],
+    },
+    subagent: stored?.subagent ?? { permissionInheritance: "subset-readonly" },
+  };
+}
 
 /** v1 budgets (Product Harness §5/§11): flat helper fan-out, no agent trees. */
 export const DEFAULT_DELEGATION_MAX_CHILDREN = 3;
@@ -78,52 +116,57 @@ export function resolveTurnPolicy(input: {
     case "bot_message":
       // Internal cooperation must never block on plan approval: a delegated
       // sub-task answers the requesting agent, not the user.
-      return {
+      return upgradeTurnPolicy({
         version: "v1",
         interaction: { interactive: false },
         planning: { mode: "disabled" },
         delegation: { ...delegation, background: false },
         ownership: { mode: "support", ownerBotId: input.ownerBotId },
         routing: { kind: input.routingKind ?? "bot_message" },
-      };
+      });
     case "handoff":
       // The target bot is the new response owner of this stage.
-      return {
+      return upgradeTurnPolicy({
         version: "v1",
         interaction: { interactive: true },
         planning: { mode: "auto" },
         delegation,
         ownership: { mode: "owner", ownerBotId: input.ownerBotId },
         routing: { kind: input.routingKind ?? "handoff" },
-      };
+      });
     case "automation":
       // No human in the loop: dangerous side effects are still gated by Tool
       // Approval — planning approval would strand the run.
-      return {
+      return upgradeTurnPolicy({
         version: "v1",
         interaction: { interactive: false },
         planning: { mode: "disabled" },
         delegation,
         ownership: { mode: "owner", ownerBotId: input.ownerBotId },
         routing: { kind: input.routingKind ?? "automation" },
-      };
+      });
     case "chat":
-      return {
+      return upgradeTurnPolicy({
         version: "v1",
         interaction: { interactive: true },
         planning: { mode: "auto" },
         delegation,
         ownership: { mode: "owner", ownerBotId: input.ownerBotId },
         routing: { kind: input.routingKind ?? "direct" },
-      };
+      });
   }
 }
 
-export function orchestrationExecution(policy: TurnPolicy): OrchestrationExecutionV1 {
+export function orchestrationExecution(policy: TurnPolicy): OrchestrationExecutionV2 {
   return {
+    version: "v2",
     interactive: policy.interaction.interactive,
     planning: policy.planning.mode,
     delegation: { ...policy.delegation },
+    budget: { ...policy.budget },
+    approval: { ...policy.approval },
+    retry: { maxAuto: policy.retry.maxAuto, retryable: [...policy.retry.retryable] },
+    subagent: { ...policy.subagent },
   };
 }
 
@@ -132,7 +175,7 @@ export function orchestrationExecution(policy: TurnPolicy): OrchestrationExecuti
  * and routing are not part of the execution block, so the owner id is a
  * placeholder here — snapshots carry the real values in their own fields.
  */
-export function turnExecutionForSource(source: TurnPolicySource): OrchestrationExecutionV1 {
+export function turnExecutionForSource(source: TurnPolicySource): OrchestrationExecutionV2 {
   return orchestrationExecution(resolveTurnPolicy({ source, ownerBotId: "turn-owner" }));
 }
 
@@ -146,24 +189,44 @@ export function turnPolicyFromRun(input: {
   trigger: string;
   ownerBotId: string;
   orchestration: unknown;
+  budgetOverride?: unknown;
 }): TurnPolicy {
   if (input.trigger === "delivery") {
     const policy = resolveTurnPolicy({ source: "automation", ownerBotId: input.ownerBotId });
-    return {
+    return upgradeTurnPolicy({
       ...policy,
+      version: "v1",
       delegation: { mode: "disabled", background: false, maxChildren: 0, maxDepth: 0 },
-    };
+    }, undefined, input.budgetOverride);
   }
   const snapshot = parseRunOrchestration(input.orchestration);
-  if (snapshot?.execution) {
-    return {
+  const rawExecution = input.orchestration && typeof input.orchestration === "object"
+    ? (input.orchestration as { execution?: unknown }).execution
+    : undefined;
+  if (rawExecution && typeof rawExecution === "object" &&
+      (rawExecution as { version?: unknown }).version === "v2" && !snapshot?.execution) {
+    // A corrupt v2 constraint block must not silently regain planning or helper access.
+    return upgradeTurnPolicy({
       version: "v1",
-      interaction: { interactive: snapshot.execution.interactive },
-      planning: { mode: snapshot.execution.planning },
-      delegation: { ...snapshot.execution.delegation },
+      interaction: { interactive: false },
+      planning: { mode: "disabled" },
+      delegation: { mode: "disabled", background: false, maxChildren: 0, maxDepth: 0 },
+      ownership: snapshot
+        ? { mode: snapshot.ownership.mode, ownerBotId: snapshot.ownership.ownerBotId }
+        : { mode: "owner", ownerBotId: input.ownerBotId },
+      routing: { kind: snapshot?.routing.kind ?? "direct" },
+    }, undefined, input.budgetOverride);
+  }
+  if (snapshot?.execution) {
+    const execution = snapshot.execution;
+    return upgradeTurnPolicy({
+      version: "v1",
+      interaction: { interactive: execution.interactive },
+      planning: { mode: execution.planning },
+      delegation: { ...execution.delegation },
       ownership: { mode: snapshot.ownership.mode, ownerBotId: snapshot.ownership.ownerBotId },
       routing: { kind: snapshot.routing.kind },
-    };
+    }, "version" in execution && execution.version === "v2" ? execution : undefined, input.budgetOverride);
   }
   const base = resolveTurnPolicy({
     source: turnPolicySourceForTrigger(input.trigger),
@@ -171,11 +234,14 @@ export function turnPolicyFromRun(input: {
   });
   if (snapshot) {
     // A pre-Phase-2 snapshot still pins ownership and routing exactly.
-    return {
+    const pinned = {
       ...base,
       ownership: { mode: snapshot.ownership.mode, ownerBotId: snapshot.ownership.ownerBotId },
       routing: { kind: snapshot.routing.kind },
     };
+    return input.budgetOverride
+      ? upgradeTurnPolicy({ ...pinned, version: "v1" }, undefined, input.budgetOverride)
+      : pinned;
   }
-  return base;
+  return input.budgetOverride ? upgradeTurnPolicy({ ...base, version: "v1" }, undefined, input.budgetOverride) : base;
 }

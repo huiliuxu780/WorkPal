@@ -2,7 +2,6 @@ import type { AgentRuntime } from "@rakazo/adapter-kit";
 import {
   BUDGET_ACTIONS,
   budgetWithOverride,
-  runBudgetForInteraction,
   runBudgetViolations,
   turnPolicyFromRun,
 } from "@rakazo/core";
@@ -32,7 +31,7 @@ export async function enforceRunBudgets(
       orchestration: run.orchestration,
     });
     const budget = budgetWithOverride(
-      runBudgetForInteraction(policy.interaction.interactive),
+      policy.budget,
       run.budgetOverride,
     );
     const [usage, toolCalls, attempts] = await Promise.all([

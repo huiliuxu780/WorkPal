@@ -422,8 +422,7 @@ export interface AgentCollaborationContext {
  * structural contract lives here). `serializableRequest` flattens it to the
  * runtime's wire shape; the runtime never re-derives routing.
  */
-export interface AgentTurnPolicy {
-  version: "v1";
+interface AgentTurnPolicyBase {
   interaction: { interactive: boolean };
   planning: { mode: "disabled" | "auto" };
   delegation: {
@@ -435,6 +434,21 @@ export interface AgentTurnPolicy {
   ownership: { mode: "owner" | "support"; ownerBotId: string };
   routing: { kind: string };
 }
+
+export type AgentTurnPolicy = (AgentTurnPolicyBase & { version: "v1" }) | (AgentTurnPolicyBase & {
+  version: "v2";
+  budget: {
+    maxTokens: number;
+    maxCostUsd: number;
+    maxDurationSec: number;
+    maxToolCalls: number;
+    maxChildAgents: number;
+    maxDepth: number;
+  };
+  approval: { timeoutSec: number; onTimeout: "expire" };
+  retry: { maxAuto: number; retryable: string[] };
+  subagent: { permissionInheritance: "subset-readonly" };
+});
 
 export interface AgentRunRequest {
   botId: string;

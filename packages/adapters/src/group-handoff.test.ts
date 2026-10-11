@@ -172,16 +172,17 @@ describe("group handoff ownership", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           botId: "bot-b",
-          orchestration: {
+          orchestration: expect.objectContaining({
             version: "v1",
             routing: { kind: "handoff" },
             ownership: { mode: "owner", ownerBotId: "bot-b" },
             responseMode: "single",
-            execution: {
+            execution: expect.objectContaining({
+              version: "v2",
               interactive: true,
               planning: "auto",
               delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
-            },
+            }),
             collaboration: {
               role: "owner",
               source: "handoff",
@@ -190,7 +191,7 @@ describe("group handoff ownership", () => {
               handoffDepth: 1,
               messageHop: 0,
             },
-          },
+          }),
         }),
       }),
     );

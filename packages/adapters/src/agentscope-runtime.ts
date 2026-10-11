@@ -570,6 +570,7 @@ function serializableRequest(
     // runtime enforces it and never re-derives it.
     turnPolicy: request.turnPolicy
       ? {
+          version: request.turnPolicy.version,
           interactive: request.turnPolicy.interaction.interactive,
           planning: request.turnPolicy.planning.mode,
           delegation: {
@@ -583,6 +584,12 @@ function serializableRequest(
             ownerBotId: request.turnPolicy.ownership.ownerBotId,
           },
           routingKind: request.turnPolicy.routing.kind,
+          ...(request.turnPolicy.version === "v2" ? {
+            budget: request.turnPolicy.budget,
+            approval: request.turnPolicy.approval,
+            retry: request.turnPolicy.retry,
+            subagent: request.turnPolicy.subagent,
+          } : {}),
         }
       : undefined,
     collaborationContext: request.collaborationContext
