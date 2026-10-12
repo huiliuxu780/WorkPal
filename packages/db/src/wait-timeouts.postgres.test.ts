@@ -3,6 +3,7 @@ import { buildRunOrchestration } from "@rakazo/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
 import { createDb, type PrismaClient } from "./client.js";
+import { finalizeRun } from "./events.js";
 import { createThreadMessage } from "./messages.js";
 import { scheduleAutomaticRunRetry } from "./retry-runs.js";
 import { expireWaitingRuns, WAIT_TIMEOUT_MS } from "./wait-timeouts.js";
@@ -357,5 +358,45 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
       ),
     ).toBeNull();
     expect(await prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(2);
+  });
+
+  it("retries a lost lease only after expiry and refuses to finalize a renewed lease", async () => {
+    const task = await prisma.task.create({
+      data: { spaceId: id, userId: id, botId, threadId, prompt: "Lease recovery", status: "running" },
+    });
+    const now = new Date();
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id, userId: id, botId, threadId, taskId: task.id,
+        status: "running", trigger: "user", leaseOwner: "lost-worker", leaseFence: 1,
+        leaseExpiresAt: new Date(now.getTime() + 60_000),
+      },
+    });
+    const attempt = await prisma.attempt.create({
+      data: { runId: run.id, fence: 1, status: "running" },
+    });
+    const recovery = {
+      runId: run.id, attemptId: attempt.id, leaseOwner: "lost-worker", leaseFence: 1,
+      reason: "lease_lost" as const, error: "Execution lease expired",
+    };
+    expect(await scheduleAutomaticRunRetry(prisma, recovery, now)).toBeNull();
+    expect(await finalizeRun(prisma, {
+      ...recovery,
+      spaceId: id, threadId, botId, taskId: task.id,
+      requireLeaseExpiredAt: now, outcome: "failed", error: recovery.error,
+    })).toBe(false);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "running", leaseOwner: "lost-worker",
+    });
+
+    await prisma.run.update({
+      where: { id: run.id }, data: { leaseExpiresAt: new Date(now.getTime() - 1_000) },
+    });
+    const retry = await scheduleAutomaticRunRetry(prisma, recovery, now);
+    expect(retry).toMatchObject({ retryAt: new Date(now.getTime() + 5_000), attempt: 2 });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "queued", retryAt: retry?.retryAt,
+    });
+    expect(await prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(1);
   });
 });
