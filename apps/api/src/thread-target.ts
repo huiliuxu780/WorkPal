@@ -1484,6 +1484,7 @@ export async function stopThreadRuns(
       executionLeaseExpiresAt: null,
     },
   });
+  return { cancelledRunIds: runIds };
 }
 
 export async function setThreadUnreadState(

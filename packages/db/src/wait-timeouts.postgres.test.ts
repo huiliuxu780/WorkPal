@@ -221,6 +221,25 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
         }),
       },
     });
+    const grandchildTask = await prisma.task.create({
+      data: {
+        spaceId: id, userId: id, botId: childBot.id, threadId: childThread.id,
+        prompt: "Nested delegated work", status: "running",
+      },
+    });
+    const grandchild = await prisma.run.create({
+      data: {
+        spaceId: id, userId: id, botId: childBot.id, threadId: childThread.id,
+        taskId: grandchildTask.id, status: "running", trigger: "bot_message",
+        orchestration: buildRunOrchestration({
+          kind: "bot_message", ownerBotId: childBot.id, responseMode: "single",
+          collaboration: {
+            role: "support", source: "bot_message", fromBotId: childBot.id,
+            parentRunId: child.id, handoffDepth: 1, messageHop: 2,
+          },
+        }),
+      },
+    });
     await prisma.backgroundAgentTask.create({
       data: {
         taskId: `child-background-${child.id}`,
@@ -249,11 +268,16 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
         blocks: [{ kind: "text", text: "Late child output" }],
       }),
     ).rejects.toThrow("Run cannot write thread history");
-    expect(await cancelChildrenOfCancelledRuns(prisma)).toEqual([
+    expect(await cancelChildrenOfCancelledRuns(prisma, [parent.run.id])).toEqual([
       expect.objectContaining({ id: child.id, threadId: childThread.id }),
+      expect.objectContaining({ id: grandchild.id, threadId: childThread.id }),
     ]);
     expect(await cancelChildrenOfCancelledRuns(prisma)).toEqual([]);
     expect(await prisma.run.findUniqueOrThrow({ where: { id: child.id } })).toMatchObject({
+      status: "cancelled",
+      error: "parent_cancelled",
+    });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: grandchild.id } })).toMatchObject({
       status: "cancelled",
       error: "parent_cancelled",
     });
