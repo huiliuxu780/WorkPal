@@ -4139,6 +4139,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 trigger: run.trigger,
                 ownerBotId: bot.id,
                 orchestration: run.orchestration,
+                budgetOverride: run.budgetOverride,
               }),
               collaborationContext: {
                 role: collaborationRole,

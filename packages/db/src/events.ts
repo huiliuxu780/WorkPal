@@ -20,7 +20,6 @@ import {
   messagingChannelId,
   resolveAskChoice,
   parseBudgetAskCheckpoint,
-  runBudgetForInteraction,
   turnPolicyFromRun,
   sanitizeJsonValue,
 } from "@rakazo/core";
@@ -729,11 +728,11 @@ async function commitAnswerRunInput(
 
   const increasedBudget = budgetAsk
     ? increasedBudgetForViolation(
-        runBudgetForInteraction(turnPolicyFromRun({
+        turnPolicyFromRun({
           trigger: run.trigger,
           ownerBotId: run.botId,
           orchestration: run.orchestration,
-        }).interaction.interactive),
+        }).budget,
         run.budgetOverride,
         budgetAsk,
       )

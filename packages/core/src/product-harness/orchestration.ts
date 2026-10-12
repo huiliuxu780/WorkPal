@@ -1,6 +1,8 @@
 import type { CollaborationLineageV1 } from "./collaboration.js";
 import type { GroupRouterReasonCode } from "./group-routing.js";
 import type { ResponseMode, TurnRouteKind } from "./response-owner.js";
+import type { RunBudget } from "../run-budget.js";
+import type { AutomaticRetryReason } from "../retry-policy.js";
 
 /**
  * Product Harness snapshot persisted on a Run the moment it is created
@@ -23,6 +25,14 @@ export type OrchestrationExecutionV1 = {
   };
 };
 
+export type OrchestrationExecutionV2 = OrchestrationExecutionV1 & {
+  version: "v2";
+  budget: RunBudget;
+  approval: { timeoutSec: number; onTimeout: "expire" };
+  retry: { maxAuto: number; retryable: AutomaticRetryReason[] };
+  subagent: { permissionInheritance: "subset-readonly" };
+};
+
 export type RunOrchestrationV1 = {
   version: typeof RUN_ORCHESTRATION_VERSION;
   routing: {
@@ -37,7 +47,7 @@ export type RunOrchestrationV1 = {
   };
   responseMode: ResponseMode;
   /** Absent on Phase 1 rows; readers must fall back to trigger-derived policy. */
-  execution?: OrchestrationExecutionV1;
+  execution?: OrchestrationExecutionV1 | OrchestrationExecutionV2;
   /** Phase 3 collaboration lineage; absent on pre-Phase-3 rows. */
   collaboration?: CollaborationLineageV1;
 };
@@ -60,7 +70,7 @@ export function buildRunOrchestration(input: {
   responseMode: ResponseMode;
   reasonCode?: GroupRouterReasonCode | null;
   ownershipMode?: "owner" | "support";
-  execution?: OrchestrationExecutionV1 | null;
+  execution?: OrchestrationExecutionV1 | OrchestrationExecutionV2 | null;
   collaboration?: CollaborationLineageV1 | null;
 }): RunOrchestrationV1 {
   const orchestration: RunOrchestrationV1 = {
@@ -111,7 +121,7 @@ function isReasonCode(value: unknown): value is GroupRouterReasonCode {
   );
 }
 
-export function parseOrchestrationExecution(value: unknown): OrchestrationExecutionV1 | null {
+export function parseOrchestrationExecution(value: unknown): OrchestrationExecutionV1 | OrchestrationExecutionV2 | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
   if (typeof raw.interactive !== "boolean") return null;
@@ -126,7 +136,7 @@ export function parseOrchestrationExecution(value: unknown): OrchestrationExecut
   if (typeof delegation.maxDepth !== "number" || !Number.isInteger(delegation.maxDepth) || delegation.maxDepth < 0) {
     return null;
   }
-  return {
+  const base: OrchestrationExecutionV1 = {
     interactive: raw.interactive,
     planning: raw.planning,
     delegation: {
@@ -135,6 +145,30 @@ export function parseOrchestrationExecution(value: unknown): OrchestrationExecut
       maxChildren: delegation.maxChildren,
       maxDepth: delegation.maxDepth,
     },
+  };
+  if (raw.version === undefined || raw.version === "v1") return base;
+  if (raw.version !== "v2") return null;
+  const budget = raw.budget as Record<string, unknown> | undefined;
+  const approval = raw.approval as Record<string, unknown> | undefined;
+  const retry = raw.retry as Record<string, unknown> | undefined;
+  const subagent = raw.subagent as Record<string, unknown> | undefined;
+  if (!budget || !approval || !retry || !subagent) return null;
+  for (const key of ["maxTokens", "maxCostUsd", "maxDurationSec", "maxToolCalls", "maxChildAgents", "maxDepth"]) {
+    const value = budget[key];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  }
+  if (typeof approval.timeoutSec !== "number" || !Number.isFinite(approval.timeoutSec) || approval.timeoutSec < 0 || approval.onTimeout !== "expire") return null;
+  if (typeof retry.maxAuto !== "number" || !Number.isInteger(retry.maxAuto) || retry.maxAuto < 0 || !Array.isArray(retry.retryable)) return null;
+  const allowedReasons = ["llm_timeout", "network_error", "provider_5xx", "lease_lost"];
+  if (!retry.retryable.every((reason) => allowedReasons.includes(String(reason)))) return null;
+  if (subagent.permissionInheritance !== "subset-readonly") return null;
+  return {
+    ...base,
+    version: "v2",
+    budget: budget as RunBudget,
+    approval: { timeoutSec: approval.timeoutSec, onTimeout: "expire" },
+    retry: { maxAuto: retry.maxAuto, retryable: [...retry.retryable] as AutomaticRetryReason[] },
+    subagent: { permissionInheritance: "subset-readonly" },
   };
 }
 

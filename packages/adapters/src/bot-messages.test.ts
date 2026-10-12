@@ -775,16 +775,17 @@ describe("collaboration lineage (Product Harness Phase 3)", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           trigger: "bot_message",
-          orchestration: {
+          orchestration: expect.objectContaining({
             version: "v1",
             routing: { kind: "bot_message" },
             ownership: { mode: "support", ownerBotId: "bot-target" },
             responseMode: "single",
-            execution: {
+            execution: expect.objectContaining({
+              version: "v2",
               interactive: false,
               planning: "disabled",
               delegation: { mode: "auto", background: false, maxChildren: 3, maxDepth: 1 },
-            },
+            }),
             collaboration: {
               role: "support",
               source: "bot_message",
@@ -793,7 +794,7 @@ describe("collaboration lineage (Product Harness Phase 3)", () => {
               handoffDepth: 0,
               messageHop: 1,
             },
-          },
+          }),
         }),
       }),
     );

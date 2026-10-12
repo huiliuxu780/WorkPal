@@ -31,6 +31,32 @@ class RunRequestPolicyTest {
         assertEquals("chat", request.routingKind());
     }
 
+    @Test void v2ConstraintsParseWithoutAnActionSelectorAndBoundNativeHelpers() throws Exception {
+        RunRequest request = parsed(
+                "\"turnPolicy\":{\"version\":\"v2\",\"interactive\":true,\"planning\":\"auto\","
+                        + "\"delegation\":{\"mode\":\"auto\",\"background\":true,\"maxChildren\":3,\"maxDepth\":1},"
+                        + "\"ownership\":{\"mode\":\"owner\",\"ownerBotId\":\"bot-1\"},\"routingKind\":\"direct\","
+                        + "\"budget\":{\"maxTokens\":200000,\"maxCostUsd\":1.0,\"maxDurationSec\":900,"
+                        + "\"maxToolCalls\":50,\"maxChildAgents\":1,\"maxDepth\":1},"
+                        + "\"approval\":{\"timeoutSec\":86400,\"onTimeout\":\"expire\"},"
+                        + "\"retry\":{\"maxAuto\":2,\"retryable\":[\"llm_timeout\",\"network_error\"]},"
+                        + "\"subagent\":{\"permissionInheritance\":\"subset-readonly\"}}"
+        );
+        assertEquals("v2", request.turnPolicy().version());
+        assertEquals(1, request.maxChildren());
+        assertEquals(50, request.turnPolicy().budget().maxToolCalls());
+        assertEquals("subset-readonly", request.turnPolicy().subagent().permissionInheritance());
+    }
+
+    @Test void v1PolicyRemainsReadableWithoutV2Constraints() throws Exception {
+        RunRequest request = parsed(
+                "\"turnPolicy\":{\"version\":\"v1\",\"interactive\":true,\"planning\":\"auto\","
+                        + "\"delegation\":{\"mode\":\"auto\",\"background\":true,\"maxChildren\":2,\"maxDepth\":1}}"
+        );
+        assertEquals(2, request.maxChildren());
+        assertNull(request.turnPolicy().budget());
+    }
+
     @Test void planningDisabledHidesPlanCapability() throws Exception {
         RunRequest request = parsed(
                 "\"turnPolicy\":{\"interactive\":false,\"planning\":\"disabled\","

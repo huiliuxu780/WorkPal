@@ -3739,16 +3739,17 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
     expect(tx.run.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         botId: "bot-1",
-        orchestration: {
+        orchestration: expect.objectContaining({
           version: "v1",
           routing: { kind: "direct" },
           ownership: { mode: "owner", ownerBotId: "bot-1" },
           responseMode: "single",
-          execution: {
+          execution: expect.objectContaining({
+            version: "v2",
             interactive: true,
             planning: "auto",
             delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
-          },
+          }),
           collaboration: {
             role: "owner",
             source: "user",
@@ -3757,7 +3758,7 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
             handoffDepth: 0,
             messageHop: 0,
           },
-        },
+        }),
       }),
     });
     // Single-bot threads never emit routing events: the owner is the thread itself.
