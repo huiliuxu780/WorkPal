@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AGENTLY_MAIL_MAX_RECIPIENTS,
   type AgentlyMailInvocation,
+  type AgentlyMailRunResult,
   AgentlyMailService,
   validateOutgoingMail,
 } from "./agently-mail.js";
 
 const signal = AbortSignal.timeout(5_000);
 
-function serviceWith(run: { code: number; stdout: string; stderr: string }) {
+function serviceWith(run: AgentlyMailRunResult) {
   const invoke = vi.fn<AgentlyMailInvocation>(async () => run);
   return { service: new AgentlyMailService({ invoke }), invoke };
 }
@@ -74,6 +75,30 @@ describe("AgentlyMailService.send", () => {
       signal,
     );
     expect(result).toEqual({ error: "Mail sending failed: daily send quota reached (50)" });
+  });
+
+  it("keeps a killed send uncertain instead of claiming failure or success", async () => {
+    const { service } = serviceWith({
+      code: -1,
+      stdout: "",
+      stderr: "",
+      timedOut: true,
+    });
+    const result = await service.send(
+      { to: ["bob@example.com"], subject: "Hi", text: "Hello" },
+      signal,
+    );
+    expect(result).toMatchObject({ uncertain: true });
+    expect(result).not.toHaveProperty("ok");
+  });
+
+  it("also treats an unexplained killed sender as uncertain", async () => {
+    const { service } = serviceWith({ code: -1, stdout: "", stderr: "" });
+    const result = await service.send(
+      { to: ["bob@example.com"], subject: "Hi", text: "Hello" },
+      signal,
+    );
+    expect(result).toMatchObject({ uncertain: true });
   });
 
   it("maps a missing binary to an operator-facing error", async () => {

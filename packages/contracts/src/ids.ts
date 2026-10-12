@@ -43,7 +43,12 @@ export type RunStatus = z.infer<typeof RunStatus>;
 export const WaitKind = z.enum(["input", "approval", "takeover"]);
 export type WaitKind = z.infer<typeof WaitKind>;
 
-export const EffectStatus = z.enum(["intended", "completed", "failed", "ambiguous", "reconciled"]);
+// Existing rows can contain legacy failed/ambiguous/reconciled values; the
+// executor currently writes approved/denied/executing/uncertain as well.
+export const EffectStatus = z.enum([
+  "intended", "approved", "denied", "executing", "completed", "uncertain",
+  "failed", "ambiguous", "reconciled",
+]);
 export type EffectStatus = z.infer<typeof EffectStatus>;
 
 export const MemoryScope = z.enum(["bot", "user"]);

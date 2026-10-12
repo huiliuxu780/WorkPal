@@ -73,8 +73,6 @@ export const RunEffectRowSchema = z.object({
   effectId: Id,
   kind: z.string(),
   status: z.string(),
-  request: z.unknown(),
-  result: z.unknown().nullable(),
   createdAt: z.string(),
 });
 export type RunEffectRow = z.infer<typeof RunEffectRowSchema>;

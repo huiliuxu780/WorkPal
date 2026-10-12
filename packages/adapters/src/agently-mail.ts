@@ -24,6 +24,7 @@ export interface AgentlyMailRunResult {
   code: number;
   stdout: string;
   stderr: string;
+  timedOut?: boolean;
 }
 
 export type AgentlyMailInvocation = (
@@ -40,7 +41,14 @@ export interface AgentlyMailServiceOptions {
 
 export type AgentlyMailResult =
   | { ok: true; sent_to: string[]; message_id?: string }
-  | { error: string };
+  | { error: string; uncertain?: true };
+
+function uncertainMailResult(): { error: string; uncertain: true } {
+  return {
+    error: "Mail sending was interrupted. It is unknown whether the recipient server accepted the message. Check the mailbox before sending again.",
+    uncertain: true,
+  };
+}
 
 const RECIPIENT_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
 
@@ -150,8 +158,12 @@ function spawnAgentlyCli(bin: string, timeoutMs: number): AgentlyMailInvocation 
         clearTimeout(timer);
         signal.removeEventListener("abort", onAbort);
       };
+      let timedOut = false;
       const onAbort = () => child.kill("SIGKILL");
-      const timer = setTimeout(onAbort, timeoutMs);
+      const timer = setTimeout(() => {
+        timedOut = true;
+        onAbort();
+      }, timeoutMs);
       signal.addEventListener("abort", onAbort, { once: true });
       child.once("error", (error) => {
         cleanup();
@@ -159,7 +171,7 @@ function spawnAgentlyCli(bin: string, timeoutMs: number): AgentlyMailInvocation 
       });
       child.once("close", (code) => {
         cleanup();
-        resolve({ code: code ?? -1, stdout, stderr });
+        resolve({ code: code ?? -1, stdout, stderr, timedOut });
       });
     });
 }
@@ -202,11 +214,13 @@ export class AgentlyMailService {
     try {
       run = await this.invoke(args, signal);
     } catch {
+      if (signal.aborted) return uncertainMailResult();
       return {
         error:
           "The mail sender (agently-cli) is unavailable on this server. Ask the operator to install it and complete agently-cli auth login.",
       };
     }
+    if (run.timedOut || signal.aborted || run.code < 0) return uncertainMailResult();
     const payload = parseJsonOutput(run.stdout);
     if (run.code !== 0 || payload?.ok === false) {
       return { error: failureText(run, payload) };

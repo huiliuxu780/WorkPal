@@ -4174,3 +4174,43 @@ msgstr "查看最近活动"
 #: src/components/ai/ExecutionActivity.tsx
 msgid "Earlier activities are not shown"
 msgstr "更早活动未显示"
+
+#: src/lib/effect-view.ts
+msgid "Approved; awaiting execution"
+msgstr "已批准，等待执行"
+
+#: src/lib/effect-view.ts
+msgid "Awaiting execution"
+msgstr "等待执行"
+
+#: src/lib/effect-view.ts
+msgid "Call failed"
+msgstr "调用失败"
+
+#: src/lib/effect-view.ts
+msgid "Call recorded as completed"
+msgstr "调用记录为已完成"
+
+#: src/lib/effect-view.ts
+msgid "Cannot confirm whether the external system accepted or performed this action. Check it before trying again."
+msgstr "无法确认外部系统是否受理或执行了此操作；再次操作前请先核对。"
+
+#: src/lib/effect-view.ts
+msgid "Execution claimed; outcome unconfirmed"
+msgstr "已领取执行权，结果尚未确认"
+
+#: src/lib/effect-view.ts
+msgid "Reconciled"
+msgstr "已核对"
+
+#: src/lib/effect-view.ts
+msgid "Request denied"
+msgstr "请求已拒绝"
+
+#: src/lib/effect-view.ts
+msgid "Result unconfirmed"
+msgstr "结果待确认"
+
+#: src/lib/effect-view.ts
+msgid "Status unconfirmed"
+msgstr "状态未确认"
