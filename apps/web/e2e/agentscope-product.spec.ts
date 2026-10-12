@@ -268,3 +268,129 @@ test("Web chat receives a native Harness subagent result", async ({ page }) => {
     await intro.close();
   }
 });
+
+test("Java publishes a structured Plan and Step into one Web execution", async ({ page }) => {
+  test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
+  const intro = await startModelEmulator({
+    apiKey: "web-structured-fixture-key",
+    steps: [{ expect() {}, response: { type: "text", text: "Ready to work." } }],
+  });
+  let task: Awaited<ReturnType<typeof startModelEmulator>> | undefined;
+  try {
+    await signup(page, `java-structured-${Date.now()}@rakazo.test`, "password12", "Java Structured");
+    await page.waitForURL(/\/(onboarding|app)/);
+    await rpc(page, "models/connect", {
+      provider: intro.model.provider,
+      modelId: intro.model.id,
+      baseUrl: intro.baseUrl,
+      apiKey: "web-structured-fixture-key",
+    });
+    await page.reload();
+    await completeOnboarding(page);
+    const botId = activeBotId(page);
+    await expect.poll(async () => {
+      const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", { botId });
+      return thread.run?.status ?? "completed";
+    }, { timeout: 30_000 }).toBe("completed");
+
+    task = await startModelEmulator({
+      apiKey: "web-structured-fixture-key",
+      steps: [
+        {
+          expect(request) {
+            expect(request.tools?.some((tool) => tool.function.name === "publish_run_plan")).toBe(true);
+          },
+          response: {
+            type: "tool", id: "plan-create", name: "publish_run_plan",
+            arguments: {
+              expectedRevision: 0,
+              goal: "Complete the structured fixture",
+              items: [{ id: "inspect", title: "Inspect fixture", status: "active" }],
+            },
+          },
+        },
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain("plan-create");
+          },
+          response: {
+            type: "tool", id: "step-create", name: "publish_run_step",
+            arguments: {
+              stepId: "inspect-step", expectedRevision: 0, order: 0,
+              title: "Inspect fixture", status: "running", planItemId: "inspect",
+            },
+          },
+        },
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain("step-create");
+          },
+          response: {
+            type: "tool", id: "step-complete", name: "publish_run_step",
+            arguments: {
+              stepId: "inspect-step", expectedRevision: 1, order: 0,
+              title: "Inspect fixture", status: "completed", planItemId: "inspect",
+              resultSummary: "Fixture inspected",
+            },
+          },
+        },
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain("step-complete");
+          },
+          response: {
+            type: "tool", id: "plan-complete", name: "publish_run_plan",
+            arguments: {
+              expectedRevision: 1,
+              goal: "Complete the structured fixture",
+              changeReason: "Inspection finished",
+              items: [{ id: "inspect", title: "Inspect fixture", status: "completed" }],
+            },
+          },
+        },
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain("plan-complete");
+          },
+          response: { type: "text", text: "Structured fixture completed." },
+        },
+      ],
+    });
+    await rpc(page, "models/connect", {
+      provider: task.model.provider,
+      modelId: task.model.id,
+      baseUrl: task.baseUrl,
+      apiKey: "web-structured-fixture-key",
+    });
+    await rpc(page, "bots/update", {
+      botId,
+      modelProvider: task.model.provider,
+      modelId: task.model.id,
+    });
+    await page.getByPlaceholder(/Message/).fill("Complete the structured fixture.");
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("transcript").getByText("Structured fixture completed.")).toBeVisible({ timeout: 40_000 });
+    const snapshot = await rpc<{
+      plans?: Array<{ runId: string; revision: number; items: Array<{ status: string }> }>;
+      steps?: Array<{ runId: string; stepId: string; status: string }>;
+      recentRuns?: Array<{ id: string; status: string }>;
+    }>(page, "threads/get", { botId });
+    const plan = snapshot.plans?.find((row) => row.revision === 2);
+    expect(plan?.items[0]?.status).toBe("completed");
+    expect(snapshot.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ runId: plan?.runId, stepId: "inspect-step", status: "completed" }),
+    ]));
+    expect(snapshot.recentRuns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: plan?.runId, status: "completed" }),
+    ]));
+    const shell = page.locator(`[data-testid="execution-shell"][data-run-id="${plan?.runId}"]`);
+    await expect(shell).toHaveCount(1);
+    await shell.locator(":scope > button").click();
+    await expect(shell.locator('[data-slot="plan"]')).toBeVisible();
+    await expect(shell.locator('[data-slot="steps"]')).toBeVisible();
+    task.assertComplete();
+  } finally {
+    await task?.close();
+    await intro.close();
+  }
+});

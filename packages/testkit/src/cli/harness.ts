@@ -46,11 +46,23 @@ async function main() {
   const mode = integration ? "integration" : "e2e";
   const reportDir = path.resolve("test-report", mode);
   await mkdir(reportDir, { recursive: true });
-  const container = await new PostgreSqlContainer("postgres:16-alpine").start();
+  // Local Web acceptance can use an explicitly named disposable PostgreSQL database
+  // when a container runtime is unavailable. Integration suites still need clones.
+  const externalDatabaseUrl = process.env.WORKPAL_E2E_DATABASE_URL;
+  if (externalDatabaseUrl) {
+    const url = new URL(externalDatabaseUrl);
+    if (integration || !["localhost", "127.0.0.1"].includes(url.hostname) ||
+        !url.pathname.startsWith("/workpal_e2e_")) {
+      throw new Error("WORKPAL_E2E_DATABASE_URL must name a local workpal_e2e_ database in E2E mode");
+    }
+  }
+  const container = externalDatabaseUrl
+    ? undefined
+    : await new PostgreSqlContainer("postgres:16-alpine").start();
   let javaRuntime: Awaited<ReturnType<typeof startJavaRuntime>> | undefined;
   let javaRuntimeDirectory: string | undefined;
   try {
-    const databaseUrl = container.getConnectionUri();
+    const databaseUrl = externalDatabaseUrl ?? container!.getConnectionUri();
     const apiPort = Number(process.env.API_PORT ?? 3110);
     const webPort = Number(process.env.WEB_PORT ?? 5180);
     const webOrigin = `http://127.0.0.1:${webPort}`;
@@ -119,12 +131,12 @@ async function main() {
       // Each app reconciles all durable work in its database, including intentionally
       // unfinished fixture runs. Clone the pristine migrated schema so one suite
       // cannot execute another suite's backlog or wait for it during shutdown.
-      const template = container.getDatabase().replaceAll('"', '""');
+      const template = container!.getDatabase().replaceAll('"', '""');
       const databaseCommand = async (statement: string) => {
-        const result = await container.exec([
+        const result = await container!.exec([
           "psql",
           "-U",
-          container.getUsername(),
+          container!.getUsername(),
           "-d",
           "postgres",
           "-v",
@@ -296,7 +308,7 @@ async function main() {
   } finally {
     await javaRuntime?.stop();
     if (javaRuntimeDirectory) await rm(javaRuntimeDirectory, { recursive: true, force: true });
-    await container.stop().catch(() => undefined);
+    await container?.stop().catch(() => undefined);
   }
 }
 
