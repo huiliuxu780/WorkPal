@@ -1,5 +1,6 @@
 import { t } from "@lingui/core/macro";
 import type { RunTodoSnapshot } from "@rakazo/contracts";
+import { memo } from "react";
 
 const marks: Record<RunTodoSnapshot["status"], string> = {
   pending: "○",
@@ -14,7 +15,7 @@ const labels: Record<RunTodoSnapshot["status"], () => string> = {
   deferred: () => t`Deferred`,
 };
 
-export function RunTodoList({ todos }: { todos: readonly RunTodoSnapshot[] }) {
+export const RunTodoList = memo(function RunTodoList({ todos }: { todos: readonly RunTodoSnapshot[] }) {
   if (todos.length === 0) return null;
   const ordered = [...todos].sort(
     (left, right) => left.order - right.order || left.todoId.localeCompare(right.todoId),
@@ -48,4 +49,4 @@ export function RunTodoList({ todos }: { todos: readonly RunTodoSnapshot[] }) {
       </ul>
     </section>
   );
-}
+});
