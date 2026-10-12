@@ -394,3 +394,98 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     await intro.close();
   }
 });
+
+test("Java background result reaches Web without another user message", async ({ page }) => {
+  test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
+  test.setTimeout(150_000);
+  const intro = await startModelEmulator({
+    apiKey: "web-background-fixture-key",
+    steps: [{ expect() {}, response: { type: "text", text: "Ready for background work." } }],
+  });
+  let task: Awaited<ReturnType<typeof startModelEmulator>> | undefined;
+  try {
+    await signup(page, `java-background-${Date.now()}@rakazo.test`, "password12", "Java Background");
+    await page.waitForURL(/\/(onboarding|app)/);
+    await rpc(page, "models/connect", {
+      provider: intro.model.provider,
+      modelId: intro.model.id,
+      baseUrl: intro.baseUrl,
+      apiKey: "web-background-fixture-key",
+    });
+    await page.reload();
+    await completeOnboarding(page);
+    const botId = activeBotId(page);
+    await expect.poll(async () => {
+      const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", { botId });
+      return thread.run?.status ?? "completed";
+    }, { timeout: 30_000 }).toBe("completed");
+
+    const finishBackground = (request: {
+      messages: Array<{ role: string; content?: unknown }>;
+    }) => {
+      const userMessages = request.messages
+        .filter((message) => message.role === "user")
+        .map((message) => JSON.stringify(message.content));
+      if (userMessages.some((content) => content.includes("Write one concise user-facing update"))) {
+        return { type: "text" as const, text: "Background delivery arrived: BACKGROUND_CHILD_RESULT." };
+      }
+      if (userMessages.some((content) => content.includes("BACKGROUND_CASE"))) {
+        return { type: "text" as const, text: "BACKGROUND_CHILD_RESULT" };
+      }
+      if (JSON.stringify(request.messages).includes("task_id:")) {
+        return { type: "text" as const, text: "Background task started." };
+      }
+      throw new Error("Unexpected background model turn");
+    };
+    task = await startModelEmulator({
+      apiKey: "web-background-fixture-key",
+      steps: [
+        {
+          expect(request) {
+            expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(true);
+          },
+          response: {
+            type: "tool", id: "background-spawn", name: "agent_spawn",
+            arguments: { agent_id: "helper", task: "BACKGROUND_CASE", timeout_seconds: 0 },
+          },
+        },
+        ...Array.from({ length: 3 }, () => ({
+          expect() {},
+          response: finishBackground,
+        })),
+      ],
+    });
+    await rpc(page, "models/connect", {
+      provider: task.model.provider,
+      modelId: task.model.id,
+      baseUrl: task.baseUrl,
+      apiKey: "web-background-fixture-key",
+    });
+    await rpc(page, "bots/update", {
+      botId,
+      modelProvider: task.model.provider,
+      modelId: task.model.id,
+    });
+    await page.getByPlaceholder(/Message/).fill("Start a background helper and tell me when it starts.");
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("transcript").getByText("Background task started.")).toBeVisible({ timeout: 40_000 });
+    const beforeDelivery = await rpc<{ messages: Array<{ role: string }> }>(page, "threads/get", { botId });
+    await expect(page.getByTestId("transcript").getByText(
+      "Background delivery arrived: BACKGROUND_CHILD_RESULT.",
+    )).toBeVisible({ timeout: 100_000 });
+    const afterDelivery = await rpc<{
+      messages: Array<{ role: string }>;
+      recentRuns?: Array<{ trigger: string; status: string }>;
+    }>(page, "threads/get", { botId });
+    expect(afterDelivery.messages.filter((message) => message.role === "user")).toHaveLength(
+      beforeDelivery.messages.filter((message) => message.role === "user").length,
+    );
+    expect(afterDelivery.recentRuns?.filter((run) => run.trigger === "delivery")).toEqual([
+      expect.objectContaining({ status: "completed" }),
+    ]);
+    task.assertComplete();
+  } finally {
+    await task?.close();
+    await intro.close();
+  }
+});

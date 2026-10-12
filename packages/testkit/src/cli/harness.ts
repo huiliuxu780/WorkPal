@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { deliveryDispatchJob } from "@rakazo/adapter-kit";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
@@ -204,6 +205,15 @@ async function main() {
       },
       integrationsCatalogUrl: "https://catalog.example.test/",
     });
+    // The production Worker schedules this sweep. The E2E harness hosts the same
+    // job handlers in-process, so it must schedule the sweep to test proactive
+    // delivery after the outbox merge window without a new user request.
+    const deliverySweep = setInterval(() => {
+      void handles.jobs.enqueue(deliveryDispatchJob()).catch((error) => {
+        console.error("E2E delivery dispatch scheduling failed", error);
+      });
+    }, 10_000);
+    deliverySweep.unref?.();
     let activeRequests = 0;
     const requestWaiters = new Set<() => void>();
     const server = serve({
@@ -264,6 +274,7 @@ async function main() {
         webPort,
       });
     } finally {
+      clearInterval(deliverySweep);
       const cleanupErrors: unknown[] = [];
       const computers = await managedComputers(handles).catch((error) => {
         cleanupErrors.push(error);
