@@ -347,6 +347,7 @@ model Bot {
   title             String            @default("")
   description       String            @default("")
   instructions      String            @default("")
+  capabilityRules    Json?
   color             String
   notifyOnFinish    Boolean           @default(true)
   pinned            Boolean           @default(false)

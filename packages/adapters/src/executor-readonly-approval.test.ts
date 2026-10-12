@@ -46,6 +46,7 @@ function fixture({
   readOnly = true,
   rules = [] as ActionApprovalRule[],
   autoReview = false,
+  capabilityRules = null as unknown,
   trigger = "user",
   secrets = [] as string[],
   prompt = "Read the item",
@@ -61,6 +62,7 @@ function fixture({
   readOnly?: boolean;
   rules?: ActionApprovalRule[];
   autoReview?: boolean;
+  capabilityRules?: unknown;
   trigger?: string;
   secrets?: string[];
   prompt?: string;
@@ -142,6 +144,7 @@ function fixture({
       }),
     },
     bot: {
+      findUnique: vi.fn(async () => ({ capabilityRules, archivedAt: null })),
       findUniqueOrThrow: vi.fn(async () => ({
         id: run.botId,
         name: bot.name,
@@ -231,6 +234,9 @@ function fixture({
     results,
     execute,
     pauseRunForInput,
+    setCapabilityRules(value: unknown) {
+      capabilityRules = value;
+    },
     setCalls(next: typeof calls) {
       calls = next;
     },
@@ -247,6 +253,29 @@ function fixture({
 describe("connector read-only metadata and approval enforcement", () => {
   beforeEach(() => {
     reviewMock.mockReset();
+  });
+
+  it("denies a connector tool at the executor boundary before it can execute", async () => {
+    const f = fixture({
+      capabilityRules: [{
+        capability: "demo_get_item", resource: "resource-1", scope: "bot", effect: "deny",
+      }],
+    });
+    await f.run();
+    expect(f.results[0]).toMatchObject({ error: expect.stringContaining("Capability rule denied") });
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.pauseRunForInput).not.toHaveBeenCalled();
+  });
+
+  it("requires approval for a read-only connector when its Bot rule asks", async () => {
+    const f = fixture({
+      capabilityRules: [{
+        capability: "demo_get_item", resource: "resource-1", scope: "bot", effect: "ask",
+      }],
+    });
+    await f.run();
+    expect(f.pauseRunForInput).toHaveBeenCalledOnce();
+    expect(f.execute).not.toHaveBeenCalled();
   });
 
   it.each(["shell", "write_file"])(
