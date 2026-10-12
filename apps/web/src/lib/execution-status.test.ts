@@ -46,4 +46,25 @@ describe("execution display status", () => {
   it("shows unknown when no root Run can be verified", () => {
     expect(deriveExecutionStatus(null, activity("planning")).status).toBe("unknown");
   });
+
+  it("uses pending intervention kinds when a projection is present", () => {
+    expect(
+      deriveExecutionStatus(run("waiting_input", "input"), [], {
+        pendingInterventionKinds: ["approval"],
+      }).status,
+    ).toBe("approval");
+    expect(
+      deriveExecutionStatus(run("waiting_input", "approval"), [], {
+        pendingInterventionKinds: ["input"],
+      }).status,
+    ).toBe("need_input");
+    expect(
+      deriveExecutionStatus(run("waiting_input", "approval"), [], {
+        pendingInterventionKinds: [],
+      }).status,
+    ).toBe("unknown");
+    expect(deriveExecutionStatus(run("running"), [], { pendingInterventionKinds: [] }).status).toBe(
+      "working",
+    );
+  });
 });

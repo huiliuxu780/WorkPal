@@ -1145,7 +1145,7 @@ describe("sendThreadMessage", () => {
     });
   });
 
-  it("continues every waiting run a free-text answer satisfies", async () => {
+  it("does not guess which waiting run a free-text answer satisfies", async () => {
     const waitingAsk = {
       id: "ask-1",
       blocks: [{ kind: "ask", text: "Which city should I use?", status: "pending" }],
@@ -1213,26 +1213,12 @@ describe("sendThreadMessage", () => {
           clientNonce: "nonce-ask-multi",
         },
       ),
-    ).resolves.toMatchObject({
-      runId: "run-waiting-1",
-      taskId: "task-1",
-      seq: 1,
-      runIds: ["run-waiting-1", "run-waiting-2"],
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "Answer the pending ask first.",
     });
-    expect(tx.run.updateMany).toHaveBeenCalledTimes(2);
-    expect(tx.event.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        type: "thread.message.created",
-        payload: expect.objectContaining({ runIds: ["run-waiting-1", "run-waiting-2"] }),
-      }),
-    });
-    expect(enqueue).toHaveBeenCalledTimes(2);
-    expect(enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "run.continue", payload: { runId: "run-waiting-1" } }),
-    );
-    expect(enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "run.continue", payload: { runId: "run-waiting-2" } }),
-    );
+    expect(tx.run.updateMany).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("replays every answered waiting run from a free-text send receipt", async () => {
@@ -1313,7 +1299,7 @@ describe("sendThreadMessage", () => {
     );
   });
 
-  it("continues every waiting run for a group bot after free-text answers", async () => {
+  it("does not guess which group waiting run a free-text answer satisfies", async () => {
     const waitingAsk = {
       id: "ask-1",
       blocks: [{ kind: "ask", text: "Which city should I use?", status: "pending" }],
@@ -1394,28 +1380,14 @@ describe("sendThreadMessage", () => {
           clientNonce: "nonce-ask-group-multi",
         },
       ),
-    ).resolves.toMatchObject({
-      runId: "run-waiting-1",
-      taskId: "task-1",
-      seq: 1,
-      runIds: ["run-waiting-1", "run-waiting-2"],
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "Answer the pending ask first.",
     });
-    expect(tx.run.updateMany).toHaveBeenCalledTimes(2);
+    expect(tx.run.updateMany).not.toHaveBeenCalled();
     expect(tx.task.create).not.toHaveBeenCalled();
     expect(tx.run.create).not.toHaveBeenCalled();
-    expect(tx.event.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        type: "thread.message.created",
-        payload: expect.objectContaining({ runIds: ["run-waiting-1", "run-waiting-2"] }),
-      }),
-    });
-    expect(enqueue).toHaveBeenCalledTimes(2);
-    expect(enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "run.continue", payload: { runId: "run-waiting-1" } }),
-    );
-    expect(enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "run.continue", payload: { runId: "run-waiting-2" } }),
-    );
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("still requires the card for a pending approval ask", async () => {

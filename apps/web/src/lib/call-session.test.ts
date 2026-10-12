@@ -45,6 +45,7 @@ vi.mock("./rpc.js", () => ({
   rpc: {
     threads: {
       answer: vi.fn(),
+      resolveIntervention: vi.fn(),
       endCall: vi.fn(async () => ({ ok: true })),
       followUp: vi.fn(),
       get: vi.fn(),

@@ -34,13 +34,16 @@ const tones = {
 export function ExecutionShell({
   run,
   activity,
+  pendingInterventionKinds,
   children,
 }: {
   run: Run | null;
   activity: readonly ActivityItem[];
+  /** Present only when the thread snapshot carries an Intervention projection. */
+  pendingInterventionKinds?: readonly ("approval" | "input")[];
   children: ReactNode;
 }) {
-  const status = deriveExecutionStatus(run, activity);
+  const status = deriveExecutionStatus(run, activity, { pendingInterventionKinds });
   const live = run && ["queued", "leased", "running", "waiting_input", "waiting_takeover"].includes(run.status);
   const [expanded, setExpanded] = useState(Boolean(live) || run?.status === "failed");
   const detailsId = useId();

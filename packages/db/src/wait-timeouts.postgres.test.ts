@@ -160,11 +160,15 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
       orderBy: { seq: "asc" },
     });
     expect(events.map((event) => event.type)).toEqual([
+      "intervention.resolved",
       "thread.message.updated",
       "approval.resolved",
       "run.cancelled",
     ]);
-    expect(events[1]?.payload).toMatchObject({ decision: "expired", approvalEffectId: effectId });
+    expect(events.find((event) => event.type === "approval.resolved")?.payload).toMatchObject({
+      decision: "expired",
+      approvalEffectId: effectId,
+    });
   });
 
   it("keeps the original wait deadline after an unrelated Run update", async () => {

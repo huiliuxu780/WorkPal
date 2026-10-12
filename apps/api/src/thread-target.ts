@@ -38,7 +38,7 @@ import {
 } from "@rakazo/core";
 import { deriveMessageQuote } from "@rakazo/core/message-quote";
 import {
-  answerWaitingRunWithTextInTransaction,
+  answerSingleOrdinaryTextInTransaction,
   appendEventInTransaction,
   cancelChildrenOfCancelledRuns,
   cancelRunsInTransaction,
@@ -48,6 +48,7 @@ import {
   currentThreadGeneration,
   expireComputerExecutionLeases,
   IsolationError,
+  loadInterventionViews,
   loadCurrentRunPlans,
   loadCurrentRunSteps,
   loadCurrentRunTodos,
@@ -652,7 +653,19 @@ export async function threadSnapshot(
         const plans = await loadCurrentRunPlans(tx, target.threadId);
         const steps = await loadCurrentRunSteps(tx, target.threadId);
         const todos = await loadCurrentRunTodos(tx, target.threadId);
-        return { messagePage, last, run: currentRun, recentTerminals, liveEvents, activity, plans, steps, todos };
+        const interventions = await loadInterventionViews(tx, target.threadId, messagePage.messages);
+        return {
+          messagePage,
+          last,
+          run: currentRun,
+          recentTerminals,
+          liveEvents,
+          activity,
+          plans,
+          steps,
+          todos,
+          interventions,
+        };
       }),
     ]);
     return {
@@ -668,6 +681,7 @@ export async function threadSnapshot(
       plans: core.plans,
       steps: core.steps,
       todos: core.todos,
+      interventions: core.interventions,
     };
   }
 
@@ -736,6 +750,7 @@ export async function threadSnapshot(
     const plans = await loadCurrentRunPlans(tx, target.threadId);
     const steps = await loadCurrentRunSteps(tx, target.threadId);
     const todos = await loadCurrentRunTodos(tx, target.threadId);
+    const interventions = await loadInterventionViews(tx, target.threadId, messagePage.messages);
     return {
       messagePage,
       last,
@@ -747,6 +762,7 @@ export async function threadSnapshot(
       plans,
       steps,
       todos,
+      interventions,
     };
   });
   const primaryActiveRun = pickPrimaryActiveRun(core.activeRuns);
@@ -772,6 +788,7 @@ export async function threadSnapshot(
     plans: core.plans,
     steps: core.steps,
     todos: core.todos,
+    interventions: core.interventions,
   };
 }
 
@@ -991,23 +1008,22 @@ export async function sendThreadMessage(
               message: "Answer the pending ask first.",
             });
           }
-          for (const run of waitingRuns) {
-            const answered = await answerWaitingRunWithTextInTransaction(tx, {
-              spaceId: actor.spaceId,
-              threadId: target.threadId,
-              runId: run.id,
-              answeredByUserId: actor.userId,
-              answer: answerText,
+          const answeredOne = await answerSingleOrdinaryTextInTransaction(tx, {
+            spaceId: actor.spaceId,
+            threadId: target.threadId,
+            answeredByUserId: actor.userId,
+            answer: answerText,
+            runIds: waitingRuns.map((run) => run.id),
+          });
+          const primary = answeredOne
+            ? waitingRuns.find((run) => run.id === answeredOne.runId)
+            : undefined;
+          if (!primary) {
+            throw new ORPCError("CONFLICT", {
+              message: "Answer the pending ask first.",
             });
-            if (!answered) {
-              throw new ORPCError("CONFLICT", {
-                message: "Answer the pending ask first.",
-              });
-            }
           }
-          const answered = waitingRuns.map((run) => ({ ...run, status: "queued" }));
-          const primary = answered[0];
-          if (!primary) throw new IsolationError();
+          const answered = [{ ...primary, status: "queued" }];
           await tx.message.update({ where: { id: message.id }, data: { runId: primary.id } });
           const event = await appendEventInTransaction(tx, {
             spaceId: actor.spaceId,
@@ -1169,33 +1185,31 @@ export async function sendThreadMessage(
       const conversationalBotIds = new Set(
         activeRuns.filter(steersUserMessage).map((run) => run.botId),
       );
-      for (const run of activeRuns) {
-        if (run.status === "waiting_input") {
-          if (conversationalBotIds.has(run.botId)) continue;
-          const answerText = input.text?.trim();
-          if (!answerText) {
-            throw new ORPCError("CONFLICT", {
-              message: "Answer the pending ask first.",
-            });
-          }
-          const answered = await answerWaitingRunWithTextInTransaction(tx, {
-            spaceId: actor.spaceId,
-            threadId: target.threadId,
-            runId: run.id,
-            answeredByUserId: actor.userId,
-            answer: answerText,
-          });
-          if (!answered) {
-            throw new ORPCError("CONFLICT", {
-              message: "Answer the pending ask first.",
-            });
-          }
-          const queuedRun = { ...run, status: "queued" };
-          const queuedForBot = answeredByBotId.get(run.botId);
-          if (queuedForBot) queuedForBot.push(queuedRun);
-          else answeredByBotId.set(run.botId, [queuedRun]);
-          continue;
+      const waitingRuns = activeRuns.filter(
+        (run) => run.status === "waiting_input" && !conversationalBotIds.has(run.botId),
+      );
+      if (waitingRuns.length > 0) {
+        const answerText = input.text?.trim();
+        if (!answerText) {
+          throw new ORPCError("CONFLICT", { message: "Answer the pending ask first." });
         }
+        const answeredOne = await answerSingleOrdinaryTextInTransaction(tx, {
+          spaceId: actor.spaceId,
+          threadId: target.threadId,
+          answeredByUserId: actor.userId,
+          answer: answerText,
+          runIds: waitingRuns.map((run) => run.id),
+        });
+        const matched = answeredOne
+          ? waitingRuns.find((run) => run.id === answeredOne.runId)
+          : undefined;
+        if (!matched) {
+          throw new ORPCError("CONFLICT", { message: "Answer the pending ask first." });
+        }
+        answeredByBotId.set(matched.botId, [{ ...matched, status: "queued" }]);
+      }
+      for (const run of activeRuns) {
+        if (run.status === "waiting_input") continue;
         if (!STEERABLE_RUN_STATUSES.has(run.status)) {
           throw new ORPCError("CONFLICT", {
             message: "Answer the pending ask first.",

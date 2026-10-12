@@ -86,6 +86,7 @@ import {
   IntegrationProviderConfigSchema,
   IntegrationSetupStateSchema,
 } from "./integration-settings.js";
+import { ResolveInterventionResultSchema } from "./intervention.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
@@ -351,6 +352,10 @@ export const appContract = {
       )
       .output(z.object({ ok: z.literal(true) })),
     clear: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
+    /**
+     * @deprecated Use threads.resolveIntervention. This adapter locates the
+     * Intervention from the message and keeps older Web, voice, and test clients working.
+     */
     answer: oc
       .input(
         threadTarget.safeExtend({
@@ -362,6 +367,18 @@ export const appContract = {
         }),
       )
       .output(z.object({ ok: z.literal(true) })),
+    resolveIntervention: oc
+      .input(
+        threadTarget.safeExtend({
+          interventionId: Id,
+          /** Opaque retry key. Must not be the answer or a hash of the answer. */
+          clientSubmissionId: z.string().min(8).max(200),
+          answer: z.string().min(1),
+          /** Only for a login card; `answer` carries its password. */
+          username: z.string().min(1).max(512).optional(),
+        }),
+      )
+      .output(ResolveInterventionResultSchema),
     markRead: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
     markUnread: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
   },

@@ -2,6 +2,7 @@ import * as z from "zod";
 import { BotAvatarValueSchema } from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
 import { Id, MemoryScope, RunStatus, SandboxKind, WaitKind } from "./ids.js";
+import { InterventionViewSchema } from "./intervention.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
 import { RunPlanRevisionSchema } from "./run-plans.js";
 import { RunStepSnapshotSchema } from "./run-steps.js";
@@ -956,6 +957,8 @@ export const ThreadSnapshotSchema = z.object({
   plans: z.array(RunPlanRevisionSchema).optional(),
   steps: z.array(RunStepSnapshotSchema).optional(),
   todos: z.array(RunTodoSnapshotSchema).optional(),
+  /** Pending Interventions for this thread. Absent on snapshots from older servers. */
+  interventions: z.array(InterventionViewSchema).optional(),
 });
 export type ThreadSnapshot = z.infer<typeof ThreadSnapshotSchema>;
 

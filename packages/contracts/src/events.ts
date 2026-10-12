@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
+import { InterventionEventPayloadSchema } from "./intervention.js";
 import { McpTransportSchema } from "./mcp.js";
 import { RunPlanRevisionSchema } from "./run-plans.js";
 import { RunStepSnapshotSchema } from "./run-steps.js";
@@ -56,6 +57,8 @@ export const ProductEventType = z.enum([
   "delivery.failed",
   "approval.requested",
   "approval.resolved",
+  "intervention.created",
+  "intervention.resolved",
   "computer.status",
   "computer.takeover.requested",
   "computer.takeover.granted",
@@ -122,6 +125,8 @@ export const ProductEventPayloadSchemas = {
     /** Older events lack this field; new decisions record the authorized Run owner. */
     decidedByUserId: Id.optional(),
   }),
+  "intervention.created": InterventionEventPayloadSchema,
+  "intervention.resolved": InterventionEventPayloadSchema,
 } as const;
 
 const stepStatusByType: Partial<Record<ProductEventType, string>> = {
@@ -195,6 +200,8 @@ export const MessageBlock = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("ask"),
     text: z.string(),
+    /** Server-minted Intervention id. Absent on asks created before the table existed. */
+    interventionId: Id.optional(),
     approvalEffectId: Id.optional(),
     detail: z.string().optional(),
     input: z.enum(["text", "secret"]).optional(),

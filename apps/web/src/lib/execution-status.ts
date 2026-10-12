@@ -25,7 +25,15 @@ export type ExecutionStatusView = {
 export function deriveExecutionStatus(
   run: Run | null | undefined,
   activity: readonly ActivityItem[],
-  options: { confirmedRootBackground?: boolean; blockedReason?: string | null } = {},
+  options: {
+    confirmedRootBackground?: boolean;
+    blockedReason?: string | null;
+    /**
+     * Pending Intervention kinds for this Run. When omitted, waitKind stays
+     * the header source so older snapshots keep their current labels.
+     */
+    pendingInterventionKinds?: readonly ("approval" | "input")[];
+  } = {},
 ): ExecutionStatusView {
   if (!run) {
     return { status: "unknown", label: i18n._("Status unknown"), detail: null, needsAttention: false };
@@ -49,6 +57,14 @@ export function deriveExecutionStatus(
   if (run.status === "cancelled")
     return view("cancelled", i18n._("Stopped"), background ? i18n._("Background task") : null);
   if (run.status === "waiting_input") {
+    const kinds = options.pendingInterventionKinds;
+    if (kinds) {
+      if (kinds.includes("approval"))
+        return view("approval", i18n._("Waiting for approval"), waiting?.title?.trim() || null, true);
+      if (kinds.includes("input"))
+        return view("need_input", i18n._("Waiting for your reply"), waiting?.title?.trim() || null, true);
+      return view("unknown", i18n._("Status unknown"), null, true);
+    }
     if (run.waitKind === "approval")
       return view("approval", i18n._("Waiting for approval"), waiting?.title?.trim() || null, true);
     if (run.waitKind === "input")

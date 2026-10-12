@@ -8,9 +8,11 @@ import type {
   ThreadSnapshot,
 } from "@rakazo/contracts";
 import {
+  InterventionEventPayloadSchema,
   RunPlanRevisionSchema,
   RunStepSnapshotSchema,
   RunTodoSnapshotSchema,
+  type InterventionView,
 } from "@rakazo/contracts";
 import {
   ACTIVITY_EVENT_TYPES,
@@ -284,6 +286,8 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "agent.tool.completed" ||
     event.type === "thread.message.created" ||
     event.type === "thread.message.updated" ||
+    event.type === "intervention.created" ||
+    event.type === "intervention.resolved" ||
     event.type === "thread.message.reaction" ||
     event.type === "run.started" ||
     event.type === "run.waiting_input" ||
@@ -376,6 +380,7 @@ function reduceThreadSnapshotBase(
       plans: [],
       steps: [],
       todos: [],
+      interventions: [],
     };
   }
   if (event.type === "plan.revised") {
@@ -701,6 +706,35 @@ function reduceThreadSnapshotBase(
     const { remaining } = takeLiveMessage(prev.messages, liveId);
     const without = remaining.filter((message) => !replacedSubagent(message, replacedSubagentIds));
     return { ...prev, cursor: event.seq, messages: upsertMessageById(without, next) };
+  }
+  if (event.type === "intervention.created" || event.type === "intervention.resolved") {
+    if (event.seq <= prev.cursor) return prev;
+    const parsed = InterventionEventPayloadSchema.safeParse(event.payload);
+    if (!parsed.success) return { ...prev, cursor: event.seq };
+    const payload = parsed.data;
+    const view: InterventionView = {
+      id: payload.interventionId,
+      revision: payload.revision,
+      kind: payload.kind,
+      status: payload.status,
+      spaceId: event.spaceId,
+      threadId: event.threadId,
+      runId: payload.runId,
+      attemptId: payload.attemptId,
+      botId: payload.botId,
+      messageId: payload.messageId,
+      createdAt: payload.createdAt,
+      ...(payload.expiresAt ? { expiresAt: payload.expiresAt } : {}),
+      ...(payload.resolvedAt ? { resolvedAt: payload.resolvedAt } : {}),
+      ...(payload.resolvedByUserId ? { resolvedByUserId: payload.resolvedByUserId } : {}),
+      requestingActor: payload.actor,
+      ...(payload.input ? { input: payload.input } : {}),
+      ...(payload.approval ? { approval: payload.approval } : {}),
+    };
+    const current = prev.interventions?.find((item) => item.id === view.id);
+    if (current && current.revision >= view.revision) return { ...prev, cursor: event.seq };
+    const rest = (prev.interventions ?? []).filter((item) => item.id !== view.id);
+    return { ...prev, cursor: event.seq, interventions: [view, ...rest] };
   }
   return prev;
 }

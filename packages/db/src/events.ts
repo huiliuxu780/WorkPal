@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { RealtimeFanout } from "@rakazo/adapter-kit";
 import {
   assertProductEventPayload,
@@ -26,6 +27,18 @@ import {
 import { getLogger } from "@rakazo/logging";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
+import {
+  type ResolveInterventionOutcome,
+  assertSafeClientSubmissionId,
+  emitInterventionCreated,
+  findOrdinaryTextAsks,
+  insertPausedIntervention,
+  InterventionRejected,
+  interventionStore,
+  legacyMessageId,
+  resolveInterventionInTransaction,
+  settleAnsweredIntervention,
+} from "./interventions.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { enqueueDeliveryInTransaction } from "./delivery-records.js";
 import {
@@ -54,6 +67,7 @@ export interface AppendEventInput {
 
 export interface ThreadEvents {
   answerRunInput(input: AnswerRunInput): Promise<boolean>;
+  resolveIntervention(input: ResolveInterventionInput): Promise<ResolveInterventionOutcome>;
   append(input: AppendEventInput): Promise<ProductEvent>;
   claimSteering(input: ClaimSteeringInput): Promise<ClaimedSteeringMessage[]>;
   clearThread(input: ClearThreadInput): Promise<ClearThreadResult>;
@@ -211,7 +225,21 @@ export interface AnswerRunInput {
   answer: string;
   /** Only for a login card; `answer` carries its password. */
   username?: string;
+  /** Opaque retry key. Never the answer or a hash of the answer. */
+  clientSubmissionId?: string;
 }
+
+export interface ResolveInterventionInput {
+  spaceId: string;
+  threadId: string;
+  interventionId: string;
+  clientSubmissionId: string;
+  answeredByUserId: string;
+  answer: string;
+  username?: string;
+}
+
+const INTERVENTION_TRANSACTION = { timeout: 20_000, maxWait: 20_000 };
 
 export interface SendUserMessageInput {
   spaceId: string;
@@ -255,6 +283,8 @@ export function createThreadEvents(
 ): ThreadEvents {
   return {
     answerRunInput: (input) => answerRunInput(prisma, input, realtime, options.runSecretWriter),
+    resolveIntervention: (input) =>
+      resolveIntervention(prisma, input, realtime, options.runSecretWriter),
     append: (input) => appendEvent(prisma, input, realtime),
     claimSteering: (input) => claimSteering(prisma, input),
     clearThread: (input) => clearThread(prisma, input, realtime),
@@ -568,32 +598,7 @@ export async function claimSteering(
   });
 }
 
-async function findPendingAsk(
-  tx: Prisma.TransactionClient,
-  input: { threadId: string; runId: string },
-) {
-  const messages = await tx.message.findMany({
-    where: {
-      threadId: input.threadId,
-      runId: input.runId,
-      role: "bot",
-    },
-    orderBy: { seq: "desc" },
-    take: 50,
-    select: { id: true, blocks: true },
-  });
-  for (const message of messages) {
-    const parsed = MessageBlockSchema.array().safeParse(message.blocks);
-    if (!parsed.success) continue;
-    const pendingAsk = parsed.data.find(
-      (block) => block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
-    );
-    if (pendingAsk?.kind === "ask") return { messageId: message.id, pendingAsk };
-  }
-  return null;
-}
-
-async function commitAnswerRunInput(
+export async function commitAnswerRunInput(
   tx: Prisma.TransactionClient,
   input: AnswerRunInput,
   runSecretWriter?: RunSecretWriter,
@@ -601,6 +606,7 @@ async function commitAnswerRunInput(
   // Thread row first, then run rows — the same order as clearThread and finalizeRun, so a
   // concurrent clear cannot deadlock against this transaction.
   await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM runs WHERE id = ${input.runId} FOR UPDATE`;
   const run = await tx.run.findFirst({
     where: {
       id: input.runId,
@@ -616,6 +622,7 @@ async function commitAnswerRunInput(
       budgetOverride: true,
       trigger: true,
       orchestration: true,
+      waitStartedAt: true,
     },
   });
   if (!run) return null;
@@ -686,6 +693,19 @@ async function commitAnswerRunInput(
       type: "thread.message.updated",
       runId: input.runId,
       payload: { messageId: message.id, role: "bot", blocks },
+    });
+    await settleAnsweredIntervention(tx, {
+      run: {
+        id: input.runId,
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: run.botId,
+        waitStartedAt: run.waitStartedAt,
+      },
+      messageId: message.id,
+      ask: pendingAsk,
+      resolvedByUserId: input.answeredByUserId,
+      clientSubmissionId: input.clientSubmissionId,
     });
     if (selectedChoice.id === "narrow_scope") {
       const guidance = [{ kind: "text" as const, text: "Send a narrower request to start a new run." }];
@@ -762,10 +782,11 @@ async function commitAnswerRunInput(
 
   if (approvalAsk) {
     const allowed = input.answer === "allow" || input.answer === "always";
-    await tx.externalEffect.update({
-      where: { id: approvalEffect!.id },
+    const effectWrite = await tx.externalEffect.updateMany({
+      where: { id: approvalEffect!.id, status: "intended" },
       data: { status: allowed ? "approved" : "denied" },
     });
+    if (effectWrite.count !== 1) throw new InterventionRejected("conflict");
     if (input.answer === "always") {
       await tx.actionApprovalRule.upsert({
         where: {
@@ -842,24 +863,56 @@ async function commitAnswerRunInput(
     runId: input.runId,
     payload: { messageId: message.id, role: "bot", blocks },
   });
-  if (!approvalAsk) return { threadId: updated.threadId, seq: updated.seq };
-  // The effect can leave "intended" only once in this serialized transaction.
-  // A repeated answer cannot emit another resolution event.
-  const resolution = await appendEventInTransaction(tx, {
-    spaceId: input.spaceId,
-    threadId: input.threadId,
-    botId: run.botId,
-    type: "approval.resolved",
-    runId: input.runId,
-    schemaVersion: 2,
-    causationId: updated.id,
-    payload: {
-      approvalEffectId: approvalEffect!.id,
-      decision: input.answer === "allow" || input.answer === "always" ? "approved" : "denied",
-      decidedByUserId: input.answeredByUserId,
+  let threadId = updated.threadId;
+  let seq = updated.seq;
+  if (approvalAsk) {
+    // The effect can leave "intended" only once in this serialized transaction.
+    // A repeated answer cannot emit another resolution event.
+    const resolution = await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: run.botId,
+      type: "approval.resolved",
+      runId: input.runId,
+      schemaVersion: 2,
+      causationId: updated.id,
+      payload: {
+        approvalEffectId: approvalEffect!.id,
+        decision: input.answer === "allow" || input.answer === "always" ? "approved" : "denied",
+        decidedByUserId: input.answeredByUserId,
+      },
+    });
+    threadId = resolution.threadId;
+    seq = resolution.seq;
+  }
+  await settleAnsweredIntervention(tx, {
+    run: {
+      id: input.runId,
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: run.botId,
+      waitStartedAt: run.waitStartedAt,
     },
+    messageId: message.id,
+    ask: pendingAsk,
+    resolvedByUserId: input.answeredByUserId,
+    ...(approvalAsk
+      ? {
+          decision:
+            input.answer === "allow" || input.answer === "always"
+              ? ("approved" as const)
+              : ("denied" as const),
+        }
+      : {}),
+    clientSubmissionId: input.clientSubmissionId,
   });
-  return { threadId: resolution.threadId, seq: resolution.seq };
+  if (interventionStore(tx)) {
+    const remaining = await tx.intervention.count({
+      where: { runId: input.runId, status: "pending" },
+    });
+    if (remaining > 0) throw new Error("Run still has a pending intervention");
+  }
+  return { threadId, seq };
 }
 
 export async function answerRunInput(
@@ -868,8 +921,9 @@ export async function answerRunInput(
   realtime?: RealtimeFanout,
   runSecretWriter?: RunSecretWriter,
 ): Promise<boolean> {
-  const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) =>
-    commitAnswerRunInput(tx, input, runSecretWriter),
+  const committed = await prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => commitAnswerRunInput(tx, input, runSecretWriter),
+    INTERVENTION_TRANSACTION,
   );
 
   if (!committed) return false;
@@ -881,7 +935,119 @@ export async function answerRunInput(
   return true;
 }
 
-/** Answer a waiting question ask with composer free-text. Approval and secret cards stay on the card path. */
+async function locateInterventionTarget(
+  prisma: PrismaClient,
+  input: { spaceId: string; threadId: string; interventionId: string },
+): Promise<{ runId: string; messageId: string } | null> {
+  const store = interventionStore(prisma);
+  if (store) {
+    const row = await store.findUnique({ where: { id: input.interventionId } });
+    if (row) {
+      if (row.spaceId !== input.spaceId || row.threadId !== input.threadId) return null;
+      return { runId: row.runId, messageId: row.messageId };
+    }
+  }
+  const messageId = legacyMessageId(input.interventionId);
+  if (!messageId) return null;
+  const message = await prisma.message.findFirst({
+    where: { id: messageId, threadId: input.threadId, role: "bot" },
+    select: { id: true, runId: true },
+  });
+  if (!message?.runId) return null;
+  const run = await prisma.run.findFirst({
+    where: { id: message.runId, threadId: input.threadId, spaceId: input.spaceId },
+    select: { id: true },
+  });
+  if (!run) return null;
+  return { runId: run.id, messageId: message.id };
+}
+
+export async function resolveIntervention(
+  prisma: PrismaClient,
+  input: ResolveInterventionInput,
+  realtime?: RealtimeFanout,
+  runSecretWriter?: RunSecretWriter,
+): Promise<ResolveInterventionOutcome> {
+  try {
+    assertSafeClientSubmissionId(input.clientSubmissionId, input.answer);
+  } catch (error) {
+    if (error instanceof InterventionRejected) return { outcome: "rejected", reason: error.reason };
+    throw error;
+  }
+  const located = await locateInterventionTarget(prisma, input);
+  if (!located) return { outcome: "rejected", reason: "not_found" };
+  let outcome: ResolveInterventionOutcome;
+  try {
+    outcome = await prisma.$transaction(
+      (tx: Prisma.TransactionClient) =>
+        resolveInterventionInTransaction(
+          tx,
+          { ...input, runId: located.runId },
+          (transaction) =>
+            commitAnswerRunInput(
+              transaction,
+              {
+                spaceId: input.spaceId,
+                threadId: input.threadId,
+                runId: located.runId,
+                messageId: located.messageId,
+                answeredByUserId: input.answeredByUserId,
+                answer: input.answer,
+                username: input.username,
+                clientSubmissionId: input.clientSubmissionId,
+              },
+              runSecretWriter,
+            ),
+        ),
+      INTERVENTION_TRANSACTION,
+    );
+  } catch (error) {
+    if (error instanceof InterventionRejected) return { outcome: "rejected", reason: error.reason };
+    throw error;
+  }
+  if (outcome.outcome === "rejected") return outcome;
+  if (outcome.applied && outcome.cancelledRunId) {
+    const { cancelChildrenOfCancelledRuns } = await import("./cancel-child-runs.js");
+    await cancelChildrenOfCancelledRuns(prisma, [outcome.cancelledRunId]);
+  }
+  if (outcome.applied && outcome.seq > 0) {
+    await notifyRealtime(realtime, outcome.threadId, outcome.seq);
+  }
+  return outcome;
+}
+
+/**
+ * Answer the only ordinary text input among the given runs.
+ * Approval, secret, and choice never match. Zero or many text inputs do not guess.
+ */
+export async function answerSingleOrdinaryTextInTransaction(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    threadId: string;
+    answeredByUserId: string;
+    answer: string;
+    runIds: readonly string[];
+  },
+): Promise<{ threadId: string; seq: number; runId: string } | null> {
+  const answer = input.answer.trim();
+  if (!answer) return null;
+  const found = await findOrdinaryTextAsks(tx, { threadId: input.threadId, runIds: input.runIds });
+  if (found.length !== 1) return null;
+  const target = found[0]!;
+  const committed = await commitAnswerRunInput(tx, {
+    spaceId: input.spaceId,
+    threadId: input.threadId,
+    runId: target.runId,
+    messageId: target.messageId,
+    answeredByUserId: input.answeredByUserId,
+    answer,
+  });
+  if (!committed) return null;
+  return { threadId: committed.threadId, seq: committed.seq, runId: target.runId };
+}
+
+/** Answer one run's ordinary text ask. Approval, secret, and choice stay on the card path. */
 export async function answerWaitingRunWithTextInTransaction(
   tx: Prisma.TransactionClient,
   input: {
@@ -892,12 +1058,12 @@ export async function answerWaitingRunWithTextInTransaction(
     answer: string;
   },
 ): Promise<{ threadId: string; seq: number } | null> {
-  const answer = input.answer.trim();
-  if (!answer) return null;
-  const found = await findPendingAsk(tx, input);
-  if (!found) return null;
-  if (isApprovalAskBlock(found.pendingAsk) || isSecretAskBlock(found.pendingAsk)) return null;
-  return commitAnswerRunInput(tx, { ...input, messageId: found.messageId, answer });
+  const committed = await answerSingleOrdinaryTextInTransaction(tx, {
+    ...input,
+    runIds: [input.runId],
+  });
+  if (!committed) return null;
+  return { threadId: committed.threadId, seq: committed.seq };
 }
 
 export async function pauseRunForInput(
@@ -913,6 +1079,7 @@ export async function pauseRunForInput(
       (block) => block.kind === "ask" && Boolean(block.approvalEffectId),
     );
     const waitKind = approvalEffectId?.kind === "ask" ? "approval" : "input";
+    const waitStartedAt = new Date();
     const paused = await tx.run.updateMany({
       where: {
         id: input.runId,
@@ -926,14 +1093,14 @@ export async function pauseRunForInput(
       data: {
         status: "waiting_input",
         waitKind,
-        waitStartedAt: new Date(),
+        waitStartedAt,
         leaseOwner: null,
         leaseExpiresAt: null,
         ...(input.budgetExceeded
           ? { checkpoint: budgetAskCheckpoint(input.budgetExceeded) }
           : input.offeredActions?.length
-          ? { checkpoint: choiceAskCheckpoint(input.offeredActions) }
-          : {}),
+            ? { checkpoint: choiceAskCheckpoint(input.offeredActions) }
+            : {}),
       },
     });
     if (paused.count !== 1) return null;
@@ -949,10 +1116,22 @@ export async function pauseRunForInput(
     });
     if (attempt.count !== 1) throw new Error("Active run attempt was not available to pause");
 
+    const messageId = randomUUID();
+    const pausedIntervention = await insertPausedIntervention(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: input.botId,
+      runId: input.runId,
+      attemptId: input.attemptId,
+      messageId,
+      blocks: input.blocks,
+      waitStartedAt,
+    });
     const message = await createThreadMessageInTransaction(tx, {
+      id: messageId,
       threadId: input.threadId,
       role: "bot",
-      blocks: input.blocks,
+      blocks: pausedIntervention.blocks,
       botId: input.botId,
       runId: input.runId,
     });
@@ -962,7 +1141,7 @@ export async function pauseRunForInput(
       botId: input.botId,
       type: "thread.message.created",
       runId: input.runId,
-      payload: { messageId: message.id, role: "bot", blocks: input.blocks },
+      payload: { messageId: message.id, role: "bot", blocks: pausedIntervention.blocks },
     });
     const waitingEvent = await appendEventInTransaction(tx, {
       spaceId: input.spaceId,
@@ -971,6 +1150,13 @@ export async function pauseRunForInput(
       type: "run.waiting_input",
       runId: input.runId,
       payload: { waitKind },
+    });
+    const interventionEvent = await emitInterventionCreated(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: input.botId,
+      runId: input.runId,
+      interventionId: pausedIntervention.id,
     });
     const budgetEvent = input.budgetExceeded
       ? await appendEventInTransaction(tx, {
@@ -1000,9 +1186,9 @@ export async function pauseRunForInput(
     await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
     return {
       threadId: waitingEvent.threadId,
-      seq: approvalEvent?.seq ?? budgetEvent?.seq ?? waitingEvent.seq,
+      seq: approvalEvent?.seq ?? budgetEvent?.seq ?? interventionEvent.seq,
     };
-  });
+  }, INTERVENTION_TRANSACTION);
 
   if (!committed) return false;
   await notifyRealtime(realtime, committed.threadId, committed.seq);

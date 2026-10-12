@@ -26,6 +26,7 @@ export function aiDataUsesForProcedure(procedure: string, input?: unknown): AiDa
       "threads/followUp",
       "threads/react",
       "threads/answer",
+      "threads/resolveIntervention",
       "routines/create",
       "routines/update",
       "routines/testRun",

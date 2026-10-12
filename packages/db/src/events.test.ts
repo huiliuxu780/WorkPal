@@ -501,6 +501,49 @@ describe("finalizeComputerControlRelease", () => {
   });
 });
 
+function pausedInterventionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "intervention-1",
+    revision: 1,
+    kind: "input",
+    status: "pending",
+    spaceId: "workspace-1",
+    threadId: "thread-1",
+    runId: "run-1",
+    attemptId: "attempt-1",
+    botId: "bot-1",
+    messageId: "message-1",
+    pendingRunKey: "run-1",
+    expiresAt: new Date("2026-10-14T00:00:00.000Z"),
+    resolvedAt: null,
+    resolvedByUserId: null,
+    supersededById: null,
+    agentId: null,
+    backgroundTaskId: null,
+    inputMode: "text",
+    inputPurpose: null,
+    inputActions: null,
+    effectId: null,
+    decision: null,
+    createdAt: new Date("2026-10-13T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function interventionPauseMocks(row: ReturnType<typeof pausedInterventionRow> = pausedInterventionRow()) {
+  return {
+    intervention: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findUnique: vi.fn().mockResolvedValue(row),
+      create: vi.fn().mockResolvedValue(row),
+    },
+    externalEffect: {
+      findFirst: vi.fn().mockResolvedValue({ id: row.effectId ?? "effect-1" }),
+      findUnique: vi.fn().mockResolvedValue({ status: "intended" }),
+    },
+  };
+}
+
 describe("pauseRunForInput", () => {
   it("emits one approval request for the accepted pause and keeps waitKind=approval", async () => {
     let nextEventSeq = 8;
@@ -524,6 +567,13 @@ describe("pauseRunForInput", () => {
         })),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      ...interventionPauseMocks(
+        pausedInterventionRow({
+          kind: "approval",
+          inputMode: null,
+          effectId: "effect-1",
+        }),
+      ),
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -536,7 +586,10 @@ describe("pauseRunForInput", () => {
       attemptId: "attempt-1",
       leaseOwner: "worker-1",
       leaseFence: 3,
-      blocks: [{ kind: "ask" as const, text: "Allow sending?", approvalEffectId: "effect-1" }],
+      blocks: [{ kind: "ask" as const, text: "Allow sending?", approvalEffectId: "effect-1", actions: [
+        { id: "allow", label: "Allow once" },
+        { id: "deny", label: "Deny" },
+      ] }],
     };
     expect(await pauseRunForInput(prisma, input)).toBe(true);
     expect(await pauseRunForInput(prisma, input)).toBe(false);
@@ -548,6 +601,7 @@ describe("pauseRunForInput", () => {
     expect(tx.event.create.mock.calls.map(([call]) => call.data.type)).toEqual([
       "thread.message.created",
       "run.waiting_input",
+      "intervention.created",
       "approval.requested",
     ]);
   });
@@ -571,7 +625,8 @@ describe("pauseRunForInput", () => {
           .fn()
           .mockResolvedValueOnce({ nextMessageSeq: 4 })
           .mockResolvedValueOnce({ nextEventSeq: 8 })
-          .mockResolvedValueOnce({ nextEventSeq: 9 }),
+          .mockResolvedValueOnce({ nextEventSeq: 9 })
+          .mockResolvedValueOnce({ nextEventSeq: 10 }),
       },
       message: { create: vi.fn().mockResolvedValue({ id: "message-1" }) },
       event: {
@@ -582,6 +637,7 @@ describe("pauseRunForInput", () => {
         deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      ...interventionPauseMocks(),
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -628,8 +684,9 @@ describe("pauseRunForInput", () => {
     expect(tx.event.create.mock.calls.map(([input]) => input.data.type)).toEqual([
       "thread.message.created",
       "run.waiting_input",
+      "intervention.created",
     ]);
-    expect(publish).toHaveBeenCalledWith("thread:thread-1", JSON.stringify({ cursor: 8 }));
+    expect(publish).toHaveBeenCalledWith("thread:thread-1", JSON.stringify({ cursor: 9 }));
   });
 
   it("stores offered choice actions on the run checkpoint for resume", async () => {
@@ -650,7 +707,8 @@ describe("pauseRunForInput", () => {
           .fn()
           .mockResolvedValueOnce({ nextMessageSeq: 4 })
           .mockResolvedValueOnce({ nextEventSeq: 8 })
-          .mockResolvedValueOnce({ nextEventSeq: 9 }),
+          .mockResolvedValueOnce({ nextEventSeq: 9 })
+          .mockResolvedValueOnce({ nextEventSeq: 10 }),
       },
       message: { create: vi.fn().mockResolvedValue({ id: "message-1" }) },
       event: {
@@ -661,6 +719,15 @@ describe("pauseRunForInput", () => {
         deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      ...interventionPauseMocks(
+        pausedInterventionRow({
+          inputMode: "choice",
+          inputActions: [
+            { id: "choice-1", label: "use [redacted]" },
+            { id: "choice-2", label: "use plain" },
+          ],
+        }),
+      ),
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -1414,7 +1481,7 @@ describe("answerRunInput", () => {
       task: { updateMany: vi.fn() },
       externalEffect: {
         findFirst: vi.fn().mockResolvedValue({ id: "effect-1", status: "intended" }),
-        update: vi.fn().mockResolvedValue({ id: "effect-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 10 }) },
       event: {
@@ -1452,8 +1519,8 @@ describe("answerRunInput", () => {
         status: "intended",
       },
     });
-    expect(tx.externalEffect.update).toHaveBeenCalledWith({
-      where: { id: "effect-1" },
+    expect(tx.externalEffect.updateMany).toHaveBeenCalledWith({
+      where: { id: "effect-1", status: "intended" },
       data: { status: "approved" },
     });
     expect(tx.event.create.mock.calls.map(([input]) => input.data.type)).toEqual([
@@ -1519,7 +1586,7 @@ describe("answerRunInput", () => {
         findFirst: vi
           .fn()
           .mockResolvedValue({ id: "effect-1", status: "intended", kind: "destination.write" }),
-        update: vi.fn().mockResolvedValue({ id: "effect-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       actionApprovalRule: {
         upsert: vi.fn().mockResolvedValue({ id: "rule-1" }),
@@ -1552,8 +1619,8 @@ describe("answerRunInput", () => {
     ).resolves.toBe(true);
 
     expect(tx.task.updateMany).not.toHaveBeenCalled();
-    expect(tx.externalEffect.update).toHaveBeenCalledWith({
-      where: { id: "effect-1" },
+    expect(tx.externalEffect.updateMany).toHaveBeenCalledWith({
+      where: { id: "effect-1", status: "intended" },
       data: { status: "approved" },
     });
     expect(tx.actionApprovalRule.upsert).toHaveBeenCalledWith({

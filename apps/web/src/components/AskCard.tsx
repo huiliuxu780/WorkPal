@@ -51,11 +51,14 @@ export function AskCard({
   canAnswer,
   onAnswer,
   draftKey,
+  restoreFocus = true,
 }: {
   block: AskBlock;
   canAnswer: boolean;
   onAnswer: (text: string, username?: string) => Promise<void>;
   draftKey?: string;
+  /** When false, leave focus to a parent status line after this card settles. */
+  restoreFocus?: boolean;
 }) {
   const { t } = useLingui();
   const approvalActions = isApprovalAskBlock(block) ? block.actions : undefined;
@@ -90,10 +93,11 @@ export function AskCard({
   }, [answer, block.status, draftEnabled, draftKey, secretInput]);
 
   useEffect(() => {
+    if (!restoreFocus) return;
     if (submittedHere.current && (submitting || acknowledged || error || block.status === "answered")) {
-      feedbackRef.current?.focus();
+      feedbackRef.current?.focus({ preventScroll: true });
     }
-  }, [submitting, acknowledged, error, block.status]);
+  }, [submitting, acknowledged, error, block.status, restoreFocus]);
 
   async function submitAnswer(value: string) {
     if (submitting) return;
