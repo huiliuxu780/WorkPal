@@ -151,6 +151,50 @@ export function inferScript(
       },
     ];
   }
+  // Deterministic waiting-state pagination fixture (execution-history e2e):
+  // N real tool calls followed by a free-text ask in the same Run. Answering
+  // appends events (rev moves) while shifting the activity first page, so an
+  // out-of-order stale detail response is distinguishable in the DOM.
+  const stepAskRun = /^run (\d+) shell steps then ask$/i.exec(prompt);
+  if (stepAskRun) {
+    const count = Math.min(Math.max(Number(stepAskRun[1]), 1), 250);
+    return [
+      {
+        assistant: "running them, then i need a decision.",
+        toolCalls: Array.from({ length: count }, (_unused, index) =>
+          index % 2 === 0
+            ? { name: "shell" as const, args: { command: `echo step-${index}` } }
+            : {
+                name: "write_file" as const,
+                args: { path: `notes/step-${index}.txt`, content: `step ${index}` },
+              },
+        ),
+        ask: { text: "Which city should I use?", detail: "Reply with one city name." },
+      },
+    ];
+  }
+  // Deterministic Activity pagination fixture (execution-history e2e):
+  // N real tool calls in one Run, each emitting called+completed events.
+  const stepRun = /^run (\d+) shell steps$/i.exec(prompt);
+  if (stepRun) {
+    const count = Math.min(Math.max(Number(stepRun[1]), 1), 250);
+    return [
+      {
+        assistant: "running them.",
+        // Alternate two tool kinds so adjacent-row folding cannot swallow the
+        // fixture into a single line (Activity pagination needs distinct rows).
+        toolCalls: Array.from({ length: count }, (_unused, index) =>
+          index % 2 === 0
+            ? { name: "shell" as const, args: { command: `echo step-${index}` } }
+            : {
+                name: "write_file" as const,
+                args: { path: `notes/step-${index}.txt`, content: `step ${index}` },
+              },
+        ),
+        complete: true,
+      },
+    ];
+  }
   // Before every content-based intent so payload text cannot steal the branch.
   const shellCommand = /run the shell command\s+([\s\S]+)$/i.exec(prompt)?.[1]?.trim();
   if (shellCommand) {

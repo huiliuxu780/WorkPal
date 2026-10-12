@@ -1,3 +1,5 @@
+import type { ExecutionSummary } from "@rakazo/contracts";
+
 interface MessageIdentity {
   id: string;
   seq?: number;
@@ -7,6 +9,27 @@ export interface ThreadHistory<TMessage extends MessageIdentity> {
   threadId: string;
   messages: readonly TMessage[];
   olderCursor: number | null;
+  /** Per-Run execution summaries carried by snapshots and history pages. */
+  executions?: readonly ExecutionSummary[];
+}
+
+/**
+ * Merge execution summaries across a refresh (or an older-page prepend).
+ * The first source wins per Run — it is the fresher view of that Run — while
+ * summaries only known to the other source survive, so loaded history pages
+ * keep restoring their executions after a snapshot refresh.
+ */
+export function mergeExecutionsByRun(
+  first: readonly ExecutionSummary[] | undefined,
+  second: readonly ExecutionSummary[] | undefined,
+): ExecutionSummary[] | undefined {
+  if (first === undefined && second === undefined) return undefined;
+  const seen = new Set<string>();
+  return [...(first ?? []), ...(second ?? [])].filter((execution) => {
+    if (seen.has(execution.runId)) return false;
+    seen.add(execution.runId);
+    return true;
+  });
 }
 
 export function mergeThreadHistory<
@@ -14,10 +37,12 @@ export function mergeThreadHistory<
   TSnapshot extends ThreadHistory<TMessage>,
 >(previous: TSnapshot | null, recent: TSnapshot, preserveLoadedHistory = false): TSnapshot {
   if (!previous || previous.threadId !== recent.threadId || !preserveLoadedHistory) return recent;
+  const executions = mergeExecutionsByRun(recent.executions, previous.executions);
   return {
     ...recent,
     messages: mergeMessagePages(previous.messages, recent.messages),
     olderCursor: previous.olderCursor,
+    ...(executions ? { executions } : {}),
   };
 }
 
@@ -28,10 +53,12 @@ export function prependThreadHistoryPage<
   if (!previous || previous.threadId !== page.threadId || previous.olderCursor == null) {
     return previous;
   }
+  const executions = mergeExecutionsByRun(previous.executions, page.executions);
   return {
     ...previous,
     messages: mergeMessagesById(page.messages, previous.messages),
     olderCursor: page.olderCursor,
+    ...(executions ? { executions } : {}),
   };
 }
 

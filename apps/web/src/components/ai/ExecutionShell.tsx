@@ -36,6 +36,8 @@ export function ExecutionShell({
   activity,
   pendingInterventionKinds,
   interventions,
+  expansion,
+  canExpand,
   children,
 }: {
   run: Run | null;
@@ -48,6 +50,14 @@ export function ExecutionShell({
    * after the Run completes, instead of hiding inside a collapsed shell.
    */
   interventions?: ReactNode;
+  /**
+   * Server-driven expansion (HISTORY-001): the caller owns the open decision
+   * (rev-checked sessionStorage, one Run open at a time). Without it the shell
+   * keeps its legacy local behavior.
+   */
+  expansion?: { open: boolean; toggle: () => void };
+  /** A summary exists, so opening lazily loads the Run's detail. */
+  canExpand?: boolean;
   children: ReactNode;
 }) {
   const status = deriveExecutionStatus(run, activity, { pendingInterventionKinds });
@@ -55,12 +65,13 @@ export function ExecutionShell({
   const [expanded, setExpanded] = useState(Boolean(live) || run?.status === "failed");
   const detailsId = useId();
   useEffect(() => {
+    if (expansion) return;
     if (status.needsAttention) setExpanded(true);
     else if (status.status === "failed") setExpanded(true);
     else if (status.status === "done" || status.status === "cancelled") setExpanded(false);
-  }, [status.needsAttention, status.status]);
-  const open = status.needsAttention || expanded;
-  const hasDetail = Boolean(children) || Boolean(status.detail);
+  }, [status.needsAttention, status.status, expansion]);
+  const open = status.needsAttention || (expansion ? expansion.open : expanded);
+  const hasDetail = Boolean(children) || Boolean(status.detail) || canExpand === true || expansion !== undefined;
 
   return (
     <section data-testid="execution-shell" data-status={status.status} data-run-id={run?.id} className="min-w-0 px-1 py-1">
@@ -70,7 +81,9 @@ export function ExecutionShell({
         aria-controls={hasDetail ? detailsId : undefined}
         aria-disabled={!hasDetail || status.needsAttention || undefined}
         onClick={() => {
-          if (hasDetail && !status.needsAttention) setExpanded((value) => !value);
+          if (!hasDetail || status.needsAttention) return;
+          if (expansion) expansion.toggle();
+          else setExpanded((value) => !value);
         }}
         className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md text-start text-[14px] leading-5 outline-none hover:text-foreground/75 focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
       >

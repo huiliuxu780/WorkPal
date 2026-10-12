@@ -19,7 +19,7 @@ import {
   validateAttachmentMimeType,
 } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
-import { withResolvedArtifactVersion } from "@rakazo/db";
+import { appendEventInTransaction, withResolvedArtifactVersion } from "@rakazo/db";
 import { resolveBotWorkspacePath } from "./computer-support.js";
 
 export type MaterializedThreadFile = {
@@ -39,6 +39,7 @@ export async function attachWorkspaceFileToThread(
     userId: string;
     botId: string;
     groupId?: string;
+    threadId: string;
     runId: string;
     filePath: string;
     bytes: Uint8Array;
@@ -77,8 +78,8 @@ export async function attachWorkspaceFileToThread(
       groupId: input.groupId,
       name,
     },
-    (tx, { rootArtifactId, version }) =>
-      tx.artifact.create({
+    async (tx, { rootArtifactId, version }) => {
+      const created = await tx.artifact.create({
         data: {
           spaceId: input.spaceId,
           userId: input.userId,
@@ -94,7 +95,19 @@ export async function attachWorkspaceFileToThread(
           rootArtifactId,
           version,
         },
-      }),
+      });
+      // Membership rides on a same-transaction thread.artifact event so the
+      // Run's snapshot rev moves when an Artifact joins it (HISTORY-001).
+      await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        runId: input.runId,
+        type: "thread.artifact",
+        payload: { artifactId: created.id, action: "attached", name, mimeType, size: created.size },
+      });
+      return created;
+    },
   ).catch(async (error) => {
     await deps.artifacts.remove(stored.id, context).catch(() => undefined);
     throw error;

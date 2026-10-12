@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveNextArtifactVersion, withResolvedArtifactVersion } from "./artifact-versions.js";
+import {
+  deleteArtifactRowWithDetachEvent,
+  resolveNextArtifactVersion,
+  withResolvedArtifactVersion,
+} from "./artifact-versions.js";
 import type { PrismaClient } from "./client.js";
 import { Prisma } from "./client.js";
 
@@ -163,5 +167,60 @@ describe("withResolvedArtifactVersion", () => {
       "Unique constraint failed",
     );
     expect(attempt).toHaveBeenCalledTimes(5);
+  });
+});
+
+describe("deleteArtifactRowWithDetachEvent", () => {
+  const artifact = {
+    id: "artifact-1",
+    runId: "run-1",
+    name: "report.pdf",
+    mimeType: "application/pdf",
+    size: 12,
+  };
+
+  it("propagates an event write failure so the caller's transaction rolls the deletion back", async () => {
+    const tx = {
+      artifact: { delete: vi.fn().mockResolvedValue({}) },
+      run: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ threadId: "thread-1", botId: "bot-1", spaceId: "space-1" }),
+      },
+      thread: { update: vi.fn().mockRejectedValue(new Error("event write failed")) },
+      event: { create: vi.fn() },
+    };
+    await expect(deleteArtifactRowWithDetachEvent(tx as never, artifact)).rejects.toThrow(
+      "event write failed",
+    );
+    // The delete was attempted inside the same transaction; a real tx rolls it
+    // back with the failed event — the row cannot outlive a missing event.
+    expect(tx.artifact.delete).toHaveBeenCalledOnce();
+  });
+
+  it("deletes without an event when the Artifact belongs to no Run", async () => {
+    const tx = {
+      artifact: { delete: vi.fn().mockResolvedValue({}) },
+      run: { findUnique: vi.fn() },
+      thread: { update: vi.fn() },
+    };
+    expect(await deleteArtifactRowWithDetachEvent(tx as never, { ...artifact, runId: null })).toBe(
+      true,
+    );
+    expect(tx.run.findUnique).not.toHaveBeenCalled();
+    expect(tx.thread.update).not.toHaveBeenCalled();
+  });
+
+  it("treats an already-gone row as a no-op", async () => {
+    const gone = new Prisma.PrismaClientKnownRequestError("not found", {
+      code: "P2025",
+      clientVersion: "test",
+    });
+    const tx = {
+      artifact: { delete: vi.fn().mockRejectedValue(gone) },
+      run: { findUnique: vi.fn() },
+    };
+    expect(await deleteArtifactRowWithDetachEvent(tx as never, artifact)).toBe(false);
+    expect(tx.run.findUnique).not.toHaveBeenCalled();
   });
 });

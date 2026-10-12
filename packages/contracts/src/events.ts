@@ -127,6 +127,17 @@ export const ProductEventPayloadSchemas = {
   }),
   "intervention.created": InterventionEventPayloadSchema,
   "intervention.resolved": InterventionEventPayloadSchema,
+  // Run↔Artifact membership changes. Safe metadata only; the bytes never
+  // ride along. Emitted so an Artifact change moves the Run's snapshot `rev`.
+  "thread.artifact": z
+    .object({
+      artifactId: Id,
+      action: z.enum(["attached", "detached"]),
+      name: z.string(),
+      mimeType: z.string(),
+      size: z.number().int().nonnegative().optional(),
+    })
+    .strict(),
 } as const;
 
 const stepStatusByType: Partial<Record<ProductEventType, string>> = {

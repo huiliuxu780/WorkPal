@@ -51,6 +51,7 @@ export function ActivityRows({
           <li
             key={item.id}
             className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground"
+            data-activity-id={item.id}
             data-activity-kind={item.kind}
             data-activity-status={item.status}
           >

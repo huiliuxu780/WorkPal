@@ -10,7 +10,12 @@ import {
   validateAttachmentMimeType,
 } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
-import { IsolationError, Prisma, withResolvedArtifactVersion } from "@rakazo/db";
+import {
+  deleteArtifactRowWithDetachEvent,
+  IsolationError,
+  Prisma,
+  withResolvedArtifactVersion,
+} from "@rakazo/db";
 
 function adapterContext(actor: Actor, botId: string, operationId: string) {
   return {
@@ -365,7 +370,15 @@ export async function listArtifactVersions(
   }));
 }
 
-type ArtifactMember = { id: string; storageKey: string; botId: string | null };
+type ArtifactMember = {
+  id: string;
+  storageKey: string;
+  botId: string | null;
+  runId: string | null;
+  name: string;
+  mimeType: string;
+  size: number;
+};
 
 // Delete each blob before its row, and the root only while it has no versions.
 export async function deleteArtifactFamily(
@@ -387,13 +400,28 @@ export async function deleteArtifactFamily(
         userId: actor.userId,
         OR: [{ id: rootId }, { rootArtifactId: rootId }],
       },
-      select: { id: true, storageKey: true, botId: true },
+      select: {
+        id: true,
+        storageKey: true,
+        botId: true,
+        runId: true,
+        name: true,
+        mimeType: true,
+        size: true,
+      },
     });
     if (members.length === 0) return { ok: true as const };
     const child = members.find((row) => row.id !== rootId);
     if (child) {
+      // Blob first: a storage failure must leave the row in place so the
+      // artifact stays usable. Row deletion and its detach event then commit
+      // atomically — a committed deletion without the event is unrecoverable,
+      // while a retry after an event failure tolerates the already-removed
+      // blob (removeArtifactBlob accepts "not found").
       await removeArtifactBlob(deps.artifacts, actor, child);
-      await deleteArtifactRowIfPresent(deps.prisma, child.id);
+      await deps.prisma.$transaction((tx) =>
+        deleteArtifactRowWithDetachEvent(tx, child),
+      );
       continue;
     }
     const root = members.find((row) => row.id === rootId);
@@ -409,36 +437,25 @@ async function deleteArtifactRootIfChildless(
   actor: Actor,
   root: ArtifactMember,
 ): Promise<"deleted" | "gone" | "has-child"> {
-  let outcome: "deleted" | "gone" | "has-child" = "gone";
-  await deps.prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT id FROM "artifacts" WHERE id = ${root.id} FOR UPDATE
-    `);
-    if (locked.length === 0) {
-      outcome = "gone";
-      return;
-    }
-    const child = await tx.artifact.findFirst({
-      where: { rootArtifactId: root.id },
-      select: { id: true },
-    });
-    if (child) {
-      outcome = "has-child";
-      return;
-    }
-    await removeArtifactBlob(deps.artifacts, actor, root);
-    try {
-      await tx.artifact.delete({ where: { id: root.id } });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-        outcome = "gone";
-        return;
-      }
-      throw error;
-    }
-    outcome = "deleted";
-  });
-  return outcome;
+  // Blob first, inside the same transaction as the row deletion and its
+  // detach event: a storage failure rolls everything back (row survives,
+  // artifact stays usable), an event failure rolls back the row deletion,
+  // and a retry tolerates the already-removed blob.
+  return deps.prisma.$transaction(
+    async (tx): Promise<"deleted" | "gone" | "has-child"> => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM "artifacts" WHERE id = ${root.id} FOR UPDATE
+      `);
+      if (locked.length === 0) return "gone";
+      const child = await tx.artifact.findFirst({
+        where: { rootArtifactId: root.id },
+        select: { id: true },
+      });
+      if (child) return "has-child";
+      await removeArtifactBlob(deps.artifacts, actor, root);
+      return (await deleteArtifactRowWithDetachEvent(tx, root)) ? "deleted" : "gone";
+    },
+  );
 }
 
 async function removeArtifactBlob(
@@ -468,18 +485,6 @@ function isAlreadyRemoved(error: unknown): boolean {
     name === "NotFound" ||
     name === "NoSuchKey"
   );
-}
-
-async function deleteArtifactRowIfPresent(
-  prisma: Pick<PrismaClient, "artifact">,
-  id: string,
-): Promise<void> {
-  try {
-    await prisma.artifact.delete({ where: { id } });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return;
-    throw error;
-  }
 }
 
 type SendAttachmentRow = {

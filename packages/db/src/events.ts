@@ -1689,9 +1689,13 @@ export async function appendEventInTransaction(
   });
   // run.cancelled is appended after the run row already reads cancelled, so it
   // asserts the terminal status where every other event needs a writable run.
+  // thread.artifact is a Thread-maintenance membership fact (user-initiated
+  // Artifact delete, or an attach inside a live Run): the linked Run may
+  // already be terminal, and the event exists precisely so that change moves
+  // the Run's snapshot rev.
   if (input.type === "run.cancelled") {
     await assertRunIsCancelled(tx, input.runId);
-  } else {
+  } else if (input.type !== "thread.artifact") {
     await assertRunCanWriteHistory(tx, input.runId);
   }
   // Unpaired UTF-16 surrogates (e.g. a split emoji high half) are invalid JSON for Postgres.

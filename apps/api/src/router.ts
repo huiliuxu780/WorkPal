@@ -142,6 +142,9 @@ import {
 } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
+  ExecutionActivityCursorError,
+  loadExecutionSnapshot,
+  loadRunActivityPage,
   appendEventInTransaction,
   cancelChildrenOfCancelledRuns,
   listDescendantRunIds,
@@ -251,6 +254,7 @@ import {
   setThreadUnreadState,
   stopThreadRuns,
   threadHead,
+  threadMessagePage,
   threadSnapshot,
 } from "./thread-target.js";
 import { createTurnRoutingProvider, type TurnRoutingProvider } from "./turn-routing.js";
@@ -1896,15 +1900,7 @@ export function createRouter(deps: RouterDeps) {
       }),
       messages: authed.threads.messages.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-        return loadMessagePage(
-          deps.prisma,
-          target.threadId,
-          input.before,
-          THREAD_MESSAGE_PAGE_SIZE,
-          input.around,
-          input.includePeerRuns,
-          input.includePeerReceipts,
-        );
+        return threadMessagePage(deps, target, input);
       }),
       subscribe: authed.threads.subscribe.handler(async function* ({ context, input }) {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
@@ -5595,6 +5591,44 @@ export function createRouter(deps: RouterDeps) {
         if (!detail) throw new Error(`Run not found: ${input.runId}`);
         return detail;
       }),
+      /** HISTORY-001 detail read: target-authorized, one Run, one consistent tx. */
+      executionSnapshot: authed.runs.executionSnapshot.handler(async ({ context, input }) => {
+        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const snapshot = await deps.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR SHARE`;
+          return loadExecutionSnapshot(tx, {
+            threadId: target.threadId,
+            spaceId: target.spaceId,
+            runId: input.runId,
+          });
+        });
+        if (!snapshot) throw new IsolationError();
+        return snapshot;
+      }),
+      executionActivityPage: authed.runs.executionActivityPage.handler(
+        async ({ context, input }) => {
+          const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+          try {
+            return await loadRunActivityPage(deps.prisma, {
+              threadId: target.threadId,
+              spaceId: target.spaceId,
+              runId: input.runId,
+              ...(input.cursor ? { cursor: input.cursor } : {}),
+              ...(input.limit ? { limit: input.limit } : {}),
+            });
+          } catch (error) {
+            if (error instanceof ExecutionActivityCursorError) {
+              throw new ORPCError("BAD_REQUEST", {
+                message:
+                  error.reason === "stale_cursor"
+                    ? "This activity page belongs to an earlier conversation history."
+                    : "This activity cursor does not match the requested run.",
+              });
+            }
+            throw error;
+          }
+        },
+      ),
     },
     voice: {
       catalog: authed.voice.catalog.handler(async () => listVoiceCatalog()),

@@ -5,6 +5,9 @@ export * from "./bot-secrets.js";
 export * from "./brand.js";
 export * from "./capability-rules.js";
 export * from "./desktop.js";
+// activity.js is surfaced through domain.js's re-export; execution-snapshot
+// declares the per-Run read model and is exported directly.
+export * from "./execution-snapshot.js";
 export * from "./domain.js";
 export * from "./events.js";
 export * from "./ids.js";

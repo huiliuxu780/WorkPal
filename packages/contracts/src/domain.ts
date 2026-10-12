@@ -1,7 +1,9 @@
 import * as z from "zod";
+import { ActivityItemSchema } from "./activity.js";
 import { BotAvatarValueSchema } from "./bot-avatar.js";
+import { ExecutionSummarySchema } from "./execution-snapshot.js";
 import { ThreadMessageSchema } from "./events.js";
-import { Id, MemoryScope, RunStatus, SandboxKind, WaitKind } from "./ids.js";
+import { Id, MemoryScope, RunStatus, RunTrigger, SandboxKind, WaitKind } from "./ids.js";
 import { InterventionViewSchema } from "./intervention.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
 import { RunPlanRevisionSchema } from "./run-plans.js";
@@ -849,22 +851,7 @@ export const RunSchema = z.object({
   taskId: Id,
   status: RunStatus,
   waitKind: WaitKind.nullable().optional(),
-  trigger: z.enum([
-    "user",
-    "routine",
-    "delivery",
-    "resume",
-    "follow_up",
-    "reaction",
-    "call_end",
-    "spawn",
-    "skill",
-    "bot_message",
-    "webhook",
-    "messaging",
-    "cloud_agent",
-    "created",
-  ]),
+  trigger: RunTrigger,
   routineId: Id.nullable(),
   modelProvider: z.string().nullable(),
   modelId: z.string().nullable(),
@@ -879,63 +866,19 @@ export const ThreadMessagePageSchema = z.object({
   threadId: Id,
   messages: z.array(ThreadMessageSchema),
   olderCursor: z.number().int().nonnegative().nullable(),
+  /**
+   * Execution summaries for the Runs this page's messages belong to, so an
+   * older Execution restores together with its history page instead of
+   * relying on the snapshot's recent-Run window. Absent from older servers.
+   */
+  executions: z.array(ExecutionSummarySchema).optional(),
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
 
-/**
- * Product Harness Phase 4 activity projection (§3): the product-semantic view
- * of what an agent is doing. Projected server-side from persisted events and
- * mirrored here for the wire; never a stored entity, never runtime internals.
- */
-export const ActivityKindSchema = z.enum([
-  "working",
-  "planning",
-  "approval",
-  "tool",
-  "research",
-  "delegation",
-  "handoff",
-  "background",
-  "waiting_input",
-  "waiting_takeover",
-  "completed",
-  "failed",
-  "cancelled",
-]);
-export type ActivityKind = z.infer<typeof ActivityKindSchema>;
-
-export const ActivityStatusSchema = z.enum([
-  "pending",
-  "running",
-  "waiting",
-  "completed",
-  "failed",
-  "cancelled",
-]);
-export type ActivityStatus = z.infer<typeof ActivityStatusSchema>;
-
-export const ActivityItemSchema = z.object({
-  id: z.string(),
-  runId: Id.optional(),
-  botId: Id,
-  threadId: Id,
-  kind: ActivityKindSchema,
-  status: ActivityStatusSchema,
-  title: z.string(),
-  detail: z.string().optional(),
-  actor: z.object({ botId: Id, name: z.string().optional() }).optional(),
-  target: z.object({ botId: Id, name: z.string().optional() }).optional(),
-  startedAt: z.string().optional(),
-  completedAt: z.string().optional(),
-  count: z.number().int().positive().optional(),
-  durationMs: z.number().int().nonnegative().optional(),
-  /** Background tasks only, while cancelable. */
-  taskId: z.string().optional(),
-  collapsible: z.boolean().optional(),
-  // v1 projections are flat; grouping is expressed via ActivityGroup on the
-  // consumer side, so no recursive children on the wire.
-});
-export type ActivityItem = z.infer<typeof ActivityItemSchema>;
+export type { ActivityKind, ActivityStatus, ActivityItem } from "./activity.js";
+// The Activity projection lives in its own module so the ExecutionSnapshot
+// schemas can reuse it without importing this file (no runtime import cycle).
+export { ActivityKindSchema, ActivityStatusSchema, ActivityItemSchema } from "./activity.js";
 
 export const ThreadSnapshotSchema = z.object({
   threadId: Id,
@@ -959,6 +902,13 @@ export const ThreadSnapshotSchema = z.object({
   todos: z.array(RunTodoSnapshotSchema).optional(),
   /** Pending Interventions for this thread. Absent on snapshots from older servers. */
   interventions: z.array(InterventionViewSchema).optional(),
+  /**
+   * Bounded per-Run execution summaries for the current thread generation:
+   * active Runs, Runs with pending Interventions, and recent terminal Runs.
+   * Absent on snapshots from older servers. The legacy thread-level arrays
+   * (plans/steps/todos/activity/recentRuns/interventions) remain for now.
+   */
+  executions: z.array(ExecutionSummarySchema).optional(),
 });
 export type ThreadSnapshot = z.infer<typeof ThreadSnapshotSchema>;
 
