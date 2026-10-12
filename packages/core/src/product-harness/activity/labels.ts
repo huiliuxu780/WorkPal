@@ -60,6 +60,7 @@ export const activityLabels = {
   backgroundCompleted: "Background task completed",
   backgroundFailed: "Background research failed",
   backgroundCancelled: "Background task cancelled",
+  deliveryFailed: "Result delivery failed",
   completed: "Completed",
   failed: "Stopped with an error",
   cancelled: "Cancelled",

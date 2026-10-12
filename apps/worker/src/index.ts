@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import type { JobPublisher, JobWorkerHost } from "@rakazo/adapter-kit";
+import { deliveryDispatchJob } from "@rakazo/adapter-kit";
 import { ComposioConnector, IntegrationProviderSettings } from "@rakazo/adapters";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 
@@ -48,8 +50,11 @@ import {
 } from "@rakazo/adapters";
 import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
 import {
+  appendEventInTransaction,
   createDb,
   createThreadEvents,
+  currentThreadGeneration,
+  enqueueDeliveryInTransaction,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
 } from "@rakazo/db";
@@ -92,45 +97,75 @@ async function main() {
       take: 100,
     });
     for (const task of stale) {
-      const updated = await prisma.backgroundAgentTask.updateMany({
-        where: {
-          taskId: task.taskId,
-          status: "running",
-          OR: [{ heartbeatAt: { lt: missedHeartbeat } }, { expiresAt: { lt: now } }],
-        },
-        data: {
-          status: "failed",
-          finishedAt: now,
-          error: "Runtime worker stopped or task credential expired; execution cannot resume",
-        },
+      const eventSeq = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${task.threadId} FOR UPDATE`;
+        const updated = await tx.backgroundAgentTask.updateMany({
+          where: {
+            taskId: task.taskId,
+            status: "running",
+            OR: [{ heartbeatAt: { lt: missedHeartbeat } }, { expiresAt: { lt: now } }],
+          },
+          data: {
+            status: "failed",
+            finishedAt: now,
+            error: "Runtime worker stopped or task credential expired; execution cannot resume",
+          },
+        });
+        if (!updated.count) return null;
+        if (task.threadGeneration !== (await currentThreadGeneration(tx, task.threadId)))
+          return null;
+        const parent = await tx.run.findUnique({
+          where: { id: task.parentRunId },
+          select: { status: true },
+        });
+        if (!parent || parent.status === "cancelled") return null;
+        await appendEventInTransaction(tx, {
+          spaceId: task.spaceId,
+          threadId: task.threadId,
+          botId: task.botId,
+          runId: task.parentRunId,
+          type: "subagent.failed",
+          payload: {
+            taskId: task.taskId,
+            agentId: task.agentId,
+            error: "Runtime worker stopped or task credential expired",
+          },
+        });
+        await appendEventInTransaction(tx, {
+          spaceId: task.spaceId,
+          threadId: task.threadId,
+          botId: task.botId,
+          runId: task.parentRunId,
+          type: "thread.subagent",
+          payload: {
+            agentId: task.taskId,
+            name: task.agentId,
+            task: "delegated task",
+            status: "failed",
+            result: "Runtime worker stopped or task credential expired",
+          },
+        });
+        const delivery = await enqueueDeliveryInTransaction(tx, {
+          runId: task.parentRunId,
+          backgroundTaskId: task.taskId,
+          threadId: task.threadId,
+          threadGeneration: task.threadGeneration,
+          kind: "background_task",
+          idempotencyKey: `${task.taskId}:background_task`,
+          createdAt: now,
+        });
+        if (!delivery) return null;
+        const event = await appendEventInTransaction(tx, {
+          spaceId: task.spaceId,
+          threadId: task.threadId,
+          botId: task.botId,
+          runId: task.parentRunId,
+          type: "delivery.created",
+          payload: { deliveryId: delivery.id, sourceRunId: task.parentRunId },
+        });
+        return event.seq;
       });
-      if (!updated.count) continue;
-      await events.append({
-        spaceId: task.spaceId,
-        threadId: task.threadId,
-        botId: task.botId,
-        runId: task.parentRunId,
-        type: "subagent.failed",
-        payload: {
-          taskId: task.taskId,
-          agentId: task.agentId,
-          error: "Runtime worker stopped or task credential expired",
-        },
-      });
-      await events.append({
-        spaceId: task.spaceId,
-        threadId: task.threadId,
-        botId: task.botId,
-        runId: task.parentRunId,
-        type: "thread.subagent",
-        payload: {
-          agentId: task.taskId,
-          name: task.agentId,
-          task: "delegated task",
-          status: "failed",
-          result: "Runtime worker stopped or task credential expired",
-        },
-      });
+      if (eventSeq !== null) await events.notify(task.threadId, eventSeq);
     }
   };
   const taskSweep = setInterval(() => {
@@ -295,7 +330,7 @@ async function main() {
     home,
     jobs,
     events,
-    workerId: process.pid.toString(),
+    workerId: `${process.pid}-${randomUUID()}`,
     runtime,
     secretStore: secrets,
     memoryProviders,
@@ -322,6 +357,15 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, databaseCapacityBackoffMs(attempt)));
     }
   }
+  const deliverySweep = setInterval(() => {
+    void jobs
+      .enqueue(deliveryDispatchJob())
+      .catch((error) => logger.error("delivery dispatch scheduling", error));
+  }, 10_000);
+  deliverySweep.unref?.();
+  void jobs
+    .enqueue(deliveryDispatchJob())
+    .catch((error) => logger.error("delivery dispatch scheduling", error));
   const reconciler = createJobReconciler({
     prisma,
     jobs,
@@ -336,6 +380,8 @@ async function main() {
   const stop = async () => {
     if (stopping) return;
     stopping = true;
+    clearInterval(deliverySweep);
+    clearInterval(taskSweep);
     try {
       await reconciler.stop();
       await jobHost.stop();

@@ -1,7 +1,4 @@
-import {
-  parseRunOrchestration,
-  type OrchestrationExecutionV1,
-} from "./orchestration.js";
+import { type OrchestrationExecutionV1, parseRunOrchestration } from "./orchestration.js";
 import type { TurnRouteKind } from "./response-owner.js";
 
 /**
@@ -56,6 +53,7 @@ const AUTOMATION_TRIGGERS = new Set([
   "skill",
   "cloud_agent",
   "spawn",
+  "delivery",
 ]);
 
 export function turnPolicySourceForTrigger(trigger: string): TurnPolicySource {
@@ -149,6 +147,13 @@ export function turnPolicyFromRun(input: {
   ownerBotId: string;
   orchestration: unknown;
 }): TurnPolicy {
+  if (input.trigger === "delivery") {
+    const policy = resolveTurnPolicy({ source: "automation", ownerBotId: input.ownerBotId });
+    return {
+      ...policy,
+      delegation: { mode: "disabled", background: false, maxChildren: 0, maxDepth: 0 },
+    };
+  }
   const snapshot = parseRunOrchestration(input.orchestration);
   if (snapshot?.execution) {
     return {

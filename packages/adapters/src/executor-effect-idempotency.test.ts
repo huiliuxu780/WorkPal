@@ -105,6 +105,7 @@ function fixture(runId = "run-1") {
     ),
   };
   const prisma = {
+    deliveryRecord: { findMany: vi.fn(async () => []) },
     run: {
       findUnique: vi.fn(async () => run),
       findUniqueOrThrow: vi.fn(async () => run),

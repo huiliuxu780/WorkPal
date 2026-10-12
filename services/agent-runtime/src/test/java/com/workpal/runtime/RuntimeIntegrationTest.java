@@ -317,6 +317,18 @@ class RuntimeIntegrationTest {
                     .userId("test").sessionId(parentSession).build();
             assertEquals(1, nativeRepo.findPendingDeliveries(nativeContext, parentSession).size());
             nativeRepo.shutdown();
+            RunRequest excludedBase = request(model.getAddress().getPort(), "background-excluded",
+                    "user-1", "space-1", List.of(), null);
+            RunRequest excluded = new RunRequest(excludedBase.botId(), excludedBase.threadId(),
+                    excludedBase.runId(), excludedBase.executionScope(), excludedBase.sourceMessageId(),
+                    excludedBase.identity(), excludedBase.prompt(), excludedBase.productName(),
+                    excludedBase.instructions(), excludedBase.history(), excludedBase.currentTurnImages(),
+                    excludedBase.skills(), excludedBase.tools(), excludedBase.toolBridge(), excludedBase.model(),
+                    excludedBase.allowSilentEmpty(), excludedBase.emptyResponseText(),
+                    excludedBase.sessionGeneration(), null, null, null, List.of(taskId.get()), false);
+            engine.execute(excluded, event -> {});
+            assertFalse(modelRequests.getLast().path("messages").toString().contains("BACKGROUND_CHILD_RESULT"),
+                    "An outbox-owned result must not be injected by the old pull path");
             RunRequest baseNext = request(model.getAddress().getPort(), "background-2", "user-1", "space-1",
                     List.of(), null);
             RunRequest.ToolBridge nextBridge = new RunRequest.ToolBridge(origin + "/v1/tool-executions",

@@ -7,11 +7,7 @@ import {
   returnedResultLabel,
   toolActionLabel,
 } from "./labels.js";
-import type {
-  ActivityItem,
-  ActivityProjectionContext,
-  ActivitySourceEvent,
-} from "./types.js";
+import type { ActivityItem, ActivityProjectionContext, ActivitySourceEvent } from "./types.js";
 
 /**
  * Product Harness Phase 4 — Activity Projector (§5/§6).
@@ -41,6 +37,7 @@ export const ACTIVITY_EVENT_TYPES = [
   "subagent.completed",
   "subagent.failed",
   "subagent.cancelled",
+  "delivery.failed",
   "agent.tool.called",
   "agent.tool.completed",
   "thread.collaboration.requested",
@@ -69,11 +66,7 @@ function upsert(items: ActivityItem[], item: ActivityItem): ActivityItem[] {
   return next;
 }
 
-function patch(
-  items: ActivityItem[],
-  id: string,
-  changes: Partial<ActivityItem>,
-): ActivityItem[] {
+function patch(items: ActivityItem[], id: string, changes: Partial<ActivityItem>): ActivityItem[] {
   const index = items.findIndex((existing) => existing.id === id);
   if (index === -1) return items;
   const next = items.slice();
@@ -121,16 +114,24 @@ export function seedActivityFromContext(context: ActivityProjectionContext): Act
         title: activityLabels.needsTakeover,
       });
     } else if (run.status === "running" || run.status === "queued" || run.status === "leased") {
-      items = upsert(items, { ...base, kind: "working", status: "running", title: activityLabels.working });
+      items = upsert(items, {
+        ...base,
+        kind: "working",
+        status: "running",
+        title: activityLabels.working,
+      });
     }
   }
   for (const task of context.backgroundTasks ?? []) {
-    items = upsert(items, backgroundItem(context, task.taskId, task.parentRunId, task.botId, task.status, {
-      startedAt: task.startedAt ?? undefined,
-      completedAt: task.finishedAt ?? undefined,
-      detail: clipDetail(task.status === "failed" ? task.error : task.label) ,
-      taskId: task.status === "running" ? task.taskId : undefined,
-    }));
+    items = upsert(
+      items,
+      backgroundItem(context, task.taskId, task.parentRunId, task.botId, task.status, {
+        startedAt: task.startedAt ?? undefined,
+        completedAt: task.finishedAt ?? undefined,
+        detail: clipDetail(task.status === "failed" ? task.error : task.label),
+        taskId: task.status === "running" ? task.taskId : undefined,
+      }),
+    );
   }
   return items;
 }
@@ -226,6 +227,19 @@ export function reduceActivity(
         title: activityLabels.cancelled,
         completedAt: event.createdAt,
       });
+    case "delivery.failed": {
+      const deliveryId = str(payload, "deliveryId");
+      if (!deliveryId) return items;
+      return upsert(items, {
+        ...base,
+        id: `delivery:${deliveryId}`,
+        kind: "failed",
+        status: "failed",
+        title: activityLabels.deliveryFailed,
+        detail: clipDetail(payload?.reason),
+        completedAt: event.createdAt,
+      });
+    }
     case "run.waiting_input":
       return upsert(items, {
         ...base,
@@ -465,4 +479,3 @@ export function currentActivityLine(
   const last = own[own.length - 1];
   return last ? { kind: last.kind, text: last.title } : null;
 }
-

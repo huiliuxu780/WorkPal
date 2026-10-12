@@ -604,6 +604,7 @@ model Run {
   steeringMessages     SteeringMessage[]
   externalMessage      ExternalMessage?
   backgroundTasks       BackgroundAgentTask[]
+  deliverySourceRecords DeliveryRecord[] @relation("DeliverySourceRun")
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
@@ -627,6 +628,7 @@ model BackgroundAgentTask {
   spaceId      String
   botId        String
   threadId     String
+  threadGeneration Int @default(0)
   agentId      String
   sessionId    String
   toolNames    Json
@@ -641,6 +643,31 @@ model BackgroundAgentTask {
   @@index([spaceId, threadId, status])
   @@index([parentRunId])
   @@map("background_agent_tasks")
+}
+
+model DeliveryRecord {
+  id               String    @id @default(cuid())
+  runId            String
+  sourceRun        Run       @relation("DeliverySourceRun", fields: [runId], references: [id], onDelete: Cascade)
+  backgroundTaskId String?
+  threadId         String
+  threadGeneration Int
+  kind             String
+  status           String    @default("pending")
+  idempotencyKey   String    @unique
+  attempts         Int       @default(0)
+  lastError        String?   @db.Text
+  claimedBy        String?
+  deliveryRunId    String?
+  nextAttemptAt    DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  deliveredAt      DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([threadId, status])
+  @@index([deliveryRunId])
+  @@index([backgroundTaskId])
+  @@map("delivery_records")
 }
 
 model SteeringMessage {

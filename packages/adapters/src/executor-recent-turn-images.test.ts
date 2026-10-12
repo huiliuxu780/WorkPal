@@ -69,6 +69,7 @@ async function runWithModel(modelId: string) {
     yield { type: "done" as const, text: "Done" };
   });
   const prisma = {
+    deliveryRecord: { findMany: vi.fn(async () => []) },
     run: {
       findUnique: vi.fn(async () => run),
       findUniqueOrThrow: vi.fn(async () => run),

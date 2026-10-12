@@ -26,6 +26,7 @@ import {
 const runTriggers = new Set<Run["trigger"]>([
   "user",
   "routine",
+  "delivery",
   "resume",
   "follow_up",
   "reaction",
@@ -273,6 +274,7 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "subagent.completed" ||
     event.type === "subagent.failed" ||
     event.type === "subagent.cancelled" ||
+    event.type === "delivery.failed" ||
     isRunTerminalEvent(event)
   );
 }
@@ -295,6 +297,7 @@ const ACTIVITY_ONLY_EVENT_TYPES = new Set<string>([
   "subagent.completed",
   "subagent.failed",
   "subagent.cancelled",
+  "delivery.failed",
   "thread.collaboration.requested",
   "thread.collaboration.result",
   "thread.turn.handed_off",
