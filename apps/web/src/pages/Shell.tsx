@@ -219,6 +219,7 @@ import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
+import { askDraftKey } from "../lib/ask-draft";
 import { sharedInflight } from "../lib/shared-inflight";
 import {
   activeThreadRuns,
@@ -2036,18 +2037,30 @@ export function ShellPage() {
       const botId = activeBotId.current;
       const groupId = activeGroupId.current;
       if (!botId && !groupId) return;
-      await rpc.threads.answer({
-        ...(groupId ? { groupId } : { botId: botId! }),
-        runId: message.runId ?? "",
-        messageId: message.id,
-        answer: text,
-        ...(username ? { username } : {}),
-      });
-      if (groupId && activeGroupId.current === groupId) {
-        await refreshGroupThreadRef.current(groupId);
-      } else if (botId && activeBotId.current === botId) {
-        await refreshThreadRef.current(botId);
+      const refreshCurrent = async () => {
+        if (groupId && activeGroupId.current === groupId) {
+          await refreshGroupThreadRef.current(groupId);
+        } else if (botId && activeBotId.current === botId) {
+          await refreshThreadRef.current(botId);
+        }
+      };
+      try {
+        await rpc.threads.answer({
+          ...(groupId ? { groupId } : { botId: botId! }),
+          runId: message.runId ?? "",
+          messageId: message.id,
+          answer: text,
+          ...(username ? { username } : {}),
+        });
+      } catch (error) {
+        // A conflict may mean another tab already answered. Reconcile the
+        // persisted card before leaving the local draft in an error state.
+        await refreshCurrent().catch(() => undefined);
+        throw error;
       }
+      // The answer transaction is committed even if this follow-up refresh
+      // fails. SSE/reconnect can still deliver the authoritative card state.
+      await refreshCurrent().catch(() => undefined);
     },
     [],
   );
@@ -6838,6 +6851,7 @@ const MessageView = memo(function MessageView({
               key={i}
               block={block}
               canAnswer={canAnswer}
+              draftKey={message.runId ? askDraftKey(message.runId, message.id) : undefined}
               onAnswer={(text, username) => onAnswer(message, text, username)}
             />
           );
