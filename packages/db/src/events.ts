@@ -10,18 +10,25 @@ import {
 } from "@rakazo/contracts";
 import {
   blocksToAgentHistoryText,
+  budgetAskCheckpoint,
+  BUDGET_ACTIONS,
   callIdFromClientNonce,
+  increasedBudgetForViolation,
   isApprovalAskBlock,
   isConversationalRun,
   isSecretAskBlock,
   messagingChannelId,
   resolveAskChoice,
+  parseBudgetAskCheckpoint,
+  runBudgetForInteraction,
+  turnPolicyFromRun,
   sanitizeJsonValue,
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
+import { enqueueDeliveryInTransaction } from "./delivery-records.js";
 import {
   assertRunCanWriteHistory,
   assertRunIsCancelled,
@@ -128,7 +135,11 @@ export type FinalizeRunInput = FinalizeRunBase &
         blocks: MessageBlock[];
         markUnread?: boolean;
       }
-    | { outcome: "failed"; error: string }
+    | {
+        outcome: "failed";
+        error: string;
+        budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number };
+      }
   );
 
 export interface PauseRunForInput {
@@ -145,6 +156,7 @@ export interface PauseRunForInput {
    * (not in message blocks) so clients still see redacted labels.
    */
   offeredActions?: Array<{ id: string; label: string }>;
+  budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number; observed: number };
 }
 
 const CHOICE_ASK_CHECKPOINT_KIND = "choice_ask_v1";
@@ -572,7 +584,7 @@ async function findPendingAsk(
     const parsed = MessageBlockSchema.array().safeParse(message.blocks);
     if (!parsed.success) continue;
     const pendingAsk = parsed.data.find(
-      (block) => block.kind === "ask" && block.status !== "answered",
+      (block) => block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
     );
     if (pendingAsk?.kind === "ask") return { messageId: message.id, pendingAsk };
   }
@@ -594,7 +606,7 @@ async function commitAnswerRunInput(
       threadId: input.threadId,
       status: "waiting_input",
     },
-    select: { botId: true, userId: true, checkpoint: true },
+    select: { botId: true, userId: true, checkpoint: true, budgetOverride: true, trigger: true, orchestration: true },
   });
   if (!run) return null;
   const message = await tx.message.findFirst({
@@ -608,13 +620,16 @@ async function commitAnswerRunInput(
   const parsed = MessageBlockSchema.array().safeParse(message?.blocks);
   if (!message || !parsed.success) return null;
   const pendingAsk = parsed.data.find(
-    (block) => block.kind === "ask" && block.status !== "answered",
+    (block) => block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
   );
   if (pendingAsk?.kind !== "ask") return null;
   const approvalAsk = isApprovalAskBlock(pendingAsk);
   const secretAsk = isSecretAskBlock(pendingAsk);
   const choiceAsk = !approvalAsk && !secretAsk && Boolean(pendingAsk.actions?.length);
   const selectedChoice = choiceAsk ? resolveAskChoice(input.answer, pendingAsk.actions) : undefined;
+  const budgetAsk = parseBudgetAskCheckpoint(run.checkpoint);
+  if (budgetAsk && !BUDGET_ACTIONS.some((action) => action.id === selectedChoice?.id)) return null;
+  if (budgetAsk && run.userId !== input.answeredByUserId) return null;
   if (secretAsk && !runSecretWriter) return null;
   if (secretAsk && pendingAsk.credential && run.userId !== input.answeredByUserId) return null;
   const loginAsk = secretAsk && pendingAsk.credential?.auth.type === "login";
@@ -644,6 +659,86 @@ async function commitAnswerRunInput(
     }
   }
 
+  if (budgetAsk && selectedChoice && selectedChoice.id !== "increase_budget") {
+    const blocks = parsed.data.map((block) =>
+      block === pendingAsk
+        ? { ...block, status: "answered" as const, answer: selectedChoice.id }
+        : block,
+    );
+    await tx.message.update({ where: { id: message.id }, data: { blocks } });
+    await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: run.botId,
+      type: "thread.message.updated",
+      runId: input.runId,
+      payload: { messageId: message.id, role: "bot", blocks },
+    });
+    if (selectedChoice.id === "narrow_scope") {
+      const guidance = [{ kind: "text" as const, text: "Send a narrower request to start a new run." }];
+      const note = await createThreadMessageInTransaction(tx, {
+        threadId: input.threadId,
+        role: "bot",
+        botId: run.botId,
+        runId: input.runId,
+        blocks: guidance,
+      });
+      await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: run.botId,
+        type: "thread.message.created",
+        runId: input.runId,
+        payload: { messageId: note.id, role: "bot", blocks: guidance },
+      });
+    }
+    const now = new Date();
+    const cancelledRun = await tx.run.updateMany({
+      where: { id: input.runId, status: "waiting_input", waitKind: "input" },
+      data: {
+        status: "cancelled",
+        waitKind: null,
+        checkpoint: null,
+        error: selectedChoice.id === "narrow_scope" ? "budget_narrowed" : "budget_cancelled",
+        completedAt: now,
+      },
+    });
+    if (cancelledRun.count !== 1) throw new Error("Budget Run was no longer waiting");
+    await tx.attempt.updateMany({
+      where: { runId: input.runId, status: "waiting_input" },
+      data: { status: "cancelled", finishedAt: now },
+    });
+    await tx.backgroundAgentTask.updateMany({
+      where: { parentRunId: input.runId, status: "running" },
+      data: { status: "cancelling" },
+    });
+    await tx.task.updateMany({
+      where: { runs: { some: { id: input.runId } } },
+      data: { status: "cancelled" },
+    });
+    const cancelled = await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: run.botId,
+      type: "run.cancelled",
+      runId: input.runId,
+      payload: { reason: selectedChoice.id === "narrow_scope" ? "budget_narrowed" : "budget_cancelled" },
+    });
+    return { threadId: cancelled.threadId, seq: cancelled.seq };
+  }
+
+  const increasedBudget = budgetAsk
+    ? increasedBudgetForViolation(
+        runBudgetForInteraction(turnPolicyFromRun({
+          trigger: run.trigger,
+          ownerBotId: run.botId,
+          orchestration: run.orchestration,
+        }).interaction.interactive),
+        run.budgetOverride,
+        budgetAsk,
+      )
+    : null;
+
   const queued = await tx.run.updateMany({
     where: {
       id: input.runId,
@@ -654,6 +749,7 @@ async function commitAnswerRunInput(
     data: {
       status: "queued",
       waitKind: null,
+      ...(increasedBudget ? { budgetOverride: increasedBudget } : {}),
       ...(choiceAsk ? { checkpoint: null } : {}),
     },
   });
@@ -710,7 +806,7 @@ async function commitAnswerRunInput(
         ...(pendingAsk.credential ? { result: { credentialSaved: pendingAsk.credential } } : {}),
       },
     });
-  } else {
+  } else if (!budgetAsk) {
     const resumeLabel = selectedChoice
       ? resumeChoiceLabel(selectedChoice, run.checkpoint)
       : undefined;
@@ -824,7 +920,9 @@ export async function pauseRunForInput(
         waitKind,
         leaseOwner: null,
         leaseExpiresAt: null,
-        ...(input.offeredActions?.length
+        ...(input.budgetExceeded
+          ? { checkpoint: budgetAskCheckpoint(input.budgetExceeded) }
+          : input.offeredActions?.length
           ? { checkpoint: choiceAskCheckpoint(input.offeredActions) }
           : {}),
       },
@@ -865,6 +963,18 @@ export async function pauseRunForInput(
       runId: input.runId,
       payload: { waitKind },
     });
+    const budgetEvent = input.budgetExceeded
+      ? await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        type: "budget.exceeded",
+        runId: input.runId,
+        schemaVersion: 2,
+        causationId: waitingEvent.id,
+        payload: { reason: input.budgetExceeded.reason, limit: input.budgetExceeded.limit },
+        })
+      : null;
     const approvalEvent =
       approvalEffectId?.kind === "ask" && approvalEffectId.approvalEffectId
         ? await appendEventInTransaction(tx, {
@@ -881,7 +991,7 @@ export async function pauseRunForInput(
     await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
     return {
       threadId: waitingEvent.threadId,
-      seq: approvalEvent?.seq ?? waitingEvent.seq,
+      seq: approvalEvent?.seq ?? budgetEvent?.seq ?? waitingEvent.seq,
     };
   });
 
@@ -1204,14 +1314,56 @@ async function finalizeRunOnce(
         });
       }
     }
+    if (input.outcome === "failed" && input.budgetExceeded) {
+      await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        type: "budget.exceeded",
+        runId: input.runId,
+        schemaVersion: 2,
+        payload: input.budgetExceeded,
+      });
+    }
     const lastEvent = await appendEventInTransaction(tx, {
       spaceId: input.spaceId,
       threadId: input.threadId,
       botId: input.botId,
       type: input.outcome === "completed" ? "run.completed" : "run.failed",
       runId: input.runId,
-      payload: input.outcome === "completed" ? {} : { error: input.error },
+      payload: input.outcome === "completed" ? {} : {
+        error: input.error,
+        ...(input.budgetExceeded ? { reason: "budget_exceeded" } : {}),
+      },
     });
+    let lastSeq = lastEvent.seq;
+    if (input.outcome === "failed" && input.budgetExceeded) {
+      const source = await tx.run.findUniqueOrThrow({
+        where: { id: input.runId },
+        select: { trigger: true },
+      });
+      if (source.trigger === "routine") {
+        const delivery = await enqueueDeliveryInTransaction(tx, {
+          runId: input.runId,
+          threadId: input.threadId,
+          threadGeneration: await currentThreadGeneration(tx, input.threadId),
+          kind: "run_result",
+          idempotencyKey: `${input.runId}:budget_failure`,
+          createdAt: now,
+        });
+        if (delivery) {
+          const created = await appendEventInTransaction(tx, {
+            spaceId: input.spaceId,
+            threadId: input.threadId,
+            botId: input.botId,
+            runId: input.runId,
+            type: "delivery.created",
+            payload: { deliveryId: delivery.id, sourceRunId: input.runId },
+          });
+          lastSeq = created.seq;
+        }
+      }
+    }
     await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
     if (input.outcome === "completed") {
       await tx.steeringMessage.deleteMany({
@@ -1238,7 +1390,7 @@ async function finalizeRunOnce(
     }
     const continuationRunId = await createSteeringContinuation(tx, input);
     await tx.bot.update({ where: { id: input.botId }, data: { updatedAt: now } });
-    return { threadId: lastEvent.threadId, seq: lastEvent.seq, continuationRunId };
+    return { threadId: lastEvent.threadId, seq: lastSeq, continuationRunId };
   });
 }
 

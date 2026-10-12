@@ -98,6 +98,7 @@ export * from "./realtime.js";
 export * from "./release-watch.js";
 export * from "./remote-mcp.js";
 export * from "./run-secret.js";
+export * from "./run-budget-enforcement.js";
 export * from "./sandbox-factory.js";
 export * from "./sandbox-provider-env.js";
 export * from "./schedule-tools.js";

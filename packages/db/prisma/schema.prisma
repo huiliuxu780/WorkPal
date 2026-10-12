@@ -579,6 +579,7 @@ model Run {
   trigger              String
   /// Immutable Product Harness decision captured when the Run was created.
   orchestration        Json?
+  budgetOverride       Json?
   modelProvider        String?
   modelId              String?
   error                String?

@@ -130,6 +130,7 @@ import {
 } from "./agent-environment.js";
 import type { AgentlyMailService } from "./agently-mail.js";
 import { AgentScopeTransientError } from "./agentscope-runtime.js";
+import { enforceRunBudgets } from "./run-budget-enforcement.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
 import {
   approvalPausedToolResult,
@@ -4743,6 +4744,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 runId,
                 payload: { name: event.name, executionId: event.executionId },
               });
+              if (!scripted && await enforceRunBudgets({
+                prisma: deps.prisma,
+                events: deps.events,
+                runtime: deps.runtime,
+              }, new Date(), runId)) return;
               pendingToolNames.push(event.name);
               tryFlushPendingTools();
               const loopGuard = advanceToolCallLoopGuard(toolCallStreak, event.name, event.args);
@@ -4885,6 +4891,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   cacheWriteTokens: event.cacheWriteTokens,
                 },
               });
+              if (!scripted && await enforceRunBudgets({
+                prisma: deps.prisma,
+                events: deps.events,
+                runtime: deps.runtime,
+              }, new Date(), runId)) return;
             } else if (event.type === "done") {
               if (!assembled && event.text) {
                 if (publishedMidTurnUserMessage || discardedMidTurnNarration) {
