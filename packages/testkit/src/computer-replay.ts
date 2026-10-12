@@ -38,6 +38,7 @@ export async function runComputerReplay(
   browser: BrowserProvider,
   computer: ComputerRef,
   context: AdapterContext,
+  runtime = new AgentScopeAgentRuntime(),
 ) {
   const tool = (
     id: string,
@@ -88,10 +89,16 @@ export async function runComputerReplay(
         expect(request) {
           const result = request.messages.findLast((message) => message.role === "tool");
           assert.equal(result?.tool_call_id, "observe");
-          assert.match(String(result?.content), /computer observed/);
-          // The replay checks the real screenshot separately; this fixture does
-          // not assert that a text-only model interpreted the pixels.
-          assert.match(String(result?.content), /image file is returned/);
+          const content = result?.content;
+          assert.ok(Array.isArray(content), "Observation must use multipart model content");
+          const observationText = content
+            .filter((part: { type?: string }) => part.type === "text")
+            .map((part: { text?: string }) => part.text ?? "")
+            .join(" ");
+          assert.match(observationText, /computer observed/);
+          // The replay checks the screenshot bytes separately; the model must
+          // also receive an image part alongside its text metadata.
+          assert.ok(content.some((part: { type?: string }) => part.type === "image_url"));
         },
         response: tool("read-csv", "read_file", { path: CONTACTS_PATH }),
       },
@@ -110,7 +117,7 @@ export async function runComputerReplay(
       "computer_observe",
       "read_file",
     ]);
-    for await (const event of new AgentScopeAgentRuntime().run(
+    for await (const event of runtime.run(
       {
         botId: context.botId!,
         threadId: "fixture-thread",
@@ -169,7 +176,7 @@ function lastToolResult(
   assert.equal(
     result?.tool_call_id,
     expectedId,
-    "Pi must continue with the corresponding tool result",
+    "AgentScope must continue with the corresponding tool result",
   );
   const content = result?.content;
   const text =

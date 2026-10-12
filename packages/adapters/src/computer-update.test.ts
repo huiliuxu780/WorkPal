@@ -516,7 +516,7 @@ describe("background computer maintenance", () => {
         botId: "bot-1",
         status: "waiting_takeover",
       },
-      data: { status: "queued", checkpoint: "takeover" },
+      data: { status: "queued", waitKind: null, checkpoint: "takeover" },
     });
     expect(harness.jobs.cancel).toHaveBeenCalledOnce();
     expect(harness.jobs.cancel.mock.invocationCallOrder[0] ?? 0).toBeGreaterThan(clearOrder);

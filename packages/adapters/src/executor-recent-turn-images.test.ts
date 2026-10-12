@@ -135,6 +135,13 @@ async function runWithModel(modelId: string) {
       ]),
     },
   };
+  Object.assign(prisma, { $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+    callback({
+      $queryRaw: vi.fn(async () => [{ id: run.id }]),
+      run: { findUnique: vi.fn(async () => ({ ...run, leaseExpiresAt: new Date(Date.now() + 60_000) })) },
+      attempt: prisma.attempt,
+    }),
+  ) });
   const finalizeRun = vi.fn(async () => ({ continuationRunId: null }));
   const executor = createRunExecutor({
     prisma,

@@ -58,7 +58,7 @@ describe("server update install kind", () => {
     });
     expect(status.installKind).toBe("compose");
     expect(status.supported).toBe(false);
-    expect(status.manualCommands[0]).toMatch(/docker compose .*pull api worker web/);
+    expect(status.manualCommands[0]).toMatch(/docker compose .*pull agentscope api worker web/);
     expect(status.manualCommands[1]).toMatch(/up -d --wait --pull never/);
   });
 
