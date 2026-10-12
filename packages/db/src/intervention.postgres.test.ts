@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import { createDb, Prisma, type PrismaClient } from "./client.js";
 import {
+  answerSingleOrdinaryTextInTransaction,
   clearThread,
   commitAnswerRunInput,
   pauseRunForInput,
@@ -1180,5 +1181,64 @@ describePostgres("intervention contract (PostgreSQL)", () => {
         expect(["approved", "executing", "completed", "uncertain"]).toContain(settledEffect.status);
       }
     }
+  });
+
+  async function legacyWaitingRun(text: string) {
+    const { run } = await runningRun();
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { status: "waiting_input", waitKind: "input", waitStartedAt: new Date(), leaseOwner: null },
+    });
+    const message = await createThreadMessage(prisma, {
+      threadId,
+      role: "bot",
+      botId,
+      runId: run.id,
+      blocks: [{ kind: "ask", text, status: "pending" }],
+    });
+    return { run, message };
+  }
+
+  it("refuses composer text when a new row and a legacy ask coexist, answers only when one is left", async () => {
+    const { run, attempt } = await runningRun();
+    expect(await pause(run, attempt, [{ kind: "ask", text: "New city?", status: "pending" }])).toBe(true);
+    const legacy = await legacyWaitingRun("Legacy city?");
+    const ambiguous = await prisma.$transaction((tx) =>
+      answerSingleOrdinaryTextInTransaction(tx, {
+        spaceId: id,
+        threadId,
+        answeredByUserId: id,
+        answer: "Paris",
+        runIds: [run.id, legacy.run.id],
+      }),
+    );
+    expect(ambiguous).toBeNull();
+    const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
+    expect(row.status).toBe("pending");
+    expect(await prisma.intervention.count({ where: { messageId: legacy.message.id } })).toBe(0);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: legacy.run.id } })).toMatchObject({
+      status: "waiting_input",
+    });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "waiting_input",
+    });
+
+    // Only the legacy ask is ordinary text now: the composer answers it.
+    await prisma.intervention.update({
+      where: { id: row.id },
+      data: { status: "cancelled", pendingRunKey: null, resolvedAt: new Date() },
+    });
+    const answered = await prisma.$transaction((tx) =>
+      answerSingleOrdinaryTextInTransaction(tx, {
+        spaceId: id,
+        threadId,
+        answeredByUserId: id,
+        answer: "Lyon",
+        runIds: [legacy.run.id],
+      }),
+    );
+    expect(answered).toMatchObject({ runId: legacy.run.id });
+    expect(await prisma.intervention.findUniqueOrThrow({ where: { id: `legacy_${legacy.message.id}` } }))
+      .toMatchObject({ status: "answered", presentation: { text: "Legacy city?" } });
   });
 });

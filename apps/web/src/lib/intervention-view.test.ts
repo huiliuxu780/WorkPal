@@ -33,6 +33,24 @@ describe("intervention view helpers", () => {
     expect(mergeInterventionViews(undefined, [settled])).toBeUndefined();
   });
 
+  it("prefers the server projection at equal revisions so effect status advances", () => {
+    const receipt = view({
+      revision: 2,
+      status: "answered",
+      kind: "approval",
+      approval: { effectId: "effect-1", decision: "approved", effectStatus: "approved" },
+    });
+    const server = view({
+      revision: 2,
+      status: "answered",
+      kind: "approval",
+      approval: { effectId: "effect-1", decision: "approved", effectStatus: "completed" },
+    });
+    expect(mergeInterventionViews([server], [receipt])?.[0]?.approval?.effectStatus).toBe("completed");
+    // The receipt still bridges the gap before the server catches up.
+    expect(mergeInterventionViews([view()], [receipt])?.[0]?.approval?.effectStatus).toBe("approved");
+  });
+
   it("covers projected asks and leaves legacy bubbles when there is no projection", () => {
     expect(coveredAskMessageIds([view()])).toEqual(new Set(["message-1"]));
     expect(coveredAskMessageIds(undefined).size).toBe(0);

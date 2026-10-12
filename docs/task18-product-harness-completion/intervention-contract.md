@@ -25,7 +25,7 @@ Create, answer, timeout, and cancel take locks in this order:
 5. Message update.
 6. Product events.
 
-Terminalization helpers acquire these locks themselves: `cancelPendingInterventions`, `expirePendingIntervention`, and `settleAnsweredIntervention` lock the affected Threads (sorted) and Runs before any Intervention or Event write, and `intervention.resolved` appends inside the held Thread lock. A caller that already holds the locks pays nothing; a caller that forgot them is still ordered. The wait-timeout path settles the Intervention before it expires the ExternalEffect, so no entry writes an Effect ahead of the Run/Intervention locks.
+Terminalization helpers acquire these locks themselves: `cancelPendingInterventions`, `expirePendingIntervention`, and `settleAnsweredIntervention` lock the affected Threads (sorted) and Runs before any Intervention or Event write, and `intervention.resolved` appends inside the held Thread lock. A caller that already holds the locks pays nothing; a caller that forgot them is still ordered. The wait-timeout path settles the Intervention before it expires the ExternalEffect, so no entry writes an Effect ahead of the Run/Intervention locks; its single `intervention.resolved` projection is emitted after the Effect transition, so an expired Approval card carries the post-transition `effectStatus` instead of `intended`.
 
 Creating an Intervention updates the Run to `waiting_input` only after the thread lock, and inserts the Intervention, Ask Block, and `intervention.created` event in that same transaction. A second pending row for the Run, or an Approval without its ExternalEffect, rolls the transaction back.
 
@@ -45,7 +45,7 @@ The Run returns to `queued` only when the answer did not cancel it and that Run 
 
 `threads.resolveIntervention` loads the Thread, Run, Message, and Effect from `interventionId`. `resolvedByUserId` comes from the signed-in actor. `threads.answer` remains a compatibility adapter and is deprecated.
 
-Composer, inbound, and voice text answer a Run only when the considered waiting Runs have exactly one ordinary text input. Approval, secret, and choice are never submitted from free text. More than one text input is a conflict.
+Composer, inbound, and voice text answer a Run only when the considered waiting Runs have exactly one ordinary text input. Approval, secret, and choice are never submitted from free text. More than one text input is a conflict — during the upgrade window, table-backed rows and legacy row-less asks are merged into one candidate set first, so a new text Intervention next to a still-waiting legacy ask refuses rather than silently picking the row.
 
 ## Rollback
 

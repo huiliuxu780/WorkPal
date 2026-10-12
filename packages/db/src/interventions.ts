@@ -367,6 +367,27 @@ async function backfillPresentation(
   return undefined;
 }
 
+/**
+ * Append the terminal projection for a settled row. Reads the current
+ * ExternalEffect status, so callers that also expire or approve the Effect
+ * must emit this AFTER that transition and still inside the same transaction:
+ * the card's effect status then matches the projection clients store.
+ */
+export async function emitInterventionResolved(
+  tx: InterventionTx,
+  row: InterventionRecord,
+): Promise<void> {
+  const effectStatus = await readEffectStatus(tx, row.effectId);
+  await appendInterventionEvent(tx, {
+    spaceId: row.spaceId,
+    threadId: row.threadId,
+    botId: row.botId,
+    runId: row.runId,
+    type: "intervention.resolved",
+    view: interventionView(row, effectStatus),
+  });
+}
+
 async function transitionPending(
   tx: InterventionTx,
   row: InterventionRecord,
@@ -376,6 +397,7 @@ async function transitionPending(
     decision?: "approved" | "denied";
     presentation?: InterventionPresentation;
   },
+  options?: { emitEvent?: boolean },
 ): Promise<InterventionRecord | null> {
   const presentation = await backfillPresentation(tx, row, patch.presentation);
   const changed = await tx.intervention.updateManyAndReturn({
@@ -392,15 +414,7 @@ async function transitionPending(
   });
   const next = changed[0];
   if (!next) return null;
-  const effectStatus = await readEffectStatus(tx, next.effectId);
-  await appendInterventionEvent(tx, {
-    spaceId: next.spaceId,
-    threadId: next.threadId,
-    botId: next.botId,
-    runId: next.runId,
-    type: "intervention.resolved",
-    view: interventionView(next, effectStatus),
-  });
+  if (options?.emitEvent !== false) await emitInterventionResolved(tx, next);
   return next;
 }
 
@@ -430,6 +444,7 @@ async function createTerminalLegacy(
     resolvedByUserId?: string;
     decision?: "approved" | "denied";
   },
+  options?: { emitEvent?: boolean },
 ): Promise<InterventionRecord> {
   const mode = inputModeOf(input.ask);
   const actions = whitelistedActions(input.ask.actions);
@@ -462,15 +477,7 @@ async function createTerminalLegacy(
       createdAt: input.run.waitStartedAt ?? now,
     },
   });
-  const effectStatus = await readEffectStatus(tx, row.effectId);
-  await appendInterventionEvent(tx, {
-    spaceId: row.spaceId,
-    threadId: row.threadId,
-    botId: row.botId,
-    runId: row.runId,
-    type: "intervention.resolved",
-    view: interventionView(row, effectStatus),
-  });
+  if (options?.emitEvent !== false) await emitInterventionResolved(tx, row);
   return row;
 }
 
@@ -478,23 +485,38 @@ async function terminalizeMissing(
   tx: InterventionTx,
   run: { id: string; spaceId: string; threadId: string; botId: string; waitStartedAt?: Date | null },
   status: "expired" | "cancelled",
-) {
+  options?: { deferEvents?: boolean },
+): Promise<InterventionRecord[]> {
   const messages = await tx.message.findMany({
     where: { threadId: run.threadId, runId: run.id, role: "bot" },
     select: { id: true, blocks: true },
   });
+  const settled: InterventionRecord[] = [];
   for (const message of messages) {
     for (const ask of pendingAskBlocks(message.blocks)) {
       const id = ask.interventionId ?? legacyInterventionId(message.id);
       const existing = await tx.intervention.findUnique({ where: { id } });
       if (existing?.status === "pending") {
-        await transitionPending(tx, existing, status, {});
+        const changed = await transitionPending(
+          tx,
+          existing,
+          status,
+          {},
+          options?.deferEvents ? { emitEvent: false } : undefined,
+        );
+        if (changed) settled.push(changed);
         continue;
       }
       if (existing) continue;
-      await createTerminalLegacy(tx, { id, run, messageId: message.id, ask, status });
+      const created = await createTerminalLegacy(
+        tx,
+        { id, run, messageId: message.id, ask, status },
+        options?.deferEvents ? { emitEvent: false } : undefined,
+      );
+      settled.push(created);
     }
   }
+  return settled;
 }
 
 export async function settleAnsweredIntervention(
@@ -570,67 +592,87 @@ export async function cancelPendingInterventions(
   }
 }
 
+/**
+ * Expire the pending rows of a waiting Run and return every settled row.
+ * With `deferEvents` the `intervention.resolved` projection is NOT appended
+ * here: the timeout path expires the ExternalEffect after this call and must
+ * emit once, with the post-transition effect status. The row writes still
+ * happen under the Intervention lock before the Effect write, preserving the
+ * documented Thread → Run → Intervention → Effect → Message → Event order.
+ */
 export async function expirePendingIntervention(
   tx: InterventionTx,
   run: { id: string; spaceId: string; threadId: string; botId: string; waitStartedAt: Date | null },
-): Promise<void> {
-  if (!interventionStore(tx)) return;
+  options?: { deferEvents?: boolean },
+): Promise<InterventionRecord[]> {
+  if (!interventionStore(tx)) return [];
   await lockThreadsForRuns(tx, [run]);
   await lockRun(tx, run.id);
   const pending = await tx.intervention.findMany({ where: { runId: run.id, status: "pending" } });
-  if (pending.length === 0) {
-    await terminalizeMissing(tx, run, "expired");
-    return;
-  }
+  if (pending.length === 0) return terminalizeMissing(tx, run, "expired", options);
+  const settled: InterventionRecord[] = [];
   for (const row of pending) {
     await lockIntervention(tx, row.id);
-    await transitionPending(tx, row, "expired", {});
+    const changed = await transitionPending(
+      tx,
+      row,
+      "expired",
+      {},
+      options?.deferEvents ? { emitEvent: false } : undefined,
+    );
+    if (changed) settled.push(changed);
   }
+  return settled;
 }
 
 type OrdinaryTarget = { runId: string; messageId: string; interventionId: string };
 
+/**
+ * Ordinary text targets across the considered waiting Runs: Intervention
+ * rows plus legacy asks with no row (upgrade window). Both sources merge
+ * before the caller applies its exactly-one rule, so one new text row and
+ * one still-waiting legacy text ask are two candidates — a refusal, never a
+ * guess at the composer/inbound/voice target.
+ */
 export async function findOrdinaryTextAsks(
   tx: InterventionTx,
   input: { threadId: string; runIds: readonly string[] },
 ): Promise<OrdinaryTarget[]> {
   if (input.runIds.length === 0) return [];
   const store = interventionStore(tx);
+  const pendingRowIds = new Set<string>();
+  const rowTargets: OrdinaryTarget[] = [];
   if (store) {
-    const rows = await store.findMany({
+    const pendingRows = await store.findMany({
       where: {
         threadId: input.threadId,
         runId: { in: [...input.runIds] },
         status: "pending",
-        kind: "input",
-        inputMode: "text",
       },
-      select: { id: true, runId: true, messageId: true },
+      select: { id: true, runId: true, messageId: true, kind: true, inputMode: true },
     });
-    if (rows.length > 0) {
-      return rows.map((row) => ({
-        runId: row.runId,
-        messageId: row.messageId,
-        interventionId: row.id,
-      }));
+    for (const row of pendingRows) {
+      pendingRowIds.add(row.id);
+      if (row.kind === "input" && row.inputMode === "text") {
+        rowTargets.push({ runId: row.runId, messageId: row.messageId, interventionId: row.id });
+      }
     }
-    const otherPending = await store.findFirst({
-      where: { threadId: input.threadId, runId: { in: [...input.runIds] }, status: "pending" },
-      select: { id: true },
-    });
-    if (otherPending) return [];
+    // No new-format ordinary text row, but another pending kind does: the
+    // card path governs this thread and free text must not answer at all.
+    if (rowTargets.length === 0 && pendingRows.length > 0) return [];
   }
   const messages = await tx.message.findMany({
     where: { threadId: input.threadId, role: "bot", runId: { in: [...input.runIds] } },
     orderBy: { seq: "asc" },
     select: { id: true, runId: true, blocks: true },
   });
-  const found: OrdinaryTarget[] = [];
+  const found: OrdinaryTarget[] = [...rowTargets];
   for (const message of messages) {
     const runId = message.runId ?? (input.runIds.length === 1 ? input.runIds[0] : null);
     if (!runId || !input.runIds.includes(runId)) continue;
     const pending = pendingAskBlocks(message.blocks);
     for (const ask of pending) {
+      if (ask.interventionId && pendingRowIds.has(ask.interventionId)) continue;
       if (isApprovalAskBlock(ask) || isSecretAskBlock(ask) || ask.actions?.length) continue;
       found.push({
         runId,

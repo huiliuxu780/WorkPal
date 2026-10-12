@@ -4,7 +4,7 @@ import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { appendEventInTransaction } from "./events.js";
-import { expirePendingIntervention } from "./interventions.js";
+import { emitInterventionResolved, expirePendingIntervention } from "./interventions.js";
 
 const WAIT_TRANSACTION = { timeout: 20_000, maxWait: 20_000 };
 
@@ -66,18 +66,25 @@ export async function expireWaitingRunInTransaction(
         )
       : null;
   // Lock order is Thread → Run → Intervention → ExternalEffect → Message → Event.
-  // Settle the Intervention (which locks the Run first) before touching the
-  // ExternalEffect, so a concurrent Approval answer and this expiry cannot
-  // take the Run/Effect pair in opposite orders.
-  if (run.status === "waiting_input") {
-    await expirePendingIntervention(tx, {
-      id: run.id,
-      spaceId: run.spaceId,
-      threadId: run.threadId,
-      botId: run.botId,
-      waitStartedAt: run.waitStartedAt,
-    });
-  }
+  // Settle the Intervention rows (which locks the Run first) before touching
+  // the ExternalEffect, so a concurrent Approval answer and this expiry cannot
+  // take the Run/Effect pair in opposite orders. The `intervention.resolved`
+  // projection is deferred past the effect transition so the event's
+  // approval.effectStatus is `expired`, not the pre-transition `intended`.
+  const settledInterventions =
+    run.status === "waiting_input"
+      ? await expirePendingIntervention(
+          tx,
+          {
+            id: run.id,
+            spaceId: run.spaceId,
+            threadId: run.threadId,
+            botId: run.botId,
+            waitStartedAt: run.waitStartedAt,
+          },
+          { deferEvents: true },
+        )
+      : [];
   const effectExpired =
     pendingApproval?.kind === "ask" && pendingApproval.approvalEffectId
       ? await tx.externalEffect.updateMany({
@@ -85,6 +92,10 @@ export async function expireWaitingRunInTransaction(
           data: { status: "expired" },
         })
       : { count: 0 };
+  // The Intervention rows are settled and the Effect has transitioned; emit
+  // the single terminal projection now so its approval.effectStatus reads
+  // `expired` instead of the pre-transition `intended`.
+  for (const settled of settledInterventions) await emitInterventionResolved(tx, settled);
   if (message && blocks?.some((block) => block.kind === "ask" && block.status !== "answered")) {
     const expiredBlocks = blocks.map((block) =>
       block.kind === "ask" && block.status !== "answered"

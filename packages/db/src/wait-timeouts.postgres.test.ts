@@ -169,6 +169,12 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
       decision: "expired",
       approvalEffectId: effectId,
     });
+    // The single terminal projection is emitted after the Effect transition,
+    // so a connected client never stores "Effect pending" under an expired card.
+    expect(events.find((event) => event.type === "intervention.resolved")?.payload).toMatchObject({
+      status: "expired",
+      approval: { effectId: effectId, effectStatus: "expired" },
+    });
   });
 
   it("keeps the original wait deadline after an unrelated Run update", async () => {

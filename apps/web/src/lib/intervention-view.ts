@@ -1,6 +1,12 @@
 import type { InterventionView } from "@rakazo/contracts";
 
-/** Keep a locally settled card until the transcript remounts. Higher revision wins. */
+/**
+ * A locally settled receipt only fills the gap between submit and the next
+ * snapshot. It outranks the projection while its revision is strictly newer;
+ * at an equal revision the server view wins, because the approval's Effect
+ * status can advance (`approved` → `completed`) without bumping the
+ * Intervention revision, and the receipt would otherwise pin a stale status.
+ */
 export function mergeInterventionViews(
   server: readonly InterventionView[] | undefined,
   settled: readonly InterventionView[],
@@ -10,7 +16,7 @@ export function mergeInterventionViews(
   for (const view of server) byId.set(view.id, view);
   for (const view of settled) {
     const current = byId.get(view.id);
-    if (!current || view.revision >= current.revision) byId.set(view.id, view);
+    if (!current || view.revision > current.revision) byId.set(view.id, view);
   }
   return [...byId.values()];
 }
