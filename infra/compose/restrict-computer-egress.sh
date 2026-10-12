@@ -188,17 +188,15 @@ apply_family() {
   local cmd="$1" rules=() line chain
   command -v "$cmd" >/dev/null 2>&1 || return 0
   wait_for_docker_user "$cmd"
-  mapfile -t rules < <("$2")
+  while IFS= read -r line; do rules+=("$line"); done < <("$2")
   local -a chain_names=()
-  local -A seen=()
   for line in "${rules[@]}"; do
     chain="${line%% *}"
-    if [[ -z ${seen[$chain]+x} ]]; then
-      seen[$chain]=1
+    if ! array_contains "$chain" "${chain_names[@]+"${chain_names[@]}"}"; then
       chain_names+=("$chain")
     fi
   done
-  local -A rewrite=()
+  local -a rewrite=()
   local chain_needs=0
   for chain in "${chain_names[@]}"; do
     local -a wanted=()
@@ -209,7 +207,7 @@ apply_family() {
     if chain_has_prefix "$cmd" "$chain" "${wanted[@]}"; then
       continue
     fi
-    rewrite[$chain]=1
+    rewrite+=("$chain")
     chain_needs=1
   done
   if ((chain_needs == 0)); then
@@ -227,12 +225,12 @@ apply_family() {
   for ((i = ${#rules[@]} - 1; i >= 0; i--)); do
     line="${rules[i]}"
     chain="${line%% *}"
-    [[ -n ${rewrite[$chain]+x} ]] || continue
+    array_contains "$chain" "${rewrite[@]+"${rewrite[@]}"}" || continue
     read -ra args <<<"${line#* }"
     "$cmd" -I "$chain" 1 "${args[@]}"
   done
   for chain in "${chain_names[@]}"; do
-    [[ -n ${rewrite[$chain]+x} ]] || continue
+    array_contains "$chain" "${rewrite[@]+"${rewrite[@]}"}" || continue
     wanted=()
     for line in "${rules[@]}"; do
       [[ "${line%% *}" == "$chain" ]] || continue
@@ -291,12 +289,21 @@ host_has_ipv6() {
 # output verbatim reproduces the intended chain.
 print_family() {
   local cmd="$1" rules=() line i
-  command -v "$cmd" >/dev/null 2>&1 || return 0
-  mapfile -t rules < <("$2")
+  # Printing is an offline preview; the firewall binaries need not exist here.
+  while IFS= read -r line; do rules+=("$line"); done < <("$2")
   for ((i = ${#rules[@]} - 1; i >= 0; i--)); do
     line="${rules[i]}"
     printf '%s -I %s 1 %s\n' "$cmd" "${line%% *}" "${line#* }"
   done
+}
+
+array_contains() {
+  local expected="$1" item
+  shift
+  for item in "$@"; do
+    [[ "$item" == "$expected" ]] && return 0
+  done
+  return 1
 }
 
 require_root() {

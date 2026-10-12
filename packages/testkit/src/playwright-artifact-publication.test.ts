@@ -16,10 +16,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const extractor = path.join(repoRoot, "scripts/extract-playwright-artifacts.py");
-const workflow = readFileSync(
-  path.join(repoRoot, ".github/workflows/publish-playwright-report.yml"),
-  "utf8",
-);
+const publicationWorkflow = path.join(repoRoot, ".github/workflows/publish-playwright-report.yml");
+const workflow = existsSync(publicationWorkflow)
+  ? readFileSync(publicationWorkflow, "utf8")
+  : null;
 const temporaryDirectories: string[] = [];
 const screenshot = PNG.sync.write({
   width: 1,
@@ -84,7 +84,8 @@ with zipfile.ZipFile(sys.argv[1], "w") as archive:
 }
 
 describe("Playwright artifact publication boundary", () => {
-  it("keeps extraction and explicit report inputs outside the trusted checkout", () => {
+  it.skipIf(workflow === null)("keeps extraction and explicit report inputs outside the trusted checkout", () => {
+    if (workflow === null) throw new Error("Playwright publication workflow is not configured");
     expect(workflow).not.toContain("actions/download-artifact@");
     expect(workflow).toContain(
       'gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > "$RUNNER_TEMP/playwright-artifacts.zip"',

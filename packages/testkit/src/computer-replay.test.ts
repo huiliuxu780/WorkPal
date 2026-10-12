@@ -1,4 +1,7 @@
-import { FakeSandboxProvider } from "@rakazo/adapters";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { AgentScopeAgentRuntime, FakeSandboxProvider } from "@rakazo/adapters";
 import { describe, expect, it } from "vitest";
 import { computerReplayContext, runComputerReplay } from "./computer-replay.js";
 import {
@@ -8,9 +11,12 @@ import {
   EXPORT_FIXTURE_URL,
   EXPORT_RECEIPT_PATH,
 } from "./computer-replay-fixture.js";
+import { startJavaRuntime } from "./cli/java-runtime.js";
 
-describe("computer replay with real Pi and stateful offline computer", () => {
+describe("computer replay with Java AgentScope and stateful offline computer", () => {
   it("exports contacts through fresh page refs and verifies the resulting artifact", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "workpal-replay-"));
+    const runtime = await startJavaRuntime(directory);
     const sandbox = new FakeSandboxProvider();
     const context = computerReplayContext();
     const computer = await sandbox.provision(
@@ -19,7 +25,10 @@ describe("computer replay with real Pi and stateful offline computer", () => {
     );
     const browser = new ContactsBrowserFixture(sandbox);
     try {
-      const result = await runComputerReplay(sandbox, browser, computer, context);
+      const result = await runComputerReplay(
+        sandbox, browser, computer, context,
+        new AgentScopeAgentRuntime({ baseUrl: runtime.url }),
+      );
       expect(result.usedTools).toContain("computer_observe");
       expect(result.modelRequests).toBe(9);
       expect(
@@ -31,6 +40,8 @@ describe("computer replay with real Pi and stateful offline computer", () => {
     } finally {
       browser.close();
       await sandbox.destroy(computer, context);
+      await runtime.stop();
+      await rm(directory, { recursive: true, force: true });
     }
   });
 
