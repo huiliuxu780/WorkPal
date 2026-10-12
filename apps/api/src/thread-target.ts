@@ -12,25 +12,23 @@ import {
   type ThreadSnapshot,
 } from "@rakazo/contracts";
 import {
-  ACTIVITY_EVENT_TYPES,
   ACTIVE_RUN_STATUSES,
+  ACTIVITY_EVENT_TYPES,
+  type ActivityItem,
+  type ActivityRunContext,
   buildRunOrchestration,
   callIdFromClientNonce,
+  type GroupRouterReasonCode,
   isActive,
   isConversationalRun,
+  projectActivity,
   projectMessages,
+  type ResolvedTurnOwner,
   resolveExplicitTurnOwner,
   runFailureError,
   selectGroupLead,
   turnExecutionForSource,
   userTurnCollaboration,
-  projectActivity,
-  type ActivityItem,
-  type ActivityRunContext,
-  type GroupRouterReasonCode,
-  type ResolvedTurnOwner,
-  type ResponseMode,
-  type TurnRouteKind,
 } from "@rakazo/core";
 import { deriveMessageQuote } from "@rakazo/core/message-quote";
 import {
@@ -342,7 +340,7 @@ export async function cancelSupersededQueuedRuns(
   const now = new Date();
   await tx.run.updateMany({
     where: { id: { in: superseded.map((run) => run.id) } },
-    data: { status: "cancelled", completedAt: now },
+    data: { status: "cancelled", waitKind: null, completedAt: now },
   });
   await tx.task.updateMany({
     where: { id: { in: superseded.map((run) => run.taskId) } },
@@ -750,6 +748,7 @@ function mapRun(run: {
   threadId: string;
   taskId: string;
   status: string;
+  waitKind?: string | null;
   trigger: string;
   routineId: string | null;
   modelProvider: string | null;
@@ -765,6 +764,7 @@ function mapRun(run: {
     threadId: run.threadId,
     taskId: run.taskId,
     status: run.status as never,
+    waitKind: (run.waitKind ?? null) as never,
     trigger: run.trigger as never,
     routineId: run.routineId ?? null,
     modelProvider: run.modelProvider,
@@ -1306,7 +1306,7 @@ export async function stopThreadRuns(
         threadId: target.threadId,
         status: { in: [...ACTIVE_RUN_STATUSES] },
       },
-      data: { status: "cancelled", completedAt: new Date() },
+      data: { status: "cancelled", waitKind: null, completedAt: new Date() },
       select: { id: true, botId: true },
     });
     const ids = cancelled.map((run) => run.id);

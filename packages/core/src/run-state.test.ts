@@ -1,6 +1,11 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { assertTransition, canTransition, isConversationalRun } from "./run-state.js";
+import {
+  assertTransition,
+  canTransition,
+  isConversationalRun,
+  isValidWaitKind,
+} from "./run-state.js";
 
 describe("run state machine", () => {
   it("allows takeover resume onto a lease", () => {
@@ -19,6 +24,16 @@ describe("run state machine", () => {
 
   it("rejects rewriting a completed run", () => {
     expect(() => assertTransition("completed", "running")).toThrow(/illegal/i);
+  });
+
+  it("accepts wait reasons only in their matching waiting states", () => {
+    expect(isValidWaitKind("waiting_input", "input")).toBe(true);
+    expect(isValidWaitKind("waiting_input", "approval")).toBe(true);
+    expect(isValidWaitKind("waiting_takeover", "takeover")).toBe(true);
+    expect(isValidWaitKind("running", null)).toBe(true);
+    expect(isValidWaitKind("running", "approval")).toBe(false);
+    expect(isValidWaitKind("waiting_input", null)).toBe(false);
+    expect(isValidWaitKind("waiting_takeover", "input")).toBe(false);
   });
 
   it("never leaves a terminal state except failed retry", () => {

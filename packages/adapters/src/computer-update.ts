@@ -418,7 +418,7 @@ async function resumeBoundTakeoverRun(
       botId: handback.botId,
       status: "waiting_takeover",
     },
-    data: { status: "queued", checkpoint: "takeover" },
+    data: { status: "queued", waitKind: null, checkpoint: "takeover" },
   });
   const stamped =
     resumed.count === 1

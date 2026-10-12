@@ -406,7 +406,7 @@ describeIntegration("run executor lifecycle", () => {
     async function startContinuation(runId: string) {
       const run = await handles.prisma.run.update({
         where: { id: runId },
-        data: { status: "running", ...lease },
+        data: { status: "running", waitKind: null, ...lease },
       });
       const attempt = await handles.prisma.attempt.create({
         data: { runId, fence: lease.leaseFence, status: "running" },
@@ -852,6 +852,7 @@ describeIntegration("run executor lifecycle", () => {
         where: { id: seeded.run.id, status: { notIn: ["completed", "failed", "cancelled"] } },
         data: {
           status: "failed",
+          waitKind: null,
           error: "test cleanup after live-boot lease check",
           leaseOwner: null,
           leaseExpiresAt: null,

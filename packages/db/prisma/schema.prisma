@@ -532,6 +532,9 @@ model Event {
   type      String
   payload   Json
   runId     String?
+  schemaVersion Int @default(1)
+  causationId   String?
+  parentRunId   String?
   createdAt DateTime @default(now())
 
   @@unique([threadId, seq])
@@ -572,6 +575,7 @@ model Run {
   task                 Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
   userId               String
   status               String
+  waitKind             String?
   trigger              String
   /// Immutable Product Harness decision captured when the Run was created.
   orchestration        Json?

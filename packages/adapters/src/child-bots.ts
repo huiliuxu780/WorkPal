@@ -290,7 +290,7 @@ export async function archiveBot(
   await deps.prisma.$transaction(async (tx) => {
     await tx.run.updateMany({
       where: { id: { in: runIds } },
-      data: { status: "cancelled", completedAt: now },
+      data: { status: "cancelled", waitKind: null, completedAt: now },
     });
     await tx.task.updateMany({
       where: { runs: { some: { id: { in: runIds } } } },
@@ -360,7 +360,7 @@ export async function destroyBot(
   const runIds = activeRuns.map((run) => run.id);
   await deps.prisma.run.updateMany({
     where: { id: { in: runIds } },
-    data: { status: "cancelled", completedAt: new Date() },
+    data: { status: "cancelled", waitKind: null, completedAt: new Date() },
   });
   await Promise.allSettled([
     ...activeRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),

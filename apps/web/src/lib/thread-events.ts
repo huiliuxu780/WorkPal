@@ -11,10 +11,10 @@ import {
   ACTIVITY_EVENT_TYPES,
   isActive,
   isRunTerminalEvent,
-  reduceActivity,
   mergeThreadHistory,
   prependThreadHistoryPage,
   progressMessageId,
+  reduceActivity,
   reduceLiveMessageBlocks,
   runFailureError,
   subagentBlockFromPayload,
@@ -47,6 +47,7 @@ function runFromStartedEvent(event: ProductEvent, previous: Run | undefined): Ru
     threadId: event.threadId,
     taskId: previous?.taskId ?? event.runId ?? event.id,
     status: "running",
+    waitKind: null,
     trigger:
       typeof trigger === "string" && runTriggers.has(trigger as Run["trigger"])
         ? (trigger as Run["trigger"])
@@ -374,6 +375,12 @@ function reduceThreadSnapshotBase(
   }
   if (event.type === "run.waiting_input" || event.type === "computer.takeover.requested") {
     const status = event.type === "run.waiting_input" ? "waiting_input" : "waiting_takeover";
+    const waitKind =
+      status === "waiting_takeover"
+        ? "takeover"
+        : event.payload.waitKind === "approval"
+          ? "approval"
+          : "input";
     const runId = event.runId;
     const knownInRun = Boolean(runId && prev.run?.id === runId);
     const knownInActive = Boolean(
@@ -382,10 +389,16 @@ function reduceThreadSnapshotBase(
     // Peer bot_message runs are omitted from snapshots while busy; the first wait
     // event is how an open thread learns they need ask/takeover UI.
     const needsInsert = Boolean(runId) && !knownInRun && !knownInActive;
-    const runChanged = Boolean(knownInRun && prev.run && prev.run.status !== status);
+    const runChanged = Boolean(
+      knownInRun && prev.run && (prev.run.status !== status || prev.run.waitKind !== waitKind),
+    );
     const activeRunChanged = Boolean(
       knownInActive &&
-        prev.activeRuns?.some((candidate) => candidate.id === runId && candidate.status !== status),
+        prev.activeRuns?.some(
+          (candidate) =>
+            candidate.id === runId &&
+            (candidate.status !== status || candidate.waitKind !== waitKind),
+        ),
     );
     const members = updateMemberStatus(prev.members, event.botId, status);
     // Ask pauses delete progress events server-side; drop the live bubble so a missed
@@ -411,6 +424,7 @@ function reduceThreadSnapshotBase(
         threadId: event.threadId,
         taskId: runId,
         status,
+        waitKind,
         trigger: "bot_message",
         routineId: null,
         modelProvider: null,
@@ -439,10 +453,10 @@ function reduceThreadSnapshotBase(
       cursor: event.seq,
       members,
       messages,
-      run: runChanged && prev.run ? { ...prev.run, status } : prev.run,
+      run: runChanged && prev.run ? { ...prev.run, status, waitKind } : prev.run,
       activeRuns: activeRunChanged
         ? prev.activeRuns?.map((candidate) =>
-            candidate.id === runId ? { ...candidate, status } : candidate,
+            candidate.id === runId ? { ...candidate, status, waitKind } : candidate,
           )
         : prev.activeRuns,
     };
@@ -465,7 +479,7 @@ function reduceThreadSnapshotBase(
       // why it stopped, matching what threads.get returns on the next load.
       run:
         endedRun && failure
-          ? { ...endedRun, status: "failed", error: failure }
+          ? { ...endedRun, status: "failed", waitKind: null, error: failure }
           : primaryEnded
             ? (activeRuns?.[0] ?? null)
             : prev.run,

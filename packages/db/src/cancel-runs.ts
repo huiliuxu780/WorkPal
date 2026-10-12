@@ -12,6 +12,7 @@ export async function cancelRunsInTransaction(
     where: { id: { in: runIds } },
     data: {
       status: "cancelled",
+      waitKind: null,
       completedAt: cancelledAt,
       leaseOwner: null,
       leaseExpiresAt: null,

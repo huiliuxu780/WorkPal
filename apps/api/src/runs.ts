@@ -159,6 +159,7 @@ export async function listSpaceRuns(
       groupName: row.thread.group?.name ?? null,
       threadId: row.threadId,
       status: row.status as RunActivityRow["status"],
+      waitKind: row.waitKind as RunActivityRow["waitKind"],
       trigger: row.trigger as RunActivityRow["trigger"],
       notificationsEnabled: activityNotificationsEnabled(
         row.thread.groupId,
@@ -217,6 +218,7 @@ export async function getRunDetail(
       botColor: run.bot.color,
       threadId: run.threadId,
       status: run.status as RunsDetailOutput["run"]["status"],
+      waitKind: run.waitKind as RunsDetailOutput["run"]["waitKind"],
       trigger: run.trigger as RunsDetailOutput["run"]["trigger"],
       notificationsEnabled: activityNotificationsEnabled(
         run.thread.groupId,

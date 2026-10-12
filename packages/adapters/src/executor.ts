@@ -1166,6 +1166,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         },
         data: {
           status: "leased",
+          waitKind: null,
           leaseOwner: workerId,
           leaseFence: fence,
           leaseExpiresAt: new Date(Date.now() + 5 * 60_000),
@@ -5524,6 +5525,7 @@ function computerRunRequeueData(
   return {
     status:
       heldForTakeover && !resumeCheckpoint ? ("waiting_takeover" as const) : ("queued" as const),
+    waitKind: heldForTakeover && !resumeCheckpoint ? ("takeover" as const) : null,
     error,
     leaseOwner: null,
     leaseExpiresAt: null,
@@ -5548,6 +5550,7 @@ async function writeComputerRunRequeue(
   };
   const releasedHold = {
     status: "queued" as const,
+    waitKind: null,
     error,
     leaseOwner: null,
     leaseExpiresAt: null,

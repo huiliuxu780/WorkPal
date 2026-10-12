@@ -40,6 +40,9 @@ export const RunStatus = z.enum([
 ]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
+export const WaitKind = z.enum(["input", "approval", "takeover"]);
+export type WaitKind = z.infer<typeof WaitKind>;
+
 export const EffectStatus = z.enum(["intended", "completed", "failed", "ambiguous", "reconciled"]);
 export type EffectStatus = z.infer<typeof EffectStatus>;
 

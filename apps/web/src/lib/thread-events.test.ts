@@ -951,6 +951,31 @@ describe("thread event reduction", () => {
     expect(waiting?.activeRuns?.[0]?.status).toBe("waiting_input");
   });
 
+  it("keeps the approval wait reason through live reduction and clears it on resume", () => {
+    const run = threadRun("run-1");
+    const initial: ThreadSnapshot = { ...snapshot([]), run, activeRuns: [run] };
+    const waiting = reduceThreadSnapshot(
+      initial,
+      event({
+        type: "run.waiting_input",
+        seq: 6,
+        runId: run.id,
+        payload: { waitKind: "approval" },
+      }),
+    );
+    expect(waiting?.run?.waitKind).toBe("approval");
+    expect(waiting?.activeRuns?.[0]?.waitKind).toBe("approval");
+    const resumed = reduceThreadSnapshot(
+      waiting,
+      event({
+        type: "run.started",
+        seq: 7,
+        runId: run.id,
+      }),
+    );
+    expect(resumed?.run?.waitKind).toBeNull();
+  });
+
   it("accumulates tool-call steps and collapses repeats into a count", () => {
     const initial = snapshot([]);
 
@@ -1686,7 +1711,13 @@ describe("activity projection reduction (Phase 4)", () => {
         seq: 11,
         botId: "bot-b",
         runId: "run-2",
-        payload: { fromBotId: "bot-1", toBotId: "bot-b", fromRunId: "run-1", toRunId: "run-2", intent: "request" },
+        payload: {
+          fromBotId: "bot-1",
+          toBotId: "bot-b",
+          fromRunId: "run-1",
+          toRunId: "run-2",
+          intent: "request",
+        },
       }),
       { botNames: { "bot-b": "Finance" } },
     );
@@ -1697,7 +1728,13 @@ describe("activity projection reduction (Phase 4)", () => {
         seq: 12,
         botId: "bot-1",
         runId: "run-3",
-        payload: { fromBotId: "bot-b", toBotId: "bot-1", fromRunId: "run-2", toRunId: "run-3", intent: "result" },
+        payload: {
+          fromBotId: "bot-b",
+          toBotId: "bot-1",
+          fromRunId: "run-2",
+          toRunId: "run-3",
+          intent: "result",
+        },
       }),
       { botNames: { "bot-b": "Finance" } },
     );
@@ -1759,7 +1796,11 @@ describe("activity projection reduction (Phase 4)", () => {
     );
     const progressed = reduceThreadSnapshot(
       started,
-      event({ type: "subagent.progress", seq: 6, payload: { taskId: "t1", agentId: "h1", progress: "reading" } }),
+      event({
+        type: "subagent.progress",
+        seq: 6,
+        payload: { taskId: "t1", agentId: "h1", progress: "reading" },
+      }),
     );
     expect(progressed).toBe(started);
   });

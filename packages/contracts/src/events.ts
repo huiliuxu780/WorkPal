@@ -32,6 +32,13 @@ export const ProductEventType = z.enum([
   "run.completed",
   "run.failed",
   "run.cancelled",
+  "run.retried",
+  "budget.exceeded",
+  "delivery.created",
+  "delivery.sent",
+  "delivery.failed",
+  "approval.requested",
+  "approval.resolved",
   "computer.status",
   "computer.takeover.requested",
   "computer.takeover.granted",
@@ -61,6 +68,33 @@ export const ProductEventType = z.enum([
   "heartbeat",
 ]);
 export type ProductEventType = z.infer<typeof ProductEventType>;
+
+/** Event.id remains the durable eventId; these fields can be read by older clients. */
+export const EventEnvelopeMeta = z.object({
+  eventId: Id,
+  schemaVersion: z.number().int().positive(),
+  causationId: Id.optional(),
+  parentRunId: Id.optional(),
+});
+export type EventEnvelopeMeta = z.infer<typeof EventEnvelopeMeta>;
+
+export const ProductEventPayloadSchemas = {
+  "run.retried": z.object({ attempt: z.number().int().positive(), reason: z.string() }),
+  "budget.exceeded": z.object({ reason: z.string(), limit: z.number().nonnegative().optional() }),
+  "delivery.created": z.object({ deliveryId: Id, sourceRunId: Id }),
+  "delivery.sent": z.object({ deliveryId: Id, messageId: Id }),
+  "delivery.failed": z.object({ deliveryId: Id, reason: z.string() }),
+  "approval.requested": z.object({ approvalEffectId: Id }),
+  "approval.resolved": z.object({ approvalEffectId: Id, decision: z.enum(["approved", "denied"]) }),
+} as const;
+
+export function assertProductEventPayload(
+  type: ProductEventType,
+  payload: Record<string, unknown>,
+): void {
+  const schema = ProductEventPayloadSchemas[type as keyof typeof ProductEventPayloadSchemas];
+  schema?.parse(payload);
+}
 
 export const MessageRole = z.enum(["user", "bot", "system"]);
 export const BotMessageIntent = z.enum(["request", "result", "question", "status", "fyi"]);
@@ -337,6 +371,11 @@ export function foldComputerCommands<T extends ComputerCommand>(events: T[]): T[
 
 export const ProductEventSchema = z.object({
   id: Id,
+  /** Alias of id in v2; absent on legacy event JSON. */
+  eventId: Id.optional(),
+  schemaVersion: z.number().int().positive().optional(),
+  causationId: Id.optional(),
+  parentRunId: Id.optional(),
   spaceId: Id,
   threadId: Id,
   botId: Id,

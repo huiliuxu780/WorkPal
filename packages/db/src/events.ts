@@ -1,5 +1,6 @@
 import type { RealtimeFanout } from "@rakazo/adapter-kit";
 import {
+  assertProductEventPayload,
   type BotSecretDestination,
   encodeLoginSecret,
   LoginSecretValue,
@@ -40,6 +41,9 @@ export interface AppendEventInput {
   type: ProductEvent["type"];
   payload: Record<string, unknown>;
   runId?: string;
+  schemaVersion?: number;
+  causationId?: string;
+  parentRunId?: string;
 }
 
 export interface ThreadEvents {
@@ -645,6 +649,7 @@ async function commitAnswerRunInput(
     },
     data: {
       status: "queued",
+      waitKind: null,
       ...(choiceAsk ? { checkpoint: null } : {}),
     },
   });
@@ -734,7 +739,23 @@ async function commitAnswerRunInput(
     runId: input.runId,
     payload: { messageId: message.id, role: "bot", blocks },
   });
-  return { threadId: updated.threadId, seq: updated.seq };
+  if (!approvalAsk) return { threadId: updated.threadId, seq: updated.seq };
+  // The effect can leave "intended" only once in this serialized transaction.
+  // A repeated answer cannot emit another resolution event.
+  const resolution = await appendEventInTransaction(tx, {
+    spaceId: input.spaceId,
+    threadId: input.threadId,
+    botId: run.botId,
+    type: "approval.resolved",
+    runId: input.runId,
+    schemaVersion: 2,
+    causationId: updated.id,
+    payload: {
+      approvalEffectId: approvalEffect!.id,
+      decision: input.answer === "allow" || input.answer === "always" ? "approved" : "denied",
+    },
+  });
+  return { threadId: resolution.threadId, seq: resolution.seq };
 }
 
 export async function answerRunInput(
@@ -780,6 +801,10 @@ export async function pauseRunForInput(
     // Thread row first, then run rows — the same order as clearThread and finalizeRun, so a
     // concurrent clear cannot deadlock against this transaction.
     await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+    const approvalEffectId = input.blocks.find(
+      (block) => block.kind === "ask" && Boolean(block.approvalEffectId),
+    );
+    const waitKind = approvalEffectId?.kind === "ask" ? "approval" : "input";
     const paused = await tx.run.updateMany({
       where: {
         id: input.runId,
@@ -792,6 +817,7 @@ export async function pauseRunForInput(
       },
       data: {
         status: "waiting_input",
+        waitKind,
         leaseOwner: null,
         leaseExpiresAt: null,
         ...(input.offeredActions?.length
@@ -833,10 +859,26 @@ export async function pauseRunForInput(
       botId: input.botId,
       type: "run.waiting_input",
       runId: input.runId,
-      payload: {},
+      payload: { waitKind },
     });
+    const approvalEvent =
+      approvalEffectId?.kind === "ask" && approvalEffectId.approvalEffectId
+        ? await appendEventInTransaction(tx, {
+            spaceId: input.spaceId,
+            threadId: input.threadId,
+            botId: input.botId,
+            type: "approval.requested",
+            runId: input.runId,
+            schemaVersion: 2,
+            causationId: waitingEvent.id,
+            payload: { approvalEffectId: approvalEffectId.approvalEffectId },
+          })
+        : null;
     await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
-    return { threadId: waitingEvent.threadId, seq: waitingEvent.seq };
+    return {
+      threadId: waitingEvent.threadId,
+      seq: approvalEvent?.seq ?? waitingEvent.seq,
+    };
   });
 
   if (!committed) return false;
@@ -863,6 +905,7 @@ export async function pauseRunForTakeover(
       },
       data: {
         status: "waiting_takeover",
+        waitKind: "takeover",
         leaseOwner: null,
         leaseExpiresAt: null,
         checkpoint: null,
@@ -983,6 +1026,7 @@ export async function finalizeComputerControlRelease(
           },
           data: {
             status: "queued",
+            waitKind: null,
             checkpoint,
           },
         })
@@ -1100,6 +1144,7 @@ async function finalizeRunOnce(
       },
       data: {
         status: input.outcome,
+        waitKind: null,
         error: input.outcome === "failed" ? input.error : null,
         completedAt: now,
         leaseOwner: null,
@@ -1262,6 +1307,13 @@ export async function appendEventInTransaction(
   tx: Prisma.TransactionClient,
   input: AppendEventInput,
 ) {
+  assertProductEventPayload(input.type, input.payload);
+  if (
+    input.schemaVersion !== undefined &&
+    (!Number.isInteger(input.schemaVersion) || input.schemaVersion < 1)
+  ) {
+    throw new Error("Event schemaVersion must be a positive integer");
+  }
   const thread = await tx.thread.update({
     where: { id: input.threadId },
     data: { nextEventSeq: { increment: 1 } },
@@ -1285,6 +1337,9 @@ export async function appendEventInTransaction(
       type: input.type,
       payload: payload as Prisma.InputJsonValue,
       runId: input.runId,
+      schemaVersion: input.schemaVersion ?? 1,
+      causationId: input.causationId,
+      parentRunId: input.parentRunId,
     },
   });
 }
@@ -1358,10 +1413,17 @@ function mapProductEvent(event: {
   type: string;
   payload: unknown;
   runId: string | null;
+  schemaVersion?: number | null;
+  causationId?: string | null;
+  parentRunId?: string | null;
   createdAt: Date;
 }): ProductEvent {
   return {
     id: event.id,
+    eventId: event.id,
+    schemaVersion: event.schemaVersion ?? 1,
+    causationId: event.causationId ?? undefined,
+    parentRunId: event.parentRunId ?? undefined,
     spaceId: event.spaceId,
     threadId: event.threadId,
     botId: event.botId,
