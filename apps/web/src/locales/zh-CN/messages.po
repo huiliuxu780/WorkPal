@@ -4092,6 +4092,10 @@ msgid "Execution failed"
 msgstr "执行失败"
 
 #: src/lib/execution-status.ts
+msgid "Execution queued"
+msgstr "正在排队"
+
+#: src/lib/execution-status.ts
 msgid "Executing"
 msgstr "正在执行"
 
@@ -4102,6 +4106,10 @@ msgstr "正在规划"
 #: src/lib/execution-status.ts
 msgid "Running in background"
 msgstr "后台运行中"
+
+#: src/lib/execution-status.ts
+msgid "Open the computer to take control"
+msgstr "需要你打开电脑并完成接管"
 
 #: src/lib/execution-status.ts
 msgid "Status unknown"
@@ -4118,6 +4126,10 @@ msgstr "暂时受阻"
 #: src/lib/execution-status.ts
 msgid "Waiting for approval"
 msgstr "等待批准"
+
+#: src/lib/execution-status.ts
+msgid "Waiting for takeover"
+msgstr "等待接管"
 
 #: src/lib/execution-status.ts
 msgid "Waiting for your reply"

@@ -4908,7 +4908,7 @@ const Transcript = memo(function Transcript({
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
       const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
-      const live = Boolean(run && isRunActive(run.status));
+      const live = Boolean(run && ["queued", "leased", "running"].includes(run.status));
       return (
         <ExecutionShell key={execution.runId} run={run} activity={execution.activity}>
           {execution.plan ? <RunPlanDisclosure plan={execution.plan} live={live} /> : null}

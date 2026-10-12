@@ -12,7 +12,7 @@ Baseline: `codex/clean-baseline` (`f9992e8`), based on PR #9 and the Java AgentS
 | 06 Tool actions | Tool events and `ToolActivityDisclosure` exist. | The design's evidence, effect status, grouping and retry presentation require a production mapping. |
 | 07 Approval | Backend approval/effect path and ask cards exist. | APPROVAL-001 scope and decision-owner checks, unified intervention presentation and recovery need verification. |
 | 08 User input | `threads.answer` and persisted ask blocks exist. | Unified intervention state, server-acknowledged submission and draft recovery need integration. |
-| 09 State consistency | `RunStatus` and Activity projection are available. | The frozen user-facing status matrix is not a shared production selector. |
+| 09 State consistency | The Shell uses a shared display selector; a follow-up aligns foreground queue, lease, takeover, trusted blocking and wait activity with the Task 09 matrix. | Other surfaces still use their own short Run labels; intervention counts, resume-pending and root background facts are not yet available as one cross-surface projection. |
 | 10 Background | Java native tasks, `BackgroundAgentTask`, a Web card and the Task18.2 delivery outbox exist. | Live Java→Web delivery acceptance and a cross-surface same-Run view remain. |
 | 11 Collaboration | Harness Phases 1 and 3 provide routing, support and handoff; Phase 4 projects events. | The single owner header with bounded collaborator details is not integrated. |
 | 12 Final shell | Existing UI tokens and chat components are available. | The frozen integrated shell, accessibility and responsive acceptance have not been reproduced in production. |
@@ -46,3 +46,4 @@ No percentage, completion summary, Plan item, semantic Step or external effect s
 - Task 03 adds a separate structured Plan tool, immutable revisions, current snapshot/live projection and inline disclosure. It does not parse AgentScope `plan_write` Markdown into product data. See [structured-plan-progress.md](./structured-plan-progress.md).
 - Task 04 adds explicit Run-level Steps and Todos, revision and evidence validation, snapshot/live replay and separate inline disclosures. Model-supplied batch numbers are rejected until a trusted telemetry source exists. See [semantic-steps-progress.md](./semantic-steps-progress.md).
 - Tasks 01–02 add the root Run display selector and inline Execution Shell around the existing structured content. They do not infer root background mode or invent an intervention action. See [execution-shell-progress.md](./execution-shell-progress.md).
+- Task 09 refines the selector for the later state matrix without inventing a new runtime enum. See [state-consistency-progress.md](./state-consistency-progress.md).
