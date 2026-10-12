@@ -3617,7 +3617,11 @@ export function ShellPage() {
             plans={activeSnapshot?.plans}
             steps={activeSnapshot?.steps}
             todos={activeSnapshot?.todos}
-            runs={[...(activeSnapshot?.run ? [activeSnapshot.run] : []), ...(activeSnapshot?.activeRuns ?? [])]}
+            runs={[
+              ...(activeSnapshot?.run ? [activeSnapshot.run] : []),
+              ...(activeSnapshot?.activeRuns ?? []),
+              ...(activeSnapshot?.recentRuns ?? []),
+            ]}
             activeRunIds={currentRuns.filter((run) => isRunActive(run.status)).map((run) => run.id)}
             showToolActivity={showToolActivity}
             olderCursor={activeSnapshot?.olderCursor ?? null}

@@ -873,6 +873,7 @@ describe("thread event reduction", () => {
       event({ type: "run.completed", seq: 6, botId: "bot-member", runId: run.id }),
     );
     expect(completed?.members?.[0]?.status).toBe("idle");
+    expect(completed?.recentRuns?.[0]).toMatchObject({ id: run.id, status: "completed" });
   });
 
   it("clears only the terminal run's live progress", () => {
@@ -900,6 +901,7 @@ describe("thread event reduction", () => {
     expect(next?.messages.map((item) => item.id)).toEqual(["progress:run-b"]);
     expect(next?.run).toEqual(runB);
     expect(next?.activeRuns).toEqual([runB]);
+    expect(next?.recentRuns?.[0]).toMatchObject({ id: runA.id, status: "failed" });
     expect(next?.cursor).toBe(10);
   });
 

@@ -947,6 +947,8 @@ export const ThreadSnapshotSchema = z.object({
   members: z.array(GroupMemberSchema).optional(),
   run: RunSchema.nullable(),
   activeRuns: z.array(RunSchema).optional(),
+  /** Bounded recent terminal Runs for historical execution rows. */
+  recentRuns: z.array(RunSchema).optional(),
   computer: ComputerStatusSchema.optional(),
   /** Projected activity for the current/recent runs (§33). Bounded (§34). */
   activity: z.array(ActivityItemSchema).optional(),
