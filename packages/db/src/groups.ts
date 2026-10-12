@@ -10,6 +10,10 @@ import { selectGroupLead } from "@rakazo/core";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
 import { cancelRunsInTransaction, type CancelledRunRow } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
+import {
+  recordBackgroundRevocations,
+  recordRunAbortRevocations,
+} from "./execution-revocations.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { appendEventInTransaction } from "./events.js";
 import { IsolationError } from "./scope.js";
@@ -575,7 +579,10 @@ export function createGroupRepos(prisma: PrismaClient) {
         const parentRunIds = parentRuns.map((run) => run.id);
         const backgroundTasks = parentRunIds.length
           ? await tx.backgroundAgentTask.findMany({
-              where: { parentRunId: { in: parentRunIds }, status: "running" },
+              where: {
+                parentRunId: { in: parentRunIds },
+                status: { in: ["running", "cancelling"] },
+              },
               select: {
                 taskId: true,
                 parentRunId: true,
@@ -586,6 +593,19 @@ export function createGroupRepos(prisma: PrismaClient) {
               },
             })
           : [];
+        // The group delete cascades runs and background projections. These rows do not.
+        await recordRunAbortRevocations(tx, parentRunIds);
+        await recordBackgroundRevocations(
+          tx,
+          backgroundTasks.map((task) => ({
+            taskId: task.taskId,
+            runId: task.parentRunId,
+            userId: task.userId,
+            spaceId: task.spaceId,
+            botId: task.botId,
+            threadId: task.threadId,
+          })),
+        );
         await tx.chatGroup.delete({ where: { id: groupId } });
         return {
           contextBotId,

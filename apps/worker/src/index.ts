@@ -19,6 +19,9 @@ import {
   createPostgresReconciliationLeadership,
   createRunExecutor,
   createRunSandbox,
+  deliverRunAborts,
+  retryPendingBackgroundRevocations,
+  retryPendingRunAborts,
   revokeCancellingBackgroundTasks,
   createRunSecretWriter,
   createWebProvider,
@@ -289,17 +292,19 @@ async function main() {
       prisma,
       expired.map((run) => run.runId),
     );
+    const runIds = [...new Set([...expired.map((run) => run.runId), ...descendantIds])];
     await Promise.all([
+      ...runIds.map(async (runId) => {
+        await jobs.cancel(runJobKey(runId)).catch(() => undefined);
+      }),
       ...expired.map(async (run) => {
-        await jobs.cancel(runJobKey(run.runId)).catch(() => undefined);
-        await runtime.abort(run.runId).catch(() => undefined);
         await events.notify(run.threadId, run.seq);
       }),
-      ...descendantIds.map(async (runId) => {
-        await jobs.cancel(runJobKey(runId)).catch(() => undefined);
-        await runtime.abort(runId).catch(() => undefined);
-      }),
     ]);
+    const abortResult = await deliverRunAborts(prisma, (runId) => runtime.abort(runId), runIds);
+    if (abortResult.pending.length) {
+      logger.error("run abort pending retry", { pending: abortResult.pending });
+    }
     if (runtime instanceof AgentScopeAgentRuntime) {
       const parentIds = [...expired.map((run) => run.runId), ...descendantIds];
       if (parentIds.length) {
@@ -339,9 +344,16 @@ async function main() {
     for (const cancelled of cancelledRuns) {
       await Promise.all([
         jobs.cancel(runJobKey(cancelled.id)).catch(() => undefined),
-        runtime.abort(cancelled.id).catch(() => undefined),
         events.notify(cancelled.threadId, cancelled.seq),
       ]);
+    }
+    const abortResult = await deliverRunAborts(
+      prisma,
+      (runId) => runtime.abort(runId),
+      cancelledRuns.map((cancelled) => cancelled.id),
+    );
+    if (abortResult.pending.length) {
+      logger.error("child run abort pending retry", { pending: abortResult.pending });
     }
     if (runtime instanceof AgentScopeAgentRuntime && cancelledRuns.length) {
       await revokeCancellingBackgroundTasks(
@@ -363,7 +375,17 @@ async function main() {
     logger.error("child Run cancellation reconciliation", error),
   );
   const revokeCancelledBackgroundTasks = async () => {
+    const abortResult = await retryPendingRunAborts(prisma, (runId) => runtime.abort(runId));
+    if (abortResult.pending.length) {
+      logger.error("run abort retry", { pending: abortResult.pending });
+    }
     if (!(runtime instanceof AgentScopeAgentRuntime)) return;
+    const tombstones = await retryPendingBackgroundRevocations(prisma, (taskId, identity) =>
+      runtime.cancelBackgroundTask(taskId, identity),
+    );
+    if (tombstones.pending.length) {
+      logger.error("background tombstone retry", { pending: tombstones.pending });
+    }
     const { pending } = await revokeCancellingBackgroundTasks(prisma, (taskId, identity) =>
       runtime.cancelBackgroundTask(taskId, identity),
     );

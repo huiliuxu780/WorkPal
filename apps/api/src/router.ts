@@ -78,6 +78,7 @@ import {
   prepareGraphqlInstall,
   probeOpenAiCompatibleModels,
   provisionComputer,
+  retryPendingBackgroundRevocations,
   revokeCancelledRunHandles,
   revokeCancellingBackgroundTasks,
   queueComputerUpdate,
@@ -593,6 +594,7 @@ async function revokeNativeCancellation(deps: RouterDeps, runIds: readonly strin
   await revokeCancelledRunHandles(runIds, {
     jobs: deps.jobs,
     abort: deps.runtime ? (runId) => deps.runtime!.abort(runId) : undefined,
+    prisma: deps.prisma,
   });
   if (!deps.cancelRuntimeBackgroundTask) return;
   await revokeCancellingBackgroundTasks(deps.prisma, deps.cancelRuntimeBackgroundTask, {
@@ -1835,20 +1837,12 @@ export function createRouter(deps: RouterDeps) {
       remove: authed.groups.remove.handler(async ({ context, input }) => {
         const removed = await groupRepos.removeGroup(context.actor, input.groupId);
         await revokeNativeCancellation(deps, removed.cancelledRunIds);
-        if (deps.cancelRuntimeBackgroundTask) {
-          await Promise.all(
-            removed.backgroundTasks.map((task) =>
-              deps.cancelRuntimeBackgroundTask!(task.taskId, {
-                userId: task.userId,
-                spaceId: task.spaceId,
-                botId: task.botId,
-                threadId: task.threadId,
-                runId: task.parentRunId,
-              }).catch((error) => {
-                getLogger().error("group removal background revocation failed", error);
-              }),
-            ),
-          );
+        if (deps.cancelRuntimeBackgroundTask && removed.backgroundTasks.length) {
+          await retryPendingBackgroundRevocations(deps.prisma, deps.cancelRuntimeBackgroundTask, {
+            taskIds: removed.backgroundTasks.map((task) => task.taskId),
+          }).catch((error) => {
+            getLogger().error("group removal background revocation failed; Worker will retry", error);
+          });
         }
         const cleanup = await Promise.allSettled(
           removed.artifactStorageKeys.map((storageKey) =>

@@ -117,6 +117,7 @@ import {
   retireModelCredential,
   SpaceLimitError,
   promoteLeasedRunWithAttempt,
+  reconcileAttemptFenceConflict,
   renewOwnedRunLease,
   scheduleAutomaticRunRetry,
   type ThreadEvents,
@@ -1297,14 +1298,23 @@ export function createRunExecutor(deps: ExecutorDeps) {
           startedAt: current.startedAt ?? new Date(),
         });
       } catch (error) {
-        await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
-        // The unique (runId, fence) conflict rolls the running update back. Requeue the
-        // still-leased Run so the fence is not stuck until the lease expires.
-        if (isUniqueViolation(error)) {
-          await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
+        if (!isAttemptUniqueViolation(error)) {
+          await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
+          throw error;
+        }
+        // The conflicting Attempt is still the current fence. Requeue would claim a new
+        // fence and leave that Attempt active. Reuse it, or fail the Run, in one transaction.
+        const reconciled = await reconcileAttemptFenceConflict(deps.prisma, {
+          runId,
+          leaseOwner: workerId,
+          leaseFence: fence,
+          startedAt: current.startedAt ?? new Date(),
+        });
+        if (reconciled.outcome !== "reused") {
+          await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
           return;
         }
-        throw error;
+        attempt = reconciled.attempt;
       }
       if (!attempt) {
         await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
@@ -5945,6 +5955,17 @@ function redactBlocks(blocks: MessageBlock[], secrets: string[]): MessageBlock[]
 
 function isUniqueViolation(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+}
+
+function isAttemptUniqueViolation(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && current.code === "P2002") return true;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
 }
 
 async function publishMessage(

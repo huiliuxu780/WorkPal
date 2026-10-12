@@ -1,5 +1,6 @@
 import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import type { Prisma } from "./client.js";
+import { recordRunAbortRevocations } from "./execution-revocations.js";
 
 /** Attempts that still represent the current fence. Finished rows stay untouched. */
 const ACTIVE_ATTEMPT_STATUSES = ["running", "waiting_input", "waiting_takeover"] as const;
@@ -27,7 +28,7 @@ export type CancelRunsOptions = {
  */
 export async function cancelRunsInTransaction(
   tx: Pick<Prisma.TransactionClient, "run" | "attempt" | "task"> &
-    Partial<Pick<Prisma.TransactionClient, "backgroundAgentTask">>,
+    Partial<Pick<Prisma.TransactionClient, "backgroundAgentTask" | "executionRevocation">>,
   runs: ReadonlyArray<{ id: string; taskId: string }>,
   cancelledAt: Date,
   options?: CancelRunsOptions,
@@ -77,5 +78,8 @@ export async function cancelRunsInTransaction(
     where: { parentRunId: { in: cancelledIds }, status: "running" },
     data: { status: "cancelling" },
   });
+  // The row outlives the Run. The caller still aborts immediately; a failed
+  // remote DELETE stays here for the worker sweep. 404 deletes the row later.
+  await recordRunAbortRevocations(tx, cancelledIds);
   return cancelled;
 }

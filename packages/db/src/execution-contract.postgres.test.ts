@@ -4,6 +4,10 @@ import { BUDGET_ACTIONS, budgetAskCheckpoint, buildRunOrchestration } from "@rak
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import { createDb, type PrismaClient } from "./client.js";
+import {
+  createIsolatedPostgresDatabase,
+  type IsolatedPostgresDatabase,
+} from "./postgres-test-database.js";
 import { computerHomeKey, computerScopeKey } from "./computers.js";
 import {
   appendEventInTransaction,
@@ -14,7 +18,7 @@ import {
 import { answerRunInput } from "./events.js";
 import { createGroupRepos } from "./groups.js";
 import { createThreadMessage } from "./messages.js";
-import { promoteLeasedRunWithAttempt } from "./promote-run.js";
+import { promoteLeasedRunWithAttempt, reconcileAttemptFenceConflict } from "./promote-run.js";
 import { renewOwnedRunLease } from "./run-lease.js";
 import { scheduleAutomaticRunRetry } from "./retry-runs.js";
 import { expireWaitingRuns, WAIT_TIMEOUT_MS } from "./wait-timeouts.js";
@@ -25,6 +29,7 @@ const describePostgres =
 describePostgres("execution contract (PostgreSQL)", () => {
   const id = randomUUID();
   const actor = { userId: id, spaceId: id } as Actor;
+  let isolated: IsolatedPostgresDatabase | undefined;
   let db: ReturnType<typeof createDb>;
   let prisma: PrismaClient;
   let botId: string;
@@ -32,7 +37,8 @@ describePostgres("execution contract (PostgreSQL)", () => {
   let computerId: string;
 
   beforeAll(async () => {
-    db = createDb(process.env.DATABASE_URL!);
+    isolated = await createIsolatedPostgresDatabase("exec_db");
+    db = isolated.db;
     prisma = db.prisma;
     await prisma.user.create({
       data: { id, name: "Contract test", email: `${id}@example.test`, emailVerified: true },
@@ -64,15 +70,11 @@ describePostgres("execution contract (PostgreSQL)", () => {
       },
     });
     computerId = computer.id;
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (!db) return;
-    await prisma.organization.deleteMany({ where: { id } });
-    await prisma.user.deleteMany({ where: { id } });
-    await prisma.$disconnect();
-    await db.pool.end();
-  });
+    await isolated?.drop();
+  }, 60_000);
 
   async function taskAndRun(data: {
     status: string;
@@ -751,5 +753,82 @@ describePostgres("execution contract (PostgreSQL)", () => {
       finishedAt: previous.finishedAt,
     });
     expect(await prisma.event.count({ where: { runId: run.id, type: "run.cancelled" } })).toBe(1);
+  });
+
+  it("reuses the conflicting attempt and finishes every other active attempt", async () => {
+    const seeded = await taskAndRun({
+      status: "leased",
+      leaseOwner: "worker-a",
+      leaseFence: 3,
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+    });
+    const current = await prisma.attempt.create({
+      data: { runId: seeded.run.id, fence: 3, status: "running" },
+    });
+    const stray = await prisma.attempt.create({
+      data: { runId: seeded.run.id, fence: 1, status: "waiting_takeover" },
+    });
+    const reconciled = await reconcileAttemptFenceConflict(prisma, {
+      runId: seeded.run.id,
+      leaseOwner: "worker-a",
+      leaseFence: 3,
+      startedAt: new Date(),
+    });
+    expect(reconciled).toEqual({ outcome: "reused", attempt: { id: current.id, fence: 3 } });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: seeded.run.id } })).toMatchObject({
+      status: "running",
+      leaseFence: 3,
+      leaseOwner: "worker-a",
+    });
+    expect(
+      await prisma.attempt.count({
+        where: {
+          runId: seeded.run.id,
+          status: { in: ["running", "waiting_input", "waiting_takeover"] },
+        },
+      }),
+    ).toBe(1);
+    expect(await prisma.attempt.findUniqueOrThrow({ where: { id: stray.id } })).toMatchObject({
+      status: "failed",
+    });
+  });
+
+  it("fails the run when the conflicting attempt is already finished", async () => {
+    const seeded = await taskAndRun({
+      status: "leased",
+      leaseOwner: "worker-a",
+      leaseFence: 2,
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+    });
+    await prisma.attempt.create({
+      data: { runId: seeded.run.id, fence: 2, status: "completed", finishedAt: new Date() },
+    });
+    await prisma.attempt.create({
+      data: { runId: seeded.run.id, fence: 1, status: "running" },
+    });
+    const reconciled = await reconcileAttemptFenceConflict(prisma, {
+      runId: seeded.run.id,
+      leaseOwner: "worker-a",
+      leaseFence: 2,
+      startedAt: new Date(),
+    });
+    expect(reconciled).toEqual({ outcome: "failed" });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: seeded.run.id } })).toMatchObject({
+      status: "failed",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      error: "Attempt fence conflict: the Attempt for this fence already finished",
+    });
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: seeded.task.id } })).toMatchObject({
+      status: "failed",
+    });
+    expect(
+      await prisma.attempt.count({
+        where: {
+          runId: seeded.run.id,
+          status: { in: ["running", "waiting_input", "waiting_takeover"] },
+        },
+      }),
+    ).toBe(0);
   });
 });

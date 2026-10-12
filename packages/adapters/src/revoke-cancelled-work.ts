@@ -50,39 +50,126 @@ export async function revokeCancellingBackgroundTasks(
   return { revoked, pending };
 }
 
+const RUN_ABORT_KIND = "run_abort";
+const BACKGROUND_TASK_KIND = "background_task";
+
+function revocationError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.slice(0, 500);
+}
+
 /**
- * Ask AgentScope to drop tasks whose projection rows are about to disappear.
- * A transport failure cannot be retried once the cascade deletes those rows.
+ * Abort each run now. A persisted run_abort row is deleted on success, including
+ * a remote 404 that resolves without throwing. A thrown DELETE keeps the row and
+ * records the error for the worker sweep.
  */
-export async function revokeBackgroundSnapshots(
-  cancelBackgroundTask: (taskId: string, identity: BackgroundCancelIdentity) => Promise<boolean>,
-  tasks: ReadonlyArray<BackgroundCancelIdentity & { taskId: string }>,
-): Promise<void> {
+export async function deliverRunAborts(
+  prisma: PrismaClient,
+  abort: (runId: string) => Promise<void>,
+  runIds: readonly string[],
+): Promise<{ revoked: string[]; pending: string[] }> {
+  const revoked: string[] = [];
+  const pending: string[] = [];
   await Promise.all(
-    tasks.map((task) =>
-      cancelBackgroundTask(task.taskId, {
-        userId: task.userId,
-        spaceId: task.spaceId,
-        botId: task.botId,
-        threadId: task.threadId,
-        runId: task.runId,
-      }).catch(() => undefined),
-    ),
+    runIds.map(async (runId) => {
+      try {
+        await abort(runId);
+        await prisma.executionRevocation.deleteMany({
+          where: { kind: RUN_ABORT_KIND, subjectId: runId },
+        });
+        revoked.push(runId);
+      } catch (error) {
+        await prisma.executionRevocation.updateMany({
+          where: { kind: RUN_ABORT_KIND, subjectId: runId },
+          data: { attempts: { increment: 1 }, lastError: revocationError(error) },
+        });
+        pending.push(runId);
+      }
+    }),
+  );
+  return { revoked, pending };
+}
+
+/** Worker sweep: retry run aborts whose remote DELETE has not succeeded yet. */
+export async function retryPendingRunAborts(
+  prisma: PrismaClient,
+  abort: (runId: string) => Promise<void>,
+  options?: { runIds?: readonly string[]; limit?: number },
+): Promise<{ revoked: string[]; pending: string[] }> {
+  const rows = await prisma.executionRevocation.findMany({
+    where: {
+      kind: RUN_ABORT_KIND,
+      ...(options?.runIds ? { subjectId: { in: [...options.runIds] } } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    take: options?.limit ?? 100,
+    select: { subjectId: true },
+  });
+  return deliverRunAborts(
+    prisma,
+    abort,
+    rows.map((row) => row.subjectId),
   );
 }
 
-/** Best-effort job cancel and runtime abort. Failures stay recoverable by the Worker sweep. */
+/**
+ * Retry background-task tombstones. `false` is the AgentScope 404 and still
+ * deletes the tombstone. A throw keeps it for the next worker pass.
+ */
+export async function retryPendingBackgroundRevocations(
+  prisma: PrismaClient,
+  cancelBackgroundTask: (taskId: string, identity: BackgroundCancelIdentity) => Promise<boolean>,
+  options?: { taskIds?: readonly string[]; limit?: number },
+): Promise<{ revoked: string[]; pending: string[] }> {
+  const rows = await prisma.executionRevocation.findMany({
+    where: {
+      kind: BACKGROUND_TASK_KIND,
+      ...(options?.taskIds ? { subjectId: { in: [...options.taskIds] } } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    take: options?.limit ?? 100,
+  });
+  const revoked: string[] = [];
+  const pending: string[] = [];
+  await Promise.all(
+    rows.map(async (row) => {
+      const taskId = row.taskId || row.subjectId;
+      try {
+        await cancelBackgroundTask(taskId, {
+          userId: row.userId,
+          spaceId: row.spaceId,
+          botId: row.botId,
+          threadId: row.threadId,
+          runId: row.runId,
+        });
+        await prisma.executionRevocation.deleteMany({ where: { id: row.id } });
+        revoked.push(taskId);
+      } catch (error) {
+        await prisma.executionRevocation.updateMany({
+          where: { id: row.id },
+          data: { attempts: { increment: 1 }, lastError: revocationError(error) },
+        });
+        pending.push(taskId);
+      }
+    }),
+  );
+  return { revoked, pending };
+}
+
+/** Job cancel plus immediate runtime abort. Remote abort failure stays in the outbox. */
 export async function revokeCancelledRunHandles(
   runIds: readonly string[],
   deps: {
     jobs: { cancel: (key: string) => Promise<unknown> };
     abort?: (runId: string) => Promise<void>;
+    prisma?: PrismaClient;
   },
 ): Promise<void> {
-  await Promise.all(
-    runIds.flatMap((runId) => [
-      deps.jobs.cancel(runJobKey(runId)).catch(() => undefined),
-      deps.abort?.(runId).catch(() => undefined) ?? Promise.resolve(),
-    ]),
-  );
+  await Promise.all(runIds.map((runId) => deps.jobs.cancel(runJobKey(runId)).catch(() => undefined)));
+  if (!deps.abort || runIds.length === 0) return;
+  if (deps.prisma) {
+    await deliverRunAborts(deps.prisma, deps.abort, runIds);
+    return;
+  }
+  await Promise.all(runIds.map((runId) => deps.abort!(runId).catch(() => undefined)));
 }

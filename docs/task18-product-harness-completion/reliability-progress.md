@@ -55,16 +55,18 @@ Entries that use this pair:
 - Wait timeout. The worker expires the waiting Run, cancels descendants, aborts, cancels jobs, notifies both Threads, and asks AgentScope to delete background tasks in that same turn.
 - Budget `narrow_scope` and `cancel_run`. PostgreSQL tests cancel the parent, child, and grandchild and keep a completed `ExternalEffect`.
 - Group member removal and group archive. A rename that removes no member does not cancel. PostgreSQL tests cover both.
-- Group delete. Cross-thread descendants are cancelled. The group Thread, its Runs, and its background projections are cascade-deleted.
+- Group delete. Cross-thread descendants are cancelled. The group Thread, its Runs, and its background projections are cascade-deleted. Before that delete commits, run-abort and background-task revocation rows are written to `execution_revocations`, which has no foreign key to those entities.
 - Bot archive and bot delete, including child-bot tools and account deletion. PostgreSQL tests archive and delete a bot and cancel a cross-thread child.
 - Teaching start emits `run.cancelled` with `reason:"teaching_started"`. Teaching stop does not cancel Runs.
 - A newer send cancels superseded queued Runs with `reason:"superseded"`.
 - Team-chat routine wake cancels the fallback Run with `reason:"routine_wake"`.
 - The worker child sweep repeats the descendant walk every ten seconds for any parent that was cancelled elsewhere.
 
-After the database transaction commits, the caller aborts the runtime, cancels the run job, and `DELETE`s AgentScope background tasks. Network calls are not inside the transaction. A transport error leaves `BackgroundAgentTask.status="cancelling"` and the worker sweep retries. HTTP 404 is treated as already gone and the projection becomes `cancelled`. A PostgreSQL test covers a thrown DELETE followed by a 404.
+After the database transaction commits, the caller aborts the runtime, cancels the run job, and `DELETE`s AgentScope background tasks. Network calls are not inside the transaction. A transport error leaves `BackgroundAgentTask.status="cancelling"` when that projection still exists, and the worker sweep retries. HTTP 404 is treated as already gone and the projection becomes `cancelled`. A PostgreSQL test covers a thrown DELETE followed by a 404.
 
-Group delete, and bot delete when it dissolves a group, drop those background rows with the Thread. The API still attempts the native DELETE from the ids captured before the cascade. If that attempt fails, the worker has no row left to retry. Cross-thread descendants keep their projections.
+Migration `20261013080000_execution_revocation_outbox` adds `execution_revocations`. That table is the retry record that survives bot, group, thread, and account deletes. `cancelRunsInTransaction` inserts `kind="run_abort"` for every run it actually cancels. Group delete inserts the same row for runs that are about to cascade away, plus `kind="background_task"` for running or cancelling background tasks. Bot delete, which is also the account-delete path, writes those background rows inside the delete transaction before `bot.delete` or a dissolved group's `chatGroup.delete`. The local runtime controller is aborted before the remote `DELETE /v1/runs/{runId}`. A network error or a non-404 HTTP status throws, leaves the row, increments `attempts`, and stores `lastError`. HTTP 404 and a successful DELETE delete the row. The worker sweep retries pending rows every ten seconds. Archive still uses the `cancelling` projection because those rows are not cascade-deleted.
+
+A unique `(runId, fence)` conflict no longer requeues the Run. The promote transaction rolls back, so the Run stays leased. `reconcileAttemptFenceConflict` then locks that Run. When this worker still owns the unexpired lease and the Attempt for the fence is active, the same transaction marks the Run running, reuses that Attempt, and fails every other active Attempt. When the conflicting Attempt is already finished, the Run and its Task become `failed` and no new fence is opened. A lease this worker does not own is left alone. The result is never two active Attempts for one Run.
 
 Computer stop deletes that bot's computer execution leases and stops the sandbox. It does not cancel Runs.
 
@@ -76,7 +78,7 @@ The retry policy is unchanged: the same Run gets a new Attempt, at most two auto
 
 ### Evidence for this pass
 
-`VERIFY_DATABASE=1` on database `workpal_exec_test`: 5 files, 27 tests passed, 0 skipped (`wait-timeouts`, `lease-loss-recovery`, `run-budget-enforcement`, and the two new `execution-contract` files). The new files add 15 tests and no `it.skip`.
+`VERIFY_DATABASE=1` with the admin connection pointed at the local `rakazo` database, which is not migrated: 5 files, 33 tests passed, 0 skipped (`wait-timeouts`, `lease-loss-recovery`, `run-budget-enforcement`, and the two `execution-contract` files). Each file clones a private database from a template whose name is a hash of the migration files. Those five files passed three consecutive times under Vitest's default file parallelism, with no `--no-file-parallelism`. The new cases are a run abort that fails once and succeeds on the next retry, background DELETE retries after bot and group cascade, and an Attempt fence conflict that leaves a single active Attempt or an explicitly failed Run. No `it.skip` was added.
 
 `pnpm test` without `VERIFY_DATABASE`, Node 24 and JDK 21: 395 files passed, 38 skipped; 4810 tests passed, 229 skipped. The new PostgreSQL files are inside that skip count because they use the existing `VERIFY_DATABASE` gate. The same command with the gate set is the 27-test run above.
 
@@ -89,6 +91,5 @@ The retry policy is unchanged: the same Run gets a new Attempt, at most two auto
 - Execution Card, Task Center, and HISTORY-001.
 - Computer stop does not cancel Runs.
 - Teaching stop does not cancel Runs.
-- A failed native DELETE for a group Thread, or a group dissolved by bot delete, cannot be retried after the cascade removes the projection.
 - A group update that does not remove a member does not cancel the members who remain.
 - `infra/sandboxes/supervisor/src/computer-spec.test.ts` can report `slow failure looked successful` when a first-run temporary `rakazo-browser` is slower than the 2.4s browser poll. It failed one full-suite run, then passed in isolation and on the next two full runs. `docs/fork-baseline.md` already records that timing signal. This pass does not change supervisor argv.

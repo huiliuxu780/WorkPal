@@ -21,6 +21,7 @@ import {
   expireComputerExecutionLeases,
   type Prisma,
   type PrismaClient,
+  recordBackgroundRevocations,
   withTransactionRetry,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
@@ -31,7 +32,8 @@ import { resolveAgentHomePath } from "./home.js";
 import { removeLegacyBotSessions } from "./legacy-session-cleanup.js";
 import {
   type BackgroundCancelIdentity,
-  revokeBackgroundSnapshots,
+  deliverRunAborts,
+  retryPendingBackgroundRevocations,
   revokeCancellingBackgroundTasks,
 } from "./revoke-cancelled-work.js";
 
@@ -356,10 +358,14 @@ export async function archiveBot(
     ...descendants.map((run) => deps.jobs.cancel(runJobKey(run.id))),
     ...activeRoutines.map((routine) => deps.jobs.cancel(routineJobKey(routine.id))),
   ]);
-  await Promise.allSettled([
-    ...cancelledRuns.map((run) => deps.runtime?.abort(run.id)),
-    ...descendants.map((run) => deps.runtime?.abort(run.id)),
-  ]);
+  if (deps.runtime?.abort) {
+    const abortRunIds = [...cancelledRuns.map((run) => run.id), ...descendants.map((run) => run.id)];
+    await deliverRunAborts(deps.prisma, (runId) => deps.runtime!.abort(runId), abortRunIds).catch(
+      (error) => {
+        getLogger().error("archived run abort failed; Worker will retry", error);
+      },
+    );
+  }
   await revokeLiveBackgroundTasks(deps, [
     ...cancelledRuns.map((run) => run.id),
     ...descendants.map((run) => run.id),
@@ -442,11 +448,7 @@ export async function destroyBot(
       await tx.artifact.deleteMany({
         where: { botId: bot.id, groupId: null, spaceId: bot.spaceId },
       });
-      const groupCleanup = await detachBotFromGroups(
-        tx,
-        bot.id,
-        Boolean(deps.cancelRuntimeBackgroundTask),
-      );
+      const groupCleanup = await detachBotFromGroups(tx, bot.id);
       await tx.computerExecutionLease.deleteMany({ where: { botId: bot.id } });
       await tx.computer.updateMany({
         where: {
@@ -466,6 +468,30 @@ export async function destroyBot(
           WHERE "botId" = ${bot.id}
         `;
       }
+      const ownBackgroundTasks = tx.backgroundAgentTask
+        ? await tx.backgroundAgentTask.findMany({
+            where: { botId: bot.id, status: { in: ["running", "cancelling"] } },
+            select: {
+              taskId: true,
+              parentRunId: true,
+              userId: true,
+              spaceId: true,
+              botId: true,
+              threadId: true,
+            },
+          })
+        : [];
+      await recordBackgroundRevocations(
+        tx,
+        ownBackgroundTasks.map((task) => ({
+          taskId: task.taskId,
+          runId: task.parentRunId,
+          userId: task.userId,
+          spaceId: task.spaceId,
+          botId: task.botId,
+          threadId: task.threadId,
+        })),
+      );
       await tx.botDeletion.create({
         data: {
           id: bot.id,
@@ -489,11 +515,24 @@ export async function destroyBot(
         ],
         cancelledGroupRuns: groupCleanup.cancelledRuns,
         backgroundTasks: groupCleanup.backgroundTasks,
+        ownBackgroundTasks,
       };
     }),
   );
-  if (deps.cancelRuntimeBackgroundTask && deletion.backgroundTasks?.length) {
-    await revokeBackgroundSnapshots(deps.cancelRuntimeBackgroundTask, deletion.backgroundTasks);
+  const tombstoneTaskIds = [
+    ...new Set([
+      ...(deletion.backgroundTasks ?? []).map((task) => task.taskId),
+      ...(deletion.ownBackgroundTasks ?? []).map((task) => task.taskId),
+    ]),
+  ];
+  if (deps.cancelRuntimeBackgroundTask && tombstoneTaskIds.length) {
+    await retryPendingBackgroundRevocations(
+      deps.prisma,
+      deps.cancelRuntimeBackgroundTask,
+      { taskIds: tombstoneTaskIds },
+    ).catch((error) => {
+      getLogger().error("bot deletion background revocation failed; Worker will retry", error);
+    });
   }
   const descendantParents = [
     ...cancelledOwnRuns.map((run) => run.id),
@@ -503,10 +542,19 @@ export async function destroyBot(
   await Promise.allSettled([
     ...deletion.cancelledGroupRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
     ...descendants.map((run) => deps.jobs.cancel(runJobKey(run.id))),
-    ...cancelledOwnRuns.map((run) => deps.runtime?.abort(run.id)),
-    ...deletion.cancelledGroupRuns.map((run) => deps.runtime?.abort(run.id)),
-    ...descendants.map((run) => deps.runtime?.abort(run.id)),
   ]);
+  if (deps.runtime?.abort) {
+    const abortRunIds = [
+      ...cancelledOwnRuns.map((run) => run.id),
+      ...deletion.cancelledGroupRuns.map((run) => run.id),
+      ...descendants.map((run) => run.id),
+    ];
+    await deliverRunAborts(deps.prisma, (runId) => deps.runtime!.abort(runId), abortRunIds).catch(
+      (error) => {
+        getLogger().error("deleted bot run abort failed; Worker will retry", error);
+      },
+    );
+  }
   await revokeLiveBackgroundTasks(deps, [
     ...deletion.cancelledGroupRuns.map((run) => run.id),
     ...descendants.map((run) => run.id),
@@ -544,11 +592,7 @@ export async function destroyBot(
   }
 }
 
-async function detachBotFromGroups(
-  tx: Prisma.TransactionClient,
-  botId: string,
-  snapshotBackground: boolean,
-) {
+async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) {
   await tx.$queryRaw<Array<{ id: string }>>`
     SELECT groups.id
     FROM chat_groups AS groups
@@ -601,22 +645,33 @@ async function detachBotFromGroups(
     ? await cancelRunsInTransaction(tx, activeRuns, new Date())
     : [];
   const backgroundTasks =
-    snapshotBackground && cancelledGroupRuns.length
-    ? await tx.backgroundAgentTask.findMany({
-        where: {
-          parentRunId: { in: cancelledGroupRuns.map((run) => run.id) },
-          status: "cancelling",
-        },
-        select: {
-          taskId: true,
-          userId: true,
-          spaceId: true,
-          botId: true,
-          threadId: true,
-          parentRunId: true,
-        },
-      })
-    : [];
+    cancelledGroupRuns.length && tx.backgroundAgentTask
+      ? await tx.backgroundAgentTask.findMany({
+          where: {
+            parentRunId: { in: cancelledGroupRuns.map((run) => run.id) },
+            status: { in: ["running", "cancelling"] },
+          },
+          select: {
+            taskId: true,
+            userId: true,
+            spaceId: true,
+            botId: true,
+            threadId: true,
+            parentRunId: true,
+          },
+        })
+      : [];
+  await recordBackgroundRevocations(
+    tx,
+    backgroundTasks.map((task) => ({
+      taskId: task.taskId,
+      runId: task.parentRunId,
+      userId: task.userId,
+      spaceId: task.spaceId,
+      botId: task.botId,
+      threadId: task.threadId,
+    })),
+  );
   if (cancelledGroupRuns.length) {
     const runIds = cancelledGroupRuns.map((run) => run.id);
     await expireComputerExecutionLeases(tx, { runId: { in: runIds } });

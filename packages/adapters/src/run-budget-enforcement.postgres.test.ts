@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime } from "@rakazo/adapter-kit";
-import { answerRunInput, createDb, createThreadEvents, type PrismaClient } from "@rakazo/db";
+import {
+  answerRunInput,
+  createDb,
+  createIsolatedPostgresDatabase,
+  createThreadEvents,
+  type IsolatedPostgresDatabase,
+  type PrismaClient,
+} from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { enforceRunBudgets } from "./run-budget-enforcement.js";
 
@@ -9,6 +16,7 @@ const describePostgres =
 
 describePostgres("Run budget enforcement (PostgreSQL)", () => {
   const id = randomUUID();
+  let isolated: IsolatedPostgresDatabase | undefined;
   let db: ReturnType<typeof createDb>;
   let prisma: PrismaClient;
   let botId: string;
@@ -16,7 +24,8 @@ describePostgres("Run budget enforcement (PostgreSQL)", () => {
   const abort = vi.fn(async () => undefined);
 
   beforeAll(async () => {
-    db = createDb(process.env.DATABASE_URL!);
+    isolated = await createIsolatedPostgresDatabase("budget");
+    db = isolated.db;
     prisma = db.prisma;
     await prisma.user.create({ data: { id, name: "Budget test", email: `${id}@example.test`, emailVerified: true } });
     await prisma.organization.create({ data: { id, name: "Budget test", slug: id, createdAt: new Date() } });
@@ -29,15 +38,11 @@ describePostgres("Run budget enforcement (PostgreSQL)", () => {
     botId = bot.id;
     const thread = await prisma.thread.create({ data: { spaceId: id, userId: id, botId } });
     threadId = thread.id;
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (!db) return;
-    await prisma.organization.deleteMany({ where: { id } });
-    await prisma.user.deleteMany({ where: { id } });
-    await prisma.$disconnect();
-    await db.pool.end();
-  });
+    await isolated?.drop();
+  }, 60_000);
 
   async function running(trigger: "user" | "routine", secondsOld: number) {
     const task = await prisma.task.create({

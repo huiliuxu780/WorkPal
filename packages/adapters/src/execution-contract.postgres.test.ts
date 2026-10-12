@@ -2,24 +2,33 @@ import { randomUUID } from "node:crypto";
 import type { AdapterContext, JobPublisher, SandboxProvider } from "@rakazo/adapter-kit";
 import { buildRunOrchestration } from "@rakazo/core";
 import {
+  cancelRunsInTransaction,
   createDb,
+  createGroupRepos,
+  createIsolatedPostgresDatabase,
   createThreadEvents,
   computerHomeKey,
   computerScopeKey,
   promoteLeasedRunWithAttempt,
+  type IsolatedPostgresDatabase,
   type PrismaClient,
 } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { archiveBot, destroyBot } from "./child-bots.js";
 import { createRunExecutor } from "./executor.js";
 import { createJobReconciler } from "./job-reconciler.js";
-import { revokeCancellingBackgroundTasks } from "./revoke-cancelled-work.js";
+import {
+  retryPendingBackgroundRevocations,
+  retryPendingRunAborts,
+  revokeCancellingBackgroundTasks,
+} from "./revoke-cancelled-work.js";
 
 const describePostgres =
   process.env.VERIFY_DATABASE && process.env.DATABASE_URL ? describe.sequential : describe.skip;
 
 describePostgres("execution contract recovery (PostgreSQL)", () => {
   const id = randomUUID();
+  let isolated: IsolatedPostgresDatabase | undefined;
   let db: ReturnType<typeof createDb>;
   let prisma: PrismaClient;
   let botId: string;
@@ -27,7 +36,8 @@ describePostgres("execution contract recovery (PostgreSQL)", () => {
   let computerId: string;
 
   beforeAll(async () => {
-    db = createDb(process.env.DATABASE_URL!);
+    isolated = await createIsolatedPostgresDatabase("exec_ad");
+    db = isolated.db;
     prisma = db.prisma;
     await prisma.user.create({
       data: { id, name: "Recovery test", email: `${id}@example.test`, emailVerified: true },
@@ -59,15 +69,11 @@ describePostgres("execution contract recovery (PostgreSQL)", () => {
     botId = bot.id;
     const thread = await prisma.thread.create({ data: { spaceId: id, userId: id, botId } });
     threadId = thread.id;
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (!db) return;
-    await prisma.organization.deleteMany({ where: { id } });
-    await prisma.user.deleteMany({ where: { id } });
-    await prisma.$disconnect();
-    await db.pool.end();
-  });
+    await isolated?.drop();
+  }, 60_000);
 
   function executor() {
     const enqueue = vi.fn(async (_job?: unknown) => undefined);
@@ -402,5 +408,200 @@ describePostgres("execution contract recovery (PostgreSQL)", () => {
     });
     expect(abort).toHaveBeenCalledWith(removedChild.id);
     expect(await prisma.event.count({ where: { runId: removedChild.id, type: "run.cancelled" } })).toBe(1);
+  });
+
+  it("retries a failed run abort on the next worker pass", async () => {
+    const task = await prisma.task.create({
+      data: { spaceId: id, userId: id, botId, threadId, prompt: "Abort", status: "running" },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id, userId: id, botId, threadId, taskId: task.id, status: "running", trigger: "user",
+      },
+    });
+    await prisma.$transaction((tx) =>
+      cancelRunsInTransaction(tx, [{ id: run.id, taskId: task.id }], new Date()),
+    );
+    const key = { kind_subjectId: { kind: "run_abort", subjectId: run.id } };
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toMatchObject({
+      attempts: 0,
+      runId: run.id,
+    });
+    const failed = await retryPendingRunAborts(
+      prisma,
+      async () => {
+        throw new Error("run delete failed");
+      },
+      { runIds: [run.id] },
+    );
+    expect(failed.pending).toContain(run.id);
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toMatchObject({
+      attempts: 1,
+      lastError: "run delete failed",
+    });
+    const recovered = await retryPendingRunAborts(prisma, async () => undefined, { runIds: [run.id] });
+    expect(recovered.revoked).toContain(run.id);
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toBeNull();
+  });
+
+  it("retries a background deletion after the bot cascade removes the projection", async () => {
+    const removedBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Tombstone bot", color: "test" },
+    });
+    const removedThread = await prisma.thread.create({
+      data: { spaceId: id, userId: id, botId: removedBot.id },
+    });
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id, userId: id, botId: removedBot.id, threadId: removedThread.id,
+        prompt: "bg", status: "running",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id, userId: id, botId: removedBot.id, threadId: removedThread.id,
+        taskId: task.id, status: "running", trigger: "user",
+      },
+    });
+    const taskId = `tomb-${run.id}`;
+    await prisma.backgroundAgentTask.create({
+      data: {
+        taskId,
+        parentRunId: run.id,
+        userId: id,
+        spaceId: id,
+        botId: removedBot.id,
+        threadId: removedThread.id,
+        agentId: "helper",
+        sessionId: "session",
+        toolNames: [],
+        status: "running",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const cancel = vi.fn(async () => {
+      throw new Error("background delete failed");
+    });
+    await destroyBot(
+      {
+        prisma,
+        sandbox: new Proxy({}, { get: () => vi.fn(async () => undefined) }) as SandboxProvider,
+        home: {} as never,
+        jobs: { cancel: vi.fn(async () => undefined), enqueue: vi.fn(async () => undefined) } as unknown as JobPublisher,
+        runtime: { abort: vi.fn(async () => undefined) },
+        cancelRuntimeBackgroundTask: cancel,
+      },
+      { ...removedBot, archivedAt: null, userId: id },
+      {
+        operationId: "tombstone",
+        traceId: "tombstone",
+        spaceId: id,
+        userId: id,
+        botId: removedBot.id,
+        signal: new AbortController().signal,
+      } as AdapterContext,
+      { deleteMemories: true },
+    );
+    expect(await prisma.bot.findUnique({ where: { id: removedBot.id } })).toBeNull();
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId } })).toBeNull();
+    const key = { kind_subjectId: { kind: "background_task", subjectId: taskId } };
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toMatchObject({
+      taskId,
+      runId: run.id,
+    });
+    expect((await prisma.executionRevocation.findUnique({ where: key }))?.attempts).toBeGreaterThanOrEqual(1);
+    const recovered = await retryPendingBackgroundRevocations(prisma, async () => false, {
+      taskIds: [taskId],
+    });
+    expect(recovered.revoked).toContain(taskId);
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toBeNull();
+  });
+
+  it("retries a background deletion after the group cascade removes the projection", async () => {
+    const partner = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Group partner", color: "test" },
+    });
+    const repos = createGroupRepos(prisma);
+    const group = await repos.createGroup({ userId: id, spaceId: id } as never, {
+      name: "Tombstone group",
+      botIds: [botId, partner.id],
+    });
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id, userId: id, botId, threadId: group.threadId, prompt: "group bg", status: "running",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id, userId: id, botId, threadId: group.threadId, taskId: task.id,
+        status: "running", trigger: "user",
+      },
+    });
+    const taskId = `group-tomb-${run.id}`;
+    await prisma.backgroundAgentTask.create({
+      data: {
+        taskId,
+        parentRunId: run.id,
+        userId: id,
+        spaceId: id,
+        botId,
+        threadId: group.threadId,
+        agentId: "helper",
+        sessionId: "session",
+        toolNames: [],
+        status: "running",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await repos.removeGroup({ userId: id, spaceId: id } as never, group.id);
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId } })).toBeNull();
+    expect(await prisma.run.findUnique({ where: { id: run.id } })).toBeNull();
+    const key = { kind_subjectId: { kind: "background_task", subjectId: taskId } };
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toMatchObject({ taskId });
+    const failed = await retryPendingBackgroundRevocations(
+      prisma,
+      async () => {
+        throw new Error("group delete failed");
+      },
+      { taskIds: [taskId] },
+    );
+    expect(failed.pending).toContain(taskId);
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toMatchObject({
+      attempts: 1,
+      lastError: "group delete failed",
+    });
+    const recovered = await retryPendingBackgroundRevocations(prisma, async () => false, {
+      taskIds: [taskId],
+    });
+    expect(recovered.revoked).toContain(taskId);
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toBeNull();
+  });
+
+  it("does not leave two active attempts when a fence conflicts", async () => {
+    await prisma.computerExecutionLease.deleteMany({ where: { computerId } });
+    const run = await queuedRun();
+    await prisma.run.update({ where: { id: run.id }, data: { leaseFence: 2 } });
+    await prisma.attempt.create({ data: { runId: run.id, fence: 2, status: "running" } });
+    await prisma.attempt.create({ data: { runId: run.id, fence: 3, status: "running" } });
+    const { executor: running, enqueue } = executor();
+    await expect(running.continueRun(run.id, "worker-conflict")).rejects.toThrow();
+    const active = await prisma.attempt.findMany({
+      where: {
+        runId: run.id,
+        status: { in: ["running", "waiting_input", "waiting_takeover"] },
+      },
+    });
+    expect(active).toHaveLength(1);
+    expect(active[0]).toMatchObject({ fence: 3, status: "running" });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "running",
+      leaseFence: 3,
+      leaseOwner: "worker-conflict",
+    });
+    expect(await prisma.attempt.findFirstOrThrow({ where: { runId: run.id, fence: 2 } })).toMatchObject({
+      status: "failed",
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+    await prisma.computerExecutionLease.deleteMany({ where: { computerId } });
   });
 });
