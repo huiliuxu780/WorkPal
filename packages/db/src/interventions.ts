@@ -348,9 +348,14 @@ export async function emitInterventionCreated(
 async function backfillPresentation(
   tx: InterventionTx,
   row: InterventionRecord,
+  callerPresentation?: InterventionPresentation,
 ): Promise<InterventionPresentation | undefined> {
   const parsed = InterventionPresentationSchema.safeParse(row.presentation);
   if (parsed.success) return parsed.data;
+  // The answer path rewrites the Ask block to `answered` before settling the
+  // row, so the message scan below cannot see it; that caller passes the
+  // locked, validated Ask it already holds.
+  if (callerPresentation) return callerPresentation;
   const message = await tx.message.findUnique({
     where: { id: row.messageId },
     select: { blocks: true },
@@ -366,9 +371,13 @@ async function transitionPending(
   tx: InterventionTx,
   row: InterventionRecord,
   status: "answered" | "expired" | "cancelled",
-  patch: { resolvedByUserId?: string; decision?: "approved" | "denied" },
+  patch: {
+    resolvedByUserId?: string;
+    decision?: "approved" | "denied";
+    presentation?: InterventionPresentation;
+  },
 ): Promise<InterventionRecord | null> {
-  const presentation = await backfillPresentation(tx, row);
+  const presentation = await backfillPresentation(tx, row, patch.presentation);
   const changed = await tx.intervention.updateManyAndReturn({
     where: { id: row.id, status: "pending" },
     data: {
@@ -508,6 +517,9 @@ export async function settleAnsweredIntervention(
     const changed = await transitionPending(tx, existing, "answered", {
       resolvedByUserId: input.resolvedByUserId,
       ...(input.decision ? { decision: input.decision } : {}),
+      // The caller's Ask block is the authoritative display source: the
+      // answer path rewrites the message before settling this row.
+      presentation: presentationFromAskBlock(input.ask),
     });
     if (!changed) return;
   } else {

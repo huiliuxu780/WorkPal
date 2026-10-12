@@ -939,6 +939,67 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     expect(resolvedEvent.payload).toMatchObject({ presentation: { text: "Legacy row?" } });
   });
 
+  it("backfills the answer-path presentation from the Ask block, not the already-updated message", async () => {
+    const credential = {
+      name: "example_api",
+      origin: "https://api.example.test",
+      auth: { type: "bearer" as const },
+    };
+    const { run, attempt } = await runningRun();
+    expect(
+      await pause(run, attempt, [
+        {
+          kind: "ask",
+          text: "Legacy secret row?",
+          detail: "Paste the masked key.",
+          status: "pending",
+          input: "secret",
+          purpose: "api_key",
+          credential,
+        },
+      ]),
+    ).toBe(true);
+    const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
+    await prisma.intervention.update({
+      where: { id: row.id },
+      data: { presentation: Prisma.DbNull },
+    });
+    expect(
+      await resolveIntervention(
+        prisma,
+        {
+          spaceId: id,
+          threadId,
+          interventionId: row.id,
+          clientSubmissionId: randomUUID(),
+          answeredByUserId: id,
+          answer: SECRET,
+        },
+        undefined,
+        { store: async () => undefined },
+      ),
+    ).toMatchObject({ outcome: "accepted" });
+    // The message Ask is now `answered`; only the caller-passed block can backfill.
+    const settled = await prisma.intervention.findFirstOrThrow({ where: { id: row.id } });
+    expect(settled.presentation).toMatchObject({
+      text: "Legacy secret row?",
+      detail: "Paste the masked key.",
+      credential: {
+        name: "example_api",
+        origin: "https://api.example.test",
+        authType: "bearer",
+      },
+    });
+    expect(JSON.stringify(settled.presentation)).not.toContain(SECRET);
+    const resolvedEvent = await prisma.event.findFirstOrThrow({
+      where: { runId: run.id, type: "intervention.resolved" },
+    });
+    expect(resolvedEvent.payload).toMatchObject({
+      presentation: { text: "Legacy secret row?" },
+    });
+    expect(JSON.stringify(resolvedEvent.payload)).not.toContain(SECRET);
+  });
+
   async function raceOutcome<T>(work: Promise<T>): Promise<{ value: T } | { error: string }> {
     try {
       return { value: await work };
