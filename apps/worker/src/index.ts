@@ -19,6 +19,7 @@ import {
   createPostgresReconciliationLeadership,
   createRunExecutor,
   createRunSandbox,
+  revokeCancellingBackgroundTasks,
   createRunSecretWriter,
   createWebProvider,
   databaseCapacityBackoffMs,
@@ -54,6 +55,7 @@ import {
   appendEventInTransaction,
   cancelChildrenOfCancelledRuns,
   createDb,
+  listDescendantRunIds,
   createThreadEvents,
   currentThreadGeneration,
   enqueueDeliveryInTransaction,
@@ -180,15 +182,6 @@ async function main() {
   void reconcileBackgroundTasks().catch((error) =>
     logger.error("background task reconciliation", error),
   );
-  const waitSweep = setInterval(() => {
-    void expireWaitingRuns(prisma)
-      .then((expired) => Promise.all(expired.map((run) => events.notify(run.threadId, run.seq))))
-      .catch((error) => logger.error("waiting run timeout reconciliation", error));
-  }, 60_000);
-  waitSweep.unref?.();
-  void expireWaitingRuns(prisma)
-    .then((expired) => Promise.all(expired.map((run) => events.notify(run.threadId, run.seq))))
-    .catch((error) => logger.error("waiting run timeout reconciliation", error));
   const dataDir = process.env.DATA_DIR ?? "./data";
   if (process.env.NODE_ENV === "production" && process.env.AGENT_RUNTIME === "scripted") {
     throw new Error("The scripted agent runtime is reserved for deterministic tests");
@@ -218,60 +211,6 @@ async function main() {
   budgetSweep.unref?.();
   void enforceRunBudgets({ prisma, events, runtime }).catch((error) =>
     logger.error("Run budget reconciliation", error),
-  );
-  const reconcileCancelledChildren = async () => {
-    const cancelledRuns = await cancelChildrenOfCancelledRuns(prisma);
-    for (const cancelled of cancelledRuns) {
-      await Promise.all([
-        jobs.cancel(runJobKey(cancelled.id)).catch(() => undefined),
-        runtime.abort(cancelled.id).catch(() => undefined),
-        events.notify(cancelled.threadId, cancelled.seq),
-      ]);
-    }
-  };
-  const childCancellationSweep = setInterval(() => {
-    void reconcileCancelledChildren().catch((error) =>
-      logger.error("child Run cancellation reconciliation", error),
-    );
-  }, 10_000);
-  childCancellationSweep.unref?.();
-  void reconcileCancelledChildren().catch((error) =>
-    logger.error("child Run cancellation reconciliation", error),
-  );
-  const revokeCancelledBackgroundTasks = async () => {
-    if (!(runtime instanceof AgentScopeAgentRuntime)) return;
-    const tasks = await prisma.backgroundAgentTask.findMany({
-      where: { status: "cancelling" },
-      orderBy: { startedAt: "asc" },
-      take: 100,
-    });
-    for (const task of tasks) {
-      try {
-        // A 404 is already revoked. Keep the request durable on transport failure.
-        await runtime.cancelBackgroundTask(task.taskId, {
-          userId: task.userId,
-          spaceId: task.spaceId,
-          botId: task.botId,
-          threadId: task.threadId,
-          runId: task.parentRunId,
-        });
-        await prisma.backgroundAgentTask.updateMany({
-          where: { taskId: task.taskId, status: "cancelling" },
-          data: { status: "cancelled", finishedAt: new Date() },
-        });
-      } catch (error) {
-        logger.error("background task cancellation retry", error);
-      }
-    }
-  };
-  const cancellationSweep = setInterval(() => {
-    void revokeCancelledBackgroundTasks().catch((error) =>
-      logger.error("background task cancellation reconciliation", error),
-    );
-  }, 10_000);
-  cancellationSweep.unref?.();
-  void revokeCancelledBackgroundTasks().catch((error) =>
-    logger.error("background task cancellation reconciliation", error),
   );
   // Same resolver the API uses, so both processes agree on provider, model and key.
   const { key: deploymentModelKey } = resolveDeploymentModel();
@@ -344,6 +283,103 @@ async function main() {
   const artifacts = new LocalArtifactStore(dataDir);
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;
   const jobs: JobPublisher = inMemoryJobs ?? new GraphileJobPublisher(pool);
+  const reconcileWaitingRuns = async () => {
+    const expired = await expireWaitingRuns(prisma);
+    const descendantIds = await listDescendantRunIds(
+      prisma,
+      expired.map((run) => run.runId),
+    );
+    await Promise.all([
+      ...expired.map(async (run) => {
+        await jobs.cancel(runJobKey(run.runId)).catch(() => undefined);
+        await runtime.abort(run.runId).catch(() => undefined);
+        await events.notify(run.threadId, run.seq);
+      }),
+      ...descendantIds.map(async (runId) => {
+        await jobs.cancel(runJobKey(runId)).catch(() => undefined);
+        await runtime.abort(runId).catch(() => undefined);
+      }),
+    ]);
+    if (runtime instanceof AgentScopeAgentRuntime) {
+      const parentIds = [...expired.map((run) => run.runId), ...descendantIds];
+      if (parentIds.length) {
+        await revokeCancellingBackgroundTasks(
+          prisma,
+          (taskId, identity) => runtime.cancelBackgroundTask(taskId, identity),
+          { parentRunIds: parentIds },
+        ).catch((error) => {
+          logger.error("wait-timeout background revocation failed; sweep will retry", error);
+        });
+      }
+    }
+    if (descendantIds.length === 0) return;
+    const notices = await prisma.event.findMany({
+      where: { runId: { in: descendantIds }, type: "run.cancelled" },
+      select: { threadId: true, seq: true },
+    });
+    await Promise.all(
+      notices.map((notice) =>
+        events.notify(notice.threadId, notice.seq).catch((error) => {
+          logger.error("wait-timeout descendant realtime notification", error);
+        }),
+      ),
+    );
+  };
+  const waitSweep = setInterval(() => {
+    void reconcileWaitingRuns().catch((error) =>
+      logger.error("waiting run timeout reconciliation", error),
+    );
+  }, 60_000);
+  waitSweep.unref?.();
+  void reconcileWaitingRuns().catch((error) =>
+    logger.error("waiting run timeout reconciliation", error),
+  );
+  const reconcileCancelledChildren = async () => {
+    const cancelledRuns = await cancelChildrenOfCancelledRuns(prisma);
+    for (const cancelled of cancelledRuns) {
+      await Promise.all([
+        jobs.cancel(runJobKey(cancelled.id)).catch(() => undefined),
+        runtime.abort(cancelled.id).catch(() => undefined),
+        events.notify(cancelled.threadId, cancelled.seq),
+      ]);
+    }
+    if (runtime instanceof AgentScopeAgentRuntime && cancelledRuns.length) {
+      await revokeCancellingBackgroundTasks(
+        prisma,
+        (taskId, identity) => runtime.cancelBackgroundTask(taskId, identity),
+        { parentRunIds: cancelledRuns.map((run) => run.id) },
+      ).catch((error) => {
+        logger.error("child cancellation background revocation failed; sweep will retry", error);
+      });
+    }
+  };
+  const childCancellationSweep = setInterval(() => {
+    void reconcileCancelledChildren().catch((error) =>
+      logger.error("child Run cancellation reconciliation", error),
+    );
+  }, 10_000);
+  childCancellationSweep.unref?.();
+  void reconcileCancelledChildren().catch((error) =>
+    logger.error("child Run cancellation reconciliation", error),
+  );
+  const revokeCancelledBackgroundTasks = async () => {
+    if (!(runtime instanceof AgentScopeAgentRuntime)) return;
+    const { pending } = await revokeCancellingBackgroundTasks(prisma, (taskId, identity) =>
+      runtime.cancelBackgroundTask(taskId, identity),
+    );
+    if (pending.length) {
+      logger.error("background task cancellation retry", { pending });
+    }
+  };
+  const cancellationSweep = setInterval(() => {
+    void revokeCancelledBackgroundTasks().catch((error) =>
+      logger.error("background task cancellation reconciliation", error),
+    );
+  }, 10_000);
+  cancellationSweep.unref?.();
+  void revokeCancelledBackgroundTasks().catch((error) =>
+    logger.error("background task cancellation reconciliation", error),
+  );
   const jobHost: JobWorkerHost =
     inMemoryJobs ??
     new GraphileJobWorkerHost(pool, {

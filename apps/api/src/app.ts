@@ -399,7 +399,17 @@ export async function createApp(
       await Promise.all(
         bots.map((bot) =>
           destroyBot(
-            { prisma, sandbox, home, jobs, artifacts, dataDir: env.dataDir, purgeRuntimeBotState },
+            {
+              prisma,
+              sandbox,
+              home,
+              jobs,
+              artifacts,
+              dataDir: env.dataDir,
+              purgeRuntimeBotState,
+              runtime,
+              cancelRuntimeBackgroundTask,
+            },
             bot,
             {
               operationId: `account-delete:${userId}`,
@@ -769,6 +779,8 @@ export async function createApp(
         prisma,
         events,
         jobs,
+        runtime,
+        cancelRuntimeBackgroundTask,
         send: createMessagingTeamChatSender(messaging),
         providerId: "slack",
         botId: env.teamChatBotId,

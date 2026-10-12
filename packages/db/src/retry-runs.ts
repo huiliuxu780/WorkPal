@@ -39,7 +39,7 @@ export async function scheduleAutomaticRunRetry(
       tx.externalEffect.findFirst({
         where: {
           runId: run.id,
-          status: { in: ["intended", "approved", "executing", "completed"] },
+          status: { in: ["intended", "approved", "executing", "completed", "uncertain"] },
         },
         select: { id: true },
       }),

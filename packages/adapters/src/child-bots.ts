@@ -12,6 +12,8 @@ import { type Actor, type Bot, type ComputerMode, GROUP_MEMBER_MIN } from "@raka
 import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import { browserProfilePathForScreen } from "@rakazo/core/node/desktop-runtime";
 import {
+  appendEventInTransaction,
+  cancelChildrenOfCancelledRuns,
   cancelRunsInTransaction,
   computerScopeKey,
   createRepos,
@@ -27,6 +29,11 @@ import { toComputerRef } from "./computer-support.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
 import { resolveAgentHomePath } from "./home.js";
 import { removeLegacyBotSessions } from "./legacy-session-cleanup.js";
+import {
+  type BackgroundCancelIdentity,
+  revokeBackgroundSnapshots,
+  revokeCancellingBackgroundTasks,
+} from "./revoke-cancelled-work.js";
 
 export function confirmSpawnedBotName(confirmName: string, botName: string) {
   if (confirmName !== botName) {
@@ -198,6 +205,11 @@ type BotLifecycleDeps = {
   sandbox: SandboxProvider;
   home: AgentHomeStore;
   jobs: JobPublisher;
+  runtime?: { abort: (runId: string) => Promise<void> };
+  cancelRuntimeBackgroundTask?: (
+    taskId: string,
+    identity: BackgroundCancelIdentity,
+  ) => Promise<boolean>;
   dataDir?: string;
   artifacts?: ArtifactStore;
   purgeRuntimeBotState?: (identity: {
@@ -267,6 +279,18 @@ export async function archiveSpawnedBot(
   return { ok: true as const, botId: target.id, name: target.name };
 }
 
+async function revokeLiveBackgroundTasks(
+  deps: BotLifecycleDeps,
+  runIds: readonly string[],
+): Promise<void> {
+  if (!deps.cancelRuntimeBackgroundTask || runIds.length === 0) return;
+  await revokeCancellingBackgroundTasks(deps.prisma, deps.cancelRuntimeBackgroundTask, {
+    parentRunIds: runIds,
+  }).catch((error) => {
+    getLogger().error("background task revocation failed; Worker will reconcile", error);
+  });
+}
+
 export async function archiveBot(
   deps: BotLifecycleDeps,
   bot: LifecycleBot,
@@ -278,24 +302,28 @@ export async function archiveBot(
     }),
     deps.prisma.run.findMany({
       where: { botId: bot.id, status: { in: [...ACTIVE_RUN_STATUSES] } },
-      select: { id: true },
+      select: { id: true, taskId: true },
     }),
     deps.prisma.routine.findMany({
       where: { botId: bot.id, active: true },
       select: { id: true },
     }),
   ]);
-  const runIds = activeRuns.map((run) => run.id);
   const now = new Date();
-  await deps.prisma.$transaction(async (tx) => {
-    await tx.run.updateMany({
-      where: { id: { in: runIds } },
-      data: { status: "cancelled", waitKind: null, completedAt: now },
-    });
-    await tx.task.updateMany({
-      where: { runs: { some: { id: { in: runIds } } } },
-      data: { status: "cancelled" },
-    });
+  const cancelledRuns = await deps.prisma.$transaction(async (tx) => {
+    const cancelled = activeRuns.length
+      ? await cancelRunsInTransaction(tx, activeRuns, now)
+      : [];
+    for (const run of cancelled) {
+      await appendEventInTransaction(tx, {
+        spaceId: run.spaceId,
+        threadId: run.threadId,
+        botId: run.botId,
+        runId: run.id,
+        type: "run.cancelled",
+        payload: { reason: "bot_archived" },
+      });
+    }
     await tx.routine.updateMany({
       where: { botId: bot.id },
       data: { active: false, nextRunAt: null },
@@ -317,10 +345,24 @@ export async function archiveBot(
       where: { id: bot.id },
       data: { archivedAt: bot.archivedAt ?? now, pinned: false },
     });
+    return cancelled;
   });
+  const descendants = await cancelChildrenOfCancelledRuns(
+    deps.prisma,
+    cancelledRuns.map((run) => run.id),
+  );
   await Promise.allSettled([
-    ...activeRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
+    ...cancelledRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
+    ...descendants.map((run) => deps.jobs.cancel(runJobKey(run.id))),
     ...activeRoutines.map((routine) => deps.jobs.cancel(routineJobKey(routine.id))),
+  ]);
+  await Promise.allSettled([
+    ...cancelledRuns.map((run) => deps.runtime?.abort(run.id)),
+    ...descendants.map((run) => deps.runtime?.abort(run.id)),
+  ]);
+  await revokeLiveBackgroundTasks(deps, [
+    ...cancelledRuns.map((run) => run.id),
+    ...descendants.map((run) => run.id),
   ]);
   await releaseTeamComputerScreen(deps, bot, dedicated?.id, context);
   const currentDedicated = dedicated
@@ -353,19 +395,25 @@ export async function destroyBot(
     }),
     deps.prisma.run.findMany({
       where: { botId: bot.id, status: { in: [...ACTIVE_RUN_STATUSES] } },
-      select: { id: true },
+      select: { id: true, taskId: true },
     }),
     deps.prisma.routine.findMany({ where: { botId: bot.id }, select: { id: true } }),
   ]);
-  const runIds = activeRuns.map((run) => run.id);
-  await deps.prisma.run.updateMany({
-    where: { id: { in: runIds } },
-    data: { status: "cancelled", waitKind: null, completedAt: new Date() },
-  });
+  const cancelledOwnRuns = activeRuns.length
+    ? await deps.prisma.$transaction(async (tx) => {
+        const cancelled = await cancelRunsInTransaction(tx, activeRuns, new Date());
+        await expireComputerExecutionLeases(tx, { runId: { in: cancelled.map((run) => run.id) } });
+        return cancelled;
+      })
+    : [];
   await Promise.allSettled([
-    ...activeRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
+    ...cancelledOwnRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
     ...routines.map((routine) => deps.jobs.cancel(routineJobKey(routine.id))),
   ]);
+  await revokeLiveBackgroundTasks(
+    deps,
+    cancelledOwnRuns.map((run) => run.id),
+  );
   const sharedComputer = await releaseTeamComputerScreen(deps, bot, dedicated?.id, context, {
     cancelRunWork: true,
   });
@@ -394,7 +442,11 @@ export async function destroyBot(
       await tx.artifact.deleteMany({
         where: { botId: bot.id, groupId: null, spaceId: bot.spaceId },
       });
-      const groupCleanup = await detachBotFromGroups(tx, bot.id);
+      const groupCleanup = await detachBotFromGroups(
+        tx,
+        bot.id,
+        Boolean(deps.cancelRuntimeBackgroundTask),
+      );
       await tx.computerExecutionLease.deleteMany({ where: { botId: bot.id } });
       await tx.computer.updateMany({
         where: {
@@ -436,12 +488,29 @@ export async function destroyBot(
           ...groupCleanup.artifactKeys,
         ],
         cancelledGroupRuns: groupCleanup.cancelledRuns,
+        backgroundTasks: groupCleanup.backgroundTasks,
       };
     }),
   );
-  await Promise.allSettled(
-    deletion.cancelledGroupRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
-  );
+  if (deps.cancelRuntimeBackgroundTask && deletion.backgroundTasks?.length) {
+    await revokeBackgroundSnapshots(deps.cancelRuntimeBackgroundTask, deletion.backgroundTasks);
+  }
+  const descendantParents = [
+    ...cancelledOwnRuns.map((run) => run.id),
+    ...deletion.cancelledGroupRuns.map((run) => run.id),
+  ];
+  const descendants = await cancelChildrenOfCancelledRuns(deps.prisma, descendantParents);
+  await Promise.allSettled([
+    ...deletion.cancelledGroupRuns.map((run) => deps.jobs.cancel(runJobKey(run.id))),
+    ...descendants.map((run) => deps.jobs.cancel(runJobKey(run.id))),
+    ...cancelledOwnRuns.map((run) => deps.runtime?.abort(run.id)),
+    ...deletion.cancelledGroupRuns.map((run) => deps.runtime?.abort(run.id)),
+    ...descendants.map((run) => deps.runtime?.abort(run.id)),
+  ]);
+  await revokeLiveBackgroundTasks(deps, [
+    ...deletion.cancelledGroupRuns.map((run) => run.id),
+    ...descendants.map((run) => run.id),
+  ]);
   const stoppedGroupBots = [
     ...new Map(
       deletion.cancelledGroupRuns.map((run) => [
@@ -475,7 +544,11 @@ export async function destroyBot(
   }
 }
 
-async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) {
+async function detachBotFromGroups(
+  tx: Prisma.TransactionClient,
+  botId: string,
+  snapshotBackground: boolean,
+) {
   await tx.$queryRaw<Array<{ id: string }>>`
     SELECT groups.id
     FROM chat_groups AS groups
@@ -524,10 +597,28 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
         },
       })
     : [];
-  if (activeRuns.length) {
-    const now = new Date();
-    const runIds = activeRuns.map((run) => run.id);
-    await cancelRunsInTransaction(tx, activeRuns, now);
+  const cancelledGroupRuns = activeRuns.length
+    ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+    : [];
+  const backgroundTasks =
+    snapshotBackground && cancelledGroupRuns.length
+    ? await tx.backgroundAgentTask.findMany({
+        where: {
+          parentRunId: { in: cancelledGroupRuns.map((run) => run.id) },
+          status: "cancelling",
+        },
+        select: {
+          taskId: true,
+          userId: true,
+          spaceId: true,
+          botId: true,
+          threadId: true,
+          parentRunId: true,
+        },
+      })
+    : [];
+  if (cancelledGroupRuns.length) {
+    const runIds = cancelledGroupRuns.map((run) => run.id);
     await expireComputerExecutionLeases(tx, { runId: { in: runIds } });
     await tx.computer.updateMany({
       where: { executionRunId: { in: runIds } },
@@ -552,10 +643,20 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
   }
   return {
     artifactKeys: groupArtifacts.map((artifact) => artifact.storageKey),
-    cancelledRuns: activeRuns.map((run) => ({
-      id: run.id,
-      botId: run.botId,
-      computer: run.bot.computer,
+    cancelledRuns: activeRuns
+      .filter((run) => cancelledGroupRuns.some((cancelled) => cancelled.id === run.id))
+      .map((run) => ({
+        id: run.id,
+        botId: run.botId,
+        computer: run.bot.computer,
+      })),
+    backgroundTasks: backgroundTasks.map((task) => ({
+      taskId: task.taskId,
+      userId: task.userId,
+      spaceId: task.spaceId,
+      botId: task.botId,
+      threadId: task.threadId,
+      runId: task.parentRunId,
     })),
   };
 }

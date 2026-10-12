@@ -2577,7 +2577,15 @@ describe("clearThread", () => {
       },
       run: {
         findMany: vi.fn().mockResolvedValue([{ id: "run-1", taskId: "task-1" }]),
-        updateMany: vi.fn(),
+        updateManyAndReturn: vi.fn().mockResolvedValue([
+          {
+            id: "run-1",
+            taskId: "task-1",
+            threadId: "thread-1",
+            spaceId: "workspace-1",
+            botId: "bot-1",
+          },
+        ]),
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
@@ -2641,7 +2649,22 @@ describe("clearThread", () => {
           { id: "group-run-1", taskId: "task-1" },
           { id: "group-run-2", taskId: "task-2" },
         ]),
-        updateMany: vi.fn(),
+        updateManyAndReturn: vi.fn().mockResolvedValue([
+          {
+            id: "group-run-1",
+            taskId: "task-1",
+            threadId: "thread-group",
+            spaceId: "workspace-1",
+            botId: "bot-1",
+          },
+          {
+            id: "group-run-2",
+            taskId: "task-2",
+            threadId: "thread-group",
+            spaceId: "workspace-1",
+            botId: "bot-2",
+          },
+        ]),
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },

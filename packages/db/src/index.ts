@@ -11,6 +11,8 @@ export * from "./external-conversations.js";
 export * from "./groups.js";
 export * from "./memory-config.js";
 export * from "./messages.js";
+export * from "./promote-run.js";
+export * from "./run-lease.js";
 export * from "./messaging.js";
 export * from "./model-credentials.js";
 export * from "./repos.js";

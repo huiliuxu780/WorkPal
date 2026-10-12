@@ -1,4 +1,6 @@
 import { MessageBlock } from "@rakazo/contracts";
+import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
+import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { appendEventInTransaction } from "./events.js";
@@ -103,31 +105,22 @@ export async function expireWaitingRuns(prisma: PrismaClient, now = new Date()) 
           });
         }
       }
-      const cancelled = await tx.run.updateMany({
-        where: {
-          id: run.id, status: run.status, waitKind: run.waitKind,
-          waitStartedAt: run.waitStartedAt,
-        },
-        data: {
-          status: "cancelled",
-          waitKind: null,
-          waitStartedAt: null,
+      const cancelled = await cancelRunsInTransaction(
+        tx,
+        [{ id: run.id, taskId: run.taskId }],
+        now,
+        {
           error: "wait_timeout",
-          completedAt: now,
-          leaseOwner: null,
-          leaseExpiresAt: null,
+          attemptError: "wait_timeout",
+          // A concurrent answer or claim changes status or the wait clock. Do not cancel that row.
+          match: {
+            status: run.status,
+            waitKind: run.waitKind,
+            waitStartedAt: run.waitStartedAt,
+          },
         },
-      });
-      if (cancelled.count !== 1) return null;
-      await tx.attempt.updateMany({
-        where: { runId: run.id, status: { in: ["waiting_input", "waiting_takeover"] } },
-        data: { status: "cancelled", error: "wait_timeout", finishedAt: now },
-      });
-      await tx.task.updateMany({ where: { id: run.taskId }, data: { status: "cancelled" } });
-      await tx.backgroundAgentTask.updateMany({
-        where: { parentRunId: run.id, status: "running" },
-        data: { status: "cancelling" },
-      });
+      );
+      if (cancelled.length !== 1) return null;
       await expireComputerExecutionLeases(tx, { runId: run.id });
       const event = await appendEventInTransaction(tx, {
         spaceId: run.spaceId,
@@ -140,6 +133,12 @@ export async function expireWaitingRuns(prisma: PrismaClient, now = new Date()) 
       return { runId: run.id, threadId: run.threadId, seq: event.seq };
     });
     if (result) expired.push(result);
+  }
+  if (expired.length > 0) {
+    await cancelChildrenOfCancelledRuns(
+      prisma,
+      expired.map((run) => run.runId),
+    );
   }
   return expired;
 }

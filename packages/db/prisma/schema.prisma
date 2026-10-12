@@ -806,7 +806,7 @@ model Attempt {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
 
-  @@index([runId])
+  @@unique([runId, fence])
   @@map("attempts")
 }
 

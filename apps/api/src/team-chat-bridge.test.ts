@@ -1273,7 +1273,15 @@ describe("team chat bridge", () => {
     const messageFindUnique = vi.fn(async () => (woken ? { id: "msg-routine-wake" } : null));
     const enqueue = vi.fn();
     const updateMany = vi.fn(async () => ({ count: 1 }));
-    const runUpdateMany = vi.fn(async () => ({ count: 1 }));
+    const runUpdateManyAndReturn = vi.fn(async () => [
+      {
+        id: "run-1",
+        taskId: "task-1",
+        threadId: "thread-1",
+        spaceId: "space-1",
+        botId: "bot-1",
+      },
+    ]);
     const taskUpdateMany = vi.fn(async () => ({ count: 1 }));
     const sendUserMessage = vi.fn(async () => {
       await sendGate;
@@ -1281,6 +1289,20 @@ describe("team chat bridge", () => {
     });
     const bridge = new TeamChatBridge({
       prisma: {
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        $transaction: vi.fn(async (callback: (tx: unknown) => unknown) =>
+          callback({
+            $queryRaw: vi.fn(),
+            run: {
+              updateManyAndReturn: runUpdateManyAndReturn,
+              findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
+            },
+            attempt: { updateMany: vi.fn() },
+            task: { updateMany: taskUpdateMany },
+            thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
+            event: { create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data) },
+          }),
+        ),
         externalMessage: {
           updateMany,
           findUnique: vi.fn(async () => ({
@@ -1289,7 +1311,7 @@ describe("team chat bridge", () => {
           })),
         },
         message: { findUnique: messageFindUnique },
-        run: { updateMany: runUpdateMany },
+        run: { findUnique: vi.fn(async () => ({ taskId: "task-1" })) },
         task: { updateMany: taskUpdateMany },
       } as unknown as PrismaClient,
       events: { sendUserMessage },
@@ -1368,14 +1390,20 @@ describe("team chat bridge", () => {
     await queuePromise;
 
     expect(enqueue).not.toHaveBeenCalled();
-    expect(runUpdateMany).toHaveBeenCalledWith(
+    expect(runUpdateManyAndReturn).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: "run-1" }),
-        data: expect.objectContaining({ status: "cancelled" }),
+        data: expect.objectContaining({
+          status: "cancelled",
+          waitKind: null,
+          waitStartedAt: null,
+          retryAt: null,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        }),
       }),
     );
     expect(taskUpdateMany).toHaveBeenCalledWith({
-      where: { id: "task-1" },
+      where: { id: { in: ["task-1"] } },
       data: { status: "cancelled" },
     });
     expect(updateMany).toHaveBeenCalledWith({

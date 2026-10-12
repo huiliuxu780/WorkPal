@@ -7,9 +7,11 @@ import {
   type SpaceGroup,
 } from "@rakazo/contracts";
 import { selectGroupLead } from "@rakazo/core";
-import { cancelRunsInTransaction } from "./cancel-runs.js";
+import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
+import { cancelRunsInTransaction, type CancelledRunRow } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
+import { appendEventInTransaction } from "./events.js";
 import { IsolationError } from "./scope.js";
 import { lockSpaceForContentCreation } from "./spaces.js";
 import { activeRunSelection, activeRunStatuses, previewFromBlocks } from "./thread-listing.js";
@@ -412,9 +414,14 @@ export function createGroupRepos(prisma: PrismaClient) {
               select: { id: true, taskId: true },
             })
           : [];
-        if (activeRuns.length) {
-          const now = new Date();
-          await cancelRunsInTransaction(tx, activeRuns, now);
+        const cancelledRuns = activeRuns.length
+          ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+          : [];
+        if (cancelledRuns.length) {
+          await expireComputerExecutionLeases(tx, {
+            runId: { in: cancelledRuns.map((run) => run.id) },
+          });
+          await appendCancelledRunEvents(tx, cancelledRuns, "member_removed");
         }
         if (input.name !== undefined) {
           await tx.chatGroup.update({
@@ -452,17 +459,24 @@ export function createGroupRepos(prisma: PrismaClient) {
             where: { id: input.groupId },
             include: groupInclude,
           })
-          .then((group) => ({ group, cancelledRunIds: activeRuns.map((run) => run.id) }));
+          .then((group) => ({
+            group,
+            cancelledRunIds: cancelledRuns.map((run) => run.id),
+          }));
       });
       if (!updated.group.thread) throw new IsolationError();
+      const descendants = await cancelChildrenOfCancelledRuns(prisma, updated.cancelledRunIds);
       return {
         group: mapGroup(updated.group as GroupRecord),
-        cancelledRunIds: updated.cancelledRunIds,
+        cancelledRunIds: [
+          ...updated.cancelledRunIds,
+          ...descendants.map((run) => run.id),
+        ],
       };
     },
 
     async archiveGroup(actor: Actor, groupId: string) {
-      return prisma.$transaction(async (tx) => {
+      const archived = await prisma.$transaction(async (tx) => {
         await lockOwnedGroup(tx, actor, groupId);
         const current = await tx.chatGroup.findFirst({
           where: {
@@ -488,10 +502,13 @@ export function createGroupRepos(prisma: PrismaClient) {
         // reclaimed still names this run's screen.
         const { targets } = await snapshotRunTeardownTargets(tx, runIds);
 
-        if (runIds.length) {
-          await cancelRunsInTransaction(tx, activeRuns, now);
+        const cancelledRuns = runIds.length
+          ? await cancelRunsInTransaction(tx, activeRuns, now)
+          : [];
+        if (cancelledRuns.length) {
+          await appendCancelledRunEvents(tx, cancelledRuns, "group_archived");
           await tx.event.deleteMany({
-            where: { type: "thread.progress", runId: { in: runIds } },
+            where: { type: "thread.progress", runId: { in: cancelledRuns.map((run) => run.id) } },
           });
         }
 
@@ -500,8 +517,17 @@ export function createGroupRepos(prisma: PrismaClient) {
           data: { archivedAt: now, pinned: false },
         });
 
-        return { cancelledRunIds: runIds, computers: targets };
+        // Parent computer leases stay until sandbox teardown. Descendants are expired below.
+        return {
+          cancelledRunIds: cancelledRuns.map((run) => run.id),
+          computers: targets,
+        };
       });
+      const descendants = await cancelChildrenOfCancelledRuns(prisma, archived.cancelledRunIds);
+      return {
+        cancelledRunIds: [...archived.cancelledRunIds, ...descendants.map((run) => run.id)],
+        computers: archived.computers,
+      };
     },
 
     /** After an archive's teardown: expire the cancelled runs' leases and legacy columns. */
@@ -527,27 +553,76 @@ export function createGroupRepos(prisma: PrismaClient) {
     },
 
     async removeGroup(actor: Actor, groupId: string) {
-      return prisma.$transaction(async (tx) => {
+      const removed = await prisma.$transaction(async (tx) => {
         await lockOwnedGroup(tx, actor, groupId);
         const group = await tx.chatGroup.findUnique({
           where: { id: groupId },
           select: {
             artifacts: { select: { storageKey: true } },
             members: { orderBy: { createdAt: "asc" }, take: 1, select: { botId: true } },
+            thread: { select: { id: true } },
           },
         });
-        const contextBotId = group?.members[0]?.botId;
+        if (!group) throw new IsolationError();
+        const contextBotId = group.members[0]?.botId;
         if (!contextBotId) throw new IsolationError();
+        const parentRuns = group.thread
+          ? await tx.run.findMany({
+              where: { threadId: group.thread.id, status: { in: activeRunStatuses } },
+              select: { id: true },
+            })
+          : [];
+        const parentRunIds = parentRuns.map((run) => run.id);
+        const backgroundTasks = parentRunIds.length
+          ? await tx.backgroundAgentTask.findMany({
+              where: { parentRunId: { in: parentRunIds }, status: "running" },
+              select: {
+                taskId: true,
+                parentRunId: true,
+                userId: true,
+                spaceId: true,
+                botId: true,
+                threadId: true,
+              },
+            })
+          : [];
         await tx.chatGroup.delete({ where: { id: groupId } });
         return {
           contextBotId,
           artifactStorageKeys: group.artifacts.map((artifact) => artifact.storageKey),
+          parentRunIds,
+          backgroundTasks,
         };
       });
+      // The group thread is gone. Cross-thread descendants still name those parents.
+      const descendants = await cancelChildrenOfCancelledRuns(prisma, removed.parentRunIds);
+      return {
+        contextBotId: removed.contextBotId,
+        artifactStorageKeys: removed.artifactStorageKeys,
+        cancelledRunIds: [...removed.parentRunIds, ...descendants.map((run) => run.id)],
+        backgroundTasks: removed.backgroundTasks,
+      };
     },
 
     mapGroup,
   };
+}
+
+async function appendCancelledRunEvents(
+  tx: Prisma.TransactionClient,
+  runs: readonly CancelledRunRow[],
+  reason: string,
+) {
+  for (const run of runs) {
+    await appendEventInTransaction(tx, {
+      spaceId: run.spaceId,
+      threadId: run.threadId,
+      botId: run.botId,
+      runId: run.id,
+      type: "run.cancelled",
+      payload: { reason },
+    });
+  }
 }
 
 export async function lockOwnedGroup(

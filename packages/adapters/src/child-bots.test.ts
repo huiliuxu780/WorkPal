@@ -307,7 +307,15 @@ describe("destroyBot", () => {
     const deleteMemberships = vi.fn().mockResolvedValue({ count: 1 });
     const cancel = vi.fn().mockResolvedValue(undefined);
     const releaseScreen = vi.fn().mockResolvedValue(undefined);
-    const cancelRuns = vi.fn().mockResolvedValue({ count: 1 });
+    const cancelRuns = vi.fn().mockResolvedValue([
+      {
+        id: "group-run",
+        taskId: "group-task",
+        threadId: "thread-1",
+        spaceId: "workspace-1",
+        botId: "bot-2",
+      },
+    ]);
     const cancelAttempts = vi.fn().mockResolvedValue({ count: 1 });
     const cancelTasks = vi.fn().mockResolvedValue({ count: 1 });
     const deleteExecutionLeases = vi.fn().mockResolvedValue({ count: 1 });
@@ -360,7 +368,7 @@ describe("destroyBot", () => {
         },
         run: {
           findMany: findRuns,
-          updateMany: cancelRuns,
+          updateManyAndReturn: cancelRuns,
         },
         attempt: { updateMany: cancelAttempts },
         task: { updateMany: cancelTasks },
@@ -387,6 +395,7 @@ describe("destroyBot", () => {
       },
       routine: { findMany: vi.fn().mockResolvedValue([]) },
       artifact: { findMany: vi.fn().mockResolvedValue([]) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: transaction,
     } as unknown as PrismaClient;
 
@@ -417,18 +426,24 @@ describe("destroyBot", () => {
         }),
       }),
     );
-    expect(cancelRuns).toHaveBeenCalledWith({
-      where: { id: { in: ["group-run"] } },
-      data: {
-        status: "cancelled",
-        waitKind: null,
-        completedAt: expect.any(Date),
-        leaseOwner: null,
-        leaseExpiresAt: null,
-      },
-    });
+    expect(cancelRuns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "cancelled",
+          waitKind: null,
+          waitStartedAt: null,
+          retryAt: null,
+          completedAt: expect.any(Date),
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        }),
+      }),
+    );
     expect(cancelAttempts).toHaveBeenCalledWith({
-      where: { runId: { in: ["group-run"] }, status: "running" },
+      where: {
+        runId: { in: ["group-run"] },
+        status: { in: ["running", "waiting_input", "waiting_takeover"] },
+      },
       data: { status: "cancelled", finishedAt: expect.any(Date) },
     });
     expect(cancelTasks).toHaveBeenCalledWith({
@@ -938,8 +953,23 @@ describe("archiveBot", () => {
     const transaction = vi.fn(async (callback: (tx: unknown) => Promise<void>) =>
       callback({
         ...groupCleanup,
-        run: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        run: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          updateManyAndReturn: vi.fn().mockResolvedValue([
+            {
+              id: "run-1",
+              taskId: "task-1",
+              threadId: "thread-1",
+              spaceId: "workspace-1",
+              botId: "bot-1",
+            },
+          ]),
+          findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
+        },
+        attempt: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         task: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
+        event: { create: vi.fn().mockResolvedValue({ seq: 0 }) },
         routine: { updateMany: disableRoutines },
         computerExecutionLease: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
         computer: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
@@ -958,6 +988,7 @@ describe("archiveBot", () => {
       computer: { findUnique: vi.fn().mockResolvedValue(null) },
       run: { findMany: vi.fn().mockResolvedValue([{ id: "run-1" }]) },
       routine: { findMany: vi.fn().mockResolvedValue([]) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: transaction,
     } as unknown as PrismaClient;
 

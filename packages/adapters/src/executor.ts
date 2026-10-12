@@ -116,6 +116,8 @@ import {
   publishRunTodo,
   retireModelCredential,
   SpaceLimitError,
+  promoteLeasedRunWithAttempt,
+  renewOwnedRunLease,
   scheduleAutomaticRunRetry,
   type ThreadEvents,
 } from "@rakazo/db";
@@ -1261,19 +1263,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
       if (leased.count !== 1) return;
 
       const current = await deps.prisma.run.findUniqueOrThrow({ where: { id: runId } });
-      if (
-        current.status === "queued" ||
-        current.status === "leased" ||
-        current.status === "waiting_input" ||
-        current.status === "waiting_takeover"
-      ) {
-        assertTransition(current.status as RunStatus, "running");
-      }
-      const started = await deps.prisma.run.updateMany({
-        where: { id: runId, status: "leased", leaseOwner: workerId, leaseFence: fence },
-        data: { status: "running", startedAt: current.startedAt ?? new Date() },
-      });
-      if (started.count !== 1) return;
+      if (current.status === "leased") assertTransition("leased", "running");
+      // The Run stays leased until the computer lease is held. A crash before the
+      // promote transaction leaves a recoverable lease, never a running Run without an Attempt.
       const leaseTarget = await deps.prisma.bot.findUniqueOrThrow({
         where: { id: run.botId },
         select: { computerId: true, computerSwitching: true },
@@ -1296,26 +1288,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
         await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
         return;
       }
-      const attempt = await deps.prisma
-        .$transaction(async (tx) => {
-          // Recovery also locks this Run before checking for a missing Attempt. Serialize
-          // creation with that check, then revalidate the lease under the lock.
-          await tx.$queryRaw`SELECT id FROM runs WHERE id = ${runId} FOR UPDATE`;
-          const claimed = await tx.run.findUnique({
-            where: { id: runId },
-            select: { status: true, leaseOwner: true, leaseFence: true, leaseExpiresAt: true },
-          });
-          if (
-            claimed?.status !== "running" || claimed.leaseOwner !== workerId ||
-            claimed.leaseFence !== fence || !claimed.leaseExpiresAt ||
-            claimed.leaseExpiresAt <= new Date()
-          ) return null;
-          return tx.attempt.create({ data: { runId, fence, status: "running" } });
-        })
-        .catch(async (error) => {
-          await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
-          throw error;
+      let attempt: { id: string; fence: number } | null;
+      try {
+        attempt = await promoteLeasedRunWithAttempt(deps.prisma, {
+          runId,
+          leaseOwner: workerId,
+          leaseFence: fence,
+          startedAt: current.startedAt ?? new Date(),
         });
+      } catch (error) {
+        await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
+        // The unique (runId, fence) conflict rolls the running update back. Requeue the
+        // still-leased Run so the fence is not stuck until the lease expires.
+        if (isUniqueViolation(error)) {
+          await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
+          return;
+        }
+        throw error;
+      }
       if (!attempt) {
         await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
         return;
@@ -5559,11 +5549,12 @@ async function renewRunLease(
   workerId: string,
   fence: number,
 ): Promise<boolean> {
-  const renewed = await deps.prisma.run.updateMany({
-    where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
-    data: { leaseExpiresAt: new Date(Date.now() + 5 * 60_000) },
+  return renewOwnedRunLease(deps.prisma, {
+    runId,
+    leaseOwner: workerId,
+    leaseFence: fence,
+    leaseExpiresAt: new Date(Date.now() + 5 * 60_000),
   });
-  return renewed.count === 1;
 }
 
 function computerRetryDelay(fence: number): number {
@@ -5882,7 +5873,7 @@ async function writeComputerRunRequeue(
 ): Promise<boolean> {
   const whereLease = {
     id: runId,
-    status: "running" as const,
+    status: { in: ["leased", "running"] },
     leaseOwner: workerId,
     leaseFence: fence,
   };
