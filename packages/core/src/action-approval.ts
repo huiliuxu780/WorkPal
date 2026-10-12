@@ -33,7 +33,9 @@ const APPROVAL_REQUIRED_BUILTIN_TOOLS = new Set([
   "cloud_agent_reply",
   "cloud_agent_cancel",
 ]);
-const EXPLICIT_APPROVAL_BUILTIN_TOOLS = new Set(["create_space"]);
+// Outgoing mail leaves the trust boundary and can expose conversation content
+// to any third-party address, so every send needs a fresh owner confirmation.
+const EXPLICIT_APPROVAL_BUILTIN_TOOLS = new Set(["create_space", "send_email"]);
 
 const UNATTENDED_SAFE_BUILTIN_TOOLS = new Set([
   "browser_snapshot",

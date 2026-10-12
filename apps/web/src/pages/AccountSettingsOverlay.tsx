@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { AvatarStyle } from "@rakazo/contracts";
-import { BotAvatar, Button, Field, FieldLabel, Input, Label, Switch, Toggle } from "@rakazo/ui-web";
+import { PRODUCT_BRAND } from "@rakazo/core";
+import { Button, Field, FieldLabel, Input, Label, Switch, Toggle } from "@rakazo/ui-web";
 import { ChevronDown } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -36,8 +36,6 @@ import { UI_LOCALE_LABELS, UI_LOCALES, type UiLocale } from "../lib/ui-locale";
 export type SettingsGeneralProps = {
   email?: string | null;
   name: string;
-  avatarStyle: AvatarStyle;
-  onAvatarStyleChange: (style: AvatarStyle) => Promise<void>;
   messagingEnabled?: boolean;
   onOpenMessaging?: () => void;
   isDeploymentOwner?: boolean;
@@ -46,8 +44,6 @@ export type SettingsGeneralProps = {
 export function GeneralSettingsPanels({
   email,
   name,
-  avatarStyle,
-  onAvatarStyleChange,
   messagingEnabled = false,
   onOpenMessaging,
   isDeploymentOwner = false,
@@ -66,8 +62,6 @@ export function GeneralSettingsPanels({
     () => getToolActivityPreference() === "on",
   );
   const showToolActivityId = useId();
-  const [avatarPending, setAvatarPending] = useState(false);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   function chooseLocale(next: UiLocale) {
     if (next === locale) return;
@@ -77,19 +71,6 @@ export function GeneralSettingsPanels({
       if (requestId !== localeRequestRef.current) return;
       setLocale(activated);
     });
-  }
-
-  async function chooseAvatarStyle(next: AvatarStyle) {
-    if (avatarPending || next === avatarStyle) return;
-    setAvatarPending(true);
-    setAvatarError(null);
-    try {
-      await onAvatarStyleChange(next);
-    } catch {
-      setAvatarError(t`Couldn't update avatars`);
-    } finally {
-      setAvatarPending(false);
-    }
   }
 
   return (
@@ -136,41 +117,6 @@ export function GeneralSettingsPanels({
           <Trans>Language</Trans>
         </h3>
         <UiLocalePicker value={locale} onChange={chooseLocale} />
-      </section>
-
-      <section
-        className="rounded-xl border border-border px-4 py-4"
-        data-testid="avatar-style-select"
-      >
-        <h3 className="text-[15px] font-medium text-foreground">
-          <Trans>Avatars</Trans>
-        </h3>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {(["robot", "organic"] as const).map((style) => (
-            <Toggle
-              key={style}
-              variant="outline"
-              pressed={style === avatarStyle}
-              disabled={avatarPending}
-              onPressedChange={() => void chooseAvatarStyle(style)}
-              data-testid={`avatar-style-${style}`}
-              className="h-auto justify-start gap-3 px-3.5 py-3 text-[14px] font-normal"
-            >
-              <BotAvatar
-                color="#D9508A"
-                identity="avatar-style-preview"
-                size={32}
-                variant={style}
-              />
-              <span>{style === "robot" ? <Trans>Robot</Trans> : <Trans>Organic</Trans>}</span>
-            </Toggle>
-          ))}
-        </div>
-        {avatarError ? (
-          <p role="alert" className="mt-3 text-[12.5px] text-destructive">
-            {avatarError}
-          </p>
-        ) : null}
       </section>
 
       {isDeploymentOwner ? (
@@ -225,6 +171,17 @@ export function GeneralSettingsPanels({
           <ApprovalRulesSettings />
         </div>
       </details>
+      <nav aria-label={PRODUCT_BRAND.name} className="flex gap-4 text-sm text-muted-foreground">
+        <a href={PRODUCT_BRAND.links.help} target="_blank" rel="noopener noreferrer">
+          <Trans>Help</Trans>
+        </a>
+        <a href={PRODUCT_BRAND.links.feedback} target="_blank" rel="noopener noreferrer">
+          <Trans>Feedback</Trans>
+        </a>
+        <a href={PRODUCT_BRAND.links.privacy} target="_blank" rel="noopener noreferrer">
+          <Trans>Privacy</Trans>
+        </a>
+      </nav>
     </div>
   );
 }

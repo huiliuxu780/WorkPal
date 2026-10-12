@@ -68,6 +68,10 @@ import {
   BotAvatar,
   Button,
   cn,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -87,6 +91,7 @@ import {
   ArrowUp,
   Bell,
   Box,
+  Check,
   ChevronDown,
   Clock,
   Copy,
@@ -135,6 +140,13 @@ import {
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
+import {
+  modelLabelFor,
+  useConnectedModelOptions,
+} from "../lib/model-options";
+import { ModelTreePicker } from "../components/ModelTreePicker";
+import { RunDetailsPanel } from "../components/RunDetailsPanel";
+import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
 import { AskCard } from "../components/AskCard";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
@@ -301,6 +313,7 @@ type Panel =
   | "create"
   | "create-group"
   | "group-settings"
+  | "run"
   | null;
 
 type PendingAttachment = {
@@ -1764,6 +1777,39 @@ export function ShellPage() {
     setReplyQuote(null);
   }, []);
   const currentRuns = activeThreadRuns(activeSnapshot);
+  // Run the details panel reports on: the thread's primary run, else its newest active one.
+  const panelRun = activeSnapshot?.run ?? currentRuns[0] ?? null;
+  // Live status for the active bot's avatar: the sidebar list is a snapshot,
+  // so a run starting right now would otherwise stay "idle" until a refetch.
+  const activeBotLiveStatus =
+    activeSnapshot?.run?.status ?? currentRuns[0]?.status ?? active?.status;
+  const { catalog: modelSwitchCatalog } = useConnectedModelOptions();
+
+  async function switchConversationModel(
+    next: { provider: string; modelId: string } | null,
+  ) {
+    if (!active) return;
+    await rpc.bots
+      .update({
+        botId: active.id,
+        modelProvider: next?.provider ?? null,
+        modelId: next?.modelId ?? null,
+      })
+      .catch(() => undefined);
+    setBots((currentBots) =>
+      currentBots.map((item) =>
+        item.id === active.id
+          ? {
+              ...item,
+              modelProvider: next?.provider ?? null,
+              modelId: next?.modelId ?? null,
+            }
+          : item,
+      ),
+    );
+  }
+
+
   const answerableAskMessageId = latestAnswerableAskMessageId(activeSnapshot);
   const workingRuns = currentRuns.filter((run) =>
     ["running", "queued", "leased"].includes(run.status),
@@ -3115,7 +3161,7 @@ export function ShellPage() {
                                   position: { x: event.clientX, y: event.clientY },
                                 });
                               }}
-                              className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-[10px] text-start ${
+                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-start ${
                                 item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
                               } ${
                                 selected ? "bg-sidebar-accent" : "group-hover/row:bg-sidebar-accent"
@@ -3130,8 +3176,12 @@ export function ShellPage() {
                                 <BotAvatar
                                   color={item.chat.color}
                                   identity={item.chat.id}
-                                  size={38}
-                                  status={item.chat.status}
+                                  size={36}
+                                  status={
+                                    activeBotLiveStatus && item.chat.id === active?.id
+                                      ? activeBotLiveStatus
+                                      : item.chat.status
+                                  }
                                 />
                               ) : (
                                 <GroupAvatar
@@ -3140,12 +3190,12 @@ export function ShellPage() {
                                       ? (activeSnapshot.members ?? item.chat.members)
                                       : item.chat.members
                                   }
-                                  size={38}
+                                  size={36}
                                 />
                               )}
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-1.5">
-                                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <div className="flex min-w-0 items-baseline gap-1.5 overflow-hidden">
                                     <span
                                       dir="auto"
                                       data-roster-bot-name={item.kind === "bot" ? "" : undefined}
@@ -3155,6 +3205,14 @@ export function ShellPage() {
                                     >
                                       {item.chat.name}
                                     </span>
+                                    {item.kind === "bot" && item.chat.title ? (
+                                      <span
+                                        dir="auto"
+                                        className="shrink-0 text-[11.5px] font-normal text-muted-foreground"
+                                      >
+                                        {item.chat.title}
+                                      </span>
+                                    ) : null}
                                     {item.chat.unread ? (
                                       <span className="sr-only">
                                         <Trans> (unread)</Trans>
@@ -3173,16 +3231,9 @@ export function ShellPage() {
                                     ) : null}
                                   </div>
                                 </div>
-                                {item.kind === "bot" && item.chat.title ? (
-                                  <div className="mt-1 flex">
-                                    <span className="max-w-full truncate rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
-                                      {item.chat.title}
-                                    </span>
-                                  </div>
-                                ) : null}
                                 <div
                                   dir="auto"
-                                  className={`mt-1 line-clamp-2 text-[12.5px] break-words whitespace-normal ${
+                                  className={`mt-0.5 truncate text-[12.5px] ${
                                     item.chat.unread
                                       ? "font-medium text-foreground/75"
                                       : "text-muted-foreground/60"
@@ -3466,7 +3517,7 @@ export function ShellPage() {
                   color={active.color}
                   identity={active.id}
                   size={26}
-                  status={active.status}
+                  status={activeBotLiveStatus}
                 />
               ) : null}
               <span className="min-w-0">
@@ -3495,6 +3546,51 @@ export function ShellPage() {
                 className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
               >
                 <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+              </button>
+            ) : null}
+            {!inGroup && active ? (
+              <div className="app-no-drag w-[190px]">
+                <ModelTreePicker
+                  id="model-switch-trigger"
+                  align="end"
+                  value={
+                    active.modelProvider
+                      ? { provider: active.modelProvider, modelId: active.modelId ?? "" }
+                      : null
+                  }
+                  spaceDefaultLabel={
+                    bootstrapMe?.defaultProvider && bootstrapMe.defaultModel
+                      ? modelSwitchCatalog.find(
+                          (entry) =>
+                            entry.provider === bootstrapMe.defaultProvider &&
+                            entry.id === bootstrapMe.defaultModel,
+                        )?.label
+                      : undefined
+                  }
+                  onChange={(next) => void switchConversationModel(next)}
+                />
+              </div>
+            ) : null}
+            {!inGroup && active && panelRun ? (
+              <button
+                type="button"
+                data-testid="run-panel-trigger"
+                title={t`Run details`}
+                onClick={() => setPanel(panel === "run" ? null : "run")}
+                data-active={panel === "run" ? "" : undefined}
+                className="app-no-drag ms-1 flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12.5px] hover:bg-accent data-active:bg-accent"
+              >
+                <span
+                  className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
+                  style={
+                    isRunActive(panelRun.status)
+                      ? { animation: "rkPulse 1.2s ease-in-out infinite" }
+                      : undefined
+                  }
+                />
+                <span className={runStatusTextClass(panelRun.status)}>
+                  {runStatusLabel(panelRun.status)}
+                </span>
               </button>
             ) : null}
           </div>
@@ -3623,21 +3719,65 @@ export function ShellPage() {
 
       <CallCard onSettings={() => openSettings("voice")} />
 
+      {/* Create flows are centered dialogs, not side panels: they are one-shot
+          forms, and the chat stays readable behind them. */}
+      {panel === "create" ? (
+        <Dialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setPanel(null);
+          }}
+        >
+          <DialogContent
+            className="w-[calc(100vw-32px)] max-w-[560px] gap-5 rounded-3xl p-6"
+            data-testid="create-bot-dialog"
+          >
+            <DialogHeader className="space-y-0">
+              <DialogTitle className="text-[14px] font-semibold tracking-tight">
+                <Trans>New bot</Trans>
+              </DialogTitle>
+            </DialogHeader>
+            <CreateBotForm onCreate={(input) => createBot(input)} />
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {panel === "create-group" ? (
+        <Dialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setPanel(null);
+          }}
+        >
+          <DialogContent
+            className="w-[calc(100vw-32px)] max-w-[520px] gap-5 rounded-3xl p-6"
+            data-testid="create-group-dialog"
+          >
+            <DialogHeader className="space-y-0">
+              <DialogTitle className="text-[14px] font-semibold tracking-tight">
+                <Trans>New group</Trans>
+              </DialogTitle>
+            </DialogHeader>
+            <CreateGroupForm bots={bots} onCreate={(input) => createGroup(input)} />
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
       <aside
         data-testid="side-panel"
         data-panel={panel ?? "closed"}
         className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden bg-background transition-[width] duration-150 ease-out md:relative ${
-          panel && (active || activeGroup || panel === "create")
+          panel && (active || activeGroup)
             ? "w-full max-w-[384px] border-s border-sidebar-border md:w-[384px] md:max-w-none"
             : "pointer-events-none w-0"
         }`}
       >
-        {panel && (active || activeGroup || panel === "create") ? (
+        {panel && (active || activeGroup) ? (
           <div className="rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[384px]">
             {panel !== "routine" &&
             panel !== "create" &&
             panel !== "create-group" &&
-            panel !== "group-settings" ? (
+            panel !== "group-settings" &&
+            panel !== "run" ? (
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-[13.5px] text-muted-foreground">
                   {panel === "settings" ? (
@@ -3682,6 +3822,14 @@ export function ShellPage() {
                   </Button>
                 </div>
               </div>
+            ) : null}
+            {panel === "run" && active && panelRun ? (
+              <RunDetailsPanel
+                runId={panelRun.id}
+                snapshot={activeSnapshot}
+                onClose={() => setPanel(null)}
+                onOpenComputer={() => setPanel("computer")}
+              />
             ) : null}
             {panel === "computer" && active ? (
               <div>
@@ -3766,13 +3914,6 @@ export function ShellPage() {
                 })}
               </div>
             ) : null}
-            {panel === "create-group" ? (
-              <CreateGroupForm
-                bots={bots}
-                onCancel={() => setPanel(null)}
-                onCreate={(input) => createGroup(input)}
-              />
-            ) : null}
             {panel === "group-settings" && activeGroup ? (
               <GroupSettings
                 key={activeGroup.id}
@@ -3796,12 +3937,6 @@ export function ShellPage() {
                   navigate(firstThreadRoute(bots, remainingGroups), { replace: true });
                   await refreshBots().catch(() => undefined);
                 }}
-              />
-            ) : null}
-            {panel === "create" ? (
-              <CreateBotForm
-                onCancel={() => setPanel(null)}
-                onCreate={(input) => createBot(input)}
               />
             ) : null}
             {panel === "settings" && active ? (
@@ -4357,17 +4492,12 @@ export function ShellPage() {
             email={session.data?.user.email}
             usage={usage}
             initialSection={settingsSection}
-            avatarStyle={bootstrapMe?.avatarStyle ?? "robot"}
             isDeploymentOwner={bootstrapMe?.isDeploymentOwner === true}
             sandboxProvider={bootstrapMe?.sandboxProvider}
             messagingEnabled={messagingSurfaceEnabled}
             onOpenMessaging={() => {
               setSettingsOpen(false);
               setMessagingSettingsOpen(true);
-            }}
-            onAvatarStyleChange={async (avatarStyle) => {
-              const nextMe = await rpc.preferences.update({ avatarStyle });
-              setBootstrapMe(nextMe);
             }}
             memoryConfig={memoryProviderConfig}
             onMemoryConfigChange={(config) => {
@@ -4574,7 +4704,7 @@ export function ShellPage() {
   );
 
   return (
-    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>{shell}</AvatarStyleProvider>
+    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "bloub"}>{shell}</AvatarStyleProvider>
   );
 }
 

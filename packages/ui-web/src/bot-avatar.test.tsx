@@ -174,4 +174,56 @@ describe("BotAvatar", () => {
     expect(html).toContain(`fill="${fallback.hex}"`);
     expect(html).not.toContain("#zzzzzz");
   });
+
+  it("renders the bloub avatar for the bloub variant", () => {
+    const html = renderToString(<BotAvatar color="#D9508A" identity="maya" variant="bloub" />);
+    expect(html).toContain("rakazo-bloub-avatar");
+    expect(html).toContain("<mask");
+    expect(html).toContain('data-shape="cercle"');
+    expect(html).toContain('data-expression="neutre"');
+    expect(html).not.toContain("NaN");
+    expect(html).not.toContain("grok-character-eyes");
+  });
+
+  it("renders bloub with the studio shape and expression encoding", () => {
+    const html = renderToString(<BotAvatar color="#0a0a0c::bloub::nuage::colere" identity="maya" />);
+    expect(html).toContain('data-shape="nuage"');
+    expect(html).toContain('data-expression="colere"');
+    expect(html).toContain('fill="#0a0a0c"');
+  });
+
+  it("prefers bloub from the style context when no variant is given", () => {
+    const html = renderToString(
+      <AvatarStyleProvider value="bloub">
+        <BotAvatar color="#D9508A" identity="maya" />
+      </AvatarStyleProvider>,
+    );
+    expect(html).toContain("rakazo-bloub-avatar");
+  });
+
+  it("keeps an encoded studio shape when the bloub style is preferred", () => {
+    const html = renderToString(
+      <BotAvatar color={`${DEFAULT_GROK_BOT_COLOR}::shape_3`} identity="maya" variant="bloub" />,
+    );
+    expect(html).toContain("grok-character-eyes");
+    expect(html).not.toContain("rakazo-bloub-avatar");
+  });
+
+  it("parses the bloub studio encoding", () => {
+    expect(parseBotAvatar("#D9508A::bloub")).toEqual({
+      color: "#D9508A",
+      isImage: false,
+      bloub: true,
+    });
+  });
+
+  it("renders bloub for the studio encoding even when the account style is robot", () => {
+    const html = renderToString(
+      <AvatarStyleProvider value="robot">
+        <BotAvatar color="#D9508A::bloub" identity="maya" />
+      </AvatarStyleProvider>,
+    );
+    expect(html).toContain("rakazo-bloub-avatar");
+    expect(html).toContain('fill="#D9508A"');
+  });
 });

@@ -90,12 +90,30 @@ describe("account preferences", () => {
       where: { id: "user-1" },
       data: { avatarStyle: "organic" },
     });
+    // Bloub is the only style: me normalizes any stored value to bloub.
     await expect(response.json()).resolves.toEqual({
-      json: expect.objectContaining({ avatarStyle: "organic" }),
+      json: expect.objectContaining({ avatarStyle: "bloub" }),
     });
   });
 
-  it("rejects avatar styles outside robot|organic", async () => {
+  it("returns the bloub avatar style from me without collapsing it", async () => {
+    const { actor, handler } = preferencesDeps("bloub");
+
+    const { response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/me", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({ avatarStyle: "bloub" }),
+    });
+  });
+
+  it("rejects avatar styles outside robot|organic|bloub", async () => {
     const { update, actor, handler } = preferencesDeps("robot");
 
     const { response } = await handler.handle(
@@ -111,7 +129,7 @@ describe("account preferences", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("coerces unknown stored avatar styles to robot on me", async () => {
+  it("coerces unknown stored avatar styles to bloub on me", async () => {
     const { actor, handler } = preferencesDeps("custom-cdn");
 
     const { response } = await handler.handle(
@@ -125,7 +143,7 @@ describe("account preferences", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      json: expect.objectContaining({ avatarStyle: "robot" }),
+      json: expect.objectContaining({ avatarStyle: "bloub" }),
     });
   });
 });

@@ -20,7 +20,7 @@ describe("SmtpEmailProvider", () => {
 
     expect(provider.describe().id).toBe("smtp");
     expect(sendMail).toHaveBeenCalledWith({
-      from: "Rakazo <no-reply@example.test>",
+      from: { name: "MyPal", address: "no-reply@example.test" },
       to: "ada@example.test",
       subject: "Reset password",
       text: "Plain text",
@@ -140,6 +140,13 @@ describe("SmtpEmailProvider", () => {
     expect(() => new SmtpEmailProvider({ url: "smtp://smtp.example.test", from: "" })).toThrow(
       "EMAIL_FROM is required",
     );
+    expect(
+      () =>
+        new SmtpEmailProvider({
+          url: "smtp://smtp.example.test",
+          from: "first@example.test, second@example.test",
+        }),
+    ).toThrow("EMAIL_FROM must contain one sender address");
     expect(
       () =>
         new SmtpEmailProvider({

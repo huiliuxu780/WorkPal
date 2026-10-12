@@ -20,9 +20,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import {
   assertVolumeSubpathSupport,
-  COMPUTER_GID,
   COMPUTER_IMAGE,
-  COMPUTER_UID,
   COMPUTER_USER,
   computerBridgeNameFor,
   computerHomeStorage,
@@ -260,16 +258,14 @@ app.post("/computers", async (c) => {
         // Existing containers with the current image already use the selected user.
         // Before replacing or creating a container, validate its home without
         // privileged filesystem mutations that could escape via concurrent renames.
-        // Match hostComputerUser(): missing/root host identity falls back to 1000:1000.
-        const effectiveUid =
-          runtimeInfo || hostUid === undefined || hostGid === undefined || hostUid === 0
-            ? COMPUTER_UID
-            : hostUid;
-        const effectiveGid =
-          runtimeInfo || hostUid === undefined || hostGid === undefined || hostUid === 0
-            ? COMPUTER_GID
-            : hostGid;
-        await assertComputerHomeWritable(serviceHomePath, effectiveUid, effectiveGid);
+        // Derive the identity from computerUser so it can never drift from the
+        // value hostComputerUser() chose (including its fallbacks).
+        const [effectiveUidStr, effectiveGidStr] = computerUser.split(":");
+        await assertComputerHomeWritable(
+          serviceHomePath,
+          Number(effectiveUidStr),
+          Number(effectiveGidStr),
+        );
         const name = containerNameFor(body.botId);
         const createdNetwork =
           screenNetworkMode === "internal" ? undefined : await ensureBotNetwork(body.botId);

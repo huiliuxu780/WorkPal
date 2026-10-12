@@ -182,6 +182,33 @@ async function assertWritableLinux(root: string, uid: number, gid: number): Prom
   }
 }
 
+/** Permission-bit walk shared by the non-Linux entry point and its tests. */
+export async function assertHomeEntryPermissions(
+  root: string,
+  uid: number,
+  gid: number,
+): Promise<void> {
+  await assertWritableEntry(root, root, uid, gid, true);
+}
+
+async function assertDarwinHomeStructure(root: string): Promise<void> {
+  let stat: Stats;
+  try {
+    stat = await lstat(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`computer home ${root} does not exist`);
+    }
+    throw error;
+  }
+  if (stat.isSymbolicLink()) {
+    throw new Error(`computer home ${root} must not be a symbolic link`);
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`computer home ${root} must be a directory`);
+  }
+}
+
 /** Validate without privileged mutation before a computer receives the home bind mount. */
 export async function assertComputerHomeWritable(
   root: string,
@@ -192,7 +219,17 @@ export async function assertComputerHomeWritable(
     await assertWritableLinux(root, uid, gid);
     return;
   }
-  await assertWritableEntry(root, root, uid, gid, true);
+  if (process.platform === "darwin") {
+    // macOS host permission bits do not predict container writability: the
+    // docker daemon runs in a Linux VM and virtiofs (colima/Docker Desktop)
+    // re-exposes bind-mounted files under the VM's own identity mapping, so a
+    // 0755 host-owned directory is writable from a container running as any
+    // uid. Checking the bits here only produces false negatives that block
+    // every host-run darwin supervisor; keep the structural guarantees.
+    await assertDarwinHomeStructure(root);
+    return;
+  }
+  await assertHomeEntryPermissions(root, uid, gid);
 }
 
 /** Exported for regression coverage of the moved-directory escape check. */

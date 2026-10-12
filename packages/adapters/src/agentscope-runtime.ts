@@ -10,6 +10,7 @@ import type {
   AgentToolCompletion,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
+import { PRODUCT_BRAND } from "@rakazo/core";
 
 type AgentScopeWireEvent =
   | AgentRuntimeEvent
@@ -575,6 +576,7 @@ function serializableRequest(
     sourceMessageId: request.sourceMessageId,
     identity,
     prompt: request.prompt,
+    productName: PRODUCT_BRAND.name,
     instructions: request.instructions,
     history: request.history.map((message) => ({
       id: message.id,

@@ -1,3 +1,4 @@
+import { PRODUCT_BRAND } from "@rakazo/core";
 import { randomUUID } from "node:crypto";
 import type {
   OAuthClientProvider,
@@ -207,7 +208,7 @@ export class StoredMcpOAuthProvider implements OAuthClientProvider {
     const applicationType = hostname === "localhost" || hostname === "127.0.0.1" ? "native" : "web";
     return {
       redirect_uris: [redirectUri],
-      client_name: "Rakazo",
+      client_name: `${PRODUCT_BRAND.name}`,
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",

@@ -1,5 +1,9 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@rakazo/core";
+import {
+  PRODUCT_BRAND,
+  readBoundedJsonResponse,
+  signupRequiresEmailVerification,
+} from "@rakazo/core";
 import { Button, Input, Label } from "@rakazo/ui-web";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,6 +15,7 @@ type AuthMode = "in" | "up" | "forgot";
 type PasswordResetCapabilities = { passwordReset: boolean; resetUrl: string | null };
 
 const fieldClass = "mt-2 h-12 rounded-xl px-4 text-base md:text-base";
+const productName = PRODUCT_BRAND.name;
 const submitClass = "mt-3 h-12 w-full rounded-xl text-base";
 const AUTH_CAPABILITIES_TIMEOUT_MS = 8_000;
 const MAX_AUTH_CAPABILITIES_RESPONSE_BYTES = 64 * 1024;
@@ -33,9 +38,9 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const title = sent ? (
     <Trans>Check your email</Trans>
   ) : mode === "in" ? (
-    <Trans>Sign in to Rakazo</Trans>
+    <Trans>Sign in to {productName}</Trans>
   ) : mode === "up" ? (
-    <Trans>Create your Rakazo</Trans>
+    <Trans>Create your {productName}</Trans>
   ) : (
     <Trans>Reset your password</Trans>
   );

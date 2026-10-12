@@ -12,7 +12,7 @@ import {
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
 } from "@rakazo/contracts";
-import { createModelProbe, initialModelProbeState } from "@rakazo/core";
+import { createModelProbe, initialModelProbeState, PRODUCT_BRAND } from "@rakazo/core";
 import {
   Button,
   Dialog,
@@ -40,6 +40,8 @@ import { localizedProviderHint } from "../lib/localized-provider-hint";
 import type { ModelCatalogEntry, ModelCredential } from "../lib/model-auth";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
+
+const productName = PRODUCT_BRAND.name;
 
 function connectionMaxTokensField(providerId: string, stored: number | undefined): string {
   if (providerId === OPENAI_COMPATIBLE_PROVIDER_ID) {
@@ -381,7 +383,7 @@ export function ModelSettingsOverlay({
   ) : localOwner ? (
     <Trans>Models for the server owner’s default space.</Trans>
   ) : (
-    <Trans>Choose which connected model Rakazo uses.</Trans>
+    <Trans>Choose which connected model {productName} uses.</Trans>
   );
 
   const body = (
@@ -501,7 +503,7 @@ export function ModelSettingsOverlay({
                         <Trans>Setup help</Trans>
                       </summary>
                       <p className="mt-1">
-                        {t`Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed.`}
+                        {t`Paste the OpenAI-compatible address from your server. ${productName} adds /v1 if needed.`}
                       </p>
                     </details>
                     <div className="mt-3 flex items-center gap-2">
@@ -845,8 +847,8 @@ export function ModelSettingsOverlay({
               {selected.auth === "oauth" && !subscriptionSignIn ? (
                 <p className="mt-5 text-sm leading-[1.5] text-muted-foreground">
                   <Trans>
-                    This subscription sign-in is not available in Rakazo yet. Use a deployment
-                    credential or choose another provider.
+                    This subscription sign-in is not available in {productName} yet. Use a
+                    deployment credential or choose another provider.
                   </Trans>
                 </p>
               ) : null}

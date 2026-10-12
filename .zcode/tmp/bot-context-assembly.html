@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>发起一次对话：Bot 上下文装配全景</title>
+<style>
+  :root{
+    --ink:#1c2330; --muted:#5b6472; --faint:#8a93a3;
+    --bg:#f4f6f9; --card:#ffffff; --line:#e3e7ee;
+    --accent:#3457d5; --accent-soft:#eef2ff;
+    --ok:#0c7a43; --ok-soft:#e7f6ee;
+    --auto:#5b6472; --auto-soft:#eef0f4;
+    --warn:#a15c07; --warn-soft:#fdf3e3;
+    --code:#0f1722; --code-ink:#dce6f5;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--ink); max-width:1560px; margin:0 auto; padding:30px 44px 34px;
+  }
+  header h1{font-size:27px; letter-spacing:.5px;}
+  header h1 b{color:var(--accent);}
+  header p{margin-top:8px; font-size:15px; color:var(--muted);}
+  .chain{margin-top:10px; display:flex; align-items:center; gap:10px; font-size:14px; flex-wrap:wrap;}
+  .chain .step{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:7px 14px; font-weight:600;}
+  .chain .step small{display:block; font-weight:400; color:var(--faint); font-size:12px; margin-top:2px;}
+  .chain .arr{color:var(--faint); font-size:16px;}
+
+  .legend{margin:14px 0 10px; display:flex; gap:14px; font-size:13px; color:var(--muted); align-items:center;}
+  .tag{display:inline-block; border-radius:20px; padding:2px 10px; font-size:12px; font-weight:600; white-space:nowrap;}
+  .tag.page{background:var(--ok-soft); color:var(--ok); border:1px solid #bfe6cf;}
+  .tag.auto{background:var(--auto-soft); color:var(--auto); border:1px solid var(--line);}
+  .tag.warn{background:var(--warn-soft); color:var(--warn); border:1px solid #ecd9b0;}
+
+  .rows{display:flex; flex-direction:column; gap:9px;}
+  .row{display:grid; grid-template-columns:250px minmax(0,1fr) 310px; gap:0; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden;}
+  .row .cat{padding:12px 16px; border-right:1px solid var(--line); display:flex; flex-direction:column; gap:6px;}
+  .row .cat .no{font-size:12px; font-weight:700; color:#fff; width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center;}
+  .row .cat h2{font-size:17px;}
+  .row .cat .to{font-size:12.5px; color:var(--muted); line-height:1.45;}
+  .row .cat .to b{color:var(--accent);}
+  .row .items{padding:9px 16px; display:flex; flex-direction:column; gap:7px; justify-content:center;}
+  .item{display:flex; align-items:baseline; gap:10px; font-size:14px; line-height:1.5;}
+  .item .name{width:200px; min-width:0; flex:none; font-weight:600;}
+  .item .desc{color:var(--muted); font-size:13px; flex:1 1 0; min-width:0; overflow-wrap:anywhere;}
+  .item .tag{flex:none;}
+  .row .target{padding:12px 16px; border-left:1px solid var(--line); background:var(--accent-soft); display:flex; flex-direction:column; justify-content:center; gap:6px; min-width:0; overflow-wrap:anywhere;}
+  .row .target .tt{font-size:12px; color:var(--faint); font-weight:700; letter-spacing:1px;}
+  .row .target .tv{font-size:14.5px; font-weight:700; color:var(--accent); line-height:1.5;}
+  .row .target .td{font-size:12.5px; color:var(--muted); line-height:1.5;}
+
+  .c1{background:#4f6df5}.c2{background:#8b5cf6}.c3{background:#0ea5b7}.c4{background:#d97706}
+  .c5{background:#db2777}.c6{background:#059669}.c7{background:#64748b}
+
+  .final{margin-top:16px; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden;}
+  .final .head{padding:10px 20px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:14px;}
+  .final .head h2{font-size:19px;}
+  .final .head span{font-size:13px; color:var(--muted);}
+  .final .body{display:grid; grid-template-columns:minmax(0,1fr) 360px;}
+  pre{background:var(--code); color:var(--code-ink); font:12.5px/1.75 "SF Mono",Menlo,Consolas,monospace; padding:14px 20px; overflow:hidden; white-space:pre-wrap; word-break:break-all;}
+  pre .k{color:#7dd3fc} pre .s{color:#fca5a5} pre .c{color:#6b7a90} pre .n{color:#fde68a}
+  .final .notes{padding:10px 20px; display:flex; flex-direction:column; gap:10px; border-left:1px solid var(--line);}
+  .final .notes .n-item{font-size:13px; line-height:1.6; color:var(--ink);}
+  .final .notes .n-item b{color:var(--accent);}
+  footer{margin-top:10px; font-size:12.5px; color:var(--faint); line-height:1.7;}
+</style>
+</head>
+<body>
+<header>
+  <h1>发起一次对话：Bot 上下文装配全景（<b>AgentScope</b> 执行器）</h1>
+  <p>每次 run，后端 executor 从数据库与各配置面装出 6 大类内容 + 1 份跨 run 状态，打包成一份 JSON 发给 AgentScope 服务，由它转成最终的模型请求。</p>
+  <div class="chain">
+    <div class="step">用户发消息<small>Web / 消息通道 / 例行任务</small></div><div class="arr">→</div>
+    <div class="step">后端 executor 拼装<small>executor.ts · 鉴权/审批/凭据全在后端</small></div><div class="arr">→</div>
+    <div class="step">POST /v1/runs<small>打包 ①–⑥ 项，NDJSON 流回事件</small></div><div class="arr">→</div>
+    <div class="step">AgentScope Agent<small>runtime.py · system_prompt + AgentState + Toolkit</small></div><div class="arr">→</div>
+    <div class="step">模型 API 请求<small>chat/completions（或各家同构协议）</small></div>
+  </div>
+  <div class="legend">
+    <b>标注说明：</b>
+    <span class="tag page">✓ 有前端配置页</span>
+    <span class="tag auto">自动 · 无需配置</span>
+    <span class="tag warn">特殊路径</span>
+  </div>
+</header>
+
+<div class="rows">
+  <div class="row">
+    <div class="cat"><span class="no c1">①</span><h2>本轮输入 prompt</h2>
+      <div class="to">→ AgentScope <b>本轮 UserMsg</b><br>reply_stream() 的输入消息</div></div>
+    <div class="items">
+      <div class="item"><span class="name">任务文本</span><span class="desc">用户消息 / Bot 唤醒 / 例行任务，本轮问题的本体</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">引用回复上下文</span><span class="desc">被引用消息的 JSON 摘录（含截断）</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">审批续传 / 接管恢复</span><span class="desc">恢复暂停 run 时重放已批准的效果与屏幕接管说明</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">当前时间 / 语音约束</span><span class="desc">时间每轮注入；语音通话时加"只读不改写"约束</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">发起时插话 steering</span><span class="desc">run 启动瞬间已排队的用户补充，合并进 prompt；运行中插话走工具桥注入</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">本轮附件图片</span><span class="desc">随消息上传的图片，转 Base64 DataBlock</span><span class="tag auto">自动</span></div>
+    </div>
+    <div class="target"><span class="tt">AGENTSCOPE 对应物</span><span class="tv">UserMsg（本轮输入）</span><span class="td">id = 消息 ID；图片拼在 content 里；配置页：无，全部是当轮数据</span></div>
+  </div>
+
+  <div class="row">
+    <div class="cat"><span class="no c2">②</span><h2>系统指令 instructions</h2>
+      <div class="to">→ AgentScope <b>system_prompt</b><br>前缀 "You are an assistant in {产品名}."</div></div>
+    <div class="items">
+      <div class="item"><span class="name">Bot 人设与指令</span><span class="desc">名字、职责、行为约束，每次 run 的行为基调</span><span class="tag page">✓ Bot 面板 · 指令</span></div>
+      <div class="item"><span class="name">持久记忆 durable memory</span><span class="desc">Bot 记忆 + 用户共享记忆，≤32KB 注入指令</span><span class="tag page">✓ Bot 详情·知识 / Memory 设置</span></div>
+      <div class="item"><span class="name">Scratchpad 工作记忆</span><span class="desc">会话级草稿区，跨 run 的工作笔记</span><span class="tag page">✓ 会话 Scratchpad</span></div>
+      <div class="item"><span class="name">电脑模式指令</span><span class="desc">computerMode 决定能否控制桌面沙盒</span><span class="tag page">✓ Bot 面板 · 电脑模式</span></div>
+      <div class="item"><span class="name">插件 / 技能可用性行</span><span class="desc">Composio 插件清单 + Agent Skills 与 Teach 教的技能名录</span><span class="tag page">✓ 插件 · 技能目录</span></div>
+      <div class="item"><span class="name">群组 / 通道上下文</span><span class="desc">群成员名单、消息平台身份；任务目录、workspace、Bot 目录、回复引导</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">Agent 环境变量</span><span class="desc">空间级 agent secrets 解密后注入说明</span><span class="tag warn">后端 API · 暂无前端页</span></div>
+    </div>
+    <div class="target"><span class="tt">AGENTSCOPE 对应物</span><span class="tv">system_prompt（拼接串）</span><span class="td">Agent 构造参数；子代理另有一份受限人设</span></div>
+  </div>
+
+  <div class="row">
+    <div class="cat"><span class="no c3">③</span><h2>对话历史 history</h2>
+      <div class="to">→ AgentScope <b>AgentState.context</b><br>按角色逐条重建为 User/AssistantMsg</div></div>
+    <div class="items">
+      <div class="item"><span class="name">后端压缩摘要</span><span class="desc">游标之前的全部内容，唯一记录；每 run 重注入（刚修的失忆 bug 就在这里）</span><span class="tag auto">history.compact 任务</span></div>
+      <div class="item"><span class="name">语义召回</span><span class="desc">按本轮问题检索旧对话记忆，≤5 条</span><span class="tag page">✓ Memory 设置 · Serenity/Supermemory</span></div>
+      <div class="item"><span class="name">窗口内逐条消息</span><span class="desc">最近 50 条（召回成功）或 200 条，DB 直取</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">近期轮次图片补全</span><span class="desc">最近几条用户消息的图片重新灌回，受模型图片预算约束</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">跨 run 快照续接</span><span class="desc">第 2 次 run 起优先用 AgentScope 持久上下文，仅续补标记之后的尾部消息</span><span class="tag auto">StateStore 恢复</span></div>
+    </div>
+    <div class="target"><span class="tt">AGENTSCOPE 对应物</span><span class="tv">AgentState.context</span><span class="td">上下文块命名为 workpal_compacted_context / workpal_recalled_memory / workpal_context</span></div>
+  </div>
+
+  <div class="row">
+    <div class="cat"><span class="no c4">④</span><h2>工具 tools</h2>
+      <div class="to">→ AgentScope <b>Toolkit</b><br>包装为 BackendTool（外部工具）</div></div>
+    <div class="items">
+      <div class="item"><span class="name">连接器工具</span><span class="desc">GitHub / Notion / 邮件等第三方动作，按连接授权发现</span><span class="tag page">✓ 集成 IntegrationSetup</span></div>
+      <div class="item"><span class="name">MCP 服务器工具</span><span class="desc">MCP 服务器的工具目录（含 OAuth）</span><span class="tag page">✓ MCP 服务器设置</span></div>
+      <div class="item"><span class="name">内置工具</span><span class="desc">网页浏览、电脑控制、文件、绘图等平台能力</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">runtime_current_time</span><span class="desc">唯一在 AgentScope 服务本地执行的工具</span><span class="tag warn">本地执行</span></div>
+      <div class="item"><span class="name">执行路径</span><span class="desc">其余工具调用经工具桥回 TS 后端：鉴权、审批、幂等全在应用后端，模型只拿到结果</span><span class="tag warn">工具桥回后端</span></div>
+    </div>
+    <div class="target"><span class="tt">AGENTSCOPE 对应物</span><span class="tv">Toolkit（BackendTool）</span><span class="td">check_permissions 恒 ALLOW，真实权限在后端逐项校验</span></div>
+  </div>
+
+  <div class="row">
+    <div class="cat"><span class="no c5">⑤</span><h2>技能 skills</h2>
+      <div class="to">→ AgentScope <b>Toolkit Skills</b><br>注册为 Skill，模型按需读取</div></div>
+    <div class="items">
+      <div class="item"><span class="name">Agent Skills 全文</span><span class="desc">名称、描述、Markdown 正文随请求下发；名字进系统提示，正文用时才读</span><span class="tag page">✓ 技能目录 / Teach</span></div>
+    </div>
+    <div class="target"><span class="tt">AGENTSCOPE 对应物</span><span class="tv">Toolkit.skills_or_loaders</span><span class="td">dir 指向 workpal://skills/{id}，Skill 工具按需取正文</span></div>
+  </div>
+
+  <div class="row">
+    <div class="cat"><span class="no c6">⑥</span><h2>模型配置 model</h2>
+      <div class="to">→ AgentScope <b>ChatModel 实例</b><br>_build_model() 按供应商构造</div></div>
+    <div class="items">
+      <div class="item"><span class="name">供应商与模型</span><span class="desc">Bot 级覆盖优先，否则用默认凭据 / 部署回退</span><span class="tag page">✓ Bot 面板 / 模型设置</span></div>
+      <div class="item"><span class="name">API Key</span><span class="desc">后端解密后仅传给内网 AgentScope 服务，服务只收内网地址</span><span class="tag page">✓ 模型连接</span></div>
+      <div class="item"><span class="name">参数</span><span class="desc">maxTokens / contextWindow / thinkingLevel / baseUrl，随模型元数据自动</span><span class="tag auto">自动</span></div>
+      <div class="item"><span class="name">OAuth 订阅凭据</span><span class="desc">AgentScope 仅支持 API-Key 类凭据，OAuth 连接直接报错不执行</span><span class="tag warn">硬约束</span></div>
+    </div>
+    <div class="target"><span class="tt">AGENTSCOPE 对应物</span><span class="tv">OpenAI / Anthropic / Gemini…ChatModel</span><span class="td">stream=True，context_size 决定自身压缩触发点</span></div>
+  </div>
+
+  <div class="row">
+    <div class="cat"><span class="no c7">⑦</span><h2>跨 run 状态（隐性第 7 类）</h2>
+      <div class="to">不随 /v1/runs 请求传，<br>存在 AgentScope 服务本地</div></div>
+    <div class="items">
+      <div class="item"><span class="name">AgentState 快照</span><span class="desc">每次 run 完成原子保存（版本号防并发覆盖）；恢复时剥离临时块、续补尾部历史</span><span class="tag auto">StateStore · 自动</span></div>
+      <div class="item"><span class="name">自身压缩 summary</span><span class="desc">上下文逼近模型窗口时 AgentScope 压缩出摘要，随快照持久</span><span class="tag auto">压缩工具 · 自动</span></div>
+    </div>
+    <div class="target"><span class="tt">AGENTSCOPE 对应物</span><span class="tv">StateStore（本地 JSON 快照）</span><span class="td">"长对话记忆"的另一半；与 PG 全量聊天记录分离</span></div>
+  </div>
+</div>
+
+<div class="final">
+  <div class="head"><h2>最终发给模型的请求</h2><span>以 OpenAI 兼容为例，其余供应商由对应 ChatModel 同构转换</span></div>
+  <div class="body">
+<pre>POST {模型 baseUrl}/chat/completions
+
+{
+  <span class="k">"model"</span>: <span class="s">"…"</span>,
+  <span class="k">"messages"</span>: [
+    { <span class="k">"role"</span>: <span class="s">"system"</span>,
+      <span class="k">"content"</span>: <span class="s">"You are an assistant in MyPal. " + ② 全部 instructions</span> },
+    <span class="c">// ↓ 仅当 AgentScope 自身压缩触发过（随快照恢复）</span>
+    { <span class="k">"role"</span>: <span class="s">"user"</span>, <span class="k">"content"</span>: <span class="s">"自身压缩 summary"</span> },
+    <span class="c">// ↓ ③ 后端压缩摘要（游标前内容的唯一记录）</span>
+    { <span class="k">"role"</span>: <span class="s">"user"</span>, <span class="k">"name"</span>: <span class="s">"workpal_compacted_context"</span>, … },
+    { <span class="k">"role"</span>: <span class="s">"user"</span>, <span class="k">"name"</span>: <span class="s">"workpal_recalled_memory"</span>, … },
+    { <span class="k">"role"</span>: <span class="s">"user"</span>, <span class="k">"content"</span>: <span class="s">"历史消息…"</span> },      <span class="c">// ③ 窗口 50/200 条</span>
+    { <span class="k">"role"</span>: <span class="s">"assistant"</span>, <span class="k">"content"</span>: <span class="s">"历史回复…"</span> },
+    { <span class="k">"role"</span>: <span class="s">"user"</span>, <span class="k">"content"</span>: [<span class="s">"本轮 prompt"</span>, 图片…],
+      <span class="k">"name"</span>: <span class="s">"user"</span> }                        <span class="c">// ① 本轮输入</span>
+  ],
+  <span class="k">"tools"</span>: [ { <span class="k">"type"</span>: <span class="s">"function"</span>,
+      <span class="k">"function"</span>: { <span class="k">"name"</span>, <span class="k">"description"</span>, <span class="k">"parameters"</span> } } … ],
+  <span class="k">"stream"</span>: <span class="n">true</span>,
+  <span class="k">"max_completion_tokens"</span>: …,
+  <span class="k">"reasoning_effort"</span>: <span class="s">"…"</span>,
+  <span class="k">"parallel_tool_calls"</span>: <span class="n">false</span>
+}</pre>
+    <div class="notes">
+      <div class="n-item"><b>工具不直连外部。</b>模型只会"发起调用"，真正执行经工具桥回到 TS 后端：鉴权、审批暂停、密钥注入、幂等都在应用后端完成。</div>
+      <div class="n-item"><b>响应是流。</b>模型输出 → AgentScope 服务 → NDJSON 事件流 → 后端 → 前端增量渲染；usage 每轮回传统计。</div>
+      <div class="n-item"><b>每一轮都会重算。</b>除 AgentScope 快照外，①–⑥ 每次 run 重新装配；改了 Bot 指令 / 技能 / 连接，下一轮立即生效。</div>
+      <div class="n-item"><b>数量盘点。</b>6 大类 + 1 份状态；7 项有前端配置页，其余自动装配。</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  装配链路：packages/adapters/src/executor.ts（拼装与鉴权）→ agentscope-runtime.ts（打包 + 工具桥）→ services/agentscope/src/workpal_agentscope/runtime.py（Agent 构造）→ 模型 API。压缩摘要跨 run 注入行为已修复并通过 services/agentscope 全量测试。
+</footer>
+</body>
+</html>

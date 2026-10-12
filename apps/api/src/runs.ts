@@ -1,4 +1,9 @@
-import { type Actor, MessageBlock, type RunActivityRow } from "@rakazo/contracts";
+import {
+  type Actor,
+  MessageBlock,
+  type RunActivityRow,
+  type RunsDetailOutput,
+} from "@rakazo/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   ACTIVITY_EVENT_TYPES,
@@ -160,4 +165,82 @@ export async function listSpaceRuns(
     ...(activity ? { activity } : {}),
     };
   });
+}
+
+export async function getRunDetail(
+  prisma: PrismaClient,
+  actor: Actor,
+  runId: string,
+): Promise<RunsDetailOutput | null> {
+  const run = await prisma.run.findFirst({
+    where: { id: runId, spaceId: actor.spaceId, userId: actor.userId },
+    include: {
+      bot: { select: { name: true, color: true, notifyOnFinish: true } },
+      task: { select: { prompt: true } },
+      thread: { select: { groupId: true } },
+      attempts: { orderBy: { fence: "asc" } },
+      effects: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  if (!run) return null;
+
+  const siblings = run.routineId
+    ? await prisma.run.findMany({
+        where: {
+          routineId: run.routineId,
+          id: { not: run.id },
+          spaceId: actor.spaceId,
+          userId: actor.userId,
+        },
+        orderBy: [{ completedAt: "desc" }, { updatedAt: "desc" }],
+        take: 5,
+        include: { task: { select: { prompt: true } } },
+      })
+    : [];
+
+  return {
+    run: {
+      runId: run.id,
+      botId: run.botId,
+      botName: run.bot.name,
+      botColor: run.bot.color,
+      threadId: run.threadId,
+      status: run.status as RunsDetailOutput["run"]["status"],
+      trigger: run.trigger as RunsDetailOutput["run"]["trigger"],
+      notificationsEnabled: activityNotificationsEnabled(
+        run.thread.groupId,
+        run.bot.notifyOnFinish,
+      ),
+      promptSnippet: activityPromptSnippet({ trigger: run.trigger, prompt: run.task.prompt }),
+      error: run.error,
+      routineId: run.routineId,
+      startedAt: run.startedAt?.toISOString() ?? null,
+      completedAt: run.completedAt?.toISOString() ?? null,
+      updatedAt: run.updatedAt.toISOString(),
+    },
+    attempts: run.attempts.map((attempt) => ({
+      fence: attempt.fence,
+      status: attempt.status,
+      error: attempt.error,
+      startedAt: attempt.startedAt.toISOString(),
+      finishedAt: attempt.finishedAt?.toISOString() ?? null,
+    })),
+    effects: run.effects.map((effect) => ({
+      effectId: effect.id,
+      kind: effect.kind,
+      status: effect.status,
+      request: effect.request,
+      result: effect.result ?? null,
+      createdAt: effect.createdAt.toISOString(),
+    })),
+    history: siblings.map((sibling) => ({
+      runId: sibling.id,
+      status: sibling.status as RunsDetailOutput["run"]["status"],
+      promptSnippet: activityPromptSnippet({
+        trigger: sibling.trigger,
+        prompt: sibling.task.prompt,
+      }),
+      at: (sibling.completedAt ?? sibling.updatedAt).toISOString(),
+    })),
+  };
 }

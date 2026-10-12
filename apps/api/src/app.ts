@@ -19,6 +19,7 @@ import type {
 } from "@rakazo/adapters";
 import {
   AgentScopeAgentRuntime,
+  AgentlyMailService,
   applyMessagingOutboundStatus,
   ChatSdkMessagingSurface,
   CodexCatalogCache,
@@ -320,6 +321,11 @@ export async function createApp(
     (env.smtpUrl
       ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
       : localEmailEmulator);
+  // Agent outgoing mail is a deployment-level Agently mailbox (agently-cli OAuth
+  // in the host keychain). Disabled by default; enabling requires AGENTLY_MAIL_ENABLED=true.
+  const mail = env.agentlyMailEnabled
+    ? new AgentlyMailService({ bin: env.agentlyMailBin })
+    : null;
   const installed = new InstalledConnectorProvider(
     prisma,
     secrets,
@@ -462,6 +468,7 @@ export async function createApp(
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
     cloudAgent,
+    mail,
     shutdownSignal: shutdown.signal,
   });
 
@@ -887,6 +894,7 @@ export async function createApp(
       pipedream: Boolean(pipedream),
       messaging: Boolean(messaging),
       email: email?.describe().id ?? null,
+      agentlyMail: mail ? mail.describe().id : null,
       jobs: jobKind,
       realtime: realtime.describe().id,
       revision: env.gitSha ?? null,

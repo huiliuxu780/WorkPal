@@ -1,0 +1,34 @@
+(deploy_retry) {
+	lb_try_duration 10s
+	lb_try_interval 250ms
+}
+
+# HTTP-only variant for bare-IP deployments (no DNS name means no ACME cert, and
+# browsers do not send SNI for IP addresses). Derived from Caddyfile.prod.
+http://:8080, http://{$RAKAZO_HOST:app.example.com}, http://127.0.0.1, http://localhost {
+	encode zstd gzip
+
+	handle /health {
+		reverse_proxy api:3100 {
+			import deploy_retry
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy api:3100 {
+			import deploy_retry
+		}
+	}
+
+	handle /rpc/* {
+		reverse_proxy api:3100 {
+			import deploy_retry
+		}
+	}
+
+	handle {
+		reverse_proxy web:5173 {
+			import deploy_retry
+		}
+	}
+}

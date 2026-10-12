@@ -1,6 +1,6 @@
 import {
   type Actor,
-  BOT_COLORS,
+  DEFAULT_BOT_AVATAR_COLOR,
   type Bot,
   type BotSection,
   type MessageBlock,
@@ -397,10 +397,7 @@ export function createRepos(prisma: PrismaClient) {
     ): Promise<Bot> {
       let color = input.color;
       if (color === undefined) {
-        const count = await prisma.bot.count({
-          where: { spaceId: actor.spaceId, userId: actor.userId },
-        });
-        color = BOT_COLORS[count % BOT_COLORS.length] ?? BOT_COLORS[0];
+        color = DEFAULT_BOT_AVATAR_COLOR;
       }
       let modelProvider = input.modelProvider ?? null;
       let modelId = input.modelId ?? null;

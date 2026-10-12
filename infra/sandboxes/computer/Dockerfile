@@ -1,4 +1,8 @@
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS capture-builder
+# DEBIAN_MIRROR swaps the apt origin (e.g. mirrors.cloud.aliyuncs.com on mainland-China hosts).
+# Default keeps upstream behavior for every other build.
+ARG DEBIAN_MIRROR=deb.debian.org
+RUN sed -i "s|deb\.debian\.org|${DEBIAN_MIRROR}|g; s|security\.debian\.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libx11-dev \
@@ -17,6 +21,8 @@ FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2
 # Dev tools let bots clone repos and fetch artifacts; containers run uid 1000
 # with no privilege escalation, so nothing can be installed at runtime.
 # Compilers stay in the builder stage; heavier toolchains are a separate call.
+ARG DEBIAN_MIRROR=deb.debian.org
+RUN sed -i "s|deb\.debian\.org|${DEBIAN_MIRROR}|g; s|security\.debian\.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     x11vnc \

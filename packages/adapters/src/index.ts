@@ -1,5 +1,6 @@
 export * from "./agent-connections.js";
 export * from "./agent-environment.js";
+export * from "./agently-mail.js";
 export * from "./agentscope-runtime.js";
 export * from "./ai-consent.js";
 export * from "./artifacts.js";

@@ -1,0 +1,18 @@
+{
+  "name": "MyPal",
+  "description": "Your team of always-on agents.",
+  "logo": {
+    "src": "/favicon.svg",
+    "favicon": "/favicon.ico",
+    "appleTouchIcon": "/apple-touch-icon.png",
+    "icon192": "/icon-192.png",
+    "icon512": "/icon-512.png",
+    "cacheVersion": "mypal-1"
+  },
+  "links": {
+    "repository": "https://github.com/huiliuxu780/WorkPal",
+    "help": "https://github.com/huiliuxu780/WorkPal/blob/main/README.md",
+    "feedback": "https://github.com/huiliuxu780/WorkPal/issues",
+    "privacy": "https://github.com/huiliuxu780/WorkPal/blob/main/docs/privacy.md"
+  }
+}

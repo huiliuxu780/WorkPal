@@ -92,13 +92,7 @@ it("flips the stored tool activity preference from the settings toggle", async (
   const root = createRoot(container);
   try {
     await act(async () => {
-      root.render(
-        <GeneralSettingsPanels
-          name="Jamie"
-          avatarStyle="robot"
-          onAvatarStyleChange={async () => undefined}
-        />,
-      );
+      root.render(<GeneralSettingsPanels name="Jamie" />);
     });
 
     const toggle = container.querySelector<HTMLButtonElement>(
