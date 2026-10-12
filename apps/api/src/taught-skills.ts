@@ -4,6 +4,7 @@ import type { AgentHomeStore, JobPublisher, SandboxProvider } from "@rakazo/adap
 import {
   type AdapterContext,
   runContinueJob,
+  runJobKey,
   skillTeachingExpireJob,
   skillTeachingExpireJobKey,
 } from "@rakazo/adapter-kit";
@@ -26,6 +27,7 @@ import {
   recordTeachingInputEvent,
   releaseComputerExecutionLease,
   releaseTeachingComputerControlForBot,
+  revokeCancellingBackgroundTasks,
   scheduleComputerControlExpiry,
   screenLeaseIdForRun,
   type TeachComputerInput,
@@ -41,6 +43,9 @@ import {
   teachRecordingTtlMs,
 } from "@rakazo/core";
 import {
+  appendEventInTransaction,
+  cancelChildrenOfCancelledRuns,
+  cancelRunsInTransaction,
   type createRepos,
   expireComputerExecutionLeases,
   IsolationError,
@@ -72,6 +77,17 @@ export interface TaughtSkillsDeps {
   sandbox: SandboxProvider;
   home: AgentHomeStore;
   dataDir: string;
+  runtime?: { abort: (runId: string) => Promise<void> };
+  cancelRuntimeBackgroundTask?: (
+    taskId: string,
+    identity: {
+      userId: string;
+      spaceId: string;
+      botId: string;
+      threadId: string;
+      runId: string;
+    },
+  ) => Promise<boolean>;
 }
 
 function computerContext(actor: Actor, botId: string, operationId: string): AdapterContext {
@@ -117,20 +133,47 @@ async function cancelActiveRuns(
 ): Promise<void> {
   const activeRuns = await deps.prisma.run.findMany({
     where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
-    select: { id: true },
+    select: { id: true, taskId: true },
   });
-  await deps.prisma.run.updateMany({
-    where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
-    data: { status: "cancelled", waitKind: null, completedAt: new Date() },
+  const cancelled = await deps.prisma.$transaction(async (tx) => {
+    const rows = await cancelRunsInTransaction(tx, activeRuns, new Date());
+    for (const run of rows) {
+      await appendEventInTransaction(tx, {
+        spaceId: run.spaceId,
+        threadId: run.threadId,
+        botId: run.botId,
+        runId: run.id,
+        type: "run.cancelled",
+        payload: { reason: "teaching_started" },
+      });
+    }
+    if (rows.length) {
+      await expireComputerExecutionLeases(tx, { runId: { in: rows.map((run) => run.id) } });
+      await tx.event.deleteMany({
+        where: { type: "thread.progress", runId: { in: rows.map((run) => run.id) } },
+      });
+    }
+    return rows;
   });
-  await expireComputerExecutionLeases(deps.prisma, { botId });
-  await deps.prisma.computer.updateMany({
-    where: { executionBotId: botId },
-    data: { executionRunId: null, executionBotId: null, executionLeaseExpiresAt: null },
-  });
-  await deps.prisma.event.deleteMany({
-    where: { type: "thread.progress", runId: { in: activeRuns.map((run) => run.id) } },
-  });
+  if (cancelled.length) {
+    await deps.prisma.computer.updateMany({
+      where: { executionBotId: botId, executionRunId: { in: cancelled.map((run) => run.id) } },
+      data: { executionRunId: null, executionBotId: null, executionLeaseExpiresAt: null },
+    });
+  }
+  const descendants = await cancelChildrenOfCancelledRuns(
+    deps.prisma,
+    cancelled.map((run) => run.id),
+  );
+  await Promise.allSettled([
+    ...[...cancelled, ...descendants].map((run) => deps.jobs.cancel(runJobKey(run.id))),
+    ...[...cancelled, ...descendants].map((run) => deps.runtime?.abort(run.id)),
+  ]);
+  if (deps.cancelRuntimeBackgroundTask && cancelled.length) {
+    await revokeCancellingBackgroundTasks(deps.prisma, deps.cancelRuntimeBackgroundTask, {
+      parentRunIds: [...cancelled.map((run) => run.id), ...descendants.map((run) => run.id)],
+    }).catch(() => undefined);
+  }
 }
 
 async function ensureGraphicalComputer(

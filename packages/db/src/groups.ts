@@ -7,9 +7,22 @@ import {
   type SpaceGroup,
 } from "@rakazo/contracts";
 import { selectGroupLead } from "@rakazo/core";
-import { cancelRunsInTransaction } from "./cancel-runs.js";
+import {
+  backgroundTaskLockTransactionOptions,
+  lockThreadForBackgroundTask,
+} from "./background-task-registration.js";
+import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
+import { cancelRunsInTransaction, type CancelledRunRow } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
+import {
+  backgroundParentRunIdsExcept,
+  findLiveBackgroundTasks,
+  markLiveBackgroundTasksCancelling,
+  recordBackgroundRevocations,
+  recordRunAbortRevocations,
+} from "./execution-revocations.js";
 import { expireComputerExecutionLeases } from "./computers.js";
+import { appendEventInTransaction } from "./events.js";
 import { IsolationError } from "./scope.js";
 import { lockSpaceForContentCreation } from "./spaces.js";
 import { activeRunSelection, activeRunStatuses, previewFromBlocks } from "./thread-listing.js";
@@ -229,6 +242,7 @@ async function snapshotRunTeardownTargets(
 }
 
 async function resumeArchivedGroupTeardown(tx: Prisma.TransactionClient, threadId: string) {
+  const backgroundTasks = await markLiveBackgroundTasksCancelling(tx, { threadId });
   const cancelled = await tx.run.findMany({
     where: { threadId, status: "cancelled" },
     select: { id: true },
@@ -240,8 +254,12 @@ async function resumeArchivedGroupTeardown(tx: Prisma.TransactionClient, threadI
     new Date(0),
     true,
   );
-  if (leasedRunIds.length === 0) throw new IsolationError();
-  return { cancelledRunIds: leasedRunIds, computers: targets };
+  if (leasedRunIds.length === 0 && backgroundTasks.length === 0) throw new IsolationError();
+  return {
+    cancelledRunIds: leasedRunIds,
+    computers: targets,
+    backgroundParentRunIds: backgroundParentRunIdsExcept(backgroundTasks, leasedRunIds),
+  };
 }
 
 export function createGroupRepos(prisma: PrismaClient) {
@@ -369,10 +387,10 @@ export function createGroupRepos(prisma: PrismaClient) {
         pinned?: boolean;
         sectionId?: string | null;
       },
-    ): Promise<{ group: Group; cancelledRunIds: string[] }> {
+    ): Promise<{ group: Group; cancelledRunIds: string[]; backgroundParentRunIds: string[] }> {
       const members = input.botIds ? await assertOwnedBots(prisma, actor, input.botIds) : undefined;
       const updated = await prisma.$transaction(async (tx) => {
-        await lockOwnedGroup(tx, actor, input.groupId);
+        const threadId = await lockGroupThreadThenOwner(tx, actor, input.groupId);
         const current = await tx.chatGroup.findFirst({
           where: {
             id: input.groupId,
@@ -385,7 +403,7 @@ export function createGroupRepos(prisma: PrismaClient) {
             thread: { select: { id: true } },
           },
         });
-        if (!current?.thread) throw new IsolationError();
+        if (!current?.thread || current.thread.id !== threadId) throw new IsolationError();
         if (
           !members &&
           !hasMinimumActiveMembers(
@@ -412,9 +430,20 @@ export function createGroupRepos(prisma: PrismaClient) {
               select: { id: true, taskId: true },
             })
           : [];
-        if (activeRuns.length) {
-          const now = new Date();
-          await cancelRunsInTransaction(tx, activeRuns, now);
+        const cancelledRuns = activeRuns.length
+          ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+          : [];
+        const backgroundTasks = removedBotIds.length
+          ? await markLiveBackgroundTasksCancelling(tx, {
+              threadId: current.thread.id,
+              botId: { in: removedBotIds },
+            })
+          : [];
+        if (cancelledRuns.length) {
+          await expireComputerExecutionLeases(tx, {
+            runId: { in: cancelledRuns.map((run) => run.id) },
+          });
+          await appendCancelledRunEvents(tx, cancelledRuns, "member_removed");
         }
         if (input.name !== undefined) {
           await tx.chatGroup.update({
@@ -452,18 +481,30 @@ export function createGroupRepos(prisma: PrismaClient) {
             where: { id: input.groupId },
             include: groupInclude,
           })
-          .then((group) => ({ group, cancelledRunIds: activeRuns.map((run) => run.id) }));
-      });
+          .then((group) => ({
+            group,
+            cancelledRunIds: cancelledRuns.map((run) => run.id),
+            backgroundParentRunIds: backgroundParentRunIdsExcept(
+              backgroundTasks,
+              cancelledRuns.map((run) => run.id),
+            ),
+          }));
+      }, backgroundTaskLockTransactionOptions);
       if (!updated.group.thread) throw new IsolationError();
+      const descendants = await cancelChildrenOfCancelledRuns(prisma, updated.cancelledRunIds);
+      const descendantIds = descendants.map((run) => run.id);
       return {
         group: mapGroup(updated.group as GroupRecord),
-        cancelledRunIds: updated.cancelledRunIds,
+        cancelledRunIds: [...updated.cancelledRunIds, ...descendantIds],
+        backgroundParentRunIds: updated.backgroundParentRunIds.filter(
+          (runId) => !descendantIds.includes(runId),
+        ),
       };
     },
 
     async archiveGroup(actor: Actor, groupId: string) {
-      return prisma.$transaction(async (tx) => {
-        await lockOwnedGroup(tx, actor, groupId);
+      const archived = await prisma.$transaction(async (tx) => {
+        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
         const current = await tx.chatGroup.findFirst({
           where: {
             id: groupId,
@@ -472,7 +513,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           },
           select: { archivedAt: true, thread: { select: { id: true } } },
         });
-        if (!current?.thread) throw new IsolationError();
+        if (!current?.thread || current.thread.id !== threadId) throw new IsolationError();
         if (current.archivedAt) return resumeArchivedGroupTeardown(tx, current.thread.id);
 
         const activeRuns = await tx.run.findMany({
@@ -488,10 +529,16 @@ export function createGroupRepos(prisma: PrismaClient) {
         // reclaimed still names this run's screen.
         const { targets } = await snapshotRunTeardownTargets(tx, runIds);
 
-        if (runIds.length) {
-          await cancelRunsInTransaction(tx, activeRuns, now);
+        const cancelledRuns = runIds.length
+          ? await cancelRunsInTransaction(tx, activeRuns, now)
+          : [];
+        const backgroundTasks = await markLiveBackgroundTasksCancelling(tx, {
+          threadId: current.thread.id,
+        });
+        if (cancelledRuns.length) {
+          await appendCancelledRunEvents(tx, cancelledRuns, "group_archived");
           await tx.event.deleteMany({
-            where: { type: "thread.progress", runId: { in: runIds } },
+            where: { type: "thread.progress", runId: { in: cancelledRuns.map((run) => run.id) } },
           });
         }
 
@@ -500,8 +547,25 @@ export function createGroupRepos(prisma: PrismaClient) {
           data: { archivedAt: now, pinned: false },
         });
 
-        return { cancelledRunIds: runIds, computers: targets };
-      });
+        // Parent computer leases stay until sandbox teardown. Descendants are expired below.
+        return {
+          cancelledRunIds: cancelledRuns.map((run) => run.id),
+          computers: targets,
+          backgroundParentRunIds: backgroundParentRunIdsExcept(
+            backgroundTasks,
+            cancelledRuns.map((run) => run.id),
+          ),
+        };
+      }, backgroundTaskLockTransactionOptions);
+      const descendants = await cancelChildrenOfCancelledRuns(prisma, archived.cancelledRunIds);
+      const descendantIds = descendants.map((run) => run.id);
+      return {
+        cancelledRunIds: [...archived.cancelledRunIds, ...descendantIds],
+        computers: archived.computers,
+        backgroundParentRunIds: archived.backgroundParentRunIds.filter(
+          (runId) => !descendantIds.includes(runId),
+        ),
+      };
     },
 
     /** After an archive's teardown: expire the cancelled runs' leases and legacy columns. */
@@ -527,27 +591,98 @@ export function createGroupRepos(prisma: PrismaClient) {
     },
 
     async removeGroup(actor: Actor, groupId: string) {
-      return prisma.$transaction(async (tx) => {
-        await lockOwnedGroup(tx, actor, groupId);
+      const removed = await prisma.$transaction(async (tx) => {
+        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
         const group = await tx.chatGroup.findUnique({
           where: { id: groupId },
           select: {
             artifacts: { select: { storageKey: true } },
             members: { orderBy: { createdAt: "asc" }, take: 1, select: { botId: true } },
+            thread: { select: { id: true } },
           },
         });
-        const contextBotId = group?.members[0]?.botId;
+        if (!group?.thread || group.thread.id !== threadId) throw new IsolationError();
+        const contextBotId = group.members[0]?.botId;
         if (!contextBotId) throw new IsolationError();
+        const parentRuns = await tx.run.findMany({
+          where: { threadId: group.thread.id, status: { in: activeRunStatuses } },
+          select: { id: true },
+        });
+        const parentRunIds = parentRuns.map((run) => run.id);
+        // A parent Run can already be completed while its native task is still running.
+        // The thread row is already locked, so a registration cannot insert between
+        // this read and the cascade delete.
+        const backgroundTasks = await findLiveBackgroundTasks(tx, { threadId: group.thread.id });
+        // The group delete cascades runs and background projections. These rows do not.
+        await recordRunAbortRevocations(tx, parentRunIds);
+        await recordBackgroundRevocations(
+          tx,
+          backgroundTasks.map((task) => ({
+            taskId: task.taskId,
+            runId: task.parentRunId,
+            userId: task.userId,
+            spaceId: task.spaceId,
+            botId: task.botId,
+            threadId: task.threadId,
+          })),
+        );
         await tx.chatGroup.delete({ where: { id: groupId } });
         return {
           contextBotId,
           artifactStorageKeys: group.artifacts.map((artifact) => artifact.storageKey),
+          parentRunIds,
+          backgroundTasks,
         };
-      });
+      }, backgroundTaskLockTransactionOptions);
+      // The group thread is gone. Cross-thread descendants still name those parents.
+      const descendants = await cancelChildrenOfCancelledRuns(prisma, removed.parentRunIds);
+      return {
+        contextBotId: removed.contextBotId,
+        artifactStorageKeys: removed.artifactStorageKeys,
+        cancelledRunIds: [...removed.parentRunIds, ...descendants.map((run) => run.id)],
+        backgroundTasks: removed.backgroundTasks,
+      };
     },
 
     mapGroup,
   };
+}
+
+async function appendCancelledRunEvents(
+  tx: Prisma.TransactionClient,
+  runs: readonly CancelledRunRow[],
+  reason: string,
+) {
+  for (const run of runs) {
+    await appendEventInTransaction(tx, {
+      spaceId: run.spaceId,
+      threadId: run.threadId,
+      botId: run.botId,
+      runId: run.id,
+      type: "run.cancelled",
+      payload: { reason },
+    });
+  }
+}
+
+/**
+ * Thread row first, then the group row. Clear and Send already lock the thread
+ * before they update the group, so the opposite order deadlocks.
+ */
+async function lockGroupThreadThenOwner(
+  tx: Prisma.TransactionClient,
+  actor: Pick<Actor, "spaceId" | "userId">,
+  groupId: string,
+): Promise<string> {
+  const preview = await tx.chatGroup.findFirst({
+    where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
+    select: { thread: { select: { id: true } } },
+  });
+  if (!preview?.thread) throw new IsolationError();
+  const locked = await lockThreadForBackgroundTask(tx, preview.thread.id);
+  if (!locked) throw new IsolationError();
+  await lockOwnedGroup(tx, actor, groupId);
+  return preview.thread.id;
 }
 
 export async function lockOwnedGroup(

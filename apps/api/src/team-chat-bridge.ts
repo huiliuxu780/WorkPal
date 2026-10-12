@@ -4,10 +4,17 @@ import type {
   TeamChatSendRequest,
   TeamChatSendResult,
 } from "@rakazo/adapter-kit";
-import { runContinueJob } from "@rakazo/adapter-kit";
+import { runContinueJob, runJobKey } from "@rakazo/adapter-kit";
+import { revokeCancellingBackgroundTasks } from "@rakazo/adapters";
 import { AutomatedSenderPoliciesSchema, type MessageBlock } from "@rakazo/contracts";
 import { BOT_MESSAGE_MAX_HOPS, PRODUCT_BRAND } from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import {
+  appendEventInTransaction,
+  cancelChildrenOfCancelledRuns,
+  cancelRunsInTransaction,
+  type PrismaClient,
+  type ThreadEvents,
+} from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import type { TeamChatEngagementJudge } from "./team-chat-judge.js";
 import {
@@ -49,7 +56,18 @@ function isRoutingOwnershipReason(reason: string | null | undefined): boolean {
 interface TeamChatBridgeDeps {
   prisma: PrismaClient;
   events: Pick<ThreadEvents, "sendUserMessage">;
-  jobs: Pick<JobPublisher, "enqueue">;
+  jobs: Pick<JobPublisher, "enqueue"> & Partial<Pick<JobPublisher, "cancel">>;
+  runtime?: { abort: (runId: string) => Promise<void> };
+  cancelRuntimeBackgroundTask?: (
+    taskId: string,
+    identity: {
+      userId: string;
+      spaceId: string;
+      botId: string;
+      threadId: string;
+      runId: string;
+    },
+  ) => Promise<boolean>;
   send: (request: TeamChatSendRequest) => Promise<TeamChatSendResult>;
   providerId: string;
   botId: string;
@@ -1065,20 +1083,6 @@ export class TeamChatBridge {
     // beside the routine wake.
     if (await findWake()) {
       if (sent.runId) {
-        const cancelledAt = new Date();
-        await this.deps.prisma.run.updateMany({
-          where: {
-            id: sent.runId,
-            status: { in: ["queued", "running", "leased", "waiting_input", "waiting_takeover"] },
-          },
-          data: {
-            status: "cancelled",
-            waitKind: null,
-            completedAt: cancelledAt,
-            leaseOwner: null,
-            leaseExpiresAt: null,
-          },
-        });
         const taskId =
           sent.taskId ??
           (
@@ -1088,10 +1092,51 @@ export class TeamChatBridge {
             })
           )?.taskId;
         if (taskId) {
-          await this.deps.prisma.task.updateMany({
-            where: { id: taskId },
-            data: { status: "cancelled" },
+          const cancelled = await this.deps.prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM threads WHERE id = ${thread.id} FOR UPDATE`;
+            const rows = await cancelRunsInTransaction(
+              tx,
+              [{ id: sent.runId!, taskId }],
+              new Date(),
+            );
+            for (const run of rows) {
+              await appendEventInTransaction(tx, {
+                spaceId: run.spaceId,
+                threadId: run.threadId,
+                botId: run.botId,
+                runId: run.id,
+                type: "run.cancelled",
+                payload: { reason: "routine_wake" },
+              });
+            }
+            return rows;
           });
+          if (cancelled.length) {
+            const descendants = await cancelChildrenOfCancelledRuns(
+              this.deps.prisma,
+              cancelled.map((run) => run.id),
+            );
+            await Promise.allSettled([
+              ...cancelled.map((run) => this.deps.jobs.cancel?.(runJobKey(run.id))),
+              ...descendants.map((run) => this.deps.jobs.cancel?.(runJobKey(run.id))),
+              ...cancelled.map((run) => this.deps.runtime?.abort(run.id)),
+              ...descendants.map((run) => this.deps.runtime?.abort(run.id)),
+            ]);
+            if (this.deps.cancelRuntimeBackgroundTask) {
+              await revokeCancellingBackgroundTasks(
+                this.deps.prisma,
+                this.deps.cancelRuntimeBackgroundTask,
+                {
+                  parentRunIds: [
+                    ...cancelled.map((run) => run.id),
+                    ...descendants.map((run) => run.id),
+                  ],
+                },
+              ).catch((error) => {
+                getLogger().error("routine-wake background revocation failed", error);
+              });
+            }
+          }
         }
       }
       await abandonForRoutine("queueing");

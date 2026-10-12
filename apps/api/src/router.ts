@@ -78,6 +78,9 @@ import {
   prepareGraphqlInstall,
   probeOpenAiCompatibleModels,
   provisionComputer,
+  retryPendingBackgroundRevocations,
+  revokeCancelledRunHandles,
+  revokeCancellingBackgroundTasks,
   queueComputerUpdate,
   readStoredModelAuth,
   releaseComputerExecutionLease,
@@ -141,6 +144,7 @@ import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
   appendEventInTransaction,
   cancelChildrenOfCancelledRuns,
+  listDescendantRunIds,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
   CannotDeleteLastSpaceError,
@@ -585,38 +589,41 @@ export interface RouterDeps {
   };
 }
 
+async function revokeNativeCancellation(deps: RouterDeps, runIds: readonly string[]) {
+  if (runIds.length === 0) return;
+  await revokeCancelledRunHandles(runIds, {
+    jobs: deps.jobs,
+    abort: deps.runtime ? (runId) => deps.runtime!.abort(runId) : undefined,
+    prisma: deps.prisma,
+  });
+  await revokeCancellingParents(deps, runIds);
+}
+
+/** Background tasks whose parent Run was already finished are not run aborts. */
+async function revokeCancellingParents(deps: RouterDeps, parentRunIds: readonly string[]) {
+  if (!deps.cancelRuntimeBackgroundTask || parentRunIds.length === 0) return;
+  await revokeCancellingBackgroundTasks(deps.prisma, deps.cancelRuntimeBackgroundTask, {
+    parentRunIds,
+  }).catch((error) => {
+    getLogger().error("background task revocation failed; Worker will reconcile", error);
+  });
+}
+
 async function cancelDescendantsNow(deps: RouterDeps, parentRunIds: readonly string[]) {
   if (parentRunIds.length === 0) return;
   const children = await cancelChildrenOfCancelledRuns(deps.prisma, parentRunIds);
-  if (children.length === 0) return;
-  const childIds = children.map((child) => child.id);
-  const background = deps.cancelRuntimeBackgroundTask
-    ? await deps.prisma.backgroundAgentTask.findMany({
-        where: { parentRunId: { in: childIds }, status: "cancelling" },
-      })
-    : [];
-  await Promise.all([
-    ...children.flatMap((child) => [
-      deps.jobs.cancel(runJobKey(child.id)),
-      deps.runtime?.abort(child.id),
-      deps.events.notify(child.threadId, child.seq),
-    ]),
-    ...background.map(async (task) => {
-      await deps.cancelRuntimeBackgroundTask!(task.taskId, {
-        userId: task.userId,
-        spaceId: task.spaceId,
-        botId: task.botId,
-        threadId: task.threadId,
-        runId: task.parentRunId,
-      });
-      await deps.prisma.backgroundAgentTask.updateMany({
-        where: { taskId: task.taskId, status: "cancelling" },
-        data: { status: "cancelled", finishedAt: new Date() },
-      });
-    }),
-  ].map((operation) => Promise.resolve(operation).catch((error) => {
-    getLogger().error("direct child Run revocation failed; Worker will reconcile", error);
-  })));
+  await Promise.all(
+    children.map((child) =>
+      deps.events.notify(child.threadId, child.seq).catch((error) => {
+        getLogger().error("child cancellation realtime notification", error);
+      }),
+    ),
+  );
+  // Parents may already have walked the tree. Abort those descendants too.
+  const descendantIds = await listDescendantRunIds(deps.prisma, parentRunIds);
+  await revokeNativeCancellation(deps, [
+    ...new Set([...children.map((child) => child.id), ...descendantIds]),
+  ]);
 }
 
 /** Bound for one provider sandbox destroy during Space deletion. Providers may
@@ -729,6 +736,8 @@ export function createRouter(deps: RouterDeps) {
     sandbox: deps.sandbox,
     home: deps.home,
     dataDir: deps.dataDir,
+    runtime: deps.runtime,
+    cancelRuntimeBackgroundTask: deps.cancelRuntimeBackgroundTask,
   });
   const agentSkills = createAgentSkillsService(deps.prisma);
 
@@ -1637,6 +1646,8 @@ export function createRouter(deps: RouterDeps) {
             sandbox: deps.sandbox,
             home: deps.home,
             jobs: deps.jobs,
+            runtime: deps.runtime,
+            cancelRuntimeBackgroundTask: deps.cancelRuntimeBackgroundTask,
             artifacts: deps.artifacts,
             dataDir: deps.dataDir,
           },
@@ -1671,6 +1682,8 @@ export function createRouter(deps: RouterDeps) {
             sandbox: deps.sandbox,
             home: deps.home,
             jobs: deps.jobs,
+            runtime: deps.runtime,
+            cancelRuntimeBackgroundTask: deps.cancelRuntimeBackgroundTask,
             artifacts: deps.artifacts,
             dataDir: deps.dataDir,
             purgeRuntimeBotState: deps.purgeRuntimeBotState,
@@ -1781,20 +1794,15 @@ export function createRouter(deps: RouterDeps) {
           if (!section) throw new IsolationError();
         }
         const updated = await groupRepos.updateGroup(context.actor, input);
-        await Promise.all(
-          updated.cancelledRunIds.map((runId) =>
-            deps.jobs.cancel(runJobKey(runId)).catch(() => undefined),
-          ),
-        );
+        await revokeNativeCancellation(deps, updated.cancelledRunIds);
+        await revokeCancellingParents(deps, updated.backgroundParentRunIds);
+        await cancelDescendantsNow(deps, updated.cancelledRunIds);
         return updated.group;
       }),
       archive: authed.groups.archive.handler(async ({ context, input }) => {
         const archived = await groupRepos.archiveGroup(context.actor, input.groupId);
-        await Promise.all(
-          archived.cancelledRunIds.map((runId) =>
-            deps.jobs.cancel(runJobKey(runId)).catch(() => undefined),
-          ),
-        );
+        await revokeNativeCancellation(deps, archived.cancelledRunIds);
+        await revokeCancellingParents(deps, archived.backgroundParentRunIds);
         await Promise.all(
           archived.computers.map(async (computer) => {
             if (!computer.providerRef) return;
@@ -1826,6 +1834,7 @@ export function createRouter(deps: RouterDeps) {
         // Expire the leases only after teardown: while they were live, no other run could claim
         // these screens.
         await groupRepos.releaseArchivedRunLeases(archived.cancelledRunIds);
+        await cancelDescendantsNow(deps, archived.cancelledRunIds);
         return { ok: true as const };
       }),
       restore: authed.groups.restore.handler(async ({ context, input }) => {
@@ -1834,6 +1843,14 @@ export function createRouter(deps: RouterDeps) {
       }),
       remove: authed.groups.remove.handler(async ({ context, input }) => {
         const removed = await groupRepos.removeGroup(context.actor, input.groupId);
+        await revokeNativeCancellation(deps, removed.cancelledRunIds);
+        if (deps.cancelRuntimeBackgroundTask && removed.backgroundTasks.length) {
+          await retryPendingBackgroundRevocations(deps.prisma, deps.cancelRuntimeBackgroundTask, {
+            taskIds: removed.backgroundTasks.map((task) => task.taskId),
+          }).catch((error) => {
+            getLogger().error("group removal background revocation failed; Worker will retry", error);
+          });
+        }
         const cleanup = await Promise.allSettled(
           removed.artifactStorageKeys.map((storageKey) =>
             deps.artifacts.remove(
@@ -1956,6 +1973,7 @@ export function createRouter(deps: RouterDeps) {
       stop: authed.threads.stop.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         const { cancelledRunIds } = await stopThreadRuns(deps, context.actor, target);
+        await revokeNativeCancellation(deps, cancelledRunIds);
         await cancelDescendantsNow(deps, cancelledRunIds);
         return { ok: true as const };
       }),
@@ -2001,6 +2019,7 @@ export function createRouter(deps: RouterDeps) {
           botId: contextBotId,
           ...(target.kind === "group" ? { groupId: target.groupId } : {}),
         });
+        await revokeNativeCancellation(deps, cancelledRunIds);
         await cancelDescendantsNow(deps, cancelledRunIds);
         const [configuredMemory] = await Promise.all([
           target.kind === "bot"
@@ -2334,6 +2353,15 @@ export function createRouter(deps: RouterDeps) {
           throw new ORPCError("CONFLICT", {
             message: "This prompt is no longer awaiting an answer",
           });
+        }
+        const answeredRun = await deps.prisma.run.findUnique({
+          where: { id: input.runId },
+          select: { status: true },
+        });
+        if (answeredRun?.status === "cancelled") {
+          await revokeNativeCancellation(deps, [input.runId]);
+          await cancelDescendantsNow(deps, [input.runId]);
+          return { ok: true as const };
         }
         await deps.jobs.enqueue(runContinueJob(input.runId)).catch((error) => {
           // The answer and queued run are durable; the reconciler repairs a missed immediate wake.

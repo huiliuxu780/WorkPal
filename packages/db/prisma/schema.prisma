@@ -748,6 +748,8 @@ model BackgroundAgentTask {
 
   @@index([spaceId, threadId, status])
   @@index([parentRunId])
+  @@index([threadId, status])
+  @@index([botId, status])
   @@map("background_agent_tasks")
 }
 
@@ -806,8 +808,35 @@ model Attempt {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
 
-  @@index([runId])
+  @@unique([runId, fence])
   @@map("attempts")
+}
+
+// Deliberately independent of chat/user cascades: the worker must still be able
+// to cancel remote work after its originating chat or account is deleted.
+// A row's presence means the remote DELETE is still pending. Success, including
+// HTTP 404, deletes the row. There is no foreign key to Run, Bot, Thread, Group,
+// User, or BackgroundAgentTask.
+model ExecutionRevocation {
+  id        String   @id @default(cuid())
+  /// "run_abort" or "background_task".
+  kind      String
+  /// runId for run_abort, taskId for background_task. Never null, so the unique key is stable.
+  subjectId String
+  runId     String   @default("")
+  taskId    String   @default("")
+  userId    String   @default("")
+  spaceId   String   @default("")
+  botId     String   @default("")
+  threadId  String   @default("")
+  attempts  Int      @default(0)
+  lastError String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([kind, subjectId])
+  @@index([createdAt])
+  @@map("execution_revocations")
 }
 
 // Deliberately independent of chat/user cascades: the worker must still be able

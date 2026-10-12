@@ -138,7 +138,22 @@ describe("archiveGroup", () => {
     findManyComputers = vi.fn(async ({ where }: { where: ComputerWhere }) =>
       computerRows.filter((row) => matches(row, where)),
     );
-    runUpdateMany = vi.fn();
+    runUpdateMany = vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        taskId: "task-1",
+        threadId: "thread-1",
+        spaceId: "workspace-1",
+        botId: "bot-1",
+      },
+      {
+        id: "run-legacy",
+        taskId: "task-legacy",
+        threadId: "thread-1",
+        spaceId: "workspace-1",
+        botId: "bot-legacy",
+      },
+    ]);
     attemptUpdateMany = vi.fn();
     taskUpdateMany = vi.fn();
     // computer-1 is a Team computer: bot-2's lease there belongs to a run outside this group.
@@ -205,14 +220,24 @@ describe("archiveGroup", () => {
     const tx = {
       $queryRaw: queryRaw,
       chatGroup: { findFirst, update: groupUpdate },
-      run: { findMany: findManyRuns, updateMany: runUpdateMany },
+      run: {
+        findMany: findManyRuns,
+        updateMany: vi.fn(),
+        updateManyAndReturn: runUpdateMany,
+        findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
+      },
       attempt: { updateMany: attemptUpdateMany },
       task: { updateMany: taskUpdateMany },
+      thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
       computerExecutionLease: { findMany: leaseFindMany, updateMany: leaseUpdateMany },
       computer: { findMany: findManyComputers, updateMany: computerUpdateMany },
-      event: { deleteMany: eventDeleteMany },
+      event: {
+        deleteMany: eventDeleteMany,
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+      },
     };
     prisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
       computerExecutionLease: { updateMany: leaseUpdateMany },
       computer: { updateMany: computerUpdateMany },
@@ -224,6 +249,7 @@ describe("archiveGroup", () => {
 
     await expect(repos.archiveGroup(actor, "group-1")).resolves.toEqual({
       cancelledRunIds: ["run-1", "run-legacy"],
+      backgroundParentRunIds: [],
       computers: [
         {
           id: "computer-1",
@@ -319,6 +345,7 @@ describe("archiveGroup", () => {
     const archived = await repos.archiveGroup(actor, "group-1");
     expect(archived).toEqual({
       cancelledRunIds: ["run-1", "run-stale"],
+      backgroundParentRunIds: [],
       computers: [
         {
           id: "computer-1",

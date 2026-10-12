@@ -295,8 +295,8 @@ export async function clearThread(
       select: { id: true, taskId: true },
     });
     const now = new Date();
-    const runIds = activeRuns.map((run) => run.id);
-    await cancelRunsInTransaction(tx, activeRuns, now);
+    const cancelledRuns = await cancelRunsInTransaction(tx, activeRuns, now);
+    const runIds = cancelledRuns.map((run) => run.id);
     await tx.backgroundAgentTask?.updateMany({
       where: { threadId: input.threadId, status: "running" },
       data: { status: "cancelling" },
@@ -597,7 +597,7 @@ async function commitAnswerRunInput(
   tx: Prisma.TransactionClient,
   input: AnswerRunInput,
   runSecretWriter?: RunSecretWriter,
-): Promise<{ threadId: string; seq: number } | null> {
+): Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null> {
   // Thread row first, then run rows — the same order as clearThread and finalizeRun, so a
   // concurrent clear cannot deadlock against this transaction.
   await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
@@ -608,7 +608,15 @@ async function commitAnswerRunInput(
       threadId: input.threadId,
       status: "waiting_input",
     },
-    select: { botId: true, userId: true, checkpoint: true, budgetOverride: true, trigger: true, orchestration: true },
+    select: {
+      botId: true,
+      userId: true,
+      taskId: true,
+      checkpoint: true,
+      budgetOverride: true,
+      trigger: true,
+      orchestration: true,
+    },
   });
   if (!run) return null;
   const message = await tx.message.findFirst({
@@ -698,38 +706,28 @@ async function commitAnswerRunInput(
       });
     }
     const now = new Date();
-    const cancelledRun = await tx.run.updateMany({
-      where: { id: input.runId, status: "waiting_input", waitKind: "input" },
-      data: {
-        status: "cancelled",
-        waitKind: null,
-        checkpoint: null,
-        error: selectedChoice.id === "narrow_scope" ? "budget_narrowed" : "budget_cancelled",
-        completedAt: now,
+    const reason = selectedChoice.id === "narrow_scope" ? "budget_narrowed" : "budget_cancelled";
+    const cancelledRows = await cancelRunsInTransaction(
+      tx,
+      [{ id: input.runId, taskId: run.taskId }],
+      now,
+      {
+        error: reason,
+        clearCheckpoint: true,
+        match: { status: "waiting_input", waitKind: "input" },
       },
-    });
-    if (cancelledRun.count !== 1) throw new Error("Budget Run was no longer waiting");
-    await tx.attempt.updateMany({
-      where: { runId: input.runId, status: "waiting_input" },
-      data: { status: "cancelled", finishedAt: now },
-    });
-    await tx.backgroundAgentTask.updateMany({
-      where: { parentRunId: input.runId, status: "running" },
-      data: { status: "cancelling" },
-    });
-    await tx.task.updateMany({
-      where: { runs: { some: { id: input.runId } } },
-      data: { status: "cancelled" },
-    });
+    );
+    if (cancelledRows.length !== 1) throw new Error("Budget Run was no longer waiting");
+    await expireComputerExecutionLeases(tx, { runId: input.runId });
     const cancelled = await appendEventInTransaction(tx, {
       spaceId: input.spaceId,
       threadId: input.threadId,
       botId: run.botId,
       type: "run.cancelled",
       runId: input.runId,
-      payload: { reason: selectedChoice.id === "narrow_scope" ? "budget_narrowed" : "budget_cancelled" },
+      payload: { reason },
     });
-    return { threadId: cancelled.threadId, seq: cancelled.seq };
+    return { threadId: cancelled.threadId, seq: cancelled.seq, cancelledRunId: input.runId };
   }
 
   const increasedBudget = budgetAsk
@@ -875,6 +873,10 @@ export async function answerRunInput(
   );
 
   if (!committed) return false;
+  if (committed.cancelledRunId) {
+    const { cancelChildrenOfCancelledRuns } = await import("./cancel-child-runs.js");
+    await cancelChildrenOfCancelledRuns(prisma, [committed.cancelledRunId]);
+  }
   await notifyRealtime(realtime, committed.threadId, committed.seq);
   return true;
 }

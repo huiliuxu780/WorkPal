@@ -71,3 +71,25 @@ export async function cancelChildrenOfCancelledRuns(
   } while (frontier && frontier.length > 0);
   return cancelled;
 }
+
+/** Every descendant id, including runs already cancelled, so callers can abort them. */
+export async function listDescendantRunIds(
+  prisma: PrismaClient,
+  parentRunIds: readonly string[],
+): Promise<string[]> {
+  if (parentRunIds.length === 0) return [];
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    WITH RECURSIVE tree AS (
+      SELECT "id", 1 AS depth
+      FROM "runs"
+      WHERE ("orchestration" #>> '{collaboration,parentRunId}') IN (${Prisma.join(parentRunIds)})
+      UNION ALL
+      SELECT child."id", tree.depth + 1
+      FROM "runs" child
+      INNER JOIN tree ON (child."orchestration" #>> '{collaboration,parentRunId}') = tree."id"
+      WHERE tree.depth < 32
+    )
+    SELECT "id" FROM tree
+  `;
+  return rows.map((row) => row.id);
+}

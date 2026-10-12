@@ -116,6 +116,11 @@ import {
   publishRunTodo,
   retireModelCredential,
   SpaceLimitError,
+  promoteLeasedRunWithAttempt,
+  registerBackgroundTaskProjection,
+  backgroundTaskLockTransactionOptions,
+  reconcileAttemptFenceConflict,
+  renewOwnedRunLease,
   scheduleAutomaticRunRetry,
   type ThreadEvents,
 } from "@rakazo/db";
@@ -1261,19 +1266,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
       if (leased.count !== 1) return;
 
       const current = await deps.prisma.run.findUniqueOrThrow({ where: { id: runId } });
-      if (
-        current.status === "queued" ||
-        current.status === "leased" ||
-        current.status === "waiting_input" ||
-        current.status === "waiting_takeover"
-      ) {
-        assertTransition(current.status as RunStatus, "running");
-      }
-      const started = await deps.prisma.run.updateMany({
-        where: { id: runId, status: "leased", leaseOwner: workerId, leaseFence: fence },
-        data: { status: "running", startedAt: current.startedAt ?? new Date() },
-      });
-      if (started.count !== 1) return;
+      if (current.status === "leased") assertTransition("leased", "running");
+      // The Run stays leased until the computer lease is held. A crash before the
+      // promote transaction leaves a recoverable lease, never a running Run without an Attempt.
       const leaseTarget = await deps.prisma.bot.findUniqueOrThrow({
         where: { id: run.botId },
         select: { computerId: true, computerSwitching: true },
@@ -1296,26 +1291,33 @@ export function createRunExecutor(deps: ExecutorDeps) {
         await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
         return;
       }
-      const attempt = await deps.prisma
-        .$transaction(async (tx) => {
-          // Recovery also locks this Run before checking for a missing Attempt. Serialize
-          // creation with that check, then revalidate the lease under the lock.
-          await tx.$queryRaw`SELECT id FROM runs WHERE id = ${runId} FOR UPDATE`;
-          const claimed = await tx.run.findUnique({
-            where: { id: runId },
-            select: { status: true, leaseOwner: true, leaseFence: true, leaseExpiresAt: true },
-          });
-          if (
-            claimed?.status !== "running" || claimed.leaseOwner !== workerId ||
-            claimed.leaseFence !== fence || !claimed.leaseExpiresAt ||
-            claimed.leaseExpiresAt <= new Date()
-          ) return null;
-          return tx.attempt.create({ data: { runId, fence, status: "running" } });
-        })
-        .catch(async (error) => {
+      let attempt: { id: string; fence: number } | null;
+      try {
+        attempt = await promoteLeasedRunWithAttempt(deps.prisma, {
+          runId,
+          leaseOwner: workerId,
+          leaseFence: fence,
+          startedAt: current.startedAt ?? new Date(),
+        });
+      } catch (error) {
+        if (!isAttemptUniqueViolation(error)) {
           await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
           throw error;
+        }
+        // The conflicting Attempt is still the current fence. Requeue would claim a new
+        // fence and leave that Attempt active. Reuse it, or fail the Run, in one transaction.
+        const reconciled = await reconcileAttemptFenceConflict(deps.prisma, {
+          runId,
+          leaseOwner: workerId,
+          leaseFence: fence,
+          startedAt: current.startedAt ?? new Date(),
         });
+        if (reconciled.outcome !== "reused") {
+          await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
+          return;
+        }
+        attempt = reconciled.attempt;
+      }
       if (!attempt) {
         await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
         return;
@@ -4424,42 +4426,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
                       );
                     }
                     const eventSeq = await deps.prisma.$transaction(async (tx) => {
-                      // Serialize registration with clearThread so the saved generation
-                      // belongs to the conversation that actually started the task.
-                      await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${task.threadId} FOR UPDATE`;
-                      const stillRunning = await tx.run.findFirst({
-                        where: {
-                          id: runId,
-                          userId: run.userId,
-                          spaceId: run.spaceId,
-                          botId: bot.id,
-                          threadId: task.threadId,
-                          status: "running",
-                        },
-                        select: { id: true },
-                      });
-                      const member = await tx.spaceMember.findUnique({
-                        where: { spaceId_userId: { spaceId: run.spaceId, userId: run.userId } },
-                        select: { id: true },
-                      });
-                      if (!stillRunning || !member)
-                        throw new Error("Parent run is no longer authorized");
-                      const threadGeneration = await currentThreadGeneration(tx, task.threadId);
-                      await tx.backgroundAgentTask.create({
-                        data: {
-                          taskId: task.taskId,
-                          parentRunId: runId,
-                          userId: task.userId,
-                          spaceId: task.spaceId,
-                          botId: task.botId,
-                          threadId: task.threadId,
-                          threadGeneration,
-                          agentId: task.agentId,
-                          sessionId: task.sessionId,
-                          toolNames: task.toolNames,
-                          status: "running",
-                          expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
-                        },
+                      // Advisory lock, thread row, then parent run. Lifecycle paths use that order.
+                      await registerBackgroundTaskProjection(tx, {
+                        taskId: task.taskId,
+                        runId,
+                        userId: task.userId,
+                        spaceId: task.spaceId,
+                        botId: task.botId,
+                        threadId: task.threadId,
+                        agentId: task.agentId,
+                        sessionId: task.sessionId,
+                        toolNames: task.toolNames,
+                        expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
                       });
                       await appendEventInTransaction(tx, {
                         spaceId: run.spaceId,
@@ -4483,7 +4461,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         },
                       });
                       return event.seq;
-                    });
+                    }, backgroundTaskLockTransactionOptions);
                     await deps.events.notify(thread.id, eventSeq).catch((error) => {
                       getLogger().error("background registration realtime notification", error);
                     });
@@ -5559,11 +5537,12 @@ async function renewRunLease(
   workerId: string,
   fence: number,
 ): Promise<boolean> {
-  const renewed = await deps.prisma.run.updateMany({
-    where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
-    data: { leaseExpiresAt: new Date(Date.now() + 5 * 60_000) },
+  return renewOwnedRunLease(deps.prisma, {
+    runId,
+    leaseOwner: workerId,
+    leaseFence: fence,
+    leaseExpiresAt: new Date(Date.now() + 5 * 60_000),
   });
-  return renewed.count === 1;
 }
 
 function computerRetryDelay(fence: number): number {
@@ -5882,7 +5861,7 @@ async function writeComputerRunRequeue(
 ): Promise<boolean> {
   const whereLease = {
     id: runId,
-    status: "running" as const,
+    status: { in: ["leased", "running"] },
     leaseOwner: workerId,
     leaseFence: fence,
   };
@@ -5954,6 +5933,17 @@ function redactBlocks(blocks: MessageBlock[], secrets: string[]): MessageBlock[]
 
 function isUniqueViolation(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+}
+
+function isAttemptUniqueViolation(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && current.code === "P2002") return true;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
 }
 
 async function publishMessage(

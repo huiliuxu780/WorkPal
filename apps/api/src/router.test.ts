@@ -317,6 +317,7 @@ describe("thread answer delivery", () => {
           computer: null,
         }),
       },
+      run: { findUnique: vi.fn().mockResolvedValue({ status: "queued" }) },
     } as unknown as PrismaClient;
     const deps = {
       prisma,
@@ -3080,10 +3081,20 @@ describe("groups.archive", () => {
       },
       run: {
         findMany: vi.fn().mockResolvedValue([{ id: "run-1", taskId: "task-1" }]),
-        updateMany: vi.fn(),
+        updateManyAndReturn: vi.fn().mockResolvedValue([
+          {
+            id: "run-1",
+            taskId: "task-1",
+            threadId: "thread-1",
+            spaceId: "workspace-1",
+            botId: "bot-1",
+          },
+        ]),
+        findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
+      thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
       computerExecutionLease: {
         findMany: vi
           .fn()
@@ -3111,9 +3122,13 @@ describe("groups.archive", () => {
         ),
         updateMany: vi.fn(),
       },
-      event: { deleteMany: vi.fn() },
+      event: {
+        deleteMany: vi.fn(),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+      },
     };
     const prisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
       computerExecutionLease: {
         updateMany: vi.fn(async () => {

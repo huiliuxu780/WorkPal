@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { createDb, createThreadEvents, type PrismaClient } from "@rakazo/db";
+import {
+  createDb,
+  createIsolatedPostgresDatabase,
+  createThreadEvents,
+  type IsolatedPostgresDatabase,
+  type PrismaClient,
+} from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRunExecutor } from "./executor.js";
 
@@ -8,13 +14,15 @@ const describePostgres =
 
 describePostgres("expired Run lease recovery (PostgreSQL)", () => {
   const id = randomUUID();
+  let isolated: IsolatedPostgresDatabase | undefined;
   let db: ReturnType<typeof createDb>;
   let prisma: PrismaClient;
   let botId: string;
   let threadId: string;
 
   beforeAll(async () => {
-    db = createDb(process.env.DATABASE_URL!);
+    isolated = await createIsolatedPostgresDatabase("lease");
+    db = isolated.db;
     prisma = db.prisma;
     await prisma.user.create({ data: { id, name: "Lease test", email: `${id}@example.test`, emailVerified: true } });
     await prisma.organization.create({ data: { id, name: "Lease test", slug: id, createdAt: new Date() } });
@@ -27,15 +35,11 @@ describePostgres("expired Run lease recovery (PostgreSQL)", () => {
     botId = bot.id;
     const thread = await prisma.thread.create({ data: { spaceId: id, userId: id, botId } });
     threadId = thread.id;
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (!db) return;
-    await prisma.organization.deleteMany({ where: { id } });
-    await prisma.user.deleteMany({ where: { id } });
-    await prisma.$disconnect();
-    await db.pool.end();
-  });
+    await isolated?.drop();
+  }, 60_000);
 
   async function expiredRun(withAttempt = true) {
     const task = await prisma.task.create({

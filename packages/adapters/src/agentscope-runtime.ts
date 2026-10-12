@@ -749,16 +749,14 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
 
   async abort(runId: string): Promise<void> {
     const controller = this.active.get(runId);
-    try {
-      await fetch(endpoint(this.baseUrl, `/v1/runs/${encodeURIComponent(runId)}`), {
-        method: "DELETE",
-        signal: AbortSignal.timeout(1_500),
-      });
-    } catch {
-      // Closing the stream still interrupts the local service on disconnect.
-    } finally {
-      controller?.abort();
-    }
+    // The local stream stops even when the remote DELETE fails and is retried later.
+    controller?.abort();
+    const response = await fetch(endpoint(this.baseUrl, `/v1/runs/${encodeURIComponent(runId)}`), {
+      method: "DELETE",
+      signal: AbortSignal.timeout(1_500),
+    });
+    if (response.status === 404) return;
+    if (!response.ok) throw new Error(`AgentScope run abort failed (${response.status})`);
   }
 
   run(

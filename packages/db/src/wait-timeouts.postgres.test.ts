@@ -3,6 +3,10 @@ import { buildRunOrchestration } from "@rakazo/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
 import { createDb, type PrismaClient } from "./client.js";
+import {
+  createIsolatedPostgresDatabase,
+  type IsolatedPostgresDatabase,
+} from "./postgres-test-database.js";
 import { finalizeRun } from "./events.js";
 import { createThreadMessage } from "./messages.js";
 import { scheduleAutomaticRunRetry } from "./retry-runs.js";
@@ -13,13 +17,15 @@ const describePostgres =
 
 describePostgres("waiting Run timeouts (PostgreSQL)", () => {
   const id = randomUUID();
+  let isolated: IsolatedPostgresDatabase | undefined;
   let db: ReturnType<typeof createDb>;
   let prisma: PrismaClient;
   let botId: string;
   let threadId: string;
 
   beforeAll(async () => {
-    db = createDb(process.env.DATABASE_URL!);
+    isolated = await createIsolatedPostgresDatabase("wait");
+    db = isolated.db;
     prisma = db.prisma;
     await prisma.user.create({
       data: { id, name: "Timeout test", email: `${id}@example.test`, emailVerified: true },
@@ -47,15 +53,11 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
     botId = bot.id;
     const thread = await prisma.thread.create({ data: { spaceId: id, userId: id, botId } });
     threadId = thread.id;
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (!db) return;
-    await prisma.organization.deleteMany({ where: { id } });
-    await prisma.user.deleteMany({ where: { id } });
-    await prisma.$disconnect();
-    await db.pool.end();
-  });
+    await isolated?.drop();
+  }, 60_000);
 
   async function waiting(kind: "input" | "approval" | "takeover", ageMs: number) {
     const task = await prisma.task.create({

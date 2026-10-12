@@ -1796,7 +1796,8 @@ description: Prepare standup notes
         data: { status?: string; checkpoint?: string | null };
       }) => {
         if (args.data.status === "leased") {
-          checkpoint = null;
+          // The claim clears the checkpoint. A release can write it back before requeue.
+          checkpoint = "takeover";
           return { count: 1 };
         }
         if (args.data.status === "running") {
@@ -1973,11 +1974,14 @@ description: Prepare standup notes
       scratchpadItem: { findMany: vi.fn(async () => []) },
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => callback({
         $queryRaw: vi.fn(async () => [{ id: "run-1" }]),
-        run: { findUnique: vi.fn(async () => ({
-          status: "running", leaseOwner: "worker-1", leaseFence: 1,
-          leaseExpiresAt: new Date(Date.now() + 60_000),
-        })) },
-        attempt: { create: vi.fn(async () => ({ id: "attempt-1" })) },
+        run: {
+          findUnique: vi.fn(async () => ({
+            status: "running", leaseOwner: "worker-1", leaseFence: 1,
+            leaseExpiresAt: new Date(Date.now() + 60_000),
+          })),
+          updateMany: vi.fn(async () => ({ count: 1 })),
+        },
+        attempt: { create: vi.fn(async () => ({ id: "attempt-1", fence: 1 })) },
       })),
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
