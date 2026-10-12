@@ -1011,7 +1011,10 @@ describe("archiveBot", () => {
       where: { id: "bot-1" },
       data: { archivedAt: expect.any(Date), pinned: false },
     });
-    expect(groupCleanup.$queryRaw).not.toHaveBeenCalled();
+    expect(String(groupCleanup.$queryRaw.mock.calls[0]?.[0])).toContain("pg_advisory_xact_lock");
+    expect(
+      groupCleanup.$queryRaw.mock.calls.some(([query]) => String(query).includes("chat_groups")),
+    ).toBe(false);
     expect(groupCleanup.chatGroup.deleteMany).not.toHaveBeenCalled();
     expect(groupCleanup.chatGroupMember.deleteMany).not.toHaveBeenCalled();
     expect(cancel).toHaveBeenCalledWith("run:run-1");

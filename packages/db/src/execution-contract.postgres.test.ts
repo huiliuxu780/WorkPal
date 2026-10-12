@@ -936,4 +936,46 @@ describePostgres("execution contract (PostgreSQL)", () => {
       }),
     ).toBe(0);
   });
+
+  it("indexes background task lookups by thread and bot status", async () => {
+    const indexes = await prisma.$queryRaw<Array<{ indexname: string; indexdef: string }>>`
+      SELECT indexname, indexdef
+      FROM pg_indexes
+      WHERE tablename = 'background_agent_tasks'
+        AND indexname IN (
+          'background_agent_tasks_threadId_status_idx',
+          'background_agent_tasks_botId_status_idx'
+        )
+      ORDER BY indexname
+    `;
+    expect(indexes.map((index) => index.indexname)).toEqual([
+      "background_agent_tasks_botId_status_idx",
+      "background_agent_tasks_threadId_status_idx",
+    ]);
+    expect(indexes[0]?.indexdef).toContain('("botId", status)');
+    expect(indexes[1]?.indexdef).toContain('("threadId", status)');
+    const explain = async (where: "thread" | "bot") => {
+      const plan = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SET LOCAL enable_seqscan = off`;
+        return where === "thread"
+          ? tx.$queryRaw<Array<{ "QUERY PLAN": string }>>`
+              EXPLAIN
+              SELECT "taskId"
+              FROM "background_agent_tasks"
+              WHERE "threadId" = 'missing-thread'
+                AND "status" = 'running'
+            `
+          : tx.$queryRaw<Array<{ "QUERY PLAN": string }>>`
+              EXPLAIN
+              SELECT "taskId"
+              FROM "background_agent_tasks"
+              WHERE "botId" = 'missing-bot'
+                AND "status" = 'running'
+            `;
+      });
+      return plan.map((row) => row["QUERY PLAN"]).join("\n");
+    };
+    expect(await explain("thread")).toContain("background_agent_tasks_threadId_status_idx");
+    expect(await explain("bot")).toContain("background_agent_tasks_botId_status_idx");
+  });
 });

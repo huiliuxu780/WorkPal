@@ -414,6 +414,73 @@ class RuntimeIntegrationTest {
         } finally { releaseChild.countDown(); bridge.stop(0); model.stop(0); }
     }
 
+    @Test void failedBackgroundRegistrationCancelsTheNativeTask() throws Exception {
+        HttpServer model = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        model.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
+        model.createContext("/v1/chat/completions", exchange -> {
+            JsonNode input = JSON.readTree(exchange.getRequestBody());
+            String messages = input.path("messages").toString();
+            boolean child = false;
+            for (JsonNode message : input.path("messages")) {
+                if ("user".equals(message.path("role").asText()) &&
+                        message.path("content").toString().contains("REJECT_REGISTER")) child = true;
+            }
+            if (child) modelReply(exchange, null, null, "CHILD_SHOULD_STOP");
+            else if (messages.contains("task_id:")) modelReply(exchange, null, null, "PARENT_DONE");
+            else modelReply(exchange, "agent_spawn",
+                    "{\"agent_id\":\"helper\",\"task\":\"REJECT_REGISTER\",\"timeout_seconds\":0}", null);
+        });
+        model.start();
+        HttpServer bridge = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        bridge.createContext("/v1/background-tasks", exchange -> {
+            byte[] body = "{\"error\":\"lifecycle rejected\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("content-type", "application/json");
+            exchange.sendResponseHeaders(500, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
+        bridge.createContext("/v1/tool-executions", exchange ->
+                respond(bridgeBody("{\"status\":\"ok\",\"result\":{}}"), exchange));
+        bridge.start();
+        try {
+            RunRequest base = request(model.getAddress().getPort(), "reject-background", "user-1", "space-1",
+                    List.of(), null);
+            String origin = "http://127.0.0.1:" + bridge.getAddress().getPort();
+            RunRequest.ToolBridge endpoint = new RunRequest.ToolBridge(origin + "/v1/tool-executions",
+                    null, null, origin + "/v1/background-tasks", origin + "/v1/background-tasks/events",
+                    "bridge-secret", base.identity());
+            RunRequest input = new RunRequest(base.botId(), base.threadId(), base.runId(), base.executionScope(),
+                    base.sourceMessageId(), base.identity(), base.prompt(), base.productName(), base.instructions(),
+                    base.history(), base.currentTurnImages(), base.skills(), List.of(
+                        new RunRequest.ToolDefinition("run_subagent", "Delegate", Map.of("type", "object"), true)),
+                    endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("reject-state"), temp.resolve("reject-workspace"));
+            Exception failure = assertThrows(Exception.class, () -> engine.execute(input, event -> {}));
+            assertTrue(failure.getMessage() != null && failure.getMessage().contains("Cannot stream AgentScope event"),
+                    failure.toString());
+            Path nativeTaskPath;
+            try (var files = java.nio.file.Files.walk(temp.resolve("reject-workspace"))) {
+                nativeTaskPath = files.filter(path -> path.toString().contains("/tasks/")
+                                && path.toString().endsWith(".json"))
+                        .findFirst().orElseThrow();
+            }
+            String nativeRecord = java.nio.file.Files.readString(nativeTaskPath);
+            JsonNode stored = JSON.readTree(nativeRecord);
+            String taskId = stored.fieldNames().next();
+            var nativeRepo = new io.agentscope.harness.agent.subagent.task.WorkspaceTaskRepository(
+                    new io.agentscope.harness.agent.workspace.WorkspaceManager(
+                            nativeTaskPath.getParent().getParent().getParent().getParent()),
+                    stored.path(taskId).path("parentAgentId").asText());
+            String parentSession = stored.path(taskId).path("parentSessionId").asText();
+            var nativeContext = io.agentscope.core.agent.RuntimeContext.builder()
+                    .userId("test").sessionId(parentSession).build();
+            var task = nativeRepo.getTask(nativeContext, parentSession, taskId);
+            assertNotNull(task, nativeRecord);
+            assertEquals(io.agentscope.harness.agent.subagent.task.TaskStatus.CANCELLED, task.getTaskStatus(),
+                    nativeRecord);
+            nativeRepo.shutdown();
+        } finally { bridge.stop(0); model.stop(0); }
+    }
+
     private static byte[] bridgeBody(String value) { return value.getBytes(StandardCharsets.UTF_8); }
 
     private static void respond(byte[] body, com.sun.net.httpserver.HttpExchange exchange) throws java.io.IOException {

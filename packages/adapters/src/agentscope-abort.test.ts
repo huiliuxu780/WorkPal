@@ -48,3 +48,49 @@ describe("AgentScope run abort", () => {
     expect(controller.signal.aborted).toBe(true);
   });
 });
+
+describe("AgentScope background task cancellation", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const identity = {
+    userId: "user-1",
+    spaceId: "space-1",
+    botId: "bot-1",
+    threadId: "thread-1",
+    runId: "run-1",
+  };
+
+  it("returns false for HTTP 404 and true when the task is cancelled", async () => {
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: "http://127.0.0.1:9" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 404 })),
+    );
+    await expect(runtime.cancelBackgroundTask("task-404", identity)).resolves.toBe(false);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ cancelled: true })),
+    );
+    await expect(runtime.cancelBackgroundTask("task-ok", identity)).resolves.toBe(true);
+  });
+
+  it("throws on a network error or a non-404 status", async () => {
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: "http://127.0.0.1:9" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    );
+    await expect(runtime.cancelBackgroundTask("task-net", identity)).rejects.toThrow("network down");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unavailable", { status: 503 })),
+    );
+    await expect(runtime.cancelBackgroundTask("task-503", identity)).rejects.toThrow(
+      "AgentScope task cancellation failed (503)",
+    );
+  });
+});

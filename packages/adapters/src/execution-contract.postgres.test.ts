@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { AdapterContext, JobPublisher, SandboxProvider } from "@rakazo/adapter-kit";
 import { buildRunOrchestration } from "@rakazo/core";
 import {
+  BackgroundRegistrationRejected,
+  backgroundTaskLockTransactionOptions,
   cancelRunsInTransaction,
   createDb,
   createGroupRepos,
@@ -10,7 +12,9 @@ import {
   computerHomeKey,
   computerScopeKey,
   promoteLeasedRunWithAttempt,
+  registerBackgroundTaskProjection,
   type IsolatedPostgresDatabase,
+  type Prisma,
   type PrismaClient,
 } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -71,7 +75,20 @@ describePostgres("execution contract recovery (PostgreSQL)", () => {
     threadId = thread.id;
   }, 180_000);
 
+  let side: ReturnType<typeof createDb> | undefined;
+
+  function sidePrisma() {
+    if (!side) {
+      const connectionString = db.pool.options.connectionString;
+      if (!connectionString) throw new Error("isolated database url is unavailable");
+      side = createDb(connectionString, { applicationName: "wp_exec_ad_side", poolMax: 4 });
+    }
+    return side.prisma;
+  }
+
   afterAll(async () => {
+    await side?.prisma.$disconnect().catch(() => undefined);
+    await side?.pool.end().catch(() => undefined);
     await isolated?.drop();
   }, 60_000);
 
@@ -792,5 +809,506 @@ describePostgres("execution contract recovery (PostgreSQL)", () => {
     });
     expect(enqueue).not.toHaveBeenCalled();
     await prisma.computerExecutionLease.deleteMany({ where: { computerId } });
+  });
+
+  function lifecycleDeps() {
+    return {
+      prisma,
+      sandbox: new Proxy({}, { get: () => vi.fn(async () => undefined) }) as SandboxProvider,
+      home: {} as never,
+      jobs: {
+        cancel: vi.fn(async () => undefined),
+        enqueue: vi.fn(async () => undefined),
+      } as unknown as JobPublisher,
+      runtime: { abort: vi.fn(async () => undefined) },
+    };
+  }
+
+  function lifecycleContext(bot: string) {
+    return {
+      operationId: "background-lock",
+      traceId: "background-lock",
+      spaceId: id,
+      userId: id,
+      botId: bot,
+      signal: new AbortController().signal,
+    } as AdapterContext;
+  }
+
+  async function runningParent(ownerBotId: string, ownerThreadId: string) {
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: ownerBotId,
+        threadId: ownerThreadId,
+        prompt: "background",
+        status: "running",
+      },
+    });
+    return prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: ownerBotId,
+        threadId: ownerThreadId,
+        taskId: task.id,
+        status: "running",
+        trigger: "user",
+      },
+    });
+  }
+
+  function projectionInput(run: { id: string; botId: string; threadId: string }, taskId: string) {
+    return {
+      taskId,
+      runId: run.id,
+      userId: id,
+      spaceId: id,
+      botId: run.botId,
+      threadId: run.threadId,
+      agentId: "helper",
+      sessionId: "session",
+      toolNames: [] as string[],
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+  }
+
+  function openGate() {
+    let release: () => void = () => undefined;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release: () => release() };
+  }
+
+  /** Open the insert gate if registration throws before it signals, so the test sees the error. */
+  function releaseOnRejection<T>(gate: { release: () => void }, work: Promise<T>): Promise<T> {
+    void work.catch(() => gate.release());
+    return work;
+  }
+
+  async function backendPid(tx: Prisma.TransactionClient): Promise<number> {
+    const rows = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::int AS pid`;
+    const pid = Number(rows[0]?.pid);
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error("missing backend pid");
+    return pid;
+  }
+
+  async function waitUntilBlockedBy(holderPid: number, waiterPid?: number): Promise<number> {
+    const probe = sidePrisma();
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+      if (waiterPid) {
+        const rows = await probe.$queryRaw<Array<{ blocked: boolean }>>`
+          SELECT ${holderPid}::int = ANY (pg_blocking_pids(${waiterPid}::int)) AS blocked
+        `;
+        if (rows[0]?.blocked === true) return waiterPid;
+      } else {
+        const rows = await probe.$queryRaw<Array<{ pid: number }>>`
+          SELECT pid::int AS pid
+          FROM pg_stat_activity
+          WHERE datname = current_database()
+            AND ${holderPid}::int = ANY (pg_blocking_pids(pid))
+        `;
+        const pid = Number(rows[0]?.pid);
+        if (Number.isInteger(pid) && pid > 0) return pid;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error(`timed out waiting for a lock held by ${holderPid}`);
+  }
+
+  async function holdRow(lock: (tx: Prisma.TransactionClient) => Promise<void>) {
+    const started = openGate();
+    const release = openGate();
+    let pid = 0;
+    const done = sidePrisma().$transaction(async (tx) => {
+      await lock(tx);
+      pid = await backendPid(tx);
+      started.release();
+      await release.promise;
+    }, backgroundTaskLockTransactionOptions);
+    await started.promise;
+    return { pid, release: () => release.release(), done };
+  }
+
+  it("archives a background task that registers before the archive lock", async () => {
+    const archivedBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Register then archive", color: "test" },
+    });
+    const archivedThread = await prisma.thread.create({
+      data: { spaceId: id, userId: id, botId: archivedBot.id },
+    });
+    const run = await runningParent(archivedBot.id, archivedThread.id);
+    const taskId = `race-archive-after-${run.id}`;
+    const release = openGate();
+    const inserted = openGate();
+    let holderPid = 0;
+    const registration = releaseOnRejection(
+      inserted,
+      prisma.$transaction(async (tx) => {
+        await registerBackgroundTaskProjection(tx, projectionInput(run, taskId));
+        holderPid = await backendPid(tx);
+        inserted.release();
+        await release.promise;
+      }, backgroundTaskLockTransactionOptions),
+    );
+    await inserted.promise;
+    const archived = archiveBot(
+      lifecycleDeps(),
+      { ...archivedBot, archivedAt: null, userId: id },
+      lifecycleContext(archivedBot.id),
+    );
+    try {
+      await waitUntilBlockedBy(holderPid);
+    } finally {
+      release.release();
+    }
+    await registration;
+    await archived;
+    expect(
+      await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId } }),
+    ).toMatchObject({ status: "cancelling" });
+    expect(await prisma.bot.findUniqueOrThrow({ where: { id: archivedBot.id } })).toMatchObject({
+      archivedAt: expect.any(Date),
+    });
+  });
+
+  it("rejects background registration that waits behind bot archive", async () => {
+    const archivedBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Archive then register", color: "test" },
+    });
+    const archivedThread = await prisma.thread.create({
+      data: { spaceId: id, userId: id, botId: archivedBot.id },
+    });
+    const run = await runningParent(archivedBot.id, archivedThread.id);
+    const taskId = `race-archive-before-${run.id}`;
+    const barrier = await holdRow((tx) =>
+      tx.$queryRaw`SELECT id FROM threads WHERE id = ${archivedThread.id} FOR UPDATE`,
+    );
+    const archived = archiveBot(
+      lifecycleDeps(),
+      { ...archivedBot, archivedAt: null, userId: id },
+      lifecycleContext(archivedBot.id),
+    );
+    const archivePid = await waitUntilBlockedBy(barrier.pid);
+    const started = openGate();
+    let waiterPid = 0;
+    const registration = prisma.$transaction(async (tx) => {
+      waiterPid = await backendPid(tx);
+      started.release();
+      await registerBackgroundTaskProjection(tx, projectionInput(run, taskId));
+    }, backgroundTaskLockTransactionOptions);
+    try {
+      await started.promise;
+      await waitUntilBlockedBy(archivePid, waiterPid);
+    } finally {
+      barrier.release();
+    }
+    await expect(registration).rejects.toBeInstanceOf(BackgroundRegistrationRejected);
+    await archived;
+    await barrier.done;
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId } })).toBeNull();
+    expect(await prisma.bot.findUniqueOrThrow({ where: { id: archivedBot.id } })).toMatchObject({
+      archivedAt: expect.any(Date),
+    });
+  });
+
+  it("tombstones a group task registered before the group delete lock", async () => {
+    const partner = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Delete race partner", color: "test" },
+    });
+    const repos = createGroupRepos(prisma);
+    const group = await repos.createGroup({ userId: id, spaceId: id } as never, {
+      name: "Register then delete",
+      botIds: [botId, partner.id],
+    });
+    const run = await runningParent(partner.id, group.threadId);
+    const taskId = `race-delete-after-${run.id}`;
+    const release = openGate();
+    const inserted = openGate();
+    let holderPid = 0;
+    const registration = releaseOnRejection(
+      inserted,
+      prisma.$transaction(async (tx) => {
+        await registerBackgroundTaskProjection(tx, projectionInput(run, taskId));
+        holderPid = await backendPid(tx);
+        inserted.release();
+        await release.promise;
+      }, backgroundTaskLockTransactionOptions),
+    );
+    await inserted.promise;
+    const removed = repos.removeGroup({ userId: id, spaceId: id } as never, group.id);
+    try {
+      await waitUntilBlockedBy(holderPid);
+    } finally {
+      release.release();
+    }
+    await registration;
+    await removed;
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId } })).toBeNull();
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: taskId } },
+      }),
+    ).toMatchObject({ taskId, runId: run.id, threadId: group.threadId });
+  });
+
+  it("rejects background registration that waits behind group delete", async () => {
+    const partner = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Delete holds partner", color: "test" },
+    });
+    const repos = createGroupRepos(prisma);
+    const group = await repos.createGroup({ userId: id, spaceId: id } as never, {
+      name: "Delete then register",
+      botIds: [botId, partner.id],
+    });
+    const run = await runningParent(partner.id, group.threadId);
+    const taskId = `race-delete-before-${run.id}`;
+    const barrier = await holdRow((tx) =>
+      tx.$queryRaw`SELECT id FROM chat_groups WHERE id = ${group.id} FOR UPDATE`,
+    );
+    const removed = repos.removeGroup({ userId: id, spaceId: id } as never, group.id);
+    const deletePid = await waitUntilBlockedBy(barrier.pid);
+    const started = openGate();
+    let waiterPid = 0;
+    const registration = prisma.$transaction(async (tx) => {
+      waiterPid = await backendPid(tx);
+      started.release();
+      await registerBackgroundTaskProjection(tx, projectionInput(run, taskId));
+    }, backgroundTaskLockTransactionOptions);
+    try {
+      await started.promise;
+      await waitUntilBlockedBy(deletePid, waiterPid);
+    } finally {
+      barrier.release();
+    }
+    await expect(registration).rejects.toBeInstanceOf(BackgroundRegistrationRejected);
+    await removed;
+    await barrier.done;
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId } })).toBeNull();
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: taskId } },
+      }),
+    ).toBeNull();
+    expect(await prisma.chatGroup.findUnique({ where: { id: group.id } })).toBeNull();
+  });
+
+  async function raceDissolve(parentStatus: "running" | "completed") {
+    const partner = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: `Dissolve ${parentStatus} partner`, color: "test" },
+    });
+    const removedBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: `Dissolve ${parentStatus} bot`, color: "test" },
+    });
+    const repos = createGroupRepos(prisma);
+    const group = await repos.createGroup({ userId: id, spaceId: id } as never, {
+      name: `Dissolve ${parentStatus}`,
+      botIds: [removedBot.id, partner.id],
+    });
+    const run = await runningParent(partner.id, group.threadId);
+    const taskId = `race-dissolve-${parentStatus}-${run.id}`;
+    const release = openGate();
+    const inserted = openGate();
+    let holderPid = 0;
+    const registration = releaseOnRejection(
+      inserted,
+      prisma.$transaction(async (tx) => {
+        await registerBackgroundTaskProjection(tx, projectionInput(run, taskId));
+        if (parentStatus === "completed") {
+          await tx.run.update({
+            where: { id: run.id },
+            data: { status: "completed", completedAt: new Date() },
+          });
+        }
+        holderPid = await backendPid(tx);
+        inserted.release();
+        await release.promise;
+      }, backgroundTaskLockTransactionOptions),
+    );
+    await inserted.promise;
+    const deleted = destroyBot(
+      lifecycleDeps(),
+      { ...removedBot, archivedAt: null, userId: id },
+      lifecycleContext(removedBot.id),
+      { deleteMemories: true },
+    );
+    try {
+      await waitUntilBlockedBy(holderPid);
+    } finally {
+      release.release();
+    }
+    await registration;
+    await deleted;
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId } })).toBeNull();
+    expect(await prisma.chatGroup.findUnique({ where: { id: group.id } })).toBeNull();
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: taskId } },
+      }),
+    ).toMatchObject({ taskId, runId: run.id, botId: partner.id, threadId: group.threadId });
+    if (parentStatus === "completed") {
+      expect(
+        await prisma.executionRevocation.findUnique({
+          where: { kind_subjectId: { kind: "run_abort", subjectId: run.id } },
+        }),
+      ).toBeNull();
+    }
+  }
+
+  it("tombstones a dissolved group task whose parent is still running", async () => {
+    await raceDissolve("running");
+  });
+
+  it("tombstones a dissolved group task whose parent completed before delete", async () => {
+    await raceDissolve("completed");
+  });
+
+  it("rejects registration that waits behind a group-dissolving bot delete", async () => {
+    const partner = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Dissolve holds partner", color: "test" },
+    });
+    const removedBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Dissolve holds bot", color: "test" },
+    });
+    const repos = createGroupRepos(prisma);
+    const group = await repos.createGroup({ userId: id, spaceId: id } as never, {
+      name: "Delete bot then register",
+      botIds: [removedBot.id, partner.id],
+    });
+    const active = await runningParent(partner.id, group.threadId);
+    const completed = await runningParent(partner.id, group.threadId);
+    await prisma.run.update({
+      where: { id: completed.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const activeTaskId = `race-dissolve-active-${active.id}`;
+    const completedTaskId = `race-dissolve-done-${completed.id}`;
+    const barrier = await holdRow((tx) =>
+      tx.$queryRaw`SELECT id FROM chat_groups WHERE id = ${group.id} FOR UPDATE`,
+    );
+    const deleted = destroyBot(
+      lifecycleDeps(),
+      { ...removedBot, archivedAt: null, userId: id },
+      lifecycleContext(removedBot.id),
+      { deleteMemories: true },
+    );
+    const deletePid = await waitUntilBlockedBy(barrier.pid);
+    const started = openGate();
+    const completedStarted = openGate();
+    let waiterPid = 0;
+    let completedWaiterPid = 0;
+    const registration = prisma.$transaction(async (tx) => {
+      waiterPid = await backendPid(tx);
+      started.release();
+      await registerBackgroundTaskProjection(tx, projectionInput(active, activeTaskId));
+    }, backgroundTaskLockTransactionOptions);
+    let completedRegistration: Promise<unknown> = Promise.resolve();
+    try {
+      await started.promise;
+      await waitUntilBlockedBy(deletePid, waiterPid);
+      completedRegistration = prisma.$transaction(async (tx) => {
+        completedWaiterPid = await backendPid(tx);
+        completedStarted.release();
+        await registerBackgroundTaskProjection(tx, projectionInput(completed, completedTaskId));
+      }, backgroundTaskLockTransactionOptions);
+      await completedStarted.promise;
+      await waitUntilBlockedBy(waiterPid, completedWaiterPid);
+    } finally {
+      barrier.release();
+    }
+    await expect(registration).rejects.toBeInstanceOf(BackgroundRegistrationRejected);
+    await expect(completedRegistration).rejects.toBeInstanceOf(BackgroundRegistrationRejected);
+    await deleted;
+    await barrier.done;
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId: activeTaskId } })).toBeNull();
+    expect(
+      await prisma.backgroundAgentTask.findUnique({ where: { taskId: completedTaskId } }),
+    ).toBeNull();
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: activeTaskId } },
+      }),
+    ).toBeNull();
+    expect(await prisma.chatGroup.findUnique({ where: { id: group.id } })).toBeNull();
+  });
+
+  it("treats a 404 cancellation as terminal and keeps other failures retryable", async () => {
+    const task = await prisma.task.create({
+      data: { spaceId: id, userId: id, botId, threadId, prompt: "404", status: "running" },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId,
+        threadId,
+        taskId: task.id,
+        status: "cancelled",
+        trigger: "user",
+        completedAt: new Date(),
+      },
+    });
+    const projectionId = `cancel-404-${run.id}`;
+    await prisma.backgroundAgentTask.create({
+      data: {
+        taskId: projectionId,
+        parentRunId: run.id,
+        userId: id,
+        spaceId: id,
+        botId,
+        threadId,
+        agentId: "helper",
+        sessionId: "session",
+        toolNames: [],
+        status: "cancelling",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const tombstoneId = `tomb-404-${run.id}`;
+    await prisma.executionRevocation.create({
+      data: {
+        kind: "background_task",
+        subjectId: tombstoneId,
+        runId: run.id,
+        taskId: tombstoneId,
+        userId: id,
+        spaceId: id,
+        botId,
+        threadId,
+      },
+    });
+    const unavailable = await revokeCancellingBackgroundTasks(prisma, async () => {
+      throw new Error("AgentScope task cancellation failed (503)");
+    });
+    expect(unavailable.pending).toContain(projectionId);
+    expect(
+      await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId: projectionId } }),
+    ).toMatchObject({ status: "cancelling" });
+    const network = await retryPendingBackgroundRevocations(prisma, async () => {
+      throw new Error("network down");
+    }, { taskIds: [tombstoneId] });
+    expect(network.pending).toContain(tombstoneId);
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: tombstoneId } },
+      }),
+    ).toMatchObject({ attempts: 1, lastError: "network down" });
+    const clearedProjection = await revokeCancellingBackgroundTasks(prisma, async () => false);
+    expect(clearedProjection.revoked).toContain(projectionId);
+    expect(
+      await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId: projectionId } }),
+    ).toMatchObject({ status: "cancelled" });
+    const clearedTombstone = await retryPendingBackgroundRevocations(prisma, async () => false, {
+      taskIds: [tombstoneId],
+    });
+    expect(clearedTombstone.revoked).toContain(tombstoneId);
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: tombstoneId } },
+      }),
+    ).toBeNull();
   });
 });

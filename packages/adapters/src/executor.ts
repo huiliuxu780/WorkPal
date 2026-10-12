@@ -117,6 +117,8 @@ import {
   retireModelCredential,
   SpaceLimitError,
   promoteLeasedRunWithAttempt,
+  registerBackgroundTaskProjection,
+  backgroundTaskLockTransactionOptions,
   reconcileAttemptFenceConflict,
   renewOwnedRunLease,
   scheduleAutomaticRunRetry,
@@ -4424,42 +4426,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
                       );
                     }
                     const eventSeq = await deps.prisma.$transaction(async (tx) => {
-                      // Serialize registration with clearThread so the saved generation
-                      // belongs to the conversation that actually started the task.
-                      await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${task.threadId} FOR UPDATE`;
-                      const stillRunning = await tx.run.findFirst({
-                        where: {
-                          id: runId,
-                          userId: run.userId,
-                          spaceId: run.spaceId,
-                          botId: bot.id,
-                          threadId: task.threadId,
-                          status: "running",
-                        },
-                        select: { id: true },
-                      });
-                      const member = await tx.spaceMember.findUnique({
-                        where: { spaceId_userId: { spaceId: run.spaceId, userId: run.userId } },
-                        select: { id: true },
-                      });
-                      if (!stillRunning || !member)
-                        throw new Error("Parent run is no longer authorized");
-                      const threadGeneration = await currentThreadGeneration(tx, task.threadId);
-                      await tx.backgroundAgentTask.create({
-                        data: {
-                          taskId: task.taskId,
-                          parentRunId: runId,
-                          userId: task.userId,
-                          spaceId: task.spaceId,
-                          botId: task.botId,
-                          threadId: task.threadId,
-                          threadGeneration,
-                          agentId: task.agentId,
-                          sessionId: task.sessionId,
-                          toolNames: task.toolNames,
-                          status: "running",
-                          expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
-                        },
+                      // Advisory lock, thread row, then parent run. Lifecycle paths use that order.
+                      await registerBackgroundTaskProjection(tx, {
+                        taskId: task.taskId,
+                        runId,
+                        userId: task.userId,
+                        spaceId: task.spaceId,
+                        botId: task.botId,
+                        threadId: task.threadId,
+                        agentId: task.agentId,
+                        sessionId: task.sessionId,
+                        toolNames: task.toolNames,
+                        expiresAt: new Date(Date.now() + 60 * 60 * 1_000),
                       });
                       await appendEventInTransaction(tx, {
                         spaceId: run.spaceId,
@@ -4483,7 +4461,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         },
                       });
                       return event.seq;
-                    });
+                    }, backgroundTaskLockTransactionOptions);
                     await deps.events.notify(thread.id, eventSeq).catch((error) => {
                       getLogger().error("background registration realtime notification", error);
                     });

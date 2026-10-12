@@ -14,6 +14,7 @@ import { browserProfilePathForScreen } from "@rakazo/core/node/desktop-runtime";
 import {
   appendEventInTransaction,
   backgroundParentRunIdsExcept,
+  backgroundTaskLockTransactionOptions,
   cancelChildrenOfCancelledRuns,
   cancelRunsInTransaction,
   computerScopeKey,
@@ -21,6 +22,8 @@ import {
   createThreadMessageInTransaction,
   expireComputerExecutionLeases,
   findLiveBackgroundTasks,
+  lockBotBackgroundRegistration,
+  lockThreadsForBackgroundTasks,
   markLiveBackgroundTasksCancelling,
   type Prisma,
   type PrismaClient,
@@ -316,8 +319,16 @@ export async function archiveBot(
   ]);
   const now = new Date();
   const archivedWork = await deps.prisma.$transaction(async (tx) => {
-    const cancelled = activeRuns.length
-      ? await cancelRunsInTransaction(tx, activeRuns, now)
+    await lockBotBackgroundRegistration(tx, bot.id);
+    await lockThreadsForBackgroundTasks(tx, await threadIdsVisibleToBot(tx, bot.id));
+    const runsToCancel = tx.run?.findMany
+      ? await tx.run.findMany({
+          where: { botId: bot.id, status: { in: [...ACTIVE_RUN_STATUSES] } },
+          select: { id: true, taskId: true },
+        })
+      : activeRuns;
+    const cancelled = runsToCancel.length
+      ? await cancelRunsInTransaction(tx, runsToCancel, now)
       : [];
     for (const run of cancelled) {
       await appendEventInTransaction(tx, {
@@ -358,7 +369,7 @@ export async function archiveBot(
         cancelled.map((run) => run.id),
       ),
     };
-  });
+  }, backgroundTaskLockTransactionOptions);
   const cancelledRuns = archivedWork.cancelled;
   const backgroundParentRunIds = archivedWork.backgroundParentRunIds;
   const descendants = await cancelChildrenOfCancelledRuns(
@@ -447,6 +458,8 @@ export async function destroyBot(
   }
   const deletion = await withTransactionRetry(() =>
     deps.prisma.$transaction(async (tx) => {
+      await lockBotBackgroundRegistration(tx, bot.id);
+      const groupCleanup = await detachBotFromGroups(tx, bot.id);
       const locked = await tx.$queryRaw<Array<{ id: string; webhookSecretId: string | null }>>`
         SELECT id, "webhookSecretId"
         FROM bots
@@ -461,7 +474,6 @@ export async function destroyBot(
       await tx.artifact.deleteMany({
         where: { botId: bot.id, groupId: null, spaceId: bot.spaceId },
       });
-      const groupCleanup = await detachBotFromGroups(tx, bot.id);
       await tx.computerExecutionLease.deleteMany({ where: { botId: bot.id } });
       await tx.computer.updateMany({
         where: {
@@ -530,7 +542,7 @@ export async function destroyBot(
         backgroundTasks: groupCleanup.backgroundTasks,
         ownBackgroundTasks,
       };
-    }),
+    }, backgroundTaskLockTransactionOptions),
   );
   const tombstoneTaskIds = [
     ...new Set([
@@ -606,6 +618,21 @@ export async function destroyBot(
 }
 
 async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) {
+  const discovered = await tx.chatGroup.findMany({
+    where: { members: { some: { botId } } },
+    include: {
+      members: {
+        select: { botId: true, bot: { select: { archivedAt: true } } },
+      },
+      thread: { select: { id: true } },
+    },
+  });
+  const discoveredThreadIds = [
+    ...discovered.flatMap((group) => (group.thread ? [group.thread.id] : [])),
+    ...(await threadIdsVisibleToBot(tx, botId)),
+  ];
+  // Threads before groups. Clear and Send lock the thread, then the group.
+  await lockThreadsForBackgroundTasks(tx, discoveredThreadIds);
   await tx.$queryRaw<Array<{ id: string }>>`
     SELECT groups.id
     FROM chat_groups AS groups
@@ -623,6 +650,13 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
       thread: { select: { id: true } },
     },
   });
+  const lockedThreadIds = new Set(discoveredThreadIds);
+  const unlockedThread = affectedGroups.find(
+    (group) => group.thread && !lockedThreadIds.has(group.thread.id),
+  );
+  if (unlockedThread) {
+    throw new Error("Group membership changed during bot deletion");
+  }
   const dissolvedGroupIds: string[] = [];
   for (const group of affectedGroups) {
     const activeMembersAfterDeletion = group.members.filter(
@@ -727,6 +761,37 @@ async function removeStoredArtifacts(
   for (const result of results) {
     if (result.status === "rejected") getLogger().error("group artifact cleanup", result.reason);
   }
+}
+
+async function threadIdsVisibleToBot(
+  tx: Prisma.TransactionClient,
+  botId: string,
+): Promise<string[]> {
+  const ids: string[] = [];
+  if (tx.thread?.findMany) {
+    const threads = await tx.thread.findMany({
+      where: { botId },
+      select: { id: true },
+    });
+    ids.push(...threads.map((thread) => thread.id));
+  }
+  if (tx.chatGroupMember?.findMany) {
+    const memberships = await tx.chatGroupMember.findMany({
+      where: { botId },
+      select: { group: { select: { thread: { select: { id: true } } } } },
+    });
+    for (const membership of memberships) {
+      if (membership.group.thread) ids.push(membership.group.thread.id);
+    }
+  }
+  if (tx.backgroundAgentTask?.findMany) {
+    const tasks = await tx.backgroundAgentTask.findMany({
+      where: { botId, status: { in: ["running", "cancelling"] } },
+      select: { threadId: true },
+    });
+    ids.push(...tasks.map((task) => task.threadId));
+  }
+  return ids;
 }
 
 function archivedMemoryDirectory(name: string, botId: string) {

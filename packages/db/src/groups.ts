@@ -7,6 +7,10 @@ import {
   type SpaceGroup,
 } from "@rakazo/contracts";
 import { selectGroupLead } from "@rakazo/core";
+import {
+  backgroundTaskLockTransactionOptions,
+  lockThreadForBackgroundTask,
+} from "./background-task-registration.js";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
 import { cancelRunsInTransaction, type CancelledRunRow } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
@@ -386,7 +390,7 @@ export function createGroupRepos(prisma: PrismaClient) {
     ): Promise<{ group: Group; cancelledRunIds: string[]; backgroundParentRunIds: string[] }> {
       const members = input.botIds ? await assertOwnedBots(prisma, actor, input.botIds) : undefined;
       const updated = await prisma.$transaction(async (tx) => {
-        await lockOwnedGroup(tx, actor, input.groupId);
+        const threadId = await lockGroupThreadThenOwner(tx, actor, input.groupId);
         const current = await tx.chatGroup.findFirst({
           where: {
             id: input.groupId,
@@ -399,7 +403,7 @@ export function createGroupRepos(prisma: PrismaClient) {
             thread: { select: { id: true } },
           },
         });
-        if (!current?.thread) throw new IsolationError();
+        if (!current?.thread || current.thread.id !== threadId) throw new IsolationError();
         if (
           !members &&
           !hasMinimumActiveMembers(
@@ -485,7 +489,7 @@ export function createGroupRepos(prisma: PrismaClient) {
               cancelledRuns.map((run) => run.id),
             ),
           }));
-      });
+      }, backgroundTaskLockTransactionOptions);
       if (!updated.group.thread) throw new IsolationError();
       const descendants = await cancelChildrenOfCancelledRuns(prisma, updated.cancelledRunIds);
       const descendantIds = descendants.map((run) => run.id);
@@ -500,7 +504,7 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async archiveGroup(actor: Actor, groupId: string) {
       const archived = await prisma.$transaction(async (tx) => {
-        await lockOwnedGroup(tx, actor, groupId);
+        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
         const current = await tx.chatGroup.findFirst({
           where: {
             id: groupId,
@@ -509,7 +513,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           },
           select: { archivedAt: true, thread: { select: { id: true } } },
         });
-        if (!current?.thread) throw new IsolationError();
+        if (!current?.thread || current.thread.id !== threadId) throw new IsolationError();
         if (current.archivedAt) return resumeArchivedGroupTeardown(tx, current.thread.id);
 
         const activeRuns = await tx.run.findMany({
@@ -552,7 +556,7 @@ export function createGroupRepos(prisma: PrismaClient) {
             cancelledRuns.map((run) => run.id),
           ),
         };
-      });
+      }, backgroundTaskLockTransactionOptions);
       const descendants = await cancelChildrenOfCancelledRuns(prisma, archived.cancelledRunIds);
       const descendantIds = descendants.map((run) => run.id);
       return {
@@ -588,7 +592,7 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async removeGroup(actor: Actor, groupId: string) {
       const removed = await prisma.$transaction(async (tx) => {
-        await lockOwnedGroup(tx, actor, groupId);
+        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
         const group = await tx.chatGroup.findUnique({
           where: { id: groupId },
           select: {
@@ -597,21 +601,18 @@ export function createGroupRepos(prisma: PrismaClient) {
             thread: { select: { id: true } },
           },
         });
-        if (!group) throw new IsolationError();
+        if (!group?.thread || group.thread.id !== threadId) throw new IsolationError();
         const contextBotId = group.members[0]?.botId;
         if (!contextBotId) throw new IsolationError();
-        const parentRuns = group.thread
-          ? await tx.run.findMany({
-              where: { threadId: group.thread.id, status: { in: activeRunStatuses } },
-              select: { id: true },
-            })
-          : [];
+        const parentRuns = await tx.run.findMany({
+          where: { threadId: group.thread.id, status: { in: activeRunStatuses } },
+          select: { id: true },
+        });
         const parentRunIds = parentRuns.map((run) => run.id);
         // A parent Run can already be completed while its native task is still running.
-        // Select by the group thread, then tombstone before the cascade delete.
-        const backgroundTasks = group.thread
-          ? await findLiveBackgroundTasks(tx, { threadId: group.thread.id })
-          : [];
+        // The thread row is already locked, so a registration cannot insert between
+        // this read and the cascade delete.
+        const backgroundTasks = await findLiveBackgroundTasks(tx, { threadId: group.thread.id });
         // The group delete cascades runs and background projections. These rows do not.
         await recordRunAbortRevocations(tx, parentRunIds);
         await recordBackgroundRevocations(
@@ -632,7 +633,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           parentRunIds,
           backgroundTasks,
         };
-      });
+      }, backgroundTaskLockTransactionOptions);
       // The group thread is gone. Cross-thread descendants still name those parents.
       const descendants = await cancelChildrenOfCancelledRuns(prisma, removed.parentRunIds);
       return {
@@ -662,6 +663,26 @@ async function appendCancelledRunEvents(
       payload: { reason },
     });
   }
+}
+
+/**
+ * Thread row first, then the group row. Clear and Send already lock the thread
+ * before they update the group, so the opposite order deadlocks.
+ */
+async function lockGroupThreadThenOwner(
+  tx: Prisma.TransactionClient,
+  actor: Pick<Actor, "spaceId" | "userId">,
+  groupId: string,
+): Promise<string> {
+  const preview = await tx.chatGroup.findFirst({
+    where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
+    select: { thread: { select: { id: true } } },
+  });
+  if (!preview?.thread) throw new IsolationError();
+  const locked = await lockThreadForBackgroundTask(tx, preview.thread.id);
+  if (!locked) throw new IsolationError();
+  await lockOwnedGroup(tx, actor, groupId);
+  return preview.thread.id;
 }
 
 export async function lockOwnedGroup(

@@ -1,4 +1,5 @@
 export * from "./artifact-versions.js";
+export * from "./background-task-registration.js";
 export * from "./bootstrap-user.js";
 export * from "./cancel-child-runs.js";
 export * from "./cancel-runs.js";

@@ -34,7 +34,7 @@ This pass makes Run start and cancellation agree on one contract. It does not co
 
 The computer execution lease is acquired first. `promoteLeasedRunWithAttempt` then takes one PostgreSQL transaction: lock the Run, require the current lease owner, fence, and unexpired lease, move `leased` to `running`, and create `Attempt(status="running")` for that fence. A committed `running` Run without that Attempt is not a state this path can write. Computer busy, lease failure, and cancellation before promotion leave the Run queued or cancelled and create no Attempt. A crash while the Run is still `leased`, before this transaction, still has no Attempt; the next claim uses a new fence. Recovery of a `running` Run whose lease expired before any Attempt existed still fails that Run and does not invent an Attempt.
 
-`Attempt` has `@@unique([runId, fence])` in migration `20261013070000_attempt_fence_uniqueness`. The unique index is created before `attempts_runId_idx` is dropped. If two historical rows share a fence, the migration fails with PostgreSQL `23505` and does not delete or merge them.
+`Attempt` has `@@unique([runId, fence])` in migration `20261013070000_attempt_fence_uniqueness`. The unique index is created before `attempts_runId_idx` is dropped. If two historical rows share a fence, the migration fails with PostgreSQL `23505` and does not delete or merge them. Before deploying, run `SELECT "runId", fence, COUNT(*) FROM attempts GROUP BY "runId", fence HAVING COUNT(*) > 1`. Any returned row stops the deploy for manual handling. Nothing deletes or merges those Attempts.
 
 Checked against PostgreSQL:
 
@@ -68,6 +68,25 @@ Migration `20261013080000_execution_revocation_outbox` adds `execution_revocatio
 
 A unique `(runId, fence)` conflict no longer requeues the Run. The promote transaction rolls back, so the Run stays leased. `reconcileAttemptFenceConflict` then locks that Run. When this worker still owns the unexpired lease and the Attempt for the fence is active, the same transaction marks the Run running, reuses that Attempt, and fails every other active Attempt. When the conflicting Attempt is already finished, the Run and its Task become `failed` and no new fence is opened. A lease this worker does not own is left alone. The result is never two active Attempts for one Run.
 
+### Background registration lock
+
+Registration and lifecycle cancellation share one order so a `running` projection cannot commit after the lifecycle path has already passed the point where it would revoke it.
+
+`registerBackgroundTaskProjection` takes `pg_advisory_xact_lock(814230711, hashtext(botId))`, then `SELECT id FROM threads WHERE id = ? FOR UPDATE`, then `SELECT id FROM runs WHERE id = ? FOR UPDATE`. Namespace `814230711` is distinct from the template-clone lock `814230701`. Under those locks it requires the parent Run to still be `running`, the Bot row to exist with `archivedAt` null, the Thread to still exist in the space, and, when the Thread belongs to a group, that group to be unarchived and the Bot to still be a member. Only then does it insert `BackgroundAgentTask` with status `running`. A failed check throws `BackgroundRegistrationRejected`, inserts nothing, and the tool bridge returns a non-2xx response. `RuntimeEngine.registerBackground` then calls `cancelTask` on the native task it just created. `failedBackgroundRegistrationCancelsTheNativeTask` covers that path.
+
+Lifecycle entries use a compatible order. A path that cancels the parent Run can rely on the Run row lock from that update. A path that cascade-deletes locks the Thread before it collects background tasks or deletes business rows.
+
+- Bot archive locks the bot advisory key, then the threads visible to that bot in id order, then re-reads active Runs and marks that bot's live background tasks `cancelling`.
+- Bot delete locks the same advisory key, then the discovered group threads and the bot's own threads, then the group rows in id order. It tombstones dissolved-thread tasks before `chatGroup.deleteMany`. It locks the bot row after those threads, tombstones the bot's own live tasks, and then deletes the bot. A group thread that appears after the thread locks abort the delete instead of cascading without the lock.
+- Group archive, group update (including member removal), and group delete preview the group thread, lock that thread, then lock the owned group row, and only then collect, cancel, or tombstone.
+- Thread Clear locks the thread with its update. Thread Stop locks the thread with `FOR UPDATE`. Both then cancel active Runs and mark that thread's `running` background tasks `cancelling`.
+
+`cancelBackgroundTask` is unchanged: `true` is a successful revoke, `false` is HTTP 404 and is a terminal success, and a network error or any other HTTP status throws and stays pending for retry.
+
+Migration `20261013090000_background_task_lookup_indexes` adds `background_agent_tasks_threadId_status_idx` on `(threadId, status)` and `background_agent_tasks_botId_status_idx` on `(botId, status)`. A thread-and-status lookup can use the first. A bot-and-status lookup can use the second. A filter on thread, bot, and status can use either leading pair.
+
+Two connections and `pg_blocking_pids` cover the interleavings. The barrier is a row lock, not a sleep. Registration that commits first is collected by the later archive, group delete, or group-dissolving bot delete, including when the parent Run is completed inside the registration transaction before the delete proceeds. A lifecycle transaction that takes its lock first makes the waiting registration throw, leaves no `running` projection, and leaves no tombstone for a row that was never inserted. `cancelBackgroundTask` returning `false` clears a `cancelling` projection and a background-task tombstone. A 503 and a network error leave both pending.
+
 Computer stop deletes that bot's computer execution leases and stops the sandbox. It does not cancel Runs.
 
 Late `agent.tool.called` events and thread messages after the parent or child is cancelled throw `Run cannot write thread history`. External effects in `intended`, `approved`, `executing`, `completed`, or `uncertain` are not deleted or rewritten by cancellation. The schema name for a finished effect is `completed`.
@@ -78,11 +97,11 @@ The retry policy is unchanged: the same Run gets a new Attempt, at most two auto
 
 ### Evidence for this pass
 
-`VERIFY_DATABASE=1` with the admin connection pointed at the local `rakazo` database, which is not migrated: 5 files, 36 tests passed, 0 skipped (`wait-timeouts`, `lease-loss-recovery`, `run-budget-enforcement`, and the two `execution-contract` files). Each file clones a private database from a template whose name is a hash of the migration files. Those five files passed three consecutive times under Vitest's default file parallelism, with no `--no-file-parallelism`. The cases cover a run abort that fails once and succeeds on the next retry, background DELETE retries after bot and group cascade, an Attempt fence conflict that leaves a single active Attempt or an explicitly failed Run, and a parent Run that is already `completed` while its background task is still `running`. That last case covers member removal, group archive, group delete, bot archive, and a group dissolved by bot delete. No `it.skip` was added.
+`VERIFY_DATABASE=1` with the admin connection pointed at the local `rakazo` database, which is not migrated: 5 files, 45 tests passed, 0 skipped (`wait-timeouts`, `lease-loss-recovery`, `run-budget-enforcement`, and the two `execution-contract` files). Each file clones a private database from a template whose name is a hash of the migration files. Those five files passed three consecutive times under Vitest's default file parallelism, with no `--no-file-parallelism`. The cases cover a run abort that fails once and succeeds on the next retry, background DELETE retries after bot and group cascade, an Attempt fence conflict that leaves a single active Attempt or an explicitly failed Run, a parent Run that is already `completed` while its background task is still `running`, and the registration-versus-lifecycle lock interleavings above. No `it.skip` was added.
 
-This follow-up did not re-run the full `pnpm test`. The previous acceptance run, Node 24 and JDK 21, was 396 files passed, 38 skipped, and 4813 tests passed, 235 skipped. The PostgreSQL files stay behind the `VERIFY_DATABASE` gate. The gated run is the 36-test run above.
+`pnpm test` on Node 24.21.0 with JDK 21.0.12.1 on `PATH`, and with `VERIFY_DATABASE` unset, passed 396 files and skipped 38. It passed 4815 tests and skipped 247. The PostgreSQL files stay behind the `VERIFY_DATABASE` gate in that run. `computer-spec.test.ts` passed in this run.
 
-`pnpm --filter @rakazo/db check`, `@rakazo/adapters`, `@rakazo/api`, and `@rakazo/worker` passed. `mvn -q -f services/agent-runtime/pom.xml test` with JDK 21.0.12.1 passed. The only Maven log noise is the existing SLF4J no-provider warning.
+`pnpm --filter @rakazo/db check`, `@rakazo/adapters`, `@rakazo/api`, and `@rakazo/worker` passed. `mvn -q -f services/agent-runtime/pom.xml test` with JDK 21.0.12.1 passed, including `failedBackgroundRegistrationCancelsTheNativeTask`. The only Maven log noise is the existing SLF4J no-provider warning.
 
 ### Still open
 
