@@ -6,14 +6,14 @@ Baseline: `codex/clean-baseline` (`f9992e8`), based on PR #9 and the Java AgentS
 | --- | --- | --- |
 | 01 Execution Shell | `RunActivityDisclosure` renders an inline activity strip. | The full shell and its Assistant Turn attachment are absent. |
 | 02 Execution status | `Run` states and Phase 4 activity projection exist. | One user-facing status derivation across live, wait, background, and history is absent. |
-| 03 Plan | AgentScope Plan Mode and a `planning` activity kind exist. | PLAN-001: durable Plan, revision and item identities, trusted item states, replay. |
+| 03 Plan | The `publish_run_plan` tool now writes structured Plan revisions transactionally; snapshot/live transport and an inline Plan disclosure consume them. Native Markdown Plan Mode remains Activity only. | Revision history is stored but not yet exposed in UI; real Java→Web acceptance and Assistant Turn anchoring for runs without a source message remain. Item completion is Agent-reported, not independently verified evidence. |
 | 04 Todo / Steps | `MessageBlock.steps` aggregates tool calls. | STEP-001 semantic steps and their Plan relationship are absent. Tool calls must not be relabeled as steps. |
 | 05 Live Activity | The Phase 4 reducer supports replay and live activity. | Current activity selection and visual stability need integration with the execution shell. |
 | 06 Tool actions | Tool events and `ToolActivityDisclosure` exist. | The design's evidence, effect status, grouping and retry presentation require a production mapping. |
 | 07 Approval | Backend approval/effect path and ask cards exist. | APPROVAL-001 scope and decision-owner checks, unified intervention presentation and recovery need verification. |
 | 08 User input | `threads.answer` and persisted ask blocks exist. | Unified intervention state, server-acknowledged submission and draft recovery need integration. |
 | 09 State consistency | `RunStatus` and Activity projection are available. | The frozen user-facing status matrix is not a shared production selector. |
-| 10 Background | Java native tasks, `BackgroundAgentTask`, and a Web card exist. | Results are injected on the next main Run; active delivery and a cross-surface same-Run view are absent. |
+| 10 Background | Java native tasks, `BackgroundAgentTask`, a Web card and the Task18.2 delivery outbox exist. | Live Java→Web delivery acceptance and a cross-surface same-Run view remain. |
 | 11 Collaboration | Harness Phases 1 and 3 provide routing, support and handoff; Phase 4 projects events. | The single owner header with bounded collaborator details is not integrated. |
 | 12 Final shell | Existing UI tokens and chat components are available. | The frozen integrated shell, accessibility and responsive acceptance have not been reproduced in production. |
 | 13 History | PostgreSQL stores the full transcript and events; AgentScope keeps separate working context. | HISTORY-001 execution snapshot, pagination and historical disclosure are absent. |
@@ -21,7 +21,7 @@ Baseline: `codex/clean-baseline` (`f9992e8`), based on PR #9 and the Java AgentS
 | 15 / 15.1 Card | `RunDetailsPanel` exists as a separate surface. | Inline Execution Card, same-Run expansion and Task Center view are absent. |
 | 16 Scenario validation | Design lab uses fixtures; Java tests and E2E cover narrower real flows. | Six scenarios need real normal/failure traces, including Routine and delivery. |
 | 17 Object model | `Thread`, `Task`, `Run`, `Routine`, `Artifact` exist; `Run.taskId` is required. | Product Task→Run retry, intervention identity and cross-surface links need alignment. |
-| 18 Control plane | Work is in progress on event envelope and wait reason. | Delivery, reliability, capability permissions and TurnPolicy v2 remain. |
+| 18 Control plane | Stacked PRs #11–#16 cover event envelope, wait reason, background delivery, reliability, budget bounds, capability rules and TurnPolicy v2. | Trusted USD cost enforcement, lease-loss retry scheduling and live Java→Web acceptance remain. |
 
 ## Contract conflict to preserve
 
@@ -43,3 +43,4 @@ No percentage, completion summary, Plan item, semantic Step or external effect s
 - Task 18.3 now has a reliability slice (wait expiry, child cancellation, conservative retry) and a budget slice (token, active-duration and tool-call limits, interactive choices, routine failure delivery). USD cost needs a trusted model-price source, and the full Java/Web budget acceptance flow is still unverified; see [reliability-progress.md](./task18-product-harness-completion/reliability-progress.md) and [budget-progress.md](./task18-product-harness-completion/budget-progress.md).
 - Task 18.4 adds Bot-local capability rules, deny/ask/allow resolution, defaults and an executor-boundary check in the next stacked slice. The production-data default requires an identified production resource; see [capability-permission.md](./task18-product-harness-completion/capability-permission.md).
 - Task 18.5 adds version-two policy constraints, preserves v1 snapshots, and carries the contract to Java in the next stacked slice. These are execution bounds, not an intent/action router; see [turnpolicy-evolution.md](./task18-product-harness-completion/turnpolicy-evolution.md).
+- Task 03 adds a separate structured Plan tool, immutable revisions, current snapshot/live projection and inline disclosure. It does not parse AgentScope `plan_write` Markdown into product data. See [structured-plan-progress.md](./structured-plan-progress.md).

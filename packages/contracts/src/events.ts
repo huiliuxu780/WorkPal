@@ -2,6 +2,7 @@ import * as z from "zod";
 import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { McpTransportSchema } from "./mcp.js";
+import { RunPlanRevisionSchema } from "./run-plans.js";
 
 export const ProductEventType = z.enum([
   "thread.message.created",
@@ -9,6 +10,7 @@ export const ProductEventType = z.enum([
   "thread.message.updated",
   "thread.message.reaction",
   "thread.progress",
+  "plan.revised",
   "thread.artifact",
   "thread.ask",
   "thread.choice",
@@ -79,6 +81,7 @@ export const EventEnvelopeMeta = z.object({
 export type EventEnvelopeMeta = z.infer<typeof EventEnvelopeMeta>;
 
 export const ProductEventPayloadSchemas = {
+  "plan.revised": RunPlanRevisionSchema,
   "run.retried": z.object({ attempt: z.number().int().positive(), reason: z.string() }),
   "budget.exceeded": z.object({ reason: z.string(), limit: z.number().nonnegative().optional() }),
   "delivery.created": z.object({ deliveryId: Id, sourceRunId: Id }),

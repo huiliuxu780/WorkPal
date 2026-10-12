@@ -608,6 +608,7 @@ model Run {
   externalMessage      ExternalMessage?
   backgroundTasks       BackgroundAgentTask[]
   deliverySourceRecords DeliveryRecord[] @relation("DeliverySourceRun")
+  plan                 RunPlan?
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
@@ -621,6 +622,36 @@ model Run {
   @@index([threadId, status, createdAt])
   @@index([routineId])
   @@map("runs")
+}
+
+model RunPlan {
+  runId       String            @id
+  run         Run               @relation(fields: [runId], references: [id], onDelete: Cascade)
+  planId      String            @unique
+  threadGeneration Int
+  revision    Int
+  current     Json
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  revisions   RunPlanRevision[]
+
+  @@map("run_plans")
+}
+
+model RunPlanRevision {
+  id         String   @id
+  runId      String
+  plan       RunPlan  @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  revision   Int
+  snapshot   Json
+  eventSeq   Int
+  toolExecutionId String
+  createdAt  DateTime @default(now())
+
+  @@unique([runId, revision])
+  @@unique([runId, toolExecutionId])
+  @@index([runId, revision(sort: Desc)])
+  @@map("run_plan_revisions")
 }
 
 /// Product projection only. AgentScope WorkspaceTaskRepository owns execution and reminders.
