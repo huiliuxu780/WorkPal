@@ -137,4 +137,3 @@ function formatRelativeTime(iso: string, now = new Date()): string {
   if (days < 7) return t`${days}d ago`;
   return date.toLocaleDateString(i18n.locale || "en", { month: "short", day: "numeric" });
 }
-

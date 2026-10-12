@@ -1,4 +1,3 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import type {
   JobPublisher,
   TeamChatInboundMessage,
@@ -7,7 +6,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { runContinueJob } from "@rakazo/adapter-kit";
 import { AutomatedSenderPoliciesSchema, type MessageBlock } from "@rakazo/contracts";
-import { BOT_MESSAGE_MAX_HOPS } from "@rakazo/core";
+import { BOT_MESSAGE_MAX_HOPS, PRODUCT_BRAND } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import type { TeamChatEngagementJudge } from "./team-chat-judge.js";
@@ -479,7 +478,8 @@ export class TeamChatBridge {
     },
   ): Promise<void> {
     if (message.threadMessageId) return;
-    if (!conversation.thread) throw new Error(`Team chat conversation has no ${PRODUCT_BRAND.name} thread`);
+    if (!conversation.thread)
+      throw new Error(`Team chat conversation has no ${PRODUCT_BRAND.name} thread`);
     const visible = await this.deps.events.sendUserMessage({
       spaceId: conversation.spaceId,
       threadId: conversation.thread.id,

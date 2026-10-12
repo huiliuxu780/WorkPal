@@ -1,13 +1,13 @@
 import { memo, useEffect, useId, useRef, useState } from "react";
-import {
-  EXPRESSION_BY_ID,
-  DEFAULT_EXPRESSION,
-  type ExpressionId,
-  type BotExpression,
-} from "./bloub/expressions.js";
 import { BotEngine } from "./bloub/engine.js";
+import {
+  type BotExpression,
+  DEFAULT_EXPRESSION,
+  EXPRESSION_BY_ID,
+  type ExpressionId,
+} from "./bloub/expressions.js";
 import { RAYON } from "./bloub/repere.js";
-import { SHAPE_BY_ID, DEFAULT_SHAPE, mixHex } from "./bloub/skins.js";
+import { DEFAULT_SHAPE, mixHex, SHAPE_BY_ID } from "./bloub/skins.js";
 import type { StateId } from "./bloub/states.js";
 import { bloubStaticFrame } from "./bloub/static.js";
 import { addTicker } from "./bloub/ticker.js";
@@ -54,8 +54,7 @@ function bloubStatusPose(status?: string): { state: StateId; expression?: Expres
 }
 
 const prefersReducedMotion = (): boolean =>
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function readPaper(): string {
   if (typeof window === "undefined") return "#fafaf8";
@@ -71,7 +70,13 @@ function relativeLuminance(hex: string): number | undefined {
   const match = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim());
   if (!match) return undefined;
   const digits = match[1]!;
-  const full = digits.length === 3 ? digits.split("").map((c) => c + c).join("") : digits;
+  const full =
+    digits.length === 3
+      ? digits
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : digits;
   const value = parseInt(full, 16);
   const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255].map((byte) => {
     const s = byte / 255;
@@ -94,7 +99,11 @@ export function bloubEyeColor(paper: string, ink: string): string {
   return inkLum < 0.5 ? BLOUB_PAPER_LIGHT : BLOUB_INK_DARK;
 }
 
-function dotsMarkup(dots: ReturnType<BotEngine["sample"]>["dots"], ink: string, paper: string): string {
+function dotsMarkup(
+  dots: ReturnType<BotEngine["sample"]>["dots"],
+  ink: string,
+  paper: string,
+): string {
   return dots
     .map((dot) => {
       const fill = dot.color ?? (dot.depth === undefined ? ink : mixHex(paper, ink, dot.depth));
@@ -230,11 +239,7 @@ export const BloubAvatar = memo(function BloubAvatar({
         );
       }
       if (dotsFrontRef.current) {
-        dotsFrontRef.current.innerHTML = dotsMarkup(
-          frame.dotsBehind ? [] : frame.dots,
-          ink,
-          paper,
-        );
+        dotsFrontRef.current.innerHTML = dotsMarkup(frame.dotsBehind ? [] : frame.dots, ink, paper);
       }
       if (arcsBackRef.current && arcsFrontRef.current && defsRef.current) {
         arcsBackRef.current.innerHTML = frame.arcs
@@ -253,7 +258,10 @@ export const BloubAvatar = memo(function BloubAvatar({
           .map(
             (arc) =>
               `<linearGradient id="${uid}-a-${arc.id}" gradientUnits="userSpaceOnUse" x1="${arc.grad.x1}" y1="${arc.grad.y1}" x2="${arc.grad.x2}" y2="${arc.grad.y2}">${arc.grad.stops
-                .map((c, si) => `<stop offset="${(si / (arc.grad.stops.length - 1 || 1)).toFixed(3)}" stop-color="${c}"/>`)
+                .map(
+                  (c, si) =>
+                    `<stop offset="${(si / (arc.grad.stops.length - 1 || 1)).toFixed(3)}" stop-color="${c}"/>`,
+                )
                 .join("")}</linearGradient>`,
           )
           .join("");

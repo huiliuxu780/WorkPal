@@ -3244,9 +3244,12 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       task: { create: vi.fn().mockResolvedValue({ id: "task-1" }) },
       steeringMessage: { create: vi.fn() },
       event: {
-        create: vi
-          .fn()
-          .mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+        create: vi.fn().mockResolvedValue({
+          id: "event-1",
+          seq: 4,
+          threadId: "thread-1",
+          createdAt: new Date(),
+        }),
       },
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue(groupRow),
@@ -3305,7 +3308,11 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       .filter((arg) => arg.data.type === "thread.turn.routed")
       .map((arg) => arg.data.payload);
     expect(routed).toEqual([
-      expect.objectContaining({ messageId: "msg-1", ownerBotId: "bot-lead", routeKind: "fallback_lead" }),
+      expect.objectContaining({
+        messageId: "msg-1",
+        ownerBotId: "bot-lead",
+        routeKind: "fallback_lead",
+      }),
     ]);
   });
 
@@ -3347,10 +3354,7 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       },
       run: {
         // First findFirst: previous-owner lookup inside the multi collapse.
-        findFirst: vi
-          .fn()
-          .mockResolvedValueOnce({ botId: "bot-first" })
-          .mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValueOnce({ botId: "bot-first" }).mockResolvedValue(null),
         findUnique: vi.fn().mockResolvedValue({ status: "queued", startedAt: null }),
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
           createdRuns.push(data);
@@ -3360,9 +3364,12 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       task: { create: vi.fn().mockResolvedValue({ id: "task-1" }) },
       steeringMessage: { create: vi.fn() },
       event: {
-        create: vi
-          .fn()
-          .mockResolvedValue({ id: "event-1", seq: 4, threadId: "thread-1", createdAt: new Date() }),
+        create: vi.fn().mockResolvedValue({
+          id: "event-1",
+          seq: 4,
+          threadId: "thread-1",
+          createdAt: new Date(),
+        }),
       },
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue(groupRow),

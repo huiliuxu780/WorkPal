@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AGENTLY_MAIL_MAX_RECIPIENTS,
+  type AgentlyMailInvocation,
   AgentlyMailService,
   validateOutgoingMail,
-  type AgentlyMailInvocation,
 } from "./agently-mail.js";
 
 const signal = AbortSignal.timeout(5_000);
@@ -24,7 +24,11 @@ describe("AgentlyMailService.send", () => {
       { to: ["bob@example.com", "alice@example.com"], subject: "Hi", text: "Hello" },
       signal,
     );
-    expect(result).toEqual({ ok: true, sent_to: ["bob@example.com", "alice@example.com"], message_id: "msg_001" });
+    expect(result).toEqual({
+      ok: true,
+      sent_to: ["bob@example.com", "alice@example.com"],
+      message_id: "msg_001",
+    });
     expect(invoke).toHaveBeenCalledTimes(1);
     const [args, passedSignal] = invoke.mock.calls[0]!;
     expect(passedSignal).toBe(signal);
@@ -49,7 +53,8 @@ describe("AgentlyMailService.send", () => {
     const { service } = serviceWith({
       code: 1,
       stdout: "",
-      stderr: "SMTP relay refused\nDetail line that should not leak.\nDetail line that should not leak.",
+      stderr:
+        "SMTP relay refused\nDetail line that should not leak.\nDetail line that should not leak.",
     });
     const result = await service.send(
       { to: ["bob@example.com"], subject: "Hi", text: "Hello" },
@@ -76,7 +81,10 @@ describe("AgentlyMailService.send", () => {
       throw new Error("ENOENT");
     });
     const service = new AgentlyMailService({ invoke });
-    const result = await service.send({ to: ["bob@example.com"], subject: "Hi", text: "Hello" }, signal);
+    const result = await service.send(
+      { to: ["bob@example.com"], subject: "Hi", text: "Hello" },
+      signal,
+    );
     expect(result).toEqual({
       error:
         "The mail sender (agently-cli) is unavailable on this server. Ask the operator to install it and complete agently-cli auth login.",
@@ -84,7 +92,11 @@ describe("AgentlyMailService.send", () => {
   });
 
   it("rejects duplicate recipients without invoking the CLI", async () => {
-    const { service, invoke } = serviceWith({ code: 0, stdout: '{"ok":true,"data":{}}', stderr: "" });
+    const { service, invoke } = serviceWith({
+      code: 0,
+      stdout: '{"ok":true,"data":{}}',
+      stderr: "",
+    });
     const result = await service.send(
       { to: ["bob@example.com", "bob@example.com"], subject: "Hi", text: "Hello" },
       signal,
@@ -96,7 +108,10 @@ describe("AgentlyMailService.send", () => {
   it.each([
     [[], "1-20 valid recipient"],
     [["not-an-email"], "1-20 valid recipient"],
-    [Array.from({ length: AGENTLY_MAIL_MAX_RECIPIENTS + 1 }, (_, i) => `a${i}@example.com`), "1-20 valid recipient"],
+    [
+      Array.from({ length: AGENTLY_MAIL_MAX_RECIPIENTS + 1 }, (_, i) => `a${i}@example.com`),
+      "1-20 valid recipient",
+    ],
     [["bob@example.com"], "Subject"],
   ] as const)("rejects body/subject issues before invoking the CLI", async (to, expectFragment) => {
     const { service, invoke } = serviceWith({ code: 0, stdout: "{}", stderr: "" });
@@ -118,9 +133,9 @@ describe("AgentlyMailService.send", () => {
   });
 
   it("validates multibyte body size in bytes, not characters", () => {
-    expect(validateOutgoingMail({ to: ["bob@example.com"], subject: "Hi", text: "字".repeat(22_000) })).toContain(
-      "64 KB",
-    );
+    expect(
+      validateOutgoingMail({ to: ["bob@example.com"], subject: "Hi", text: "字".repeat(22_000) }),
+    ).toContain("64 KB");
   });
 });
 
@@ -136,7 +151,11 @@ describe("AgentlyMailService.account", () => {
   });
 
   it("reports not signed in when the mailbox lists no alias", async () => {
-    const { service } = serviceWith({ code: 0, stdout: '{"ok":true,"data":{"aliases":[]}}', stderr: "" });
+    const { service } = serviceWith({
+      code: 0,
+      stdout: '{"ok":true,"data":{"aliases":[]}}',
+      stderr: "",
+    });
     expect(await service.account(signal)).toEqual({
       error: "Not signed in to Agently mail. Run: agently-cli auth login",
     });

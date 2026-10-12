@@ -186,7 +186,9 @@ describe("BotAvatar", () => {
   });
 
   it("renders bloub with the studio shape and expression encoding", () => {
-    const html = renderToString(<BotAvatar color="#0a0a0c::bloub::nuage::colere" identity="maya" />);
+    const html = renderToString(
+      <BotAvatar color="#0a0a0c::bloub::nuage::colere" identity="maya" />,
+    );
     expect(html).toContain('data-shape="nuage"');
     expect(html).toContain('data-expression="colere"');
     expect(html).toContain('fill="#0a0a0c"');

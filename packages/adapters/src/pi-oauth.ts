@@ -1,4 +1,3 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import { randomUUID } from "node:crypto";
 import type {
   AuthInteraction,
@@ -16,6 +15,7 @@ import {
   type ThinkingLevel,
   ThinkingLevelSchema,
 } from "@rakazo/contracts";
+import { PRODUCT_BRAND } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { createManualAnthropicOAuthLogin } from "./pi-anthropic-oauth.js";
@@ -34,8 +34,7 @@ export const SUBSCRIPTION_SIGN_IN_PROVIDERS: Record<
     mode: "device-code",
     loginLabel: "Sign in with ChatGPT Plus/Pro",
     hint: "ChatGPT Plus/Pro",
-    billing:
-      `Sign in with ChatGPT Plus or Pro. Uses your OpenAI subscription. ${PRODUCT_BRAND.name} does not pay.`,
+    billing: `Sign in with ChatGPT Plus or Pro. Uses your OpenAI subscription. ${PRODUCT_BRAND.name} does not pay.`,
   },
   [COPILOT_OAUTH_PROVIDER]: {
     mode: "device-code",

@@ -1,4 +1,3 @@
-import { PRODUCT_BRAND } from "@rakazo/core";
 import { randomUUID } from "node:crypto";
 import type {
   AdapterContext,
@@ -49,13 +48,13 @@ import {
   appendTextSegment,
   appendToolCallSegment,
   applyJudgeDecision,
-  collaborationContextRole,
-  collaborationFromOrchestration,
   assertTransition,
   blocksToAgentHistoryText,
   botMessageAllowsSilence,
   CALL_CLIENT_NONCE_PREFIX,
   callIdFromClientNonce,
+  collaborationContextRole,
+  collaborationFromOrchestration,
   connectorKindFromToolName,
   containsSecret,
   createStreamingRedactor,
@@ -74,6 +73,7 @@ import {
   messagingDmSurfaceNote,
   nextCronDateAcross,
   nextFence,
+  PRODUCT_BRAND,
   planActionGate,
   promptInvokesSkill,
   redactSecrets,
@@ -125,6 +125,7 @@ import {
   formatAgentEnvironmentInstruction,
   redactAgentCommandResult,
 } from "./agent-environment.js";
+import type { AgentlyMailService } from "./agently-mail.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
 import {
   approvalPausedToolResult,
@@ -181,7 +182,6 @@ import {
   browserSnapshotFromTool,
 } from "./browser-tools.js";
 import { agentConnectionTools, builtinAgentTools } from "./builtin-tools.js";
-import type { AgentlyMailService } from "./agently-mail.js";
 import { archiveSpawnedBot, spawnBot } from "./child-bots.js";
 import { type CloudAgentConnection, cloudAgentsEnabled } from "./cloud-agent-factory.js";
 import { executeCloudAgentTool } from "./cloud-agent-service.js";
@@ -3331,7 +3331,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     : args.to === undefined || args.to === null
                       ? []
                       : [String(args.to)],
-                  subject: typeof args.subject === "string" ? args.subject : String(args.subject ?? ""),
+                  subject:
+                    typeof args.subject === "string" ? args.subject : String(args.subject ?? ""),
                   text: typeof args.text === "string" ? args.text : String(args.text ?? ""),
                 },
                 context.signal,

@@ -1,12 +1,12 @@
 export { type AvatarStyle, AvatarStyleProvider, useAvatarStyle } from "./avatar-style.js";
-export { BloubAvatar, type BloubAvatarProps } from "./bloub-avatar.js";
+export { COLORS as BLOUB_COLORS, DEFAULT_COLOR as BLOUB_DEFAULT_COLOR } from "./bloub/skins.js";
 export {
-  BLOUB_SHAPE_IDS,
   BLOUB_EXPRESSION_IDS,
+  BLOUB_SHAPE_IDS,
   DEFAULT_EXPRESSION as BLOUB_DEFAULT_EXPRESSION,
   DEFAULT_SHAPE as BLOUB_DEFAULT_SHAPE,
 } from "./bloub/static.js";
-export { COLORS as BLOUB_COLORS, DEFAULT_COLOR as BLOUB_DEFAULT_COLOR } from "./bloub/skins.js";
+export { BloubAvatar, type BloubAvatarProps } from "./bloub-avatar.js";
 export {
   BotAvatar,
   DEFAULT_GROK_BOT_COLOR,
