@@ -653,7 +653,18 @@ export async function threadSnapshot(
         const plans = await loadCurrentRunPlans(tx, target.threadId);
         const steps = await loadCurrentRunSteps(tx, target.threadId);
         const todos = await loadCurrentRunTodos(tx, target.threadId);
-        const interventions = await loadInterventionViews(tx, target.threadId, messagePage.messages);
+        // The terminal-card window: recent terminal Runs plus the headline run,
+        // capped by the existing 50-row recentTerminals bound.
+        const interventionRunWindow = [
+          ...recentTerminals.map((run) => run.id),
+          ...(currentRun ? [currentRun.id] : []),
+        ];
+        const interventions = await loadInterventionViews(
+          tx,
+          target.threadId,
+          messagePage.messages,
+          interventionRunWindow,
+        );
         return {
           messagePage,
           last,
@@ -750,7 +761,12 @@ export async function threadSnapshot(
     const plans = await loadCurrentRunPlans(tx, target.threadId);
     const steps = await loadCurrentRunSteps(tx, target.threadId);
     const todos = await loadCurrentRunTodos(tx, target.threadId);
-    const interventions = await loadInterventionViews(tx, target.threadId, messagePage.messages);
+    const interventions = await loadInterventionViews(
+      tx,
+      target.threadId,
+      messagePage.messages,
+      [...activeRuns.map((run) => run.id), ...recentTerminals.map((run) => run.id)],
+    );
     return {
       messagePage,
       last,

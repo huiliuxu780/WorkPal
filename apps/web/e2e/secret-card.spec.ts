@@ -78,6 +78,9 @@ test("renders masked secret card and saves without putting the value in chat", a
   await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(secretValue)).toHaveCount(0);
   await expect(composer).not.toHaveValue(secretValue);
+  // The settled card lives in the Intervention Region, not in the message bubble.
+  const region = page.getByRole("region", { name: "需要你处理" });
+  await expect(region.getByTestId("secret-ask-card")).toBeVisible();
 
   await expect
     .poll(
@@ -124,8 +127,20 @@ test("renders masked secret card and saves without putting the value in chat", a
   const history = await rpc(page, "threads/messages", { botId });
   expect(JSON.stringify(history)).not.toContain(secretValue);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(card.getByText("Saved", { exact: true })).toBeVisible();
-  await expect(card.locator("input")).toHaveCount(0);
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  const reloadedRegion = page.getByRole("region", { name: "需要你处理" });
+  const reloadedCard = reloadedRegion.getByTestId("secret-ask-card");
+  await expect(reloadedCard).toBeVisible({ timeout: 15_000 });
+  await expect(reloadedCard.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(reloadedCard.locator("input")).toHaveCount(0);
+  // Exactly one card in the transcript: the bubble renders no second AskCard.
+  await expect(page.getByTestId("secret-ask-card")).toHaveCount(1);
   await expect(page.getByText(secretValue)).toHaveCount(0);
+  const clientState = await page.evaluate(() =>
+    JSON.stringify({ ...window.localStorage, ...window.sessionStorage }),
+  );
+  expect(clientState).not.toContain(secretValue);
+  const snapshot = await rpc<{ interventions?: unknown[] }>(page, "threads/get", { botId });
+  expect(JSON.stringify(snapshot)).not.toContain(secretValue);
   await captureScreenshot(page, testInfo, "secret-card-saved");
 });

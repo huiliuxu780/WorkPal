@@ -4914,6 +4914,19 @@ const Transcript = memo(function Transcript({
       get(anchor, item.runId).activity.push(item);
       runAnchor.set(item.runId, anchor);
     }
+    // Every Intervention — pending or restored terminal — owns a shell so its
+    // card keeps its Execution Shell anchor after a refresh, even when the Run
+    // is no longer active. Runs before the active-run loop so the ask message
+    // wins over "__tail" and the card does not jump when the Run resumes.
+    for (const view of shownInterventions ?? []) {
+      if (runAnchor.has(view.runId)) continue;
+      const lastBot = [...messages]
+        .reverse()
+        .find((message) => message.runId === view.runId && message.role === "bot");
+      const anchor = messageById.has(view.messageId) ? view.messageId : lastBot?.id ?? "__tail";
+      get(anchor, view.runId);
+      runAnchor.set(view.runId, anchor);
+    }
     for (const run of runs) {
       if (isRunActive(run.status) && !runAnchor.has(run.id)) {
         const waiting = run.status === "waiting_input" || run.status === "waiting_takeover";
@@ -4939,7 +4952,7 @@ const Transcript = memo(function Transcript({
       }
     }
     return positioned;
-  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs]);
+  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs, shownInterventions]);
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
       const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
@@ -4953,6 +4966,22 @@ const Transcript = memo(function Transcript({
           run={run}
           activity={execution.activity}
           pendingInterventionKinds={pendingInterventionKindsForRun(interventions, execution.runId)}
+          interventions={
+            shownInterventions && runInterventions.length > 0 ? (
+              <InterventionRegion
+                interventions={runInterventions}
+                messages={messages}
+                target={artifactTarget}
+                onSettled={(view) =>
+                  setSettledInterventions((current) => [
+                    ...current.filter((item) => item.id !== view.id),
+                    view,
+                  ])
+                }
+                onRefresh={onRefresh}
+              />
+            ) : null
+          }
         >
           {execution.plan ? <RunPlanDisclosure plan={execution.plan} live={live} /> : null}
           {execution.steps ? <RunStepsDisclosure steps={execution.steps} live={live} /> : null}
@@ -4963,20 +4992,6 @@ const Transcript = memo(function Transcript({
               items={execution.activity}
               showAvatars={showActivityAvatars}
               botColors={activityBotColors}
-            />
-          ) : null}
-          {shownInterventions ? (
-            <InterventionRegion
-              interventions={runInterventions}
-              messages={messages}
-              target={artifactTarget}
-              onSettled={(view) =>
-                setSettledInterventions((current) => [
-                  ...current.filter((item) => item.id !== view.id),
-                  view,
-                ])
-              }
-              onRefresh={onRefresh}
             />
           ) : null}
         </ExecutionShell>

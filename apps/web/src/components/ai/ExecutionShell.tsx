@@ -35,12 +35,19 @@ export function ExecutionShell({
   run,
   activity,
   pendingInterventionKinds,
+  interventions,
   children,
 }: {
   run: Run | null;
   activity: readonly ActivityItem[];
   /** Present only when the thread snapshot carries an Intervention projection. */
   pendingInterventionKinds?: readonly ("approval" | "input")[];
+  /**
+   * The Intervention Region for this Run. It renders OUTSIDE the collapsible
+   * detail body: a settled card must stay visible in the 「需要你处理」 region
+   * after the Run completes, instead of hiding inside a collapsed shell.
+   */
+  interventions?: ReactNode;
   children: ReactNode;
 }) {
   const status = deriveExecutionStatus(run, activity, { pendingInterventionKinds });
@@ -76,6 +83,11 @@ export function ExecutionShell({
           <ChevronDown aria-hidden="true" size={14} className={`ms-auto shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-200 ${open ? "rotate-180" : ""}`} />
         ) : null}
       </button>
+      {interventions ? (
+        <div data-testid="execution-interventions" className="ms-[7px] ps-3">
+          {interventions}
+        </div>
+      ) : null}
       {hasDetail ? (
         <div
           id={detailsId}

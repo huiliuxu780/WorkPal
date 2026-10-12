@@ -65,13 +65,10 @@ export async function expireWaitingRunInTransaction(
           (block) => block.kind === "ask" && block.status !== "answered" && block.approvalEffectId,
         )
       : null;
-  const effectExpired =
-    pendingApproval?.kind === "ask" && pendingApproval.approvalEffectId
-      ? await tx.externalEffect.updateMany({
-          where: { id: pendingApproval.approvalEffectId, runId: run.id, status: "intended" },
-          data: { status: "expired" },
-        })
-      : { count: 0 };
+  // Lock order is Thread → Run → Intervention → ExternalEffect → Message → Event.
+  // Settle the Intervention (which locks the Run first) before touching the
+  // ExternalEffect, so a concurrent Approval answer and this expiry cannot
+  // take the Run/Effect pair in opposite orders.
   if (run.status === "waiting_input") {
     await expirePendingIntervention(tx, {
       id: run.id,
@@ -81,6 +78,13 @@ export async function expireWaitingRunInTransaction(
       waitStartedAt: run.waitStartedAt,
     });
   }
+  const effectExpired =
+    pendingApproval?.kind === "ask" && pendingApproval.approvalEffectId
+      ? await tx.externalEffect.updateMany({
+          where: { id: pendingApproval.approvalEffectId, runId: run.id, status: "intended" },
+          data: { status: "expired" },
+        })
+      : { count: 0 };
   if (message && blocks?.some((block) => block.kind === "ask" && block.status !== "answered")) {
     const expiredBlocks = blocks.map((block) =>
       block.kind === "ask" && block.status !== "answered"

@@ -281,4 +281,111 @@ describe("InterventionRegion", () => {
       host.remove();
     }
   });
+
+  it("restores a terminal card from the projection when its message is off the page", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const secret = view({
+      id: "secret-off-page",
+      kind: "input",
+      status: "answered",
+      revision: 2,
+      messageId: "message-not-loaded",
+      approval: undefined,
+      input: { mode: "secret", purpose: "api_key" },
+      presentation: {
+        text: "Paste the API key for the import",
+        credential: { name: "import_api", origin: "https://api.example.test", authType: "bearer" },
+      },
+    });
+    try {
+      await act(async () => {
+        root.render(
+          <InterventionRegion
+            interventions={[secret]}
+            messages={[]}
+            target={{ botId: "bot-1" }}
+            onSettled={() => undefined}
+          />,
+        );
+      });
+      const region = host.querySelector('[role="region"]');
+      expect(region?.getAttribute("aria-label")).toBe("需要你处理");
+      expect(region?.querySelector('[data-intervention-id="secret-off-page"]')).not.toBeNull();
+      expect(region?.textContent).toContain("Paste the API key for the import");
+      expect(region?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Saved");
+      expect(host.querySelector('input[type="password"]')).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("shows a restored approval decision and the effect status separately", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const approval = view({
+      id: "approval-off-page",
+      status: "answered",
+      revision: 2,
+      messageId: "message-not-loaded",
+      approval: { effectId: "effect-1", decision: "approved", effectStatus: "executing" },
+      presentation: { text: "Send the email to the client?", detail: "Body: 4 KB attachment" },
+    });
+    try {
+      await act(async () => {
+        root.render(
+          <InterventionRegion
+            interventions={[approval]}
+            messages={[]}
+            target={{ botId: "bot-1" }}
+            onSettled={() => undefined}
+          />,
+        );
+      });
+      const card = host.querySelector('[data-intervention-id="approval-off-page"]');
+      expect(card?.textContent).toContain("Send the email to the client?");
+      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Approved");
+      expect(card?.querySelector('[data-testid="intervention-effect"]')?.textContent).toBe("Effect running");
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("renders a cancelled restored card as inactive with the Cancelled authority", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const cancelled = view({
+      id: "cancelled-1",
+      kind: "input",
+      status: "cancelled",
+      revision: 2,
+      messageId: "message-not-loaded",
+      approval: undefined,
+      input: { mode: "text" },
+      presentation: { text: "Which city?" },
+    });
+    try {
+      await act(async () => {
+        root.render(
+          <InterventionRegion
+            interventions={[cancelled]}
+            messages={[]}
+            target={{ botId: "bot-1" }}
+            onSettled={() => undefined}
+          />,
+        );
+      });
+      const card = host.querySelector('[data-intervention-id="cancelled-1"]');
+      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Cancelled");
+      expect(host.querySelector('input[aria-label="Answer"]')).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
 });

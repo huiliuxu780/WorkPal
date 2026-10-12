@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
-import { createDb, type Prisma, type PrismaClient } from "./client.js";
+import { createDb, Prisma, type PrismaClient } from "./client.js";
 import {
   clearThread,
   commitAnswerRunInput,
@@ -9,6 +9,7 @@ import {
   resolveIntervention,
 } from "./events.js";
 import { createThreadMessage } from "./messages.js";
+import { loadInterventionViews } from "./interventions.js";
 import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
@@ -98,15 +99,15 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     throw new Error(`timed out waiting for a lock held by ${holderPid}`);
   }
 
-  async function runningRun(targetThreadId = threadId) {
+  async function runningRun(targetThreadId = threadId, targetBotId = botId) {
     const task = await prisma.task.create({
-      data: { spaceId: id, userId: id, botId, threadId: targetThreadId, prompt: "Wait", status: "running" },
+      data: { spaceId: id, userId: id, botId: targetBotId, threadId: targetThreadId, prompt: "Wait", status: "running" },
     });
     const run = await prisma.run.create({
       data: {
         spaceId: id,
         userId: id,
-        botId,
+        botId: targetBotId,
         threadId: targetThreadId,
         taskId: task.id,
         status: "running",
@@ -127,11 +128,12 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     attempt: { id: string },
     blocks: Parameters<typeof pauseRunForInput>[1]["blocks"],
     targetThreadId = threadId,
+    targetBotId = botId,
   ) {
     return pauseRunForInput(prisma, {
       spaceId: id,
       threadId: targetThreadId,
-      botId,
+      botId: targetBotId,
       runId: run.id,
       attemptId: attempt.id,
       leaseOwner: "worker",
@@ -779,5 +781,343 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     expect(await prisma.run.findUniqueOrThrow({ where: { id: right.run.id } })).toMatchObject({
       status: "waiting_input",
     });
+  });
+
+  it("persists the sanitized presentation snapshot at creation and never carries the answer", async () => {
+    const credential = {
+      name: "example_login",
+      origin: "https://login.example.test",
+      auth: { type: "login" as const },
+    };
+    const { run, attempt } = await runningRun();
+    expect(
+      await pause(run, attempt, [
+        {
+          kind: "ask",
+          text: "Sign in to continue.",
+          detail: "We need the account password.",
+          status: "pending",
+          input: "secret",
+          purpose: "password",
+          credential,
+        },
+      ]),
+    ).toBe(true);
+    const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
+    expect(row.presentation).toMatchObject({
+      text: "Sign in to continue.",
+      detail: "We need the account password.",
+      credential: { name: "example_login", origin: "https://login.example.test", authType: "login" },
+    });
+    const createdEvent = await prisma.event.findFirstOrThrow({
+      where: { runId: run.id, type: "intervention.created" },
+    });
+    expect(createdEvent.payload).toMatchObject({
+      presentation: { text: "Sign in to continue." },
+    });
+
+    const answer = `sk-present-${randomUUID()}`;
+    expect(
+      await resolveIntervention(
+        prisma,
+        {
+          spaceId: id,
+          threadId,
+          interventionId: row.id,
+          clientSubmissionId: randomUUID(),
+          answeredByUserId: id,
+          answer,
+          username: "someone",
+        },
+        undefined,
+        { store: async () => undefined },
+      ),
+    ).toMatchObject({ outcome: "accepted" });
+    const settled = await prisma.intervention.findFirstOrThrow({ where: { id: row.id } });
+    expect(JSON.stringify(settled)).not.toContain(answer);
+    expect(JSON.stringify(settled)).not.toContain("someone");
+    const resolvedEvent = await prisma.event.findFirstOrThrow({
+      where: { runId: run.id, type: "intervention.resolved" },
+    });
+    expect(JSON.stringify(resolvedEvent.payload)).not.toContain(answer);
+
+    const approvalRun = await runningRun();
+    const approvalEffect = await prisma.externalEffect.create({
+      data: {
+        spaceId: id,
+        runId: approvalRun.run.id,
+        kind: "present-approval",
+        idempotencyKey: `present-${approvalRun.run.id}`,
+        status: "intended",
+        request: { token: answer },
+      },
+    });
+    expect(
+      await pause(approvalRun.run, approvalRun.attempt, [
+        {
+          kind: "ask",
+          text: "Send the weekly report?",
+          detail: "Recipient: team@example.test",
+          status: "pending",
+          approvalEffectId: approvalEffect.id,
+          actions: [
+            { id: "allow", label: "Allow once" },
+            { id: "deny", label: "Deny" },
+          ],
+        },
+      ]),
+    ).toBe(true);
+    const approvalRow = await prisma.intervention.findFirstOrThrow({ where: { runId: approvalRun.run.id } });
+    expect(approvalRow.presentation).toMatchObject({
+      text: "Send the weekly report?",
+      detail: "Recipient: team@example.test",
+    });
+    expect(JSON.stringify(approvalRow)).not.toContain(answer);
+  });
+
+  it("projects pending rows and windowed terminal rows without their messages", async () => {
+    const pendingRun = await runningRun();
+    expect(await pause(pendingRun.run, pendingRun.attempt, [{ kind: "ask", text: "Hold?", status: "pending" }])).toBe(true);
+    const settledRun = await runningRun();
+    expect(await pause(settledRun.run, settledRun.attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
+    const settledRow = await prisma.intervention.findFirstOrThrow({ where: { runId: settledRun.run.id } });
+    expect(
+      await resolveIntervention(prisma, {
+        spaceId: id,
+        threadId,
+        interventionId: settledRow.id,
+        clientSubmissionId: randomUUID(),
+        answeredByUserId: id,
+        answer: "Paris",
+      }),
+    ).toMatchObject({ outcome: "accepted" });
+
+    const pendingRow = await prisma.intervention.findFirstOrThrow({ where: { runId: pendingRun.run.id } });
+    const noWindow = await prisma.$transaction((tx) => loadInterventionViews(tx, threadId, []));
+    const noWindowIds = new Set(noWindow.map((view) => view.id));
+    expect(noWindowIds.has(pendingRow.id)).toBe(true);
+    expect(noWindowIds.has(settledRow.id)).toBe(false);
+    expect(noWindow.every((view) => view.status === "pending")).toBe(true);
+    const pendingView = noWindow.find((view) => view.id === pendingRow.id);
+    expect(pendingView?.presentation?.text).toBe("Hold?");
+
+    const inRunWindow = await prisma.$transaction((tx) =>
+      loadInterventionViews(tx, threadId, [], [settledRun.run.id]),
+    );
+    const terminalView = inRunWindow.find((view) => view.id === settledRow.id);
+    expect(terminalView).toMatchObject({ status: "answered", kind: "input" });
+    expect(terminalView?.presentation?.text).toBe("City?");
+
+    const inPageWindow = await prisma.$transaction((tx) =>
+      loadInterventionViews(tx, threadId, [{ id: settledRow.messageId, blocks: [] }]),
+    );
+    expect(inPageWindow.map((view) => view.id)).toContain(settledRow.id);
+
+    const unrelated = await runningRun();
+    const missedWindow = await prisma.$transaction((tx) =>
+      loadInterventionViews(tx, threadId, [], [unrelated.run.id]),
+    );
+    expect(missedWindow.map((view) => view.id)).not.toContain(settledRow.id);
+  });
+
+  it("backfills the presentation snapshot on the first terminalization of a row without one", async () => {
+    const { run, attempt } = await runningRun();
+    expect(await pause(run, attempt, [{ kind: "ask", text: "Legacy row?", status: "pending" }])).toBe(true);
+    const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
+    await prisma.intervention.update({
+      where: { id: row.id },
+      data: { presentation: Prisma.DbNull },
+    });
+    await prisma.$transaction((tx) =>
+      cancelRunsInTransaction(tx, [{ id: run.id, taskId: run.taskId }], new Date()),
+    );
+    const settled = await prisma.intervention.findFirstOrThrow({ where: { id: row.id } });
+    expect(settled.presentation).toMatchObject({ text: "Legacy row?" });
+    const resolvedEvent = await prisma.event.findFirstOrThrow({
+      where: { runId: run.id, type: "intervention.resolved" },
+    });
+    expect(resolvedEvent.payload).toMatchObject({ presentation: { text: "Legacy row?" } });
+  });
+
+  async function raceOutcome<T>(work: Promise<T>): Promise<{ value: T } | { error: string }> {
+    try {
+      return { value: await work };
+    } catch (error) {
+      return { error: error instanceof Error ? `${error.name}: ${error.message}` : String(error) };
+    }
+  }
+
+  function expectNoDeadlock(results: Array<{ value?: unknown; error?: string }>, round: number): void {
+    for (const result of results) {
+      if (result.error) {
+        throw new Error(`round ${round}: ${result.error}`);
+      }
+    }
+  }
+
+  it("deadlock-free: resolveIntervention vs teaching-style cancel (no manual Thread lock)", async () => {
+    // The holder is the production entry exactly as skills.start calls it:
+    // cancelRunsInTransaction inside a bare transaction with no prior Thread lock.
+    for (let round = 0; round < 8; round++) {
+      const { run, attempt } = await runningRun();
+      expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
+      const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
+      const results = await Promise.all([
+        raceOutcome(
+          side.$transaction(
+            (tx) => cancelRunsInTransaction(tx, [{ id: run.id, taskId: run.taskId }], new Date()),
+            TX,
+          ),
+        ),
+        raceOutcome(
+          resolveIntervention(prisma, {
+            spaceId: id,
+            threadId,
+            interventionId: row.id,
+            clientSubmissionId: randomUUID(),
+            answeredByUserId: id,
+            answer: "Paris",
+          }),
+        ),
+      ]);
+      expectNoDeadlock(results, round);
+      expect(await resolvedCount(run.id)).toBe(1);
+      const settled = await prisma.intervention.findFirstOrThrow({ where: { id: row.id } });
+      const settledRun = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+      expect(["answered", "cancelled"]).toContain(settled.status);
+      // A resumed answer can still be cancelled by the same teaching sweep afterwards.
+      if (settled.status === "cancelled") expect(settledRun.status).toBe("cancelled");
+      else expect(["queued", "running", "completed", "cancelled"]).toContain(settledRun.status);
+    }
+  });
+
+  it("deadlock-free: resolveIntervention vs cross-thread bot-delete-style cancel", async () => {
+    // A Thread holds exactly one bot; a cross-thread bot sweep needs a second
+    // bot, mirroring the shape of destroyBot's active-run query.
+    const otherBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Intervention bot 2", color: "test" },
+    });
+    const secondThread = await prisma.thread.create({ data: { spaceId: id, userId: id, botId: otherBot.id } });
+    for (let round = 0; round < 8; round++) {
+      const first = await runningRun(threadId);
+      const second = await runningRun(secondThread.id, otherBot.id);
+      expect(await pause(first.run, first.attempt, [{ kind: "ask", text: "First?", status: "pending" }])).toBe(true);
+      expect(
+        await pause(
+          second.run,
+          second.attempt,
+          [{ kind: "ask", text: "Second?", status: "pending" }],
+          secondThread.id,
+          otherBot.id,
+        ),
+      ).toBe(true);
+      const secondRow = await prisma.intervention.findFirstOrThrow({ where: { runId: second.run.id } });
+      // The entry shape of destroyBot's first transaction: cancel runs across
+      // several Threads in one transaction, in either input order, while an
+      // answer races one of the rows. Sorted Thread locks must serialize, not deadlock.
+      const cancelFirst = [
+        { id: first.run.id, taskId: first.task.id },
+        { id: second.run.id, taskId: second.task.id },
+      ];
+      const cancelSecond = [...cancelFirst].reverse();
+      const results = await Promise.all([
+        raceOutcome(
+          side.$transaction(
+            (tx) => cancelRunsInTransaction(tx, round % 2 === 0 ? cancelFirst : cancelSecond, new Date()),
+            TX,
+          ),
+        ),
+        raceOutcome(
+          prisma.$transaction(
+            (tx) => cancelRunsInTransaction(tx, round % 2 === 0 ? cancelSecond : cancelFirst, new Date()),
+            TX,
+          ),
+        ),
+        raceOutcome(
+          resolveIntervention(prisma, {
+            spaceId: id,
+            threadId: secondThread.id,
+            interventionId: secondRow.id,
+            clientSubmissionId: randomUUID(),
+            answeredByUserId: id,
+            answer: "Both",
+          }),
+        ),
+      ]);
+      expectNoDeadlock(results, round);
+      expect(await resolvedCount(first.run.id)).toBe(1);
+      expect(await resolvedCount(second.run.id)).toBe(1);
+      for (const rowId of [secondRow.id]) {
+        const settled = await prisma.intervention.findUniqueOrThrow({ where: { id: rowId } });
+        expect(["answered", "cancelled"]).toContain(settled.status);
+      }
+    }
+  });
+
+  it("deadlock-free: wait timeout vs approval answer, intervention settles before the effect", async () => {
+    for (let round = 0; round < 8; round++) {
+      const { run, attempt } = await runningRun();
+      const effect = await prisma.externalEffect.create({
+        data: {
+          spaceId: id,
+          runId: run.id,
+          kind: "timeout-race",
+          idempotencyKey: `timeout-race-${run.id}`,
+          status: "intended",
+          request: {},
+        },
+      });
+      expect(
+        await pause(run, attempt, [
+          {
+            kind: "ask",
+            text: "Approve send?",
+            status: "pending",
+            approvalEffectId: effect.id,
+            actions: [
+              { id: "allow", label: "Allow once" },
+              { id: "deny", label: "Deny" },
+            ],
+          },
+        ]),
+      ).toBe(true);
+      const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
+      const old = new Date(Date.now() - WAIT_TIMEOUT_MS.input - 60_000);
+      await prisma.run.update({ where: { id: run.id }, data: { waitStartedAt: old } });
+      const results = await Promise.all([
+        raceOutcome(expireWaitingRuns(prisma)),
+        raceOutcome(
+          resolveIntervention(prisma, {
+            spaceId: id,
+            threadId,
+            interventionId: row.id,
+            clientSubmissionId: randomUUID(),
+            answeredByUserId: id,
+            answer: "allow",
+          }),
+        ),
+      ]);
+      expectNoDeadlock(results, round);
+      expect(await resolvedCount(run.id)).toBe(1);
+      const settled = await prisma.intervention.findFirstOrThrow({ where: { id: row.id } });
+      const settledEffect = await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } });
+      if (settled.status === "expired") {
+        // Document order: the Intervention terminal event is appended before the
+        // effect expiry's approval.resolved event.
+        expect(["expired", "intended", "approved", "executing", "completed", "uncertain"]).toContain(
+          settledEffect.status,
+        );
+        const resolved = await prisma.event.findFirstOrThrow({
+          where: { runId: run.id, type: "intervention.resolved" },
+        });
+        const approvalResolved = await prisma.event.findFirst({
+          where: { runId: run.id, type: "approval.resolved" },
+        });
+        if (approvalResolved) expect(resolved.seq).toBeLessThan(approvalResolved.seq);
+      } else {
+        expect(settled.status).toBe("answered");
+        expect(["approved", "executing", "completed", "uncertain"]).toContain(settledEffect.status);
+      }
+    }
   });
 });

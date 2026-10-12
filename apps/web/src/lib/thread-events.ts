@@ -730,6 +730,7 @@ function reduceThreadSnapshotBase(
       requestingActor: payload.actor,
       ...(payload.input ? { input: payload.input } : {}),
       ...(payload.approval ? { approval: payload.approval } : {}),
+      ...(payload.presentation ? { presentation: payload.presentation } : {}),
     };
     const current = prev.interventions?.find((item) => item.id === view.id);
     if (current && current.revision >= view.revision) return { ...prev, cursor: event.seq };

@@ -923,6 +923,7 @@ model Intervention {
   inputMode        String?
   inputPurpose     String?
   inputActions     Json?
+  presentation     Json?
   effectId         String?
   decision         String?
   createdAt        DateTime  @default(now())

@@ -1933,13 +1933,19 @@ describe("activity projection reduction (Phase 4)", () => {
       createdAt: "2026-10-12T00:00:00.000Z",
       actor: { botId: "bot-1" },
       input: { mode: "text" },
+      presentation: { text: "Which city?" },
     };
     const created = reduceThreadSnapshot(
       snapshot([]),
       event({ type: "intervention.created", seq: 4, payload }),
     );
     expect(created?.interventions).toEqual([
-      expect.objectContaining({ id: "intervention-1", status: "pending", threadId: "thread-1" }),
+      expect.objectContaining({
+        id: "intervention-1",
+        status: "pending",
+        threadId: "thread-1",
+        presentation: { text: "Which city?" },
+      }),
     ]);
     const resolved = reduceThreadSnapshot(
       created,

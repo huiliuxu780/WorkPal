@@ -86,7 +86,19 @@ test("saves a website login from a username and password card without echoing ei
   expect(history).not.toContain(username);
   expect(history).not.toContain(password);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(card.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  const region = page.getByRole("region", { name: "需要你处理" });
+  const reloadedCard = region.getByTestId("secret-ask-card");
+  await expect(reloadedCard).toBeVisible({ timeout: 15_000 });
+  await expect(reloadedCard.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(reloadedCard.locator("input")).toHaveCount(0);
+  // Exactly one card in the transcript: the bubble renders no second AskCard.
+  await expect(page.getByTestId("secret-ask-card")).toHaveCount(1);
   await expect(page.getByText(username)).toHaveCount(0);
+  await expect(page.getByText(password)).toHaveCount(0);
+  const snapshot = await rpc<{ interventions?: unknown[] }>(page, "threads/get", { botId });
+  const snapshotJson = JSON.stringify(snapshot);
+  expect(snapshotJson).not.toContain(username);
+  expect(snapshotJson).not.toContain(password);
   await captureScreenshot(page, testInfo, "login-card-saved");
 });

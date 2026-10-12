@@ -14,6 +14,20 @@ function authorityLabel(view: InterventionView): string {
   return t`Answered`;
 }
 
+/** Approval effect execution reads separately from the user's decision. */
+function effectStatusLabel(status: string): string {
+  if (status === "completed") return t`Effect completed`;
+  if (status === "approved") return t`Effect approved`;
+  if (status === "executing") return t`Effect running`;
+  if (status === "failed") return t`Effect failed`;
+  if (status === "denied") return t`Effect denied`;
+  if (status === "expired") return t`Effect expired`;
+  if (status === "intended") return t`Effect pending`;
+  if (status === "uncertain" || status === "ambiguous") return t`Effect result unknown`;
+  if (status === "reconciled") return t`Effect reconciled`;
+  return t`Effect status unavailable`;
+}
+
 function presentBlock(block: AskBlock, view: InterventionView, localAnswer: string | null): AskBlock {
   if (view.status === "pending") return { ...block, interventionId: view.id, status: "pending" };
   if (view.status !== "answered") return { ...block, interventionId: view.id, status: "expired" };
@@ -27,11 +41,36 @@ function presentBlock(block: AskBlock, view: InterventionView, localAnswer: stri
   };
 }
 
+/**
+ * Build the card entirely from the server projection. `presentation` is the
+ * persisted whitelist snapshot, so a card stays complete even when its source
+ * message is not in the current page.
+ */
 function blockFromView(view: InterventionView): AskBlock {
   const actions = view.approval?.actions ?? view.input?.actions;
+  const credential = view.presentation?.credential;
   return {
     kind: "ask",
-    text: "",
+    text: view.presentation?.text ?? "",
+    ...(view.presentation?.detail ? { detail: view.presentation.detail } : {}),
+    ...(credential
+      ? {
+          // AskCard reads only `origin` and the login flag from a credential.
+          // The header/basic identities never leave the server-side whitelist.
+          credential: {
+            name: credential.name,
+            origin: credential.origin,
+            auth:
+              credential.authType === "login"
+                ? { type: "login" }
+                : credential.authType === "basic"
+                  ? { type: "basic", username: "" }
+                  : credential.authType === "header"
+                    ? { type: "header", name: "authorization" }
+                    : { type: "bearer" },
+          },
+        }
+      : {}),
     interventionId: view.id,
     ...(view.approval
       ? { approvalEffectId: view.approval.effectId }
@@ -40,7 +79,7 @@ function blockFromView(view: InterventionView): AskBlock {
       ? { input: view.input.mode }
       : {}),
     ...(view.input?.purpose ? { purpose: view.input.purpose } : {}),
-    status: "pending",
+    status: view.status === "answered" ? "answered" : view.status === "pending" ? "pending" : "expired",
     ...(actions ? { actions: actions.map((action) => ({ id: action.id, label: action.label })) } : {}),
   };
 }
@@ -48,12 +87,15 @@ function blockFromView(view: InterventionView): AskBlock {
 function InterventionCard({
   view,
   block,
+  sourceless,
   target,
   onSettled,
   onRefresh,
 }: {
   view: InterventionView;
   block: AskBlock;
+  /** The card is rebuilt from the projection; its source message is not loaded. */
+  sourceless: boolean;
   target: ArtifactTarget;
   onSettled: (view: InterventionView) => void;
   onRefresh?: () => Promise<void>;
@@ -65,6 +107,7 @@ function InterventionCard({
   const [announce, setAnnounce] = useState(false);
   const shown = presentBlock(block, view, announce ? null : localAnswer);
   const secret = shown.input === "secret";
+  const terminal = view.status !== "pending";
 
   useEffect(() => {
     if (!announce) return;
@@ -85,6 +128,12 @@ function InterventionCard({
     await onRefresh?.().catch(() => undefined);
   }
 
+  // A card restored from the server projection has no local answer echo; the
+  // authoritative line states the outcome. `announce` keeps the existing
+  // already_handled focus behavior.
+  const showAuthority = announce || (sourceless && view.status !== "pending");
+  const effectTerminal =
+    view.kind === "approval" && view.status !== "pending" && view.approval;
   return (
     <div data-intervention-id={view.id} data-kind={view.kind} data-mount={mountId}>
       <AskCard
@@ -94,15 +143,20 @@ function InterventionCard({
         restoreFocus={!announce}
         onAnswer={onAnswer}
       />
-      {announce ? (
+      {showAuthority ? (
         <p
-          ref={statusRef}
+          ref={announce ? statusRef : undefined}
           tabIndex={-1}
           role="status"
           data-testid="intervention-authority"
           className="mt-2 text-[13.5px] font-medium text-foreground focus:outline-none"
         >
           {authorityLabel(view)}
+        </p>
+      ) : null}
+      {effectTerminal ? (
+        <p role="status" data-testid="intervention-effect" className="mt-1 text-[13px] text-muted-foreground">
+          {effectStatusLabel(view.approval!.effectStatus)}
         </p>
       ) : null}
     </div>
@@ -139,6 +193,7 @@ export function InterventionRegion({
         key={view.id}
         view={view}
         block={block}
+        sourceless={!(ask && ask.kind === "ask")}
         target={target}
         onSettled={onSettled}
         onRefresh={onRefresh}

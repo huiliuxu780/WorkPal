@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  type InterventionPresentation,
+  InterventionPresentationSchema,
   type InterventionView,
   legacyInterventionId,
   type MessageBlock,
   MessageBlock as MessageBlockSchema,
+  presentationFromAskBlock,
 } from "@rakazo/contracts";
 import { ACTIVE_RUN_STATUSES, isApprovalAskBlock, isSecretAskBlock } from "@rakazo/core";
 import type { Prisma } from "./client.js";
@@ -42,6 +45,7 @@ export type InterventionRecord = {
   inputMode: string | null;
   inputPurpose: string | null;
   inputActions: unknown;
+  presentation: unknown;
   effectId: string | null;
   decision: string | null;
   createdAt: Date;
@@ -122,6 +126,8 @@ export function interventionView(
   row: InterventionRecord,
   effectStatus?: string,
 ): InterventionView {
+  const parsedPresentation = InterventionPresentationSchema.safeParse(row.presentation);
+  const presentation = parsedPresentation.success ? parsedPresentation.data : undefined;
   const actions = actionList(row.inputActions);
   const decision = row.decision === "approved" || row.decision === "denied" ? row.decision : undefined;
   const mode =
@@ -176,6 +182,7 @@ export function interventionView(
     },
     ...(input ? { input } : {}),
     ...(approval ? { approval } : {}),
+    ...(presentation ? { presentation } : {}),
   };
 }
 
@@ -196,6 +203,7 @@ function eventPayload(view: InterventionView): Record<string, unknown> {
     actor: view.requestingActor,
     ...(view.input ? { input: view.input } : {}),
     ...(view.approval ? { approval: view.approval } : {}),
+    ...(view.presentation ? { presentation: view.presentation } : {}),
   };
 }
 
@@ -228,6 +236,22 @@ async function lockRun(tx: InterventionTx, runId: string) {
 
 async function lockIntervention(tx: InterventionTx, interventionId: string) {
   await tx.$queryRaw`SELECT id FROM interventions WHERE id = ${interventionId} FOR UPDATE`;
+}
+
+/**
+ * Lock every Thread of the given Runs (sorted by id) before any Run or
+ * Intervention row is touched. Terminalizing an Intervention appends an event,
+ * which writes the Thread row; without this pre-lock a cancel that starts from
+ * the Run would take Run → Thread while every answer takes Thread → Run —
+ * the deadlock PostgreSQL resolves by aborting one transaction with 40P01.
+ * Every path that settles an Intervention funnels through these helpers, so
+ * no caller has to remember the order.
+ */
+async function lockThreadsForRuns(tx: InterventionTx, runs: readonly { threadId: string }[]) {
+  const threadIds = [...new Set(runs.map((run) => run.threadId))].sort();
+  for (const threadId of threadIds) {
+    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${threadId} FOR UPDATE`;
+  }
 }
 
 export async function insertPausedIntervention(
@@ -265,6 +289,7 @@ export async function insertPausedIntervention(
   const id = randomUUID();
   const mode = inputModeOf(ask);
   const actions = whitelistedActions(ask.actions);
+  const presentation = presentationFromAskBlock(ask);
   const createdAt = input.waitStartedAt;
   await store.create({
     data: {
@@ -283,6 +308,7 @@ export async function insertPausedIntervention(
       inputMode: mode,
       inputPurpose: mode === "secret" ? (ask.purpose ?? null) : null,
       ...(actions ? { inputActions: actions } : {}),
+      presentation,
       effectId,
       createdAt,
     },
@@ -314,12 +340,35 @@ export async function emitInterventionCreated(
   return { threadId: event.threadId, seq: event.seq };
 }
 
+/**
+ * Rows created before the presentation column carried none. On the first
+ * terminalization, synthesize the sanitized snapshot from the message's
+ * pending Ask block so the terminal card survives a later refresh.
+ */
+async function backfillPresentation(
+  tx: InterventionTx,
+  row: InterventionRecord,
+): Promise<InterventionPresentation | undefined> {
+  const parsed = InterventionPresentationSchema.safeParse(row.presentation);
+  if (parsed.success) return parsed.data;
+  const message = await tx.message.findUnique({
+    where: { id: row.messageId },
+    select: { blocks: true },
+  });
+  for (const ask of pendingAskBlocks(message?.blocks)) {
+    if (ask.interventionId && ask.interventionId !== row.id) continue;
+    return presentationFromAskBlock(ask);
+  }
+  return undefined;
+}
+
 async function transitionPending(
   tx: InterventionTx,
   row: InterventionRecord,
   status: "answered" | "expired" | "cancelled",
   patch: { resolvedByUserId?: string; decision?: "approved" | "denied" },
 ): Promise<InterventionRecord | null> {
+  const presentation = await backfillPresentation(tx, row);
   const changed = await tx.intervention.updateManyAndReturn({
     where: { id: row.id, status: "pending" },
     data: {
@@ -327,6 +376,7 @@ async function transitionPending(
       revision: { increment: 1 },
       pendingRunKey: null,
       resolvedAt: new Date(),
+      ...(presentation ? { presentation } : {}),
       ...(patch.resolvedByUserId ? { resolvedByUserId: patch.resolvedByUserId } : {}),
       ...(patch.decision ? { decision: patch.decision } : {}),
     },
@@ -374,6 +424,7 @@ async function createTerminalLegacy(
 ): Promise<InterventionRecord> {
   const mode = inputModeOf(input.ask);
   const actions = whitelistedActions(input.ask.actions);
+  const presentation = presentationFromAskBlock(input.ask);
   const now = new Date();
   const row = await tx.intervention.create({
     data: {
@@ -396,6 +447,7 @@ async function createTerminalLegacy(
       inputMode: mode,
       inputPurpose: mode === "secret" ? (input.ask.purpose ?? null) : null,
       ...(actions ? { inputActions: actions } : {}),
+      presentation,
       effectId: input.ask.approvalEffectId,
       decision: input.decision,
       createdAt: input.run.waitStartedAt ?? now,
@@ -448,6 +500,7 @@ export async function settleAnsweredIntervention(
   },
 ): Promise<void> {
   if (!interventionStore(tx)) return;
+  await lockThreadsForRuns(tx, [input.run]);
   const id = input.ask.interventionId ?? legacyInterventionId(input.messageId);
   const existing = await tx.intervention.findUnique({ where: { id } });
   if (existing && existing.status !== "pending") return;
@@ -490,6 +543,7 @@ export async function cancelPendingInterventions(
     },
     select: { id: true, spaceId: true, threadId: true, botId: true, waitStartedAt: true },
   });
+  await lockThreadsForRuns(tx, runs);
   const ordered = [...runs].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
   for (const run of ordered) {
     await lockRun(tx, run.id);
@@ -509,6 +563,7 @@ export async function expirePendingIntervention(
   run: { id: string; spaceId: string; threadId: string; botId: string; waitStartedAt: Date | null },
 ): Promise<void> {
   if (!interventionStore(tx)) return;
+  await lockThreadsForRuns(tx, [run]);
   await lockRun(tx, run.id);
   const pending = await tx.intervention.findMany({ where: { runId: run.id, status: "pending" } });
   if (pending.length === 0) {
@@ -575,14 +630,23 @@ export async function findOrdinaryTextAsks(
   return found;
 }
 
+/**
+ * Authoritative Intervention projection for a thread snapshot.
+ * Returns every pending Intervention of the thread, plus terminal rows in a
+ * bounded window: runs inside `recentRunIds` (the snapshot's recent-terminal
+ * Run list) and rows whose source message is on the current message page.
+ * Never loads the whole thread history. Pending asks that predate the table
+ * are synthesized from the Ask blocks of the current page without backfill.
+ */
 export async function loadInterventionViews(
   tx: InterventionTx,
   threadId: string,
   messages: readonly { id: string; runId?: string | null; blocks: unknown }[],
+  recentRunIds: readonly string[] = [],
 ): Promise<InterventionView[]> {
   const store = interventionStore(tx);
   const rows = store
-    ? await store.findMany({ where: { threadId, status: "pending" }, orderBy: { createdAt: "asc" } })
+    ? await loadSnapshotRows(tx, store, threadId, messages, recentRunIds)
     : [];
   const effectIds = rows.map((row) => row.effectId).filter((id): id is string => Boolean(id));
   const effects =
@@ -648,11 +712,41 @@ export async function loadInterventionViews(
               },
             }
           : {}),
+        presentation: presentationFromAskBlock(ask),
       });
       covered.add(message.id);
     }
   }
   return views;
+}
+
+/**
+ * Pending rows plus the bounded terminal window (recent Runs of the snapshot
+ * or the current message page). Never an unbounded thread-history read.
+ */
+async function loadSnapshotRows(
+  tx: InterventionTx,
+  store: NonNullable<ReturnType<typeof interventionStore>>,
+  threadId: string,
+  messages: readonly { id: string }[],
+  recentRunIds: readonly string[],
+): Promise<InterventionRecord[]> {
+  const pending = await store.findMany({
+    where: { threadId, status: "pending" },
+    orderBy: { createdAt: "asc" },
+  });
+  const messageIds = messages.map((message) => message.id);
+  const or: Prisma.InterventionWhereInput["OR"] = [];
+  if (recentRunIds.length > 0) or.push({ runId: { in: [...recentRunIds] } });
+  if (messageIds.length > 0) or.push({ messageId: { in: messageIds } });
+  if (or.length === 0) return [...pending];
+  const terminal = await store.findMany({
+    where: { threadId, status: { not: "pending" }, OR: or },
+    orderBy: { createdAt: "asc" },
+  });
+  return [...pending, ...terminal].sort((left, right) =>
+    left.createdAt < right.createdAt ? -1 : left.createdAt > right.createdAt ? 1 : 0,
+  );
 }
 
 export type ResolveInterventionOutcome =
