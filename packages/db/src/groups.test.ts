@@ -249,6 +249,7 @@ describe("archiveGroup", () => {
 
     await expect(repos.archiveGroup(actor, "group-1")).resolves.toEqual({
       cancelledRunIds: ["run-1", "run-legacy"],
+      backgroundParentRunIds: [],
       computers: [
         {
           id: "computer-1",
@@ -344,6 +345,7 @@ describe("archiveGroup", () => {
     const archived = await repos.archiveGroup(actor, "group-1");
     expect(archived).toEqual({
       cancelledRunIds: ["run-1", "run-stale"],
+      backgroundParentRunIds: [],
       computers: [
         {
           id: "computer-1",

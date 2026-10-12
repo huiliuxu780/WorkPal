@@ -11,6 +11,9 @@ import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
 import { cancelRunsInTransaction, type CancelledRunRow } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import {
+  backgroundParentRunIdsExcept,
+  findLiveBackgroundTasks,
+  markLiveBackgroundTasksCancelling,
   recordBackgroundRevocations,
   recordRunAbortRevocations,
 } from "./execution-revocations.js";
@@ -235,6 +238,7 @@ async function snapshotRunTeardownTargets(
 }
 
 async function resumeArchivedGroupTeardown(tx: Prisma.TransactionClient, threadId: string) {
+  const backgroundTasks = await markLiveBackgroundTasksCancelling(tx, { threadId });
   const cancelled = await tx.run.findMany({
     where: { threadId, status: "cancelled" },
     select: { id: true },
@@ -246,8 +250,12 @@ async function resumeArchivedGroupTeardown(tx: Prisma.TransactionClient, threadI
     new Date(0),
     true,
   );
-  if (leasedRunIds.length === 0) throw new IsolationError();
-  return { cancelledRunIds: leasedRunIds, computers: targets };
+  if (leasedRunIds.length === 0 && backgroundTasks.length === 0) throw new IsolationError();
+  return {
+    cancelledRunIds: leasedRunIds,
+    computers: targets,
+    backgroundParentRunIds: backgroundParentRunIdsExcept(backgroundTasks, leasedRunIds),
+  };
 }
 
 export function createGroupRepos(prisma: PrismaClient) {
@@ -375,7 +383,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         pinned?: boolean;
         sectionId?: string | null;
       },
-    ): Promise<{ group: Group; cancelledRunIds: string[] }> {
+    ): Promise<{ group: Group; cancelledRunIds: string[]; backgroundParentRunIds: string[] }> {
       const members = input.botIds ? await assertOwnedBots(prisma, actor, input.botIds) : undefined;
       const updated = await prisma.$transaction(async (tx) => {
         await lockOwnedGroup(tx, actor, input.groupId);
@@ -420,6 +428,12 @@ export function createGroupRepos(prisma: PrismaClient) {
           : [];
         const cancelledRuns = activeRuns.length
           ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+          : [];
+        const backgroundTasks = removedBotIds.length
+          ? await markLiveBackgroundTasksCancelling(tx, {
+              threadId: current.thread.id,
+              botId: { in: removedBotIds },
+            })
           : [];
         if (cancelledRuns.length) {
           await expireComputerExecutionLeases(tx, {
@@ -466,16 +480,21 @@ export function createGroupRepos(prisma: PrismaClient) {
           .then((group) => ({
             group,
             cancelledRunIds: cancelledRuns.map((run) => run.id),
+            backgroundParentRunIds: backgroundParentRunIdsExcept(
+              backgroundTasks,
+              cancelledRuns.map((run) => run.id),
+            ),
           }));
       });
       if (!updated.group.thread) throw new IsolationError();
       const descendants = await cancelChildrenOfCancelledRuns(prisma, updated.cancelledRunIds);
+      const descendantIds = descendants.map((run) => run.id);
       return {
         group: mapGroup(updated.group as GroupRecord),
-        cancelledRunIds: [
-          ...updated.cancelledRunIds,
-          ...descendants.map((run) => run.id),
-        ],
+        cancelledRunIds: [...updated.cancelledRunIds, ...descendantIds],
+        backgroundParentRunIds: updated.backgroundParentRunIds.filter(
+          (runId) => !descendantIds.includes(runId),
+        ),
       };
     },
 
@@ -509,6 +528,9 @@ export function createGroupRepos(prisma: PrismaClient) {
         const cancelledRuns = runIds.length
           ? await cancelRunsInTransaction(tx, activeRuns, now)
           : [];
+        const backgroundTasks = await markLiveBackgroundTasksCancelling(tx, {
+          threadId: current.thread.id,
+        });
         if (cancelledRuns.length) {
           await appendCancelledRunEvents(tx, cancelledRuns, "group_archived");
           await tx.event.deleteMany({
@@ -525,12 +547,20 @@ export function createGroupRepos(prisma: PrismaClient) {
         return {
           cancelledRunIds: cancelledRuns.map((run) => run.id),
           computers: targets,
+          backgroundParentRunIds: backgroundParentRunIdsExcept(
+            backgroundTasks,
+            cancelledRuns.map((run) => run.id),
+          ),
         };
       });
       const descendants = await cancelChildrenOfCancelledRuns(prisma, archived.cancelledRunIds);
+      const descendantIds = descendants.map((run) => run.id);
       return {
-        cancelledRunIds: [...archived.cancelledRunIds, ...descendants.map((run) => run.id)],
+        cancelledRunIds: [...archived.cancelledRunIds, ...descendantIds],
         computers: archived.computers,
+        backgroundParentRunIds: archived.backgroundParentRunIds.filter(
+          (runId) => !descendantIds.includes(runId),
+        ),
       };
     },
 
@@ -577,21 +607,10 @@ export function createGroupRepos(prisma: PrismaClient) {
             })
           : [];
         const parentRunIds = parentRuns.map((run) => run.id);
-        const backgroundTasks = parentRunIds.length
-          ? await tx.backgroundAgentTask.findMany({
-              where: {
-                parentRunId: { in: parentRunIds },
-                status: { in: ["running", "cancelling"] },
-              },
-              select: {
-                taskId: true,
-                parentRunId: true,
-                userId: true,
-                spaceId: true,
-                botId: true,
-                threadId: true,
-              },
-            })
+        // A parent Run can already be completed while its native task is still running.
+        // Select by the group thread, then tombstone before the cascade delete.
+        const backgroundTasks = group.thread
+          ? await findLiveBackgroundTasks(tx, { threadId: group.thread.id })
           : [];
         // The group delete cascades runs and background projections. These rows do not.
         await recordRunAbortRevocations(tx, parentRunIds);

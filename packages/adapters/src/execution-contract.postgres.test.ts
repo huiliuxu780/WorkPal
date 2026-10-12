@@ -577,6 +577,195 @@ describePostgres("execution contract recovery (PostgreSQL)", () => {
     expect(await prisma.executionRevocation.findUnique({ where: key })).toBeNull();
   });
 
+  it("archives a running background task after its parent run has completed", async () => {
+    const archivedBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Archive completed parent", color: "test" },
+    });
+    const archivedThread = await prisma.thread.create({
+      data: { spaceId: id, userId: id, botId: archivedBot.id },
+    });
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: archivedBot.id,
+        threadId: archivedThread.id,
+        prompt: "bg",
+        status: "completed",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: archivedBot.id,
+        threadId: archivedThread.id,
+        taskId: task.id,
+        status: "completed",
+        trigger: "user",
+        completedAt: new Date(),
+      },
+    });
+    const taskId = `archive-done-${run.id}`;
+    await prisma.backgroundAgentTask.create({
+      data: {
+        taskId,
+        parentRunId: run.id,
+        userId: id,
+        spaceId: id,
+        botId: archivedBot.id,
+        threadId: archivedThread.id,
+        agentId: "helper",
+        sessionId: "session",
+        toolNames: [],
+        status: "running",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const abort = vi.fn(async () => undefined);
+    const cancel = vi.fn(async () => {
+      throw new Error("background delete failed");
+    });
+    await archiveBot(
+      {
+        prisma,
+        sandbox: new Proxy({}, { get: () => vi.fn(async () => undefined) }) as SandboxProvider,
+        home: {} as never,
+        jobs: { cancel: vi.fn(async () => undefined), enqueue: vi.fn(async () => undefined) } as unknown as JobPublisher,
+        runtime: { abort },
+        cancelRuntimeBackgroundTask: cancel,
+      },
+      { ...archivedBot, archivedAt: null, userId: id },
+      {
+        operationId: "archive-completed-parent",
+        traceId: "archive-completed-parent",
+        spaceId: id,
+        userId: id,
+        botId: archivedBot.id,
+        signal: new AbortController().signal,
+      } as AdapterContext,
+    );
+    expect(abort).not.toHaveBeenCalled();
+    expect(await prisma.bot.findUniqueOrThrow({ where: { id: archivedBot.id } })).toMatchObject({
+      archivedAt: expect.any(Date),
+    });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "completed",
+    });
+    expect(await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId } })).toMatchObject({
+      status: "cancelling",
+    });
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "run_abort", subjectId: run.id } },
+      }),
+    ).toBeNull();
+    const recovered = await revokeCancellingBackgroundTasks(prisma, async () => false, {
+      parentRunIds: [run.id],
+    });
+    expect(recovered.revoked).toContain(taskId);
+    expect(await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId } })).toMatchObject({
+      status: "cancelled",
+    });
+  });
+
+  it("tombstones a dissolved group's background task after its parent run has completed", async () => {
+    const partner = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Dissolve partner", color: "test" },
+    });
+    const removedBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Dissolve bot", color: "test" },
+    });
+    const repos = createGroupRepos(prisma);
+    const group = await repos.createGroup({ userId: id, spaceId: id } as never, {
+      name: "Dissolve completed parent",
+      botIds: [removedBot.id, partner.id],
+    });
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: partner.id,
+        threadId: group.threadId,
+        prompt: "group bg",
+        status: "completed",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: partner.id,
+        threadId: group.threadId,
+        taskId: task.id,
+        status: "completed",
+        trigger: "user",
+        completedAt: new Date(),
+      },
+    });
+    const taskId = `dissolve-done-${run.id}`;
+    await prisma.backgroundAgentTask.create({
+      data: {
+        taskId,
+        parentRunId: run.id,
+        userId: id,
+        spaceId: id,
+        botId: partner.id,
+        threadId: group.threadId,
+        agentId: "helper",
+        sessionId: "session",
+        toolNames: [],
+        status: "running",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const cancel = vi.fn(async () => {
+      throw new Error("background delete failed");
+    });
+    await destroyBot(
+      {
+        prisma,
+        sandbox: new Proxy({}, { get: () => vi.fn(async () => undefined) }) as SandboxProvider,
+        home: {} as never,
+        jobs: { cancel: vi.fn(async () => undefined), enqueue: vi.fn(async () => undefined) } as unknown as JobPublisher,
+        runtime: { abort: vi.fn(async () => undefined) },
+        cancelRuntimeBackgroundTask: cancel,
+      },
+      { ...removedBot, archivedAt: null, userId: id },
+      {
+        operationId: "dissolve-completed-parent",
+        traceId: "dissolve-completed-parent",
+        spaceId: id,
+        userId: id,
+        botId: removedBot.id,
+        signal: new AbortController().signal,
+      } as AdapterContext,
+      { deleteMemories: true },
+    );
+    expect(await prisma.bot.findUnique({ where: { id: removedBot.id } })).toBeNull();
+    expect(await prisma.chatGroup.findUnique({ where: { id: group.id } })).toBeNull();
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId } })).toBeNull();
+    expect(await prisma.run.findUnique({ where: { id: run.id } })).toBeNull();
+    const key = { kind_subjectId: { kind: "background_task", subjectId: taskId } };
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toMatchObject({
+      taskId,
+      runId: run.id,
+      botId: partner.id,
+      threadId: group.threadId,
+    });
+    expect((await prisma.executionRevocation.findUnique({ where: key }))?.attempts).toBeGreaterThanOrEqual(1);
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "run_abort", subjectId: run.id } },
+      }),
+    ).toBeNull();
+    const recovered = await retryPendingBackgroundRevocations(prisma, async () => false, {
+      taskIds: [taskId],
+    });
+    expect(recovered.revoked).toContain(taskId);
+    expect(await prisma.executionRevocation.findUnique({ where: key })).toBeNull();
+  });
+
   it("does not leave two active attempts when a fence conflicts", async () => {
     await prisma.computerExecutionLease.deleteMany({ where: { computerId } });
     const run = await queuedRun();

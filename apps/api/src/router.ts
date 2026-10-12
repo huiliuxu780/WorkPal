@@ -596,9 +596,14 @@ async function revokeNativeCancellation(deps: RouterDeps, runIds: readonly strin
     abort: deps.runtime ? (runId) => deps.runtime!.abort(runId) : undefined,
     prisma: deps.prisma,
   });
-  if (!deps.cancelRuntimeBackgroundTask) return;
+  await revokeCancellingParents(deps, runIds);
+}
+
+/** Background tasks whose parent Run was already finished are not run aborts. */
+async function revokeCancellingParents(deps: RouterDeps, parentRunIds: readonly string[]) {
+  if (!deps.cancelRuntimeBackgroundTask || parentRunIds.length === 0) return;
   await revokeCancellingBackgroundTasks(deps.prisma, deps.cancelRuntimeBackgroundTask, {
-    parentRunIds: runIds,
+    parentRunIds,
   }).catch((error) => {
     getLogger().error("background task revocation failed; Worker will reconcile", error);
   });
@@ -1790,12 +1795,14 @@ export function createRouter(deps: RouterDeps) {
         }
         const updated = await groupRepos.updateGroup(context.actor, input);
         await revokeNativeCancellation(deps, updated.cancelledRunIds);
+        await revokeCancellingParents(deps, updated.backgroundParentRunIds);
         await cancelDescendantsNow(deps, updated.cancelledRunIds);
         return updated.group;
       }),
       archive: authed.groups.archive.handler(async ({ context, input }) => {
         const archived = await groupRepos.archiveGroup(context.actor, input.groupId);
         await revokeNativeCancellation(deps, archived.cancelledRunIds);
+        await revokeCancellingParents(deps, archived.backgroundParentRunIds);
         await Promise.all(
           archived.computers.map(async (computer) => {
             if (!computer.providerRef) return;

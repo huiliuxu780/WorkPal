@@ -509,6 +509,111 @@ describePostgres("execution contract (PostgreSQL)", () => {
     ).toBe(1);
   });
 
+  it("collects a running background task whose parent run is already completed", async () => {
+    const repos = createGroupRepos(prisma);
+    const kept = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Kept completed parent", color: "test" },
+    });
+    const removed = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Removed completed parent", color: "test" },
+    });
+    const third = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Third completed parent", color: "test" },
+    });
+
+    async function runningTaskOnCompletedRun(threadId: string, ownerBotId: string, label: string) {
+      const parent = await taskAndRun({ status: "completed", botId: ownerBotId, threadId });
+      const taskId = `done-parent-${label}-${parent.run.id}`;
+      await prisma.backgroundAgentTask.create({
+        data: {
+          taskId,
+          parentRunId: parent.run.id,
+          userId: id,
+          spaceId: id,
+          botId: ownerBotId,
+          threadId,
+          agentId: "helper",
+          sessionId: "session",
+          toolNames: [],
+          status: "running",
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      return { runId: parent.run.id, taskId };
+    }
+
+    const group = await repos.createGroup(actor, {
+      name: "Completed parent removal",
+      botIds: [kept.id, removed.id, third.id],
+    });
+    const removedTask = await runningTaskOnCompletedRun(group.threadId, removed.id, "remove");
+    const keptTask = await runningTaskOnCompletedRun(group.threadId, kept.id, "keep");
+    const updated = await repos.updateGroup(actor, {
+      groupId: group.id,
+      botIds: [kept.id, third.id],
+    });
+    expect(updated.cancelledRunIds).not.toContain(removedTask.runId);
+    expect(updated.backgroundParentRunIds).toEqual([removedTask.runId]);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: removedTask.runId } })).toMatchObject({
+      status: "completed",
+    });
+    expect(
+      await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId: removedTask.taskId } }),
+    ).toMatchObject({ status: "cancelling" });
+    expect(
+      await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId: keptTask.taskId } }),
+    ).toMatchObject({ status: "running" });
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: removedTask.taskId } },
+      }),
+    ).toBeNull();
+
+    const archiveGroup = await repos.createGroup(actor, {
+      name: "Completed parent archive",
+      botIds: [kept.id, third.id],
+    });
+    const archivedTask = await runningTaskOnCompletedRun(archiveGroup.threadId, kept.id, "archive");
+    const archived = await repos.archiveGroup(actor, archiveGroup.id);
+    expect(archived.cancelledRunIds).not.toContain(archivedTask.runId);
+    expect(archived.backgroundParentRunIds).toEqual([archivedTask.runId]);
+    expect(archived.computers).toEqual([]);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: archivedTask.runId } })).toMatchObject({
+      status: "completed",
+    });
+    expect(
+      await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId: archivedTask.taskId } }),
+    ).toMatchObject({ status: "cancelling" });
+
+    const deleteGroup = await repos.createGroup(actor, {
+      name: "Completed parent delete",
+      botIds: [kept.id, third.id],
+    });
+    const deletedTask = await runningTaskOnCompletedRun(deleteGroup.threadId, kept.id, "delete");
+    const removedGroup = await repos.removeGroup(actor, deleteGroup.id);
+    expect(removedGroup.cancelledRunIds).not.toContain(deletedTask.runId);
+    expect(removedGroup.backgroundTasks.map((task) => task.taskId)).toEqual([deletedTask.taskId]);
+    expect(await prisma.backgroundAgentTask.findUnique({ where: { taskId: deletedTask.taskId } })).toBeNull();
+    expect(await prisma.run.findUnique({ where: { id: deletedTask.runId } })).toBeNull();
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "background_task", subjectId: deletedTask.taskId } },
+      }),
+    ).toMatchObject({
+      kind: "background_task",
+      taskId: deletedTask.taskId,
+      runId: deletedTask.runId,
+      threadId: deleteGroup.threadId,
+      botId: kept.id,
+      attempts: 0,
+    });
+    expect(
+      await prisma.executionRevocation.findUnique({
+        where: { kind_subjectId: { kind: "run_abort", subjectId: deletedTask.runId } },
+      }),
+    ).toBeNull();
+  });
+
   it("rejects a late tool callback and message after the parent is cancelled", async () => {
     const parent = await taskAndRun({ status: "running", leaseFence: 1, leaseOwner: "worker" });
     await prisma.attempt.create({ data: { runId: parent.run.id, fence: 1, status: "running" } });

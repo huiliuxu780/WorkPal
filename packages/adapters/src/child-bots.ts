@@ -13,12 +13,15 @@ import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import { browserProfilePathForScreen } from "@rakazo/core/node/desktop-runtime";
 import {
   appendEventInTransaction,
+  backgroundParentRunIdsExcept,
   cancelChildrenOfCancelledRuns,
   cancelRunsInTransaction,
   computerScopeKey,
   createRepos,
   createThreadMessageInTransaction,
   expireComputerExecutionLeases,
+  findLiveBackgroundTasks,
+  markLiveBackgroundTasksCancelling,
   type Prisma,
   type PrismaClient,
   recordBackgroundRevocations,
@@ -312,7 +315,7 @@ export async function archiveBot(
     }),
   ]);
   const now = new Date();
-  const cancelledRuns = await deps.prisma.$transaction(async (tx) => {
+  const archivedWork = await deps.prisma.$transaction(async (tx) => {
     const cancelled = activeRuns.length
       ? await cancelRunsInTransaction(tx, activeRuns, now)
       : [];
@@ -343,12 +346,21 @@ export async function archiveBot(
         data: { state: "stopped" },
       });
     }
+    const backgroundTasks = await markLiveBackgroundTasksCancelling(tx, { botId: bot.id });
     await tx.bot.update({
       where: { id: bot.id },
       data: { archivedAt: bot.archivedAt ?? now, pinned: false },
     });
-    return cancelled;
+    return {
+      cancelled,
+      backgroundParentRunIds: backgroundParentRunIdsExcept(
+        backgroundTasks,
+        cancelled.map((run) => run.id),
+      ),
+    };
   });
+  const cancelledRuns = archivedWork.cancelled;
+  const backgroundParentRunIds = archivedWork.backgroundParentRunIds;
   const descendants = await cancelChildrenOfCancelledRuns(
     deps.prisma,
     cancelledRuns.map((run) => run.id),
@@ -369,6 +381,7 @@ export async function archiveBot(
   await revokeLiveBackgroundTasks(deps, [
     ...cancelledRuns.map((run) => run.id),
     ...descendants.map((run) => run.id),
+    ...backgroundParentRunIds,
   ]);
   await releaseTeamComputerScreen(deps, bot, dedicated?.id, context);
   const currentDedicated = dedicated
@@ -644,23 +657,9 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
   const cancelledGroupRuns = activeRuns.length
     ? await cancelRunsInTransaction(tx, activeRuns, new Date())
     : [];
-  const backgroundTasks =
-    cancelledGroupRuns.length && tx.backgroundAgentTask
-      ? await tx.backgroundAgentTask.findMany({
-          where: {
-            parentRunId: { in: cancelledGroupRuns.map((run) => run.id) },
-            status: { in: ["running", "cancelling"] },
-          },
-          select: {
-            taskId: true,
-            userId: true,
-            spaceId: true,
-            botId: true,
-            threadId: true,
-            parentRunId: true,
-          },
-        })
-      : [];
+  const backgroundTasks = dissolvedThreadIds.length
+    ? await findLiveBackgroundTasks(tx, { threadId: { in: dissolvedThreadIds } })
+    : [];
   await recordBackgroundRevocations(
     tx,
     backgroundTasks.map((task) => ({

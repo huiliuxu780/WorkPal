@@ -53,3 +53,69 @@ export async function recordBackgroundRevocations(
     skipDuplicates: true,
   });
 }
+
+const LIVE_BACKGROUND_STATUSES = ["running", "cancelling"] as const;
+
+const liveBackgroundSelect = {
+  taskId: true,
+  parentRunId: true,
+  userId: true,
+  spaceId: true,
+  botId: true,
+  threadId: true,
+} as const;
+
+export type LiveBackgroundTask = {
+  taskId: string;
+  parentRunId: string;
+  userId: string;
+  spaceId: string;
+  botId: string;
+  threadId: string;
+};
+
+type BackgroundTaskStore = Partial<Pick<Prisma.TransactionClient, "backgroundAgentTask">>;
+
+/**
+ * Native background work can still be running after its parent Run is completed.
+ * Callers select the business object (bot, group thread, removed members, or
+ * dissolved threads). An absent delegate keeps partial unit-test transactions quiet.
+ */
+export async function findLiveBackgroundTasks(
+  tx: BackgroundTaskStore,
+  where: Prisma.BackgroundAgentTaskWhereInput,
+): Promise<LiveBackgroundTask[]> {
+  if (!tx.backgroundAgentTask) return [];
+  return tx.backgroundAgentTask.findMany({
+    where: { AND: [where, { status: { in: [...LIVE_BACKGROUND_STATUSES] } }] },
+    select: liveBackgroundSelect,
+  });
+}
+
+/** Keep the projection. A failed DELETE stays `cancelling` for the worker sweep. */
+export async function markLiveBackgroundTasksCancelling(
+  tx: BackgroundTaskStore,
+  where: Prisma.BackgroundAgentTaskWhereInput,
+): Promise<LiveBackgroundTask[]> {
+  const tasks = await findLiveBackgroundTasks(tx, where);
+  if (!tx.backgroundAgentTask || tasks.length === 0) return [];
+  await tx.backgroundAgentTask.updateMany({
+    where: {
+      taskId: { in: tasks.map((task) => task.taskId) },
+      status: { in: [...LIVE_BACKGROUND_STATUSES] },
+    },
+    data: { status: "cancelling" },
+  });
+  return tasks;
+}
+
+/** Parent runs that this call did not already cancel. Those still need their own revoke. */
+export function backgroundParentRunIdsExcept(
+  tasks: readonly { parentRunId: string }[],
+  coveredRunIds: readonly string[],
+): string[] {
+  const covered = new Set(coveredRunIds);
+  return [
+    ...new Set(tasks.map((task) => task.parentRunId).filter((runId) => !covered.has(runId))),
+  ];
+}
