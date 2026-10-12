@@ -107,7 +107,7 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
       messageId = message.id;
     }
     const old = new Date(Date.now() - ageMs);
-    await prisma.$executeRaw`UPDATE "runs" SET "updatedAt" = ${old} WHERE "id" = ${run.id}`;
+    await prisma.$executeRaw`UPDATE "runs" SET "updatedAt" = ${old}, "waitStartedAt" = ${old} WHERE "id" = ${run.id}`;
     return { run, task, messageId, effectId };
   }
 
@@ -163,6 +163,19 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
       "run.cancelled",
     ]);
     expect(events[1]?.payload).toMatchObject({ decision: "expired", approvalEffectId: effectId });
+  });
+
+  it("keeps the original wait deadline after an unrelated Run update", async () => {
+    const { run } = await waiting("input", WAIT_TIMEOUT_MS.input + 60_000);
+    const waitStartedAt = (await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).waitStartedAt;
+    await prisma.run.update({ where: { id: run.id }, data: { checkpoint: "unrelated-update" } });
+
+    const changed = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(changed.waitStartedAt).toEqual(waitStartedAt);
+    expect(changed.updatedAt.getTime()).toBeGreaterThan(waitStartedAt!.getTime());
+    expect(await expireWaitingRuns(prisma)).toEqual([
+      expect.objectContaining({ runId: run.id }),
+    ]);
   });
 
   it("keeps fresh input waiting and expires takeover after 30 minutes", async () => {

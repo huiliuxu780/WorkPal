@@ -619,6 +619,7 @@ describe("pauseRunForInput", () => {
         data: {
           status: "waiting_input",
           waitKind: "input",
+          waitStartedAt: expect.any(Date),
           leaseOwner: null,
           leaseExpiresAt: null,
         },
@@ -701,6 +702,7 @@ describe("pauseRunForInput", () => {
         data: {
           status: "waiting_input",
           waitKind: "input",
+          waitStartedAt: expect.any(Date),
           leaseOwner: null,
           leaseExpiresAt: null,
           checkpoint: JSON.stringify({
@@ -773,6 +775,7 @@ describe("pauseRunForTakeover", () => {
         data: {
           status: "waiting_takeover",
           waitKind: "takeover",
+          waitStartedAt: expect.any(Date),
           leaseOwner: null,
           leaseExpiresAt: null,
           checkpoint: null,

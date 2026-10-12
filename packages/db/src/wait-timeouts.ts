@@ -11,11 +11,12 @@ export const WAIT_TIMEOUT_MS = {
 
 type WaitKind = keyof typeof WAIT_TIMEOUT_MS;
 
-function isExpired(waitKind: string | null, updatedAt: Date, now: Date): waitKind is WaitKind {
+function isExpired(waitKind: string | null, waitStartedAt: Date | null, now: Date): waitKind is WaitKind {
   return (
     waitKind !== null &&
+    waitStartedAt !== null &&
     waitKind in WAIT_TIMEOUT_MS &&
-    updatedAt.getTime() <= now.getTime() - WAIT_TIMEOUT_MS[waitKind as WaitKind]
+    waitStartedAt.getTime() <= now.getTime() - WAIT_TIMEOUT_MS[waitKind as WaitKind]
   );
 }
 
@@ -26,15 +27,15 @@ export async function expireWaitingRuns(prisma: PrismaClient, now = new Date()) 
       OR: [
         {
           status: "waiting_input",
-          updatedAt: { lte: new Date(now.getTime() - WAIT_TIMEOUT_MS.input) },
+          waitStartedAt: { lte: new Date(now.getTime() - WAIT_TIMEOUT_MS.input) },
         },
         {
           status: "waiting_takeover",
-          updatedAt: { lte: new Date(now.getTime() - WAIT_TIMEOUT_MS.takeover) },
+          waitStartedAt: { lte: new Date(now.getTime() - WAIT_TIMEOUT_MS.takeover) },
         },
       ],
     },
-    orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+    orderBy: [{ waitStartedAt: "asc" }, { id: "asc" }],
     take: 100,
     select: { id: true, threadId: true },
   });
@@ -46,7 +47,7 @@ export async function expireWaitingRuns(prisma: PrismaClient, now = new Date()) 
       if (
         !run ||
         !["waiting_input", "waiting_takeover"].includes(run.status) ||
-        !isExpired(run.waitKind, run.updatedAt, now)
+        !isExpired(run.waitKind, run.waitStartedAt, now)
       )
         return null;
 
@@ -103,10 +104,14 @@ export async function expireWaitingRuns(prisma: PrismaClient, now = new Date()) 
         }
       }
       const cancelled = await tx.run.updateMany({
-        where: { id: run.id, status: run.status, waitKind: run.waitKind, updatedAt: run.updatedAt },
+        where: {
+          id: run.id, status: run.status, waitKind: run.waitKind,
+          waitStartedAt: run.waitStartedAt,
+        },
         data: {
           status: "cancelled",
           waitKind: null,
+          waitStartedAt: null,
           error: "wait_timeout",
           completedAt: now,
           leaseOwner: null,
