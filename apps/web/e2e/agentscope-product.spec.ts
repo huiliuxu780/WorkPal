@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { createDb } from "../../../packages/db/src/index.js";
 import { startModelEmulator } from "../../../packages/testkit/src/model-emulator.js";
 import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
 
@@ -109,6 +110,85 @@ test("Web chat completes a Java Harness tool round trip", async ({ page }) => {
   } finally {
     await task?.close();
     await intro.close();
+  }
+});
+
+test("Java Run reaches a duration budget and Web cancels its waiting card", async ({ page }) => {
+  test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
+  const intro = await startModelEmulator({
+    apiKey: "web-budget-fixture-key",
+    steps: [{ expect() {}, response: { type: "text", text: "Ready for the budget test." } }],
+  });
+  const db = createDb(process.env.DATABASE_URL!);
+  let task: Awaited<ReturnType<typeof startModelEmulator>> | undefined;
+  try {
+    await signup(page, `java-budget-${Date.now()}@rakazo.test`, "password12", "Java Budget");
+    await page.waitForURL(/\/(onboarding|app)/);
+    await rpc(page, "models/connect", {
+      provider: intro.model.provider, modelId: intro.model.id,
+      baseUrl: intro.baseUrl, apiKey: "web-budget-fixture-key",
+    });
+    await page.reload();
+    await completeOnboarding(page);
+    const botId = activeBotId(page);
+    await expect.poll(async () => {
+      const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", { botId });
+      return thread.run?.status ?? "completed";
+    }, { timeout: 30_000 }).toBe("completed");
+
+    task = await startModelEmulator({
+      apiKey: "web-budget-fixture-key",
+      steps: [{
+        expect(request) {
+          expect(JSON.stringify(request.messages)).toContain("Hold this budget fixture open.");
+        },
+        response: { type: "hold" },
+      }],
+    });
+    await rpc(page, "models/connect", {
+      provider: task.model.provider, modelId: task.model.id,
+      baseUrl: task.baseUrl, apiKey: "web-budget-fixture-key",
+    });
+    await rpc(page, "bots/update", {
+      botId, modelProvider: task.model.provider, modelId: task.model.id,
+    });
+    await page.getByPlaceholder(/Message/).fill("Hold this budget fixture open.");
+    await page.keyboard.press("Enter");
+
+    let runId = "";
+    await expect.poll(async () => {
+      const thread = await rpc<{ run?: { id: string; status: string } | null }>(
+        page, "threads/get", { botId },
+      );
+      if (thread.run?.status === "running") runId = thread.run.id;
+      return thread.run?.status;
+    }, { timeout: 40_000 }).toBe("running");
+    await expect.poll(async () => db.prisma.attempt.findFirst({
+      where: { runId, status: "running" }, select: { id: true },
+    }), { timeout: 20_000 }).not.toBeNull();
+    // Advance only the measured attempt clock; the Run, Java request and Worker path are real.
+    const activeAttempt = await db.prisma.attempt.findFirstOrThrow({
+      where: { runId, status: "running" }, select: { id: true },
+    });
+    await db.prisma.attempt.update({
+      where: { id: activeAttempt.id },
+      data: { startedAt: new Date(Date.now() - 901_000) },
+    });
+
+    await expect(page.getByText(/reached its duration sec budget/i)).toBeVisible({ timeout: 40_000 });
+    await expect.poll(() => db.prisma.event.count({
+      where: { runId, type: "budget.exceeded" },
+    })).toBe(1);
+    await page.getByRole("button", { name: "Cancel this run" }).click();
+    await expect.poll(async () => db.prisma.run.findUnique({
+      where: { id: runId }, select: { status: true, error: true },
+    })).toMatchObject({ status: "cancelled", error: "budget_cancelled" });
+    task.assertComplete();
+  } finally {
+    await task?.close();
+    await intro.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
   }
 });
 

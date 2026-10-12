@@ -2,7 +2,9 @@ import { execSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { deliveryDispatchJob } from "@rakazo/adapter-kit";
+import { enforceRunBudgets } from "@rakazo/adapters";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
+import { createThreadEvents } from "@rakazo/db";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
 import { startJavaRuntime } from "./java-runtime.js";
@@ -214,6 +216,14 @@ async function main() {
       });
     }, 10_000);
     deliverySweep.unref?.();
+    // Host the production Worker budget check for real Java/Web E2E runs.
+    const budgetEvents = createThreadEvents(handles.prisma);
+    const budgetSweep = agentRuntime === "agentscope" ? setInterval(() => {
+      void enforceRunBudgets({
+        prisma: handles.prisma, events: budgetEvents, runtime: handles.runtime,
+      }).catch((error) => console.error("E2E budget enforcement failed", error));
+    }, 10_000) : null;
+    budgetSweep?.unref?.();
     let activeRequests = 0;
     const requestWaiters = new Set<() => void>();
     const server = serve({
@@ -275,6 +285,7 @@ async function main() {
       });
     } finally {
       clearInterval(deliverySweep);
+      if (budgetSweep) clearInterval(budgetSweep);
       const cleanupErrors: unknown[] = [];
       const computers = await managedComputers(handles).catch((error) => {
         cleanupErrors.push(error);
