@@ -146,6 +146,8 @@ import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskAct
 import { RunActivityDisclosure } from "../components/activity/RunActivityDisclosure";
 import { ActiveBotGlyph, CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { RunPlanDisclosure } from "../components/ai/RunPlanDisclosure";
+import { RunStepsDisclosure } from "../components/ai/RunStepsDisclosure";
+import { RunTodoList } from "../components/ai/RunTodoList";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -247,6 +249,7 @@ import {
   transcriptMovedDown,
 } from "../lib/transcript-scroll";
 import { speaker } from "../lib/tts";
+import { unlinkedRunTodos } from "../lib/work-progress-view";
 import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
@@ -3610,6 +3613,8 @@ export function ShellPage() {
             artifactTarget={transcriptArtifactTarget}
             messages={transcriptMessages}
             plans={activeSnapshot?.plans}
+            steps={activeSnapshot?.steps}
+            todos={activeSnapshot?.todos}
             activeRunIds={workingRuns.map((run) => run.id)}
             showToolActivity={showToolActivity}
             olderCursor={activeSnapshot?.olderCursor ?? null}
@@ -4716,6 +4721,8 @@ const Transcript = memo(function Transcript({
   artifactTarget,
   messages,
   plans,
+  steps,
+  todos,
   activeRunIds,
   showToolActivity,
   olderCursor,
@@ -4753,6 +4760,8 @@ const Transcript = memo(function Transcript({
   artifactTarget: ArtifactTarget;
   messages: ThreadMessage[];
   plans?: ThreadSnapshot["plans"];
+  steps?: ThreadSnapshot["steps"];
+  todos?: ThreadSnapshot["todos"];
   activeRunIds: string[];
   showToolActivity: boolean;
   olderCursor: number | null;
@@ -4810,6 +4819,40 @@ const Transcript = memo(function Transcript({
     }
     return anchors;
   }, [plans, messageById, messages, activeRunIds]);
+  const stepsByAnchor = useMemo(() => {
+    const anchors = new Map<string, Map<string, NonNullable<ThreadSnapshot["steps"]>>>();
+    for (const step of steps ?? []) {
+      const source =
+        step.sourceMessageId && messageById.has(step.sourceMessageId) ? step.sourceMessageId : null;
+      const lastBotMessage = [...messages]
+        .reverse()
+        .find((message) => message.runId === step.runId && message.role === "bot");
+      const anchor =
+        source ?? lastBotMessage?.id ?? (activeRunIds.includes(step.runId) ? "__tail" : null);
+      if (!anchor) continue;
+      const runs = anchors.get(anchor) ?? new Map<string, NonNullable<ThreadSnapshot["steps"]>>();
+      runs.set(step.runId, [...(runs.get(step.runId) ?? []), step]);
+      anchors.set(anchor, runs);
+    }
+    return anchors;
+  }, [steps, messageById, messages, activeRunIds]);
+  const todosByAnchor = useMemo(() => {
+    const anchors = new Map<string, Map<string, NonNullable<ThreadSnapshot["todos"]>>>();
+    for (const todo of unlinkedRunTodos(todos ?? [], steps ?? [])) {
+      const source =
+        todo.sourceMessageId && messageById.has(todo.sourceMessageId) ? todo.sourceMessageId : null;
+      const lastBotMessage = [...messages]
+        .reverse()
+        .find((message) => message.runId === todo.runId && message.role === "bot");
+      const anchor =
+        source ?? lastBotMessage?.id ?? (activeRunIds.includes(todo.runId) ? "__tail" : null);
+      if (!anchor) continue;
+      const runs = anchors.get(anchor) ?? new Map<string, NonNullable<ThreadSnapshot["todos"]>>();
+      runs.set(todo.runId, [...(runs.get(todo.runId) ?? []), todo]);
+      anchors.set(anchor, runs);
+    }
+    return anchors;
+  }, [todos, steps, messageById, messages, activeRunIds]);
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
   const workingBotName = workingBots.length === 1 ? workingBots[0]?.name : undefined;
   const workingLabel =
@@ -4966,7 +5009,7 @@ const Transcript = memo(function Transcript({
 
   useLayoutEffect(() => {
     if (following.current) snapToEnd();
-  }, [messages, plans, running, snapToEnd]);
+  }, [messages, plans, steps, todos, running, snapToEnd]);
 
   useLayoutEffect(() => {
     const button = jumpButtonRef.current;
@@ -5177,6 +5220,16 @@ const Transcript = memo(function Transcript({
                   live={activeRunIds.includes(plan.runId)}
                 />
               ))}
+              {[...(stepsByAnchor.get(message.id)?.values() ?? [])].map((runSteps) => (
+                <RunStepsDisclosure
+                  key={runSteps[0]!.runId}
+                  steps={runSteps}
+                  live={activeRunIds.includes(runSteps[0]!.runId)}
+                />
+              ))}
+              {[...(todosByAnchor.get(message.id)?.values() ?? [])].map((runTodos) => (
+                <RunTodoList key={runTodos[0]!.runId} todos={runTodos} />
+              ))}
             </div>
           );
         })}
@@ -5186,6 +5239,12 @@ const Transcript = memo(function Transcript({
             plan={plan}
             live={activeRunIds.includes(plan.runId)}
           />
+        ))}
+        {[...(stepsByAnchor.get("__tail")?.values() ?? [])].map((runSteps) => (
+          <RunStepsDisclosure key={runSteps[0]!.runId} steps={runSteps} live />
+        ))}
+        {[...(todosByAnchor.get("__tail")?.values() ?? [])].map((runTodos) => (
+          <RunTodoList key={runTodos[0]!.runId} todos={runTodos} />
         ))}
         {activity && activity.length > 0 ? (
           <div className="px-1 py-0.5" data-testid="run-activity-container">

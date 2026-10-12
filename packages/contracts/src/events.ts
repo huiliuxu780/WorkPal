@@ -3,6 +3,8 @@ import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { McpTransportSchema } from "./mcp.js";
 import { RunPlanRevisionSchema } from "./run-plans.js";
+import { RunStepSnapshotSchema } from "./run-steps.js";
+import { RunTodoSnapshotSchema } from "./run-todos.js";
 
 export const ProductEventType = z.enum([
   "thread.message.created",
@@ -11,6 +13,19 @@ export const ProductEventType = z.enum([
   "thread.message.reaction",
   "thread.progress",
   "plan.revised",
+  "step.created",
+  "step.queued",
+  "step.started",
+  "step.completed",
+  "step.failed",
+  "step.retrying",
+  "step.skipped",
+  "step.cancelled",
+  "step.blocked",
+  "todo.created",
+  "todo.updated",
+  "todo.resolved",
+  "todo.deferred",
   "thread.artifact",
   "thread.ask",
   "thread.choice",
@@ -82,6 +97,19 @@ export type EventEnvelopeMeta = z.infer<typeof EventEnvelopeMeta>;
 
 export const ProductEventPayloadSchemas = {
   "plan.revised": RunPlanRevisionSchema,
+  "step.created": RunStepSnapshotSchema,
+  "step.queued": RunStepSnapshotSchema,
+  "step.started": RunStepSnapshotSchema,
+  "step.completed": RunStepSnapshotSchema,
+  "step.failed": RunStepSnapshotSchema,
+  "step.retrying": RunStepSnapshotSchema,
+  "step.skipped": RunStepSnapshotSchema,
+  "step.cancelled": RunStepSnapshotSchema,
+  "step.blocked": RunStepSnapshotSchema,
+  "todo.created": RunTodoSnapshotSchema,
+  "todo.updated": RunTodoSnapshotSchema,
+  "todo.resolved": RunTodoSnapshotSchema,
+  "todo.deferred": RunTodoSnapshotSchema,
   "run.retried": z.object({ attempt: z.number().int().positive(), reason: z.string() }),
   "budget.exceeded": z.object({ reason: z.string(), limit: z.number().nonnegative().optional() }),
   "delivery.created": z.object({ deliveryId: Id, sourceRunId: Id }),
@@ -94,12 +122,27 @@ export const ProductEventPayloadSchemas = {
   }),
 } as const;
 
+const stepStatusByType: Partial<Record<ProductEventType, string>> = {
+  "step.created": "pending",
+  "step.queued": "queued",
+  "step.started": "running",
+  "step.completed": "completed",
+  "step.failed": "failed",
+  "step.retrying": "retrying",
+  "step.skipped": "skipped",
+  "step.cancelled": "cancelled",
+  "step.blocked": "blocked",
+};
+
 export function assertProductEventPayload(
   type: ProductEventType,
   payload: Record<string, unknown>,
 ): void {
   const schema = ProductEventPayloadSchemas[type as keyof typeof ProductEventPayloadSchemas];
   schema?.parse(payload);
+  if (stepStatusByType[type] && payload.status !== stepStatusByType[type]) {
+    throw new Error(`Step event ${type} has an invalid status`);
+  }
 }
 
 export const MessageRole = z.enum(["user", "bot", "system"]);

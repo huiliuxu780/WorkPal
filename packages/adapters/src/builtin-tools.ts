@@ -718,6 +718,71 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "publish_run_step",
+    description:
+      "Publish a semantic execution milestone for this Run, or revise one by stable stepId and expectedRevision. This is a user-visible unit of work, not a tool call or Plan item. Report status and result truthfully. Evidence IDs must refer to this Run. The backend records the current Attempt. Do not publish a Step for every tool call.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        stepId: { type: "string", pattern: "^[A-Za-z0-9_-]{1,64}$" },
+        expectedRevision: { type: "integer", minimum: 0 },
+        order: { type: "integer", minimum: 0, maximum: 999 },
+        title: { type: "string", maxLength: 200 },
+        status: {
+          type: "string",
+          enum: [
+            "pending",
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "retrying",
+            "skipped",
+            "cancelled",
+            "blocked",
+          ],
+        },
+        resultSummary: { type: "string", maxLength: 500 },
+        planItemId: { type: "string", maxLength: 64 },
+        parentStepId: { type: "string", pattern: "^[A-Za-z0-9_-]{1,64}$" },
+        evidence: {
+          type: "array",
+          maxItems: 10,
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["tool_event", "external_effect", "artifact"] },
+              id: { type: "string" },
+            },
+            required: ["kind", "id"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["stepId", "expectedRevision", "order", "title", "status"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "publish_run_todo",
+    description:
+      "Publish a Todo for this Run, separate from the bot's long-lived scratchpad. Use a stable todoId and expectedRevision. Link to a semantic Step only when the relationship is explicit; linked Todos are not displayed as duplicate rows. Do not infer Todos from chat text.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        todoId: { type: "string", pattern: "^[A-Za-z0-9_-]{1,64}$" },
+        expectedRevision: { type: "integer", minimum: 0 },
+        order: { type: "integer", minimum: 0, maximum: 999 },
+        title: { type: "string", maxLength: 200 },
+        status: { type: "string", enum: ["pending", "active", "resolved", "deferred"] },
+        linkedStepId: { type: "string", pattern: "^[A-Za-z0-9_-]{1,64}$" },
+        reason: { type: "string", maxLength: 500 },
+      },
+      required: ["todoId", "expectedRevision", "order", "title", "status"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "scratchpad_list",
     description:
       "List this bot's scratchpad / open-work items (todos and parked work). By default omits completed items.",

@@ -609,6 +609,8 @@ model Run {
   backgroundTasks       BackgroundAgentTask[]
   deliverySourceRecords DeliveryRecord[] @relation("DeliverySourceRun")
   plan                 RunPlan?
+  steps                RunStep[]
+  todos                RunTodo[]
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
@@ -652,6 +654,73 @@ model RunPlanRevision {
   @@unique([runId, toolExecutionId])
   @@index([runId, revision(sort: Desc)])
   @@map("run_plan_revisions")
+}
+
+model RunStep {
+  runId            String
+  run              Run               @relation(fields: [runId], references: [id], onDelete: Cascade)
+  stepId           String
+  threadGeneration Int
+  revision         Int
+  sortOrder        Int
+  current          Json
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  mutations        RunStepMutation[]
+
+  @@id([runId, stepId])
+  @@index([runId, sortOrder])
+  @@map("run_steps")
+}
+
+model RunStepMutation {
+  id              String  @id @default(cuid())
+  runId           String
+  stepId          String
+  step            RunStep @relation(fields: [runId, stepId], references: [runId, stepId], onDelete: Cascade)
+  toolExecutionId String
+  revision        Int
+  snapshot        Json
+  eventSeq        Int
+  createdAt       DateTime @default(now())
+
+  @@unique([runId, toolExecutionId])
+  @@unique([runId, stepId, revision])
+  @@index([runId, stepId, revision(sort: Desc)])
+  @@map("run_step_mutations")
+}
+
+model RunTodo {
+  runId            String
+  run              Run               @relation(fields: [runId], references: [id], onDelete: Cascade)
+  todoId           String
+  threadGeneration Int
+  revision         Int
+  sortOrder        Int
+  current          Json
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  mutations        RunTodoMutation[]
+
+  @@id([runId, todoId])
+  @@index([runId, sortOrder])
+  @@map("run_todos")
+}
+
+model RunTodoMutation {
+  id              String  @id @default(cuid())
+  runId           String
+  todoId          String
+  todo            RunTodo @relation(fields: [runId, todoId], references: [runId, todoId], onDelete: Cascade)
+  toolExecutionId String
+  revision        Int
+  snapshot        Json
+  eventSeq        Int
+  createdAt       DateTime @default(now())
+
+  @@unique([runId, toolExecutionId])
+  @@unique([runId, todoId, revision])
+  @@map("run_todo_mutations")
 }
 
 /// Product projection only. AgentScope WorkspaceTaskRepository owns execution and reminders.

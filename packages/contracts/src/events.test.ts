@@ -1,7 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { ProductEventPayloadSchemas, ProductEventSchema } from "./events.js";
+import {
+  assertProductEventPayload,
+  ProductEventPayloadSchemas,
+  ProductEventSchema,
+} from "./events.js";
 
 describe("Product Event v2 contract", () => {
+  it("rejects a Step lifecycle event whose payload reports a different status", () => {
+    const payload = {
+      stepId: "step-1",
+      runId: "run-1",
+      sourceMessageId: null,
+      revision: 1,
+      order: 0,
+      title: "Review",
+      status: "running",
+      resultSummary: null,
+      planItemId: null,
+      parentStepId: null,
+      attemptId: null,
+      attemptNumber: null,
+      startedAt: null,
+      completedAt: null,
+      evidence: [],
+      batch: null,
+      createdAt: "2026-10-12T00:00:00.000Z",
+      updatedAt: "2026-10-12T00:00:00.000Z",
+    };
+    expect(() => assertProductEventPayload("step.started", payload)).not.toThrow();
+    expect(() => assertProductEventPayload("step.completed", payload)).toThrow("invalid status");
+  });
+
   it("parses each new event payload and rejects an incomplete approval resolution", () => {
     const valid = {
       "run.retried": { attempt: 2, reason: "transient_unavailable" },

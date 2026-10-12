@@ -25,6 +25,82 @@ import {
 } from "./thread-events.js";
 
 describe("thread event reduction", () => {
+  it("replays Run Todo revisions without relabeling tool activity", () => {
+    const first = {
+      todoId: "check",
+      runId: "run-1",
+      sourceMessageId: null,
+      revision: 1,
+      order: 0,
+      title: "Check result",
+      status: "pending",
+      linkedStepId: null,
+      reason: null,
+      createdAt: "2026-08-16T00:00:01.000Z",
+      updatedAt: "2026-08-16T00:00:01.000Z",
+    };
+    const one = reduceThreadSnapshot(
+      snapshot([]),
+      event({ type: "todo.created", seq: 4, payload: first }),
+    );
+    expect(one?.todos).toEqual([first]);
+    const two = reduceThreadSnapshot(
+      one,
+      event({
+        type: "todo.resolved",
+        seq: 5,
+        payload: {
+          ...first,
+          revision: 2,
+          status: "resolved",
+        },
+      }),
+    );
+    expect(two?.todos?.[0]?.status).toBe("resolved");
+    expect(reduceThreadSnapshot(two, event({ type: "todo.created", seq: 4, payload: first }))).toBe(
+      two,
+    );
+  });
+
+  it("keeps semantic Step revisions monotonic and marks unfinished Steps unknown when the Run ends", () => {
+    const first = {
+      stepId: "review",
+      runId: "run-1",
+      sourceMessageId: null,
+      revision: 1,
+      order: 0,
+      title: "Review",
+      status: "running",
+      resultSummary: null,
+      planItemId: null,
+      parentStepId: null,
+      attemptId: null,
+      attemptNumber: null,
+      startedAt: "2026-08-16T00:00:01.000Z",
+      completedAt: null,
+      evidence: [],
+      batch: null,
+      createdAt: "2026-08-16T00:00:01.000Z",
+      updatedAt: "2026-08-16T00:00:01.000Z",
+    };
+    const initial = reduceThreadSnapshot(
+      snapshot([]),
+      event({ type: "step.started", seq: 4, payload: first }),
+    );
+    expect(initial?.steps).toEqual([first]);
+    expect(
+      reduceThreadSnapshot(initial, event({ type: "step.started", seq: 4, payload: first })),
+    ).toBe(initial);
+    const ended = reduceThreadSnapshot(
+      initial,
+      event({ type: "run.completed", seq: 5, payload: {} }),
+    );
+    expect(ended?.steps?.[0]?.status).toBe("unknown");
+    expect(reduceThreadSnapshot(ended, event({ type: "thread.cleared", seq: 6 }))?.steps).toEqual(
+      [],
+    );
+  });
+
   it("replays structured Plan revisions without old or duplicate events replacing current state", () => {
     const first = {
       planId: "plan:run-1",
