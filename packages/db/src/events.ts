@@ -122,7 +122,8 @@ interface FinalizeRunBase {
   botId: string;
   runId: string;
   taskId: string;
-  attemptId: string;
+  /** Null only for an expired lease that was lost before its Attempt row was inserted. */
+  attemptId: string | null;
   leaseOwner: string;
   leaseFence: number;
   /** Recovery only: refuse to end a Run if its original worker renewed the lease. */
@@ -1242,6 +1243,17 @@ async function finalizeRunOnce(
 ): Promise<{ threadId: string; seq: number; continuationRunId: string | null } | null> {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+    if (input.attemptId === null) {
+      if (input.outcome !== "failed" || !input.requireLeaseExpiredAt) {
+        throw new Error("Missing Attempt requires an expired lease failure guard");
+      }
+      await tx.$queryRaw`SELECT id FROM runs WHERE id = ${input.runId} FOR UPDATE`;
+      const attempt = await tx.attempt.findFirst({
+        where: { runId: input.runId, fence: input.leaseFence },
+        select: { id: true },
+      });
+      if (attempt) return null;
+    }
     let writableRun: { startedAt: Date | null } | undefined;
     try {
       writableRun = await assertRunCanWriteHistory(tx, input.runId);
@@ -1275,20 +1287,22 @@ async function finalizeRunOnce(
     });
     if (terminal.count !== 1) return null;
 
-    const attempt = await tx.attempt.updateMany({
-      where: {
-        id: input.attemptId,
-        runId: input.runId,
-        fence: input.leaseFence,
-        status: "running",
-      },
-      data: {
-        status: input.outcome,
-        error: input.outcome === "failed" ? input.error : null,
-        finishedAt: now,
-      },
-    });
-    if (attempt.count !== 1) throw new Error("Active run attempt was not available to finalize");
+    if (input.attemptId !== null) {
+      const attempt = await tx.attempt.updateMany({
+        where: {
+          id: input.attemptId,
+          runId: input.runId,
+          fence: input.leaseFence,
+          status: "running",
+        },
+        data: {
+          status: input.outcome,
+          error: input.outcome === "failed" ? input.error : null,
+          finishedAt: now,
+        },
+      });
+      if (attempt.count !== 1) throw new Error("Active run attempt was not available to finalize");
+    }
 
     const task = await tx.task.updateMany({
       where: {
