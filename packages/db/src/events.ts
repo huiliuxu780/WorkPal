@@ -283,6 +283,10 @@ export async function clearThread(
     const now = new Date();
     const runIds = activeRuns.map((run) => run.id);
     await cancelRunsInTransaction(tx, activeRuns, now);
+    await tx.backgroundAgentTask?.updateMany({
+      where: { threadId: input.threadId, status: "running" },
+      data: { status: "cancelling" },
+    });
     // Expire as tombstones so a still-open provider screen claim cannot reset fencing to 1.
     await expireComputerExecutionLeases(tx, { runId: { in: runIds } });
     await tx.computer.updateMany({

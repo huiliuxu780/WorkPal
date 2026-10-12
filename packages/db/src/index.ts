@@ -1,5 +1,6 @@
 export * from "./artifact-versions.js";
 export * from "./bootstrap-user.js";
+export * from "./cancel-child-runs.js";
 export * from "./cancel-runs.js";
 export * from "./client.js";
 export * from "./computers.js";
@@ -13,7 +14,9 @@ export * from "./messages.js";
 export * from "./messaging.js";
 export * from "./model-credentials.js";
 export * from "./repos.js";
+export * from "./retry-runs.js";
 export * from "./scope.js";
 export * from "./spaces.js";
 export * from "./transaction-retry.js";
 export * from "./voice-credentials.js";
+export * from "./wait-timeouts.js";

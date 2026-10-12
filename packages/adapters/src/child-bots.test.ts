@@ -421,6 +421,7 @@ describe("destroyBot", () => {
       where: { id: { in: ["group-run"] } },
       data: {
         status: "cancelled",
+        waitKind: null,
         completedAt: expect.any(Date),
         leaseOwner: null,
         leaseExpiresAt: null,

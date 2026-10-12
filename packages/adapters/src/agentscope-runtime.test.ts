@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
+import { AgentScopeAgentRuntime, type AgentScopeTransientError } from "./agentscope-runtime.js";
 
 const servers: ReturnType<typeof createServer>[] = [];
 
@@ -61,6 +61,37 @@ async function listen(handler: RequestListener): Promise<{ url: string; requests
 }
 
 describe("AgentScopeAgentRuntime", () => {
+  it("classifies a service 503 for bounded retry", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(503, { "content-type": "text/plain" });
+      response.end("temporarily unavailable");
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const drain = async () => {
+      for await (const _event of runtime.run(runRequest(), runContext())) {
+        // drain
+      }
+    };
+    await expect(drain()).rejects.toMatchObject({
+      name: "AgentScopeTransientError",
+      retryReason: "provider_5xx",
+    } satisfies Partial<AgentScopeTransientError>);
+  });
+
+  it("classifies model timeout events without retrying unrelated model errors", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(`${JSON.stringify({ type: "error", message: "Model timed out" })}\n`);
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const drain = async () => {
+      for await (const _event of runtime.run(runRequest(), runContext())) {
+        // drain
+      }
+    };
+    await expect(drain()).rejects.toMatchObject({ retryReason: "llm_timeout" });
+  });
+
   it("translates the loopback NDJSON stream into runtime events", async () => {
     const fixture = await listen((_request, response) => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });
