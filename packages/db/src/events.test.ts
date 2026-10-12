@@ -1404,7 +1404,7 @@ describe("answerRunInput", () => {
         update: vi.fn().mockResolvedValue({ id: "message-1" }),
       },
       run: {
-        findFirst: vi.fn().mockResolvedValue({ botId: "bot-1" }),
+        findFirst: vi.fn().mockResolvedValue({ botId: "bot-1", userId: "user-1" }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn().mockResolvedValue({ status: "queued" }),
       },
@@ -1457,6 +1457,14 @@ describe("answerRunInput", () => {
       "thread.message.updated",
       "approval.resolved",
     ]);
+    expect(tx.event.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "approval.resolved",
+          payload: expect.objectContaining({ decidedByUserId: "user-1" }),
+        }),
+      }),
+    );
     tx.run.findFirst.mockResolvedValueOnce(null);
     await expect(
       answerRunInput(
@@ -1566,7 +1574,7 @@ describe("answerRunInput", () => {
     });
   });
 
-  it("does not let another workspace member create an always-allow rule for the run owner", async () => {
+  it("does not let another workspace member approve, deny, or permanently allow the owner's effect", async () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: {
@@ -1603,18 +1611,21 @@ describe("answerRunInput", () => {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
     } as unknown as PrismaClient;
 
-    await expect(
-      answerRunInput(prisma, {
-        spaceId: "workspace-1",
-        threadId: "thread-1",
-        runId: "run-1",
-        messageId: "message-1",
-        answeredByUserId: "other-member",
-        answer: "always",
-      }),
-    ).resolves.toBe(false);
+    for (const answer of ["allow", "deny", "always"]) {
+      await expect(
+        answerRunInput(prisma, {
+          spaceId: "workspace-1",
+          threadId: "thread-1",
+          runId: "run-1",
+          messageId: "message-1",
+          answeredByUserId: "other-member",
+          answer,
+        }),
+      ).resolves.toBe(false);
+    }
 
     expect(tx.run.updateMany).not.toHaveBeenCalled();
+    expect(tx.externalEffect.findFirst).not.toHaveBeenCalled();
     expect(tx.actionApprovalRule.upsert).not.toHaveBeenCalled();
   });
 
