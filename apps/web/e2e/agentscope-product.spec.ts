@@ -385,9 +385,20 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     ]));
     const shell = page.locator(`[data-testid="execution-shell"][data-run-id="${plan?.runId}"]`);
     await expect(shell).toHaveCount(1);
-    await shell.locator(":scope > button").click();
+    const shellToggle = shell.locator(":scope > button");
+    await shellToggle.click();
     await expect(shell.locator('[data-slot="plan"]')).toBeVisible();
     await expect(shell.locator('[data-slot="steps"]')).toBeVisible();
+    await shellToggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(shellToggle).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press("Enter");
+    await expect(shellToggle).toHaveAttribute("aria-expanded", "true");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(shell.locator('[data-slot="plan"]')).toBeVisible();
+    expect(await page.evaluate(() =>
+      document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    )).toBe(true);
     task.assertComplete();
   } finally {
     await task?.close();
