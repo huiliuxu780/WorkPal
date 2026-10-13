@@ -42,6 +42,8 @@ export function loadRunHistoryMessages(
 }
 
 export interface CreateThreadMessageInput {
+  /** Pregenerated so an Intervention row can name the message in the same transaction. */
+  id?: string;
   threadId: string;
   role: "user" | "bot" | "system";
   blocks: MessageBlock[];
@@ -76,6 +78,7 @@ export async function createThreadMessageInTransaction(
   await assertRunCanWriteHistory(tx, input.runId);
   return tx.message.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       threadId: input.threadId,
       seq: thread.nextMessageSeq - 1,
       role: input.role,

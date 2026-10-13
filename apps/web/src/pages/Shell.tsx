@@ -15,6 +15,7 @@ import type {
   Group,
   Me,
   ProductEvent,
+  InterventionView,
   Run,
   Routine,
   SearchHit,
@@ -47,7 +48,6 @@ import {
   isPeerReceiptBlocks,
   isRunTerminalEvent,
   isToolActivityBlock,
-  latestAnswerableAskMessageId,
   mentionChipKey,
   nestRosterByParent,
   plainTextFromMarkdown,
@@ -146,6 +146,7 @@ import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { ExecutionActivity } from "../components/ai/ExecutionActivity";
 import { ExecutionShell } from "../components/ai/ExecutionShell";
+import { InterventionRegion } from "../components/ai/InterventionRegion";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { RunPlanDisclosure } from "../components/ai/RunPlanDisclosure";
 import { RunStepsDisclosure } from "../components/ai/RunStepsDisclosure";
@@ -220,6 +221,11 @@ import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/r
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
 import { askDraftKey } from "../lib/ask-draft";
+import {
+  coveredAskMessageIds,
+  mergeInterventionViews,
+  pendingInterventionKindsForRun,
+} from "../lib/intervention-view";
 import { sharedInflight } from "../lib/shared-inflight";
 import {
   activeThreadRuns,
@@ -1811,7 +1817,6 @@ export function ShellPage() {
     );
   }
 
-  const answerableAskMessageId = latestAnswerableAskMessageId(activeSnapshot);
   const workingRuns = currentRuns.filter((run) =>
     ["running", "queued", "leased"].includes(run.status),
   );
@@ -3626,7 +3631,7 @@ export function ShellPage() {
             showToolActivity={showToolActivity}
             olderCursor={activeSnapshot?.olderCursor ?? null}
             loadingOlder={loadingOlder}
-            answerableAskMessageId={answerableAskMessageId}
+            interventions={activeSnapshot?.interventions}
             running={transcriptRunning}
             activity={inlineActivity}
             backgroundTasks={backgroundActivity}
@@ -4733,7 +4738,7 @@ const Transcript = memo(function Transcript({
   showToolActivity,
   olderCursor,
   loadingOlder,
-  answerableAskMessageId,
+  interventions,
   running,
   activity,
   backgroundTasks,
@@ -4771,7 +4776,7 @@ const Transcript = memo(function Transcript({
   showToolActivity: boolean;
   olderCursor: number | null;
   loadingOlder: boolean;
-  answerableAskMessageId: string | null;
+  interventions?: ThreadSnapshot["interventions"];
   running: boolean;
   activity?: ActivityItem[];
   backgroundTasks?: ActivityItem[];
@@ -4797,6 +4802,15 @@ const Transcript = memo(function Transcript({
   onOpenComputer: (botId?: string) => void;
 }) {
   const { t } = useLingui();
+  const [settledInterventions, setSettledInterventions] = useState<InterventionView[]>([]);
+  const shownInterventions = useMemo(
+    () => mergeInterventionViews(interventions, settledInterventions),
+    [interventions, settledInterventions],
+  );
+  const coveredAsks = useMemo(
+    () => coveredAskMessageIds(shownInterventions),
+    [shownInterventions],
+  );
   const [atEnd, setAtEnd] = useState(true);
   const following = useRef(true);
   const autoScrolling = useRef(false);
@@ -4900,6 +4914,19 @@ const Transcript = memo(function Transcript({
       get(anchor, item.runId).activity.push(item);
       runAnchor.set(item.runId, anchor);
     }
+    // Every Intervention — pending or restored terminal — owns a shell so its
+    // card keeps its Execution Shell anchor after a refresh, even when the Run
+    // is no longer active. Runs before the active-run loop so the ask message
+    // wins over "__tail" and the card does not jump when the Run resumes.
+    for (const view of shownInterventions ?? []) {
+      if (runAnchor.has(view.runId)) continue;
+      const lastBot = [...messages]
+        .reverse()
+        .find((message) => message.runId === view.runId && message.role === "bot");
+      const anchor = messageById.has(view.messageId) ? view.messageId : lastBot?.id ?? "__tail";
+      get(anchor, view.runId);
+      runAnchor.set(view.runId, anchor);
+    }
     for (const run of runs) {
       if (isRunActive(run.status) && !runAnchor.has(run.id)) {
         const waiting = run.status === "waiting_input" || run.status === "waiting_takeover";
@@ -4925,13 +4952,37 @@ const Transcript = memo(function Transcript({
       }
     }
     return positioned;
-  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs]);
+  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs, shownInterventions]);
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
       const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
       const live = Boolean(run && ["queued", "leased", "running"].includes(run.status));
+      const runInterventions = (shownInterventions ?? []).filter(
+        (view) => view.runId === execution.runId,
+      );
       return (
-        <ExecutionShell key={execution.runId} run={run} activity={execution.activity}>
+        <ExecutionShell
+          key={execution.runId}
+          run={run}
+          activity={execution.activity}
+          pendingInterventionKinds={pendingInterventionKindsForRun(interventions, execution.runId)}
+          interventions={
+            shownInterventions && runInterventions.length > 0 ? (
+              <InterventionRegion
+                interventions={runInterventions}
+                messages={messages}
+                target={artifactTarget}
+                onSettled={(view) =>
+                  setSettledInterventions((current) => [
+                    ...current.filter((item) => item.id !== view.id),
+                    view,
+                  ])
+                }
+                onRefresh={onRefresh}
+              />
+            ) : null
+          }
+        >
           {execution.plan ? <RunPlanDisclosure plan={execution.plan} live={live} /> : null}
           {execution.steps ? <RunStepsDisclosure steps={execution.steps} live={live} /> : null}
           {execution.todos ? <RunTodoList todos={execution.todos} /> : null}
@@ -5197,7 +5248,14 @@ const Transcript = memo(function Transcript({
             );
           }
           const message = item.message;
-          if (!messageHasVisibleBlocks(message.blocks, showToolActivity)) return null;
+          const suppressAsk = coveredAsks.has(message.id);
+          const visibleBlocks = suppressAsk
+            ? message.blocks.filter((block) => block.kind !== "ask")
+            : message.blocks;
+          const showMessage = messageHasVisibleBlocks(visibleBlocks, showToolActivity);
+          if (!showMessage) {
+            return <Fragment key={message.id}>{renderExecutions(`before:${message.id}`)}</Fragment>;
+          }
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
           return (
@@ -5245,7 +5303,8 @@ const Transcript = memo(function Transcript({
                   <MessageView
                     artifactTarget={artifactTarget}
                     message={message}
-                    canAnswer={message.id === answerableAskMessageId}
+                    canAnswer
+                    suppressAsk={suppressAsk}
                     onOpenBot={onOpenBot}
                     onOpenPeerMessages={onOpenPeerMessages}
                     onAnswer={onAnswer}
@@ -6408,6 +6467,7 @@ function ComputerReleaseActions({
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
+  suppressAsk = false,
   message,
   onAnswer,
   onOpenBot,
@@ -6429,6 +6489,7 @@ const MessageView = memo(function MessageView({
 }: {
   artifactTarget: ArtifactTarget;
   canAnswer: boolean;
+  suppressAsk?: boolean;
   message: ThreadMessage;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
@@ -6861,12 +6922,19 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "ask") {
+          if (suppressAsk) return null;
           return (
             <AskCard
               key={i}
               block={block}
               canAnswer={canAnswer}
-              draftKey={message.runId ? askDraftKey(message.runId, message.id) : undefined}
+              draftKey={
+                block.input === "secret"
+                  ? undefined
+                  : message.runId
+                    ? askDraftKey(message.runId, message.id)
+                    : undefined
+              }
               onAnswer={(text, username) => onAnswer(message, text, username)}
             />
           );

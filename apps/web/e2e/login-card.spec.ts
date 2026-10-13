@@ -53,7 +53,7 @@ test("saves a website login from a username and password card without echoing ei
   await page.setViewportSize({ width: 1280, height: 720 });
 
   // Saving clears both fields immediately, including when the save fails.
-  await page.route("**/rpc/threads/answer", (route) =>
+  await page.route("**/rpc/threads/resolveIntervention", (route) =>
     route.fulfill({
       status: 400,
       json: { json: { defined: false, code: "BAD_REQUEST", status: 400, message: "fail" } },
@@ -63,7 +63,7 @@ test("saves a website login from a username and password card without echoing ei
   await expect(card.getByText("Could not submit this answer", { exact: true })).toBeVisible();
   await expect(passwordField).toHaveValue("");
   await expect(usernameField).toHaveValue("");
-  await page.unroute("**/rpc/threads/answer");
+  await page.unroute("**/rpc/threads/resolveIntervention");
 
   await usernameField.fill(username);
   await passwordField.fill(password);
@@ -86,7 +86,19 @@ test("saves a website login from a username and password card without echoing ei
   expect(history).not.toContain(username);
   expect(history).not.toContain(password);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(card.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  const region = page.getByRole("region", { name: "需要你处理" });
+  const reloadedCard = region.getByTestId("secret-ask-card");
+  await expect(reloadedCard).toBeVisible({ timeout: 15_000 });
+  await expect(reloadedCard.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(reloadedCard.locator("input")).toHaveCount(0);
+  // Exactly one card in the transcript: the bubble renders no second AskCard.
+  await expect(page.getByTestId("secret-ask-card")).toHaveCount(1);
   await expect(page.getByText(username)).toHaveCount(0);
+  await expect(page.getByText(password)).toHaveCount(0);
+  const snapshot = await rpc<{ interventions?: unknown[] }>(page, "threads/get", { botId });
+  const snapshotJson = JSON.stringify(snapshot);
+  expect(snapshotJson).not.toContain(username);
+  expect(snapshotJson).not.toContain(password);
   await captureScreenshot(page, testInfo, "login-card-saved");
 });

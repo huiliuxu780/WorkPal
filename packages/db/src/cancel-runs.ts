@@ -35,6 +35,16 @@ export async function cancelRunsInTransaction(
 ): Promise<CancelledRunRow[]> {
   if (runs.length === 0) return [];
   const runIds = runs.map((run) => run.id);
+  // Settle pending Interventions before the run row becomes cancelled. History
+  // events are rejected once the run is cancelled, and a second cancel matches
+  // zero pending rows so it does not append another terminal event.
+  const { cancelPendingInterventions } = await import("./interventions.js");
+  await cancelPendingInterventions(
+    tx as Prisma.TransactionClient,
+    runIds,
+    cancelledAt,
+    options?.match,
+  );
   const cancelled = await tx.run.updateManyAndReturn({
     where: {
       AND: [

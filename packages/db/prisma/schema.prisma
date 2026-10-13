@@ -898,6 +898,56 @@ model ExternalEffect {
   @@map("external_effects")
 }
 
+// Addressable approval or input request. No foreign key to Run, Message, or
+// ExternalEffect: deleting those rows must not erase a terminal audit record.
+// pendingRunKey is the run id while pending and null afterward, so a run cannot
+// hold two pending interventions and terminal rows do not collide.
+model Intervention {
+  id               String    @id
+  revision         Int       @default(1)
+  kind             String
+  status           String
+  spaceId          String
+  threadId         String
+  runId            String
+  attemptId        String
+  botId            String
+  messageId        String
+  pendingRunKey    String?   @unique
+  expiresAt        DateTime?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  supersededById   String?
+  agentId          String?
+  backgroundTaskId String?
+  inputMode        String?
+  inputPurpose     String?
+  inputActions     Json?
+  presentation     Json?
+  effectId         String?
+  decision         String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  submissions      InterventionSubmission[]
+
+  @@index([threadId, status])
+  @@index([runId, status])
+  @@index([messageId])
+  @@map("interventions")
+}
+
+model InterventionSubmission {
+  id                 String       @id @default(cuid())
+  interventionId     String
+  intervention       Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  clientSubmissionId String
+  createdAt          DateTime     @default(now())
+
+  @@unique([interventionId, clientSubmissionId])
+  @@index([interventionId])
+  @@map("intervention_submissions")
+}
+
 model Routine {
   id             String    @id @default(cuid())
   spaceId        String

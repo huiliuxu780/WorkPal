@@ -160,11 +160,21 @@ describePostgres("waiting Run timeouts (PostgreSQL)", () => {
       orderBy: { seq: "asc" },
     });
     expect(events.map((event) => event.type)).toEqual([
+      "intervention.resolved",
       "thread.message.updated",
       "approval.resolved",
       "run.cancelled",
     ]);
-    expect(events[1]?.payload).toMatchObject({ decision: "expired", approvalEffectId: effectId });
+    expect(events.find((event) => event.type === "approval.resolved")?.payload).toMatchObject({
+      decision: "expired",
+      approvalEffectId: effectId,
+    });
+    // The single terminal projection is emitted after the Effect transition,
+    // so a connected client never stores "Effect pending" under an expired card.
+    expect(events.find((event) => event.type === "intervention.resolved")?.payload).toMatchObject({
+      status: "expired",
+      approval: { effectId: effectId, effectStatus: "expired" },
+    });
   });
 
   it("keeps the original wait deadline after an unrelated Run update", async () => {

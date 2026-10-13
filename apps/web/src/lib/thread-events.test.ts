@@ -1919,6 +1919,52 @@ describe("activity projection reduction (Phase 4)", () => {
     );
     expect(progressed).toBe(started);
   });
+
+  it("projects intervention events and clears them with the thread", () => {
+    const payload = {
+      interventionId: "intervention-1",
+      revision: 1,
+      kind: "input",
+      status: "pending",
+      runId: "run-1",
+      attemptId: "attempt-1",
+      messageId: "message-1",
+      botId: "bot-1",
+      createdAt: "2026-10-12T00:00:00.000Z",
+      actor: { botId: "bot-1" },
+      input: { mode: "text" },
+      presentation: { text: "Which city?" },
+    };
+    const created = reduceThreadSnapshot(
+      snapshot([]),
+      event({ type: "intervention.created", seq: 4, payload }),
+    );
+    expect(created?.interventions).toEqual([
+      expect.objectContaining({
+        id: "intervention-1",
+        status: "pending",
+        threadId: "thread-1",
+        presentation: { text: "Which city?" },
+      }),
+    ]);
+    const resolved = reduceThreadSnapshot(
+      created,
+      event({
+        type: "intervention.resolved",
+        seq: 5,
+        payload: { ...payload, revision: 2, status: "answered" },
+      }),
+    );
+    expect(resolved?.interventions?.[0]).toMatchObject({ revision: 2, status: "answered" });
+    expect(
+      reduceThreadSnapshot(
+        resolved,
+        event({ type: "intervention.resolved", seq: 6, payload: { ...payload, revision: 1, status: "cancelled" } }),
+      )?.interventions?.[0]?.status,
+    ).toBe("answered");
+    expect(reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions).toEqual([]);
+    expect(isThreadSnapshotEvent(event({ type: "intervention.created" }))).toBe(true);
+  });
 });
 
 function snapshot(messages: ThreadMessage[], olderCursor: number | null = null): ThreadSnapshot {

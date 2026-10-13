@@ -2,11 +2,12 @@ import { t } from "@lingui/core/macro";
 import type { ThreadMessage, ThreadSnapshot } from "@rakazo/contracts";
 import {
   callClientNonce,
+  isApprovalAskBlock,
   isFarewell,
   isSecretAskBlock,
+  matchFreeTextFromSnapshot,
   runThreadSubscription,
   speechFromBlocks,
-  spokenDecision,
   spokenMemory,
 } from "@rakazo/core";
 import { useSyncExternalStore } from "react";
@@ -341,9 +342,18 @@ async function handleTranscript(text: string) {
     set({ heard: "", caption: t`Hang up, then enter the code on screen.` });
     return;
   }
+  const freeText = matchFreeTextFromSnapshot(thread);
+  if (freeText.action === "refuse") {
+    set({
+      heard: "",
+      caption:
+        freeText.reason === "secret"
+          ? t`Hang up, then enter the code on screen.`
+          : t`Answer this on screen.`,
+    });
+    return;
+  }
   const { botId, exchanges } = state;
-  const askId = latestAskId(thread);
-  const askMessage = thread?.messages.find((message) => message.id === askId);
   // Captured now: a call started while this is in flight must not re-attach the new feed
   // or commit this turn onto it. The same bot can be called again, so the bot id is not enough.
   const callFeed = feed;
@@ -359,12 +369,12 @@ async function handleTranscript(text: string) {
     hangUpTimer = setTimeout(endCall, FAREWELL_TIMEOUT);
   }
   try {
-    if (askMessage) {
-      await rpc.threads.answer({
+    if (freeText.action === "answer") {
+      await rpc.threads.resolveIntervention({
         botId,
-        runId: askMessage.runId ?? "",
-        messageId: askMessage.id,
-        answer: spokenDecision(text) ?? text,
+        interventionId: freeText.interventionId,
+        clientSubmissionId: crypto.randomUUID(),
+        answer: text.trim(),
       });
     } else if (runActive(thread)) {
       await rpc.threads.followUp({ botId, text, clientNonce: callClientNonce(turnCallId) });
@@ -458,7 +468,11 @@ function reactToThread() {
     const ask = lastBot.blocks.find(
       (block) => block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
     );
-    const secretAsk = ask && isSecretAskBlock(ask);
+    const askBlock = ask?.kind === "ask" ? ask : undefined;
+    const secretAsk = Boolean(askBlock && isSecretAskBlock(askBlock));
+    const screenAsk = Boolean(
+      askBlock && !secretAsk && (isApprovalAskBlock(askBlock) || askBlock.actions?.length),
+    );
     if (text) {
       // Never spoken again, interrupted or not.
       spokenMessageIds.add(lastBot.id);
@@ -468,9 +482,11 @@ function reactToThread() {
       void speaker.speak(
         secretAsk
           ? `${text}. ${t`Hang up first, then enter the code on screen.`}`
-          : ask
-            ? `${text}. ${t`Say yes or no, or answer in a sentence.`}`
-            : text,
+          : screenAsk
+            ? `${text}. ${t`Answer this on screen.`}`
+            : askBlock
+              ? `${text}. ${t`Say yes or no, or answer in a sentence.`}`
+              : text,
         { botId, messageId: lastBot.id },
       );
       return;
@@ -499,34 +515,27 @@ function runActive(snapshot: ThreadSnapshot | null) {
 }
 
 function pendingSecretAsk(snapshot: ThreadSnapshot | null) {
-  const askId = latestAskId(snapshot);
-  const askMessage = snapshot?.messages.find((message) => message.id === askId);
-  return Boolean(
-    askMessage?.blocks.some(
+  if (!snapshot) return false;
+  if (snapshot.interventions) {
+    return snapshot.interventions.some(
+      (item) => item.status === "pending" && item.kind === "input" && item.input?.mode === "secret",
+    );
+  }
+  const waiting = new Set(
+    (snapshot.activeRuns ?? (snapshot.run ? [snapshot.run] : []))
+      .filter((run) => run.status === "waiting_input")
+      .map((run) => run.id),
+  );
+  return snapshot.messages.some((message) => {
+    if (!message.runId || !waiting.has(message.runId)) return false;
+    return message.blocks.some(
       (block) =>
         block.kind === "ask" &&
         isSecretAskBlock(block) &&
         block.status !== "answered" &&
         block.status !== "expired",
-    ),
-  );
-}
-
-function latestAskId(snapshot: ThreadSnapshot | null): string | null {
-  if (snapshot?.run?.status !== "waiting_input") return null;
-  for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
-    const message = snapshot.messages[index];
-    if (message?.runId !== snapshot.run.id) continue;
-    if (
-      message.blocks.some(
-        (block) =>
-          block.kind === "ask" && block.status !== "answered" && block.status !== "expired",
-      )
-    ) {
-      return message.id;
-    }
-  }
-  return null;
+    );
+  });
 }
 
 function errorText(error: unknown, fallback: string) {

@@ -164,6 +164,7 @@ import {
   findModelCredential,
   findSpaceMemoryConfig,
   formatMessagingLinkCode,
+  InterventionRejected,
   InvalidSpaceNameError,
   IsolationError,
   issueMessagingLinkCode,
@@ -2340,15 +2341,25 @@ export function createRouter(deps: RouterDeps) {
       }),
       answer: authed.threads.answer.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-        const answered = await deps.events.answerRunInput({
-          spaceId: context.actor.spaceId,
-          threadId: target.threadId,
-          runId: input.runId,
-          messageId: input.messageId,
-          answeredByUserId: context.actor.userId,
-          answer: input.answer,
-          username: input.username,
-        });
+        let answered = false;
+        try {
+          answered = await deps.events.answerRunInput({
+            spaceId: context.actor.spaceId,
+            threadId: target.threadId,
+            runId: input.runId,
+            messageId: input.messageId,
+            answeredByUserId: context.actor.userId,
+            answer: input.answer,
+            username: input.username,
+          });
+        } catch (error) {
+          if (error instanceof InterventionRejected) {
+            throw new ORPCError("CONFLICT", {
+              message: "This prompt is no longer awaiting an answer",
+            });
+          }
+          throw error;
+        }
         if (!answered) {
           throw new ORPCError("CONFLICT", {
             message: "This prompt is no longer awaiting an answer",
@@ -2368,6 +2379,43 @@ export function createRouter(deps: RouterDeps) {
           getLogger().error("thread answer enqueue", error);
         });
         return { ok: true as const };
+      }),
+      resolveIntervention: authed.threads.resolveIntervention.handler(async ({ context, input }) => {
+        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const result = await deps.events.resolveIntervention({
+          spaceId: context.actor.spaceId,
+          threadId: target.threadId,
+          interventionId: input.interventionId,
+          clientSubmissionId: input.clientSubmissionId,
+          answeredByUserId: context.actor.userId,
+          answer: input.answer,
+          username: input.username,
+        });
+        if (result.outcome === "rejected") {
+          if (result.reason === "forbidden") {
+            throw new ORPCError("FORBIDDEN", {
+              message: "Only the run owner can resolve this request",
+            });
+          }
+          if (result.reason === "not_found") {
+            throw new ORPCError("NOT_FOUND", { message: "Intervention was not found" });
+          }
+          if (result.reason === "invalid_submission") {
+            throw new ORPCError("BAD_REQUEST", { message: "Submission id is not valid" });
+          }
+          throw new ORPCError("CONFLICT", {
+            message: "This prompt is no longer awaiting an answer",
+          });
+        }
+        if (result.applied && result.cancelledRunId) {
+          await revokeNativeCancellation(deps, [result.cancelledRunId]);
+          await cancelDescendantsNow(deps, [result.cancelledRunId]);
+        } else if (result.applied && result.resume) {
+          await deps.jobs.enqueue(runContinueJob(result.intervention.runId)).catch((error) => {
+            getLogger().error("thread answer enqueue", error);
+          });
+        }
+        return { outcome: result.outcome, intervention: result.intervention };
       }),
       markRead: authed.threads.markRead.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
