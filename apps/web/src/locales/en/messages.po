@@ -247,6 +247,11 @@ msgstr "{0} MB"
 msgid "{0} rollup hours"
 msgstr "{0} rollup hours"
 
+#. placeholder {0}: list.activeCount
+#: src/components/ai/TaskCenterView.tsx
+msgid "{0} running in background"
+msgstr "{0} running in background"
+
 #. placeholder {0}: usage.runs
 #. placeholder {1}: usage.inputTokens + usage.outputTokens
 #: src/pages/AccountSettingsOverlay.tsx
@@ -826,9 +831,18 @@ msgstr "Avatar Studio"
 msgid "Back"
 msgstr "Back"
 
+#: src/lib/task-center.ts
+msgid "Back to conversation"
+msgstr "Back to conversation"
+
 #: src/pages/Auth.tsx
 msgid "Back to sign in"
 msgstr "Back to sign in"
+
+#: src/components/ai/TaskCenterNavEntry.tsx
+#: src/components/ai/TaskCenterView.tsx
+msgid "Background tasks"
+msgstr "Background tasks"
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Base URL"
@@ -1679,9 +1693,17 @@ msgstr "Could not update the default memory scope"
 msgid "Could not upload file"
 msgstr "Could not upload file"
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "Couldn't load background tasks."
+msgstr "Couldn't load background tasks."
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
+
+#: src/components/ai/TaskCenterView.tsx
+msgid "Couldn't open this task. Try again."
+msgstr "Couldn't open this task. Try again."
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't update messaging settings"
@@ -2306,6 +2328,10 @@ msgstr "Group updates"
 msgid "Groups"
 msgstr "Groups"
 
+#: src/lib/task-center.ts
+msgid "Handle now"
+msgstr "Handle now"
+
 #: src/components/call/CallCard.tsx
 msgid "Hang up"
 msgstr "Hang up"
@@ -2550,6 +2576,10 @@ msgstr "Load earlier messages"
 msgid "Load more"
 msgstr "Load more"
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "Load more tasks"
+msgstr "Load more tasks"
+
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
 msgstr "Loading activity…"
@@ -2583,6 +2613,7 @@ msgid "Loading voice providers…"
 msgstr "Loading voice providers…"
 
 #: src/App.tsx
+#: src/components/ai/TaskCenterView.tsx
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
@@ -2998,6 +3029,10 @@ msgstr "No runs yet"
 msgid "No skills yet"
 msgstr "No skills yet"
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "No tasks running in background"
+msgstr "No tasks running in background"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No team conversations yet."
 msgstr "No team conversations yet."
@@ -3029,6 +3064,10 @@ msgstr "Not now"
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr "Not started"
+
+#: src/components/ai/TaskCenterView.tsx
+msgid "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
+msgstr "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Nothing is still running"
@@ -3568,6 +3607,7 @@ msgid "Result preview truncated"
 msgstr "Result preview truncated"
 
 #: src/App.tsx
+#: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 msgid "Retry now"
 msgstr "Retry now"
@@ -4184,6 +4224,10 @@ msgstr "This server is already connected. Disconnect it first to authorize again
 msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
 msgstr "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "This task is no longer available."
+msgstr "This task is no longer available."
+
 #: src/pages/Artifacts.tsx
 msgid "This week"
 msgstr "This week"
@@ -4378,6 +4422,7 @@ msgid "Version"
 msgstr "Version"
 
 #: src/lib/execution-card.ts
+#: src/lib/task-center.ts
 msgid "View execution"
 msgstr "View execution"
 
@@ -4386,6 +4431,7 @@ msgid "View reason"
 msgstr "View reason"
 
 #: src/lib/execution-card.ts
+#: src/lib/task-center.ts
 msgid "View result"
 msgstr "View result"
 

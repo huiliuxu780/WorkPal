@@ -10,7 +10,7 @@ import { deriveExecutionStatus, type ExecutionRunState } from "../../lib/executi
 import { ExecutionCard, ExecutionCardContext } from "./ExecutionCard";
 
 /** Enabled interactive controls, in DOM order — the region sorts approvals first. */
-const FOCUSABLE_CONTROL =
+export const FOCUSABLE_CONTROL =
   'button:not([disabled]):not([aria-disabled="true"]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 export function ExecutionShell({

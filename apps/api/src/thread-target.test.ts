@@ -264,8 +264,10 @@ describe("threadSnapshot", () => {
 
     const snapshot = await threadSnapshot({ prisma }, target);
 
-    // The FOR SHARE thread lock plus the ExecutionSummary event-ceiling scan.
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    // The FOR SHARE thread lock only: the summary builder keys its grouped
+    // event scans off the AUTHORIZED run rows, and this fixture's findMany
+    // returns none — so no ceiling/generation scans are issued at all.
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(findManyEvents).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -420,7 +422,10 @@ describe("threadSnapshot", () => {
                 findFirst: vi.fn().mockResolvedValue(null),
                 findMany: vi.fn().mockResolvedValue([]),
               },
-              run: { findFirst: botRunFindFirst([waitingPeer, olderUser]), findMany: vi.fn().mockResolvedValue([]) },
+              run: {
+                findFirst: botRunFindFirst([waitingPeer, olderUser]),
+                findMany: vi.fn().mockResolvedValue([]),
+              },
             }),
           ),
         } as unknown as PrismaClient,

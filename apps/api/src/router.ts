@@ -78,9 +78,6 @@ import {
   prepareGraphqlInstall,
   probeOpenAiCompatibleModels,
   provisionComputer,
-  retryPendingBackgroundRevocations,
-  revokeCancelledRunHandles,
-  revokeCancellingBackgroundTasks,
   queueComputerUpdate,
   readStoredModelAuth,
   releaseComputerExecutionLease,
@@ -89,6 +86,9 @@ import {
   resolveBotUploadPath,
   resolveBotWorkspaceCwd,
   resolveBotWorkspacePath,
+  retryPendingBackgroundRevocations,
+  revokeCancelledRunHandles,
+  revokeCancellingBackgroundTasks,
   revokeScreenControl,
   sanitizeComposioError,
   savePushToken,
@@ -142,17 +142,13 @@ import {
 } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
-  ExecutionActivityCursorError,
-  loadExecutionSnapshot,
-  loadRunActivityPage,
   appendEventInTransaction,
-  cancelChildrenOfCancelledRuns,
-  listDescendantRunIds,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
   CannotDeleteLastSpaceError,
   CannotDeleteSpaceAsNonOwnerError,
   ComputerLimitError,
+  cancelChildrenOfCancelledRuns,
   claimEmptySpaceDeletionForMember,
   createExternalConversationRepos,
   createGroupRepos,
@@ -162,6 +158,7 @@ import {
   defaultModelCredentialCandidates,
   deleteEmptySpaceForMember,
   deleteUnreferencedCredentialSecret,
+  ExecutionActivityCursorError,
   findDefaultModelCredential,
   findDefaultVoiceCredential,
   findModelCredential,
@@ -171,6 +168,10 @@ import {
   InvalidSpaceNameError,
   IsolationError,
   issueMessagingLinkCode,
+  listDescendantRunIds,
+  loadExecutionSnapshot,
+  loadRunActivityPage,
+  loadTaskCenterPage,
   lockOwnedGroup,
   newestModelCredentialOrder,
   newestVoiceCredentialOrder,
@@ -186,6 +187,7 @@ import {
   SpaceNotFoundError,
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
+  TaskCenterCursorError,
   touchGroupUpdatedAt,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
@@ -1853,7 +1855,10 @@ export function createRouter(deps: RouterDeps) {
           await retryPendingBackgroundRevocations(deps.prisma, deps.cancelRuntimeBackgroundTask, {
             taskIds: removed.backgroundTasks.map((task) => task.taskId),
           }).catch((error) => {
-            getLogger().error("group removal background revocation failed; Worker will retry", error);
+            getLogger().error(
+              "group removal background revocation failed; Worker will retry",
+              error,
+            );
           });
         }
         const cleanup = await Promise.allSettled(
@@ -2376,43 +2381,45 @@ export function createRouter(deps: RouterDeps) {
         });
         return { ok: true as const };
       }),
-      resolveIntervention: authed.threads.resolveIntervention.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-        const result = await deps.events.resolveIntervention({
-          spaceId: context.actor.spaceId,
-          threadId: target.threadId,
-          interventionId: input.interventionId,
-          clientSubmissionId: input.clientSubmissionId,
-          answeredByUserId: context.actor.userId,
-          answer: input.answer,
-          username: input.username,
-        });
-        if (result.outcome === "rejected") {
-          if (result.reason === "forbidden") {
-            throw new ORPCError("FORBIDDEN", {
-              message: "Only the run owner can resolve this request",
+      resolveIntervention: authed.threads.resolveIntervention.handler(
+        async ({ context, input }) => {
+          const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+          const result = await deps.events.resolveIntervention({
+            spaceId: context.actor.spaceId,
+            threadId: target.threadId,
+            interventionId: input.interventionId,
+            clientSubmissionId: input.clientSubmissionId,
+            answeredByUserId: context.actor.userId,
+            answer: input.answer,
+            username: input.username,
+          });
+          if (result.outcome === "rejected") {
+            if (result.reason === "forbidden") {
+              throw new ORPCError("FORBIDDEN", {
+                message: "Only the run owner can resolve this request",
+              });
+            }
+            if (result.reason === "not_found") {
+              throw new ORPCError("NOT_FOUND", { message: "Intervention was not found" });
+            }
+            if (result.reason === "invalid_submission") {
+              throw new ORPCError("BAD_REQUEST", { message: "Submission id is not valid" });
+            }
+            throw new ORPCError("CONFLICT", {
+              message: "This prompt is no longer awaiting an answer",
             });
           }
-          if (result.reason === "not_found") {
-            throw new ORPCError("NOT_FOUND", { message: "Intervention was not found" });
+          if (result.applied && result.cancelledRunId) {
+            await revokeNativeCancellation(deps, [result.cancelledRunId]);
+            await cancelDescendantsNow(deps, [result.cancelledRunId]);
+          } else if (result.applied && result.resume) {
+            await deps.jobs.enqueue(runContinueJob(result.intervention.runId)).catch((error) => {
+              getLogger().error("thread answer enqueue", error);
+            });
           }
-          if (result.reason === "invalid_submission") {
-            throw new ORPCError("BAD_REQUEST", { message: "Submission id is not valid" });
-          }
-          throw new ORPCError("CONFLICT", {
-            message: "This prompt is no longer awaiting an answer",
-          });
-        }
-        if (result.applied && result.cancelledRunId) {
-          await revokeNativeCancellation(deps, [result.cancelledRunId]);
-          await cancelDescendantsNow(deps, [result.cancelledRunId]);
-        } else if (result.applied && result.resume) {
-          await deps.jobs.enqueue(runContinueJob(result.intervention.runId)).catch((error) => {
-            getLogger().error("thread answer enqueue", error);
-          });
-        }
-        return { outcome: result.outcome, intervention: result.intervention };
-      }),
+          return { outcome: result.outcome, intervention: result.intervention };
+        },
+      ),
       markRead: authed.threads.markRead.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         await setThreadUnreadState(deps.prisma, context.actor, target, false);
@@ -5629,6 +5636,31 @@ export function createRouter(deps: RouterDeps) {
           }
         },
       ),
+      /**
+       * Task Center: cross-conversation index of the actor's authorized root
+       * Runs. One consistent read; authorization, the root-Run rule and the
+       * Thread Clear generation fence are all server-side — unauthorized
+       * items never reach the browser.
+       */
+      taskCenter: authed.runs.taskCenter.handler(async ({ context, input }) => {
+        try {
+          return await deps.prisma.$transaction((tx) =>
+            loadTaskCenterPage(tx, {
+              spaceId: context.actor.spaceId,
+              userId: context.actor.userId,
+              ...(input.cursor ? { cursor: input.cursor } : {}),
+              ...(input.limit ? { limit: input.limit } : {}),
+            }),
+          );
+        } catch (error) {
+          if (error instanceof TaskCenterCursorError) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "This task list cursor is no longer valid. Refresh the list.",
+            });
+          }
+          throw error;
+        }
+      }),
     },
     voice: {
       catalog: authed.voice.catalog.handler(async () => listVoiceCatalog()),

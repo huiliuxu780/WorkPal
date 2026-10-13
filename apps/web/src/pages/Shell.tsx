@@ -13,11 +13,11 @@ import type {
   Connection,
   ConnectionCatalogItem,
   Group,
+  InterventionView,
   Me,
   ProductEvent,
-  InterventionView,
-  Run,
   Routine,
+  Run,
   SearchHit,
   Space,
   SpaceMemoryConfig,
@@ -49,6 +49,7 @@ import {
   isRunTerminalEvent,
   isToolActivityBlock,
   mentionChipKey,
+  mergeExecutionsByRun,
   nestRosterByParent,
   plainTextFromMarkdown,
   projectMessageReactions,
@@ -144,14 +145,16 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
-import { ExecutionActivity } from "../components/ai/ExecutionActivity";
-import { ExecutionShell } from "../components/ai/ExecutionShell";
-import { InterventionRegion } from "../components/ai/InterventionRegion";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { ExecutionActivity } from "../components/ai/ExecutionActivity";
+import { ExecutionShell, FOCUSABLE_CONTROL } from "../components/ai/ExecutionShell";
+import { InterventionRegion } from "../components/ai/InterventionRegion";
 import { RunPlanDisclosure } from "../components/ai/RunPlanDisclosure";
 import { RunResult } from "../components/ai/RunResult";
 import { RunStepsDisclosure } from "../components/ai/RunStepsDisclosure";
 import { RunTodoList } from "../components/ai/RunTodoList";
+import { TaskCenterNavEntry } from "../components/ai/TaskCenterNavEntry";
+import { TaskCenterView } from "../components/ai/TaskCenterView";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -183,6 +186,7 @@ import {
   liveActivityItems,
 } from "../lib/activity-view";
 import type { ArtifactTarget } from "../lib/artifact-open";
+import { askDraftKey } from "../lib/ask-draft";
 import { authClient } from "../lib/auth";
 import { takeInitialBootstrap } from "../lib/bootstrap";
 import {
@@ -204,7 +208,30 @@ import {
 } from "../lib/computer-screen";
 import { publishComputerCommand } from "../lib/computer-workspace";
 import { desktopBridge } from "../lib/desktop";
+import { resultHasText } from "../lib/execution-card";
+import {
+  appendExecutionActivityPage,
+  type ExecutionDetailCache,
+  type ExpansionMap,
+  executionDataForRun,
+  executionRunState,
+  forceOpenExpansion,
+  installExecutionDetail,
+  isExpansionOpen,
+  mergeActivityPages,
+  planExpansionDefaults,
+  readExecutionExpansions,
+  resolveExecutionAnchor,
+  selectCachedDetailEntry,
+  summariesByRun,
+  toggleExpansion,
+} from "../lib/execution-history";
 import { scheduleFocusPrompt } from "../lib/focus-prompt";
+import {
+  coveredAskMessageIds,
+  mergeInterventionViews,
+  pendingInterventionKindsForRun,
+} from "../lib/intervention-view";
 import { localTimezone } from "../lib/local-timezone";
 import { copyableMessageText } from "../lib/message-text";
 import { messageProviderLabel } from "../lib/messaging";
@@ -221,30 +248,8 @@ import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
-import { askDraftKey } from "../lib/ask-draft";
-import {
-  coveredAskMessageIds,
-  mergeInterventionViews,
-  pendingInterventionKindsForRun,
-} from "../lib/intervention-view";
-import {
-  appendExecutionActivityPage,
-  executionDataForRun,
-  executionRunState,
-  type ExecutionDetailCache,
-  type ExpansionMap,
-  installExecutionDetail,
-  isExpansionOpen,
-  mergeActivityPages,
-  planExpansionDefaults,
-  readExecutionExpansions,
-  resolveExecutionAnchor,
-  selectCachedDetailEntry,
-  summariesByRun,
-  toggleExpansion,
-} from "../lib/execution-history";
-import { resultHasText } from "../lib/execution-card";
 import { sharedInflight } from "../lib/shared-inflight";
+import { clearTaskCenterNavIntent, peekTaskCenterNavIntent } from "../lib/task-center";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
@@ -428,7 +433,7 @@ function readCollapsedRosterParents(userId: string | null | undefined): Set<stri
   return readCollapsedIdSet(collapsedRosterParentsStorageKey(userId));
 }
 
-export function ShellPage() {
+export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
   const { t } = useLingui();
   const { botId, groupId } = useParams();
   const navigate = useNavigate();
@@ -438,6 +443,10 @@ export function ShellPage() {
   // effect below, which should only restart when the active bot changes).
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
+  // Stable mirror of the route mode for callbacks (refreshBots) that must not
+  // be re-created when the Shell switches between chat and Task Center.
+  const tasksModeRef = useRef(tasksMode);
+  tasksModeRef.current = tasksMode;
   const session = authClient.useSession();
   const userId = session.data?.user.id;
   const [groups, setGroups] = useState<Group[]>([]);
@@ -591,6 +600,40 @@ export function ShellPage() {
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [pickerInfoTopic, setPickerInfoTopic] = useState<"group" | "space" | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Task Center sidebar badge: the server's authoritative activeCount, fetched
+  // through the same RPC (and therefore the same authorization, root-Run and
+  // generation rules) as the list itself. Null while unknown — the badge is
+  // omitted, never guessed. Epoch-guarded so a late response cannot regress
+  // the count, and refreshed on the existing lightweight triggers (mount,
+  // focus/visibility, slow poll) without a new transport.
+  const [taskCenterCount, setTaskCenterCount] = useState<number | null>(null);
+  const taskCenterCountRequest = useRef(0);
+  const refreshTaskCenterCount = useCallback(() => {
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    const requestId = ++taskCenterCountRequest.current;
+    void rpc.runs
+      .taskCenter({ limit: 1 })
+      .then((page) => {
+        if (requestId === taskCenterCountRequest.current) setTaskCenterCount(page.activeCount);
+      })
+      .catch(() => {
+        if (requestId === taskCenterCountRequest.current) setTaskCenterCount(null);
+      });
+  }, []);
+  useEffect(() => {
+    refreshTaskCenterCount();
+    const onFocus = () => refreshTaskCenterCount();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    const poll = window.setInterval(refreshTaskCenterCount, 15_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.clearInterval(poll);
+    };
+    // tasksMode re-runs the fetch when entering/leaving the Task Center route
+    // (the Shell itself stays mounted across that transition).
+  }, [refreshTaskCenterCount, tasksMode]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
@@ -958,6 +1001,9 @@ export function ShellPage() {
           }
           return;
         }
+        // The Task Center route has no chat target of its own: never redirect
+        // it back to the first thread (its sidebar and badge stay live).
+        if (tasksModeRef.current) return;
         const currentBotId = routeBotId.current;
         if (!currentBotId || !list.some((bot) => bot.id === currentBotId)) {
           navigate(firstThreadRoute(list, groupList), { replace: true });
@@ -1180,6 +1226,9 @@ export function ShellPage() {
           navigate("/onboarding", { replace: true });
           return;
         }
+        // The Task Center route keeps the sidebar but has no chat to select:
+        // never redirect it to the first bot.
+        if (tasksMode) return;
         if (groupId) {
           if (!groupList.some((group) => group.id === groupId)) {
             navigate(firstThreadRoute(bootstrap.bots, groupList), { replace: true });
@@ -1715,10 +1764,17 @@ export function ShellPage() {
         }
       : null;
     if (targetInPage) initiallyScrolledThread.current = page.threadId;
+    // The around-page carries the summaries of its own Runs (HISTORY-001):
+    // merging them keeps a jumped-to Execution Card server-driven even when
+    // the Run sits outside the thread's recent window (Task Center anchor).
+    const mergedExecutions = targetInPage
+      ? mergeExecutionsByRun(page.executions, snap.executions)
+      : snap.executions;
     commitSnapshot({
       ...snap,
       messages: targetInPage ? page.messages : snap.messages,
       olderCursor: targetInPage ? page.olderCursor : snap.olderCursor,
+      ...(mergedExecutions ? { executions: mergedExecutions } : {}),
     });
     if (threadTarget.botId) {
       commitComputer(snap.computer ?? null);
@@ -2956,6 +3012,14 @@ export function ShellPage() {
             />
           ) : (
             <>
+              <TaskCenterNavEntry
+                count={taskCenterCount}
+                current={tasksMode}
+                onSelect={() => {
+                  setMobileSidebarOpen(false);
+                  if (!tasksMode) navigate("/app/tasks");
+                }}
+              />
               {activityMode ? (
                 <ActivityList
                   onOpenRun={(run) => {
@@ -3499,259 +3563,273 @@ export function ShellPage() {
         />
       )}
 
-      <main
-        aria-hidden={mobileSidebarOpen || undefined}
-        inert={mobileSidebarOpen}
-        className="flex min-w-0 flex-1 flex-col bg-background"
-      >
-        <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
-          <div className="flex min-w-0 items-center gap-2">
-            {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
-            {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-            <button
-              type="button"
-              aria-label={t`Open navigation`}
-              onClick={() => setMobileSidebarOpen(true)}
-              className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-            >
-              <Menu size={19} strokeWidth={1.7} />
-            </button>
-            {botsSidebarCollapsed ? (
+      {tasksMode ? (
+        /* Task Center: the sidebar stays (with its existing mobile collapse);
+           the chat main area yields to the background-tasks list. */
+        <TaskCenterView
+          mobileSidebarOpen={mobileSidebarOpen}
+          onBeforeNavigate={() => setMobileSidebarOpen(false)}
+        />
+      ) : (
+        <main
+          aria-hidden={mobileSidebarOpen || undefined}
+          inert={mobileSidebarOpen}
+          className="flex min-w-0 flex-1 flex-col bg-background"
+        >
+          <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
+            <div className="flex min-w-0 items-center gap-2">
+              {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
+              {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
               <button
                 type="button"
-                data-testid="restore-bots-sidebar"
-                aria-label={t`Show bots`}
-                title={t`Show bots`}
-                onClick={() => setBotsSidebarCollapsedPref(false)}
-                className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                aria-label={t`Open navigation`}
+                onClick={() => setMobileSidebarOpen(true)}
+                className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
               >
-                <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                <Menu size={19} strokeWidth={1.7} />
               </button>
-            ) : null}
-            <button
-              type="button"
-              data-testid="bot-settings-trigger"
-              onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-              className="app-no-drag flex min-w-0 items-center gap-3"
-            >
-              {inGroup ? (
-                <GroupAvatar
-                  members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                  size={26}
-                />
-              ) : active ? (
-                <BotAvatar
-                  color={active.color}
-                  identity={active.id}
-                  size={26}
-                  status={activeBotLiveStatus}
-                />
+              {botsSidebarCollapsed ? (
+                <button
+                  type="button"
+                  data-testid="restore-bots-sidebar"
+                  aria-label={t`Show bots`}
+                  title={t`Show bots`}
+                  onClick={() => setBotsSidebarCollapsedPref(false)}
+                  className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                >
+                  <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                </button>
               ) : null}
-              <span className="min-w-0">
-                <span className="block truncate text-[16px] font-medium text-foreground" dir="auto">
-                  {inGroup
-                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                    : (active?.name ?? t`Select a bot`)}
-                </span>
-              </span>
-            </button>
-          </div>
-          <div className="flex items-center gap-1">
-            {!inGroup && active ? (
               <button
                 type="button"
-                title={t`Agent computer`}
-                onClick={() => {
-                  const next = panel === "computer" ? null : "computer";
-                  setPanel(next);
-                  if (next === "computer" && active) {
-                    // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                    void refreshThread(active.id).catch(() => undefined);
-                  }
-                }}
-                data-active={panel === "computer" ? "" : undefined}
-                className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                data-testid="bot-settings-trigger"
+                onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
+                className="app-no-drag flex min-w-0 items-center gap-3"
               >
-                <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
-              </button>
-            ) : null}
-            {!inGroup && active ? (
-              <div className="app-no-drag w-[190px]">
-                <ModelTreePicker
-                  id="model-switch-trigger"
-                  align="end"
-                  value={
-                    active.modelProvider
-                      ? { provider: active.modelProvider, modelId: active.modelId ?? "" }
-                      : null
-                  }
-                  spaceDefaultLabel={
-                    bootstrapMe?.defaultProvider && bootstrapMe.defaultModel
-                      ? modelSwitchCatalog.find(
-                          (entry) =>
-                            entry.provider === bootstrapMe.defaultProvider &&
-                            entry.id === bootstrapMe.defaultModel,
-                        )?.label
-                      : undefined
-                  }
-                  onChange={(next) => void switchConversationModel(next)}
-                />
-              </div>
-            ) : null}
-            {!inGroup && active && panelRun ? (
-              <button
-                type="button"
-                data-testid="run-panel-trigger"
-                title={t`Run details`}
-                onClick={() => setPanel(panel === "run" ? null : "run")}
-                data-active={panel === "run" ? "" : undefined}
-                className="app-no-drag ms-1 flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12.5px] hover:bg-accent data-active:bg-accent"
-              >
-                <span
-                  className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
-                  style={
-                    isRunActive(panelRun.status)
-                      ? { animation: "rkPulse 1.2s ease-in-out infinite" }
-                      : undefined
-                  }
-                />
-                <span className={runStatusTextClass(panelRun.status)}>
-                  {runStatusLabel(panelRun.status)}
+                {inGroup ? (
+                  <GroupAvatar
+                    members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                    size={26}
+                  />
+                ) : active ? (
+                  <BotAvatar
+                    color={active.color}
+                    identity={active.id}
+                    size={26}
+                    status={activeBotLiveStatus}
+                  />
+                ) : null}
+                <span className="min-w-0">
+                  <span
+                    className="block truncate text-[16px] font-medium text-foreground"
+                    dir="auto"
+                  >
+                    {inGroup
+                      ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                      : (active?.name ?? t`Select a bot`)}
+                  </span>
                 </span>
               </button>
-            ) : null}
-          </div>
-        </div>
-        {!active && !activeGroup && initialBotsLoaded ? (
-          <div className="grid flex-1 place-items-center">
-            <Button onClick={() => setPanel("create")}>
-              <Plus size={16} aria-hidden="true" />
-              <Trans>Create new Bot</Trans>
-            </Button>
-          </div>
-        ) : (
-          <Transcript
-            key={activeSnapshot?.threadId}
-            scrollRef={messageScroll}
-            scrollRequest={scrollRequest}
-            onScrollRequestHandled={clearScrollRequest}
-            artifactTarget={transcriptArtifactTarget}
-            messages={transcriptMessages}
-            plans={activeSnapshot?.plans}
-            steps={activeSnapshot?.steps}
-            todos={activeSnapshot?.todos}
-            runs={[
-              ...(activeSnapshot?.run ? [activeSnapshot.run] : []),
-              ...(activeSnapshot?.activeRuns ?? []),
-              ...(activeSnapshot?.recentRuns ?? []),
-            ]}
-            activeRunIds={currentRuns.filter((run) => isRunActive(run.status)).map((run) => run.id)}
-            showToolActivity={showToolActivity}
-            olderCursor={activeSnapshot?.olderCursor ?? null}
-            loadingOlder={loadingOlder}
-            interventions={activeSnapshot?.interventions}
-            threadId={activeSnapshot?.threadId ?? ""}
-            executions={activeSnapshot?.executions}
-            running={transcriptRunning}
-            activity={inlineActivity}
-            backgroundTasks={backgroundActivity}
-            onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
-            showActivityAvatars={inGroup}
-            activityBotColors={activityBotColors}
-            onLoadOlder={loadOlder}
-            onOpenBot={openBot}
-            onAnswer={answerMessage}
-            onReply={(message) => {
-              setReplyTarget(message);
-              setReplyQuote(null);
-            }}
-            onQuote={(message, quote) => {
-              setReplyTarget(message);
-              setReplyQuote(quote);
-            }}
-            onReact={reactToMessage}
-            onJumpToMessage={jumpToReplyMessage}
-            onOpenPeerMessages={(peer) => {
-              setPeerConversation(peer);
-            }}
-            memberName={resolveTranscriptMemberName}
-            peerBot={resolveTranscriptBot}
-            onRefresh={refreshActiveThread}
-            onBotChanged={refreshBots}
-            onAddRoutine={addSkillRoutine}
-            voiceReady={Boolean(voiceStatus?.ready)}
-            speakingMessageId={speakingMessageId}
-            onSpeak={speakMessage}
-            onOpenComputer={onOpenComputer}
-          />
-        )}
-        {recordingSkill ? (
-          <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-            <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
-          </div>
-        ) : null}
-        {active || activeGroup ? (
-          <Composer
-            key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
-            activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
-            running={composerRunning}
-            disabled={Boolean(recordingSkill)}
-            pendingAttachments={activePendingAttachments}
-            attachmentNotice={attachmentNotice}
-            sendError={sendError}
-            runError={displayedRunError}
-            runErrorId={displayedRunErrorId}
-            onRunErrorPresented={handleRunErrorPresented}
-            onDismissError={dismissComposerError}
-            sending={sending}
-            fileInputRef={fileInputRef}
-            onAttachmentPick={onAttachmentPick}
-            onRemoveAttachment={removeAttachment}
-            onSend={sendMessage}
-            onStop={stopRun}
-            onVoice={
-              !inGroup && active
-                ? () => {
-                    if (!voiceStatus?.ready) {
-                      openSettings("voice");
-                      return;
+            </div>
+            <div className="flex items-center gap-1">
+              {!inGroup && active ? (
+                <button
+                  type="button"
+                  title={t`Agent computer`}
+                  onClick={() => {
+                    const next = panel === "computer" ? null : "computer";
+                    setPanel(next);
+                    if (next === "computer" && active) {
+                      // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                      void refreshThread(active.id).catch(() => undefined);
                     }
-                    startCall({
-                      botId: active.id,
-                      botName: active.name,
-                      botColor: active.color,
-                      transcribe: Boolean(voiceStatus?.transcribe),
-                    });
-                  }
-                : undefined
-            }
-            replyTarget={activeReplyTarget}
-            replyQuote={activeReplyQuote}
-            replyTargetName={replyTargetName}
-            onClearReply={clearReply}
-            mentionTargets={composerMentionTargets}
-            agentSkills={agentSkills}
-            onSlashOpen={refreshAgentSkills}
-            onSlashAction={(action) => {
-              if (action === "chat-settings") {
-                setPanel(inGroup ? "group-settings" : "settings");
-                return;
+                  }}
+                  data-active={panel === "computer" ? "" : undefined}
+                  className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
+                >
+                  <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
+                </button>
+              ) : null}
+              {!inGroup && active ? (
+                <div className="app-no-drag w-[190px]">
+                  <ModelTreePicker
+                    id="model-switch-trigger"
+                    align="end"
+                    value={
+                      active.modelProvider
+                        ? { provider: active.modelProvider, modelId: active.modelId ?? "" }
+                        : null
+                    }
+                    spaceDefaultLabel={
+                      bootstrapMe?.defaultProvider && bootstrapMe.defaultModel
+                        ? modelSwitchCatalog.find(
+                            (entry) =>
+                              entry.provider === bootstrapMe.defaultProvider &&
+                              entry.id === bootstrapMe.defaultModel,
+                          )?.label
+                        : undefined
+                    }
+                    onChange={(next) => void switchConversationModel(next)}
+                  />
+                </div>
+              ) : null}
+              {!inGroup && active && panelRun ? (
+                <button
+                  type="button"
+                  data-testid="run-panel-trigger"
+                  title={t`Run details`}
+                  onClick={() => setPanel(panel === "run" ? null : "run")}
+                  data-active={panel === "run" ? "" : undefined}
+                  className="app-no-drag ms-1 flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12.5px] hover:bg-accent data-active:bg-accent"
+                >
+                  <span
+                    className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
+                    style={
+                      isRunActive(panelRun.status)
+                        ? { animation: "rkPulse 1.2s ease-in-out infinite" }
+                        : undefined
+                    }
+                  />
+                  <span className={runStatusTextClass(panelRun.status)}>
+                    {runStatusLabel(panelRun.status)}
+                  </span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {!active && !activeGroup && initialBotsLoaded ? (
+            <div className="grid flex-1 place-items-center">
+              <Button onClick={() => setPanel("create")}>
+                <Plus size={16} aria-hidden="true" />
+                <Trans>Create new Bot</Trans>
+              </Button>
+            </div>
+          ) : (
+            <Transcript
+              key={activeSnapshot?.threadId}
+              scrollRef={messageScroll}
+              scrollRequest={scrollRequest}
+              onScrollRequestHandled={clearScrollRequest}
+              artifactTarget={transcriptArtifactTarget}
+              messages={transcriptMessages}
+              plans={activeSnapshot?.plans}
+              steps={activeSnapshot?.steps}
+              todos={activeSnapshot?.todos}
+              runs={[
+                ...(activeSnapshot?.run ? [activeSnapshot.run] : []),
+                ...(activeSnapshot?.activeRuns ?? []),
+                ...(activeSnapshot?.recentRuns ?? []),
+              ]}
+              activeRunIds={currentRuns
+                .filter((run) => isRunActive(run.status))
+                .map((run) => run.id)}
+              showToolActivity={showToolActivity}
+              olderCursor={activeSnapshot?.olderCursor ?? null}
+              loadingOlder={loadingOlder}
+              interventions={activeSnapshot?.interventions}
+              threadId={activeSnapshot?.threadId ?? ""}
+              executions={activeSnapshot?.executions}
+              running={transcriptRunning}
+              activity={inlineActivity}
+              backgroundTasks={backgroundActivity}
+              onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
+              showActivityAvatars={inGroup}
+              activityBotColors={activityBotColors}
+              onLoadOlder={loadOlder}
+              onOpenBot={openBot}
+              onAnswer={answerMessage}
+              onReply={(message) => {
+                setReplyTarget(message);
+                setReplyQuote(null);
+              }}
+              onQuote={(message, quote) => {
+                setReplyTarget(message);
+                setReplyQuote(quote);
+              }}
+              onReact={reactToMessage}
+              onJumpToMessage={jumpToReplyMessage}
+              onOpenPeerMessages={(peer) => {
+                setPeerConversation(peer);
+              }}
+              memberName={resolveTranscriptMemberName}
+              peerBot={resolveTranscriptBot}
+              onRefresh={refreshActiveThread}
+              onBotChanged={refreshBots}
+              onAddRoutine={addSkillRoutine}
+              voiceReady={Boolean(voiceStatus?.ready)}
+              speakingMessageId={speakingMessageId}
+              onSpeak={speakMessage}
+              onOpenComputer={onOpenComputer}
+            />
+          )}
+          {recordingSkill ? (
+            <div className="px-6 pb-2 text-center text-[13px] text-destructive">
+              <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
+            </div>
+          ) : null}
+          {active || activeGroup ? (
+            <Composer
+              key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+              activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
+              running={composerRunning}
+              disabled={Boolean(recordingSkill)}
+              pendingAttachments={activePendingAttachments}
+              attachmentNotice={attachmentNotice}
+              sendError={sendError}
+              runError={displayedRunError}
+              runErrorId={displayedRunErrorId}
+              onRunErrorPresented={handleRunErrorPresented}
+              onDismissError={dismissComposerError}
+              sending={sending}
+              fileInputRef={fileInputRef}
+              onAttachmentPick={onAttachmentPick}
+              onRemoveAttachment={removeAttachment}
+              onSend={sendMessage}
+              onStop={stopRun}
+              onVoice={
+                !inGroup && active
+                  ? () => {
+                      if (!voiceStatus?.ready) {
+                        openSettings("voice");
+                        return;
+                      }
+                      startCall({
+                        botId: active.id,
+                        botName: active.name,
+                        botColor: active.color,
+                        transcribe: Boolean(voiceStatus?.transcribe),
+                      });
+                    }
+                  : undefined
               }
-              if (action === "settings-general") {
-                openSettings("general");
-                return;
-              }
-              if (action === "settings-usage") {
-                void rpc.usage
-                  .summary()
-                  .then(setUsage)
-                  .catch(() => undefined);
-                openSettings("usage");
-              }
-            }}
-          />
-        ) : null}
-      </main>
+              replyTarget={activeReplyTarget}
+              replyQuote={activeReplyQuote}
+              replyTargetName={replyTargetName}
+              onClearReply={clearReply}
+              mentionTargets={composerMentionTargets}
+              agentSkills={agentSkills}
+              onSlashOpen={refreshAgentSkills}
+              onSlashAction={(action) => {
+                if (action === "chat-settings") {
+                  setPanel(inGroup ? "group-settings" : "settings");
+                  return;
+                }
+                if (action === "settings-general") {
+                  openSettings("general");
+                  return;
+                }
+                if (action === "settings-usage") {
+                  void rpc.usage
+                    .summary()
+                    .then(setUsage)
+                    .catch(() => undefined);
+                  openSettings("usage");
+                }
+              }}
+            />
+          ) : null}
+        </main>
+      )}
 
       <CallCard onSettings={() => openSettings("voice")} />
 
@@ -4832,10 +4910,7 @@ const Transcript = memo(function Transcript({
     () => mergeInterventionViews(interventions, settledInterventions),
     [interventions, settledInterventions],
   );
-  const coveredAsks = useMemo(
-    () => coveredAskMessageIds(shownInterventions),
-    [shownInterventions],
-  );
+  const coveredAsks = useMemo(() => coveredAskMessageIds(shownInterventions), [shownInterventions]);
   // HISTORY-001: server-driven execution state. Null summaries (older server)
   // keeps every legacy derivation below untouched.
   const serverSummaries = useMemo(() => summariesByRun({ executions }), [executions]);
@@ -4978,10 +5053,13 @@ const Transcript = memo(function Transcript({
     }
     for (const item of activity ?? []) {
       if (!item.runId || item.kind === "background") continue;
-      const anchor = runAnchor.get(item.runId) ??
+      const anchor =
+        runAnchor.get(item.runId) ??
         anchorOf(
           item.runId,
-          [...messages].reverse().find((message) => message.runId === item.runId && message.role === "bot")?.id ??
+          [...messages]
+            .reverse()
+            .find((message) => message.runId === item.runId && message.role === "bot")?.id ??
             (activeRunIds.includes(item.runId) ? "__tail" : null),
         );
       if (!anchor) continue;
@@ -5024,7 +5102,7 @@ const Transcript = memo(function Transcript({
         .find((message) => message.runId === view.runId && message.role === "bot");
       const anchor = anchorOf(
         view.runId,
-        messageById.has(view.messageId) ? view.messageId : lastBot?.id ?? "__tail",
+        messageById.has(view.messageId) ? view.messageId : (lastBot?.id ?? "__tail"),
       );
       if (!anchor) continue;
       get(anchor, view.runId);
@@ -5034,7 +5112,9 @@ const Transcript = memo(function Transcript({
       if (isRunActive(run.status) && !runAnchor.has(run.id)) {
         const waiting = run.status === "waiting_input" || run.status === "waiting_takeover";
         const interventionMessage = waiting
-          ? [...messages].reverse().find((message) => message.runId === run.id && message.role === "bot")
+          ? [...messages]
+              .reverse()
+              .find((message) => message.runId === run.id && message.role === "bot")
           : null;
         get(anchorOf(run.id, interventionMessage?.id ?? "__tail") ?? "__tail", run.id);
       }
@@ -5046,8 +5126,12 @@ const Transcript = memo(function Transcript({
       for (const [runId, entry] of entries) {
         const message = messageById.get(anchor);
         const run = runs.find((candidate) => candidate.id === runId);
-        const beforeAnswer = message?.role === "bot" && run &&
-          (!isRunActive(run.status) || run.status === "waiting_input" || run.status === "waiting_takeover");
+        const beforeAnswer =
+          message?.role === "bot" &&
+          run &&
+          (!isRunActive(run.status) ||
+            run.status === "waiting_input" ||
+            run.status === "waiting_takeover");
         const key = beforeAnswer ? `before:${anchor}` : anchor;
         const target = positioned.get(key) ?? new Map<string, Execution>();
         target.set(runId, entry);
@@ -5055,7 +5139,19 @@ const Transcript = memo(function Transcript({
       }
     }
     return positioned;
-  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs, shownInterventions, anchorOf, serverSummaries]);
+  }, [
+    plansByAnchor,
+    stepsByAnchor,
+    todosByAnchor,
+    activity,
+    messages,
+    messageById,
+    activeRunIds,
+    runs,
+    shownInterventions,
+    anchorOf,
+    serverSummaries,
+  ]);
   const loadExecutionDetail = useCallback(
     (runId: string) => {
       void rpc.runs
@@ -5072,6 +5168,56 @@ const Transcript = memo(function Transcript({
     },
     [artifactTarget],
   );
+  // Task Center "return to conversation": a module-memory intent (never the
+  // DOM, never browser storage) asks this Thread to open one Run's card and
+  // focus it — the Intervention control for waiting states (mirroring the
+  // card's attention action), the status line otherwise. It applies once the
+  // Run's server summary is present (thread window or the merged anchor page).
+  const [taskCenterFocus, setTaskCenterFocus] = useState<{
+    attention: boolean;
+    nonce: number;
+  } | null>(null);
+  useEffect(() => {
+    const intent = peekTaskCenterNavIntent();
+    if (!intent || intent.threadId !== threadId) return;
+    const summary = serverSummaries?.get(intent.runId);
+    if (!summary) return;
+    clearTaskCenterNavIntent();
+    setExpansionEntries((entries) =>
+      forceOpenExpansion({ entries, threadId, runId: intent.runId, rev: summary.rev }),
+    );
+    loadExecutionDetail(intent.runId);
+    setTaskCenterFocus({ attention: intent.attention, nonce: summary.rev });
+  }, [threadId, serverSummaries, loadExecutionDetail]);
+  useEffect(() => {
+    if (!taskCenterFocus) return;
+    // The card can lag the intent by a page commit (the anchor jump still in
+    // flight), so retry briefly until the open card exists — then focus once.
+    // Single-open contract: at most one card carries data-open="1".
+    const startedAt = Date.now();
+    let timer = 0;
+    const attempt = () => {
+      const card = document.querySelector('article[data-testid="execution-card"][data-open="1"]');
+      const section = card?.closest('section[data-testid="execution-shell"]');
+      if (section) {
+        if (taskCenterFocus.attention) {
+          const control = section
+            .querySelector('[data-testid="execution-interventions"]')
+            ?.querySelector<HTMLElement>(FOCUSABLE_CONTROL);
+          if (control) {
+            control.focus();
+            return;
+          }
+        } else {
+          section.querySelector<HTMLElement>(".exc-status")?.focus({ preventScroll: true });
+          return;
+        }
+      }
+      if (Date.now() - startedAt < 5_000) timer = window.setTimeout(attempt, 120);
+    };
+    timer = window.setTimeout(attempt, 0);
+    return () => window.clearTimeout(timer);
+  }, [taskCenterFocus]);
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
       const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
@@ -5086,7 +5232,9 @@ const Transcript = memo(function Transcript({
       const detail = detailEntry?.snapshot;
       const currentSummary = detail?.summary ?? summary;
       const displayRun = executionRunState({ run, summary, detail });
-      const live = Boolean(displayRun && ["queued", "leased", "running"].includes(displayRun.status));
+      const live = Boolean(
+        displayRun && ["queued", "leased", "running"].includes(displayRun.status),
+      );
       const data = executionDataForRun({
         runId: execution.runId,
         detail,
@@ -5105,21 +5253,19 @@ const Transcript = memo(function Transcript({
         data.result && !messageById.has(data.result.messageId) ? data.result : null;
       // Older pages prepend under the current first page; the merge dedupes
       // by id and the newer status wins (boundary called/completed pairs).
-      const runActivityItems = mergeActivityPages(
-        data.activity,
-        detailEntry?.olderActivity ?? [],
-      );
-      const runInterventions = mergeInterventionViews(
-        shownInterventions ?? [],
-        [...settledInterventions, ...(detail ? detail.interventions : [])],
-      );
+      const runActivityItems = mergeActivityPages(data.activity, detailEntry?.olderActivity ?? []);
+      const runInterventions = mergeInterventionViews(shownInterventions ?? [], [
+        ...settledInterventions,
+        ...(detail ? detail.interventions : []),
+      ]);
       const scopedInterventions = (runInterventions ?? []).filter(
         (view) => view.runId === execution.runId,
       );
       const controlled = currentSummary !== null;
       const rev = currentSummary?.rev ?? 0;
-      const openByDefault =
-        Boolean(displayRun && (isRunActive(displayRun.status) || displayRun.status === "failed"));
+      const openByDefault = Boolean(
+        displayRun && (isRunActive(displayRun.status) || displayRun.status === "failed"),
+      );
       const plannedOpen = expansionPlan?.get(execution.runId);
       const isOpen = controlled
         ? (plannedOpen ??
@@ -5159,7 +5305,11 @@ const Transcript = memo(function Transcript({
         const requestRev = detailEntry.rev;
         activityLoading.current[execution.runId] = true;
         void rpc.runs
-          .executionActivityPage({ ...artifactTarget, runId: execution.runId, cursor: activityCursor })
+          .executionActivityPage({
+            ...artifactTarget,
+            runId: execution.runId,
+            cursor: activityCursor,
+          })
           .then((page) => {
             // The page belongs to the detail version it was requested
             // against; if the entry moved on (or was dropped) in flight, the
@@ -5509,107 +5659,107 @@ const Transcript = memo(function Transcript({
             <Fragment key={message.id}>
               {renderExecutions(`before:${message.id}`)}
               <div
-              key={message.id}
-              data-message-id={message.id}
-              className={peerReceipt ? "relative py-0.5" : "group/message relative hover:z-20"}
-            >
-              {!peerReceipt && !message.id.startsWith("progress:") ? (
-                <time
-                  dateTime={message.createdAt}
-                  data-testid="message-hover-time"
-                  className={cn(
-                    "pointer-events-none absolute top-1 z-10 text-xs tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 group-has-[[aria-expanded=true]]/message:opacity-100",
-                    message.role === "user" ? "start-0" : "end-0",
-                  )}
-                >
-                  {new Date(message.createdAt).toLocaleTimeString(i18n.locale || "en", {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </time>
-              ) : null}
-              <div
-                className={
-                  peerReceipt
-                    ? undefined
-                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`
-                }
+                key={message.id}
+                data-message-id={message.id}
+                className={peerReceipt ? "relative py-0.5" : "group/message relative hover:z-20"}
               >
+                {!peerReceipt && !message.id.startsWith("progress:") ? (
+                  <time
+                    dateTime={message.createdAt}
+                    data-testid="message-hover-time"
+                    className={cn(
+                      "pointer-events-none absolute top-1 z-10 text-xs tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 group-has-[[aria-expanded=true]]/message:opacity-100",
+                      message.role === "user" ? "start-0" : "end-0",
+                    )}
+                  >
+                    {new Date(message.createdAt).toLocaleTimeString(i18n.locale || "en", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                ) : null}
                 <div
-                  data-testid={peerReceipt ? undefined : "message-bubble-frame"}
                   className={
                     peerReceipt
                       ? undefined
-                      : `relative w-fit min-w-0 ${
-                          message.role === "user"
-                            ? "max-w-[min(84%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[84%]"
-                            : "max-w-[min(88%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[88%]"
-                        }`
+                      : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`
                   }
                 >
-                  <MessageView
-                    artifactTarget={artifactTarget}
-                    message={message}
-                    canAnswer
-                    suppressAsk={suppressAsk}
-                    onOpenBot={onOpenBot}
-                    onOpenPeerMessages={onOpenPeerMessages}
-                    onAnswer={onAnswer}
-                    speakerName={
+                  <div
+                    data-testid={peerReceipt ? undefined : "message-bubble-frame"}
+                    className={
                       peerReceipt
                         ? undefined
-                        : message.role === "bot"
-                          ? memberName?.(message.botId)
-                          : undefined
+                        : `relative w-fit min-w-0 ${
+                            message.role === "user"
+                              ? "max-w-[min(84%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[84%]"
+                              : "max-w-[min(88%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[88%]"
+                          }`
                     }
-                    memberName={memberName}
-                    peerBot={peerBot}
-                    replyPreview={
-                      message.replyToMessageId
-                        ? messageById.get(message.replyToMessageId)
-                        : undefined
-                    }
-                    replyToMessageId={message.replyToMessageId}
-                    onJumpToMessage={onJumpToMessage}
-                    onRefresh={onRefresh}
-                    onBotChanged={onBotChanged}
-                    onAddRoutine={onAddRoutine}
-                    voiceReady={voiceReady}
-                    speaking={speakingMessageId === message.id}
-                    onSpeak={() => onSpeak(message)}
-                    onOpenComputer={onOpenComputer}
-                    showToolActivity={showToolActivity}
-                  />
-                  {peerReceipt ? null : (
-                    <MessageHoverActions
+                  >
+                    <MessageView
+                      artifactTarget={artifactTarget}
                       message={message}
-                      side={message.role === "user" ? "start" : "end"}
-                      onReply={onReply}
-                      onReact={onReact}
+                      canAnswer
+                      suppressAsk={suppressAsk}
+                      onOpenBot={onOpenBot}
+                      onOpenPeerMessages={onOpenPeerMessages}
+                      onAnswer={onAnswer}
+                      speakerName={
+                        peerReceipt
+                          ? undefined
+                          : message.role === "bot"
+                            ? memberName?.(message.botId)
+                            : undefined
+                      }
+                      memberName={memberName}
+                      peerBot={peerBot}
+                      replyPreview={
+                        message.replyToMessageId
+                          ? messageById.get(message.replyToMessageId)
+                          : undefined
+                      }
+                      replyToMessageId={message.replyToMessageId}
+                      onJumpToMessage={onJumpToMessage}
+                      onRefresh={onRefresh}
+                      onBotChanged={onBotChanged}
+                      onAddRoutine={onAddRoutine}
+                      voiceReady={voiceReady}
+                      speaking={speakingMessageId === message.id}
+                      onSpeak={() => onSpeak(message)}
+                      onOpenComputer={onOpenComputer}
+                      showToolActivity={showToolActivity}
                     />
-                  )}
+                    {peerReceipt ? null : (
+                      <MessageHoverActions
+                        message={message}
+                        side={message.role === "user" ? "start" : "end"}
+                        onReply={onReply}
+                        onReact={onReact}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-              {!peerReceipt && messageReactions ? (
-                <div
-                  data-testid="message-reactions"
-                  className={cn(
-                    "mt-1 flex flex-wrap gap-1",
-                    message.role === "user" && "justify-end",
-                  )}
-                >
-                  {[...messageReactions].map(([emoji, count]) => (
-                    <span
-                      key={emoji}
-                      className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs"
-                    >
-                      {emoji}
-                      {count > 1 ? ` ${count}` : ""}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {renderExecutions(message.id)}
+                {!peerReceipt && messageReactions ? (
+                  <div
+                    data-testid="message-reactions"
+                    className={cn(
+                      "mt-1 flex flex-wrap gap-1",
+                      message.role === "user" && "justify-end",
+                    )}
+                  >
+                    {[...messageReactions].map(([emoji, count]) => (
+                      <span
+                        key={emoji}
+                        className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs"
+                      >
+                        {emoji}
+                        {count > 1 ? ` ${count}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {renderExecutions(message.id)}
               </div>
             </Fragment>
           );

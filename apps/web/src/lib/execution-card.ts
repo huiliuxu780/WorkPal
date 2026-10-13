@@ -32,9 +32,11 @@ export type ExecutionCardAction = {
   /**
    * `toggle` flips the detail expansion; `attention` keeps the pending
    * Intervention discoverable — it focuses the first authoritative control
-   * instead of collapsing (a waiting Run is always expanded).
+   * instead of collapsing (a waiting Run is always expanded); `navigate`
+   * returns to the original conversation (Task Center second entry — the
+   * compact list card carries no detail of its own).
    */
-  act: "toggle" | "attention";
+  act: "toggle" | "attention" | "navigate";
 };
 
 export type ExecutionCardModel = {
@@ -89,6 +91,13 @@ export type ExecutionCardInput = {
    * tests) covers the background presentation without inventing a signal.
    */
   background?: boolean;
+  /**
+   * Caller-owned primary action (Task Center navigation verbs). When present
+   * it REPLACES the computed toggle/attention action — the display status
+   * still comes from the one shared derivation, so this is a verb mapping,
+   * never a second status matrix. `null` renders no action.
+   */
+  actionOverride?: ExecutionCardAction | null;
 };
 
 const TERMINAL_STATUSES: readonly ExecutionDisplayStatus[] = ["done", "failed", "cancelled"];
@@ -222,7 +231,9 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
       : null;
 
   let action: ExecutionCardAction | null = null;
-  if (status.needsAttention) {
+  if (input.actionOverride !== undefined) {
+    action = input.actionOverride;
+  } else if (status.needsAttention) {
     action = { verb: t`Needs your attention`, act: "attention" };
   } else if (canExpand) {
     action = expanded
