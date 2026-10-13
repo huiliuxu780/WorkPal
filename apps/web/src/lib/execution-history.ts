@@ -370,13 +370,17 @@ export function planExpansionDefaults(input: {
   let anyOpen = false;
   const ordered = [...active, ...failed, ...rest];
   // Pass 1: stored decisions whose rev matches are authoritative and count
-  // toward the single-open budget before any default is granted.
+  // toward the single-open budget before any default is granted. Stored
+  // collapses are kept as-is; when several well-formed entries claim open
+  // (hand-edited storage or a legacy writer), only the first in priority
+  // order keeps the slot and the rest normalize to closed — the contract is
+  // at most one open detail per Thread, unconditionally.
   for (const run of ordered) {
     const entry = input.entries[expansionId(input.threadId, run.runId)];
-    if (entry && entry.rev === run.rev) {
-      plan.set(run.runId, entry.open);
-      if (entry.open) anyOpen = true;
-    }
+    if (!entry || entry.rev !== run.rev) continue;
+    const open = entry.open && !anyOpen;
+    if (open) anyOpen = true;
+    plan.set(run.runId, open);
   }
   // Pass 2: without a stored decision, active and failed Runs default open in
   // priority order — but only while nothing else in the Thread is open.

@@ -477,4 +477,33 @@ describe("planExpansionDefaults", () => {
     });
     expect(plan.get("c1")).toBe(true);
   });
+  it("normalizes duplicate stored open entries to exactly one open detail", () => {
+    const plan = planExpansionDefaults({
+      entries: {
+        "t:w1": { threadId: "t", runId: "w1", rev: 1, open: true },
+        "t:w2": { threadId: "t", runId: "w2", rev: 1, open: true },
+      },
+      threadId: "t",
+      runs: [run("w1", "waiting_input"), run("w2", "waiting_takeover")],
+    });
+    // Deterministic winner: first in priority order (both are active waits,
+    // so input order decides).
+    expect(plan.get("w1")).toBe(true);
+    expect(plan.get("w2")).toBe(false);
+    expect([...plan.values()].filter(Boolean)).toHaveLength(1);
+  });
+
+  it("gives the single stored-open slot by priority across status classes", () => {
+    const plan = planExpansionDefaults({
+      entries: {
+        "t:c1": { threadId: "t", runId: "c1", rev: 2, open: true },
+        "t:a1": { threadId: "t", runId: "a1", rev: 2, open: true },
+      },
+      threadId: "t",
+      runs: [run("c1", "completed", 2), run("a1", "running", 2)],
+    });
+    expect(plan.get("a1")).toBe(true);
+    expect(plan.get("c1")).toBe(false);
+    expect([...plan.values()].filter(Boolean)).toHaveLength(1);
+  });
 });

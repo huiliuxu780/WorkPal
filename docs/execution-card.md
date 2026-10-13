@@ -74,7 +74,10 @@ re-approval are all undecided). Failed cards offer `View execution` only.
   moves and waiting states included. `planExpansionDefaults`
   (lib/execution-history.ts) resolves stored rev-matching entries first and
   grants the default-open slot (active, then failed Runs) only while nothing
-  else in the Thread is open; with server-driven expansion present, that
+  else in the Thread is open; stored collapses are kept as-is and, should
+  several well-formed entries claim open, only the first in priority order
+  keeps the slot (the rest normalize to closed), so the at-most-one contract
+  holds unconditionally. With server-driven expansion present, that
   decision is the single authority and `needsAttention` no longer forces a
   detail open. Pending Interventions stay actionable regardless: their region
   renders outside the collapsible detail and the attention action focuses the
