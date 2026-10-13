@@ -1,8 +1,13 @@
 import { i18n } from "@lingui/core";
 import type { Run } from "@rakazo/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ExecutionShell } from "./ExecutionShell";
+
+vi.mock("@lingui/core/macro", () => ({
+  t: (strings: TemplateStringsArray, ...values: unknown[]) =>
+    strings.reduce((acc, part, index) => acc + part + String(values[index] ?? ""), ""),
+}));
 
 const run = (status: Run["status"], waitKind: Run["waitKind"] = null) =>
   ({ id: "run-1", status, waitKind, error: null }) as Run;

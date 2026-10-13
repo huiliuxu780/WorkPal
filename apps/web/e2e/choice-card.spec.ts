@@ -26,7 +26,12 @@ test("renders tappable choice buttons and submits the offered action id", async 
     .toBe("waiting_input");
 
   // threads/get can observe waiting_input before the shell realtime feed paints the ask card.
-  const prompt = page.locator("p").filter({ hasText: /^Which city should I use\?$/ });
+  // Scoped to the Intervention Region: the Execution Card's auxiliary line
+  // legitimately repeats the sanitized question as a one-line preview.
+  const prompt = page
+    .getByTestId("intervention-region")
+    .locator("p")
+    .filter({ hasText: /^Which city should I use\?$/ });
   if ((await prompt.count()) === 0) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });

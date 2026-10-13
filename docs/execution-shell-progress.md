@@ -17,7 +17,8 @@ The design files describe target presentation, not a working projection. This sl
 
 ## Remaining gates
 
-- Root `foreground/background` identity and automatic transition have no trusted production field. The Background status is defined in the selector but not asserted by the current transcript.
+- Root `foreground/background` identity and automatic transition have no trusted production field. The Background status is defined in the selector and the Execution Card renders its presentation (no tint, faint rail), but no production caller can confirm it yet.
 - The backend does not expose a stable Assistant Turn ID or a historical Run row for every retained Plan/Step; such content shows “status unknown” rather than a guessed terminal state. Some older messages may be paged out, so the present message anchor may not exist in the loaded page.
-- Ask and approval controls remain on their existing message cards. The Shell can keep its waiting detail visible but cannot move a verified action payload into an Intervention slot without a shared intervention contract. No independent Result summary is available.
+- Ask and approval controls now live in the Intervention Region outside the collapsible detail (the message bubble no longer renders a second AskCard); the Execution Card's attention action focuses the first authoritative control. The result presentation is placed: the card carries the durable `outcome` excerpt, and the detail's Result section renders the snapshot result only while its message bubble is paged out.
+- Manual Retry has no production contract (same-Run Attempt vs new Run, ExternalEffect replay and re-approval are undecided), so the failed card offers no retry action. Trusted percentage progress still lacks a data source and is never rendered; `maxCostUsd` still awaits a trusted model-price source.
 - Real browser checks at multiple widths, 200% zoom, keyboard focus and reduced motion, plus live Java→Web status transitions, are still required for Task 12/14 acceptance. Static render tests and a production bundle build do not establish those behaviors.

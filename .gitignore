@@ -53,6 +53,7 @@ playwright-report-www
 # Local agent/editor state (upstream-tracked .zcode files stay tracked)
 .zcode/plans/
 .zcode/tmp/roster-design/
+.zcode/tmp/execution-card-shots/
 .idea/
 .vscode/
 .claude/

@@ -1,6 +1,7 @@
 import type {
   ActivityItem,
   ExecutionActivityPage,
+  ExecutionResult,
   ExecutionSnapshot,
   ExecutionSummary,
   Run,
@@ -60,6 +61,7 @@ export function executionDataForRun(input: {
   todos: RunTodoSnapshot[];
   activity: ActivityItem[];
   summary?: ExecutionSummary;
+  result?: ExecutionResult;
 } {
   const { runId, detail, legacy } = input;
   if (detail) {
@@ -71,6 +73,7 @@ export function executionDataForRun(input: {
       // nothing between the timeline bound and the page bound is ever lost.
       activity: detail.activityPage.items,
       summary: detail.summary,
+      ...(detail.result ? { result: detail.result } : {}),
     };
   }
   return {

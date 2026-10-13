@@ -131,7 +131,7 @@ harness phase.
 
 ## Task18 Product Harness Completion
 
-Task18.1 event envelope and Run wait reasons are implemented. Task18.2 has the background-result outbox and `delivery` Run, with production Web E2E acceptance and the 100-result merge edge still open. Task18.3 has wait expiry, cancellation propagation, conservative retry, and measured token/time/tool budgets. Dollar cost lacks a trusted model price; lease-loss retry and full acceptance remain open. Task18.4 has Bot-local capability rules checked at the executor's existing approval boundary, with the production-resource classification limit described in [capability-permission.md](./task18-product-harness-completion/capability-permission.md). Task18.5 adds TurnPolicy v2 constraint fields while upgrading v1 snapshots in memory; see [turnpolicy-evolution.md](./task18-product-harness-completion/turnpolicy-evolution.md). See also [event-contract-v2.md](./task18-product-harness-completion/event-contract-v2.md), [delivery-design.md](./task18-product-harness-completion/delivery-design.md), [reliability-progress.md](./task18-product-harness-completion/reliability-progress.md), and [budget-progress.md](./task18-product-harness-completion/budget-progress.md). The Execution Card and structured Plan/Steps described in Tasks 1–17 remain separate implementation gaps; Harness v1 completion does not imply those interfaces are complete.
+Task18.1 event envelope and Run wait reasons are implemented. Task18.2 has the background-result outbox and `delivery` Run, with production Web E2E acceptance and the 100-result merge edge still open. Task18.3 has wait expiry, cancellation propagation, conservative retry, and measured token/time/tool budgets. Dollar cost lacks a trusted model price; lease-loss retry and full acceptance remain open. Task18.4 has Bot-local capability rules checked at the executor's existing approval boundary, with the production-resource classification limit described in [capability-permission.md](./task18-product-harness-completion/capability-permission.md). Task18.5 adds TurnPolicy v2 constraint fields while upgrading v1 snapshots in memory; see [turnpolicy-evolution.md](./task18-product-harness-completion/turnpolicy-evolution.md). See also [event-contract-v2.md](./task18-product-harness-completion/event-contract-v2.md), [delivery-design.md](./task18-product-harness-completion/delivery-design.md), [reliability-progress.md](./task18-product-harness-completion/reliability-progress.md), and [budget-progress.md](./task18-product-harness-completion/budget-progress.md). Structured Plan/Steps (Tasks 03/04) and the Execution Card (Tasks 15/15.1) are now implemented in production; the Task Center remains unimplemented, and Harness v1 completion does not imply every designed interface is complete.
 
 ## HISTORY-001 — ExecutionSnapshot read model: DELIVERED (this slice)
 
@@ -146,3 +146,19 @@ Artifact add/remove. Generation membership keys off surviving Run-lifecycle
 events, so post-clear artifact maintenance never revives a cleared Run. No new tables, no new executor entity, no second
 reducer; old servers stay compatible through optional fields.
 See [execution-history-snapshot.md](./execution-history-snapshot.md).
+
+## Execution Card — DELIVERED (presentation slice)
+
+The Task 15/15.1 Execution Card design is wired into production: every
+visible Run renders exactly one card that replaces the former one-line
+`ExecutionShell` header and forms one continuous object with the expanded
+detail (Intervention, Plan, Steps, Todos, Activity, Result). The card is a
+pure projection of the HISTORY-001 read model through the shared
+`deriveExecutionStatus` selector — no second status matrix, no invented
+progress, no Retry action (manual retry still has no production contract).
+Unknown or truncated data is omitted rather than displayed as `0`, `--`, or a
+guessed percentage. Root background identity still has no trusted production
+field, so the background presentation exists in the mapping but is not
+asserted by the transcript; the Task Center is not implemented and reuses the
+card in a later task. `maxCostUsd` enforcement still awaits a trusted model
+price source. See [execution-card.md](./execution-card.md).

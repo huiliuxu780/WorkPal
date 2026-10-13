@@ -1,35 +1,17 @@
-import type { ActivityItem } from "@rakazo/contracts";
-import { ChevronDown } from "lucide-react";
-import { type ReactNode, useEffect, useId, useState } from "react";
+import type {
+  ActivityItem,
+  ExecutionSummary,
+  InterventionView,
+  RunStepSnapshot,
+} from "@rakazo/contracts";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { buildExecutionCardModel } from "../../lib/execution-card";
 import { deriveExecutionStatus, type ExecutionRunState } from "../../lib/execution-status";
+import { ExecutionCard, ExecutionCardContext } from "./ExecutionCard";
 
-const marks = {
-  planning: "◇",
-  working: "◔",
-  background: "◔",
-  approval: "!",
-  need_input: "?",
-  blocked: "!",
-  takeover: "·",
-  done: "✓",
-  failed: "×",
-  cancelled: "–",
-  unknown: "·",
-} as const;
-
-const tones = {
-  planning: "text-foreground",
-  working: "text-foreground",
-  background: "text-foreground",
-  approval: "text-warning",
-  need_input: "text-warning",
-  blocked: "text-warning",
-  takeover: "text-warning",
-  done: "text-success",
-  failed: "text-destructive",
-  cancelled: "text-muted-foreground",
-  unknown: "text-muted-foreground",
-} as const;
+/** Enabled interactive controls, in DOM order — the region sorts approvals first. */
+const FOCUSABLE_CONTROL =
+  'button:not([disabled]):not([aria-disabled="true"]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 export function ExecutionShell({
   run,
@@ -38,6 +20,12 @@ export function ExecutionShell({
   interventions,
   expansion,
   canExpand,
+  summary,
+  pendingInterventionViews,
+  steps,
+  stepsTruncated,
+  hasResult,
+  confirmedRootBackground,
   children,
 }: {
   run: ExecutionRunState | null;
@@ -58,14 +46,30 @@ export function ExecutionShell({
   expansion?: { open: boolean; toggle: () => void };
   /** A summary exists, so opening lazily loads the Run's detail. */
   canExpand?: boolean;
+  /** Durable per-Run summary (HISTORY-001); null on legacy servers. */
+  summary?: ExecutionSummary | null;
+  /** Pending Intervention views for this Run, for the card's auxiliary line. */
+  pendingInterventionViews?: readonly InterventionView[];
+  /** Loaded detail steps — lifecycle rail and failed-step line. */
+  steps?: readonly RunStepSnapshot[];
+  stepsTruncated?: boolean;
+  /** True when the expanded detail renders the Result section. */
+  hasResult?: boolean;
+  /** Trusted root-Run background identity (no production source yet). */
+  confirmedRootBackground?: boolean;
   children: ReactNode;
 }) {
-  const status = deriveExecutionStatus(run, activity, { pendingInterventionKinds });
+  const status = deriveExecutionStatus(run, activity, {
+    pendingInterventionKinds,
+    confirmedRootBackground,
+  });
   const live =
     run &&
     ["queued", "leased", "running", "waiting_input", "waiting_takeover"].includes(run.status);
   const [expanded, setExpanded] = useState(Boolean(live) || run?.status === "failed");
   const detailsId = useId();
+  const sectionRef = useRef<HTMLElement>(null);
+  const interventionsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (expansion) return;
     if (status.needsAttention) setExpanded(true);
@@ -75,65 +79,55 @@ export function ExecutionShell({
   const open = status.needsAttention || (expansion ? expansion.open : expanded);
   const hasDetail =
     Boolean(children) || Boolean(status.detail) || canExpand === true || expansion !== undefined;
+  // One derivation feeds the card head and the detail body: same status,
+  // same sentence, no second matrix.
+  const card = buildExecutionCardModel({
+    status,
+    summary,
+    pendingInterventions: pendingInterventionViews,
+    steps,
+    stepsTruncated,
+    hasResult,
+    expanded: open,
+    canExpand: hasDetail,
+  });
+  const focusAttention = () => {
+    const control = interventionsRef.current?.querySelector<HTMLElement>(FOCUSABLE_CONTROL);
+    if (control) {
+      control.focus();
+      return;
+    }
+    // Takeover has no Intervention control: land on the status sentence
+    // instead of forcing a scroll jump.
+    sectionRef.current?.querySelector<HTMLElement>(".exc-status")?.focus({ preventScroll: true });
+  };
 
   return (
     <section
+      ref={sectionRef}
       data-testid="execution-shell"
       data-status={status.status}
       data-run-id={run?.id}
       className="min-w-0 px-1 py-1"
     >
-      <button
-        type="button"
-        aria-expanded={hasDetail ? open : undefined}
-        aria-controls={hasDetail ? detailsId : undefined}
-        aria-disabled={!hasDetail || status.needsAttention || undefined}
-        onClick={() => {
-          if (!hasDetail || status.needsAttention) return;
-          if (expansion) expansion.toggle();
-          else setExpanded((value) => !value);
-        }}
-        className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md text-start text-[14px] leading-5 outline-none hover:text-foreground/75 focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
-      >
-        <span
-          aria-hidden="true"
-          className={`w-4 shrink-0 text-center font-medium motion-safe:transition-colors motion-safe:duration-200 ${tones[status.status]}`}
-        >
-          {marks[status.status]}
-        </span>
-        <span
-          className={`shrink-0 font-medium motion-safe:transition-colors motion-safe:duration-200 ${tones[status.status]}`}
-        >
-          {status.label}
-        </span>
-        {status.detail ? (
-          <span dir="auto" className="min-w-0 truncate text-muted-foreground">
-            · {status.detail}
-          </span>
-        ) : null}
-        {hasDetail && !status.needsAttention ? (
-          <ChevronDown
-            aria-hidden="true"
-            size={14}
-            className={`ms-auto shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-200 ${open ? "rotate-180" : ""}`}
-          />
-        ) : null}
-      </button>
-      {interventions ? (
-        <div data-testid="execution-interventions" className="ms-[7px] ps-3">
-          {interventions}
-        </div>
-      ) : null}
-      {hasDetail ? (
-        <div
-          id={detailsId}
-          hidden={!open}
-          inert={!open}
-          className="ms-[7px] border-s border-border ps-3"
+      <ExecutionCardContext.Provider value={{ open, auxText: card.aux?.text ?? null }}>
+        <ExecutionCard
+          card={card}
+          open={open}
+          hasDetail={hasDetail}
+          detailsId={detailsId}
+          onToggle={() => {
+            if (!hasDetail || status.needsAttention) return;
+            if (expansion) expansion.toggle();
+            else setExpanded((value) => !value);
+          }}
+          onAttention={focusAttention}
+          interventions={interventions}
+          interventionsRef={interventionsRef}
         >
           {children}
-        </div>
-      ) : null}
+        </ExecutionCard>
+      </ExecutionCardContext.Provider>
     </section>
   );
 }
