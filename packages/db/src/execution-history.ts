@@ -71,15 +71,16 @@ export type ExecutionEventFacts = {
   ceiling: number;
   /**
    * Highest seq over surviving Run-lifecycle events — everything except the
-   * thread-maintenance `thread.artifact` rows, which today's production paths
-   * append for already-terminal (even pre-clear) Runs when their Artifact
-   * membership changes. The fence relies on a write-path invariant, not a
-   * structural guarantee: lifecycle events stop at terminalization (the
-   * background and delivery writers validate the generation), but
-   * `assertRunCanWriteHistory` itself only blocks cancelled Runs. Any new
-   * path appending lifecycle events for terminal Runs must be re-checked
-   * against the Thread Clear fence. `null` when no lifecycle event survived,
-   * i.e. the Run belongs to an older generation.
+   * thread-maintenance `thread.artifact` rows, which may be appended even
+   * after a pre-clear Run becomes terminal. Other events can also be appended
+   * to completed/failed Runs before Clear (for example background-task and
+   * delivery events). The fence relies on a write-path invariant, not a
+   * structural guarantee: after Clear, no lifecycle event may be appended
+   * for a Run from the old generation. Background and delivery writers check
+   * the generation; `assertRunCanWriteHistory` itself only blocks cancelled
+   * Runs. New terminal-Run event paths must uphold the same Clear fence.
+   * `null` means no lifecycle event survived, so the Run is from an older
+   * generation.
    */
   lifecycleSeq: number | null;
   /** Newest event time; the Run's recorded-update fact for the contract. */

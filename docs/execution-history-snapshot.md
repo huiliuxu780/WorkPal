@@ -181,13 +181,12 @@ secret is absent from snapshots, events, results, the DOM, and web storage.
 
 - The generation fence reads "no surviving Run-lifecycle event" (every event
   except `thread.artifact`) as "belongs to an older generation". That is a
-  write-path invariant, not a structural guarantee: today `thread.artifact`
-  is the only class production paths append for terminal Runs (the background
-  and delivery writers validate the generation), but
-  `assertRunCanWriteHistory` itself only blocks cancelled Runs. Any new path
-  that appends lifecycle events for a terminal — possibly pre-clear — Run
-  must be re-checked against the Thread Clear fence, or a stale Run could
-  re-enter the window.
+  write-path invariant, not a structural guarantee: background-task and
+  delivery events can reach completed/failed Runs before Clear, while those
+  writers validate the Thread generation. `assertRunCanWriteHistory` itself
+  only blocks cancelled Runs. After Clear, no lifecycle event may be appended
+  for a Run from the old generation; every new terminal-Run event path must
+  uphold that rule, or a stale Run could re-enter the window.
 - `rev` is a composed counter (event-seq ceiling + visible-transition
   counter), not a content hash: events that do not change the projection
   still advance it (harmless for expansion invalidation).
