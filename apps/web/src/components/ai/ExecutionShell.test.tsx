@@ -1,8 +1,13 @@
 import { i18n } from "@lingui/core";
 import type { Run } from "@rakazo/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ExecutionShell } from "./ExecutionShell";
+
+vi.mock("@lingui/core/macro", () => ({
+  t: (strings: TemplateStringsArray, ...values: unknown[]) =>
+    strings.reduce((acc, part, index) => acc + part + String(values[index] ?? ""), ""),
+}));
 
 const run = (status: Run["status"], waitKind: Run["waitKind"] = null) =>
   ({ id: "run-1", status, waitKind, error: null }) as Run;
@@ -74,20 +79,36 @@ describe("ExecutionShell", () => {
     expect(opened).not.toContain('hidden=""');
   });
 
-  it("shows the durable status and id for a Run restored without a legacy row", () => {
+  it("shows the durable status and title for a Run restored without a legacy row", () => {
     const html = renderToStaticMarkup(
       <ExecutionShell
         run={{ id: "run-history", status: "completed", waitKind: null }}
         activity={[]}
         expansion={{ open: false, toggle: () => undefined }}
         canExpand
+        summary={{
+          runId: "run-history",
+          threadId: "thread-1",
+          botId: "bot-1",
+          rev: 2,
+          status: "completed",
+          trigger: "user",
+          title: "Restored analysis",
+          updatedAt: "2026-10-12T10:18:00.000Z",
+          artifacts: [],
+          entry: "execution",
+        }}
       >
         <div>restored detail</div>
       </ExecutionShell>,
     );
-    expect(html).toContain('data-run-id="run-history"');
     expect(html).toContain('data-status="done"');
+    expect(html).toContain("Restored analysis");
     expect(html).not.toContain("Status unknown");
+    // No raw Run/Thread/Bot identifiers in the card DOM.
+    expect(html).not.toContain("run-history");
+    expect(html).not.toContain("thread-1");
+    expect(html).not.toContain("bot-1");
   });
 
   it("keeps the intervention slot visible while a controlled detail stays collapsed", () => {
@@ -104,5 +125,33 @@ describe("ExecutionShell", () => {
     expect(html).toContain("execution-interventions");
     expect(html).toContain("需要你处理");
     expect(html).toContain("hidden");
+  });
+
+  it("lets controlled expansion collapse a waiting Run while interventions stay reachable", () => {
+    const html = renderToStaticMarkup(
+      <ExecutionShell
+        run={run("waiting_input", "approval")}
+        activity={[]}
+        pendingInterventionKinds={["approval"]}
+        expansion={{ open: false, toggle: () => undefined }}
+        interventions={
+          <div data-testid="intervention-region">
+            <button type="button">Allow once</button>
+          </div>
+        }
+      >
+        <div>detail</div>
+      </ExecutionShell>,
+    );
+    // The detail is collapsed (single-open authority), yet the pending
+    // Intervention and the attention action remain visible and operable.
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('hidden=""');
+    expect(html).toContain("Needs your attention");
+    const interventionsAt = html.indexOf('data-testid="execution-interventions"');
+    const hiddenAt = html.indexOf('hidden=""');
+    expect(interventionsAt).toBeGreaterThan(-1);
+    expect(interventionsAt).toBeLessThan(hiddenAt);
+    expect(html).toContain("Allow once");
   });
 });

@@ -463,9 +463,12 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     expect(snapshot.recentRuns).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: plan?.runId, status: "completed" }),
     ]));
-    const shell = page.locator(`[data-testid="execution-shell"][data-run-id="${plan?.runId}"]`);
+    // Located by card title: the transcript DOM carries no Run ids.
+    const shell = page
+      .locator('[data-testid="execution-shell"]')
+      .filter({ hasText: "Complete the structured fixture." });
     await expect(shell).toHaveCount(1);
-    const shellToggle = shell.locator(":scope > button");
+    const shellToggle = shell.locator("button[aria-expanded]").first();
     await shellToggle.click();
     await expect(shell.locator('[data-slot="plan"]')).toBeVisible();
     await expect(shell.locator('[data-slot="steps"]')).toBeVisible();

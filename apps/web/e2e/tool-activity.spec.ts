@@ -139,7 +139,10 @@ test("the chat transcript shows tool activity when turned on and hides it when t
   await page.getByRole("button", { name: "Send" }).click();
 
   const transcript = page.getByTestId("transcript");
-  await expect(transcript.getByText("writing that into my home now.")).toBeVisible({
+  // Scoped to the bot bubble: the Execution Card's outcome line legitimately
+  // quotes the same result excerpt next to the transcript answer.
+  const reply = transcript.getByTestId("message-bot-bubble").getByText("writing that into my home now.");
+  await expect(reply).toBeVisible({
     timeout: 30_000,
   });
   const card = transcript.getByTestId("tool-activity");
@@ -159,12 +162,12 @@ test("the chat transcript shows tool activity when turned on and hides it when t
   await page.keyboard.press("Escape");
   await expect(settings).toBeHidden();
 
-  await expect(transcript.getByText("writing that into my home now.")).toBeVisible();
+  await expect(reply).toBeVisible();
   await expect(transcript.getByTestId("tool-activity")).toHaveCount(0);
   await captureScreenshot(page, testInfo, "shell-tool-activity-off");
 
   await page.reload();
   await expect(page.getByTestId("shell-root")).toHaveAttribute("data-ready", "true");
-  await expect(transcript.getByText("writing that into my home now.")).toBeVisible();
+  await expect(reply).toBeVisible();
   await expect(transcript.getByTestId("tool-activity")).toHaveCount(0);
 });

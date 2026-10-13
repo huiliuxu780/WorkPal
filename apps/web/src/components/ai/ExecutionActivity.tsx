@@ -3,6 +3,7 @@ import type { ActivityItem, Run } from "@rakazo/contracts";
 import { useId, useState } from "react";
 import { selectExecutionActivity } from "../../lib/execution-activity";
 import { ActivityRows } from "../activity/ActivityRows";
+import { useExecutionCardYield } from "./ExecutionCard";
 
 export function ExecutionActivity({
   run,
@@ -17,16 +18,22 @@ export function ExecutionActivity({
 }) {
   const [recentExpanded, setRecentExpanded] = useState(false);
   const recentId = useId();
+  const cardYield = useExecutionCardYield();
   const view = selectExecutionActivity(run, items);
-  if (!view.primary && !view.note && view.recent.length === 0) return null;
+  // One object, one sentence: when the expanded Execution Card head already
+  // carries this exact activity/waiting line, the detail section yields it
+  // instead of repeating it under "Current activity".
+  const primary =
+    view.primary && cardYield?.open && cardYield.auxText === view.primary ? null : view.primary;
+  if (!primary && !view.note && view.recent.length === 0) return null;
   return (
     <section data-slot="activity" className="ms-1 my-2 min-w-0 text-[13px] text-foreground/85">
       <h3 className="py-1 text-xs font-medium text-muted-foreground">
         {i18n._("Current activity")}
       </h3>
-      {view.primary ? (
+      {primary ? (
         <p dir="auto" className="min-w-0 leading-5">
-          {view.primary}
+          {primary}
         </p>
       ) : null}
       {view.note ? (

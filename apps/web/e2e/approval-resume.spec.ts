@@ -12,7 +12,13 @@ test("approval input resumes durable work", async ({ page }, testInfo) => {
   await composer.fill("ask me which city to use");
   await page.keyboard.press("Enter");
 
-  const prompt = page.locator("p").filter({ hasText: /^Which city should I use\?$/ });
+  // Scoped to the Intervention Region: the Execution Card's auxiliary line
+  // legitimately repeats the sanitized question as a one-line preview, and
+  // this prompt counter tracks the ask cards across rounds, not card lines.
+  const prompt = page
+    .getByTestId("intervention-region")
+    .locator("p")
+    .filter({ hasText: /^Which city should I use\?$/ });
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("Reply with one city name.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send it" })).toBeVisible();

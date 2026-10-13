@@ -13,6 +13,176 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Awaiting execution"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Approved; awaiting execution"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Request denied"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Execution claimed; outcome unconfirmed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Call recorded as completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Result unconfirmed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Cannot confirm whether the external system accepted or performed this action. Check it before trying again."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Call failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Reconciled"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/effect-view.ts
+msgid "Status unconfirmed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-activity.ts
+msgid "Activity paused while waiting for you"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-activity.ts
+msgid "Multiple activities in progress"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-activity.ts
+msgid "Execution continues; no new activity update"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-activity.ts
+msgid "Some activity statuses have not synchronized"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Status unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Execution completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Background task"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Execution failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Stopped"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Waiting for approval"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Waiting for your reply"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Waiting for takeover"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Open the computer to take control"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Temporarily blocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Waiting to start"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Running in background"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Execution queued"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Executing"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Planning"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/components/ai/ExecutionActivity.tsx
+msgid "Current activity"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/components/ai/ExecutionActivity.tsx
+msgid "Hide recent activity"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/components/ai/ExecutionActivity.tsx
+msgid "View recent activity"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/components/ai/ExecutionActivity.tsx
+msgid "Earlier activities are not shown"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid " (unread)"
 msgstr " (okunmadı)"
@@ -57,6 +227,11 @@ msgstr ""
 msgid "{0} handling"
 msgstr ""
 
+#. placeholder {0}: current.length
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "{0} items in progress"
+msgstr ""
+
 #. placeholder {0}: format(size / 1024)
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} KB"
@@ -88,6 +263,14 @@ msgstr ""
 msgid "{0}'s screen"
 msgstr ""
 
+#: src/components/activity/RunActivityDisclosure.tsx
+msgid "{actions, plural, one {Done · # action} other {Done · # actions}}"
+msgstr ""
+
+#: src/components/activity/RunActivityDisclosure.tsx
+msgid "{actions, plural, one {Working… · # action} other {Working… · # actions}}"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "{botName}’s computer"
 msgstr "{botName} adlı botun bilgisayarı"
@@ -97,8 +280,20 @@ msgstr "{botName} adlı botun bilgisayarı"
 msgid "{days}d ago"
 msgstr "{days} g önce"
 
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "{done} done · some statuses unconfirmed"
+msgstr ""
+
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "{done}/{eligible} done"
+msgstr ""
+
 #: src/components/ToolActivityDisclosure.tsx
 msgid "{hidden, plural, one {+# earlier step} other {+# earlier steps}}"
+msgstr ""
+
+#: src/components/activity/RunActivityDisclosure.tsx
+msgid "{hiddenCount, plural, one {+# earlier} other {+# earlier}}"
 msgstr ""
 
 #: src/lib/relative-time.ts
@@ -110,6 +305,22 @@ msgstr "{hours} sa önce"
 #: src/pages/ActivityList.tsx
 msgid "{minutes}m ago"
 msgstr "{minutes} dk önce"
+
+#: src/lib/execution-card.ts
+msgid "{n} actions"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "{n} artifacts"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "{n} collaborators"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "{n} steps"
+msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts
@@ -150,14 +361,30 @@ msgstr "{title}, {label}"
 msgid "{toolCount, plural, one {# tool} other {# tools}}"
 msgstr ""
 
-#: src/pages/Shell.tsx
-msgid "{workingBotName} is working"
-msgstr "{workingBotName} çalışıyor"
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "{trouble} blocked or failed"
+msgstr ""
 
 #. placeholder {0}: mention.name
 #: src/pages/Shell.tsx
 msgid "@{0}"
 msgstr "@{0}"
+
+#: src/lib/execution-card.ts
+msgid "1 action"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "1 artifact"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "1 collaborator"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "1 step"
+msgstr ""
 
 #: src/pages/shell/message-cards.tsx
 msgid "A bit of everything"
@@ -408,10 +635,19 @@ msgstr "Her zaman izinli"
 msgid "Answer"
 msgstr "Yanıtla"
 
+#: src/components/AskCard.tsx
+msgid "Answer accepted; syncing status…"
+msgstr ""
+
 #: src/components/RunDetailsPanel.tsx
 msgid "Answer in thread"
 msgstr ""
 
+#: src/lib/call-session.ts
+msgid "Answer this on screen."
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 msgid "Answered"
 msgstr "Yanıtlandı"
@@ -458,6 +694,10 @@ msgstr "Onayla"
 #: src/pages/shell/message-cards.tsx
 msgid "Approve this server to let your agent use its tools."
 msgstr "Agent'ının bu sunucunun araçlarını kullanabilmesi için sunucuyu onayla."
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Approved"
+msgstr ""
 
 #: src/pages/BotContextMenu.tsx
 msgid "Archive"
@@ -541,6 +781,8 @@ msgid "Attachment"
 msgstr "Ek"
 
 #. placeholder {0}: attempt.fence
+#. placeholder {0}: step.attemptNumber
+#: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/RunDetailsPanel.tsx
 msgid "Attempt {0}"
 msgstr ""
@@ -578,10 +820,6 @@ msgstr ""
 msgid "Avatar Studio"
 msgstr "Avatar Stüdyosu"
 
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Avatars"
-msgstr ""
-
 #: src/components/computer/FilesApp.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
@@ -601,7 +839,10 @@ msgstr "Temel URL"
 msgid "Bearer token"
 msgstr "Bearer token"
 
-#: src/pages/AccountSettingsOverlay.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Blocked"
+msgstr ""
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Bloub"
 msgstr ""
@@ -645,10 +886,6 @@ msgstr ""
 msgid "Bots"
 msgstr ""
 
-#: src/pages/Shell.tsx
-msgid "Bots are working"
-msgstr "Botlar çalışıyor"
-
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Brain label"
 msgstr ""
@@ -665,6 +902,7 @@ msgstr ""
 msgid "Can't reach the server."
 msgstr "Sunucuya ulaşılamıyor."
 
+#: src/components/activity/BackgroundTaskActivity.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -680,12 +918,20 @@ msgstr "İptal"
 msgid "Cancel reply"
 msgstr "Yanıtı iptal et"
 
+#: src/components/activity/BackgroundTaskActivity.tsx
+msgid "Cancel requested"
+msgstr ""
+
 #: src/components/CloudAgentCard.tsx
 msgid "cancelled"
 msgstr "iptal edildi"
 
+#: src/components/activity/ActivityRows.tsx
+#: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/AskCard.tsx
 #: src/lib/run-status.ts
+#: src/pages/Shell.tsx
 msgid "Cancelled"
 msgstr "İptal edildi"
 
@@ -866,6 +1112,10 @@ msgstr "Bulut"
 msgid "Code"
 msgstr "Kod"
 
+#: src/lib/execution-card.ts
+msgid "Collapse"
+msgstr ""
+
 #. placeholder {0}: group.title
 #. placeholder {0}: item.chat.name
 #: src/pages/Shell.tsx
@@ -1037,10 +1287,6 @@ msgid "Continue with email"
 msgstr "E-posta ile devam et"
 
 #: src/pages/Shell.tsx
-msgid "Conversation model"
-msgstr ""
-
-#: src/pages/Shell.tsx
 msgid "Copy"
 msgstr "Kopyala"
 
@@ -1194,6 +1440,10 @@ msgstr "{name} indirilemedi. Tekrar dene."
 
 #: src/components/computer/FilesApp.tsx
 msgid "Could not download file"
+msgstr ""
+
+#: src/pages/Shell.tsx
+msgid "Could not finish"
 msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
@@ -1393,6 +1643,10 @@ msgstr "OAuth başlatılamadı"
 msgid "Could not start teaching"
 msgstr ""
 
+#: src/components/activity/BackgroundTaskActivity.tsx
+msgid "Could not stop this task. Try again."
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "Could not submit this answer"
 msgstr "Bu yanıt gönderilemedi"
@@ -1427,10 +1681,6 @@ msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
-msgstr ""
-
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Couldn't update avatars"
 msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -1559,6 +1809,10 @@ msgstr "Varsayılan ({0})"
 msgid "Default scope"
 msgstr "Varsayılan kapsam"
 
+#: src/components/ai/RunTodoList.tsx
+msgid "Deferred"
+msgstr ""
+
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -1610,6 +1864,7 @@ msgstr "silindi"
 msgid "Deleting…"
 msgstr "Siliniyor…"
 
+#: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 msgid "Denied"
 msgstr "Reddedildi"
@@ -1636,6 +1891,10 @@ msgstr ""
 
 #: src/components/DesktopUpdates.tsx
 msgid "Desktop update"
+msgstr ""
+
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Details"
 msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
@@ -1683,7 +1942,15 @@ msgstr "Docker, ek güvenlik için bilgisayarına erişimi sınırlar. {hostLabe
 msgid "Don’t have an account?"
 msgstr "Hesabın yok mu?"
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "done"
+msgstr ""
+
+#: src/components/activity/ActivityRows.tsx
+#: src/components/ai/RunPlanDisclosure.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
+#: src/pages/Shell.tsx
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Done"
 msgstr "Bitti"
@@ -1743,6 +2010,46 @@ msgstr "Önce düzenle"
 #: src/pages/BotContextMenu.tsx
 msgid "Edit Profile"
 msgstr "Profili Düzenle"
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect approved"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect completed"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect denied"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect expired"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect failed"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect pending"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect reconciled"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect result unknown"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect running"
+msgstr ""
+
+#: src/components/ai/InterventionRegion.tsx
+msgid "Effect status unavailable"
+msgstr ""
 
 #. placeholder {0}: effects.length
 #: src/components/RunDetailsPanel.tsx
@@ -1811,9 +2118,17 @@ msgstr "Her ay"
 msgid "Every week"
 msgstr "Her hafta"
 
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "evidence references"
+msgstr ""
+
 #. placeholder {0}: history.length
 #: src/components/RunDetailsPanel.tsx
 msgid "Execution history · {0}"
+msgstr ""
+
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Execution progress"
 msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
@@ -1857,6 +2172,8 @@ msgstr "Çok yüksek"
 msgid "failed"
 msgstr "başarısız"
 
+#: src/components/activity/ActivityRows.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
 msgid "Failed"
 msgstr "Başarısız"
@@ -1950,6 +2267,11 @@ msgstr "Tam ekran"
 #: src/pages/SettingsOverlay.tsx
 msgid "General"
 msgstr "Genel"
+
+#. placeholder {0}: names.join(", ")
+#: src/lib/execution-card.ts
+msgid "Generated {0}"
+msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Get credentials"
@@ -2075,6 +2397,12 @@ msgstr "Görüntü yükleme alanı"
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "OpenAPI JSON içe aktar"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
+#: src/components/ai/RunTodoList.tsx
+msgid "In progress"
+msgstr ""
 
 #: src/pages/shell/message-cards.tsx
 msgid "Inbox & email"
@@ -2208,6 +2536,10 @@ msgstr ""
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Listening"
+msgstr ""
+
+#: src/pages/Shell.tsx
+msgid "Load earlier activity"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -2534,6 +2866,10 @@ msgstr "Devralma bekliyor"
 msgid "Needs you"
 msgstr ""
 
+#: src/lib/execution-card.ts
+msgid "Needs your attention"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "New bot"
 msgstr "Yeni bot"
@@ -2604,6 +2940,7 @@ msgstr ""
 msgid "No group chats yet."
 msgstr ""
 
+#: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "Artık etkin değil"
@@ -2688,6 +3025,10 @@ msgstr ""
 #: src/pages/shell/message-cards.tsx
 msgid "Not now"
 msgstr "Şimdi değil"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Not started"
+msgstr ""
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Nothing is still running"
@@ -2821,10 +3162,6 @@ msgstr "Veya bir API anahtarı bağla"
 msgid "Or paste an API key"
 msgstr "Veya bir API anahtarı yapıştır"
 
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Organic"
-msgstr ""
-
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Organization API key"
 msgstr "Kuruluş API anahtarı"
@@ -2883,6 +3220,11 @@ msgstr "API anahtarını yapıştır"
 msgid "Paused"
 msgstr ""
 
+#: src/components/ai/RunStepsDisclosure.tsx
+#: src/components/ai/RunTodoList.tsx
+msgid "Pending"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "Kişisel kimlik bilgisi"
@@ -2894,6 +3236,14 @@ msgstr ""
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
 msgstr "Sabitle"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Plan"
+msgstr ""
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Plan updated"
+msgstr ""
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Playing…"
@@ -2946,6 +3296,7 @@ msgstr "Sağlayıcılar"
 msgid "Pull request"
 msgstr "Çekme isteği"
 
+#: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
 msgid "Queued"
 msgstr "Kuyrukta"
@@ -3130,6 +3481,10 @@ msgstr "API anahtarını değiştir"
 msgid "Replace key"
 msgstr "Anahtarı değiştir"
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Replaced"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Reply"
 msgstr "Yanıtla"
@@ -3180,6 +3535,10 @@ msgstr "Parolanızı sıfırlayın"
 msgid "Resetting…"
 msgstr ""
 
+#: src/components/ai/RunTodoList.tsx
+msgid "Resolved"
+msgstr ""
+
 #: src/components/DesktopUpdates.tsx
 msgid "Restart to update"
 msgstr ""
@@ -3192,8 +3551,20 @@ msgstr "Geri yükle"
 msgid "Restore the last saved workspace. Unsaved work on the computer is lost."
 msgstr ""
 
+#: src/components/AskCard.tsx
+msgid "Restored your unsent answer"
+msgstr ""
+
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Restoring your workspace"
+msgstr ""
+
+#: src/components/ai/RunResult.tsx
+msgid "Result"
+msgstr ""
+
+#: src/components/ai/RunResult.tsx
+msgid "Result preview truncated"
 msgstr ""
 
 #: src/App.tsx
@@ -3203,6 +3574,10 @@ msgstr "Şimdi tekrar dene"
 
 #: src/pages/Shell.tsx
 msgid "Retry screen"
+msgstr ""
+
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Retrying"
 msgstr ""
 
 #: src/pages/McpOAuthCallback.tsx
@@ -3217,10 +3592,6 @@ msgstr "rev {0}"
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Revoke"
 msgstr "İptal et"
-
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Robot"
-msgstr ""
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Room guidance"
@@ -3289,6 +3660,7 @@ msgstr ""
 msgid "Save"
 msgstr "Kaydet"
 
+#: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
 #: src/pages/ExternalConversationSettings.tsx
@@ -3468,12 +3840,24 @@ msgstr "Paylaşılan belgeler"
 msgid "Shell"
 msgstr "Kabuk"
 
+#. placeholder {0}: ordered.length - visible.size
+#. placeholder {0}: plan.items.length - visible.size
+#: src/components/ai/RunPlanDisclosure.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Show all ({0} more)"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Show bots"
 msgstr ""
 
 #: src/pages/Shell.tsx
 msgid "Show computer"
+msgstr ""
+
+#: src/components/ai/RunPlanDisclosure.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Show less"
 msgstr ""
 
 #: src/pages/Artifacts.tsx
@@ -3534,6 +3918,11 @@ msgstr "Atla"
 msgid "Skip or deploy key"
 msgstr "Atla veya dağıtım anahtarı kullan"
 
+#: src/components/ai/RunPlanDisclosure.tsx
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Skipped"
+msgstr ""
+
 #. placeholder {0}: skipped.join(", ")
 #: src/pages/Shell.tsx
 msgid "Skipped {0}"
@@ -3552,7 +3941,6 @@ msgid "Software update"
 msgstr ""
 
 #: src/components/ModelTreePicker.tsx
-#: src/pages/Shell.tsx
 msgid "Space default"
 msgstr "Alan varsayılanı"
 
@@ -3594,6 +3982,15 @@ msgstr "Başlıyor"
 msgid "Starting…"
 msgstr "Başlatılıyor…"
 
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "Status unconfirmed"
+msgstr ""
+
+#. placeholder {0}: index + 1
+#: src/lib/execution-card.ts
+msgid "Step {0}"
+msgstr ""
+
 #: src/components/RunDetailsPanel.tsx
 msgid "Step details are in the thread transcript."
 msgstr ""
@@ -3619,6 +4016,10 @@ msgstr "Öğretmeyi durdur"
 msgid "Stopped."
 msgstr "Durduruldu."
 
+#: src/components/activity/BackgroundTaskActivity.tsx
+msgid "Stopping…"
+msgstr ""
+
 #: src/pages/McpServersOverlay.tsx
 msgid "Stored encrypted"
 msgstr "Şifreli saklanıyor"
@@ -3632,7 +4033,6 @@ msgid "Stream replies"
 msgstr "Yanıtları akışla göster"
 
 #: src/components/RunDetailsPanel.tsx
-#: src/pages/Shell.tsx
 msgid "subagent"
 msgstr "alt ajan"
 
@@ -3640,6 +4040,10 @@ msgstr "alt ajan"
 #: src/pages/Onboarding.tsx
 msgid "Submit"
 msgstr "Gönder"
+
+#: src/components/AskCard.tsx
+msgid "Submitting your answer…"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -3792,6 +4196,10 @@ msgstr "Günün saati"
 msgid "Title"
 msgstr "Başlık"
 
+#: src/components/ai/RunTodoList.tsx
+msgid "To do"
+msgstr ""
+
 #: src/pages/shell/bot-picker.tsx
 msgid "To:"
 msgstr "Kime:"
@@ -3842,6 +4250,10 @@ msgstr "Atanmamış"
 
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Unavailable"
+msgstr ""
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Unfinished"
 msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
@@ -3965,6 +4377,18 @@ msgstr "Doğrulanıyor…"
 msgid "Version"
 msgstr ""
 
+#: src/lib/execution-card.ts
+msgid "View execution"
+msgstr ""
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "View reason"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "View result"
+msgstr ""
+
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -3975,6 +4399,10 @@ msgstr "Ses"
 #: src/components/call/VoiceChatCard.tsx
 msgid "Voice chat"
 msgstr "Sesli sohbet"
+
+#: src/components/activity/ActivityRows.tsx
+msgid "Waiting"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -4037,6 +4465,11 @@ msgstr "Ne zaman kullanılır"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Botlar nerede çalışsın?"
+
+#: src/components/activity/ActivityRows.tsx
+#: src/pages/Shell.tsx
+msgid "Working"
+msgstr ""
 
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Auth.tsx

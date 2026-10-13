@@ -22,10 +22,10 @@ This baseline is the starting point for implementing the Execution designs. It r
 ## Design handoff boundaries
 
 - Task 01–03 source files are in the Execution Shell visualization set; Task 04–17 source files are in the WorkPal design set. Task 18 has a separate v1.4 development brief. These are design inputs, not shipped React/DB/runtime implementations.
-- The Execution Card and structured, revisioned Plan (`PLAN-001`) are not implemented in the production Web/API contract. Render only data that has a reliable source; do not turn prototype fixtures or Activity labels into fake Plan state.
+- The Execution Card (Tasks 15/15.1) is now implemented in the production Web app as a projection of the HISTORY-001 read model; see [execution-card.md](./execution-card.md). The structured, revisioned Plan (`PLAN-001`) persists revisions and feeds the inline Plan disclosure, but its revision history is still not exposed in UI. Render only data that has a reliable source; do not turn prototype fixtures or Activity labels into fake Plan state.
 - Task 17 defines a product Task as one goal with one or more Runs; each Routine trigger creates a fresh Task and Run. Task 18 can leave the existing Task table unchanged, but its wording that omits Task from the conceptual model must not erase Task 17's goal/Run distinction.
 - Task 18 proposes event envelopes, proactive result delivery, Run reliability, capability rules, and TurnPolicy v2. These require separate implementation and real execution tests. In particular, the brief's claim that Execution UX is already complete describes its prototypes, not this baseline's product UI.
 
 ## Next implementation gate
 
-Before claiming Tasks 01–18 complete, map each frozen UI state to a real persisted event/API source, implement the missing structured Plan and Execution Card, then validate the Task 18 control changes against normal, failed, cancelled, resumed, and duplicate-delivery paths. Keep the Task 17 Task/Run relationship and the backend's permission boundary throughout.
+Before claiming Tasks 01–18 complete, map each frozen UI state to a real persisted event/API source, then validate the Task 18 control changes against normal, failed, cancelled, resumed, and duplicate-delivery paths. The Execution Card is delivered; the Task Center, a manual-retry contract, a trusted percentage-progress source, and a trusted model-price source for `maxCostUsd` remain open. Keep the Task 17 Task/Run relationship and the backend's permission boundary throughout.

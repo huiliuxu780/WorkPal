@@ -149,6 +149,7 @@ import { ExecutionShell } from "../components/ai/ExecutionShell";
 import { InterventionRegion } from "../components/ai/InterventionRegion";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { RunPlanDisclosure } from "../components/ai/RunPlanDisclosure";
+import { RunResult } from "../components/ai/RunResult";
 import { RunStepsDisclosure } from "../components/ai/RunStepsDisclosure";
 import { RunTodoList } from "../components/ai/RunTodoList";
 import { CloudAgentCard } from "../components/CloudAgentCard";
@@ -235,12 +236,14 @@ import {
   installExecutionDetail,
   isExpansionOpen,
   mergeActivityPages,
+  planExpansionDefaults,
   readExecutionExpansions,
   resolveExecutionAnchor,
   selectCachedDetailEntry,
   summariesByRun,
   toggleExpansion,
 } from "../lib/execution-history";
+import { resultHasText } from "../lib/execution-card";
 import { sharedInflight } from "../lib/shared-inflight";
 import {
   activeThreadRuns,
@@ -4869,6 +4872,21 @@ const Transcript = memo(function Transcript({
     },
     [serverSummaries, messageById],
   );
+  // One open detail per Thread at any moment — initial render, refresh, rev
+  // moves and waiting states included. Stored rev-matching entries stay
+  // authoritative; defaults open active/failed Runs only while nothing else
+  // in the Thread is open. Runs outside the summary window (detail-only)
+  // fall back to the per-Run stored/default resolution below.
+  const expansionPlan = useMemo(() => {
+    if (!serverSummaries) return null;
+    const planned: Array<{ runId: string; rev: number; status: string }> = [];
+    for (const summary of serverSummaries.values()) {
+      const entry = selectCachedDetailEntry(executionDetails, summary.runId, summary.rev);
+      const source = entry?.snapshot.summary ?? summary;
+      planned.push({ runId: summary.runId, rev: source.rev, status: source.status });
+    }
+    return planExpansionDefaults({ entries: expansionEntries, threadId, runs: planned });
+  }, [serverSummaries, executionDetails, expansionEntries, threadId]);
 
   const plansByAnchor = useMemo(() => {
     const anchors = new Map<string, NonNullable<ThreadSnapshot["plans"]>>();
@@ -4980,10 +4998,16 @@ const Transcript = memo(function Transcript({
         const lastBot = [...messages]
           .reverse()
           .find((message) => message.runId === summary.runId && message.role === "bot");
-        const anchor = anchorOf(
+        let anchor = anchorOf(
           summary.runId,
           lastBot?.id ?? (isRunActive(summary.status) ? "__tail" : null),
         );
+        // A Run that never committed a Bot message (e.g. failed before its
+        // first token) has no anchor to wait for — its summary alone earns a
+        // tail shell so its card is never invisible. A server anchor that is
+        // merely paged out keeps waiting for its page instead of jumping to
+        // the tail.
+        if (!anchor && !summary.anchorMessageId) anchor = "__tail";
         if (!anchor) continue;
         get(anchor, summary.runId);
         runAnchor.set(summary.runId, anchor);
@@ -5073,6 +5097,12 @@ const Transcript = memo(function Transcript({
           activity: execution.activity,
         },
       });
+      // The transcript bubble is the canonical result surface. The detail's
+      // Result section only renders while that message is NOT loaded (paged
+      // out), so the same text never appears twice next to each other; the
+      // card's outcome excerpt covers the collapsed/restored presentation.
+      const detachedResult =
+        data.result && !messageById.has(data.result.messageId) ? data.result : null;
       // Older pages prepend under the current first page; the merge dedupes
       // by id and the newer status wins (boundary called/completed pairs).
       const runActivityItems = mergeActivityPages(
@@ -5090,14 +5120,16 @@ const Transcript = memo(function Transcript({
       const rev = currentSummary?.rev ?? 0;
       const openByDefault =
         Boolean(displayRun && (isRunActive(displayRun.status) || displayRun.status === "failed"));
+      const plannedOpen = expansionPlan?.get(execution.runId);
       const isOpen = controlled
-        ? isExpansionOpen({
+        ? (plannedOpen ??
+          isExpansionOpen({
             entries: expansionEntries,
             threadId,
             runId: execution.runId,
             rev,
             defaultOpen: openByDefault,
-          })
+          }))
         : openByDefault;
       const expansion = controlled
         ? {
@@ -5149,6 +5181,18 @@ const Transcript = memo(function Transcript({
           pendingInterventionKinds={pendingInterventionKindsForRun(interventions, execution.runId)}
           expansion={expansion}
           canExpand={currentSummary !== null}
+          summary={currentSummary}
+          pendingInterventionViews={scopedInterventions.filter((view) => view.status === "pending")}
+          steps={data.steps}
+          stepsTruncated={detail?.steps.truncated}
+          hasResult={resultHasText(detachedResult)}
+          resultOnPage={
+            data.result
+              ? messageById.has(data.result.messageId)
+              : messages.some(
+                  (message) => message.runId === execution.runId && message.role === "bot",
+                )
+          }
           interventions={
             scopedInterventions.length > 0 ? (
               <InterventionRegion
@@ -5180,13 +5224,14 @@ const Transcript = memo(function Transcript({
           {activityCursor ? (
             <button
               type="button"
-              data-testid={`execution-activity-more-${execution.runId}`}
+              data-testid="execution-activity-more"
               onClick={loadMoreActivity}
               className="mt-1 text-[12.5px] text-muted-foreground underline-offset-2 hover:underline"
             >
               {t`Load earlier activity`}
             </button>
           ) : null}
+          {detachedResult ? <RunResult result={detachedResult} /> : null}
         </ExecutionShell>
       );
     });
@@ -5447,7 +5492,16 @@ const Transcript = memo(function Transcript({
             : message.blocks;
           const showMessage = messageHasVisibleBlocks(visibleBlocks, showToolActivity);
           if (!showMessage) {
-            return <Fragment key={message.id}>{renderExecutions(`before:${message.id}`)}</Fragment>;
+            // The bubble is invisible (an activity-only live progress
+            // placeholder, or a steps-only message with tool activity off),
+            // but a Run anchored to this message id still owns its shell —
+            // rendering only the `before:` anchor here would orphan it.
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                {renderExecutions(message.id)}
+              </Fragment>
+            );
           }
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
