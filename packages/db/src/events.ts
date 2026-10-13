@@ -1692,7 +1692,10 @@ export async function appendEventInTransaction(
   // thread.artifact is a Thread-maintenance membership fact (user-initiated
   // Artifact delete, or an attach inside a live Run): the linked Run may
   // already be terminal, and the event exists precisely so that change moves
-  // the Run's snapshot rev.
+  // the Run's snapshot rev. It is also the only event class today's paths
+  // append for terminal Runs — the execution-history generation fence relies
+  // on lifecycle events stopping at terminalization, so any new
+  // terminal-append path must be checked against the Thread Clear fence.
   if (input.type === "run.cancelled") {
     await assertRunIsCancelled(tx, input.runId);
   } else if (input.type !== "thread.artifact") {
