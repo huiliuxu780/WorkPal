@@ -8,6 +8,7 @@ import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
 } from "./postgres-test-database.js";
+import { renewOwnedRunLease } from "./run-lease.js";
 import { loadTaskCenterPage, TaskCenterCursorError } from "./task-center.js";
 
 const describePostgres =
@@ -117,6 +118,8 @@ describePostgres("task center read model (PostgreSQL)", () => {
     trigger?: string;
     orchestration?: unknown;
     prompt?: string;
+    /** Lease fields so the production heartbeat (`renewOwnedRunLease`) matches. */
+    withLease?: boolean;
   }) {
     const task = await prisma.task.create({
       data: {
@@ -137,6 +140,13 @@ describePostgres("task center read model (PostgreSQL)", () => {
         taskId: task.id,
         status: input.status ?? "running",
         trigger: input.trigger ?? "user",
+        ...(input.withLease
+          ? {
+              leaseOwner: "worker",
+              leaseFence: 1,
+              leaseExpiresAt: new Date(Date.now() + 60_000),
+            }
+          : {}),
         ...(input.orchestration !== undefined
           ? { orchestration: input.orchestration as object }
           : {}),
@@ -145,9 +155,27 @@ describePostgres("task center read model (PostgreSQL)", () => {
     return run;
   }
 
-  /** Deterministic server-sort-key placement (invisible write; no rev bump). */
-  async function setUpdatedAt(runId: string, at: Date) {
-    await prisma.$executeRaw`UPDATE runs SET "updatedAt" = ${at} WHERE id = ${runId}`;
+  /**
+   * Places the Run's STABLE sort time — the same value
+   * `ExecutionSummary.updatedAt` reports: the newest event time, or the Run's
+   * creation time while no event exists. `runs.updatedAt` is deliberately NOT
+   * the sort key: invisible writes move it and must not move the list.
+   */
+  async function setSortTime(runId: string, at: Date) {
+    await prisma.$executeRaw`UPDATE runs SET "createdAt" = ${at} WHERE id = ${runId}`;
+    await prisma.$executeRaw`UPDATE events SET "createdAt" = ${at} WHERE "runId" = ${runId}`;
+  }
+
+  /** Collect every page's runIds in delivered order. */
+  async function collectAll(ctx: ActorContext): Promise<string[]> {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const page = await load(ctx, { limit: 20, ...(cursor ? { cursor } : {}) });
+      for (const item of page.items) ids.push(item.summary.runId);
+      if (!page.nextCursor) return ids;
+      cursor = page.nextCursor;
+    }
   }
 
   async function terminalize(input: {
@@ -300,14 +328,14 @@ describePostgres("task center read model (PostgreSQL)", () => {
     expect(parentItem?.summary.counts?.agents).toBe(1);
   });
 
-  it("returns every active Run and bounds the terminal window at 50", async () => {
+  it("returns every active Run, bounds the terminal window at 50, and keeps invisible writes out of both", async () => {
     const ctx = await newActor();
-    const actives = [];
+    const actives: Array<Awaited<ReturnType<typeof makeRun>>> = [];
     for (const status of ["queued", "leased", "running", "waiting_input", "waiting_takeover"]) {
       actives.push(await makeRun({ ctx, botId: ctx.botA, threadId: ctx.threadA, status }));
     }
     const base = Date.now();
-    const terminals = [];
+    const terminals: Array<Awaited<ReturnType<typeof makeRun>>> = [];
     for (let index = 0; index < 60; index += 1) {
       const run = await makeRun({
         ctx,
@@ -317,7 +345,7 @@ describePostgres("task center read model (PostgreSQL)", () => {
         prompt: `terminal-${index}`,
       });
       await terminalize({ ctx, runId: run.id, botId: ctx.botB, threadId: ctx.threadB });
-      await setUpdatedAt(run.id, new Date(base - (60 - index) * 60_000));
+      await setSortTime(run.id, new Date(base - (60 - index) * 60_000));
       terminals.push(run);
     }
 
@@ -332,13 +360,37 @@ describePostgres("task center read model (PostgreSQL)", () => {
       cursor = page.nextCursor;
     }
     // All five active statuses are present; the terminal window kept exactly
-    // the 50 most recently updated (the 10 oldest are outside the window).
+    // the 50 with the newest stable summary time (the 10 oldest are outside).
     for (const active of actives) expect(seen.has(active.id)).toBe(true);
     const terminalSeen = terminals.filter((run) => seen.has(run.id));
     expect(terminalSeen).toHaveLength(50);
     expect(terminalSeen.map((run) => run.id)).toEqual(terminals.slice(10).map((run) => run.id));
     expect(activeCount).toBe(5);
-  }, 120_000);
+
+    // Invisible row writes — mirror/outcome timestamps, which also move the
+    // @updatedAt column — must neither pull an excluded terminal into the
+    // window nor reorder the delivered list.
+    const orderBefore = await collectAll(ctx);
+    const includedRevBefore = (await load(ctx, { limit: 100 })).items.find(
+      (item) => item.summary.runId === terminals[59]!.id,
+    )?.summary.rev;
+    const now = new Date();
+    for (const excluded of [terminals[0]!, terminals[1]!]) {
+      await prisma.run.update({
+        where: { id: excluded.id },
+        data: { botOutcomeReturnedAt: now, messagingMirroredAt: now },
+      });
+    }
+    await prisma.run.update({
+      where: { id: terminals[59]!.id },
+      data: { messagingMirroredAt: now, teamChatMirroredAt: now },
+    });
+    expect(await collectAll(ctx)).toEqual(orderBefore);
+    const includedRevAfter = (await load(ctx, { limit: 100 })).items.find(
+      (item) => item.summary.runId === terminals[59]!.id,
+    )?.summary.rev;
+    expect(includedRevAfter).toBe(includedRevBefore);
+  }, 180_000);
 
   it("orders waiting before running before queued, then failed, completed, cancelled", async () => {
     const ctx = await newActor();
@@ -391,14 +443,14 @@ describePostgres("task center read model (PostgreSQL)", () => {
       status: "cancelled",
     });
 
-    //updatedAt deliberately favors the WRONG display order: the group
-    // priority must win over recency (queued is the newest row).
-    await setUpdatedAt(waiting.id, new Date(base - 5 * 60_000));
-    await setUpdatedAt(running.id, new Date(base - 3 * 60_000));
-    await setUpdatedAt(queued.id, new Date(base - 1 * 60_000));
-    await setUpdatedAt(failed.id, new Date(base - 1 * 60_000));
-    await setUpdatedAt(completed.id, new Date(base - 2 * 60_000));
-    await setUpdatedAt(cancelled.id, new Date(base - 3 * 60_000));
+    // The stable sort time deliberately favors the WRONG display order: the
+    // group priority must win over recency (queued is the newest item).
+    await setSortTime(waiting.id, new Date(base - 5 * 60_000));
+    await setSortTime(running.id, new Date(base - 3 * 60_000));
+    await setSortTime(queued.id, new Date(base - 1 * 60_000));
+    await setSortTime(failed.id, new Date(base - 1 * 60_000));
+    await setSortTime(completed.id, new Date(base - 2 * 60_000));
+    await setSortTime(cancelled.id, new Date(base - 3 * 60_000));
 
     const page = await load(ctx);
     expect(page.items.map((item) => item.summary.runId)).toEqual([
@@ -412,7 +464,7 @@ describePostgres("task center read model (PostgreSQL)", () => {
     expect(page.activeCount).toBe(3);
   });
 
-  it("sorts within a group by updatedAt descending with a stable runId tie breaker", async () => {
+  it("sorts within a group by the stable summary time descending with a stable runId tie breaker", async () => {
     const ctx = await newActor();
     const base = Date.now();
     const same = new Date(base - 60_000);
@@ -420,10 +472,10 @@ describePostgres("task center read model (PostgreSQL)", () => {
     const newer = await makeRun({ ctx, botId: ctx.botA, threadId: ctx.threadA, prompt: "newer" });
     const twinA = await makeRun({ ctx, botId: ctx.botB, threadId: ctx.threadB, prompt: "twin-a" });
     const twinB = await makeRun({ ctx, botId: ctx.botB, threadId: ctx.threadB, prompt: "twin-b" });
-    await setUpdatedAt(newer.id, new Date(base));
-    await setUpdatedAt(older.id, new Date(base - 2 * 60_000));
-    await setUpdatedAt(twinA.id, same);
-    await setUpdatedAt(twinB.id, same);
+    await setSortTime(newer.id, new Date(base));
+    await setSortTime(older.id, new Date(base - 2 * 60_000));
+    await setSortTime(twinA.id, same);
+    await setSortTime(twinB.id, same);
 
     const page = await load(ctx);
     const order = page.items.map((item) => item.summary.runId);
@@ -539,7 +591,7 @@ describePostgres("task center read model (PostgreSQL)", () => {
   it("pages by opaque cursor without duplicates and rejects foreign, version-mismatched and malformed cursors", async () => {
     const ctx = await newActor();
     const base = Date.now();
-    const runs = [];
+    const runs: Array<Awaited<ReturnType<typeof makeRun>>> = [];
     for (let index = 0; index < 5; index += 1) {
       const run = await makeRun({
         ctx,
@@ -549,7 +601,7 @@ describePostgres("task center read model (PostgreSQL)", () => {
         prompt: `paged-${index}`,
       });
       await terminalize({ ctx, runId: run.id, botId: ctx.botA, threadId: ctx.threadA });
-      await setUpdatedAt(run.id, new Date(base - index * 60_000));
+      await setSortTime(run.id, new Date(base - index * 60_000));
       runs.push(run);
     }
 
@@ -599,6 +651,52 @@ describePostgres("task center read model (PostgreSQL)", () => {
     // The honest cursor still works after the forged ones.
     const second = await load(ctx, { limit: 2, cursor: validFirst.nextCursor! });
     expect(second.items.map((item) => item.summary.runId)).toEqual([runs[2]!.id, runs[3]!.id]);
+  });
+
+  it("keeps the next page complete when production lease renewals land between pages", async () => {
+    const ctx = await newActor();
+    const base = Date.now();
+    const runs: Array<Awaited<ReturnType<typeof makeRun>>> = [];
+    for (let index = 0; index < 4; index += 1) {
+      const run = await makeRun({
+        ctx,
+        botId: ctx.botA,
+        threadId: ctx.threadA,
+        status: "running",
+        withLease: true,
+        prompt: `lease-${index}`,
+      });
+      await setSortTime(run.id, new Date(base - index * 60_000));
+      runs.push(run);
+    }
+
+    const page1 = await load(ctx, { limit: 2 });
+    expect(page1.items.map((item) => item.summary.runId)).toEqual([runs[0]!.id, runs[1]!.id]);
+    expect(page1.nextCursor).toBeTruthy();
+    const revsBefore = new Map(
+      (await load(ctx, { limit: 10 })).items.map((item) => [item.summary.runId, item.summary.rev]),
+    );
+
+    // The production heartbeat: `renewOwnedRunLease` writes only
+    // `leaseExpiresAt` (plus the automatic @updatedAt column move). The
+    // remaining Runs must NOT sort ahead of the cursor because of it.
+    for (const run of [runs[2]!, runs[3]!]) {
+      const renewed = await renewOwnedRunLease(prisma, {
+        runId: run.id,
+        leaseOwner: "worker",
+        leaseFence: 1,
+        leaseExpiresAt: new Date(Date.now() + 120_000),
+      });
+      expect(renewed).toBe(true);
+    }
+
+    const page2 = await load(ctx, { limit: 2, cursor: page1.nextCursor! });
+    expect(page2.items.map((item) => item.summary.runId)).toEqual([runs[2]!.id, runs[3]!.id]);
+    expect(page2.nextCursor).toBeNull();
+    // The renewed Runs keep their rev: an invisible write moves no contract value.
+    for (const item of page2.items) {
+      expect(item.summary.rev).toBe(revsBefore.get(item.summary.runId));
+    }
   });
 
   it("builds one page with a bounded query count regardless of the Run count (no per-Run fan-out)", async () => {
@@ -682,13 +780,16 @@ describePostgres("task center read model (PostgreSQL)", () => {
       await tx.$queryRaw`SET LOCAL enable_seqscan = off`;
       const terminalPlan = await tx.$queryRaw<[{ plan: unknown }[]]>`
         EXPLAIN (FORMAT JSON)
-        SELECT r.id FROM runs r
+        SELECT r.id,
+               COALESCE((SELECT MAX(e2."createdAt") FROM events e2 WHERE e2."runId" = r.id),
+                        r."createdAt") AS "sortTime"
+        FROM runs r
         JOIN threads t ON t.id = r."threadId"
         WHERE r."spaceId" = ${ctx.spaceId}
           AND r.status IN ('completed','failed','cancelled')
           AND NULLIF(r.orchestration->'collaboration'->>'parentRunId', '') IS NULL
           AND EXISTS (SELECT 1 FROM events e WHERE e."runId" = r.id AND e.type <> 'thread.artifact')
-        ORDER BY r."updatedAt" DESC, r.id DESC
+        ORDER BY "sortTime" DESC, r.id DESC
         LIMIT 50
       `;
       const planText = JSON.stringify(terminalPlan);

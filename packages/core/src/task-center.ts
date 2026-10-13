@@ -30,20 +30,27 @@ export function taskCenterPriority(status: RunStatus): number {
 export type TaskCenterSortFacts = {
   runId: string;
   status: RunStatus;
-  /** Server sort key: the `runs.updatedAt` column (epoch ms). */
-  updatedAtMs: number;
+  /**
+   * Server sort key (epoch ms): the SAME stable time `ExecutionSummary.updatedAt`
+   * reports — the Run's newest product-event time, falling back to its
+   * creation time when no event survives. Never `runs.updatedAt`: invisible
+   * row writes (lease renewal, `botOutcomeReturnedAt`, mirror timestamps)
+   * move that column without moving `rev`, and pagination must not skip or
+   * reorder Runs because of writes no client can observe.
+   */
+  sortTimeMs: number;
 };
 
 /**
- * Total deterministic order: group priority, then `updatedAt` descending,
- * then `runId` descending as the stable tie breaker. The tie breaker is a
- * sort fact only — it never renders to the DOM.
+ * Total deterministic order: group priority, then the stable sort time
+ * descending, then `runId` descending as the stable tie breaker. The tie
+ * breaker is a sort fact only — it never renders to the DOM.
  */
 export function compareTaskCenterRuns(a: TaskCenterSortFacts, b: TaskCenterSortFacts): number {
   const pa = taskCenterPriority(a.status);
   const pb = taskCenterPriority(b.status);
   if (pa !== pb) return pa - pb;
-  if (a.updatedAtMs !== b.updatedAtMs) return b.updatedAtMs - a.updatedAtMs;
+  if (a.sortTimeMs !== b.sortTimeMs) return b.sortTimeMs - a.sortTimeMs;
   return a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0;
 }
 
@@ -60,7 +67,7 @@ export type TaskCenterCursor = {
   us: string;
   /** Group priority of the last delivered item. */
   p: number;
-  /** `runs.updatedAt` epoch ms of the last delivered item. */
+  /** Stable sort time (see TaskCenterSortFacts) of the last delivered item, epoch ms. */
   t: number;
   /** runId of the last delivered item (tie-break position, never rendered). */
   r: string;
@@ -109,6 +116,6 @@ export function taskCenterAfterPosition(
 ): boolean {
   const p = taskCenterPriority(item.status);
   if (p !== cursor.p) return p > cursor.p;
-  if (item.updatedAtMs !== cursor.t) return item.updatedAtMs < cursor.t;
+  if (item.sortTimeMs !== cursor.t) return item.sortTimeMs < cursor.t;
   return item.runId < cursor.r;
 }

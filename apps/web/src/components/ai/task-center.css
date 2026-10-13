@@ -18,10 +18,16 @@
 
 .tc-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 22px 22px 4px;
+}
+.tc-head-lead {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
 }
 .tc-head h1 {
   margin: 0;

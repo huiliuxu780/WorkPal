@@ -10,10 +10,10 @@ import {
   taskCenterPriority,
 } from "./task-center.js";
 
-const facts = (runId: string, status: RunStatus, updatedAtMs: number): TaskCenterSortFacts => ({
+const facts = (runId: string, status: RunStatus, sortTimeMs: number): TaskCenterSortFacts => ({
   runId,
   status,
-  updatedAtMs,
+  sortTimeMs,
 });
 
 describe("taskCenterPriority", () => {

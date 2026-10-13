@@ -3569,6 +3569,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
         <TaskCenterView
           mobileSidebarOpen={mobileSidebarOpen}
           onBeforeNavigate={() => setMobileSidebarOpen(false)}
+          onOpenNavigation={() => setMobileSidebarOpen(true)}
         />
       ) : (
         <main

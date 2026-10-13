@@ -1,5 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { TaskCenterItem } from "@rakazo/contracts";
+import { Menu } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildExecutionCardModel } from "../../lib/execution-card";
@@ -49,6 +50,11 @@ function TaskCenterCard({
   busy: boolean;
   onOpen: (item: TaskCenterItem) => void;
 }) {
+  // The Task Center page IS the trusted cross-conversation background entry,
+  // so its eligible root Runs use the card's EXISTING background presentation
+  // (no tint, faint rail). This is surface context only — no database field,
+  // no trigger inference — and the original chat cards keep their own
+  // (still unasserted) background judgment.
   const status = deriveExecutionStatus(
     {
       id: item.summary.runId,
@@ -56,6 +62,7 @@ function TaskCenterCard({
       waitKind: item.summary.waitKind ?? null,
     },
     [],
+    { confirmedRootBackground: true },
   );
   const card = buildExecutionCardModel({
     status,
@@ -96,10 +103,13 @@ function TaskCenterCard({
 export function TaskCenterView({
   mobileSidebarOpen,
   onBeforeNavigate,
+  onOpenNavigation,
 }: {
   mobileSidebarOpen?: boolean;
   /** Lets the Shell close the mobile sidebar before a conversation jump. */
   onBeforeNavigate?: () => void;
+  /** Opens the off-canvas sidebar below md — same control the chat header has. */
+  onOpenNavigation?: () => void;
 }) {
   const { t } = useLingui();
   const navigate = useNavigate();
@@ -194,6 +204,7 @@ export function TaskCenterView({
               waitKind: summary.waitKind ?? null,
             },
             [],
+            { confirmedRootBackground: true },
           );
           // In-memory handoff only (never storage, never a URL param): the
           // chat Transcript opens this Run's card and focuses it — the
@@ -215,15 +226,16 @@ export function TaskCenterView({
           busyRef.current = false;
           setBusyRunId(null);
           if (isUnavailableError(error)) {
+            // Stable feedback with no racing refresh: the mark stays until the
+            // next natural refresh (focus/visibility/re-entry), whose
+            // authoritative window then drops the item for good.
             setUnavailable((current) => new Set(current).add(summary.runId));
-            // The authoritative list drops it on the next read.
-            refresh();
           } else {
             setOpenError(true);
           }
         });
     },
-    [navigate, onBeforeNavigate, refresh],
+    [navigate, onBeforeNavigate],
   );
 
   const subtitle =
@@ -239,9 +251,23 @@ export function TaskCenterView({
       inert={mobileSidebarOpen}
     >
       <header className="tc-head">
-        <h1>
-          <Trans>Background tasks</Trans>
-        </h1>
+        <div className="tc-head-lead">
+          {/* Mobile navigation control: without it the off-canvas sidebar is
+              reachable only by edge swipe, trapping keyboard/mouse users on
+              an empty list. Same button and label as the chat header. */}
+          <button
+            type="button"
+            aria-label={t`Open navigation`}
+            data-testid="task-center-open-navigation"
+            onClick={() => onOpenNavigation?.()}
+            className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
+          >
+            <Menu size={19} strokeWidth={1.7} aria-hidden="true" />
+          </button>
+          <h1>
+            <Trans>Background tasks</Trans>
+          </h1>
+        </div>
         <span className="tc-sub" data-testid="task-center-subtitle">
           {subtitle}
         </span>

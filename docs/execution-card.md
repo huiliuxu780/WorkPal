@@ -87,9 +87,11 @@ re-approval are all undecided). Failed cards offer `View execution` only.
 
 - Root background identity: `deriveExecutionStatus` supports
   `confirmedRootBackground` and the card renders the background presentation
-  (no tint, faint rail), but no production caller can confirm it yet
+  (no tint, faint rail). The Task Center surface — itself the trusted
+  cross-conversation background entry — asserts the flag for its eligible
+  root Runs (see `docs/task-center.md`); chat callers still cannot confirm it
   (`execution-shell-progress.md` remaining gate). Trigger/entry were not
-  promoted to a background signal.
+  promoted to a background signal and no database field was added.
 - Percentage progress and `processed / total` counters: the prototype's
   background-task batch counters have no production contract; the card never
   renders a percentage, a progress track, or a guessed remainder.

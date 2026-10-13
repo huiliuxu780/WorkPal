@@ -27,11 +27,15 @@ import { buildExecutionSummariesForRuns, type SummaryRunRow } from "./execution-
  * existing HISTORY-001 `ExecutionSummary` built by the shared batched
  * projection (one grouped pass per fact source, no per-Run fan-out).
  *
- * Window: every active/waiting root Run plus the most recently updated
- * `TASK_CENTER_TERMINAL_WINDOW` terminal root Runs of the CURRENT generation
- * (the HISTORY-001 lifecycle-event fence — a cleared Run never re-enters, and
- * later `thread.artifact` maintenance cannot revive it because the fence
- * excludes those rows).
+ * Window: every active/waiting root Run plus the `TASK_CENTER_TERMINAL_WINDOW`
+ * terminal root Runs with the newest STABLE summary time (newest product
+ * event, `createdAt` fallback — never the invisible-write-driven
+ * `runs.updatedAt`) of the CURRENT generation (the HISTORY-001
+ * lifecycle-event fence — a cleared Run never re-enters, and later
+ * `thread.artifact` maintenance cannot revive it because the fence excludes
+ * those rows). Ordering and the cursor position use that same stable time, so
+ * lease heartbeats and mirror timestamps can neither reorder the list nor make
+ * pagination skip Runs.
  *
  * Root-Run authority is the stored orchestration lineage
  * (`orchestration.collaboration.parentRunId`), never the card title, the
@@ -54,14 +58,23 @@ export class TaskCenterCursorError extends Error {
 }
 
 type TaskCenterRunRow = SummaryRunRow & {
-  updatedAt: Date;
+  /**
+   * The stable summary time (newest product-event time, Run `createdAt` when
+   * no event survives) — the same value `ExecutionSummary.updatedAt` reports.
+   * Invisible row writes (lease renewal, `botOutcomeReturnedAt`, mirror
+   * timestamps) never move it, so pagination can neither skip nor reorder
+   * Runs behind a client's back.
+   */
+  sortTime: Date;
   threadBotId: string | null;
   threadGroupId: string | null;
 };
 
 const RUN_COLUMNS = Prisma.sql`r.id, r."threadId", r."botId", r."taskId", r.status,
        r."waitKind", r.trigger, r.error, r.orchestration, r."sourceMessageId",
-       r."startedAt", r."completedAt", r."createdAt", r."updatedAt", r."snapshotRev",
+       r."startedAt", r."completedAt", r."createdAt", r."snapshotRev",
+       COALESCE((SELECT MAX(e2."createdAt") FROM events e2 WHERE e2."runId" = r.id),
+                r."createdAt") AS "sortTime",
        t."botId" AS "threadBotId", t."groupId" AS "threadGroupId"`;
 
 /**
@@ -109,7 +122,7 @@ function mapRow(row: Record<string, unknown>): TaskCenterRunRow {
     completedAt: (row.completedAt as Date | null) ?? null,
     createdAt: row.createdAt as Date,
     snapshotRev: Number(row.snapshotRev ?? 0),
-    updatedAt: row.updatedAt as Date,
+    sortTime: row.sortTime as Date,
     threadBotId: (row.threadBotId as string | null) ?? null,
     threadGroupId: (row.threadGroupId as string | null) ?? null,
   };
@@ -156,9 +169,10 @@ export async function loadTaskCenterPage(
         AND ${ROOT_RUN_PREDICATE}
         AND ${auth}
     `,
-    // The bounded terminal window: newest by the same server sort key, and
-    // only while a Run-lifecycle event survives (the Thread Clear fence;
-    // `thread.artifact` maintenance rows do not count and cannot revive).
+    // The bounded terminal window: newest by the SAME stable summary time as
+    // the ordering and the cursor, and only while a Run-lifecycle event
+    // survives (the Thread Clear fence; `thread.artifact` maintenance rows do
+    // not count and cannot revive).
     db.$queryRaw<Array<Record<string, unknown>>>`
       SELECT ${RUN_COLUMNS}
       FROM runs r
@@ -170,7 +184,7 @@ export async function loadTaskCenterPage(
           SELECT 1 FROM events e
           WHERE e."runId" = r.id AND e.type <> 'thread.artifact')
         AND ${auth}
-      ORDER BY r."updatedAt" DESC, r.id DESC
+      ORDER BY "sortTime" DESC, r.id DESC
       LIMIT ${TASK_CENTER_TERMINAL_WINDOW}
     `,
   ]);
@@ -183,7 +197,7 @@ export async function loadTaskCenterPage(
   const factsOf = (row: TaskCenterRunRow) => ({
     runId: row.id,
     status: row.status as RunStatus,
-    updatedAtMs: row.updatedAt.getTime(),
+    sortTimeMs: row.sortTime.getTime(),
   });
   const ordered = [...rowsById.values()].sort((a, b) =>
     compareTaskCenterRuns(factsOf(a), factsOf(b)),
@@ -206,7 +220,7 @@ export async function loadTaskCenterPage(
           sp: input.spaceId,
           us: input.userId,
           p: taskCenterPriority(last.status as RunStatus),
-          t: last.updatedAt.getTime(),
+          t: last.sortTime.getTime(),
           r: last.id,
         })
       : null;

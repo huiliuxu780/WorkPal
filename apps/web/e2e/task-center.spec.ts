@@ -192,9 +192,15 @@ test("waiting approval outranks running, and 去处理 focuses the approval cont
       })
       .toBe(true);
     await expect(cardOfItem(items.first())).toHaveAttribute("data-status", "approval");
+    // The Task Center surface presents the running root Run with the existing
+    // background presentation (trusted cross-conversation background entry).
     await expect(items.nth(1).locator('article[data-testid="execution-card"]')).toHaveAttribute(
       "data-status",
-      "working",
+      "background",
+    );
+    await expect(items.nth(1).locator('article[data-testid="execution-card"]')).toHaveAttribute(
+      "data-background",
+      "1",
     );
 
     // 去处理 → the right conversation, expanded card, focus on the Intervention control.
@@ -478,6 +484,12 @@ test("a Run cleared after the list loaded shows stable feedback and never naviga
   const body = await page.locator("#root").innerText();
   expect(body).not.toContain(summary.runId);
   expect(body).not.toContain("NOT_FOUND");
+
+  // The stable feedback survives until the next natural refresh; the
+  // authoritative window then drops the cleared Run for good.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("task-center")).toBeVisible({ timeout: 20_000 });
+  await expect(tcItem(page, `summarize the tickets ${stamp}`)).toHaveCount(0, { timeout: 30_000 });
 });
 
 test("DOM and browser storage carry no secrets, tokens or raw Run ids", async ({ page }) => {
@@ -580,6 +592,60 @@ test("390px: no horizontal overflow and a keyboard-only card flow", async ({ pag
   } finally {
     await stopQuietly(page, botId);
   }
+});
+
+test("390px empty state: the keyboard alone can open navigation and reach the entry", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  await signup(page, `tc-390-nav-${stamp}@rakazo.test`, "password12", "TC Narrow Nav");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+
+  // The honest empty state: fence out the onboarding intro Run.
+  await expect
+    .poll(
+      async () => {
+        const snapshot = await rpc<{ run?: { status: string } | null }>(page, "threads/get", {
+          botId,
+        });
+        return snapshot.run && !TERMINAL.has(snapshot.run.status) ? snapshot.run.status : "idle";
+      },
+      { timeout: 60_000 },
+    )
+    .toBe("idle");
+  await rpc(page, "threads/clear", { botId });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await gotoTaskCenter(page);
+  await expect(page.getByTestId("task-center-empty")).toBeVisible({ timeout: 30_000 });
+
+  // The sidebar is parked off-canvas (existing collapse), but the header's
+  // Open navigation control makes it reachable without the edge swipe.
+  const entryBoxBefore = await page.getByTestId("task-center-entry").boundingBox();
+  expect(entryBoxBefore!.x + entryBoxBefore!.width).toBeLessThanOrEqual(1);
+
+  // Keyboard-only: Tab to the navigation control, Enter opens the sidebar.
+  let reachedNav = false;
+  for (let step = 0; step < 80 && !reachedNav; step += 1) {
+    await page.keyboard.press("Tab");
+    reachedNav = await page.evaluate(
+      () => document.activeElement?.getAttribute("aria-label") === "Open navigation",
+    );
+  }
+  expect(reachedNav).toBe(true);
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("task-center-entry")).toBeVisible({ timeout: 10_000 });
+
+  // Continue tabbing: focus reaches the Task Center entry inside the sidebar.
+  let reachedEntry = false;
+  for (let step = 0; step < 80 && !reachedEntry; step += 1) {
+    await page.keyboard.press("Tab");
+    reachedEntry = await page.evaluate(
+      () => document.activeElement?.getAttribute("data-testid") === "task-center-entry",
+    );
+  }
+  expect(reachedEntry).toBe(true);
 });
 
 test("light and dark captures match the restrained list direction", async ({ page }, testInfo) => {

@@ -117,6 +117,57 @@ describe("TaskCenterView", () => {
     expect(verbOf(4)).toBe("Back to conversation");
   });
 
+  it("uses the existing background presentation for active root Runs on this trusted surface", async () => {
+    taskCenterRpc.mockResolvedValue(
+      page([item("work"), item("queue", { status: "queued" })], { activeCount: 2 }),
+    );
+    await mount();
+    const running = cards()[0]!;
+    expect(running.getAttribute("data-status")).toBe("background");
+    expect(running.getAttribute("data-background")).toBe("1");
+    expect(running.querySelector(".exc-status")!.textContent).toBe("Running in background");
+    const queued = cards()[1]!;
+    expect(queued.getAttribute("data-status")).toBe("background");
+    expect(queued.querySelector(".exc-status")!.textContent).toBe("Background task");
+    // Still no percentage or progress track anywhere.
+    expect(container.innerHTML).not.toContain("%");
+  });
+
+  it("keeps waiting and terminal states on their own presentation (background never overrides them)", async () => {
+    taskCenterRpc.mockResolvedValue(
+      page([
+        item("wait", { status: "waiting_input", waitKind: "approval" }),
+        item("take", { status: "waiting_takeover", waitKind: "takeover" }),
+        item("done", { status: "completed" }),
+      ]),
+    );
+    await mount();
+    expect(cards()[0]!.getAttribute("data-status")).toBe("approval");
+    expect(cards()[0]!.hasAttribute("data-background")).toBe(false);
+    expect(cards()[1]!.getAttribute("data-status")).toBe("takeover");
+    expect(cards()[2]!.getAttribute("data-status")).toBe("done");
+    expect(cards()[2]!.hasAttribute("data-background")).toBe(false);
+  });
+
+  it("renders the mobile Open navigation control and wires it to the sidebar", async () => {
+    const onOpenNavigation = vi.fn();
+    taskCenterRpc.mockResolvedValue(page([], { activeCount: 0 }));
+    await act(async () => {
+      root.render(<TaskCenterView onOpenNavigation={onOpenNavigation} />);
+    });
+    const button = container.querySelector(
+      '[data-testid="task-center-open-navigation"]',
+    ) as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    expect(button.getAttribute("aria-label")).toBe("Open navigation");
+    // Below md only — the desktop sidebar is always present.
+    expect(button.className).toContain("md:hidden");
+    await act(async () => {
+      button.click();
+    });
+    expect(onOpenNavigation).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the authoritative subtitle and keeps terminals without active Runs", async () => {
     taskCenterRpc.mockResolvedValue(
       page([item("done", { status: "completed" })], { activeCount: 0 }),
@@ -236,8 +287,18 @@ describe("TaskCenterView", () => {
     // The raw error never surfaces.
     expect(container.textContent).not.toContain("NOT_FOUND");
     expect(container.textContent).not.toContain("raw internal failure detail");
-    // The authoritative list is refetched so the item drops out.
-    expect(taskCenterRpc).toHaveBeenCalledTimes(2);
+    // No racing refresh: the stable feedback survives until the next natural
+    // refresh, whose authoritative window drops the item.
+    expect(taskCenterRpc).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await act(async () => {
+      taskCenterRpc.mockResolvedValue(page([]));
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(container.textContent).not.toContain("This task is no longer available.");
+    expect(cards()).toHaveLength(0);
   });
 
   it("keeps a retryable notice for transient failures without marking the Run lost", async () => {

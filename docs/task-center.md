@@ -70,13 +70,15 @@ the browser to be hidden there.
 ## "Background" semantics
 
 The Task Center page itself is the trusted cross-conversation background
-entry, and eligible root Runs may use the Execution Card's existing
-background presentation there. In this release no caller asserts
-`confirmedRootBackground` (still no trusted production field), so cards render
-the standard state visuals. No `background=true` column was added for copy, a
-parent Run is never marked background because it owns `BackgroundAgentTask`
-rows, `trigger` alone never implies background identity, and the original
-chat's Execution Card behavior is unchanged.
+entry, so `TaskCenterCard` derives its status with the EXISTING
+`confirmedRootBackground` option set: active root Runs use the card's existing
+background presentation (no tint, faint rail, 「后台任务」/「正在后台运行」
+sentences), while waiting and terminal states keep their own presentation —
+the shared `deriveExecutionStatus` precedence is untouched. This is surface
+context only: no `background=true` database column was added, a parent Run is
+never marked background because it owns `BackgroundAgentTask` rows, `trigger`
+alone never implies background identity, and the original chat's Execution
+Card behavior is unchanged (no chat caller asserts the flag).
 
 ## Query contract
 
@@ -117,19 +119,33 @@ Deterministic total order, groups first:
 5. `completed`
 6. `cancelled`
 
-Within a group: `runs.updatedAt` descending (the indexed server sort key),
-then `runId` descending as the stable tie breaker. The tie breaker is a sort
-fact only — it never renders to the DOM.
+Within a group: the **stable summary time** descending — the same value
+`ExecutionSummary.updatedAt` reports (the Run's newest product-event time,
+falling back to its creation time while no event survives), computed inside
+both selection queries — then `runId` descending as the stable tie breaker
+(a sort fact only; it never renders to the DOM). `runs.updatedAt` is
+deliberately NOT the sort key: invisible row writes (lease renewal,
+`botOutcomeReturnedAt`, mirror timestamps) move that column without moving
+`rev`, and they must neither reorder the list, nor change the terminal
+window's membership, nor make cursor pagination skip Runs. Regression-tested
+with the production `renewOwnedRunLease` heartbeat between pages.
 
 ### Cursor
 
-Opaque base64url JSON `{v:1, sp(spaceId), us(userId), p(priority), t(updatedAt
-ms), r(runId)}`, strictly decoded (exact key set, exact version) and bound to
-the issuing actor and Space: a cursor from another user, another Space or
-another layout version is rejected (`BAD_REQUEST`), never reinterpreted. The
-Web stores and replays it verbatim and never parses it. The cursor marks the
-last delivered position; items that moved to an earlier group meanwhile are
-skipped server-side and deduped client-side.
+Opaque base64url JSON `{v:1, sp(spaceId), us(userId), p(priority), t(stable
+summary time ms), r(runId)}`, strictly decoded (exact key set, exact version)
+and bound to the issuing actor and Space: an unmodified cursor from another
+user, another Space or another layout version is rejected (`BAD_REQUEST`),
+never reinterpreted. The Web stores and replays it verbatim and never parses
+it. The cursor marks the last delivered position; items that moved to an
+earlier group meanwhile are skipped server-side and deduped client-side.
+
+The cursor carries no cryptographic integrity, and none is claimed: the
+position fields (`p`/`t`/`r`) are untrusted input by design. Tampering with
+them (or rewriting the embedded `sp`/`us` to the caller's own values) can
+only move the caller's OWN pagination position — every page is still selected
+under the caller's live server-side authorization, so no foreign, cross-Space
+or fenced-out data becomes reachable through a forged cursor.
 
 ### Client merge and concurrency
 
@@ -179,8 +195,10 @@ view — no Task Center status matrix. Click flow:
 1. **Authority check**: `runs.executionSnapshot` for the target + Run. A
    cleared/archived/unauthorized Run fails closed (`NOT_FOUND`/…) and the item
    shows the stable 「该任务已不可用。」 feedback in place — no navigation, no
-   raw id, no internal error text. Transient failures show a retryable notice
-   and never mark the Run lost.
+   raw id, no internal error text. The mark deliberately does not race an
+   immediate refetch: it survives until the next natural refresh, whose
+   authoritative window then drops the item for good. Transient failures show
+   a retryable notice and never mark the Run lost.
 2. **Handoff**: an in-memory navigation intent `{threadId, runId, rev,
    attention}` (module memory only — no new browser-storage key, no URL
    param, nothing rendered) plus the existing `?m=<anchorMessageId>` deep
@@ -234,7 +252,10 @@ server-owned total/processed source ships.
   flow are all reachable by Tab/Enter; focus lands on the target card or the
   Intervention control after navigation.
 - 390/768/1440 covered; no horizontal overflow; the sidebar keeps its
-  existing mobile collapse (off-canvas until the existing swipe opens it).
+  existing mobile collapse, and the Task Center header carries the same
+  `Open navigation` control as the chat header (`md:hidden`), so the
+  off-canvas sidebar — and every conversation — stays reachable by keyboard
+  or mouse from the empty state; the existing edge swipe is unchanged.
   Light/dark follow the token layer; `prefers-reduced-motion` disables the
   card breath/rail transitions as in chat.
 - Count badge uses tabular numerals; all text ≥4.5:1 via token colors
