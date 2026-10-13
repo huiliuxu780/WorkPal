@@ -519,6 +519,7 @@ model Message {
   @@unique([threadId, clientNonce])
   @@index([threadId, seq])
   @@index([replyToMessageId])
+  @@index([runId, seq])
   @@map("messages")
 }
 
@@ -590,6 +591,9 @@ model Run {
   leaseExpiresAt       DateTime?
   retryAt              DateTime?
   checkpoint           String?
+  // HISTORY-001: visible-transition counter, maintained by the runs_snapshot_rev
+  // trigger (bumps only when a snapshot-visible column actually changes).
+  snapshotRev          Int              @default(0)
   clientNonce          String?
   sourceMessageId      String?
   sourceMessage        Message?         @relation("RunSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
@@ -1235,6 +1239,7 @@ model Artifact {
   @@index([spaceId, botId])
   @@index([groupId])
   @@index([rootArtifactId])
+  @@index([runId, createdAt])
   // artifacts_family_version_key is raw SQL: Prisma cannot express COALESCE indexes.
   @@map("artifacts")
 }

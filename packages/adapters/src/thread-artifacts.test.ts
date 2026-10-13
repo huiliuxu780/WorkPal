@@ -39,6 +39,7 @@ describe("current-turn thread files", () => {
           spaceId: "workspace-1",
           userId: "user-1",
           botId: "bot-1",
+          threadId: "thread-1",
           runId: "run-1",
           filePath: "report.pdf",
           bytes: new Uint8Array([1, 2, 3]),
@@ -49,6 +50,66 @@ describe("current-turn thread files", () => {
     expect(remove).toHaveBeenCalledWith(
       "stored-1",
       expect.objectContaining({ spaceId: "workspace-1", botId: "bot-1" }),
+    );
+  });
+
+  it("appends a same-transaction thread.artifact attached event so the Run's rev moves", async () => {
+    const artifact = {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({
+        id: "artifact-1",
+        name: "report.pdf",
+        mimeType: "application/pdf",
+        size: 3,
+      }),
+    };
+    const eventCreate = vi.fn().mockResolvedValue({ id: "event-1" });
+    const tx = {
+      artifact,
+      $queryRaw: vi.fn().mockResolvedValue([{ lock: "1" }]),
+      thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 8 }) },
+      run: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null) },
+      event: { create: eventCreate },
+    };
+
+    const result = await attachWorkspaceFileToThread(
+      {
+        prisma: {
+          artifact,
+          $transaction: async (run: (client: typeof tx) => Promise<unknown>) => run(tx),
+        } as unknown as PrismaClient,
+        artifacts: {
+          put: vi.fn().mockResolvedValue({ id: "stored-1", hash: "hash" }),
+          remove: vi.fn(),
+        } as unknown as ArtifactStore,
+      },
+      {
+        spaceId: "workspace-1",
+        userId: "user-1",
+        botId: "bot-1",
+        threadId: "thread-1",
+        runId: "run-1",
+        filePath: "report.pdf",
+        bytes: new Uint8Array([1, 2, 3]),
+        operationId: "attach-1",
+      },
+    );
+
+    expect(result.artifactId).toBe("artifact-1");
+    expect(eventCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "thread.artifact",
+          threadId: "thread-1",
+          runId: "run-1",
+          payload: expect.objectContaining({
+            artifactId: "artifact-1",
+            action: "attached",
+            name: "report.pdf",
+            mimeType: "application/pdf",
+          }),
+        }),
+      }),
     );
   });
 

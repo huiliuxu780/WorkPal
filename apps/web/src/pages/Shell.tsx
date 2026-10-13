@@ -226,6 +226,21 @@ import {
   mergeInterventionViews,
   pendingInterventionKindsForRun,
 } from "../lib/intervention-view";
+import {
+  appendExecutionActivityPage,
+  executionDataForRun,
+  executionRunState,
+  type ExecutionDetailCache,
+  type ExpansionMap,
+  installExecutionDetail,
+  isExpansionOpen,
+  mergeActivityPages,
+  readExecutionExpansions,
+  resolveExecutionAnchor,
+  selectCachedDetailEntry,
+  summariesByRun,
+  toggleExpansion,
+} from "../lib/execution-history";
 import { sharedInflight } from "../lib/shared-inflight";
 import {
   activeThreadRuns,
@@ -3632,6 +3647,8 @@ export function ShellPage() {
             olderCursor={activeSnapshot?.olderCursor ?? null}
             loadingOlder={loadingOlder}
             interventions={activeSnapshot?.interventions}
+            threadId={activeSnapshot?.threadId ?? ""}
+            executions={activeSnapshot?.executions}
             running={transcriptRunning}
             activity={inlineActivity}
             backgroundTasks={backgroundActivity}
@@ -4739,6 +4756,8 @@ const Transcript = memo(function Transcript({
   olderCursor,
   loadingOlder,
   interventions,
+  threadId,
+  executions,
   running,
   activity,
   backgroundTasks,
@@ -4777,6 +4796,9 @@ const Transcript = memo(function Transcript({
   olderCursor: number | null;
   loadingOlder: boolean;
   interventions?: ThreadSnapshot["interventions"];
+  threadId: string;
+  /** Server per-Run summaries (HISTORY-001); absent on older servers. */
+  executions?: ThreadSnapshot["executions"];
   running: boolean;
   activity?: ActivityItem[];
   backgroundTasks?: ActivityItem[];
@@ -4811,6 +4833,15 @@ const Transcript = memo(function Transcript({
     () => coveredAskMessageIds(shownInterventions),
     [shownInterventions],
   );
+  // HISTORY-001: server-driven execution state. Null summaries (older server)
+  // keeps every legacy derivation below untouched.
+  const serverSummaries = useMemo(() => summariesByRun({ executions }), [executions]);
+  const [expansionEntries, setExpansionEntries] = useState<ExpansionMap>(readExecutionExpansions);
+  // Detail cache keyed by Run AND rev. Snapshot, first-page cursor and the
+  // loaded older pages are ONE versioned unit per Run: a moved rev replaces
+  // all three together and a stale response can never mix versions.
+  const [executionDetails, setExecutionDetails] = useState<ExecutionDetailCache>({});
+  const activityLoading = useRef<Record<string, boolean>>({});
   const [atEnd, setAtEnd] = useState(true);
   const following = useRef(true);
   const autoScrolling = useRef(false);
@@ -4821,6 +4852,24 @@ const Transcript = memo(function Transcript({
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  // The server-chosen anchor wins when its message is actually loaded; a
+  // paged-out anchor must never hide a shell whose content is a pending
+  // intervention (those fall back to the legacy last-bot/__tail chain and
+  // re-anchor to the server position once their page is loaded).
+  const anchorOf = useCallback(
+    (runId: string, legacy: string | null): string | null => {
+      const summary = serverSummaries?.get(runId);
+      return resolveExecutionAnchor({
+        summary,
+        legacyAnchorMessageId: legacy,
+        anchorIsLoaded: summary?.anchorMessageId
+          ? messageById.has(summary.anchorMessageId)
+          : undefined,
+      });
+    },
+    [serverSummaries, messageById],
+  );
+
   const plansByAnchor = useMemo(() => {
     const anchors = new Map<string, NonNullable<ThreadSnapshot["plans"]>>();
     for (const plan of plans ?? []) {
@@ -4835,7 +4884,7 @@ const Transcript = memo(function Transcript({
       anchors.set(anchor, [...(anchors.get(anchor) ?? []), plan]);
     }
     return anchors;
-  }, [plans, messageById, messages, activeRunIds]);
+  }, [plans, messageById, messages, activeRunIds, anchorOf]);
   const stepsByAnchor = useMemo(() => {
     const anchors = new Map<string, Map<string, NonNullable<ThreadSnapshot["steps"]>>>();
     for (const step of steps ?? []) {
@@ -4844,15 +4893,17 @@ const Transcript = memo(function Transcript({
       const lastBotMessage = [...messages]
         .reverse()
         .find((message) => message.runId === step.runId && message.role === "bot");
-      const anchor =
-        source ?? lastBotMessage?.id ?? (activeRunIds.includes(step.runId) ? "__tail" : null);
+      const anchor = anchorOf(
+        step.runId,
+        source ?? lastBotMessage?.id ?? (activeRunIds.includes(step.runId) ? "__tail" : null),
+      );
       if (!anchor) continue;
       const runs = anchors.get(anchor) ?? new Map<string, NonNullable<ThreadSnapshot["steps"]>>();
       runs.set(step.runId, [...(runs.get(step.runId) ?? []), step]);
       anchors.set(anchor, runs);
     }
     return anchors;
-  }, [steps, messageById, messages, activeRunIds]);
+  }, [steps, messageById, messages, activeRunIds, anchorOf]);
   const todosByAnchor = useMemo(() => {
     const anchors = new Map<string, Map<string, NonNullable<ThreadSnapshot["todos"]>>>();
     for (const todo of unlinkedRunTodos(todos ?? [], steps ?? [])) {
@@ -4861,15 +4912,17 @@ const Transcript = memo(function Transcript({
       const lastBotMessage = [...messages]
         .reverse()
         .find((message) => message.runId === todo.runId && message.role === "bot");
-      const anchor =
-        source ?? lastBotMessage?.id ?? (activeRunIds.includes(todo.runId) ? "__tail" : null);
+      const anchor = anchorOf(
+        todo.runId,
+        source ?? lastBotMessage?.id ?? (activeRunIds.includes(todo.runId) ? "__tail" : null),
+      );
       if (!anchor) continue;
       const runs = anchors.get(anchor) ?? new Map<string, NonNullable<ThreadSnapshot["todos"]>>();
       runs.set(todo.runId, [...(runs.get(todo.runId) ?? []), todo]);
       anchors.set(anchor, runs);
     }
     return anchors;
-  }, [todos, steps, messageById, messages, activeRunIds]);
+  }, [todos, steps, messageById, messages, activeRunIds, anchorOf]);
   const executionsByAnchor = useMemo(() => {
     type Execution = {
       runId: string;
@@ -4908,11 +4961,33 @@ const Transcript = memo(function Transcript({
     for (const item of activity ?? []) {
       if (!item.runId || item.kind === "background") continue;
       const anchor = runAnchor.get(item.runId) ??
-        [...messages].reverse().find((message) => message.runId === item.runId && message.role === "bot")?.id ??
-        (activeRunIds.includes(item.runId) ? "__tail" : null);
+        anchorOf(
+          item.runId,
+          [...messages].reverse().find((message) => message.runId === item.runId && message.role === "bot")?.id ??
+            (activeRunIds.includes(item.runId) ? "__tail" : null),
+        );
       if (!anchor) continue;
       get(anchor, item.runId).activity.push(item);
       runAnchor.set(item.runId, anchor);
+    }
+    // Server summaries define their shells first (HISTORY-001): every Run in
+    // the window — including a restored terminal Run whose structured arrays
+    // are not in the legacy thread-level lists — gets exactly one anchored
+    // shell, placed at the server-chosen anchor message.
+    if (serverSummaries) {
+      for (const summary of serverSummaries.values()) {
+        if (runAnchor.has(summary.runId)) continue;
+        const lastBot = [...messages]
+          .reverse()
+          .find((message) => message.runId === summary.runId && message.role === "bot");
+        const anchor = anchorOf(
+          summary.runId,
+          lastBot?.id ?? (isRunActive(summary.status) ? "__tail" : null),
+        );
+        if (!anchor) continue;
+        get(anchor, summary.runId);
+        runAnchor.set(summary.runId, anchor);
+      }
     }
     // Every Intervention — pending or restored terminal — owns a shell so its
     // card keeps its Execution Shell anchor after a refresh, even when the Run
@@ -4923,7 +4998,11 @@ const Transcript = memo(function Transcript({
       const lastBot = [...messages]
         .reverse()
         .find((message) => message.runId === view.runId && message.role === "bot");
-      const anchor = messageById.has(view.messageId) ? view.messageId : lastBot?.id ?? "__tail";
+      const anchor = anchorOf(
+        view.runId,
+        messageById.has(view.messageId) ? view.messageId : lastBot?.id ?? "__tail",
+      );
+      if (!anchor) continue;
       get(anchor, view.runId);
       runAnchor.set(view.runId, anchor);
     }
@@ -4933,7 +5012,7 @@ const Transcript = memo(function Transcript({
         const interventionMessage = waiting
           ? [...messages].reverse().find((message) => message.runId === run.id && message.role === "bot")
           : null;
-        get(interventionMessage?.id ?? "__tail", run.id);
+        get(anchorOf(run.id, interventionMessage?.id ?? "__tail") ?? "__tail", run.id);
       }
     }
     // The last bot message is usually the final answer. Keep the execution
@@ -4952,24 +5031,128 @@ const Transcript = memo(function Transcript({
       }
     }
     return positioned;
-  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs, shownInterventions]);
+  }, [plansByAnchor, stepsByAnchor, todosByAnchor, activity, messages, messageById, activeRunIds, runs, shownInterventions, anchorOf, serverSummaries]);
+  const loadExecutionDetail = useCallback(
+    (runId: string) => {
+      void rpc.runs
+        .executionSnapshot({ ...artifactTarget, runId })
+        .then((snapshot) => {
+          // One guarded unit: when this response is older (or a duplicate)
+          // relative to the cached rev it is dropped whole — detail, cursor
+          // and loaded older pages all stay as the newer version left them.
+          // A newer rev installs the snapshot together with its own first
+          // page cursor and clears the pages loaded against the old version.
+          setExecutionDetails((current) => installExecutionDetail(current, runId, snapshot));
+        })
+        .catch(() => undefined);
+    },
+    [artifactTarget],
+  );
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
       const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
-      const live = Boolean(run && ["queued", "leased", "running"].includes(run.status));
-      const runInterventions = (shownInterventions ?? []).filter(
+      const summary = serverSummaries?.get(execution.runId) ?? null;
+      // A fresh detail may outrun the thread-level summary after an Activity
+      // event. Only a detail OLDER than that summary is discarded.
+      const detailEntry = selectCachedDetailEntry(
+        executionDetails,
+        execution.runId,
+        summary ? summary.rev : null,
+      );
+      const detail = detailEntry?.snapshot;
+      const currentSummary = detail?.summary ?? summary;
+      const displayRun = executionRunState({ run, summary, detail });
+      const live = Boolean(displayRun && ["queued", "leased", "running"].includes(displayRun.status));
+      const data = executionDataForRun({
+        runId: execution.runId,
+        detail,
+        legacy: {
+          plans: execution.plan ? [execution.plan] : undefined,
+          steps: execution.steps,
+          todos: execution.todos,
+          activity: execution.activity,
+        },
+      });
+      // Older pages prepend under the current first page; the merge dedupes
+      // by id and the newer status wins (boundary called/completed pairs).
+      const runActivityItems = mergeActivityPages(
+        data.activity,
+        detailEntry?.olderActivity ?? [],
+      );
+      const runInterventions = mergeInterventionViews(
+        shownInterventions ?? [],
+        [...settledInterventions, ...(detail ? detail.interventions : [])],
+      );
+      const scopedInterventions = (runInterventions ?? []).filter(
         (view) => view.runId === execution.runId,
       );
+      const controlled = currentSummary !== null;
+      const rev = currentSummary?.rev ?? 0;
+      const openByDefault =
+        Boolean(displayRun && (isRunActive(displayRun.status) || displayRun.status === "failed"));
+      const isOpen = controlled
+        ? isExpansionOpen({
+            entries: expansionEntries,
+            threadId,
+            runId: execution.runId,
+            rev,
+            defaultOpen: openByDefault,
+          })
+        : openByDefault;
+      const expansion = controlled
+        ? {
+            open: isOpen,
+            toggle: () => {
+              setExpansionEntries(
+                toggleExpansion({
+                  entries: expansionEntries,
+                  threadId,
+                  runId: execution.runId,
+                  rev,
+                  currentlyOpen: isOpen,
+                }),
+              );
+              // The thread summary need not move when only Activity changes.
+              // Reopening must read the authoritative detail even when the
+              // cached detail supplied the current displayed rev.
+              if (!isOpen) {
+                loadExecutionDetail(execution.runId);
+              }
+            },
+          }
+        : undefined;
+      const activityCursor = detailEntry?.olderCursor ?? null;
+      const loadMoreActivity = () => {
+        if (!activityCursor || !detailEntry || activityLoading.current[execution.runId]) return;
+        const requestRev = detailEntry.rev;
+        activityLoading.current[execution.runId] = true;
+        void rpc.runs
+          .executionActivityPage({ ...artifactTarget, runId: execution.runId, cursor: activityCursor })
+          .then((page) => {
+            // The page belongs to the detail version it was requested
+            // against; if the entry moved on (or was dropped) in flight, the
+            // guarded append discards it instead of mixing versions.
+            setExecutionDetails((current) =>
+              appendExecutionActivityPage(current, execution.runId, requestRev, page),
+            );
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            activityLoading.current[execution.runId] = false;
+          });
+      };
       return (
         <ExecutionShell
           key={execution.runId}
-          run={run}
-          activity={execution.activity}
+          run={displayRun}
+          activity={runActivityItems}
           pendingInterventionKinds={pendingInterventionKindsForRun(interventions, execution.runId)}
+          expansion={expansion}
+          canExpand={currentSummary !== null}
           interventions={
-            shownInterventions && runInterventions.length > 0 ? (
+            scopedInterventions.length > 0 ? (
               <InterventionRegion
-                interventions={runInterventions}
+                interventions={scopedInterventions}
                 messages={messages}
                 target={artifactTarget}
                 onSettled={(view) =>
@@ -4983,16 +5166,26 @@ const Transcript = memo(function Transcript({
             ) : null
           }
         >
-          {execution.plan ? <RunPlanDisclosure plan={execution.plan} live={live} /> : null}
-          {execution.steps ? <RunStepsDisclosure steps={execution.steps} live={live} /> : null}
-          {execution.todos ? <RunTodoList todos={execution.todos} /> : null}
-          {execution.activity.length > 0 || run?.status === "running" ? (
+          {data.plan ? <RunPlanDisclosure plan={data.plan} live={live} /> : null}
+          {data.steps.length > 0 ? <RunStepsDisclosure steps={data.steps} live={live} /> : null}
+          {data.todos.length > 0 ? <RunTodoList todos={data.todos} /> : null}
+          {runActivityItems.length > 0 || displayRun?.status === "running" ? (
             <ExecutionActivity
-              run={run}
-              items={execution.activity}
+              run={displayRun}
+              items={runActivityItems}
               showAvatars={showActivityAvatars}
               botColors={activityBotColors}
             />
+          ) : null}
+          {activityCursor ? (
+            <button
+              type="button"
+              data-testid={`execution-activity-more-${execution.runId}`}
+              onClick={loadMoreActivity}
+              className="mt-1 text-[12.5px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              {t`Load earlier activity`}
+            </button>
           ) : null}
         </ExecutionShell>
       );

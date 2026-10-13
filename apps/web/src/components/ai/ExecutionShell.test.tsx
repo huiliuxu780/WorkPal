@@ -46,4 +46,63 @@ describe("ExecutionShell", () => {
     expect(html).toContain('aria-expanded="true"');
     expect(html).not.toContain(" inert=");
   });
+
+  it("follows server-driven expansion for a restored terminal Run", () => {
+    const collapsed = renderToStaticMarkup(
+      <ExecutionShell
+        run={run("completed")}
+        activity={[]}
+        expansion={{ open: false, toggle: () => undefined }}
+        canExpand
+      >
+        <div>restored detail</div>
+      </ExecutionShell>,
+    );
+    expect(collapsed).toContain('aria-expanded="false"');
+    expect(collapsed).toContain("hidden");
+    const opened = renderToStaticMarkup(
+      <ExecutionShell
+        run={run("completed")}
+        activity={[]}
+        expansion={{ open: true, toggle: () => undefined }}
+        canExpand
+      >
+        <div>restored detail</div>
+      </ExecutionShell>,
+    );
+    expect(opened).toContain('aria-expanded="true"');
+    expect(opened).not.toContain('hidden=""');
+  });
+
+  it("shows the durable status and id for a Run restored without a legacy row", () => {
+    const html = renderToStaticMarkup(
+      <ExecutionShell
+        run={{ id: "run-history", status: "completed", waitKind: null }}
+        activity={[]}
+        expansion={{ open: false, toggle: () => undefined }}
+        canExpand
+      >
+        <div>restored detail</div>
+      </ExecutionShell>,
+    );
+    expect(html).toContain('data-run-id="run-history"');
+    expect(html).toContain('data-status="done"');
+    expect(html).not.toContain("Status unknown");
+  });
+
+  it("keeps the intervention slot visible while a controlled detail stays collapsed", () => {
+    const html = renderToStaticMarkup(
+      <ExecutionShell
+        run={run("completed")}
+        activity={[]}
+        expansion={{ open: false, toggle: () => undefined }}
+        interventions={<div data-testid="intervention-region">需要你处理</div>}
+      >
+        <div>detail</div>
+      </ExecutionShell>,
+    );
+    expect(html).toContain("execution-interventions");
+    expect(html).toContain("需要你处理");
+    expect(html).toContain("hidden");
+  });
 });

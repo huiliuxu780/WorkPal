@@ -223,6 +223,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const findManyEvents = vi.fn().mockResolvedValue([
       {
@@ -234,6 +236,7 @@ describe("threadSnapshot", () => {
         runId: "run-1",
         payload: { name: "SLACK_FIND_CHANNELS" },
         createdAt: new Date("2026-08-23T00:00:00.000Z"),
+        updatedAt: new Date("2026-08-23T00:00:00.000Z"),
       },
     ]);
     const tx = {
@@ -261,7 +264,8 @@ describe("threadSnapshot", () => {
 
     const snapshot = await threadSnapshot({ prisma }, target);
 
-    expect(tx.$queryRaw).toHaveBeenCalledOnce();
+    // The FOR SHARE thread lock plus the ExecutionSummary event-ceiling scan.
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(findManyEvents).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -299,6 +303,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: new Date("2026-08-23T00:00:01.000Z"),
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const findManyEvents = vi.fn().mockResolvedValue([]);
     const findFirstRun = botRunFindFirst([run]);
@@ -380,6 +386,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:02.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:02.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:02.000Z"),
+      snapshotRev: 0,
     };
     const olderUser = {
       id: "run-user",
@@ -394,6 +402,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:01.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:01.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:01.000Z"),
+      snapshotRev: 0,
     };
     const snapshot = await threadSnapshot(
       {
@@ -442,6 +452,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: new Date("2026-08-23T00:00:01.000Z"),
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const completed = {
       id: "run-completed",
@@ -456,6 +468,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: new Date("2026-08-23T00:00:03.000Z"),
       createdAt: new Date("2026-08-23T00:00:02.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:02.000Z"),
+      snapshotRev: 0,
     };
     const findFirstRun = botRunFindFirst([failed, completed]);
     const tx = {
@@ -554,6 +568,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: new Date("2026-08-23T00:00:01.000Z"),
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const findManyRuns = groupRunFindMany({ terminals: [run] });
     const snapshot = await threadSnapshot({ prisma: groupPrisma(findManyRuns) }, groupTarget());
@@ -604,6 +620,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:05.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:05.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:05.000Z"),
+      snapshotRev: 0,
     };
     const peerFailed = {
       id: "run-peer-failed",
@@ -618,6 +636,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:01.000Z"),
       completedAt: new Date("2026-08-23T00:00:02.000Z"),
       createdAt: new Date("2026-08-23T00:00:01.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:01.000Z"),
+      snapshotRev: 0,
     };
     const findManyRuns = groupRunFindMany({
       active: [peerActive],
@@ -662,12 +682,23 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:05.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:05.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:05.000Z"),
+      snapshotRev: 0,
     };
     const findManyRuns = groupRunFindMany({ active: [peerWaiting] });
     const snapshot = await threadSnapshot({ prisma: groupPrisma(findManyRuns) }, groupTarget());
 
     expect(snapshot.activeRuns).toEqual([
       expect.objectContaining({ id: "run-peer-waiting", status: "waiting_input" }),
+    ]);
+    // HISTORY-001: the same window comes back as per-Run execution summaries.
+    expect(snapshot.executions).toEqual([
+      expect.objectContaining({
+        runId: "run-peer-waiting",
+        entry: "collaboration",
+        status: "waiting_input",
+        rev: 0,
+      }),
     ]);
   });
 
@@ -687,6 +718,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:10.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:10.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:10.000Z"),
+      snapshotRev: 0,
     };
     const olderWaiting = {
       id: "run-older-waiting",
@@ -701,6 +734,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:05.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:05.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:05.000Z"),
+      snapshotRev: 0,
     };
     const findManyRuns = groupRunFindMany({ active: [newerBusy, olderWaiting] });
     const snapshot = await threadSnapshot({ prisma: groupPrisma(findManyRuns) }, groupTarget());
@@ -727,6 +762,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: new Date("2026-08-23T00:00:01.000Z"),
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const completed = {
       id: "run-newer-completed",
@@ -741,6 +778,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:02.000Z"),
       completedAt: new Date("2026-08-23T00:00:04.000Z"),
       createdAt: new Date("2026-08-23T00:00:02.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:02.000Z"),
+      snapshotRev: 0,
     };
     const snapshot = await threadSnapshot(
       { prisma: groupPrisma(groupRunFindMany({ terminals: [completed, failed] })) },
@@ -765,6 +804,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: new Date("2026-08-23T00:00:01.000Z"),
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const cancelled = {
       id: "run-newer-cancelled",
@@ -779,6 +820,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:02.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:03.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:03.000Z"),
+      snapshotRev: 0,
     };
     const snapshot = await threadSnapshot(
       { prisma: groupPrisma(groupRunFindMany({ terminals: [cancelled, failed] })) },
@@ -802,6 +845,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const completed = {
       id: "run-completed",
@@ -816,6 +861,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:02.000Z"),
       completedAt: new Date("2026-08-23T00:00:04.000Z"),
       createdAt: new Date("2026-08-23T00:00:02.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:02.000Z"),
+      snapshotRev: 0,
     };
     const snapshot = await threadSnapshot(
       { prisma: groupPrisma(groupRunFindMany({ terminals: [failed, completed] })) },
@@ -840,6 +887,8 @@ describe("threadSnapshot", () => {
       startedAt: null,
       completedAt: new Date("2026-08-23T00:00:01.000Z"),
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const snapshot = await threadSnapshot(
       { prisma: groupPrisma(groupRunFindMany({ terminals: [run] })) },
@@ -869,6 +918,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:00.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:00.000Z"),
+      snapshotRev: 0,
     };
     const failed = {
       id: "run-failed",
@@ -883,6 +934,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:01.000Z"),
       completedAt: new Date("2026-08-23T00:00:02.000Z"),
       createdAt: new Date("2026-08-23T00:00:01.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:01.000Z"),
+      snapshotRev: 0,
     };
     const snapshot = await threadSnapshot(
       { prisma: groupPrisma(groupRunFindMany({ active: [active], terminals: [failed] })) },
@@ -911,6 +964,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:03.000Z"),
       completedAt: null,
       createdAt: new Date("2026-08-23T00:00:03.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:03.000Z"),
+      snapshotRev: 0,
     };
     const failed = {
       id: "run-failed",
@@ -925,6 +980,8 @@ describe("threadSnapshot", () => {
       startedAt: new Date("2026-08-23T00:00:01.000Z"),
       completedAt: new Date("2026-08-23T00:00:02.000Z"),
       createdAt: new Date("2026-08-23T00:00:01.000Z"),
+      updatedAt: new Date("2026-08-23T00:00:01.000Z"),
+      snapshotRev: 0,
     };
     const snapshot = await threadSnapshot(
       {
@@ -1017,15 +1074,32 @@ function groupRunFindMany(input: { active?: unknown[]; terminals?: unknown[] }) 
 
 function groupPrisma(findManyRuns: ReturnType<typeof groupRunFindMany>) {
   const tx = {
-    backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+    backgroundAgentTask: {
+      findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
+    },
     runPlan: { findMany: vi.fn().mockResolvedValue([]) },
-    runStep: { findMany: vi.fn().mockResolvedValue([]) },
-    runTodo: { findMany: vi.fn().mockResolvedValue([]) },
+    runStep: {
+      findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
+    },
+    runTodo: {
+      findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
+    },
+    // The ExecutionSummary pass: grouped raw scans resolve empty, model reads empty.
     $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
+    task: { findMany: vi.fn().mockResolvedValue([]) },
+    artifact: {
+      findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
+    },
+    intervention: { findMany: vi.fn().mockResolvedValue([]) },
     message: { findMany: vi.fn().mockResolvedValue([]) },
     event: {
       findFirst: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     run: { findMany: findManyRuns },
   };
@@ -1039,6 +1113,7 @@ function groupTarget() {
     kind: "group",
     groupId: "group-1",
     groupName: "Group",
+    spaceId: "space-1",
     members: [],
     threadId: "thread-1",
   } as unknown as ThreadTarget;

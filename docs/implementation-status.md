@@ -132,3 +132,17 @@ harness phase.
 ## Task18 Product Harness Completion
 
 Task18.1 event envelope and Run wait reasons are implemented. Task18.2 has the background-result outbox and `delivery` Run, with production Web E2E acceptance and the 100-result merge edge still open. Task18.3 has wait expiry, cancellation propagation, conservative retry, and measured token/time/tool budgets. Dollar cost lacks a trusted model price; lease-loss retry and full acceptance remain open. Task18.4 has Bot-local capability rules checked at the executor's existing approval boundary, with the production-resource classification limit described in [capability-permission.md](./task18-product-harness-completion/capability-permission.md). Task18.5 adds TurnPolicy v2 constraint fields while upgrading v1 snapshots in memory; see [turnpolicy-evolution.md](./task18-product-harness-completion/turnpolicy-evolution.md). See also [event-contract-v2.md](./task18-product-harness-completion/event-contract-v2.md), [delivery-design.md](./task18-product-harness-completion/delivery-design.md), [reliability-progress.md](./task18-product-harness-completion/reliability-progress.md), and [budget-progress.md](./task18-product-harness-completion/budget-progress.md). The Execution Card and structured Plan/Steps described in Tasks 1–17 remain separate implementation gaps; Harness v1 completion does not imply those interfaces are complete.
+
+## HISTORY-001 — ExecutionSnapshot read model: DELIVERED (this slice)
+
+`runs.executionSnapshot` / `runs.executionActivityPage`, `ThreadSnapshot.executions`
+and `ThreadMessagePage.executions` compose the existing durable facts per Run
+(state, Plan, Steps, Todos, Activity, Interventions, result, Artifact metadata)
+with a monotonic composed `rev` (event-seq ceiling plus a trigger-maintained
+visible-transition counter, so event-less status changes move it and invisible
+row writes never do), opaque Run+generation-bound Activity cursors,
+server-chosen transcript anchors, and `thread.artifact` membership events for
+Artifact add/remove. Generation membership keys off surviving Run-lifecycle
+events, so post-clear artifact maintenance never revives a cleared Run. No new tables, no new executor entity, no second
+reducer; old servers stay compatible through optional fields.
+See [execution-history-snapshot.md](./execution-history-snapshot.md).

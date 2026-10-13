@@ -11,7 +11,7 @@ export type ExecutionActivityView = {
 
 /** Present the existing event projection; never infer a Run transition from an activity row. */
 export function selectExecutionActivity(
-  run: Run | null,
+  run: Pick<Run, "id" | "status"> | null,
   items: readonly ActivityItem[],
 ): ExecutionActivityView {
   if (!run) {
@@ -49,7 +49,8 @@ export function selectExecutionActivity(
   // Paused, queued and terminal Runs may retain old running rows in the bounded
   // projection. Omit them rather than presenting them as current or complete.
   const recentSource = own.filter(
-    (item) => item.id !== primaryId && (active || (item.status !== "running" && item.status !== "waiting")),
+    (item) =>
+      item.id !== primaryId && (active || (item.status !== "running" && item.status !== "waiting")),
   );
   const folded = foldAdjacentTools(recentSource);
   const { visible, hiddenCount } = windowActivity(folded, 6);

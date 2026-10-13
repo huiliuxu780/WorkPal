@@ -15,6 +15,7 @@ import {
   MessageBlock as MessageBlockSchema,
   type MessageReaction,
   type RunStatus,
+  type ThreadMessagePage,
   type ThreadSnapshot,
 } from "@rakazo/contracts";
 import {
@@ -46,8 +47,11 @@ import {
   createRepos,
   createThreadMessageInTransaction,
   currentThreadGeneration,
+  ExecutionActivityCursorError,
   expireComputerExecutionLeases,
   IsolationError,
+  loadExecutionSnapshot,
+  loadExecutionSummaries,
   loadInterventionViews,
   loadCurrentRunPlans,
   loadCurrentRunSteps,
@@ -75,12 +79,14 @@ export type ThreadTarget =
       kind: "bot";
       botId: string;
       threadId: string;
+      spaceId: string;
       bot: Awaited<ReturnType<ReturnType<typeof createRepos>["getBot"]>>;
     }
   | {
       kind: "group";
       groupId: string;
       threadId: string;
+      spaceId: string;
       groupName: string;
       /** Product Harness routing/coordination fallback owner (null until self-healed). */
       leadBotId: string | null;
@@ -505,6 +511,7 @@ export async function resolveThreadTarget(
       kind: "bot",
       botId: bot.id,
       threadId: bot.thread.id,
+      spaceId: bot.spaceId,
       bot,
     };
   }
@@ -521,6 +528,7 @@ export async function resolveThreadTarget(
       kind: "group",
       groupId: group.id,
       threadId: group.thread.id,
+      spaceId: group.spaceId,
       groupName: group.name,
       leadBotId: group.leadBotId,
       members,
@@ -665,6 +673,19 @@ export async function threadSnapshot(
           messagePage.messages,
           interventionRunWindow,
         );
+        // HISTORY-001: per-Run execution summaries over the same bounded
+        // window — active Runs, Runs with pending Interventions, and the
+        // recent terminal list. The FOR SHARE fence makes the summaries and
+        // the message page one consistent read.
+        const executions = await loadExecutionSummaries(tx, {
+          threadId: target.threadId,
+          spaceId: target.spaceId,
+          runIds: [
+            ...interventionRunWindow,
+            ...(waitingRun ? [waitingRun.id] : []),
+            ...interventions.map((view) => view.runId),
+          ],
+        });
         return {
           messagePage,
           last,
@@ -676,6 +697,7 @@ export async function threadSnapshot(
           steps,
           todos,
           interventions,
+          executions,
         };
       }),
     ]);
@@ -693,6 +715,7 @@ export async function threadSnapshot(
       steps: core.steps,
       todos: core.todos,
       interventions: core.interventions,
+      executions: core.executions,
     };
   }
 
@@ -767,6 +790,15 @@ export async function threadSnapshot(
       messagePage.messages,
       [...activeRuns.map((run) => run.id), ...recentTerminals.map((run) => run.id)],
     );
+    const executions = await loadExecutionSummaries(tx, {
+      threadId: target.threadId,
+      spaceId: target.spaceId,
+      runIds: [
+        ...activeRuns.map((run) => run.id),
+        ...recentTerminals.map((run) => run.id),
+        ...interventions.map((view) => view.runId),
+      ],
+    });
     return {
       messagePage,
       last,
@@ -779,6 +811,7 @@ export async function threadSnapshot(
       steps,
       todos,
       interventions,
+      executions,
     };
   });
   const primaryActiveRun = pickPrimaryActiveRun(core.activeRuns);
@@ -805,7 +838,49 @@ export async function threadSnapshot(
     steps: core.steps,
     todos: core.todos,
     interventions: core.interventions,
+    executions: core.executions,
   };
+}
+
+/**
+ * One history page plus the ExecutionSummaries of the Runs its messages belong
+ * to (HISTORY-001): loading an older page restores its executions in the same
+ * consistent read, independent of the recent-Run window.
+ */
+export async function threadMessagePage(
+  deps: { prisma: PrismaClient },
+  target: ThreadTarget,
+  input: {
+    before?: number;
+    around?: { messageId?: string; seq?: number };
+    includePeerRuns?: boolean;
+    includePeerReceipts?: boolean;
+  },
+): Promise<ThreadMessagePage> {
+  return deps.prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR SHARE`;
+    const page = await loadMessagePage(
+      tx,
+      target.threadId,
+      input.before,
+      THREAD_MESSAGE_PAGE_SIZE,
+      input.around,
+      input.includePeerRuns,
+      input.includePeerReceipts,
+    );
+    const runIds = [
+      ...new Set(page.messages.map((message) => message.runId).filter((id): id is string => Boolean(id))),
+    ];
+    const executions =
+      runIds.length > 0
+        ? await loadExecutionSummaries(tx, {
+            threadId: target.threadId,
+            spaceId: target.spaceId,
+            runIds,
+          })
+        : [];
+    return { ...page, executions };
+  });
 }
 
 /**

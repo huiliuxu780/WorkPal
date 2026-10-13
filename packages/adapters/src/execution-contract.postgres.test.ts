@@ -2,20 +2,23 @@ import { randomUUID } from "node:crypto";
 import type { AdapterContext, JobPublisher, SandboxProvider } from "@rakazo/adapter-kit";
 import { buildRunOrchestration } from "@rakazo/core";
 import {
+  appendEvent,
   BackgroundRegistrationRejected,
   backgroundTaskLockTransactionOptions,
   cancelRunsInTransaction,
+  computerHomeKey,
+  computerScopeKey,
   createDb,
   createGroupRepos,
   createIsolatedPostgresDatabase,
   createThreadEvents,
-  computerHomeKey,
-  computerScopeKey,
-  promoteLeasedRunWithAttempt,
-  registerBackgroundTaskProjection,
   type IsolatedPostgresDatabase,
+  loadExecutionSnapshot,
+  markLiveBackgroundTasksCancelling,
   type Prisma,
   type PrismaClient,
+  promoteLeasedRunWithAttempt,
+  registerBackgroundTaskProjection,
 } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { archiveBot, destroyBot } from "./child-bots.js";
@@ -213,6 +216,81 @@ describePostgres("execution contract recovery (PostgreSQL)", () => {
     expect(await prisma.backgroundAgentTask.findUniqueOrThrow({ where: { taskId } })).toMatchObject({
       status: "cancelled",
     });
+  });
+
+  it("versions background cancellation on a completed parent Run at both visible transitions", async () => {
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId,
+        threadId,
+        prompt: "Background projection",
+        status: "completed",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId,
+        threadId,
+        taskId: task.id,
+        status: "completed",
+        trigger: "user",
+        completedAt: new Date(),
+      },
+    });
+    await appendEvent(prisma, {
+      spaceId: id,
+      threadId,
+      botId,
+      runId: run.id,
+      type: "run.completed",
+      payload: {},
+    });
+    const taskId = `bg-version-${run.id}`;
+    await prisma.backgroundAgentTask.create({
+      data: {
+        taskId,
+        parentRunId: run.id,
+        userId: id,
+        spaceId: id,
+        botId,
+        threadId,
+        agentId: "helper",
+        sessionId: "helper-session",
+        toolNames: [],
+        status: "running",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const read = () => loadExecutionSnapshot(prisma, { threadId, spaceId: id, runId: run.id });
+    const before = await read();
+    expect(before?.activityPage.items.find((item) => item.id === `bg:${taskId}`)?.status).toBe(
+      "running",
+    );
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${threadId} FOR UPDATE`;
+      await markLiveBackgroundTasksCancelling(tx, { taskId });
+    });
+    const cancelling = await read();
+    expect(cancelling!.summary.rev).toBeGreaterThan(before!.summary.rev);
+    expect(cancelling?.activityPage.items.find((item) => item.id === `bg:${taskId}`)?.status).toBe(
+      "failed",
+    );
+    const recovered = await revokeCancellingBackgroundTasks(prisma, async () => false, {
+      parentRunIds: [run.id],
+    });
+    expect(recovered.revoked).toContain(taskId);
+    const cancelled = await read();
+    expect(cancelled!.summary.rev).toBeGreaterThan(cancelling!.summary.rev);
+    expect(cancelled?.activityPage.items.find((item) => item.id === `bg:${taskId}`)?.status).toBe(
+      "cancelled",
+    );
+    expect((await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).status).toBe(
+      "completed",
+    );
   });
 
   it("does not let lease recovery or the reconciler revive a cancelled run", async () => {

@@ -21,9 +21,11 @@ export type ExecutionStatusView = {
   needsAttention: boolean;
 };
 
+export type ExecutionRunState = Pick<Run, "id" | "status" | "waitKind">;
+
 /** A display projection of the root Run, never a second lifecycle state machine. */
 export function deriveExecutionStatus(
-  run: Run | null | undefined,
+  run: ExecutionRunState | null | undefined,
   activity: readonly ActivityItem[],
   options: {
     confirmedRootBackground?: boolean;
@@ -36,7 +38,12 @@ export function deriveExecutionStatus(
   } = {},
 ): ExecutionStatusView {
   if (!run) {
-    return { status: "unknown", label: i18n._("Status unknown"), detail: null, needsAttention: false };
+    return {
+      status: "unknown",
+      label: i18n._("Status unknown"),
+      detail: null,
+      needsAttention: false,
+    };
   }
   const own = activity.filter((item) => item.runId === run.id);
   const current = [...own].reverse().find((item) => item.status === "running");
@@ -51,28 +58,57 @@ export function deriveExecutionStatus(
   ): ExecutionStatusView => ({ status, label, detail, needsAttention });
 
   // Run terminal state wins over a stale waiting or planning activity row.
-  if (run.status === "completed") return view("done", i18n._("Execution completed"), background ? i18n._("Background task") : null);
+  if (run.status === "completed")
+    return view(
+      "done",
+      i18n._("Execution completed"),
+      background ? i18n._("Background task") : null,
+    );
   if (run.status === "failed")
-    return view("failed", i18n._("Execution failed"), background ? i18n._("Background task") : null);
+    return view(
+      "failed",
+      i18n._("Execution failed"),
+      background ? i18n._("Background task") : null,
+    );
   if (run.status === "cancelled")
     return view("cancelled", i18n._("Stopped"), background ? i18n._("Background task") : null);
   if (run.status === "waiting_input") {
     const kinds = options.pendingInterventionKinds;
     if (kinds) {
       if (kinds.includes("approval"))
-        return view("approval", i18n._("Waiting for approval"), waiting?.title?.trim() || null, true);
+        return view(
+          "approval",
+          i18n._("Waiting for approval"),
+          waiting?.title?.trim() || null,
+          true,
+        );
       if (kinds.includes("input"))
-        return view("need_input", i18n._("Waiting for your reply"), waiting?.title?.trim() || null, true);
+        return view(
+          "need_input",
+          i18n._("Waiting for your reply"),
+          waiting?.title?.trim() || null,
+          true,
+        );
       return view("unknown", i18n._("Status unknown"), null, true);
     }
     if (run.waitKind === "approval")
       return view("approval", i18n._("Waiting for approval"), waiting?.title?.trim() || null, true);
     if (run.waitKind === "input")
-      return view("need_input", i18n._("Waiting for your reply"), waiting?.title?.trim() || null, true);
+      return view(
+        "need_input",
+        i18n._("Waiting for your reply"),
+        waiting?.title?.trim() || null,
+        true,
+      );
     return view("unknown", i18n._("Status unknown"), null, true);
   }
   if (run.status === "waiting_takeover")
-    return view("takeover", i18n._("Waiting for takeover"), i18n._("Open the computer to take control"), true);
+    return view(
+      "takeover",
+      i18n._("Waiting for takeover"),
+      i18n._("Open the computer to take control"),
+      true,
+    );
   if (options.blockedReason?.trim())
     return view("blocked", i18n._("Temporarily blocked"), options.blockedReason.trim(), true);
 

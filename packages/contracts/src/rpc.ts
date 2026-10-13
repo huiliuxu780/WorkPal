@@ -81,6 +81,11 @@ import {
   VoiceStatusSchema,
 } from "./domain.js";
 import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
+import {
+  ACTIVITY_PAGE_MAX_LIMIT,
+  ExecutionActivityPageSchema,
+  ExecutionSnapshotSchema,
+} from "./execution-snapshot.js";
 import { Id, IsoDate } from "./ids.js";
 import {
   IntegrationProviderConfigSchema,
@@ -835,6 +840,24 @@ export const appContract = {
     list: oc.input(z.object({ filter: z.enum(["active", "recent"]) })).output(RunsListOutputSchema),
     /** Execution ledger for one run: attempts, external effects, routine history. */
     detail: oc.input(z.object({ runId: Id })).output(RunsDetailOutputSchema),
+    /**
+     * Full per-Run ExecutionSnapshot (HISTORY-001 read model) for one Run of
+     * the addressed Thread. The Run must belong to that Thread's Space; a
+     * foreign or cleared-from run fails closed.
+     */
+    executionSnapshot: oc
+      .input(threadTarget.safeExtend({ runId: Id }))
+      .output(ExecutionSnapshotSchema),
+    /** One Activity page of a Run's timeline, walked backwards via opaque cursor. */
+    executionActivityPage: oc
+      .input(
+        threadTarget.safeExtend({
+          runId: Id,
+          cursor: z.string().min(16).max(512).optional(),
+          limit: z.number().int().min(1).max(ACTIVITY_PAGE_MAX_LIMIT).optional(),
+        }),
+      )
+      .output(ExecutionActivityPageSchema),
   },
   voice: {
     catalog: oc.output(z.array(VoiceCatalogEntrySchema)),

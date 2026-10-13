@@ -8,6 +8,7 @@ export * from "./computers.js";
 export * from "./credential-secrets.js";
 export * from "./delivery-records.js";
 export * from "./events.js";
+export * from "./execution-history.js";
 export * from "./execution-revocations.js";
 export * from "./external-conversations.js";
 export * from "./groups.js";

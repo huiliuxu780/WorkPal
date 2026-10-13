@@ -43,6 +43,25 @@ export type RunStatus = z.infer<typeof RunStatus>;
 export const WaitKind = z.enum(["input", "approval", "takeover"]);
 export type WaitKind = z.infer<typeof WaitKind>;
 
+/** What started a Run. Shared by RunSchema and the ExecutionSnapshot read model. */
+export const RunTrigger = z.enum([
+  "user",
+  "routine",
+  "delivery",
+  "resume",
+  "follow_up",
+  "reaction",
+  "call_end",
+  "spawn",
+  "skill",
+  "bot_message",
+  "webhook",
+  "messaging",
+  "cloud_agent",
+  "created",
+]);
+export type RunTrigger = z.infer<typeof RunTrigger>;
+
 // Existing rows can contain legacy failed/ambiguous/reconciled values; the
 // executor currently writes approved/denied/executing/uncertain as well.
 export const EffectStatus = z.enum([
