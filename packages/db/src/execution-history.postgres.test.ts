@@ -216,6 +216,35 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
     expect(snapshot!.summary.rev).toBeGreaterThan(0);
   });
 
+  it("uses the latest result after more than 500 bot messages", async () => {
+    const { run } = await makeRun();
+    const count = 502;
+    await prisma.$transaction(async (tx) => {
+      const thread = await tx.thread.update({
+        where: { id: threadId },
+        data: { nextMessageSeq: { increment: count } },
+        select: { nextMessageSeq: true },
+      });
+      const firstSeq = thread.nextMessageSeq - count;
+      await tx.message.createMany({
+        data: Array.from({ length: count }, (_, index) => ({
+          threadId,
+          seq: firstSeq + index,
+          role: "bot",
+          botId,
+          runId: run.id,
+          blocks: [
+            { kind: "text", text: index === count - 1 ? "real final result" : `earlier ${index}` },
+          ],
+        })),
+      });
+    });
+    await terminalize(run.id);
+    const snapshot = await loadExecutionSnapshot(prisma, { threadId, spaceId: id, runId: run.id });
+    expect(snapshot?.summary.outcome).toBe("real final result");
+    expect(snapshot?.result?.blocks).toEqual([{ kind: "text", text: "real final result" }]);
+  });
+
   it("restores the pending Intervention even when its ask message is off the page window", async () => {
     const { run } = await makeRun({ status: "waiting_input", trigger: "user" });
     await prisma.run.update({

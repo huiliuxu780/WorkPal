@@ -4,11 +4,13 @@ import type {
   ExecutionActivityPage,
   ExecutionSnapshot,
   ExecutionSummary,
+  Run,
 } from "@rakazo/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   appendExecutionActivityPage,
   executionDataForRun,
+  executionRunState,
   expansionLogShape,
   installExecutionDetail,
   isExpansionOpen,
@@ -170,13 +172,35 @@ describe("rev-versioned detail cache", () => {
   const page = (items: ActivityItem[], olderCursor: string | null): ExecutionActivityPage =>
     ({ items, olderCursor, truncated: false }) as ExecutionActivityPage;
 
-  it("serves the cache only at the current rev", () => {
+  it("serves a detail newer than a stale live summary, but not an older detail", () => {
     const cache = installExecutionDetail({}, "run-1", snapshotAt(5));
     expect(selectCachedDetailEntry(cache, "run-1", 5)?.snapshot.summary.rev).toBe(5);
     expect(selectCachedDetailEntry(cache, "run-1", 6)).toBeUndefined();
+    expect(selectCachedDetailEntry(cache, "run-1", 4)?.snapshot.summary.rev).toBe(5);
     expect(selectCachedDetailEntry(cache, "run-2", 5)).toBeUndefined();
     // Legacy server without summaries keeps the cache usable.
     expect(selectCachedDetailEntry(cache, "run-1", null)).toBeDefined();
+  });
+
+  it("restores status from a page summary and prefers a genuinely fresher detail", () => {
+    const staleRun = { id: "run-1", status: "running", waitKind: null } as Run;
+    const initial = summary({ rev: 5, status: "running" });
+    const fresh = { ...snapshotAt(6), summary: summary({ rev: 6, status: "completed" }) };
+    expect(executionRunState({ run: null, summary: summary({ status: "failed" }) })).toEqual({
+      id: "run-1",
+      status: "failed",
+      waitKind: null,
+    });
+    expect(executionRunState({ run: staleRun, summary: initial, detail: fresh })).toEqual({
+      id: "run-1",
+      status: "completed",
+      waitKind: null,
+    });
+    // A thread summary can lag a live Run; absent a newer detail, keep the
+    // Run's observed status instead of replacing it with the older summary.
+    expect(
+      executionRunState({ run: staleRun, summary: summary({ rev: 5, status: "queued" }) }),
+    ).toBe(staleRun);
   });
 
   it("replaces detail, cursor and loaded pages together on a newer rev", () => {

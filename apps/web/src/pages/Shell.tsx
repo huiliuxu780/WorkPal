@@ -229,6 +229,7 @@ import {
 import {
   appendExecutionActivityPage,
   executionDataForRun,
+  executionRunState,
   type ExecutionDetailCache,
   type ExpansionMap,
   installExecutionDetail,
@@ -5050,16 +5051,18 @@ const Transcript = memo(function Transcript({
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
       const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
-      const live = Boolean(run && ["queued", "leased", "running"].includes(run.status));
       const summary = serverSummaries?.get(execution.runId) ?? null;
-      // A cached entry only counts while its rev matches the summary's; the
-      // entry carries the snapshot AND its paging state as one version.
+      // A fresh detail may outrun the thread-level summary after an Activity
+      // event. Only a detail OLDER than that summary is discarded.
       const detailEntry = selectCachedDetailEntry(
         executionDetails,
         execution.runId,
         summary ? summary.rev : null,
       );
       const detail = detailEntry?.snapshot;
+      const currentSummary = detail?.summary ?? summary;
+      const displayRun = executionRunState({ run, summary, detail });
+      const live = Boolean(displayRun && ["queued", "leased", "running"].includes(displayRun.status));
       const data = executionDataForRun({
         runId: execution.runId,
         detail,
@@ -5083,10 +5086,10 @@ const Transcript = memo(function Transcript({
       const scopedInterventions = (runInterventions ?? []).filter(
         (view) => view.runId === execution.runId,
       );
-      const controlled = summary !== null || detail !== undefined;
-      const rev = summary?.rev ?? detail?.summary.rev ?? 0;
+      const controlled = currentSummary !== null;
+      const rev = currentSummary?.rev ?? 0;
       const openByDefault =
-        Boolean(run && (isRunActive(run.status) || run.status === "failed"));
+        Boolean(displayRun && (isRunActive(displayRun.status) || displayRun.status === "failed"));
       const isOpen = controlled
         ? isExpansionOpen({
             entries: expansionEntries,
@@ -5141,11 +5144,11 @@ const Transcript = memo(function Transcript({
       return (
         <ExecutionShell
           key={execution.runId}
-          run={run}
+          run={displayRun}
           activity={runActivityItems}
           pendingInterventionKinds={pendingInterventionKindsForRun(interventions, execution.runId)}
           expansion={expansion}
-          canExpand={summary !== null}
+          canExpand={currentSummary !== null}
           interventions={
             scopedInterventions.length > 0 ? (
               <InterventionRegion
@@ -5166,9 +5169,9 @@ const Transcript = memo(function Transcript({
           {data.plan ? <RunPlanDisclosure plan={data.plan} live={live} /> : null}
           {data.steps.length > 0 ? <RunStepsDisclosure steps={data.steps} live={live} /> : null}
           {data.todos.length > 0 ? <RunTodoList todos={data.todos} /> : null}
-          {runActivityItems.length > 0 || run?.status === "running" ? (
+          {runActivityItems.length > 0 || displayRun?.status === "running" ? (
             <ExecutionActivity
-              run={run}
+              run={displayRun}
               items={runActivityItems}
               showAvatars={showActivityAvatars}
               botColors={activityBotColors}

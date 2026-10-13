@@ -3,6 +3,7 @@ import type {
   ExecutionActivityPage,
   ExecutionSnapshot,
   ExecutionSummary,
+  Run,
   RunPlanRevision,
   RunStepSnapshot,
   RunTodoSnapshot,
@@ -113,8 +114,10 @@ export type ExecutionDetailEntry = {
 export type ExecutionDetailCache = Record<string, ExecutionDetailEntry>;
 
 /**
- * The cached detail entry for a Run, valid only while its rev matches the
- * current summary; a missing summary (legacy server) keeps the cache usable.
+ * The cached detail entry for a Run, valid while it is at least as fresh as
+ * the thread summary. Live Activity can advance the server rev without
+ * refreshing the thread-level summary; a freshly fetched detail then wins.
+ * A missing summary (legacy server) keeps the cache usable.
  */
 export function selectCachedDetailEntry(
   cache: ExecutionDetailCache,
@@ -123,8 +126,29 @@ export function selectCachedDetailEntry(
 ): ExecutionDetailEntry | undefined {
   const entry = cache[runId];
   if (!entry) return undefined;
-  if (summaryRev !== null && entry.rev !== summaryRev) return undefined;
+  if (summaryRev !== null && entry.rev < summaryRev) return undefined;
   return entry;
+}
+
+/**
+ * Status for one shell. A fetched detail that is newer than the thread
+ * summary is authoritative; otherwise the live Run wins when available.
+ * History pages may carry only a summary, so synthesize the small status view
+ * from that durable projection instead of displaying "Status unknown".
+ */
+export function executionRunState(input: {
+  run: Run | null;
+  summary: ExecutionSummary | null;
+  detail?: ExecutionSnapshot;
+}): Pick<Run, "id" | "status" | "waitKind"> | null {
+  const { run, summary, detail } = input;
+  const freshDetail =
+    detail && (summary ? detail.summary.rev > summary.rev : run === null) ? detail.summary : null;
+  const source = freshDetail ?? (run ? null : (detail?.summary ?? summary));
+  if (source) {
+    return { id: source.runId, status: source.status, waitKind: source.waitKind ?? null };
+  }
+  return run;
 }
 
 /**

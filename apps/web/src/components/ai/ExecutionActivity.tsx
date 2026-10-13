@@ -1,8 +1,8 @@
 import { i18n } from "@lingui/core";
 import type { ActivityItem, Run } from "@rakazo/contracts";
 import { useId, useState } from "react";
-import { ActivityRows } from "../activity/ActivityRows";
 import { selectExecutionActivity } from "../../lib/execution-activity";
+import { ActivityRows } from "../activity/ActivityRows";
 
 export function ExecutionActivity({
   run,
@@ -10,7 +10,7 @@ export function ExecutionActivity({
   showAvatars = false,
   botColors,
 }: {
-  run: Run | null;
+  run: Pick<Run, "id" | "status"> | null;
   items: readonly ActivityItem[];
   showAvatars?: boolean;
   botColors?: Readonly<Record<string, string>>;
@@ -21,9 +21,19 @@ export function ExecutionActivity({
   if (!view.primary && !view.note && view.recent.length === 0) return null;
   return (
     <section data-slot="activity" className="ms-1 my-2 min-w-0 text-[13px] text-foreground/85">
-      <h3 className="py-1 text-xs font-medium text-muted-foreground">{i18n._("Current activity")}</h3>
-      {view.primary ? <p dir="auto" className="min-w-0 leading-5">{view.primary}</p> : null}
-      {view.note ? <p dir="auto" className="text-xs leading-5 text-muted-foreground">{view.note}</p> : null}
+      <h3 className="py-1 text-xs font-medium text-muted-foreground">
+        {i18n._("Current activity")}
+      </h3>
+      {view.primary ? (
+        <p dir="auto" className="min-w-0 leading-5">
+          {view.primary}
+        </p>
+      ) : null}
+      {view.note ? (
+        <p dir="auto" className="text-xs leading-5 text-muted-foreground">
+          {view.note}
+        </p>
+      ) : null}
       {view.recent.length > 0 ? (
         <>
           <button

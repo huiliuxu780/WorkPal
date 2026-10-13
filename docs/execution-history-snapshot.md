@@ -138,7 +138,10 @@ items oldest-last inside the page.
   `apps/web/src/lib/execution-history.ts`): a newer rev replaces all three
   together, a late out-of-order response whose rev does not exceed the cached
   one is dropped whole, and a load-more page is discarded when the entry moved
-  on in flight — paging state can never mix versions.
+  on in flight — paging state can never mix versions. A detail newer than a
+  lagging thread-level summary remains usable; one older than that summary is
+  hidden until refetched. History shells without a legacy Run row derive their
+  status and id from the server summary.
 
 ## Truncation and aggregate semantics
 
@@ -156,8 +159,10 @@ an Approval/Input card is never a result. Absent means no result exists yet;
 `completed` never fabricates one. Routine delivery Runs and peer Runs stay
 separated because every query filters by `runId` (plus `threadId`/`spaceId`
 from the authorized target), backed by the new `messages(runId, seq)` and
-`artifacts(runId, createdAt)` indexes. Artifacts expose id/name/mimeType only;
-content never enters a snapshot.
+`artifacts(runId, createdAt)` indexes. Detail reads the latest 500 bot messages
+in descending sequence order, so the actual result head remains in the bounded
+window even for longer Runs. Artifacts expose id/name/mimeType only; content
+never enters a snapshot.
 
 ## Redaction boundary
 

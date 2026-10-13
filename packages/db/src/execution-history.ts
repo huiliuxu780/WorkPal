@@ -555,7 +555,7 @@ export async function loadExecutionSnapshot(
   // current again.
   const stale = generation > 0 && (ceilings.get(run.id)?.lifecycleSeq ?? 0) <= generation;
 
-  const [summaries, planRow, stepRows, todoRows, runMessages] = await Promise.all([
+  const [summaries, planRow, stepRows, todoRows, latestRunMessages] = await Promise.all([
     loadExecutionSummaries(db, {
       threadId: input.threadId,
       spaceId: input.spaceId,
@@ -579,13 +579,17 @@ export async function loadExecutionSnapshot(
         }),
     db.message.findMany({
       where: { threadId: input.threadId, runId: run.id, role: "bot" },
-      orderBy: { seq: "asc" },
+      // The newest message is the result head. Keep the bounded scan close
+      // to that head so a Run with >500 bot messages cannot return message 500
+      // as its final result or miss a later legacy Ask in the same window.
+      orderBy: { seq: "desc" },
       take: SUMMARY_MESSAGE_SCAN_LIMIT,
       select: { id: true, runId: true, blocks: true },
     }),
   ]);
   const summary = summaries[0];
   if (!summary) return null;
+  const runMessages = latestRunMessages.reverse();
 
   const interventions = stale
     ? []
