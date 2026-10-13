@@ -15,6 +15,7 @@ import {
   installExecutionDetail,
   isExpansionOpen,
   mergeActivityPages,
+  planExpansionDefaults,
   readExecutionExpansions,
   resolveExecutionAnchor,
   selectCachedDetailEntry,
@@ -394,5 +395,86 @@ describe("expansion sessionStorage", () => {
     expect(readExecutionExpansions()).toEqual({});
     window.sessionStorage.setItem("rk:execution-expansion", JSON.stringify({ x: { threadId: 1 } }));
     expect(readExecutionExpansions()).toEqual({});
+  });
+});
+
+describe("planExpansionDefaults", () => {
+  const run = (runId: string, status: string, rev = 1) => ({ runId, rev, status });
+
+  it("opens at most one detail for two concurrent waiting Runs", () => {
+    const plan = planExpansionDefaults({
+      entries: {},
+      threadId: "t",
+      runs: [run("w1", "waiting_input"), run("w2", "waiting_takeover")],
+    });
+    const opens = [...plan.values()].filter(Boolean);
+    expect(opens).toHaveLength(1);
+    expect(plan.get("w1")).toBe(true);
+    expect(plan.get("w2")).toBe(false);
+  });
+
+  it("opens at most one detail for two active Runs and keeps failed behind them", () => {
+    const plan = planExpansionDefaults({
+      entries: {},
+      threadId: "t",
+      runs: [run("f1", "failed"), run("a1", "running"), run("a2", "running")],
+    });
+    expect(plan.get("a1")).toBe(true);
+    expect(plan.get("a2")).toBe(false);
+    expect(plan.get("f1")).toBe(false);
+  });
+
+  it("lets a failed Run take the slot when nothing else is open", () => {
+    const plan = planExpansionDefaults({
+      entries: {},
+      threadId: "t",
+      runs: [run("c1", "completed"), run("f1", "failed")],
+    });
+    expect(plan.get("f1")).toBe(true);
+    expect(plan.get("c1")).toBe(false);
+  });
+
+  it("keeps terminal Runs collapsed", () => {
+    const plan = planExpansionDefaults({
+      entries: {},
+      threadId: "t",
+      runs: [run("c1", "completed"), run("c2", "cancelled")],
+    });
+    expect([...plan.values()].filter(Boolean)).toHaveLength(0);
+  });
+
+  it("honors a stored collapse for a waiting Run", () => {
+    const plan = planExpansionDefaults({
+      entries: {
+        "t:w1": { threadId: "t", runId: "w1", rev: 1, open: false },
+      },
+      threadId: "t",
+      runs: [run("w1", "waiting_input"), run("a1", "running")],
+    });
+    expect(plan.get("w1")).toBe(false);
+    expect(plan.get("a1")).toBe(true);
+  });
+
+  it("honors a stored open and denies the default to a new active Run", () => {
+    const plan = planExpansionDefaults({
+      entries: {
+        "t:c1": { threadId: "t", runId: "c1", rev: 3, open: true },
+      },
+      threadId: "t",
+      runs: [run("c1", "completed", 3), run("a1", "running")],
+    });
+    expect(plan.get("c1")).toBe(true);
+    expect(plan.get("a1")).toBe(false);
+  });
+
+  it("discards stored decisions whose rev moved and re-applies defaults", () => {
+    const plan = planExpansionDefaults({
+      entries: {
+        "t:c1": { threadId: "t", runId: "c1", rev: 1, open: false },
+      },
+      threadId: "t",
+      runs: [run("c1", "failed", 2)],
+    });
+    expect(plan.get("c1")).toBe(true);
   });
 });

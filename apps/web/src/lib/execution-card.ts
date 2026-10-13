@@ -71,8 +71,15 @@ export type ExecutionCardInput = {
   steps?: readonly RunStepSnapshot[];
   /** A truncated step list cannot back an honest lifecycle fraction. */
   stepsTruncated?: boolean;
-  /** True when the expanded detail will render the Result section. */
+  /** True when the expanded detail renders the Result section. */
   hasResult?: boolean;
+  /**
+   * The Run's result message bubble is loaded on the current page and is the
+   * canonical result surface there: the card then never repeats its text as
+   * an outcome line. When the bubble is paged out, the card outcome (and the
+   * expanded Result section) keep the result reachable.
+   */
+  resultOnPage?: boolean;
   expanded: boolean;
   /** There is a detail body to open (summary exists or children were provided). */
   canExpand: boolean;
@@ -151,8 +158,9 @@ function failedStepLabel(steps: readonly RunStepSnapshot[]): string | null {
 
 /**
  * Lifecycle rail fill: done = full; failed = up to the failed step; otherwise
- * completed steps over total. Null (base rail only) when there are no steps
- * or the step list is truncated — a partial list cannot back a fraction.
+ * completed steps over total. Null (base rail only) when there are no steps,
+ * the step list is truncated, or a failed Run carries no failed step — an
+ * unknown failure position is never drawn as a complete lifecycle.
  */
 export function lifecycleRailFill(
   status: ExecutionDisplayStatus,
@@ -164,7 +172,7 @@ export function lifecycleRailFill(
   if (status === "failed") {
     const ordered = [...steps].sort((left, right) => left.order - right.order);
     const index = ordered.findIndex((step) => step.status === "failed");
-    return index >= 0 ? (index + 1) / ordered.length : 1;
+    return index >= 0 ? (index + 1) / ordered.length : null;
   }
   const completed = steps.filter((step) => step.status === "completed").length;
   return completed / steps.length;
@@ -193,7 +201,9 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
     if (detail) aux = { kind: "activity", text: detail };
   }
   if (!aux && status.status === "done") {
-    const outcome = summary?.outcome?.trim();
+    // The adjacent result bubble is the canonical surface while it is loaded;
+    // repeating its text on the card would double the same sentence.
+    const outcome = input.resultOnPage ? null : summary?.outcome?.trim();
     if (outcome) aux = { kind: "outcome", text: outcome };
   }
   if (!aux && status.status === "failed") {

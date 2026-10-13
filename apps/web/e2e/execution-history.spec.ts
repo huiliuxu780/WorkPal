@@ -73,18 +73,19 @@ async function settledSummary(page: Page, botId: string, titlePart: string): Pro
   return found!;
 }
 
-function shellOf(page: Page, runId: string) {
-  return page.locator(`section[data-testid="execution-shell"][data-run-id="${runId}"]`);
+/** Shells are located by card title: the transcript DOM carries no Run ids. */
+function shellOf(page: Page, titlePart: string) {
+  return page.locator('section[data-testid="execution-shell"]').filter({ hasText: titlePart });
 }
 
-async function expandShell(page: Page, runId: string) {
-  const header = shellOf(page, runId).locator("button[aria-expanded]").first();
+async function expandShell(page: Page, titlePart: string) {
+  const header = shellOf(page, titlePart).locator("button[aria-expanded]").first();
   if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
   await expect(header).toHaveAttribute("aria-expanded", "true", { timeout: 15_000 });
 }
 
-async function collapseShell(page: Page, runId: string) {
-  const header = shellOf(page, runId).locator("button[aria-expanded]").first();
+async function collapseShell(page: Page, titlePart: string) {
+  const header = shellOf(page, titlePart).locator("button[aria-expanded]").first();
   if ((await header.getAttribute("aria-expanded")) === "true") await header.click();
   await expect(header).toHaveAttribute("aria-expanded", "false", { timeout: 15_000 });
 }
@@ -93,23 +94,23 @@ async function collapseShell(page: Page, runId: string) {
  * A Run whose anchor message paged out only renders once its history page is
  * loaded; page back until its shell appears.
  */
-async function revealShell(page: Page, runId: string) {
+async function revealShell(page: Page, titlePart: string) {
   await expect
     .poll(
       async () => {
-        if ((await shellOf(page, runId).count()) > 0) return 1;
+        if ((await shellOf(page, titlePart).count()) > 0) return 1;
         const more = page.getByRole("button", { name: "Load earlier messages" });
         if ((await more.count()) === 0 || !(await more.isEnabled())) return 0;
         await more.click();
         await expect(more)
           .toBeEnabled({ timeout: 15_000 })
           .catch(() => undefined);
-        return (await shellOf(page, runId).count()) > 0 ? 1 : 0;
+        return (await shellOf(page, titlePart).count()) > 0 ? 1 : 0;
       },
       { timeout: 60_000, intervals: [300, 700] },
     )
     .toBe(1);
-  await expect(shellOf(page, runId)).toBeVisible({ timeout: 15_000 });
+  await expect(shellOf(page, titlePart)).toBeVisible({ timeout: 15_000 });
 }
 
 async function floodHistory(page: Page, botId: string, stamp: number, count = 105) {
@@ -142,6 +143,7 @@ test("refresh restores a completed execution with the same rev and content", asy
   const botId = activeBotId(page);
   await send(page, `write a file named quarter-${stamp}.txt saying quarter numbers`);
   const summary = await settledSummary(page, botId, "write a file named");
+  const titlePart = `quarter-${stamp}.txt`;
   expect(summary.entry).toBe("execution");
   expect(summary.rev).toBeGreaterThan(0);
   expect(summary.anchorMessageId).toBeTruthy();
@@ -158,7 +160,7 @@ test("refresh restores a completed execution with the same rev and content", asy
     .join(" ");
   expect(resultText).toContain("writing that into my home");
 
-  await expect(shellOf(page, summary.runId)).toBeVisible();
+  await expect(shellOf(page, titlePart)).toBeVisible();
   // The result is a chat bubble on the page.
   await expect(page.getByText("writing that into my home").first()).toBeVisible({
     timeout: 15_000,
@@ -169,20 +171,20 @@ test("refresh restores a completed execution with the same rev and content", asy
   const restored = (await executionsOf(page, botId)).find((item) => item.runId === summary.runId);
   expect(restored?.rev).toBe(summary.rev);
   expect(restored?.anchorMessageId).toBe(summary.anchorMessageId);
-  await revealShell(page, summary.runId);
+  await revealShell(page, titlePart);
   const firstDetail = page.waitForResponse((response) =>
     response.url().includes("/rpc/runs/executionSnapshot"),
   );
-  await expandShell(page, summary.runId);
+  await expandShell(page, titlePart);
   await firstDetail;
   await expect(page.getByText("writing that into my home").first()).toBeVisible({
     timeout: 15_000,
   });
-  await collapseShell(page, summary.runId);
+  await collapseShell(page, titlePart);
   const reopenedDetail = page.waitForResponse((response) =>
     response.url().includes("/rpc/runs/executionSnapshot"),
   );
-  await expandShell(page, summary.runId);
+  await expandShell(page, titlePart);
   await reopenedDetail;
 });
 
@@ -208,6 +210,7 @@ test("executions restore when their messages are pushed off the page", async ({ 
   expect(pending.status).toBe("waiting_input");
   await answerTextAsk(page, "Paris");
   const summary = await settledSummaryById(page, botId, pending.runId);
+  const titlePart = summary.title;
 
   await floodHistory(page, botId, stamp);
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -216,11 +219,11 @@ test("executions restore when their messages are pushed off the page", async ({ 
   expect((await executionsOf(page, botId)).some((item) => item.runId === summary.runId)).toBe(true);
 
   // Page back until the anchor message and its shell return.
-  await revealShell(page, summary.runId);
-  await expandShell(page, summary.runId);
+  await revealShell(page, titlePart);
+  await expandShell(page, titlePart);
   // The answer echo text needs the ask message itself; keep paging until it
   // (or its shell) is on screen.
-  const answeredText = shellOf(page, summary.runId)
+  const answeredText = shellOf(page, titlePart)
     .getByText("Answered: Paris", { exact: true })
     .first();
   for (let guard = 0; guard < 12 && (await answeredText.count()) === 0; guard++) {
@@ -242,7 +245,7 @@ test("executions restore when their messages are pushed off the page", async ({ 
     .join(" ");
   expect(resultText).toContain("handled: Paris");
   await expect(
-    shellOf(page, summary.runId).getByText("Answered: Paris", { exact: true }).first(),
+    shellOf(page, titlePart).getByText("Answered: Paris", { exact: true }).first(),
   ).toBeVisible({ timeout: 15_000 });
 });
 
@@ -253,6 +256,7 @@ test("long Activity paginates without repeats or gaps", async ({ page }) => {
   const botId = activeBotId(page);
   await send(page, "run 120 shell steps");
   const summary = await settledSummary(page, botId, "run 120 shell steps");
+  const titlePart = "run 120 shell steps";
 
   const detail = await rpc<{ activityPage: { olderCursor: string | null } }>(
     page,
@@ -296,18 +300,18 @@ test("long Activity paginates without repeats or gaps", async ({ page }) => {
   expect(cursor).toBeNull();
   expect(toolIds.size).toBeGreaterThanOrEqual(60);
 
-  await revealShell(page, summary.runId);
-  await expandShell(page, summary.runId);
-  const loadMore = page.getByTestId(`execution-activity-more-${summary.runId}`);
+  await revealShell(page, titlePart);
+  await expandShell(page, titlePart);
+  const loadMore = shellOf(page, titlePart).getByTestId("execution-activity-more");
   await expect(loadMore).toBeVisible({ timeout: 15_000 });
   const readIds = () =>
-    shellOf(page, summary.runId)
+    shellOf(page, titlePart)
       .locator("[data-activity-id]")
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-activity-id")));
   const idsBefore = await readIds();
   expect(idsBefore.length).toBeGreaterThan(0);
   const hiddenCount = async () => {
-    const text = await shellOf(page, summary.runId)
+    const text = await shellOf(page, titlePart)
       .locator('[data-slot="activity"]')
       .first()
       .evaluate((node) => node.textContent ?? "");
@@ -321,7 +325,7 @@ test("long Activity paginates without repeats or gaps", async ({ page }) => {
   // status winning.
   const idsAfter = await readIds();
   expect(new Set(idsAfter).size).toBe(idsAfter.length);
-  await expect(shellOf(page, summary.runId).locator('[data-slot="activity"]')).toHaveCount(1);
+  await expect(shellOf(page, titlePart).locator('[data-slot="activity"]')).toHaveCount(1);
 });
 
 test("multiple terminal Runs restore independently and only one detail is open", async ({
@@ -338,6 +342,9 @@ test("multiple terminal Runs restore independently and only one detail is open",
   const beta = await settledSummary(page, botId, "echo beta-marker");
   await send(page, `attach to the thread with path notes/gamma-${stamp}.txt says gamma marker`);
   const gamma = await settledSummary(page, botId, "attach to the thread");
+  const alphaTitle = `alpha-${stamp}.txt`;
+  const betaTitle = "echo beta-marker";
+  const gammaTitle = `gamma-${stamp}.txt`;
 
   const details = await Promise.all(
     [alpha, beta, gamma].map((item) =>
@@ -360,23 +367,23 @@ test("multiple terminal Runs restore independently and only one detail is open",
   expect(new Set(details.map((detail) => detail.summary.runId)).size).toBe(3);
 
   // Single expansion: opening the second shell closes the first.
-  await revealShell(page, alpha.runId);
-  await expandShell(page, alpha.runId);
-  await revealShell(page, beta.runId);
-  await expandShell(page, beta.runId);
-  await expect(shellOf(page, alpha.runId).locator("button[aria-expanded]").first()).toHaveAttribute(
+  await revealShell(page, alphaTitle);
+  await expandShell(page, alphaTitle);
+  await revealShell(page, betaTitle);
+  await expandShell(page, betaTitle);
+  await expect(shellOf(page, alphaTitle).locator("button[aria-expanded]").first()).toHaveAttribute(
     "aria-expanded",
     "false",
   );
-  await expect(shellOf(page, beta.runId).locator("button[aria-expanded]").first()).toHaveAttribute(
+  await expect(shellOf(page, betaTitle).locator("button[aria-expanded]").first()).toHaveAttribute(
     "aria-expanded",
     "true",
   );
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
-  for (const item of [alpha, beta, gamma]) {
-    await revealShell(page, item.runId);
+  for (const title of [alphaTitle, betaTitle, gammaTitle]) {
+    await revealShell(page, title);
   }
 });
 
@@ -405,14 +412,15 @@ test("secrets stay out of snapshots, storage, and the DOM after history reload",
   await card.getByRole("button", { name: "Save", exact: true }).click();
   await expect(card.getByText("Saved", { exact: true })).toBeVisible({ timeout: 30_000 });
   const summary = await settledSummary(page, botId, "show a secret card");
+  const titlePart = "show a secret card";
 
   await floodHistory(page, botId, stamp);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
-  await revealShell(page, summary.runId);
-  await expandShell(page, summary.runId);
+  await revealShell(page, titlePart);
+  await expandShell(page, titlePart);
   await expect(
-    shellOf(page, summary.runId).getByText("Saved", { exact: true }).first(),
+    shellOf(page, titlePart).getByText("Saved", { exact: true }).first(),
   ).toBeVisible({ timeout: 15_000 });
 
   // Secret absent from every surface.
@@ -439,6 +447,7 @@ test("a cleared Run stays hidden when its artifact is deleted afterwards", async
 
   await send(page, `attach to the thread with path notes/stale-${stamp}.txt says stale marker`);
   const summary = await settledSummary(page, botId, "attach to the thread");
+  const titlePart = "attach to the thread";
   let artifactId: string | undefined;
   await expect
     .poll(
@@ -471,7 +480,7 @@ test("a cleared Run stays hidden when its artifact is deleted afterwards", async
   expect((await executionsOf(page, botId)).some((item) => item.runId === summary.runId)).toBe(
     false,
   );
-  await expect(shellOf(page, summary.runId)).toHaveCount(0);
+  await expect(shellOf(page, titlePart)).toHaveCount(0);
   await expect(
     rpc(page, "runs/executionSnapshot", { botId, runId: summary.runId }),
   ).rejects.toThrow(/runs\/executionSnapshot 4\d\d/);
@@ -502,6 +511,7 @@ test("a late stale detail response never mixes into the newer version's paging",
     .toBe("waiting_input");
   const pending = await summaryByTitle(page, botId, "run 60 shell steps then ask");
   const rev1 = pending.rev;
+  const pendingTitle = "run 60 shell steps then ask";
 
   // Hold the first detail response until the SECOND one has been delivered:
   // the stale response then lands out of order, exactly the race the single
@@ -524,29 +534,30 @@ test("a late stale detail response never mixes into the newer version's paging",
     }
   });
 
-  await revealShell(page, pending.runId);
-  await expandShell(page, pending.runId); // fetch #1 (rev1) — held in the gate
+  await revealShell(page, pendingTitle);
+  await expandShell(page, pendingTitle); // fetch #1 (rev1) — held in the gate
 
   // Answering appends real events: rev moves and the Run completes. The rev
   // bump drops the stored expansion decision, collapsing the shell.
   await answerTextAsk(page, "Paris");
   const settled = await settledSummaryById(page, botId, pending.runId);
+  const settledTitle = settled.title;
   expect(settled.rev).toBeGreaterThan(rev1);
 
-  await collapseShell(page, pending.runId); // no-op when the rev bump already collapsed it
-  await expandShell(page, pending.runId); // fetch #2 (rev2) — lands, releases #1
-  const loadMore = page.getByTestId(`execution-activity-more-${pending.runId}`);
+  await collapseShell(page, settledTitle); // no-op when the rev bump already collapsed it
+  await expandShell(page, settledTitle); // fetch #2 (rev2) — lands, releases #1
+  const loadMore = shellOf(page, settledTitle).getByTestId("execution-activity-more");
   await expect(loadMore).toBeVisible({ timeout: 30_000 });
 
   const hiddenCount = async () => {
-    const text = await shellOf(page, pending.runId)
+    const text = await shellOf(page, settledTitle)
       .locator('[data-slot="activity"]')
       .first()
       .evaluate((node) => node.textContent ?? "");
     return Number(/Earlier activities are not shown:\s*(\d+)/.exec(text)?.[1] ?? "0");
   };
   const readIds = () =>
-    shellOf(page, pending.runId)
+    shellOf(page, settledTitle)
       .locator("[data-activity-id]")
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-activity-id")));
 
@@ -566,7 +577,7 @@ test("a late stale detail response never mixes into the newer version's paging",
   expect(new Set([...idsLoaded, ...idsAfter]).size).toBeGreaterThan(0);
   for (const id of idsLoaded) expect(idsAfter).toContain(id);
   await expect(
-    shellOf(page, pending.runId).getByRole("button", { name: "Send answer", exact: true }),
+    shellOf(page, settledTitle).getByRole("button", { name: "Send answer", exact: true }),
   ).toHaveCount(0);
 
   // The cursor kept the newer version's position: paging again still moves

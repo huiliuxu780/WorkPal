@@ -217,6 +217,23 @@ describe("buildExecutionCardModel status coverage", () => {
     expect(card.action).toEqual({ verb: "Collapse", act: "toggle" });
   });
 
+  it("suppresses the outcome line while the result bubble is on the page", () => {
+    const card = model(
+      run("completed"),
+      [],
+      {},
+      { summary: summary({ outcome: "Found 3 anomalous tickets" }), resultOnPage: true },
+    );
+    expect(card.aux).toBeNull();
+    const offPage = model(
+      run("completed"),
+      [],
+      {},
+      { summary: summary({ outcome: "Found 3 anomalous tickets" }), resultOnPage: false },
+    );
+    expect(offPage.aux).toEqual({ kind: "outcome", text: "Found 3 anomalous tickets" });
+  });
+
   it("maps failed with the safe failure projection and no retry action", () => {
     const card = model(
       run("failed"),
@@ -326,6 +343,14 @@ describe("lifecycleRailFill", () => {
     expect(lifecycleRailFill("failed", steps(["completed", "failed", "pending"]), false)).toBe(
       2 / 3,
     );
+  });
+  it("stays base-only when a failed Run has no failed step", () => {
+    expect(
+      lifecycleRailFill("failed", steps(["completed", "running", "pending"]), false),
+    ).toBeNull();
+  });
+  it("is full when done even if stale steps lag behind", () => {
+    expect(lifecycleRailFill("done", steps(["completed", "pending"]), false)).toBe(1);
   });
   it("is full when done", () => {
     expect(lifecycleRailFill("done", steps(["completed", "completed"]), false)).toBe(1);

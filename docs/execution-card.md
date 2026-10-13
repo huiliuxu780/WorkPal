@@ -40,7 +40,7 @@ variables, not copied.
 | Artifacts line | `summary.artifacts[].name` | "Generated …"; content never enters the snapshot. |
 | Metadata | `summary.counts.{steps,actions,agents,artifacts}`, `summary.durationMs` | Only present, non-zero values; unknown is omitted — never `0`, `--`, or a guess. |
 | Head time | `summary.completedAt ?? summary.updatedAt` (terminal only) | Relative-time label. |
-| Lifecycle rail fill | loaded detail `steps[].status` | done = full; failed = up to the failed step; otherwise completed/total. Null (base rail only) when steps are missing or truncated. |
+| Lifecycle rail fill | loaded detail `steps[].status` | done = full; failed = up to the failed step; otherwise completed/total. Null (base rail only) when steps are missing, truncated, or a failed Run carries no failed step — an unknown failure position is never drawn as complete. |
 | Primary action | state matrix below | Real `<button>` with `aria-expanded`/`aria-controls`. |
 
 ### Action matrix
@@ -63,10 +63,22 @@ re-approval are all undecided). Failed cards offer `View execution` only.
 - The card's auxiliary line owns the current-activity/waiting sentence; when
   the expanded detail's `ExecutionActivity` primary line would repeat that
   exact text, the detail yields it (context `ExecutionCardContext`).
-- The card's `outcome` excerpt yields while the expanded detail renders the
-  Result section; the Result section itself renders only when the result
-  message bubble is not loaded (paged-out history) — the adjacent bubble
-  remains the canonical full result.
+- The result sentence appears exactly once per screen. While the Run's result
+  message bubble is loaded on the current page it is the canonical result
+  surface and the card renders **no** outcome line (`resultOnPage`). When the
+  bubble is paged out, the card carries the durable `outcome` excerpt while
+  collapsed, and the expanded detail renders the snapshot Result section
+  instead (the card excerpt then yields). The Result section never renders
+  next to its own bubble.
+- One open detail per Thread at any moment — initial render, refresh, rev
+  moves and waiting states included. `planExpansionDefaults`
+  (lib/execution-history.ts) resolves stored rev-matching entries first and
+  grants the default-open slot (active, then failed Runs) only while nothing
+  else in the Thread is open; with server-driven expansion present, that
+  decision is the single authority and `needsAttention` no longer forces a
+  detail open. Pending Interventions stay actionable regardless: their region
+  renders outside the collapsible detail and the attention action focuses the
+  authoritative control without needing the detail open.
 
 ### Omitted fields (no trusted production source)
 
@@ -99,11 +111,13 @@ one card (no rev/window/anchor semantics changed):
 
 Unchanged from HISTORY-001: the card shows no Run/Thread/Bot/Attempt ids,
 fences, tool arguments/results, raw exceptions, credentials, secrets, tokens,
-ExternalEffect payloads, or AgentScope URLs. The pre-existing
-`data-run-id` test hook stays on the shell `<section>` (machine-readable,
-used by E2E); the card `<article>` itself carries no ids. Secrets never
-enter browser storage; the expansion record keeps its four whitelisted
-fields.
+ExternalEffect payloads, or AgentScope URLs. The shell `<section>` and card
+`<article>` carry **no** raw Run id in the DOM (the former `data-run-id` hook
+and the per-Run dynamic load-more test id were removed with the card wiring);
+E2E locates shells by card title, semantic status and structure instead. The
+sessionStorage expansion record still keys on runId plus its three other
+whitelisted fields — storage coordination state, never rendered. Secrets
+never enter browser storage.
 
 ## Accessibility
 

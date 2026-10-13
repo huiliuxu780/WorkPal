@@ -10,6 +10,12 @@ import { activeBotId, completeOnboarding, createBotFromPicker, rpc, signup } fro
  * review artifacts compared against the Task 15.1 v2 design, not CI gates —
  * the repo has no toHaveScreenshot baselines and this spec adds none.
  *
+ * Capture order is state-honest: the completed card is shot COLLAPSED first
+ * (verb "View result"), only then expanded (verb "Collapse", shot as
+ * card-expanded-*); the failed card is shot in its default-expanded state
+ * (card-failed-expanded-*) and again collapsed (card-failed-*, verb
+ * "View execution").
+ *
  * Note on "background": production has no trusted root-Run background signal
  * yet (docs/execution-shell-progress.md remaining gate), so a background card
  * cannot be honestly produced end-to-end; its presentation path is covered by
@@ -58,18 +64,13 @@ async function shot(locator: Locator, name: string) {
   await locator.screenshot({ animations: "disabled", path: join(outDir, `${name}.png`) });
 }
 
-async function waitRunning(page: Page, botId: string) {
-  await expect
-    .poll(
-      async () => {
-        const snapshot = await rpc<{ run?: { status: string } | null }>(page, "threads/get", {
-          botId,
-        });
-        return snapshot.run?.status ?? null;
-      },
-      { timeout: 60_000 },
-    )
-    .toBe("running");
+/** Shells are located by card title: the transcript DOM carries no Run ids. */
+function shellOf(page: Page, titlePart: string) {
+  return page.locator('section[data-testid="execution-shell"]').filter({ hasText: titlePart });
+}
+
+function cardOf(page: Page, titlePart: string) {
+  return shellOf(page, titlePart).locator('article[data-testid="execution-card"]');
 }
 
 test("capture execution card states across widths and themes", async ({ page }) => {
@@ -81,12 +82,50 @@ test("capture execution card states across widths and themes", async ({ page }) 
   // Phase A (Chief thread): completed, failed, approval-pending. The hang run
   // gets its own bot below — a message sent while it runs would steer that
   // Run instead of starting a new one.
-  await send(page, "run 2 shell steps");
-  const done = await settled(page, botId, "run 2 shell steps");
+  const doneTitle = "run 2 shell steps";
+  await send(page, doneTitle);
+  await settled(page, botId, doneTitle);
 
+  const failedTitle = "fail this run";
   await send(page, `fail this run ${stamp}`);
-  const failed = await settled(page, botId, "fail this run");
+  await settled(page, botId, failedTitle);
 
+  // State-honest verbs before any interaction: completed collapsed, failed
+  // holding the single default-open slot.
+  const doneToggle = cardOf(page, doneTitle).locator("button[aria-expanded]").first();
+  await expect(doneToggle).toHaveText("View result");
+  await expect(doneToggle).toHaveAttribute("aria-expanded", "false");
+  const failedToggle = cardOf(page, failedTitle).locator("button[aria-expanded]").first();
+  await expect(failedToggle).toHaveText("Collapse");
+  await expect(failedToggle).toHaveAttribute("aria-expanded", "true");
+
+  const approvalShell = page
+    .locator('section[data-testid="execution-shell"]')
+    .filter({ has: page.getByTestId("intervention-region") })
+    .first();
+
+  const captureSet = async (
+    theme: "light" | "dark",
+    targets: Array<[string, Locator]>,
+  ) => {
+    for (const width of WIDTHS) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(250);
+      for (const [name, target] of targets) {
+        await target.scrollIntoViewIfNeeded();
+        await shot(target, `${name}-${width}-${theme}`);
+      }
+    }
+  };
+
+  // Pass 1: completed collapsed + failed default-expanded.
+  await captureSet("light", [
+    ["card-completed", cardOf(page, doneTitle)],
+    ["card-failed-expanded", shellOf(page, failedTitle)],
+  ]);
+
+  // The pending approval now takes the single open slot; the failed detail
+  // collapses on its own while its card stays visible.
   await rpc(page, "approvalRules/set", {
     effect: "require_approval",
     matchKind: "connector",
@@ -109,56 +148,44 @@ test("capture execution card states across widths and themes", async ({ page }) 
     await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   }
   await expect(page.getByTestId("intervention-region")).toBeVisible({ timeout: 15_000 });
+  await expect(failedToggle).toHaveText("View execution");
+  await expect(failedToggle).toHaveAttribute("aria-expanded", "false");
 
-  const shell = (runId: string) =>
-    page.locator(`section[data-testid="execution-shell"][data-run-id="${runId}"]`);
-  const states: Array<[string, string]> = [
-    ["completed", done.runId],
-    ["failed", failed.runId],
-  ];
+  // Pass 2: failed collapsed + the waiting-approval card with its region.
+  await captureSet("light", [
+    ["card-failed", cardOf(page, failedTitle)],
+    ["card-waiting-approval", approvalShell],
+  ]);
 
-  // Expanded-details state: open the completed Run's detail.
-  const expandButton = shell(done.runId).locator("button[aria-expanded]").first();
-  if ((await expandButton.getAttribute("aria-expanded")) !== "true") {
-    const detail = page.waitForResponse((response) =>
-      response.url().includes("/rpc/runs/executionSnapshot"),
-    );
-    await expandButton.click();
-    await detail.catch(() => undefined);
-  }
-  await expect(expandButton).toHaveAttribute("aria-expanded", "true", { timeout: 15_000 });
+  // Pass 3: expand the completed Run (card + detail as one object). Opening
+  // it closes the approval detail — the region stays visible outside.
+  const detail = page.waitForResponse((response) =>
+    response.url().includes("/rpc/runs/executionSnapshot"),
+  );
+  await doneToggle.click();
+  await detail.catch(() => undefined);
+  await expect(doneToggle).toHaveText("Collapse");
+  await expect(doneToggle).toHaveAttribute("aria-expanded", "true");
+  await captureSet("light", [["card-expanded", shellOf(page, doneTitle)]]);
 
-  const captureWidths = async (theme: "light" | "dark") => {
-    for (const width of WIDTHS) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.waitForTimeout(300);
-      for (const [name, runId] of states) {
-        const target = shell(runId);
-        await target.scrollIntoViewIfNeeded();
-        await shot(
-          target.locator('article[data-testid="execution-card"]'),
-          `card-${name}-${width}-${theme}`,
-        );
-      }
-      // The waiting-approval card together with its Intervention region.
-      const approvalShell = page
-        .locator('section[data-testid="execution-shell"]')
-        .filter({ has: page.getByTestId("intervention-region") })
-        .first();
-      await approvalShell.scrollIntoViewIfNeeded();
-      await shot(approvalShell, `card-waiting-approval-${width}-${theme}`);
-      // Expanded details (card + detail as one continuous object).
-      const expandedShell = shell(done.runId);
-      await expandedShell.scrollIntoViewIfNeeded();
-      await shot(expandedShell, `card-expanded-${width}-${theme}`);
-    }
-  };
-
-  await captureWidths("light");
-  // Dark-theme spot check: system dark drives the token layer.
+  // Dark-theme spot check: system dark drives the token layer. Collapse the
+  // completed card first so its dark shot is honestly collapsed too.
   await page.emulateMedia({ colorScheme: "dark" });
   await page.waitForTimeout(300);
-  await captureWidths("dark");
+  await doneToggle.click();
+  await expect(doneToggle).toHaveText("View result");
+  await captureSet("dark", [
+    ["card-completed", cardOf(page, doneTitle)],
+    ["card-failed", cardOf(page, failedTitle)],
+    ["card-waiting-approval", approvalShell],
+  ]);
+  const darkDetail = page.waitForResponse((response) =>
+    response.url().includes("/rpc/runs/executionSnapshot"),
+  );
+  await doneToggle.click();
+  await darkDetail.catch(() => undefined);
+  await expect(doneToggle).toHaveText("Collapse");
+  await captureSet("dark", [["card-expanded", shellOf(page, doneTitle)]]);
   await page.emulateMedia({ colorScheme: "light" });
 
   // Phase B (Runner bot): the running state. Its own thread keeps the hang
@@ -166,22 +193,25 @@ test("capture execution card states across widths and themes", async ({ page }) 
   await createBotFromPicker(page, { name: "Runner" });
   const runnerBotId = activeBotId(page);
   await send(page, "keep working until i stop");
-  await waitRunning(page, runnerBotId);
-  const runningShell = page.locator('section[data-testid="execution-shell"]').first();
+  await expect
+    .poll(
+      async () => {
+        const snapshot = await rpc<{ run?: { status: string } | null }>(page, "threads/get", {
+          botId: runnerBotId,
+        });
+        return snapshot.run?.status ?? null;
+      },
+      { timeout: 60_000 },
+    )
+    .toBe("running");
+  const runningShell = shellOf(page, "keep working until i stop");
   if ((await runningShell.count()) === 0) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   }
   await expect(runningShell).toBeVisible({ timeout: 15_000 });
-  for (const width of WIDTHS) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.waitForTimeout(250);
-    await runningShell.scrollIntoViewIfNeeded();
-    await shot(runningShell.locator('article[data-testid="execution-card"]'), `card-running-${width}-light`);
-  }
+  await captureSet("light", [["card-running", cardOf(page, "keep working until i stop")]]);
   await page.emulateMedia({ colorScheme: "dark" });
   await page.waitForTimeout(250);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await runningShell.scrollIntoViewIfNeeded();
-  await shot(runningShell.locator('article[data-testid="execution-card"]'), "card-running-1440-dark");
+  await captureSet("dark", [["card-running", cardOf(page, "keep working until i stop")]]);
 });

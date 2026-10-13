@@ -236,6 +236,7 @@ import {
   installExecutionDetail,
   isExpansionOpen,
   mergeActivityPages,
+  planExpansionDefaults,
   readExecutionExpansions,
   resolveExecutionAnchor,
   selectCachedDetailEntry,
@@ -4871,6 +4872,21 @@ const Transcript = memo(function Transcript({
     },
     [serverSummaries, messageById],
   );
+  // One open detail per Thread at any moment — initial render, refresh, rev
+  // moves and waiting states included. Stored rev-matching entries stay
+  // authoritative; defaults open active/failed Runs only while nothing else
+  // in the Thread is open. Runs outside the summary window (detail-only)
+  // fall back to the per-Run stored/default resolution below.
+  const expansionPlan = useMemo(() => {
+    if (!serverSummaries) return null;
+    const planned: Array<{ runId: string; rev: number; status: string }> = [];
+    for (const summary of serverSummaries.values()) {
+      const entry = selectCachedDetailEntry(executionDetails, summary.runId, summary.rev);
+      const source = entry?.snapshot.summary ?? summary;
+      planned.push({ runId: summary.runId, rev: source.rev, status: source.status });
+    }
+    return planExpansionDefaults({ entries: expansionEntries, threadId, runs: planned });
+  }, [serverSummaries, executionDetails, expansionEntries, threadId]);
 
   const plansByAnchor = useMemo(() => {
     const anchors = new Map<string, NonNullable<ThreadSnapshot["plans"]>>();
@@ -5104,14 +5120,16 @@ const Transcript = memo(function Transcript({
       const rev = currentSummary?.rev ?? 0;
       const openByDefault =
         Boolean(displayRun && (isRunActive(displayRun.status) || displayRun.status === "failed"));
+      const plannedOpen = expansionPlan?.get(execution.runId);
       const isOpen = controlled
-        ? isExpansionOpen({
+        ? (plannedOpen ??
+          isExpansionOpen({
             entries: expansionEntries,
             threadId,
             runId: execution.runId,
             rev,
             defaultOpen: openByDefault,
-          })
+          }))
         : openByDefault;
       const expansion = controlled
         ? {
@@ -5168,6 +5186,13 @@ const Transcript = memo(function Transcript({
           steps={data.steps}
           stepsTruncated={detail?.steps.truncated}
           hasResult={resultHasText(detachedResult)}
+          resultOnPage={
+            data.result
+              ? messageById.has(data.result.messageId)
+              : messages.some(
+                  (message) => message.runId === execution.runId && message.role === "bot",
+                )
+          }
           interventions={
             scopedInterventions.length > 0 ? (
               <InterventionRegion
@@ -5199,7 +5224,7 @@ const Transcript = memo(function Transcript({
           {activityCursor ? (
             <button
               type="button"
-              data-testid={`execution-activity-more-${execution.runId}`}
+              data-testid="execution-activity-more"
               onClick={loadMoreActivity}
               className="mt-1 text-[12.5px] text-muted-foreground underline-offset-2 hover:underline"
             >

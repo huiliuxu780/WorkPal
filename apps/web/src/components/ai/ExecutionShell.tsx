@@ -25,6 +25,7 @@ export function ExecutionShell({
   steps,
   stepsTruncated,
   hasResult,
+  resultOnPage,
   confirmedRootBackground,
   children,
 }: {
@@ -55,6 +56,8 @@ export function ExecutionShell({
   stepsTruncated?: boolean;
   /** True when the expanded detail renders the Result section. */
   hasResult?: boolean;
+  /** The result message bubble is loaded on the current page (canonical result surface). */
+  resultOnPage?: boolean;
   /** Trusted root-Run background identity (no production source yet). */
   confirmedRootBackground?: boolean;
   children: ReactNode;
@@ -76,7 +79,10 @@ export function ExecutionShell({
     else if (status.status === "failed") setExpanded(true);
     else if (status.status === "done" || status.status === "cancelled") setExpanded(false);
   }, [status.needsAttention, status.status, expansion]);
-  const open = status.needsAttention || (expansion ? expansion.open : expanded);
+  // Server-driven expansion is the single authority when present (one open
+  // detail per Thread, waiting Runs included); the legacy local state keeps
+  // its attention-forced behavior only for uncontrolled (older-server) shells.
+  const open = expansion ? expansion.open : status.needsAttention || expanded;
   const hasDetail =
     Boolean(children) || Boolean(status.detail) || canExpand === true || expansion !== undefined;
   // One derivation feeds the card head and the detail body: same status,
@@ -88,6 +94,7 @@ export function ExecutionShell({
     steps,
     stepsTruncated,
     hasResult,
+    resultOnPage,
     expanded: open,
     canExpand: hasDetail,
   });
@@ -107,7 +114,6 @@ export function ExecutionShell({
       ref={sectionRef}
       data-testid="execution-shell"
       data-status={status.status}
-      data-run-id={run?.id}
       className="min-w-0 px-1 py-1"
     >
       <ExecutionCardContext.Provider value={{ open, auxText: card.aux?.text ?? null }}>

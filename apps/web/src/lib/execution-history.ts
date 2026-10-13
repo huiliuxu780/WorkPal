@@ -322,3 +322,70 @@ export function toggleExpansion(input: {
 export function expansionLogShape(entries: ExpansionMap): ExpansionEntry[] {
   return Object.values(entries);
 }
+
+/* ------------------------------------------------------------------ */
+/* Single-open coordination (server-driven expansion)                  */
+/* ------------------------------------------------------------------ */
+
+const ACTIVE_PLAN_STATUSES: readonly string[] = [
+  "queued",
+  "leased",
+  "running",
+  "waiting_input",
+  "waiting_takeover",
+];
+
+export type ExpansionPlanRun = {
+  runId: string;
+  /** The rev the stored entry must match to apply (detail-aware, as rendered). */
+  rev: number;
+  status: string;
+};
+
+/**
+ * Resolve the effective open state of every server-driven Run of one Thread
+ * with AT MOST ONE detail open at any time — initial render, refresh, rev
+ * moves and waiting states included. A stored entry whose rev matches is
+ * authoritative (so a collapsed waiting Run stays collapsed); without one,
+ * active and failed Runs default open in priority order (waiting/active
+ * first, then failed) and only while no other Run of the Thread is open.
+ * Pending Interventions stay actionable regardless: their region renders
+ * outside the collapsible detail, and the card's attention action focuses
+ * the authoritative control without needing the detail open.
+ */
+export function planExpansionDefaults(input: {
+  entries: ExpansionMap;
+  threadId: string;
+  runs: readonly ExpansionPlanRun[];
+}): Map<string, boolean> {
+  const active: ExpansionPlanRun[] = [];
+  const failed: ExpansionPlanRun[] = [];
+  const rest: ExpansionPlanRun[] = [];
+  for (const run of input.runs) {
+    if (ACTIVE_PLAN_STATUSES.includes(run.status)) active.push(run);
+    else if (run.status === "failed") failed.push(run);
+    else rest.push(run);
+  }
+  const plan = new Map<string, boolean>();
+  let anyOpen = false;
+  const ordered = [...active, ...failed, ...rest];
+  // Pass 1: stored decisions whose rev matches are authoritative and count
+  // toward the single-open budget before any default is granted.
+  for (const run of ordered) {
+    const entry = input.entries[expansionId(input.threadId, run.runId)];
+    if (entry && entry.rev === run.rev) {
+      plan.set(run.runId, entry.open);
+      if (entry.open) anyOpen = true;
+    }
+  }
+  // Pass 2: without a stored decision, active and failed Runs default open in
+  // priority order — but only while nothing else in the Thread is open.
+  for (const run of ordered) {
+    if (plan.has(run.runId)) continue;
+    const candidate = ACTIVE_PLAN_STATUSES.includes(run.status) || run.status === "failed";
+    const open = candidate && !anyOpen;
+    if (open) anyOpen = true;
+    plan.set(run.runId, open);
+  }
+  return plan;
+}

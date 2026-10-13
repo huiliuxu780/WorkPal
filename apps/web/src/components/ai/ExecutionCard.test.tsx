@@ -275,13 +275,15 @@ describe("ExecutionCard", () => {
     expect(honest).toContain(`style="height:50%"`);
   });
 
-  it("keeps the run id hook on the shell only, never on the card", () => {
+  it("keeps raw Run/Thread/Bot identifiers out of the shell and card DOM", () => {
     const html = renderToStaticMarkup(
       <ExecutionShell run={run("completed")} activity={[]} summary={summary()}>
         <div>detail body</div>
       </ExecutionShell>,
     );
-    expect(occurrences(html, "run-id-1")).toBe(1);
+    expect(occurrences(html, "run-id-1")).toBe(0);
+    expect(html).not.toContain("thread-id-1");
+    expect(html).not.toContain("bot-id-1");
     const article = html.slice(
       html.indexOf("<article"),
       html.indexOf(">", html.indexOf("<article")),
