@@ -35,9 +35,9 @@ import { loadInterventionViews } from "./interventions.js";
 /**
  * ExecutionSnapshot read model (HISTORY-001). Pure composed reads over the
  * durable facts — Run/Task/Message/Event/Plan/Step/Todo/Intervention/Artifact/
- * BackgroundAgentTask. No snapshot document is stored and nothing here writes;
- * the only writes are the `thread.artifact` membership events that the
- * Artifact create/delete paths append, so an Artifact change moves a Run's rev.
+ * BackgroundAgentTask. No snapshot document is stored and nothing here writes.
+ * Artifact membership events and explicit background-projection version bumps
+ * make those non-Run-row changes move the owning Run's rev.
  */
 
 type TxLike = Prisma.TransactionClient | PrismaClient;
@@ -156,8 +156,6 @@ export async function loadExecutionSummaries(
     threadId: string;
     spaceId: string;
     runIds: readonly string[];
-    /** Keep stale terminal Runs at rev 0 (single-Run detail reads). */
-    includeStale?: boolean;
   },
 ): Promise<ExecutionSummary[]> {
   const runIds = [...new Set(input.runIds)].sort();
@@ -186,7 +184,6 @@ export async function loadExecutionSummaries(
     executionEventCeilings(db, runIds),
   ]);
   const present = runs.filter((run) => {
-    if (input.includeStale) return true;
     if (!TERMINAL_RUN_STATUSES.has(run.status)) return true;
     // Generation fence by the Run's own lifecycle footprint, not by "any
     // event exists": a Thread Clear deletes every pre-clear event, but
@@ -441,6 +438,14 @@ export async function loadRunActivityPage(
     throw new ExecutionActivityCursorError("invalid_cursor");
   }
   const generation = await currentThreadGeneration(db, input.threadId);
+  const lifecycleSeq = (await executionEventCeilings(db, [run.id])).get(run.id)?.lifecycleSeq;
+  if (
+    TERMINAL_RUN_STATUSES.has(run.status) &&
+    generation > 0 &&
+    (lifecycleSeq === undefined || lifecycleSeq === null || lifecycleSeq <= generation)
+  ) {
+    throw new ExecutionActivityCursorError("stale_cursor");
+  }
   let exclusiveAbove: number | null = null;
   let boundHi = 0;
   if (input.cursor) {
@@ -554,13 +559,13 @@ export async function loadExecutionSnapshot(
   // Clear) raises the all-events ceiling of a pre-clear Run without making it
   // current again.
   const stale = generation > 0 && (ceilings.get(run.id)?.lifecycleSeq ?? 0) <= generation;
+  if (TERMINAL_RUN_STATUSES.has(run.status) && stale) return null;
 
   const [summaries, planRow, stepRows, todoRows, latestRunMessages] = await Promise.all([
     loadExecutionSummaries(db, {
       threadId: input.threadId,
       spaceId: input.spaceId,
       runIds: [run.id],
-      includeStale: true,
     }),
     stale ? Promise.resolve(null) : db.runPlan.findUnique({ where: { runId: run.id } }),
     stale

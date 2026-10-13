@@ -170,10 +170,20 @@ test("refresh restores a completed execution with the same rev and content", asy
   expect(restored?.rev).toBe(summary.rev);
   expect(restored?.anchorMessageId).toBe(summary.anchorMessageId);
   await revealShell(page, summary.runId);
+  const firstDetail = page.waitForResponse((response) =>
+    response.url().includes("/rpc/runs/executionSnapshot"),
+  );
   await expandShell(page, summary.runId);
+  await firstDetail;
   await expect(page.getByText("writing that into my home").first()).toBeVisible({
     timeout: 15_000,
   });
+  await collapseShell(page, summary.runId);
+  const reopenedDetail = page.waitForResponse((response) =>
+    response.url().includes("/rpc/runs/executionSnapshot"),
+  );
+  await expandShell(page, summary.runId);
+  await reopenedDetail;
 });
 
 test("executions restore when their messages are pushed off the page", async ({ page }) => {
@@ -462,14 +472,12 @@ test("a cleared Run stays hidden when its artifact is deleted afterwards", async
     false,
   );
   await expect(shellOf(page, summary.runId)).toHaveCount(0);
-  const detail = await rpc<{
-    summary: { incompleteSections?: string[] };
-    result?: unknown;
-  }>(page, "runs/executionSnapshot", { botId, runId: summary.runId });
-  expect(detail.result).toBeUndefined();
-  expect(detail.summary.incompleteSections ?? []).toEqual(
-    expect.arrayContaining(["result", "activity"]),
-  );
+  await expect(
+    rpc(page, "runs/executionSnapshot", { botId, runId: summary.runId }),
+  ).rejects.toThrow(/runs\/executionSnapshot 4\d\d/);
+  await expect(
+    rpc(page, "runs/executionActivityPage", { botId, runId: summary.runId }),
+  ).rejects.toThrow(/runs\/executionActivityPage 4\d\d/);
 });
 
 test("a late stale detail response never mixes into the newer version's paging", async ({

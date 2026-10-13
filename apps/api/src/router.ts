@@ -5602,7 +5602,7 @@ export function createRouter(deps: RouterDeps) {
             runId: input.runId,
           });
         });
-        if (!snapshot) throw new IsolationError();
+        if (!snapshot) throw new ORPCError("NOT_FOUND");
         return snapshot;
       }),
       executionActivityPage: authed.runs.executionActivityPage.handler(

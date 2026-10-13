@@ -479,12 +479,10 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
     });
     expect(window.map((item) => item.runId)).not.toContain(run.id);
     const after = await loadExecutionSnapshot(prisma, { threadId, spaceId: id, runId: run.id });
-    expect(after!.result).toBeUndefined();
-    expect(after!.plan).toBeUndefined();
-    expect(after!.interventions).toEqual([]);
-    expect(after!.summary.incompleteSections).toEqual(
-      expect.arrayContaining(["result", "activity"]),
-    );
+    expect(after).toBeNull();
+    await expect(
+      loadRunActivityPage(prisma, { threadId, spaceId: id, runId: run.id }),
+    ).rejects.toMatchObject({ reason: "stale_cursor" });
   });
 
   it("moves rev on every visible change and never on an unrelated Run change", async () => {
@@ -625,7 +623,7 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
       loadExecutionSnapshot(prisma, { threadId, spaceId: id, runId: terminal.id }),
     ]);
     expect(clearOutcome.cancelledRunIds).toBeDefined();
-    expect(snap).not.toBeNull();
+    expect(snap === null || snap.summary.runId === terminal.id).toBe(true);
   });
 
   async function seedActivity(runId: string, count: number) {
@@ -833,10 +831,7 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
     });
     expect(afterDelete.map((item) => item.runId)).not.toContain(run.id);
     const detail = await loadExecutionSnapshot(prisma, { threadId, spaceId: id, runId: run.id });
-    expect(detail!.result).toBeUndefined();
-    expect(detail!.summary.incompleteSections).toEqual(
-      expect.arrayContaining(["result", "activity"]),
-    );
+    expect(detail).toBeNull();
 
     // A Run that terminates in the NEW generation stays in the window even
     // after its own artifact detach event.

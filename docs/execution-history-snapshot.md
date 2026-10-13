@@ -99,9 +99,12 @@ rows) and drops out of the window, while audit rows (Run/Attempt/Intervention)
 stay untouched. The `thread.artifact` exclusion matters: deleting a stale
 Run's artifact later is legal thread maintenance and lands a fresh event
 naming that Run, which must not drag it back into the cleared generation —
-the same lifecycle ceiling also drives the detail read's staleness marking.
+the same lifecycle ceiling also drives the detail read's stale-generation
+rejection.
 `rev` still counts every event, so artifact membership changes keep moving
-the version of any Run that is visible. No time comparison is used to guess a
+the version of any Run that is visible. The single-Run snapshot rejects a
+stale terminal Run, and Activity pagination rejects it as a stale cursor.
+No time comparison is used to guess a
 generation, and no seq-boundary arithmetic is needed (presence, not
 `seq > generation`, keeps the seq-0 boundary exact).
 
@@ -195,6 +198,9 @@ secret is absent from snapshots, events, results, the DOM, and web storage.
 - `rev` is a composed counter (event-seq ceiling + visible-transition
   counter), not a content hash: events that do not change the projection
   still advance it (harmless for expansion invalidation).
+- Background-task status is part of Activity. Cancellation writers therefore
+  increment the parent Run's visible-transition counter in the same locked
+  transaction when no product Event represents that status change.
 - Steered user messages are attributed to the steered Run, so a steering
   message advances that Run's `rev` even though the ExecutionSnapshot does not
   list steering (steering is visible in the Run's live transcript position).

@@ -209,7 +209,9 @@ export function pickExecutionResult(input: {
  * - `rowVersion` — the `runs.snapshotRev` counter a BEFORE UPDATE trigger
  *   increments when a snapshot-visible Run column changes without an event
  *   (claim → leased, promote → running/startedAt, fence reconciliation,
- *   computer requeue). Lease renewals and other invisible writes never bump.
+ *   computer requeue). Background-task projection writers also increment it
+ *   explicitly when their visible status changes without a Run event. Lease
+ *   renewals and other invisible writes never bump.
  *
  * The sum is monotonic within a Thread generation (neither component ever
  * decreases there), deterministic for a committed state, isolated per Run,

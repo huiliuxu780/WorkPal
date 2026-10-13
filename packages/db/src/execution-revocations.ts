@@ -74,7 +74,21 @@ export type LiveBackgroundTask = {
   threadId: string;
 };
 
-type BackgroundTaskStore = Partial<Pick<Prisma.TransactionClient, "backgroundAgentTask">>;
+type BackgroundTaskStore = Partial<Pick<Prisma.TransactionClient, "backgroundAgentTask" | "run">>;
+
+/** A background projection changes the detail Activity even without a Run event. */
+export async function bumpBackgroundProjectionRev(
+  tx: Partial<Pick<Prisma.TransactionClient, "run">>,
+  runIds: readonly string[],
+): Promise<void> {
+  if (!tx.run) return;
+  for (const runId of [...new Set(runIds)].sort()) {
+    await tx.run.updateMany({
+      where: { id: runId },
+      data: { snapshotRev: { increment: 1 } },
+    });
+  }
+}
 
 /**
  * Native background work can still be running after its parent Run is completed.
@@ -99,13 +113,27 @@ export async function markLiveBackgroundTasksCancelling(
 ): Promise<LiveBackgroundTask[]> {
   const tasks = await findLiveBackgroundTasks(tx, where);
   if (!tx.backgroundAgentTask || tasks.length === 0) return [];
-  await tx.backgroundAgentTask.updateMany({
+  const changing = await tx.backgroundAgentTask.findMany({
+    where: { taskId: { in: tasks.map((task) => task.taskId) }, status: "running" },
+    select: { parentRunId: true },
+  });
+  // Callers hold the affected Thread locks. Lock/bump Runs before mutating
+  // task rows so lifecycle work consistently orders Thread -> Run -> task.
+  if (changing.length > 0) {
+    await bumpBackgroundProjectionRev(
+      tx,
+      changing.map((task) => task.parentRunId),
+    );
+  }
+  const updated = await tx.backgroundAgentTask.updateMany({
     where: {
       taskId: { in: tasks.map((task) => task.taskId) },
-      status: { in: [...LIVE_BACKGROUND_STATUSES] },
+      status: "running",
     },
     data: { status: "cancelling" },
   });
+  if (updated.count !== changing.length)
+    throw new Error("background task status changed concurrently");
   return tasks;
 }
 

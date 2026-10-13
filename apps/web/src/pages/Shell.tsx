@@ -5112,10 +5112,10 @@ const Transcript = memo(function Transcript({
                   currentlyOpen: isOpen,
                 }),
               );
-              // Opening a summary shell reads the authoritative detail for the
-              // current rev; the thread-level arrays are windowed and cannot
-              // answer for one Run's full timeline. A moved rev re-fetches.
-              if (!isOpen && (!detail || detail.summary.rev !== rev)) {
+              // The thread summary need not move when only Activity changes.
+              // Reopening must read the authoritative detail even when the
+              // cached detail supplied the current displayed rev.
+              if (!isOpen) {
                 loadExecutionDetail(execution.runId);
               }
             },

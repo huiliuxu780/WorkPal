@@ -1,5 +1,5 @@
 import { runJobKey } from "@rakazo/adapter-kit";
-import type { PrismaClient } from "@rakazo/db";
+import { bumpBackgroundProjectionRev, type PrismaClient } from "@rakazo/db";
 
 export type BackgroundCancelIdentity = {
   userId: string;
@@ -38,11 +38,20 @@ export async function revokeCancellingBackgroundTasks(
         threadId: task.threadId,
         runId: task.parentRunId,
       });
-      const updated = await prisma.backgroundAgentTask.updateMany({
-        where: { taskId: task.taskId, status: "cancelling" },
-        data: { status: "cancelled", finishedAt: new Date() },
+      const changed = await prisma.$transaction(async (tx) => {
+        // Lifecycle writers take the Thread lock before changing this
+        // projection. Keep the same order for the worker's completion write.
+        await tx.$queryRaw`SELECT "id" FROM "threads" WHERE "id" = ${task.threadId} FOR UPDATE`;
+        await tx.$queryRaw`SELECT "id" FROM "runs" WHERE "id" = ${task.parentRunId} FOR UPDATE`;
+        const updated = await tx.backgroundAgentTask.updateMany({
+          where: { taskId: task.taskId, status: "cancelling" },
+          data: { status: "cancelled", finishedAt: new Date() },
+        });
+        if (updated.count !== 1) return false;
+        await bumpBackgroundProjectionRev(tx, [task.parentRunId]);
+        return true;
       });
-      if (updated.count === 1) revoked.push(task.taskId);
+      if (changed) revoked.push(task.taskId);
     } catch {
       pending.push(task.taskId);
     }
