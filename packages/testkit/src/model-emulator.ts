@@ -27,7 +27,13 @@ export type ModelEmulatorResponse =
     }
   | { type: "error"; status: number; message: string }
   | { type: "disconnect"; text?: string }
-  | { type: "hold"; text?: string; onOpen?: () => void; onClose?: () => void };
+  | {
+      type: "hold";
+      text?: string;
+      /** Receives a handle that ends the held stream, releasing the runtime session. */
+      onOpen?: (release: () => void) => void;
+      onClose?: () => void;
+    };
 
 export interface ModelEmulatorStep {
   /** Assertions run before the response; failures also make assertComplete fail. */
@@ -112,7 +118,12 @@ export async function startModelEmulator(options: {
         if (reply.text) emit({ content: reply.text });
         if (reply.type === "hold") {
           response.once("close", () => reply.onClose?.());
-          reply.onOpen?.();
+          reply.onOpen?.(() => {
+            if (!response.writableEnded) {
+              emit({}, "stop");
+              response.end("data: [DONE]\n\n");
+            }
+          });
           return;
         }
         if (reply.type === "disconnect") {

@@ -79,4 +79,38 @@ describe("background result summary input", () => {
     expect(prompt).toContain("Scheduled run: budget_exceeded:duration_sec");
     expect(prompt.slice(prompt.indexOf("Failed or cancelled:"))).toContain("budget_exceeded:duration_sec");
   });
+
+  it("keeps an oversized window bounded and reports hidden items honestly", () => {
+    const records = Array.from({ length: 405 }, (_, index) => ({
+      id: `record-${index}`,
+      runId: `run-${index}`,
+      kind: "run_result" as const,
+      backgroundTaskId: null,
+      createdAt: new Date(Date.UTC(2026, 9, 12, 0, 0, index)),
+    }));
+    const sourceRuns = new Map(
+      records.map((record, index) => [
+        record.runId!,
+        {
+          // 205 completions then 200 failures; the oldest 200 are listed.
+          status: index < 205 ? "completed" : "failed",
+          error: index === 3 ? `detail-${index}-${"x".repeat(500)}` : `detail-${index}`,
+        },
+      ]),
+    );
+    const prompt = buildDeliveryPrompt(records, new Map(), sourceRuns);
+    // The prompt never grows with the window: 200 items are listed individually.
+    expect(prompt.match(/^- Item /gm)).toHaveLength(200);
+    expect(prompt.length).toBeLessThan(60_000);
+    // The 205 hidden items are counted exactly, split by outcome, and are
+    // never presented as absent.
+    expect(prompt).toContain("5 more completed items");
+    expect(prompt).toContain("200 more failed or cancelled items");
+    expect(prompt).toContain("not listed individually");
+    expect(prompt).toContain("detail-0");
+    expect(prompt).toContain("detail-199");
+    expect(prompt).not.toContain("detail-200");
+    // Per-item truncation stays explicitly marked.
+    expect(prompt).toContain("[truncated]");
+  });
 });
