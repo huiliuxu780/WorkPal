@@ -247,7 +247,7 @@ msgstr "{0} MB"
 #. placeholder {2}: usage.outputTokens
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "{0} model calls · {1} input tokens · {2} output tokens"
-msgstr ""
+msgstr "{0} llamadas de modelo · {1} tokens de entrada · {2} tokens de salida"
 
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -916,21 +916,21 @@ msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Cache read"
-msgstr ""
+msgstr "Caché de lectura"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Cache write"
-msgstr ""
+msgstr "Caché de escritura"
 
 #. placeholder {0}: usage.cacheReadTokens
 #. placeholder {1}: usage.cacheWriteTokens
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Cache: {0} read · {1} write — reported separately, never added to the input or output totals."
-msgstr ""
+msgstr "Caché: {0} lectura · {1} escritura — se muestra por separado, nunca se suma a los totales de entrada o salida."
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Calls"
-msgstr ""
+msgstr "Llamadas"
 
 #: src/App.tsx
 msgid "Can't reach the server."
@@ -2460,7 +2460,7 @@ msgstr "Heredar predeterminado"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Input"
-msgstr ""
+msgstr "Entrada"
 
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Inputs"
@@ -2554,11 +2554,11 @@ msgstr "Idioma"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Last 30 days"
-msgstr ""
+msgstr "Últimos 30 días"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Last 7 days"
-msgstr ""
+msgstr "Últimos 7 días"
 
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
@@ -2639,6 +2639,10 @@ msgstr "Cargando reglas…"
 #: src/pages/PluginsOverlay.tsx
 msgid "Loading tools…"
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Loading usage…"
+msgstr "Cargando uso…"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
@@ -2842,7 +2846,7 @@ msgstr "Modelo"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them."
-msgstr ""
+msgstr "Las llamadas de modelo usan tus claves de proveedor conectadas. Los tokens se muestran exactamente como los reporta cada proveedor."
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -3043,7 +3047,7 @@ msgstr "No hay un catálogo de modelos disponible."
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "No model usage in this range."
-msgstr ""
+msgstr "Sin uso de modelos en este rango."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "No providers found."
@@ -3250,7 +3254,7 @@ msgstr "Otro modelo…"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Output"
-msgstr ""
+msgstr "Salida"
 
 #. placeholder {0}: artifacts.length
 #: src/components/RunDetailsPanel.tsx
@@ -4427,8 +4431,12 @@ msgid "Usage"
 msgstr "Uso"
 
 #: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage could not be loaded for this range."
+msgstr "No se pudo cargar el uso para este rango."
+
+#: src/pages/AccountSettingsOverlay.tsx
 msgid "Usage time range"
-msgstr ""
+msgstr "Rango de tiempo de uso"
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "Use {hostLabel}"

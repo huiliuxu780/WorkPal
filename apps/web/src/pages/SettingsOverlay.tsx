@@ -34,6 +34,8 @@ export function SettingsOverlay({
   name,
   usage,
   usageRange = "all",
+  usageLoading = false,
+  usageError = false,
   onUsageRangeChange,
   initialSection = "general",
   isDeploymentOwner = false,
@@ -49,6 +51,8 @@ export function SettingsOverlay({
   name: string;
   usage?: UsageSummary | null;
   usageRange?: UsageRange;
+  usageLoading?: boolean;
+  usageError?: boolean;
   onUsageRangeChange?: (range: UsageRange) => void;
   initialSection?: SettingsSection;
   isDeploymentOwner?: boolean;
@@ -209,6 +213,8 @@ export function SettingsOverlay({
                 <UsageSettingsPanel
                   usage={usage}
                   range={usageRange}
+                  loading={usageLoading}
+                  error={usageError}
                   onRangeChange={onUsageRangeChange}
                   panelRef={usageRef}
                 />

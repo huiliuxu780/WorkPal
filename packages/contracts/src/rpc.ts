@@ -820,12 +820,25 @@ export const appContract = {
   usage: {
     list: oc.output(z.array(UsageRecordSchema)),
     /**
+     * @deprecated Compatibility endpoint for already-shipped clients: the
+     * input-free shape and the `runs` field are frozen as-is. `runs` counts
+     * UsageRecord rows (model calls), NOT distinct Runs — new consumers must
+     * use `usage.modelStats`, whose `calls` field says what it counts.
+     */
+    summary: oc.output(
+      z.object({
+        inputTokens: z.number(),
+        outputTokens: z.number(),
+        runs: z.number(),
+      }),
+    ),
+    /**
      * Per-model token statistics for the calling user inside their current
      * Space. `calls` counts persisted model-call records; cache tokens are
      * reported separately and are never summed into input/output. No price or
      * cost figure exists in this contract.
      */
-    summary: oc
+    modelStats: oc
       .input(z.object({ range: UsageRangeSchema.default("all") }))
       .output(UsageSummarySchema),
   },

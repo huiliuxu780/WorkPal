@@ -198,11 +198,15 @@ const USAGE_RANGES = ["all", "7d", "30d"] as const;
 export function UsageSettingsPanel({
   usage,
   range = "all",
+  loading = false,
+  error = false,
   onRangeChange,
   panelRef,
 }: {
   usage?: UsageSummary | null;
   range?: UsageRange;
+  loading?: boolean;
+  error?: boolean;
   onRangeChange?: (range: UsageRange) => void;
   panelRef?: RefObject<HTMLDivElement | null>;
 }) {
@@ -240,7 +244,15 @@ export function UsageSettingsPanel({
           </button>
         ))}
       </div>
-      {usage ? (
+      {loading ? (
+        <p className="mt-3 text-[13px] text-muted-foreground/80" data-testid="usage-loading">
+          <Trans>Loading usage…</Trans>
+        </p>
+      ) : error ? (
+        <p className="mt-3 text-[13px] text-muted-foreground/80" data-testid="usage-error">
+          <Trans>Usage could not be loaded for this range.</Trans>
+        </p>
+      ) : usage ? (
         <>
           <p className="mt-3 text-[14px] text-foreground/75" data-testid="usage-totals">
             <Trans>

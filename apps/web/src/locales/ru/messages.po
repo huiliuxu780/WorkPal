@@ -2640,6 +2640,10 @@ msgstr "Загрузка правил…"
 msgid "Loading tools…"
 msgstr "Загрузка инструментов…"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Loading usage…"
+msgstr "Загрузка статистики использования…"
+
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
 msgstr "Загрузка поставщиков голосовой связи…"
@@ -4425,6 +4429,10 @@ msgstr "Загрузить"
 #: src/pages/Shell.tsx
 msgid "Usage"
 msgstr "Использование"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage could not be loaded for this range."
+msgstr "Не удалось загрузить статистику использования за этот период."
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Usage time range"

@@ -2640,6 +2640,10 @@ msgstr "Chargement des règles…"
 msgid "Loading tools…"
 msgstr "Chargement des outils…"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Loading usage…"
+msgstr "Chargement de l'utilisation…"
+
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
 msgstr "Chargement des fournisseurs vocaux…"
@@ -4425,6 +4429,10 @@ msgstr "Télécharger"
 #: src/pages/Shell.tsx
 msgid "Usage"
 msgstr "Utilisation"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage could not be loaded for this range."
+msgstr "Impossible de charger l'utilisation pour cette période."
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Usage time range"

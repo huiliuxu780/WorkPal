@@ -116,6 +116,8 @@ afterEach(() => {
 async function renderPanel(props: {
   usage?: UsageSummary | null;
   range?: "all" | "7d" | "30d";
+  loading?: boolean;
+  error?: boolean;
   onRangeChange?: (range: "all" | "7d" | "30d") => void;
 }) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -174,6 +176,30 @@ it("offers all/7d/30d ranges and reports range changes upward", async () => {
       (month as HTMLButtonElement).click();
     });
     expect(onRangeChange).toHaveBeenCalledWith("30d");
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it("shows a loading indicator instead of mixing stale numbers with a new range", async () => {
+  const { container, root } = await renderPanel({ usage, range: "30d", loading: true });
+  try {
+    expect(container.querySelector('[data-testid="usage-loading"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="usage-totals"]')).toBeNull();
+    expect(container.querySelectorAll('[data-testid="usage-model-row"]')).toHaveLength(0);
+    expect(container.querySelector('[data-testid="usage-range-30d"]')?.getAttribute("aria-pressed")).toBe("true");
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it("reports a failed load instead of keeping stale numbers under the new range", async () => {
+  const { container, root } = await renderPanel({ usage: null, range: "7d", error: true });
+  try {
+    expect(container.querySelector('[data-testid="usage-error"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="usage-totals"]')).toBeNull();
   } finally {
     await act(async () => root.unmount());
     vi.unstubAllGlobals();

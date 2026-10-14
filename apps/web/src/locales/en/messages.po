@@ -2640,6 +2640,10 @@ msgstr "Loading rules…"
 msgid "Loading tools…"
 msgstr "Loading tools…"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Loading usage…"
+msgstr "Loading usage…"
+
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
 msgstr "Loading voice providers…"
@@ -4425,6 +4429,10 @@ msgstr "Upload"
 #: src/pages/Shell.tsx
 msgid "Usage"
 msgstr "Usage"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage could not be loaded for this range."
+msgstr "Usage could not be loaded for this range."
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Usage time range"
