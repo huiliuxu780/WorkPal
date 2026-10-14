@@ -1,5 +1,10 @@
 export type RunBudget = {
   maxTokens: number;
+  /**
+   * Unsupported compatibility field: kept in the policy wire shape so stored
+   * and foreign policies keep parsing, but never enforced. No price table
+   * exists or is planned; cost enforcement is not a product goal.
+   */
   maxCostUsd: number;
   maxDurationSec: number;
   maxToolCalls: number;
@@ -97,6 +102,7 @@ export function runBudgetViolations(budget: RunBudget, usage: RunBudgetUsage) {
   if (usage.tokens > budget.maxTokens) {
     exceeded.push({ reason: "tokens", limit: budget.maxTokens, observed: usage.tokens });
   }
+  // Compatibility-only branch: production usage always reports costUsd null.
   if (usage.costUsd !== null && usage.costUsd > budget.maxCostUsd) {
     exceeded.push({ reason: "cost_usd", limit: budget.maxCostUsd, observed: usage.costUsd });
   }

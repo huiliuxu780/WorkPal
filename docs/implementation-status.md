@@ -131,7 +131,23 @@ harness phase.
 
 ## Task18 Product Harness Completion
 
-Task18.1 event envelope and Run wait reasons are implemented. Task18.2 has the background-result outbox and `delivery` Run, with production Web E2E acceptance; the former 100-row window-claim cap is closed for bounded windows — one Thread window of up to `DELIVERY_WINDOW_CLAIM_MAX` (5,000) records merges into exactly one delivery Run and one message, with a bounded, honest summary prompt. Records beyond that bound are never dropped but are delivered by later batches and can add a summary message for the same window; exactly-one-message for unbounded counts would need a persisted window identity (future design). Task18.3 has wait expiry, cancellation propagation, conservative retry including lease-loss recovery, and measured token/time/tool budgets; the token→increase, tool-call→narrow and routine→delivery chains now have real Java→Web acceptance in `budget-acceptance.spec.ts`. Dollar cost lacks a trusted model price. Task18.4 has Bot-local capability rules checked at the executor's existing approval boundary, with real Web→Java deny, malformed-fail-closed and approved-replay traces in `capability-rules.spec.ts`; the production-resource classification limit is described in [capability-permission.md](./task18-product-harness-completion/capability-permission.md). Task18.5 adds TurnPolicy v2 constraint fields while upgrading v1 snapshots in memory, with a TypeScript→Java cross-language acceptance in `turnpolicy-v2-agentscope.integration.test.ts`; see [turnpolicy-evolution.md](./task18-product-harness-completion/turnpolicy-evolution.md). See also [event-contract-v2.md](./task18-product-harness-completion/event-contract-v2.md), [delivery-design.md](./task18-product-harness-completion/delivery-design.md), [reliability-progress.md](./task18-product-harness-completion/reliability-progress.md), [budget-progress.md](./task18-product-harness-completion/budget-progress.md), and the scenario-to-test map in [scenario-validation.md](./task18-product-harness-completion/scenario-validation.md). Structured Plan/Steps (Tasks 03/04), the Execution Card (Tasks 15/15.1), HISTORY-001, the unified Intervention region (PR #38) and the Task Center (PR #41) are all implemented in production; Harness v1 completion still does not imply every designed interface is complete — manual retry, trusted percentage progress and `maxCostUsd` enforcement remain open by design.
+Task18.1 event envelope and Run wait reasons are implemented. Task18.2 has the background-result outbox and `delivery` Run, with production Web E2E acceptance; the former 100-row window-claim cap is closed for bounded windows — one Thread window of up to `DELIVERY_WINDOW_CLAIM_MAX` (5,000) records merges into exactly one delivery Run and one message, with a bounded, honest summary prompt. Records beyond that bound are never dropped but are delivered by later batches and can add a summary message for the same window; exactly-one-message for unbounded counts would need a persisted window identity (future design). Task18.3 has wait expiry, cancellation propagation, conservative retry including lease-loss recovery, and measured token/time/tool budgets; the token→increase, tool-call→narrow and routine→delivery chains now have real Java→Web acceptance in `budget-acceptance.spec.ts`. Dollar cost is out of scope: `maxCostUsd` is an unsupported compatibility field, never enforced. Task18.4 has Bot-local capability rules checked at the executor's existing approval boundary, with real Web→Java deny, malformed-fail-closed and approved-replay traces in `capability-rules.spec.ts`; the production-resource classification limit is described in [capability-permission.md](./task18-product-harness-completion/capability-permission.md). Task18.5 adds TurnPolicy v2 constraint fields while upgrading v1 snapshots in memory, with a TypeScript→Java cross-language acceptance in `turnpolicy-v2-agentscope.integration.test.ts`; see [turnpolicy-evolution.md](./task18-product-harness-completion/turnpolicy-evolution.md). See also [event-contract-v2.md](./task18-product-harness-completion/event-contract-v2.md), [delivery-design.md](./task18-product-harness-completion/delivery-design.md), [reliability-progress.md](./task18-product-harness-completion/reliability-progress.md), [budget-progress.md](./task18-product-harness-completion/budget-progress.md), and the scenario-to-test map in [scenario-validation.md](./task18-product-harness-completion/scenario-validation.md). Structured Plan/Steps (Tasks 03/04), the Execution Card (Tasks 15/15.1), HISTORY-001, the unified Intervention region (PR #38) and the Task Center (PR #41) are all implemented in production; Harness v1 completion still does not imply every designed interface is complete — manual retry, trusted percentage progress and `maxCostUsd` enforcement remain open by design.
+
+## Model token usage statistics — DELIVERED
+
+`usage.summary` (input `range`: `all` / `7d` / `30d`) aggregates persisted
+`UsageRecord` rows per provider+model for the calling user inside their current
+Space — the same strict scope as the raw `usage.list`. Each aggregate reports
+`calls` (one row per measured model call; explicitly **not** a distinct Run
+count, replacing the old misnamed `runs` field), input and output tokens, and
+provider-reported cache read/write tokens in separate fields that are never
+summed into the input/output totals. The settings Usage panel offers the three
+ranges, the totals, the cache line and a per-model table; no price, cost or
+spend figure exists in the contract or the UI, and `maxCostUsd` remains only as
+an unsupported compatibility field. Aggregation lives in
+`packages/db/src/usage-stats.ts` (`summarizeModelUsage`), with PostgreSQL-gated
+tests in `usage-stats.test.ts` and panel tests in
+`apps/web/src/pages/UsageSettingsPanel.test.tsx`.
 
 ## HISTORY-001 — ExecutionSnapshot read model: DELIVERED (this slice)
 
@@ -160,5 +176,6 @@ Unknown or truncated data is omitted rather than displayed as `0`, `--`, or a
 guessed percentage. Root background identity still has no trusted production
 field, so the background presentation exists in the mapping but is not
 asserted by the transcript; the Task Center is implemented (PR #41) and reuses
-the same card as its second entry to existing root Runs. `maxCostUsd`
-enforcement still awaits a trusted model price source. See [execution-card.md](./execution-card.md).
+the same card as its second entry to existing root Runs. `maxCostUsd` is an
+unsupported compatibility field — never enforced and not a product goal; the
+usage view reports token counts only. See [execution-card.md](./execution-card.md).

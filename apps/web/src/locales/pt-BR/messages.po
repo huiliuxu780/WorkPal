@@ -242,6 +242,13 @@ msgstr "{0} KB"
 msgid "{0} MB"
 msgstr "{0} MB"
 
+#. placeholder {0}: usage.calls
+#. placeholder {1}: usage.inputTokens
+#. placeholder {2}: usage.outputTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "{0} model calls · {1} input tokens · {2} output tokens"
+msgstr ""
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} rollup hours"
@@ -251,12 +258,6 @@ msgstr ""
 #: src/components/ai/TaskCenterView.tsx
 msgid "{0} running in background"
 msgstr ""
-
-#. placeholder {0}: usage.runs
-#. placeholder {1}: usage.inputTokens + usage.outputTokens
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "{0} runs · {1} tokens"
-msgstr "{0} execuções · {1} tokens"
 
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -581,6 +582,7 @@ msgstr "Agentes:"
 msgid "All bots"
 msgstr ""
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/Artifacts.tsx
 msgid "All time"
 msgstr ""
@@ -910,6 +912,24 @@ msgstr ""
 
 #: src/components/computer/ComputerWorkspace.tsx
 msgid "Browser"
+msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache read"
+msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache write"
+msgstr ""
+
+#. placeholder {0}: usage.cacheReadTokens
+#. placeholder {1}: usage.cacheWriteTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache: {0} read · {1} write — reported separately, never added to the input or output totals."
+msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Calls"
 msgstr ""
 
 #: src/App.tsx
@@ -2438,6 +2458,10 @@ msgstr ""
 msgid "Inherit default"
 msgstr "Herdar (padrão)"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Input"
+msgstr ""
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Inputs"
 msgstr "Entradas"
@@ -2527,6 +2551,14 @@ msgstr "Conhecimento"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Language"
 msgstr "Idioma"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 30 days"
+msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 7 days"
+msgstr ""
 
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
@@ -2801,11 +2833,16 @@ msgstr "minuto"
 msgid "minutes"
 msgstr "minutos"
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Model"
 msgstr "Modelo"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them."
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -2815,10 +2852,6 @@ msgstr "ID do modelo"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model options"
 msgstr "Opções do modelo"
-
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Model spend uses your provider keys."
-msgstr "O modelo de gasto usa suas chaves de provedor."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model updated."
@@ -3008,6 +3041,10 @@ msgstr "Ainda sem mensagens com {peerBotName}."
 msgid "No model catalog is available."
 msgstr "Nenhum catálogo de modelos está disponível."
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "No model usage in this range."
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "No providers found."
 msgstr "Nenhum provedor encontrado"
@@ -3150,6 +3187,7 @@ msgstr ""
 msgid "Open in full window"
 msgstr "Abrir em janela cheia"
 
+#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "Abrir a navegação"
@@ -3209,6 +3247,10 @@ msgstr "Chave da API da organização"
 #: src/pages/Onboarding.tsx
 msgid "Other model…"
 msgstr "Outro modelo..."
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Output"
+msgstr ""
 
 #. placeholder {0}: artifacts.length
 #: src/components/RunDetailsPanel.tsx
@@ -4383,6 +4425,10 @@ msgstr "Enviar"
 #: src/pages/Shell.tsx
 msgid "Usage"
 msgstr "Uso"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage time range"
+msgstr ""
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "Use {hostLabel}"

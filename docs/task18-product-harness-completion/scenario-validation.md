@@ -106,7 +106,7 @@ the layer it claims to prove.
 These remain deliberately unimplemented and therefore untested; nothing above
 claims them:
 
-- `maxCostUsd` enforcement — no trusted model price source; `costUsd` stays `null`.
+- `maxCostUsd` — unsupported compatibility field: parsed and validated on the wire, never enforced, `costUsd` stays `null`, explicitly not a future product goal. Model usage is presented as token statistics only.
 - Manual Retry — no production contract or UI entry.
 - Trusted percentage progress — no trusted source; never rendered.
 - Capability-rule editor UI — rules are a persisted Bot policy column only.

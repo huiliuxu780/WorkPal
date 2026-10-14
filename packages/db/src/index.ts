@@ -29,5 +29,6 @@ export * from "./scope.js";
 export * from "./spaces.js";
 export * from "./task-center.js";
 export * from "./transaction-retry.js";
+export * from "./usage-stats.js";
 export * from "./voice-credentials.js";
 export * from "./wait-timeouts.js";

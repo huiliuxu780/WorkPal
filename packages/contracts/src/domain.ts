@@ -761,6 +761,38 @@ export const UsageRecordSchema = z.object({
   createdAt: z.string(),
 });
 
+/** Window for usage aggregation. `all` ignores record timestamps. */
+export const UsageRangeSchema = z.enum(["all", "7d", "30d"]);
+export type UsageRange = z.infer<typeof UsageRangeSchema>;
+
+/**
+ * One provider+model aggregate. `calls` counts persisted model-call records
+ * (UsageRecord rows); it is deliberately not a distinct Run count and must not
+ * be labelled as runs. Cache tokens are provider-reported side channels with
+ * differing vendor semantics, so they stay separate from input/output totals
+ * and are never summed into them.
+ */
+export const ModelUsageStatsSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  calls: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative(),
+  cacheWriteTokens: z.number().int().nonnegative(),
+});
+export type ModelUsageStats = z.infer<typeof ModelUsageStatsSchema>;
+
+export const UsageSummarySchema = z.object({
+  calls: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative(),
+  cacheWriteTokens: z.number().int().nonnegative(),
+  byModel: z.array(ModelUsageStatsSchema),
+});
+export type UsageSummary = z.infer<typeof UsageSummarySchema>;
+
 export const COMPUTER_UPDATE_STAGES = [
   "preparing",
   "saving",

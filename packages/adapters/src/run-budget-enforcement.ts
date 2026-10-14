@@ -55,7 +55,8 @@ export async function enforceRunBudgets(
     }, 0);
     const violation = runBudgetViolations(budget, {
       tokens: (usage._sum.inputTokens ?? 0) + (usage._sum.outputTokens ?? 0),
-      // The UsageRecord has token counts but no trusted model-specific price.
+      // maxCostUsd is an unsupported compatibility field: UsageRecord carries
+      // token counts only, and tokens are never converted into a dollar figure.
       costUsd: null,
       durationSec,
       toolCalls,

@@ -95,7 +95,7 @@ re-approval are all undecided). Failed cards offer `View execution` only.
 - Percentage progress and `processed / total` counters: the prototype's
   background-task batch counters have no production contract; the card never
   renders a percentage, a progress track, or a guessed remainder.
-- Model pricing / `maxCostUsd`: unchanged, awaiting a trusted price source.
+- Model pricing / `maxCostUsd`: unsupported compatibility field — parsed and validated on the wire but never enforced, and not a product goal. Usage surfaces show token counts only.
 - Task Center: shipped as the card's second entry (see below); the card
   needed no visual change for it.
 

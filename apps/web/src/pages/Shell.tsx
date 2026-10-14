@@ -24,6 +24,8 @@ import type {
   TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
+  UsageRange,
+  UsageSummary,
   VoiceStatus,
 } from "@rakazo/contracts";
 import {
@@ -760,11 +762,15 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
       cancelled = true;
     };
   }, [session.data?.user]);
-  const [usage, setUsage] = useState<{
-    inputTokens: number;
-    outputTokens: number;
-    runs: number;
-  } | null>(null);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [usageRange, setUsageRange] = useState<UsageRange>("all");
+  const loadUsage = (range: UsageRange) => {
+    setUsageRange(range);
+    return rpc.usage
+      .summary({ range })
+      .then(setUsage)
+      .catch(() => undefined);
+  };
   const autoBooted = useRef<string | null>(null);
   const routineSavePending = useRef(false);
   const webhookSecretProvisionRef = useRef(new Map<string, Promise<string>>());
@@ -3489,10 +3495,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                 aria-label={t`Usage`}
                 onClick={() => {
                   setMenuOpen(false);
-                  void rpc.usage
-                    .summary()
-                    .then(setUsage)
-                    .catch(() => undefined);
+                  void loadUsage(usageRange);
                   openSettings("usage");
                 }}
               >
@@ -3820,10 +3823,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                   return;
                 }
                 if (action === "settings-usage") {
-                  void rpc.usage
-                    .summary()
-                    .then(setUsage)
-                    .catch(() => undefined);
+                  void loadUsage(usageRange);
                   openSettings("usage");
                 }
               }}
@@ -4606,6 +4606,8 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
             name={userName}
             email={session.data?.user.email}
             usage={usage}
+            usageRange={usageRange}
+            onUsageRangeChange={loadUsage}
             initialSection={settingsSection}
             isDeploymentOwner={bootstrapMe?.isDeploymentOwner === true}
             sandboxProvider={bootstrapMe?.sandboxProvider}

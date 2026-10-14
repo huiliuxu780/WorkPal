@@ -75,6 +75,8 @@ import {
   UpdateExternalConversationPolicyInput,
   UpdateGroupInput,
   UsageRecordSchema,
+  UsageRangeSchema,
+  UsageSummarySchema,
   VoiceCatalogEntrySchema,
   VoiceCredentialSchema,
   VoiceInfoSchema,
@@ -817,13 +819,15 @@ export const appContract = {
   },
   usage: {
     list: oc.output(z.array(UsageRecordSchema)),
-    summary: oc.output(
-      z.object({
-        inputTokens: z.number(),
-        outputTokens: z.number(),
-        runs: z.number(),
-      }),
-    ),
+    /**
+     * Per-model token statistics for the calling user inside their current
+     * Space. `calls` counts persisted model-call records; cache tokens are
+     * reported separately and are never summed into input/output. No price or
+     * cost figure exists in this contract.
+     */
+    summary: oc
+      .input(z.object({ range: UsageRangeSchema.default("all") }))
+      .output(UsageSummarySchema),
   },
   export: {
     bot: oc.input(botId).output(ExportManifestSchema),

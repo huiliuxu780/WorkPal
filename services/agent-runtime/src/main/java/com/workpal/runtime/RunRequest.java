@@ -83,6 +83,7 @@ public record RunRequest(
         @JsonIgnoreProperties(ignoreUnknown = true)
         public record Ownership(String mode, String ownerBotId) {}
 
+        /** maxCostUsd is an unsupported compatibility field: validated, never enforced. */
         @JsonIgnoreProperties(ignoreUnknown = true)
         public record Budget(Integer maxTokens, Double maxCostUsd, Integer maxDurationSec,
                 Integer maxToolCalls, Integer maxChildAgents, Integer maxDepth) {}
