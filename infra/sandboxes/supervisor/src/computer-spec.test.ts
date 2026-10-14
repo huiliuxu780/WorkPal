@@ -1430,8 +1430,11 @@ describe("graphical computer spec", () => {
     ).toEqual({ url: "http://127.0.0.1:55101/v1/desktop", token: "secret" });
   });
 
-  it("restricts computer control argv to supervisor shapes", () => {
+  it(
+    "restricts computer control argv to supervisor shapes",
+    () => {
     const controlPath = path.resolve(import.meta.dirname, "../../computer/control.py");
+    // Finite outer budget: a hung python child can never outlive the test.
     const result = spawnSync(
       "python3",
       [
@@ -1511,6 +1514,10 @@ describe("graphical computer spec", () => {
           "gated = tempfile.mkdtemp()",
           "gate = os.path.join(gated, 'gate')",
           "os.mkfifo(gate)",
+          // Pre-open the fifo read-write and non-blocking: the writer then
+          // never waits for a reader, so a gated_run that dies before Popen
+          // cannot hang the test on open()/write.
+          "gate_fd = os.open(gate, os.O_RDWR | os.O_NONBLOCK)",
           "launcher = os.path.join(gated, 'rakazo-browser')",
           "open(launcher, 'w').write('#!/bin/sh\\nread -r < %s\\nexit 1\\n' % gate)",
           "os.chmod(launcher, 0o755)",
@@ -1526,21 +1533,30 @@ describe("graphical computer spec", () => {
           "    outcome.append(str(error))",
           "thread = threading.Thread(target=gated_run)",
           "thread.start()",
-          "with open(gate, 'w') as handle:",
-          "  handle.write('go\\n')",
-          "thread.join(70)",
-          "module.BROWSER_OPEN_POLL_SEC = poll",
+          "try:",
+          "  os.write(gate_fd, b'go\\n')",
+          "  thread.join(70)",
+          "finally:",
+          "  module.BROWSER_OPEN_POLL_SEC = poll",
+          "  os.close(gate_fd)",
+          "  shutil.rmtree(gated, ignore_errors=True)",
           "assert not thread.is_alive(), 'gated launcher did not settle'",
           "assert outcome == ['computer action failed'], outcome",
-          "shutil.rmtree(gated, ignore_errors=True)",
           "print('ok')",
         ].join("\n"),
       ],
-      { encoding: "utf8" },
+      { encoding: "utf8", timeout: 90_000 },
     );
+    if (result.error) {
+      throw new Error(
+        `computer control argv python test timed out or could not run: ${result.error.message}`,
+      );
+    }
     expect(result.status, result.stderr || result.stdout).toBe(0);
     expect(result.stdout.trim()).toBe("ok");
-  });
+    },
+    120_000,
+  );
 
   it("turns takeover input into xdotool", () => {
     expect(xdotoolCommand({ kind: "key", key: "Enter" })).toEqual([
