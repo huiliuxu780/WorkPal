@@ -267,7 +267,8 @@ export function UsageSettingsPanel({
             </Trans>
           </p>
           {usage.byModel.length > 0 ? (
-            <table className="mt-3 w-full text-left text-[12.5px]" data-testid="usage-model-table">
+            <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[430px] text-left text-[12.5px]" data-testid="usage-model-table">
               <thead>
                 <tr className="text-muted-foreground/80">
                   <th className="py-1 pr-2 font-medium">
@@ -309,6 +310,7 @@ export function UsageSettingsPanel({
                 ))}
               </tbody>
             </table>
+            </div>
           ) : (
             <p className="mt-3 text-[12.5px] text-muted-foreground/80">
               <Trans>No model usage in this range.</Trans>
