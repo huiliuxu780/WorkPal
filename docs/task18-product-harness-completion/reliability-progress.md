@@ -106,8 +106,7 @@ The retry policy is unchanged: the same Run gets a new Attempt, at most two auto
 ### Still open
 
 - USD model prices and a real `maxCostUsd` charge. Unknown prices stay `costUsd=null`.
-- Approval and input request ids, and a unified Intervention model.
-- Execution Card, Task Center, and HISTORY-001.
+- Closed since this pass: the unified Intervention model (approval and input as one intervention, PR #38), HISTORY-001 `ExecutionSnapshot` (PR #39), the Execution Card (PR #40) and the Task Center (PR #41) are implemented in production; they are no longer open items.
 - Computer stop does not cancel Runs.
 - Teaching stop does not cancel Runs.
 - A group update that does not remove a member does not cancel the members who remain.
