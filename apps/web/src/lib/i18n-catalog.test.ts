@@ -252,7 +252,7 @@ describe("lingui catalogs", () => {
     expect(catalog).toContain('msgid "Language"\nmsgstr "Язык"');
     expect(catalog).toContain('msgid "Cancel"\nmsgstr "Отмена"');
     expect(catalog).toContain(
-      'msgid "{0} runs · {1} tokens"\nmsgstr "Запусков: {0} · токенов: {1}"',
+      'msgid "{0} model calls · {1} input tokens · {2} output tokens"\nmsgstr "Вызовов модели: {0} · входных токенов: {1} · выходных токенов: {2}"',
     );
     expect(catalog).toContain(
       'msgstr "{0, plural, one {# модель} few {# модели} many {# моделей} other {# модели}}"',
@@ -269,7 +269,7 @@ describe("lingui catalogs", () => {
     expect(catalog).toContain('msgid "Language"\nmsgstr "Langue"');
     expect(catalog).toContain('msgid "Cancel"\nmsgstr "Annuler"');
     expect(catalog).toContain(
-      'msgid "{0} runs · {1} tokens"\nmsgstr "{0} exécutions · {1} jetons"',
+      'msgid "{0} model calls · {1} input tokens · {2} output tokens"\nmsgstr "{0} appels de modèle · {1} jetons d\'entrée · {2} jetons de sortie"',
     );
     expect(catalog).toContain('msgstr "{0, plural, one {# modèle} other {# modèles}}"');
     expect(catalog).toContain(

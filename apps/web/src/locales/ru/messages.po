@@ -247,7 +247,7 @@ msgstr "{0} МБ"
 #. placeholder {2}: usage.outputTokens
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "{0} model calls · {1} input tokens · {2} output tokens"
-msgstr ""
+msgstr "Вызовов модели: {0} · входных токенов: {1} · выходных токенов: {2}"
 
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -916,21 +916,21 @@ msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Cache read"
-msgstr ""
+msgstr "Кеш: чтение"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Cache write"
-msgstr ""
+msgstr "Кеш: запись"
 
 #. placeholder {0}: usage.cacheReadTokens
 #. placeholder {1}: usage.cacheWriteTokens
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Cache: {0} read · {1} write — reported separately, never added to the input or output totals."
-msgstr ""
+msgstr "Кеш: {0} чтение · {1} запись — показывается отдельно и никогда не добавляется к итогам входа или выхода."
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Calls"
-msgstr ""
+msgstr "Вызовы"
 
 #: src/App.tsx
 msgid "Can't reach the server."
@@ -2460,7 +2460,7 @@ msgstr "Наследовать значение по умолчанию"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Input"
-msgstr ""
+msgstr "Вход"
 
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Inputs"
@@ -2554,11 +2554,11 @@ msgstr "Язык"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Last 30 days"
-msgstr ""
+msgstr "За 30 дней"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Last 7 days"
-msgstr ""
+msgstr "За 7 дней"
 
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
@@ -2842,7 +2842,7 @@ msgstr "Модель"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them."
-msgstr ""
+msgstr "Вызовы модели используют ваши подключённые ключи поставщиков. Токены показываются ровно так, как их сообщает каждый поставщик."
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -3043,7 +3043,7 @@ msgstr "Каталога моделей нет."
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "No model usage in this range."
-msgstr ""
+msgstr "Нет использования моделей за этот период."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "No providers found."
@@ -3250,7 +3250,7 @@ msgstr "Другая модель…"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Output"
-msgstr ""
+msgstr "Выход"
 
 #. placeholder {0}: artifacts.length
 #: src/components/RunDetailsPanel.tsx
@@ -4428,7 +4428,7 @@ msgstr "Использование"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Usage time range"
-msgstr ""
+msgstr "Период статистики использования"
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "Use {hostLabel}"
