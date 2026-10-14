@@ -9,6 +9,7 @@ import {
   type RunStatus,
   type WaitKind,
 } from "@rakazo/contracts";
+import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { botMessageContext } from "./bot-messages.js";
 import { runFailureError } from "./events.js";
 import { parseRunOrchestration } from "./product-harness/orchestration.js";
@@ -237,24 +238,6 @@ export type ExecutionActivityCursor = {
   /** Exclusive upper bound for the NEXT page. */
   nx: number;
 };
-
-function base64urlEncode(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function base64urlDecode(value: string): string | null {
-  try {
-    const padded = value.replace(/-/g, "+").replace(/_/g, "/");
-    const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
-}
 
 export function encodeExecutionActivityCursor(cursor: ExecutionActivityCursor): string {
   return base64urlEncode(JSON.stringify(cursor));

@@ -108,6 +108,11 @@ No time comparison is used to guess a
 generation, and no seq-boundary arithmetic is needed (presence, not
 `seq > generation`, keeps the seq-0 boundary exact).
 
+The same batched projection also serves the cross-conversation Task Center
+window (`runs.taskCenter`, see `docs/task-center.md`): one grouped pass per
+fact source across several Threads, with the identical lifecycle-event
+generation fence applied inside the terminal selection itself.
+
 `ThreadMessagePage.executions` carries the summaries of the Runs the page's
 messages belong to. Loading an older page therefore restores that page's
 executions in the same payload — independent of the recent-Run window. Web

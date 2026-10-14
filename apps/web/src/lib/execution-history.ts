@@ -323,6 +323,34 @@ export function expansionLogShape(entries: ExpansionMap): ExpansionEntry[] {
   return Object.values(entries);
 }
 
+/**
+ * Force one Run open (Task Center "return to conversation" navigation): every
+ * other stored open entry of the SAME Thread closes, so the at-most-one-open
+ * contract holds unconditionally. Other Threads' decisions are never touched.
+ */
+export function forceOpenExpansion(input: {
+  entries: ExpansionMap;
+  threadId: string;
+  runId: string;
+  rev: number;
+}): ExpansionMap {
+  const targetKey = expansionId(input.threadId, input.runId);
+  const next: ExpansionMap = {};
+  for (const [key, entry] of Object.entries(input.entries)) {
+    next[key] =
+      key !== targetKey && entry.open && entry.threadId === input.threadId
+        ? { ...entry, open: false }
+        : entry;
+  }
+  next[targetKey] = {
+    threadId: input.threadId,
+    runId: input.runId,
+    rev: input.rev,
+    open: true,
+  };
+  return writeExpansions(next);
+}
+
 /* ------------------------------------------------------------------ */
 /* Single-open coordination (server-driven expansion)                  */
 /* ------------------------------------------------------------------ */

@@ -247,6 +247,11 @@ msgstr "{0} MB"
 msgid "{0} rollup hours"
 msgstr ""
 
+#. placeholder {0}: list.activeCount
+#: src/components/ai/TaskCenterView.tsx
+msgid "{0} running in background"
+msgstr "{0} 个正在后台"
+
 #. placeholder {0}: usage.runs
 #. placeholder {1}: usage.inputTokens + usage.outputTokens
 #: src/pages/AccountSettingsOverlay.tsx
@@ -826,9 +831,18 @@ msgstr "头像工作室"
 msgid "Back"
 msgstr "返回"
 
+#: src/lib/task-center.ts
+msgid "Back to conversation"
+msgstr "回到对话"
+
 #: src/pages/Auth.tsx
 msgid "Back to sign in"
 msgstr "返回登录"
+
+#: src/components/ai/TaskCenterNavEntry.tsx
+#: src/components/ai/TaskCenterView.tsx
+msgid "Background tasks"
+msgstr "后台任务"
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Base URL"
@@ -1679,9 +1693,17 @@ msgstr "无法更新默认记忆范围"
 msgid "Could not upload file"
 msgstr ""
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "Couldn't load background tasks."
+msgstr "无法加载后台任务。"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
 msgstr "无法加载消息设置"
+
+#: src/components/ai/TaskCenterView.tsx
+msgid "Couldn't open this task. Try again."
+msgstr "无法打开这个任务。请重试。"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't update messaging settings"
@@ -2306,6 +2328,10 @@ msgstr ""
 msgid "Groups"
 msgstr ""
 
+#: src/lib/task-center.ts
+msgid "Handle now"
+msgstr "去处理"
+
 #: src/components/call/CallCard.tsx
 msgid "Hang up"
 msgstr "挂断"
@@ -2550,6 +2576,10 @@ msgstr "加载更早的消息"
 msgid "Load more"
 msgstr ""
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "Load more tasks"
+msgstr "加载更多任务"
+
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
 msgstr "正在加载动态…"
@@ -2583,6 +2613,7 @@ msgid "Loading voice providers…"
 msgstr "正在加载语音提供方…"
 
 #: src/App.tsx
+#: src/components/ai/TaskCenterView.tsx
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
@@ -2998,6 +3029,10 @@ msgstr "还没有运行记录"
 msgid "No skills yet"
 msgstr "暂无技能"
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "No tasks running in background"
+msgstr "没有正在后台的任务"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No team conversations yet."
 msgstr ""
@@ -3029,6 +3064,10 @@ msgstr "暂不"
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr ""
+
+#: src/components/ai/TaskCenterView.tsx
+msgid "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
+msgstr "后台没有正在跑的任务。离开聊天时，需要继续的工作会在这里继续运行。"
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Nothing is still running"
@@ -3568,6 +3607,7 @@ msgid "Result preview truncated"
 msgstr "结果预览已截断"
 
 #: src/App.tsx
+#: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 msgid "Retry now"
 msgstr "立即重试"
@@ -4184,6 +4224,10 @@ msgstr "此服务器已连接。请先断开再重新授权。"
 msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
 msgstr "此订阅登录在 {productName} 中尚不可用。请使用部署凭据或选择其他提供方。"
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "This task is no longer available."
+msgstr "该任务已不可用。"
+
 #: src/pages/Artifacts.tsx
 msgid "This week"
 msgstr ""
@@ -4378,6 +4422,7 @@ msgid "Version"
 msgstr ""
 
 #: src/lib/execution-card.ts
+#: src/lib/task-center.ts
 msgid "View execution"
 msgstr "查看执行"
 
@@ -4386,6 +4431,7 @@ msgid "View reason"
 msgstr ""
 
 #: src/lib/execution-card.ts
+#: src/lib/task-center.ts
 msgid "View result"
 msgstr "查看结果"
 

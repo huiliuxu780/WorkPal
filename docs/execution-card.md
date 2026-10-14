@@ -87,14 +87,35 @@ re-approval are all undecided). Failed cards offer `View execution` only.
 
 - Root background identity: `deriveExecutionStatus` supports
   `confirmedRootBackground` and the card renders the background presentation
-  (no tint, faint rail), but no production caller can confirm it yet
+  (no tint, faint rail). The Task Center surface — itself the trusted
+  cross-conversation background entry — asserts the flag for its eligible
+  root Runs (see `docs/task-center.md`); chat callers still cannot confirm it
   (`execution-shell-progress.md` remaining gate). Trigger/entry were not
-  promoted to a background signal.
+  promoted to a background signal and no database field was added.
 - Percentage progress and `processed / total` counters: the prototype's
   background-task batch counters have no production contract; the card never
   renders a percentage, a progress track, or a guessed remainder.
 - Model pricing / `maxCostUsd`: unchanged, awaiting a trusted price source.
-- Task Center: not implemented; the card is built for reuse by it later.
+- Task Center: shipped as the card's second entry (see below); the card
+  needed no visual change for it.
+
+## Task Center reuse
+
+The Task Center (`/app/tasks`, `docs/task-center.md`) renders the SAME card
+stack over `runs.taskCenter` summaries: `deriveExecutionStatus` (empty
+activity — unknown detail lines are omitted, never invented),
+`buildExecutionCardModel` and the `ExecutionCard` presentation. The only
+additions are presentation-level and shared with the chat card:
+
+- `ExecutionCardAction.act` gained `navigate`, and `buildExecutionCardModel`
+  accepts an optional `actionOverride` — the Task Center's verb mapping
+  (去处理 / 查看结果 / 查看执行 / 回到对话) over the one derived display
+  status. Without an override the chat action matrix is untouched.
+- `ExecutionCard` takes an optional `onNavigate`; the compact list card
+  renders no detail body (`hasDetail=false`, no Execution Shell in the list).
+
+The status matrix, safe texts, state colors, i18n strings and reduced-motion
+behavior all remain the single shared implementation.
 
 ## Anchoring additions (presentation only)
 

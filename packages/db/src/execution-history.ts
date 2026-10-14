@@ -115,10 +115,13 @@ export async function executionEventCeilings(
   return ceilings;
 }
 
-/** MIN/MAX bot-message seq per Run in one indexed pass (anchors + result heads). */
+/**
+ * MIN/MAX bot-message seq per Run in one indexed pass (anchors + result
+ * heads). A message always lives in its Run's Thread, so the runId scope
+ * alone is exact — and keeps one pass for windows spanning several Threads.
+ */
 async function messageEndsByRun(
   db: TxLike,
-  threadId: string,
   runIds: readonly string[],
 ): Promise<Map<string, { firstSeq: number; lastSeq: number }>> {
   const ends = new Map<string, { firstSeq: number; lastSeq: number }>();
@@ -126,7 +129,7 @@ async function messageEndsByRun(
   const rows = await db.$queryRaw<Array<{ runId: string; firstSeq: number; lastSeq: number }>>`
     SELECT "runId" AS "runId", MIN("seq")::int AS "firstSeq", MAX("seq")::int AS "lastSeq"
     FROM "messages"
-    WHERE "threadId" = ${threadId} AND "role" = 'bot' AND "runId" IN (${Prisma.join(runIds)})
+    WHERE "role" = 'bot' AND "runId" IN (${Prisma.join(runIds)})
     GROUP BY "runId"
   `;
   for (const row of rows ?? []) {
@@ -140,50 +143,76 @@ function toIso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+/** A Run row as the summary builder needs it (authorization already applied). */
+export type SummaryRunRow = {
+  id: string;
+  threadId: string;
+  botId: string;
+  taskId: string;
+  status: string;
+  waitKind: string | null;
+  trigger: string;
+  error: string | null;
+  orchestration: unknown;
+  sourceMessageId: string | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  snapshotRev: number;
+};
+
+/** Latest `thread.cleared` seq per Thread in one grouped pass (absent = 0). */
+export async function currentThreadGenerations(
+  db: TxLike,
+  threadIds: readonly string[],
+): Promise<Map<string, number>> {
+  const generations = new Map<string, number>();
+  if (threadIds.length === 0) return generations;
+  const rows = await db.$queryRaw<Array<{ threadId: string; generation: number | null }>>`
+    SELECT "threadId" AS "threadId", MAX("seq")::int AS "generation"
+    FROM "events"
+    WHERE "type" = 'thread.cleared' AND "threadId" IN (${Prisma.join(threadIds)})
+    GROUP BY "threadId"
+  `;
+  for (const row of rows ?? []) {
+    if (row.threadId && row.generation !== null)
+      generations.set(row.threadId, Number(row.generation));
+  }
+  return generations;
+}
+
 /**
- * Batched summaries for a set of Runs of one Thread: one grouped pass per
- * fact source regardless of how many Runs the window holds (no fan-out).
+ * Batched summaries for already-authorized Runs of one OR several Threads:
+ * one grouped pass per fact source regardless of how many Runs the window
+ * holds (no per-Run — and no per-Thread — query fan-out). Shared by the
+ * per-Thread window (`loadExecutionSummaries`) and the cross-conversation
+ * Task Center window.
  *
  * Generation fence: active Runs and Runs with pending Interventions are
  * current by construction (clear cancels and settles them); a terminal Run is
- * current only while its event ceiling sits above the last `thread.cleared`
- * seq. Pre-clear terminal Runs drop out of the window while their audit rows
- * survive untouched.
+ * current only while a Run-lifecycle event survives (everything except the
+ * thread-maintenance `thread.artifact` rows). Pre-clear terminal Runs drop
+ * out of the window while their audit rows survive untouched.
  */
-export async function loadExecutionSummaries(
+export async function buildExecutionSummariesForRuns(
   db: TxLike,
   input: {
-    threadId: string;
     spaceId: string;
-    runIds: readonly string[];
+    runs: readonly SummaryRunRow[];
   },
 ): Promise<ExecutionSummary[]> {
-  const runIds = [...new Set(input.runIds)].sort();
-  if (runIds.length === 0) return [];
-  const [runs, generation, ceilings] = await Promise.all([
-    db.run.findMany({
-      where: { id: { in: runIds }, threadId: input.threadId, spaceId: input.spaceId },
-      select: {
-        id: true,
-        threadId: true,
-        botId: true,
-        taskId: true,
-        status: true,
-        waitKind: true,
-        trigger: true,
-        error: true,
-        orchestration: true,
-        sourceMessageId: true,
-        startedAt: true,
-        completedAt: true,
-        createdAt: true,
-        snapshotRev: true,
-      },
-    }),
-    currentThreadGeneration(db, input.threadId),
+  const byId = new Map<string, SummaryRunRow>();
+  for (const run of input.runs) byId.set(run.id, run);
+  const scoped = [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  if (scoped.length === 0) return [];
+  const runIds = scoped.map((run) => run.id);
+  const threadIds = [...new Set(scoped.map((run) => run.threadId))].sort();
+  const [generations, ceilings] = await Promise.all([
+    currentThreadGenerations(db, threadIds),
     executionEventCeilings(db, runIds),
   ]);
-  const present = runs.filter((run) => {
+  const generationOf = (run: SummaryRunRow) => generations.get(run.threadId) ?? 0;
+  const present = scoped.filter((run) => {
     if (!TERMINAL_RUN_STATUSES.has(run.status)) return true;
     // Generation fence by the Run's own lifecycle footprint, not by "any
     // event exists": a Thread Clear deletes every pre-clear event, but
@@ -200,6 +229,11 @@ export async function loadExecutionSummaries(
   const sourceIds = present
     .filter((run) => run.trigger === "bot_message" && run.sourceMessageId)
     .map((run) => run.sourceMessageId as string);
+  // Generation-filtered fact tables span Threads, so the per-Run current
+  // generation rides along in a VALUES join — still ONE grouped pass each.
+  const generationPairs = Prisma.join(
+    present.map((run) => Prisma.sql`(${run.id}::text, ${generationOf(run)}::int)`),
+  );
   const [
     tasks,
     sources,
@@ -212,22 +246,26 @@ export async function loadExecutionSummaries(
   ] = await Promise.all([
     db.task.findMany({ where: { id: { in: taskIds } }, select: { id: true, prompt: true } }),
     db.message.findMany({ where: { id: { in: sourceIds } }, select: { id: true, blocks: true } }),
-    messageEndsByRun(db, input.threadId, scopedIds),
-    db.runStep.groupBy({
-      by: ["runId"],
-      where: { runId: { in: scopedIds }, threadGeneration: generation },
-      _count: { _all: true },
-    }),
+    messageEndsByRun(db, scopedIds),
+    db.$queryRaw<Array<{ runId: string; count: number }>>`
+        SELECT s."runId" AS "runId", COUNT(*)::int AS "count"
+        FROM "run_steps" s
+        JOIN (VALUES ${generationPairs}) AS v("runId", "gen")
+          ON v."runId" = s."runId" AND v."gen" = s."threadGeneration"
+        GROUP BY s."runId"
+      `,
     db.event.groupBy({
       by: ["runId"],
       where: { runId: { in: scopedIds }, type: ACTION_COUNT_EVENT_TYPE },
       _count: { _all: true },
     }),
-    db.backgroundAgentTask.groupBy({
-      by: ["parentRunId"],
-      where: { parentRunId: { in: scopedIds }, threadGeneration: generation },
-      _count: { _all: true },
-    }),
+    db.$queryRaw<Array<{ runId: string; count: number }>>`
+        SELECT b."parentRunId" AS "runId", COUNT(*)::int AS "count"
+        FROM "background_agent_tasks" b
+        JOIN (VALUES ${generationPairs}) AS v("runId", "gen")
+          ON v."runId" = b."parentRunId" AND v."gen" = b."threadGeneration"
+        GROUP BY b."parentRunId"
+      `,
     db.artifact.groupBy({
       by: ["runId"],
       where: { runId: { in: scopedIds }, spaceId: input.spaceId },
@@ -251,9 +289,9 @@ export async function loadExecutionSummaries(
   ]);
   const promptByTask = new Map(tasks.map((task) => [task.id, task.prompt]));
   const blocksBySource = new Map(sources.map((source) => [source.id, source.blocks]));
-  const stepsByRun = new Map(stepCounts.map((row) => [row.runId, row._count._all]));
+  const stepsByRun = new Map(stepCounts.map((row) => [row.runId, Number(row.count)]));
   const actionsByRun = new Map(actionCounts.map((row) => [row.runId, row._count._all]));
-  const agentsByRun = new Map(agentCounts.map((row) => [row.parentRunId, row._count._all]));
+  const agentsByRun = new Map(agentCounts.map((row) => [row.runId, Number(row.count)]));
   const artifactsTotalByRun = new Map<string, number>();
   for (const row of artifactTotals) {
     if (row.runId) artifactsTotalByRun.set(row.runId, row._count._all);
@@ -276,7 +314,6 @@ export async function loadExecutionSummaries(
   if (wantedSeqs.length > 0) {
     const messages = await db.message.findMany({
       where: {
-        threadId: input.threadId,
         role: "bot",
         runId: { in: scopedIds },
         seq: { in: [...new Set(wantedSeqs)] },
@@ -332,6 +369,42 @@ export async function loadExecutionSummaries(
     summaries.push(buildExecutionSummary(facts));
   }
   return summaries;
+}
+
+/**
+ * The per-Thread summary window (HISTORY-001): fetches the authorized Run
+ * rows of one Thread and delegates to the shared multi-Thread builder.
+ */
+export async function loadExecutionSummaries(
+  db: TxLike,
+  input: {
+    threadId: string;
+    spaceId: string;
+    runIds: readonly string[];
+  },
+): Promise<ExecutionSummary[]> {
+  const runIds = [...new Set(input.runIds)].sort();
+  if (runIds.length === 0) return [];
+  const runs = await db.run.findMany({
+    where: { id: { in: runIds }, threadId: input.threadId, spaceId: input.spaceId },
+    select: {
+      id: true,
+      threadId: true,
+      botId: true,
+      taskId: true,
+      status: true,
+      waitKind: true,
+      trigger: true,
+      error: true,
+      orchestration: true,
+      sourceMessageId: true,
+      startedAt: true,
+      completedAt: true,
+      createdAt: true,
+      snapshotRev: true,
+    },
+  });
+  return buildExecutionSummariesForRuns(db, { spaceId: input.spaceId, runs });
 }
 
 /* ------------------------------------------------------------------ */

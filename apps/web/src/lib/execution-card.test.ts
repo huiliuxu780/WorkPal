@@ -378,3 +378,51 @@ describe("resultHasText", () => {
     ).toBe(true);
   });
 });
+
+describe("actionOverride (Task Center navigation verbs)", () => {
+  const base = { expanded: false, canExpand: false };
+
+  it("replaces the computed action with the caller's navigation verb", () => {
+    const model = buildExecutionCardModel({
+      ...base,
+      status: deriveExecutionStatus(run("completed"), []),
+      summary: summary(),
+      actionOverride: { verb: "View result", act: "navigate" },
+    });
+    expect(model.action).toEqual({ verb: "View result", act: "navigate" });
+  });
+
+  it("overrides the attention action for waiting Runs without touching the status", () => {
+    const status = deriveExecutionStatus(run("waiting_input", "approval"), []);
+    const model = buildExecutionCardModel({
+      ...base,
+      status,
+      summary: summary({ status: "waiting_input", waitKind: "approval" }),
+      actionOverride: { verb: "Handle now", act: "navigate" },
+    });
+    expect(model.action).toEqual({ verb: "Handle now", act: "navigate" });
+    // The shared derivation still owns the state — no second matrix.
+    expect(model.status).toBe("approval");
+    expect(model.needsAttention).toBe(true);
+  });
+
+  it("renders no action when the override is null (unavailable item)", () => {
+    const model = buildExecutionCardModel({
+      ...base,
+      status: deriveExecutionStatus(run("running"), []),
+      summary: summary({ status: "running" }),
+      actionOverride: null,
+    });
+    expect(model.action).toBeNull();
+  });
+
+  it("keeps the chat behavior untouched when no override is passed", () => {
+    const model = buildExecutionCardModel({
+      expanded: false,
+      canExpand: true,
+      status: deriveExecutionStatus(run("running"), []),
+      summary: summary({ status: "running" }),
+    });
+    expect(model.action).toEqual({ verb: "View execution", act: "toggle" });
+  });
+});

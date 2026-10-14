@@ -12,6 +12,7 @@ import {
   executionDataForRun,
   executionRunState,
   expansionLogShape,
+  forceOpenExpansion,
   installExecutionDetail,
   isExpansionOpen,
   mergeActivityPages,
@@ -505,5 +506,39 @@ describe("planExpansionDefaults", () => {
     expect(plan.get("a1")).toBe(true);
     expect(plan.get("c1")).toBe(false);
     expect([...plan.values()].filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("forceOpenExpansion (Task Center return navigation)", () => {
+  it("opens the target Run and closes every other open entry of the same Thread", () => {
+    const entries = {
+      "t:other": { threadId: "t", runId: "other", rev: 3, open: true },
+      "t2:elsewhere": { threadId: "t2", runId: "elsewhere", rev: 1, open: true },
+    };
+    const next = forceOpenExpansion({ entries, threadId: "t", runId: "target", rev: 7 });
+    expect(next["t:target"]).toEqual({ threadId: "t", runId: "target", rev: 7, open: true });
+    expect(next["t:other"]!.open).toBe(false);
+    // Other Threads' stored decisions are never touched.
+    expect(next["t2:elsewhere"]!.open).toBe(true);
+    expect(
+      Object.values(next).filter((entry) => entry.open && entry.threadId === "t"),
+    ).toHaveLength(1);
+  });
+
+  it("is idempotent and rev-pinned for the plan authority", () => {
+    const once = forceOpenExpansion({ entries: {}, threadId: "t", runId: "r", rev: 5 });
+    const twice = forceOpenExpansion({ entries: once, threadId: "t", runId: "r", rev: 5 });
+    expect(twice).toEqual(once);
+    // The stored entry feeds planExpansionDefaults as the authoritative open.
+    const plan = planExpansionDefaults({
+      entries: twice,
+      threadId: "t",
+      runs: [
+        { runId: "r", rev: 5, status: "completed" },
+        { runId: "live", rev: 1, status: "running" },
+      ],
+    });
+    expect(plan.get("r")).toBe(true);
+    expect(plan.get("live")).toBe(false);
   });
 });

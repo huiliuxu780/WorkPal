@@ -112,6 +112,12 @@ function SessionApp() {
             }
           />
           <Route path="/app" element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />} />
+          {/* Task Center: the Shell keeps its sidebar; the main area becomes the
+              background-tasks list. Must precede /app/:botId. */}
+          <Route
+            path="/app/tasks"
+            element={user ? <ShellPage tasksMode /> : <Navigate to="/sign-in" replace />}
+          />
           <Route
             path="/app/g/:groupId"
             element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}

@@ -44,6 +44,7 @@ export function ExecutionCard({
   detailsId,
   onToggle,
   onAttention,
+  onNavigate,
   interventions,
   interventionsRef,
   children,
@@ -54,6 +55,8 @@ export function ExecutionCard({
   detailsId: string;
   onToggle: () => void;
   onAttention: () => void;
+  /** Task Center second entry: the primary action returns to the conversation. */
+  onNavigate?: () => void;
   interventions?: ReactNode;
   interventionsRef?: RefObject<HTMLDivElement | null>;
   children: ReactNode;
@@ -117,6 +120,7 @@ export function ExecutionCard({
             aria-controls={hasDetail ? detailsId : undefined}
             onClick={() => {
               if (card.action?.act === "attention") onAttention();
+              else if (card.action?.act === "navigate") onNavigate?.();
               else onToggle();
             }}
           >

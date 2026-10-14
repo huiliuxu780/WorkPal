@@ -247,6 +247,11 @@ msgstr "{0} MB"
 msgid "{0} rollup hours"
 msgstr ""
 
+#. placeholder {0}: list.activeCount
+#: src/components/ai/TaskCenterView.tsx
+msgid "{0} running in background"
+msgstr ""
+
 #. placeholder {0}: usage.runs
 #. placeholder {1}: usage.inputTokens + usage.outputTokens
 #: src/pages/AccountSettingsOverlay.tsx
@@ -826,9 +831,18 @@ msgstr "Avatar-Studio"
 msgid "Back"
 msgstr ""
 
+#: src/lib/task-center.ts
+msgid "Back to conversation"
+msgstr ""
+
 #: src/pages/Auth.tsx
 msgid "Back to sign in"
 msgstr "Zurück zur Anmeldung"
+
+#: src/components/ai/TaskCenterNavEntry.tsx
+#: src/components/ai/TaskCenterView.tsx
+msgid "Background tasks"
+msgstr ""
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Base URL"
@@ -1679,8 +1693,16 @@ msgstr "Standardbereich für Erinnerungen konnte nicht aktualisiert werden"
 msgid "Could not upload file"
 msgstr "Datei konnte nicht hochgeladen werden"
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "Couldn't load background tasks."
+msgstr ""
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
+msgstr ""
+
+#: src/components/ai/TaskCenterView.tsx
+msgid "Couldn't open this task. Try again."
 msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -2306,6 +2328,10 @@ msgstr ""
 msgid "Groups"
 msgstr ""
 
+#: src/lib/task-center.ts
+msgid "Handle now"
+msgstr ""
+
 #: src/components/call/CallCard.tsx
 msgid "Hang up"
 msgstr "Auflegen"
@@ -2550,6 +2576,10 @@ msgstr "Frühere Nachrichten laden"
 msgid "Load more"
 msgstr ""
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "Load more tasks"
+msgstr ""
+
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
 msgstr "Aktivität wird geladen…"
@@ -2583,6 +2613,7 @@ msgid "Loading voice providers…"
 msgstr "Stimmanbieter werden geladen…"
 
 #: src/App.tsx
+#: src/components/ai/TaskCenterView.tsx
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
@@ -2998,6 +3029,10 @@ msgstr ""
 msgid "No skills yet"
 msgstr "Noch keine Skills"
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "No tasks running in background"
+msgstr ""
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No team conversations yet."
 msgstr ""
@@ -3028,6 +3063,10 @@ msgstr "Jetzt nicht"
 
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
+msgstr ""
+
+#: src/components/ai/TaskCenterView.tsx
+msgid "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
 msgstr ""
 
 #: src/components/ComputerUpdateProgress.tsx
@@ -3568,6 +3607,7 @@ msgid "Result preview truncated"
 msgstr ""
 
 #: src/App.tsx
+#: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 msgid "Retry now"
 msgstr "Jetzt erneut versuchen"
@@ -4184,6 +4224,10 @@ msgstr "Dieser Server ist bereits verbunden. Trenne zuerst die Verbindung, um ih
 msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
 msgstr "Diese Abonnementanmeldung ist in {productName} noch nicht verfügbar. Verwende Zugangsdaten der Bereitstellung oder wähle einen anderen Anbieter."
 
+#: src/components/ai/TaskCenterView.tsx
+msgid "This task is no longer available."
+msgstr ""
+
 #: src/pages/Artifacts.tsx
 msgid "This week"
 msgstr ""
@@ -4378,6 +4422,7 @@ msgid "Version"
 msgstr ""
 
 #: src/lib/execution-card.ts
+#: src/lib/task-center.ts
 msgid "View execution"
 msgstr ""
 
@@ -4386,6 +4431,7 @@ msgid "View reason"
 msgstr ""
 
 #: src/lib/execution-card.ts
+#: src/lib/task-center.ts
 msgid "View result"
 msgstr ""
 
