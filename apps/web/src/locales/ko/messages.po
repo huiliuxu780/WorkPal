@@ -242,6 +242,13 @@ msgstr "{0} KB"
 msgid "{0} MB"
 msgstr "{0} MB"
 
+#. placeholder {0}: usage.calls
+#. placeholder {1}: usage.inputTokens
+#. placeholder {2}: usage.outputTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "{0} model calls · {1} input tokens · {2} output tokens"
+msgstr "{0} 모델 호출 · {1} 입력 토큰 · {2} 출력 토"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} rollup hours"
@@ -251,12 +258,6 @@ msgstr ""
 #: src/components/ai/TaskCenterView.tsx
 msgid "{0} running in background"
 msgstr ""
-
-#. placeholder {0}: usage.runs
-#. placeholder {1}: usage.inputTokens + usage.outputTokens
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "{0} runs · {1} tokens"
-msgstr "{0}회 실행 · 토큰 {1}개"
 
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -581,9 +582,10 @@ msgstr "사용 Bot:"
 msgid "All bots"
 msgstr ""
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/Artifacts.tsx
 msgid "All time"
-msgstr ""
+msgstr "전체 기간"
 
 #. placeholder {0}: rule.matchValue
 #: src/components/ApprovalRulesSettings.tsx
@@ -911,6 +913,24 @@ msgstr ""
 #: src/components/computer/ComputerWorkspace.tsx
 msgid "Browser"
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache read"
+msgstr "캐시 읽기"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache write"
+msgstr "캐시 쓰기"
+
+#. placeholder {0}: usage.cacheReadTokens
+#. placeholder {1}: usage.cacheWriteTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache: {0} read · {1} write — reported separately, never added to the input or output totals."
+msgstr "캐시: {0} 읽기 · {1} 쓰기 — 별도로 표시되며 입력 또는 출력 합계에 절대 더해지지 않습니다."
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Calls"
+msgstr "호출"
 
 #: src/App.tsx
 msgid "Can't reach the server."
@@ -2438,6 +2458,10 @@ msgstr ""
 msgid "Inherit default"
 msgstr "기본 설정 사용"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Input"
+msgstr "입력"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Inputs"
 msgstr "입력값"
@@ -2528,6 +2552,14 @@ msgstr "지식"
 msgid "Language"
 msgstr "언어"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 30 days"
+msgstr "최근 30일"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 7 days"
+msgstr "최근 7일"
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr ""
@@ -2607,6 +2639,10 @@ msgstr "확인 규칙을 불러오는 중…"
 #: src/pages/PluginsOverlay.tsx
 msgid "Loading tools…"
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Loading usage…"
+msgstr "사용량 불러오는 중…"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
@@ -2801,11 +2837,16 @@ msgstr "분"
 msgid "minutes"
 msgstr "분"
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Model"
 msgstr "모델"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them."
+msgstr "모델 호출은 연결된 제공자 키를 사용합니다. 토큰은 각 제공자가 보고한 그대로 표시됩니다."
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -2815,10 +2856,6 @@ msgstr "모델 ID"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model options"
 msgstr "모델 선택지"
-
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Model spend uses your provider keys."
-msgstr "모델 사용 비용은 연결한 서비스의 API 키로 청구됩니다."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model updated."
@@ -3008,6 +3045,10 @@ msgstr "{peerBotName}와의 메시지가 아직 없습니다."
 msgid "No model catalog is available."
 msgstr "사용 가능한 모델 목록이 없습니다."
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "No model usage in this range."
+msgstr "이 기간에 모델 사용량이 없습니다."
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "No providers found."
 msgstr "검색된 AI 서비스가 없습니다."
@@ -3150,6 +3191,7 @@ msgstr ""
 msgid "Open in full window"
 msgstr "전체 창으로 열기"
 
+#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "메뉴 열기"
@@ -3209,6 +3251,10 @@ msgstr "조직 API 키"
 #: src/pages/Onboarding.tsx
 msgid "Other model…"
 msgstr "다른 모델 직접 입력…"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Output"
+msgstr "출력"
 
 #. placeholder {0}: artifacts.length
 #: src/components/RunDetailsPanel.tsx
@@ -4383,6 +4429,14 @@ msgstr "업로드"
 #: src/pages/Shell.tsx
 msgid "Usage"
 msgstr "사용량"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage could not be loaded for this range."
+msgstr "이 기간의 사용량을 불러올 수 없습니다."
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage time range"
+msgstr "사용량 기간"
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "Use {hostLabel}"

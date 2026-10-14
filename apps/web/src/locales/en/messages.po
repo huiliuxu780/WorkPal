@@ -242,6 +242,13 @@ msgstr "{0} KB"
 msgid "{0} MB"
 msgstr "{0} MB"
 
+#. placeholder {0}: usage.calls
+#. placeholder {1}: usage.inputTokens
+#. placeholder {2}: usage.outputTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "{0} model calls · {1} input tokens · {2} output tokens"
+msgstr "{0} model calls · {1} input tokens · {2} output tokens"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} rollup hours"
@@ -251,12 +258,6 @@ msgstr "{0} rollup hours"
 #: src/components/ai/TaskCenterView.tsx
 msgid "{0} running in background"
 msgstr "{0} running in background"
-
-#. placeholder {0}: usage.runs
-#. placeholder {1}: usage.inputTokens + usage.outputTokens
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "{0} runs · {1} tokens"
-msgstr "{0} runs · {1} tokens"
 
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -581,6 +582,7 @@ msgstr "Agents:"
 msgid "All bots"
 msgstr "All bots"
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/Artifacts.tsx
 msgid "All time"
 msgstr "All time"
@@ -911,6 +913,24 @@ msgstr "Browse MCP servers"
 #: src/components/computer/ComputerWorkspace.tsx
 msgid "Browser"
 msgstr "Browser"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache read"
+msgstr "Cache read"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache write"
+msgstr "Cache write"
+
+#. placeholder {0}: usage.cacheReadTokens
+#. placeholder {1}: usage.cacheWriteTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache: {0} read · {1} write — reported separately, never added to the input or output totals."
+msgstr "Cache: {0} read · {1} write — reported separately, never added to the input or output totals."
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Calls"
+msgstr "Calls"
 
 #: src/App.tsx
 msgid "Can't reach the server."
@@ -2438,6 +2458,10 @@ msgstr "Inbox & email"
 msgid "Inherit default"
 msgstr "Inherit default"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Input"
+msgstr "Input"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Inputs"
 msgstr "Inputs"
@@ -2528,6 +2552,14 @@ msgstr "Knowledge"
 msgid "Language"
 msgstr "Language"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 30 days"
+msgstr "Last 30 days"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 7 days"
+msgstr "Last 7 days"
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr "Later"
@@ -2607,6 +2639,10 @@ msgstr "Loading rules…"
 #: src/pages/PluginsOverlay.tsx
 msgid "Loading tools…"
 msgstr "Loading tools…"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Loading usage…"
+msgstr "Loading usage…"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
@@ -2801,11 +2837,16 @@ msgstr "minute"
 msgid "minutes"
 msgstr "minutes"
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Model"
 msgstr "Model"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them."
+msgstr "Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them."
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -2815,10 +2856,6 @@ msgstr "Model id"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model options"
 msgstr "Model options"
-
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Model spend uses your provider keys."
-msgstr "Model spend uses your provider keys."
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model updated."
@@ -3008,6 +3045,10 @@ msgstr "No messages with {peerBotName} yet."
 msgid "No model catalog is available."
 msgstr "No model catalog is available."
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "No model usage in this range."
+msgstr "No model usage in this range."
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "No providers found."
 msgstr "No providers found."
@@ -3150,6 +3191,7 @@ msgstr "Open computer"
 msgid "Open in full window"
 msgstr "Open in full window"
 
+#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "Open navigation"
@@ -3209,6 +3251,10 @@ msgstr "Organization API key"
 #: src/pages/Onboarding.tsx
 msgid "Other model…"
 msgstr "Other model…"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Output"
+msgstr "Output"
 
 #. placeholder {0}: artifacts.length
 #: src/components/RunDetailsPanel.tsx
@@ -4383,6 +4429,14 @@ msgstr "Upload"
 #: src/pages/Shell.tsx
 msgid "Usage"
 msgstr "Usage"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage could not be loaded for this range."
+msgstr "Usage could not be loaded for this range."
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage time range"
+msgstr "Usage time range"
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "Use {hostLabel}"

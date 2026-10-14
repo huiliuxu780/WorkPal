@@ -24,6 +24,7 @@ import type {
   TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
+  UsageRange,
   VoiceStatus,
 } from "@rakazo/contracts";
 import {
@@ -35,6 +36,7 @@ import {
   type MessageReaction,
   normalizeCreateBotProfile,
 } from "@rakazo/contracts";
+import { createUsageLoader, type UsageLoadState, type UsageLoader } from "../lib/usage-loader";
 import {
   attachmentsForThread,
   buildComposerMentionOptions,
@@ -760,11 +762,22 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
       cancelled = true;
     };
   }, [session.data?.user]);
-  const [usage, setUsage] = useState<{
-    inputTokens: number;
-    outputTokens: number;
-    runs: number;
-  } | null>(null);
+  const [usageState, setUsageState] = useState<UsageLoadState>({
+    range: "all",
+    summary: null,
+    loading: false,
+    error: false,
+  });
+  const usageLoaderRef = useRef<UsageLoader | null>(null);
+  if (!usageLoaderRef.current) {
+    // Fenced loader: late responses from older ranges are dropped and a failed
+    // request clears the summary instead of mixing ranges and results.
+    usageLoaderRef.current = createUsageLoader(
+      (range) => rpc.usage.modelStats({ range }),
+      setUsageState,
+    );
+  }
+  const loadUsage = (range: UsageRange) => usageLoaderRef.current!.load(range);
   const autoBooted = useRef<string | null>(null);
   const routineSavePending = useRef(false);
   const webhookSecretProvisionRef = useRef(new Map<string, Promise<string>>());
@@ -3489,10 +3502,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                 aria-label={t`Usage`}
                 onClick={() => {
                   setMenuOpen(false);
-                  void rpc.usage
-                    .summary()
-                    .then(setUsage)
-                    .catch(() => undefined);
+                  void loadUsage(usageState.range);
                   openSettings("usage");
                 }}
               >
@@ -3820,10 +3830,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                   return;
                 }
                 if (action === "settings-usage") {
-                  void rpc.usage
-                    .summary()
-                    .then(setUsage)
-                    .catch(() => undefined);
+                  void loadUsage(usageState.range);
                   openSettings("usage");
                 }
               }}
@@ -4605,7 +4612,11 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
           <SettingsOverlay
             name={userName}
             email={session.data?.user.email}
-            usage={usage}
+            usage={usageState.summary}
+            usageRange={usageState.range}
+            usageLoading={usageState.loading}
+            usageError={usageState.error}
+            onUsageRangeChange={loadUsage}
             initialSection={settingsSection}
             isDeploymentOwner={bootstrapMe?.isDeploymentOwner === true}
             sandboxProvider={bootstrapMe?.sandboxProvider}

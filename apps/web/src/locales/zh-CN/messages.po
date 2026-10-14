@@ -242,6 +242,13 @@ msgstr "{0} KB"
 msgid "{0} MB"
 msgstr "{0} MB"
 
+#. placeholder {0}: usage.calls
+#. placeholder {1}: usage.inputTokens
+#. placeholder {2}: usage.outputTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "{0} model calls · {1} input tokens · {2} output tokens"
+msgstr "{0} 次模型调用 · {1} 输入 token · {2} 输出 token"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} rollup hours"
@@ -251,12 +258,6 @@ msgstr ""
 #: src/components/ai/TaskCenterView.tsx
 msgid "{0} running in background"
 msgstr "{0} 个正在后台"
-
-#. placeholder {0}: usage.runs
-#. placeholder {1}: usage.inputTokens + usage.outputTokens
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "{0} runs · {1} tokens"
-msgstr "{0} 次运行 · {1} tokens"
 
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -581,9 +582,10 @@ msgstr "Agent："
 msgid "All bots"
 msgstr ""
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/Artifacts.tsx
 msgid "All time"
-msgstr ""
+msgstr "全部时间"
 
 #. placeholder {0}: rule.matchValue
 #: src/components/ApprovalRulesSettings.tsx
@@ -911,6 +913,24 @@ msgstr ""
 #: src/components/computer/ComputerWorkspace.tsx
 msgid "Browser"
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache read"
+msgstr "缓存读取"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache write"
+msgstr "缓存写入"
+
+#. placeholder {0}: usage.cacheReadTokens
+#. placeholder {1}: usage.cacheWriteTokens
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Cache: {0} read · {1} write — reported separately, never added to the input or output totals."
+msgstr "缓存：{0} 读取 · {1} 写入 — 单独展示，永不计入输入或输出合计。"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Calls"
+msgstr "调用次数"
 
 #: src/App.tsx
 msgid "Can't reach the server."
@@ -2438,6 +2458,10 @@ msgstr "收件箱和邮件"
 msgid "Inherit default"
 msgstr "沿用默认"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Input"
+msgstr "输入"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Inputs"
 msgstr "输入"
@@ -2528,6 +2552,14 @@ msgstr "知识"
 msgid "Language"
 msgstr "语言"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 30 days"
+msgstr "近 30 天"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Last 7 days"
+msgstr "近 7 天"
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr ""
@@ -2607,6 +2639,10 @@ msgstr "正在加载规则…"
 #: src/pages/PluginsOverlay.tsx
 msgid "Loading tools…"
 msgstr ""
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Loading usage…"
+msgstr "正在加载用量…"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
@@ -2801,11 +2837,16 @@ msgstr "分钟"
 msgid "minutes"
 msgstr "分钟"
 
+#: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Model"
 msgstr "模型"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them."
+msgstr "模型调用使用你已连接的供应商密钥。Token 按各供应商上报原样展示。"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -2815,10 +2856,6 @@ msgstr "模型 ID"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model options"
 msgstr "模型选项"
-
-#: src/pages/AccountSettingsOverlay.tsx
-msgid "Model spend uses your provider keys."
-msgstr "模型费用使用你的提供方密钥。"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Model updated."
@@ -3008,6 +3045,10 @@ msgstr "还没有与 {peerBotName} 的消息。"
 msgid "No model catalog is available."
 msgstr "没有可用的模型目录。"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "No model usage in this range."
+msgstr "该范围内没有模型用量。"
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "No providers found."
 msgstr "未找到提供方。"
@@ -3150,6 +3191,7 @@ msgstr ""
 msgid "Open in full window"
 msgstr "在完整窗口中打开"
 
+#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "打开导航"
@@ -3209,6 +3251,10 @@ msgstr "组织 API 密钥"
 #: src/pages/Onboarding.tsx
 msgid "Other model…"
 msgstr "其他模型…"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Output"
+msgstr "输出"
 
 #. placeholder {0}: artifacts.length
 #: src/components/RunDetailsPanel.tsx
@@ -4383,6 +4429,14 @@ msgstr "上传"
 #: src/pages/Shell.tsx
 msgid "Usage"
 msgstr "用量"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage could not be loaded for this range."
+msgstr "无法加载该范围内的用量。"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Usage time range"
+msgstr "用量时间范围"
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "Use {hostLabel}"

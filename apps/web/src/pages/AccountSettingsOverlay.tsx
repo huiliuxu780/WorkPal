@@ -1,4 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
+import type { UsageRange, UsageSummary } from "@rakazo/contracts";
 import { PRODUCT_BRAND } from "@rakazo/core";
 import { Button, Field, FieldLabel, Input, Label, Switch, Toggle } from "@rakazo/ui-web";
 import { ChevronDown } from "lucide-react";
@@ -186,13 +187,35 @@ export function GeneralSettingsPanels({
   );
 }
 
+const USAGE_RANGES = ["all", "7d", "30d"] as const;
+
+/**
+ * Per-model token statistics for the signed-in user inside the current Space.
+ * Cache tokens are provider-reported side channels with differing vendor
+ * semantics, so they are listed separately and never summed into input/output.
+ * No price table exists: nothing here is a cost or spend figure.
+ */
 export function UsageSettingsPanel({
   usage,
+  range = "all",
+  loading = false,
+  error = false,
+  onRangeChange,
   panelRef,
 }: {
-  usage?: { runs: number; inputTokens: number; outputTokens: number } | null;
+  usage?: UsageSummary | null;
+  range?: UsageRange;
+  loading?: boolean;
+  error?: boolean;
+  onRangeChange?: (range: UsageRange) => void;
   panelRef?: RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useLingui();
+  const rangeLabel: Record<UsageRange, string> = {
+    all: t`All time`,
+    "7d": t`Last 7 days`,
+    "30d": t`Last 30 days`,
+  };
   return (
     <div
       ref={panelRef}
@@ -203,15 +226,100 @@ export function UsageSettingsPanel({
       <h3 className="text-[15px] font-medium text-foreground">
         <Trans>Usage</Trans>
       </h3>
-      {usage ? (
-        <p className="mt-3 text-[14px] text-foreground/75">
-          <Trans>
-            {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens
-          </Trans>
+      <div className="mt-3 flex gap-1" role="group" aria-label={t`Usage time range`}>
+        {USAGE_RANGES.map((option) => (
+          <button
+            key={option}
+            type="button"
+            data-testid={`usage-range-${option}`}
+            aria-pressed={range === option}
+            onClick={() => onRangeChange?.(option)}
+            className={`rounded-md px-2 py-1 text-[12.5px] ${
+              range === option
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground/80 hover:text-foreground"
+            }`}
+          >
+            {rangeLabel[option]}
+          </button>
+        ))}
+      </div>
+      {loading ? (
+        <p className="mt-3 text-[13px] text-muted-foreground/80" data-testid="usage-loading">
+          <Trans>Loading usage…</Trans>
         </p>
+      ) : error ? (
+        <p className="mt-3 text-[13px] text-muted-foreground/80" data-testid="usage-error">
+          <Trans>Usage could not be loaded for this range.</Trans>
+        </p>
+      ) : usage ? (
+        <>
+          <p className="mt-3 text-[14px] text-foreground/75" data-testid="usage-totals">
+            <Trans>
+              {usage.calls} model calls · {usage.inputTokens} input tokens · {usage.outputTokens}{" "}
+              output tokens
+            </Trans>
+          </p>
+          <p className="mt-1 text-[12.5px] text-muted-foreground/80" data-testid="usage-cache">
+            <Trans>
+              Cache: {usage.cacheReadTokens} read · {usage.cacheWriteTokens} write — reported
+              separately, never added to the input or output totals.
+            </Trans>
+          </p>
+          {usage.byModel.length > 0 ? (
+            <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[430px] text-left text-[12.5px]" data-testid="usage-model-table">
+              <thead>
+                <tr className="text-muted-foreground/80">
+                  <th className="py-1 pr-2 font-medium">
+                    <Trans>Model</Trans>
+                  </th>
+                  <th className="py-1 pr-2 font-medium">
+                    <Trans>Calls</Trans>
+                  </th>
+                  <th className="py-1 pr-2 font-medium">
+                    <Trans>Input</Trans>
+                  </th>
+                  <th className="py-1 pr-2 font-medium">
+                    <Trans>Output</Trans>
+                  </th>
+                  <th className="py-1 pr-2 font-medium">
+                    <Trans>Cache read</Trans>
+                  </th>
+                  <th className="py-1 font-medium">
+                    <Trans>Cache write</Trans>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {usage.byModel.map((row) => (
+                  <tr
+                    key={`${row.provider}/${row.model}`}
+                    data-testid="usage-model-row"
+                    className="border-t border-border/60 text-foreground/75"
+                  >
+                    <td className="py-1 pr-2">
+                      {row.provider} · {row.model}
+                    </td>
+                    <td className="py-1 pr-2">{row.calls}</td>
+                    <td className="py-1 pr-2">{row.inputTokens}</td>
+                    <td className="py-1 pr-2">{row.outputTokens}</td>
+                    <td className="py-1 pr-2">{row.cacheReadTokens}</td>
+                    <td className="py-1">{row.cacheWriteTokens}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          ) : (
+            <p className="mt-3 text-[12.5px] text-muted-foreground/80">
+              <Trans>No model usage in this range.</Trans>
+            </p>
+          )}
+        </>
       ) : null}
       <p className={`text-[12.5px] text-muted-foreground/80 ${usage ? "mt-2" : "mt-3"}`}>
-        <Trans>Model spend uses your provider keys.</Trans>
+        <Trans>Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them.</Trans>
       </p>
     </div>
   );

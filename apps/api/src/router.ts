@@ -187,6 +187,7 @@ import {
   SpaceNotFoundError,
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
+  summarizeModelUsage,
   TaskCenterCursorError,
   touchGroupUpdatedAt,
 } from "@rakazo/db";
@@ -5509,6 +5510,8 @@ export function createRouter(deps: RouterDeps) {
           createdAt: row.createdAt.toISOString(),
         }));
       }),
+      // Frozen compatibility endpoint for already-shipped clients; the honest
+      // per-model read model is usage.modelStats below.
       summary: authed.usage.summary.handler(async ({ context }) => {
         const result = await deps.prisma.usageRecord.aggregate({
           where: { spaceId: context.actor.spaceId, userId: context.actor.userId },
@@ -5520,6 +5523,15 @@ export function createRouter(deps: RouterDeps) {
           outputTokens: result._sum.outputTokens ?? 0,
           runs: result._count._all,
         };
+      }),
+      modelStats: authed.usage.modelStats.handler(async ({ context, input }) => {
+        // Strictly the calling user inside their current Space. The read model
+        // carries token counts only — no price table, no cost figure.
+        return summarizeModelUsage(deps.prisma, {
+          spaceId: context.actor.spaceId,
+          userId: context.actor.userId,
+          range: input.range,
+        });
       }),
     },
     export: {

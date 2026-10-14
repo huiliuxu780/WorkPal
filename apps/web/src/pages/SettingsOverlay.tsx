@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { SpaceMemoryConfig } from "@rakazo/contracts";
+import type { SpaceMemoryConfig, UsageRange, UsageSummary } from "@rakazo/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
 import { Brain, CloudDownload, Cpu, Gauge, Monitor, Settings, Volume2, XIcon } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
@@ -33,6 +33,10 @@ export function SettingsOverlay({
   email,
   name,
   usage,
+  usageRange = "all",
+  usageLoading = false,
+  usageError = false,
+  onUsageRangeChange,
   initialSection = "general",
   isDeploymentOwner = false,
   sandboxProvider,
@@ -45,7 +49,11 @@ export function SettingsOverlay({
 }: {
   email?: string | null;
   name: string;
-  usage?: { runs: number; inputTokens: number; outputTokens: number } | null;
+  usage?: UsageSummary | null;
+  usageRange?: UsageRange;
+  usageLoading?: boolean;
+  usageError?: boolean;
+  onUsageRangeChange?: (range: UsageRange) => void;
   initialSection?: SettingsSection;
   isDeploymentOwner?: boolean;
   sandboxProvider?: string | null;
@@ -202,7 +210,14 @@ export function SettingsOverlay({
                 />
               ) : null}
               {section === "usage" ? (
-                <UsageSettingsPanel usage={usage} panelRef={usageRef} />
+                <UsageSettingsPanel
+                  usage={usage}
+                  range={usageRange}
+                  loading={usageLoading}
+                  error={usageError}
+                  onRangeChange={onUsageRangeChange}
+                  panelRef={usageRef}
+                />
               ) : null}
               {section === "computer" && showComputer ? <ComputerSettingsPanel /> : null}
               {section === "updates" ? (

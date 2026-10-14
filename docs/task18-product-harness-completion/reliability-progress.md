@@ -24,7 +24,7 @@ The implementation queues the Run directly from a failed Attempt without first p
 
 PostgreSQL tests cover approval expiry, ask invalidation, takeover timeout, child cancellation across Threads, late child history rejection, retry delays, idempotence, and refusal after a completed `send_email` effect. Unit tests cover the retry policy; AgentScope loopback tests classify HTTP 503 and model timeout. The affected package type checks and targeted tests pass.
 
-Still required for Task 18.3: USD budget enforcement with an actual model-price source, and a broader Java/Web budget acceptance flow. Token, tool-call and duration bounds, with interactive increase/narrow/cancel, are implemented in the budget slice. USD cost cannot be inferred from the current `UsageRecord` token counts without model pricing, so no dollar budget is claimed as enforced.
+Task 18.3 budget acceptance is complete for tokens, tool calls and duration (see [budget-progress.md](./budget-progress.md)). USD enforcement is not outstanding work: `maxCostUsd` is an unsupported compatibility field, `costUsd` stays `null`, and token counts are never converted into a dollar figure.
 
 ## Execution contract closure
 
@@ -105,7 +105,7 @@ The retry policy is unchanged: the same Run gets a new Attempt, at most two auto
 
 ### Still open
 
-- USD model prices and a real `maxCostUsd` charge. Unknown prices stay `costUsd=null`.
+- `maxCostUsd` stays an unsupported compatibility field and `costUsd` stays `null`; cost enforcement is not a goal.
 - Closed since this pass: the unified Intervention model (approval and input as one intervention, PR #38), HISTORY-001 `ExecutionSnapshot` (PR #39), the Execution Card (PR #40) and the Task Center (PR #41) are implemented in production; they are no longer open items.
 - Computer stop does not cancel Runs.
 - Teaching stop does not cancel Runs.
