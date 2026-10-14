@@ -44,9 +44,28 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
 let screen: http.Server;
 let screenPort: string;
 
+/**
+ * The supervisor module resolves its bearer credential once at import time
+ * (and `loadRootEnv()` may enrich process.env from a developer .env then), so
+ * every test pins the credential explicitly before importing the module and
+ * builds request headers from the same pinned value afterwards.
+ */
+const LOOPBACK_SUPERVISOR_TOKEN = "loopback-supervisor-token-0123456789abcdef";
+
+// Built per request, after env init: a collection-time capture would freeze
+// whatever credential the describe-scope environment happened to resolve.
+const authHeaders = () => ({
+  authorization: `Bearer ${LOOPBACK_SUPERVISOR_TOKEN}`,
+  "content-type": "application/json",
+  "x-rakazo-bot-id": "bot",
+  "x-rakazo-space-id": "space",
+  "x-rakazo-screen-id": "writer",
+});
+
 beforeEach(async () => {
   vi.resetModules();
   vi.resetAllMocks();
+  vi.stubEnv("SANDBOX_SUPERVISOR_TOKEN", LOOPBACK_SUPERVISOR_TOKEN);
   vi.stubEnv("HOSTNAME", "");
   vi.stubEnv("DATA_DIR", "/tmp/rakazo-loopback-test");
   vi.stubEnv("SANDBOX_SCREEN_NETWORK", "published");
@@ -1017,13 +1036,6 @@ describe("space computer limit enforcement", () => {
 });
 
 describe("screen release status", () => {
-  const headers = {
-    authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
-    "content-type": "application/json",
-    "x-rakazo-bot-id": "bot",
-    "x-rakazo-space-id": "space",
-    "x-rakazo-screen-id": "writer",
-  };
 
   function managedContainer(exec?: ReturnType<typeof vi.fn>) {
     return {
@@ -1046,6 +1058,54 @@ describe("screen release status", () => {
     };
   }
 
+  it("accepts the credential resolved after env init and rejects a wrong bearer", async () => {
+    expect(resolveSupervisorToken(process.env)).toBe(LOOPBACK_SUPERVISOR_TOKEN);
+    const { supervisorApp } = await import("./index.js");
+    const missing = {
+      inspect: vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("no such container"), { statusCode: 404 })),
+    };
+    mocks.docker.getContainer.mockReturnValue(missing);
+    const wrong = await supervisorApp.request("/computers/wrong-token-screen/screen", {
+      method: "DELETE",
+      headers: {
+        ...authHeaders(),
+        authorization: "Bearer wrong-bearer-0123456789abcdef0123456789abcdef",
+      },
+    });
+    expect(wrong.status).toBe(401);
+  });
+
+  it("pins the init-time credential against later process.env mutation", async () => {
+    const { supervisorApp } = await import("./index.js");
+    const missing = {
+      inspect: vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("no such container"), { statusCode: 404 })),
+    };
+    mocks.docker.getContainer.mockReturnValue(missing);
+    // A leaky neighbor test mutating the shared env must not re-key the server.
+    process.env.SANDBOX_SUPERVISOR_TOKEN = "mutated-after-init-0123456789abcdef";
+    try {
+      const mutated = await supervisorApp.request("/computers/mutated-screen/screen", {
+        method: "DELETE",
+        headers: {
+          ...authHeaders(),
+          authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
+        },
+      });
+      expect(mutated.status).toBe(401);
+      const pinned = await supervisorApp.request("/computers/mutated-screen/screen", {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      expect(pinned.status).toBe(404);
+    } finally {
+      delete process.env.SANDBOX_SUPERVISOR_TOKEN;
+    }
+  });
+
   it("returns 404 only when the computer is already missing", async () => {
     const { supervisorApp } = await import("./index.js");
     const missing = {
@@ -1056,7 +1116,7 @@ describe("screen release status", () => {
     mocks.docker.getContainer.mockReturnValue(missing);
     const response = await supervisorApp.request("/computers/missing-screen/screen", {
       method: "DELETE",
-      headers,
+      headers: authHeaders(),
     });
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "computer not found" });
@@ -1075,7 +1135,7 @@ describe("screen release status", () => {
     mocks.docker.getContainer.mockReturnValue(container);
     const response = await supervisorApp.request("/computers/identity-screen/screen", {
       method: "DELETE",
-      headers,
+      headers: authHeaders(),
     });
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "invalid computer identity" });
@@ -1098,7 +1158,7 @@ describe("screen release status", () => {
     mocks.docker.getContainer.mockReturnValue(container);
     const opened = await supervisorApp.request("/computers/release-failed/screen-mode", {
       method: "POST",
-      headers,
+      headers: authHeaders(),
       body: JSON.stringify({ interactive: false, revokeControl: false }),
     });
     expect(opened.status).toBe(200);
@@ -1106,7 +1166,7 @@ describe("screen release status", () => {
     failStop = true;
     const released = await supervisorApp.request("/computers/release-failed/screen", {
       method: "DELETE",
-      headers: { ...headers, "x-rakazo-screen-lease-id": "run-1:1" },
+      headers: { ...authHeaders(), "x-rakazo-screen-lease-id": "run-1:1" },
     });
     expect(released.status).toBe(500);
     await expect(released.json()).resolves.toEqual({ error: "computer screen failed to stop" });
@@ -1127,7 +1187,7 @@ describe("screen release status", () => {
     mocks.docker.getContainer.mockReturnValue(container);
     const opened = await supervisorApp.request("/computers/exec-start-404/screen-mode", {
       method: "POST",
-      headers,
+      headers: authHeaders(),
       body: JSON.stringify({ interactive: false, revokeControl: false }),
     });
     expect(opened.status).toBe(200);
@@ -1136,7 +1196,7 @@ describe("screen release status", () => {
     failStart = true;
     const released = await supervisorApp.request("/computers/exec-start-404/screen", {
       method: "DELETE",
-      headers: { ...headers, "x-rakazo-screen-lease-id": "run-1:1" },
+      headers: { ...authHeaders(), "x-rakazo-screen-lease-id": "run-1:1" },
     });
     expect(released.status).toBe(500);
     await expect(released.json()).resolves.toEqual({ error: "no such exec" });
@@ -1164,17 +1224,10 @@ describe("screen registry across run boundaries", () => {
       }),
     };
     mocks.docker.getContainer.mockReturnValue(container);
-    const headers = {
-      authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
-      "content-type": "application/json",
-      "x-rakazo-bot-id": "bot",
-      "x-rakazo-space-id": "space",
-      "x-rakazo-screen-id": "writer",
-    };
     const view = () =>
       supervisorApp.request("/computers/registry/screen-mode", {
         method: "POST",
-        headers,
+        headers: authHeaders(),
         body: JSON.stringify({ interactive: false, revokeControl: false }),
       });
     const resets = () =>
@@ -1185,7 +1238,7 @@ describe("screen registry across run boundaries", () => {
     expect(resets()).toBe(1);
     const released = await supervisorApp.request("/computers/registry/screen", {
       method: "DELETE",
-      headers: { ...headers, "x-rakazo-screen-lease-id": "run-1:1" },
+      headers: { ...authHeaders(), "x-rakazo-screen-lease-id": "run-1:1" },
     });
     expect(released.status).toBe(200);
     expect((await view()).status).toBe(200);
