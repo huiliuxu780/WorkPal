@@ -219,6 +219,10 @@ public record RunRequest(
     /** Delegation capability: chat scope only, backend must have offered run_subagent. */
     public boolean delegationAllowed() {
         if (!isChat()) return false;
+        // A tightened effective depth of zero disables the whole subagent
+        // surface: no native spawn tool is exposed and background registration
+        // is refused, so neither a synchronous nor a background spawn executes.
+        if (maxDepth() <= 0) return false;
         if (turnPolicy == null || turnPolicy.delegation() == null) return true;
         return turnPolicy.delegation().mode() == null || "auto".equals(turnPolicy.delegation().mode());
     }
@@ -243,6 +247,28 @@ public record RunRequest(
         int delegated = turnPolicy.delegation().maxChildren();
         if (turnPolicy.budget() != null && turnPolicy.budget().maxChildAgents() != null) {
             return Math.min(delegated, Math.max(0, turnPolicy.budget().maxChildAgents()));
+        }
+        return delegated;
+    }
+
+    /**
+     * Effective helper depth: the tightened minimum of the delegation and budget
+     * values, with the same fallback rule as {@link #maxChildren()} — an explicit
+     * zero is preserved, only absent or negative values fall back (to 1). The
+     * AgentScope harness runs a flat helper fan-out, so any positive depth
+     * executes at most one real layer; zero disables delegation entirely.
+     */
+    public int maxDepth() {
+        if (turnPolicy == null || turnPolicy.delegation() == null
+                || turnPolicy.delegation().maxDepth() == null
+                || turnPolicy.delegation().maxDepth() < 0) {
+            return turnPolicy != null && turnPolicy.budget() != null
+                    && turnPolicy.budget().maxDepth() != null
+                    ? Math.min(1, Math.max(0, turnPolicy.budget().maxDepth())) : 1;
+        }
+        int delegated = turnPolicy.delegation().maxDepth();
+        if (turnPolicy.budget() != null && turnPolicy.budget().maxDepth() != null) {
+            return Math.min(delegated, Math.max(0, turnPolicy.budget().maxDepth()));
         }
         return delegated;
     }

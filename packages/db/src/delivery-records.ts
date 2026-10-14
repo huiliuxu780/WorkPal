@@ -6,9 +6,10 @@ export const DELIVERY_RETRY_MS = [10_000, 30_000, 120_000, 600_000, 1_800_000] a
 /** Per-query bound for the window claim loop; the loop repeats until the window is empty. */
 const DELIVERY_CLAIM_CHUNK = 500;
 /**
- * Defensive bound for one claimed window. A window this large cannot occur from
- * real Run completions; if it ever did, the overflow stays pending and merges
- * into the next claim for the same Thread instead of exhausting worker memory.
+ * Defensive bound for one claimed window. It is a real limit, not an
+ * unreachable one: records beyond it stay pending and are delivered by later
+ * batches, which can add a summary message for the same window. Exactly one
+ * message for unbounded counts would need a persisted window identity.
  */
 export const DELIVERY_WINDOW_CLAIM_MAX = 5_000;
 /** Keeps `IN (...)` expansions far below the PostgreSQL parameter limit. */
@@ -88,10 +89,11 @@ export async function claimDueDeliveryBatch(
     const seed = first[0];
     if (!seed) return [];
     const windowEnd = new Date(seed.createdAt.getTime() + DELIVERY_MERGE_MS);
-    // One window must merge into exactly one delivery Run no matter how many
-    // records it holds, so claim in bounded chunks until the window is empty
-    // instead of capping the window itself. Records already selected in this
-    // transaction are still 'pending' until the flip below, so exclude them.
+    // One window merges into exactly one delivery Run for every record count
+    // up to DELIVERY_WINDOW_CLAIM_MAX, so claim in bounded chunks until the
+    // window is empty instead of capping the window itself. Records already
+    // selected in this transaction are still 'pending' until the flip below,
+    // so exclude them.
     const ids: string[] = [];
     for (;;) {
       const exclusion = ids.length

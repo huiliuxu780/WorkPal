@@ -106,6 +106,34 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
           respond({ content: "SPAWN_BUDGET_BOUND" }, "stop");
           return;
         }
+        if (userText(input).includes("DEPTH_ZERO_FIXTURE")) {
+          const toolTurns = input.messages.filter(
+            (message: { role: string }) => message.role === "tool",
+          ).length;
+          if (toolTurns === 0) {
+            respond(
+              toolCall("depth-spawn-a", "agent_spawn", {
+                agent_id: "helper",
+                task: "DEPTH_ZERO_TASK",
+              }),
+              "tool_calls",
+            );
+            return;
+          }
+          if (toolTurns === 1) {
+            respond(
+              toolCall("depth-spawn-b", "agent_spawn", {
+                agent_id: "helper",
+                task: "DEPTH_ZERO_TASK",
+                timeout_seconds: 0,
+              }),
+              "tool_calls",
+            );
+            return;
+          }
+          respond({ content: "DEPTH_ZERO_BOUND" }, "stop");
+          return;
+        }
         if (userText(input).includes("SPAWN_BUDGET_FIXTURE")) {
           respond(
             toolCall("spawn-a", "agent_spawn", {
@@ -210,8 +238,11 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
         child.kill("SIGTERM");
       });
     }
-    await new Promise<void>((resolve) => proxy?.close(() => resolve()));
-    await new Promise<void>((resolve) => modelServer?.close(() => resolve()));
+    // Only wait on resources that were actually created: a beforeAll that died
+    // part-way (for example no Java on PATH) must not add a hook timeout to the
+    // startup error it already reported.
+    if (proxy) await new Promise<void>((resolve) => proxy.close(() => resolve()));
+    if (modelServer) await new Promise<void>((resolve) => modelServer.close(() => resolve()));
     if (stateDir) await rm(stateDir, { recursive: true, force: true });
   });
 
@@ -350,6 +381,71 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
     expect(wire.approval).toEqual({ timeoutSec: 86_400, onTimeout: "expire" });
     expect(wire.retry.maxAuto).toBeGreaterThan(0);
     expect(Array.isArray(wire.retry.retryable)).toBe(true);
+  }, 60_000);
+
+  it("hides the whole subagent surface and refuses spawns when the tightened depth is zero", async () => {
+    const base = resolveTurnPolicy({ source: "chat", ownerBotId: "bot-tp" });
+    const orchestration = buildRunOrchestration({
+      kind: "direct",
+      ownerBotId: "bot-tp",
+      responseMode: "single",
+      execution: {
+        ...orchestrationExecution(base),
+        // delegation.maxDepth stays 1; the stored budget tightens it to zero.
+        budget: { ...base.budget, maxDepth: 0 },
+      },
+    });
+    const policy = turnPolicyFromRun({
+      trigger: "user",
+      ownerBotId: "bot-tp",
+      orchestration,
+    });
+    expect(policy.delegation.mode).toBe("auto");
+    expect(policy.budget.maxDepth).toBe(0);
+    const events = await consume(
+      request({
+        runId: "tp-depth-zero",
+        threadId: "thread-tp-depth",
+        prompt: "DEPTH_ZERO_FIXTURE",
+        turnPolicy: policy,
+        tools: [subagentTool],
+      }),
+    );
+    expect(events.at(-1)).toEqual({ type: "done", text: "DEPTH_ZERO_BOUND" });
+
+    // Java hid every native spawn tool from the model for this policy.
+    const depthRequests = modelRequests.filter((input) =>
+      userText(input).includes("DEPTH_ZERO_FIXTURE"),
+    );
+    expect(depthRequests.length).toBeGreaterThanOrEqual(2);
+    for (const input of depthRequests) {
+      const offered = (input.tools ?? []).map((tool) => tool.function.name);
+      for (const native of [
+        "agent_spawn",
+        "agent_send",
+        "agent_list",
+        "task_output",
+        "task_cancel",
+        "task_list",
+      ]) {
+        expect(offered).not.toContain(native);
+      }
+    }
+    // Neither the synchronous nor the background attempt executed: no helper
+    // session reached the model and no spawn ever reported success.
+    expect(
+      modelRequests.some((input) => userText(input).includes("DEPTH_ZERO_TASK")),
+    ).toBe(false);
+    for (const input of depthRequests) {
+      expect(transcript(input)).not.toContain("status: ok");
+    }
+    expect(subagentToolCalls).toEqual([]);
+
+    // The wire carried the untightened delegation depth next to the tightened
+    // budget depth; Java computed the effective zero itself.
+    const wire = runRequests.at(-1)!.sent.turnPolicy;
+    expect(wire.delegation.maxDepth).toBe(1);
+    expect(wire.budget.maxDepth).toBe(0);
   }, 60_000);
 
   it("reuses the stored policy across attempts; only an approved budgetOverride changes it", async () => {

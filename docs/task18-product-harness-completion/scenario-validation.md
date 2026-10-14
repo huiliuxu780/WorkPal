@@ -97,6 +97,8 @@ the layer it claims to prove.
 | Stored policy reused across attempts; only an approved `budgetOverride` changes the wire budget; decreases ignored | cross-language | `turnpolicy-v2-agentscope.integration.test.ts` › "reuses the stored policy across attempts; only an approved budgetOverride changes it" |
 | Malformed v2 on the wire fails closed at the Java door — no model call, no planning/delegation recovery | cross-language | `turnpolicy-v2-agentscope.integration.test.ts` › "fails closed at the Java door when the v2 wire policy is malformed" |
 | Corrupt stored v2 snapshot never restores planning or delegation (Java hides the native tools) | cross-language | `turnpolicy-v2-agentscope.integration.test.ts` › "never restores planning or delegation from a corrupt stored v2 snapshot" |
+| Tightened effective `maxDepth=0` hides the whole native subagent surface; sync and background spawn attempts are refused; depth 1 keeps delegation | cross-language | `turnpolicy-v2-agentscope.integration.test.ts` › "hides the whole subagent surface and refuses spawns when the tightened depth is zero" |
+| Depth gate math: tightened minimum of delegation/budget, explicit zero preserved, absent/negative fallback, zero disables delegation and background | Java | `RunRequestPolicyTest` (`effectiveDepthIsTheTightenedMinimumOfDelegationAndBudget`, `zeroEffectiveDepthDisablesTheWholeSubagentSurface`, `absentDepthFallsBackToOneAndKeepsDelegation`) |
 | v2 policy carried end-to-end on real Web Runs (interactive budget chains above run on v2 chat policies) | E2E | `budget-acceptance.spec.ts` (all three) |
 
 ## Known uncovered capabilities
@@ -111,5 +113,11 @@ claims them:
 - Separate Worker-process deployment — the E2E harness hosts the production
   job handlers (delivery dispatch, budget sweep) in-process; an independently
   deployed Worker against the same database is not exercised by any tier.
+- Strict one-message-per-window delivery beyond the bounded claim
+  (`DELIVERY_WINDOW_CLAIM_MAX = 5000`): windows up to that bound merge exactly;
+  overflow records are never dropped but are delivered by later batches, which
+  can add a summary message for the same window. Guaranteeing exactly one
+  message for unbounded counts requires a persisted window identity — a future
+  design, not this slice.
 - Intent/Complexity Router — out of scope by design; TurnPolicy carries no
   intent, action, or next-step classification fields (asserted on the wire).

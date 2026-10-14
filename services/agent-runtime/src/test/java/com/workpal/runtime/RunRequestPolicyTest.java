@@ -132,4 +132,57 @@ class RunRequestPolicyTest {
                         + "\"ownership\":{\"mode\":\"owner\",\"ownerBotId\":\"bot-1\"},\"routingKind\":\"direct\"}");
         assertEquals(3, negative.maxChildren());
     }
+
+    private static String v2WithDepth(int delegationDepth, int budgetDepth) {
+        return "\"turnPolicy\":{\"version\":\"v2\",\"interactive\":true,\"planning\":\"auto\","
+                + "\"delegation\":{\"mode\":\"auto\",\"background\":true,\"maxChildren\":3,\"maxDepth\":"
+                + delegationDepth + "},"
+                + "\"ownership\":{\"mode\":\"owner\",\"ownerBotId\":\"bot-1\"},\"routingKind\":\"direct\","
+                + "\"budget\":{\"maxTokens\":200000,\"maxCostUsd\":1.0,\"maxDurationSec\":900,"
+                + "\"maxToolCalls\":50,\"maxChildAgents\":3,\"maxDepth\":" + budgetDepth + "},"
+                + "\"approval\":{\"timeoutSec\":86400,\"onTimeout\":\"expire\"},"
+                + "\"retry\":{\"maxAuto\":2,\"retryable\":[\"llm_timeout\",\"network_error\"]},"
+                + "\"subagent\":{\"permissionInheritance\":\"subset-readonly\"}}";
+    }
+
+    @Test void effectiveDepthIsTheTightenedMinimumOfDelegationAndBudget() throws Exception {
+        RunRequest request = parsed(v2WithDepth(3, 1));
+        assertEquals(1, request.maxDepth(), "budget depth tightens a looser delegation depth");
+        assertTrue(request.delegationAllowed());
+        assertTrue(request.backgroundAllowed());
+        RunRequest tighter = parsed(v2WithDepth(2, 5));
+        assertEquals(2, tighter.maxDepth(), "delegation depth tightens a looser budget depth");
+        assertTrue(tighter.delegationAllowed());
+    }
+
+    @Test void zeroEffectiveDepthDisablesTheWholeSubagentSurface() throws Exception {
+        // A legal policy: delegation mode auto with a tightened zero depth.
+        RunRequest request = parsed(v2WithDepth(3, 0));
+        assertEquals(0, request.maxDepth());
+        assertFalse(request.delegationAllowed(), "depth zero must hide every native spawn tool");
+        assertFalse(request.backgroundAllowed(), "depth zero must refuse background registration");
+        RunRequest explicit = parsed(
+                "\"turnPolicy\":{\"version\":\"v1\",\"interactive\":true,\"planning\":\"auto\","
+                        + "\"delegation\":{\"mode\":\"auto\",\"background\":true,\"maxChildren\":3,\"maxDepth\":0},"
+                        + "\"ownership\":{\"mode\":\"owner\",\"ownerBotId\":\"bot-1\"},\"routingKind\":\"direct\"}");
+        assertEquals(0, explicit.maxDepth(), "an explicit v1 zero is preserved, not defaulted");
+        assertFalse(explicit.delegationAllowed());
+    }
+
+    @Test void absentDepthFallsBackToOneAndKeepsDelegation() throws Exception {
+        RunRequest request = parsed(
+                "\"turnPolicy\":{\"version\":\"v2\",\"interactive\":true,\"planning\":\"auto\","
+                        + "\"delegation\":{\"mode\":\"auto\",\"background\":true,\"maxChildren\":3},"
+                        + "\"ownership\":{\"mode\":\"owner\",\"ownerBotId\":\"bot-1\"},\"routingKind\":\"direct\","
+                        + "\"budget\":{\"maxTokens\":200000,\"maxCostUsd\":1.0,\"maxDurationSec\":900,"
+                        + "\"maxToolCalls\":50,\"maxChildAgents\":3,\"maxDepth\":1},"
+                        + "\"approval\":{\"timeoutSec\":86400,\"onTimeout\":\"expire\"},"
+                        + "\"retry\":{\"maxAuto\":2,\"retryable\":[\"llm_timeout\",\"network_error\"]},"
+                        + "\"subagent\":{\"permissionInheritance\":\"subset-readonly\"}}");
+        assertEquals(1, request.maxDepth());
+        assertTrue(request.delegationAllowed());
+        RunRequest noPolicy = parsed("");
+        assertEquals(1, noPolicy.maxDepth());
+        assertTrue(noPolicy.delegationAllowed());
+    }
 }

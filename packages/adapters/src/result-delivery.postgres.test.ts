@@ -213,7 +213,9 @@ describePostgres("background result delivery (PostgreSQL)", () => {
 
   // ---------------------------------------------------------------------------
   // Window-merge contract: one threadId + threadGeneration + 30s window is one
-  // delivery Run and one user-visible message, for any record count.
+  // delivery Run and one user-visible message for every record count up to the
+  // bounded claim (DELIVERY_WINDOW_CLAIM_MAX); overflow beyond that bound is
+  // delivered by later batches and is covered in delivery-design.md.
   // ---------------------------------------------------------------------------
 
   async function newThread() {
