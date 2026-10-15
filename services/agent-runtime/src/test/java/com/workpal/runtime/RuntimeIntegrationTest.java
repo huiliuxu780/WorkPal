@@ -75,6 +75,35 @@ class RuntimeIntegrationTest {
                 base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
     }
 
+    /**
+     * AG-06 review round 2: durable memory now arrives as a run-scoped
+     * application-context history message (never inside the system message), so
+     * a restored session must replace the previous run's copy with the current
+     * one — stale memory must neither persist nor accumulate.
+     */
+    @Test void refreshedDurableMemoryReplacesThePreviousRunScopedCopy() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            String oldMemory = "Durable memory saved by this user or bot follows. OLD_DURABLE_MEMORY";
+            String newMemory = "Durable memory saved by this user or bot follows. NEW_DURABLE_MEMORY";
+            RunRequest first = withHistory(request(model.getAddress().getPort(), "durable-1",
+                    "user-1", "space-1", List.of(), null), oldMemory);
+            engine.execute(first, event -> {});
+            RunRequest second = withHistory(request(model.getAddress().getPort(), "durable-2",
+                    "user-1", "space-1", List.of(), null), newMemory);
+            engine.execute(second, event -> {});
+            String messages = modelRequests.getLast().path("messages").toString();
+            assertTrue(messages.contains("NEW_DURABLE_MEMORY"), messages);
+            assertFalse(messages.contains("OLD_DURABLE_MEMORY"), messages);
+            assertEquals(1, messages.split("NEW_DURABLE_MEMORY", -1).length - 1, messages);
+            String system = modelRequests.getLast().path("messages").get(0).path("content").asText();
+            assertEquals("system", modelRequests.getLast().path("messages").get(0).path("role").asText());
+            assertFalse(system.contains("DURABLE_MEMORY"), "durable memory must not ride in the system message");
+        } finally { model.stop(0); }
+    }
+
     @Test void externalToolUsesTheAuthorizedBridgeAndReturnsToHarness() throws Exception {
         List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
         List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();

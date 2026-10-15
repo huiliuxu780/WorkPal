@@ -75,6 +75,15 @@ public final class RuntimeEngine {
             "^[^\\n]{1,80}-owned compacted context through message sequence ");
     private static final String RECALLED_MEMORY = "Memory recalled from earlier conversations";
     /**
+     * AG-06 review round 2: the backend moved durable bot/user memory out of the
+     * run instructions (system message) into a run-scoped application-context
+     * history message, because memory bodies are untrusted data. The block keeps
+     * this fixed preamble (see packages/adapters/src/memory-context.ts); treating
+     * it as application context lets a restored session replace the previous
+     * run's copy instead of keeping stale memory.
+     */
+    private static final String DURABLE_MEMORY = "Durable memory saved by this user or bot follows";
+    /**
      * AG-02: AgentScope's native ToolResultEvictionMiddleware offloads any tool result whose
      * combined TextBlock text exceeds 80,000 chars to {@code large_tool_results/} in the Java
      * workspace and replaces the model-visible content with a "saved to <path>, use read_file"
@@ -480,7 +489,8 @@ public final class RuntimeEngine {
 
     private static boolean isApplicationContext(String content) {
         return content != null && (COMPACTED_CONTEXT.matcher(content).find()
-                || content.startsWith(RECALLED_MEMORY));
+                || content.startsWith(RECALLED_MEMORY)
+                || content.startsWith(DURABLE_MEMORY));
     }
 
     private static Msg taskReminder(List<TaskDelivery> deliveries) {
