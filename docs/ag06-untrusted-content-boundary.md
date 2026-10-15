@@ -1,8 +1,8 @@
 # AG-06: fixed untrusted-content rules and execution-boundary verification
 
 Status: delivered on branch `codex/ag06-untrusted-content-boundary` (round 1 `f2b0c4d`; review
-round 2 `7bc2561`, base `codex/ag02-compaction-boundary` round-4 `6fd87d0`),
-2026-10-15.
+round 2 `7bc2561`; review round 3 on the same branch; base `codex/ag02-compaction-boundary`
+round-4 `6fd87d0`), 2026-10-15.
 Task card: [tasks/AG-06.md](./tasks/AG-06.md); roadmap row: [next-work-roadmap.md](./next-work-roadmap.md).
 
 > **Honest scope statement.** Everything below is deterministic-fixture evidence: it proves the
@@ -88,6 +88,30 @@ Tests (review round 2):
   restored session replaces the old durable-memory copy (no stale, no duplicate, never in system).
 - `executor.test.ts`: `userTurnInstructions` expectations updated for the removed memory part and
   the extended fence line (83/83 green).
+
+Production (review round 3 — 1 file, from the second P1 finding):
+
+- `services/agent-runtime/.../RuntimeEngine.java` — `refreshApplicationContext()` no longer
+  early-returns when the current run brings **no** application-context entries. The backend
+  resends the complete current set (compacted summary + semantic recall + durable memory) on every
+  chat run, so an empty set means the content was deleted or cleared: the restored session's
+  persisted copies are now REMOVED (and the state saved) instead of silently kept. A `null`
+  history still means "caller sent no history information" (resume/auxiliary wire shapes) and
+  never wipes. Pre-fix, deleting the last durable memory document left the previous copy visible
+  to the model on every subsequent run of that session — the reviewer found this gap in the
+  round-2 "memory refreshed per run" claim, whose regression only covered old→new, not old→none.
+  Consequence note: delivery/messaging runs (which carry no application context) now clear the
+  persisted copies for their session; the next regular chat run re-adds the current set — each
+  run sees exactly what the backend sent, which is the intended run-scoped semantics.
+
+Tests (review round 3):
+
+- `RuntimeIntegrationTest.clearedApplicationContextIsRemovedFromTheRestoredSession` (new; suite
+  19 → 20): three runs on ONE session — memory present → memory updated → memory deleted (empty
+  non-null history). Asserts run 2 replaced the old copy and run 3's model context contains NO
+  memory copy. Run red on the unfixed engine (run 3 still carried
+  `Durable memory saved by this user or bot follows. NEW_DURABLE_MEMORY` as a user message — the
+  red output is the standing evidence), green after the fix.
 
 Round 1's statement "No tool, permission, approval-policy, routing, or TS production-code change"
 is superseded by round 2: the P1 fix is a TS production change (memory carrier move) with no
@@ -264,13 +288,15 @@ These adaptations change test expectations only; no product behavior was added o
 
 ## Test results
 
-Round-2 numbers supersede round 1 where they differ.
+Round-3 numbers supersede earlier rounds where they differ.
 
-- **Java (JDK 21):** `mvn -B -f services/agent-runtime/pom.xml package` — **67 tests, 0 failures**
+- **Java (JDK 21):** `mvn -B -f services/agent-runtime/pom.xml package` — **68 tests, 0 failures**
   (PromptComposerTest 13, UntrustedContentBoundaryTest 2, DelegationSuspensionTest 3,
   ToolResultEvictionBoundaryTest 4, CompactionBoundaryIntegrationTest 7, RuntimeIntegrationTest
-  19 incl. the new durable-memory refresh test, RunRequestPolicyTest 16,
-  InterruptibleTaskRepositoryTest 3).
+  20 incl. the durable-memory refresh and cleared-context tests, RunRequestPolicyTest 16,
+  InterruptibleTaskRepositoryTest 3). Re-verified after the round-3 fix; the postgres offline
+  suite **3/3** and the five resident agentscope vitest integrations **27/27** were re-run green
+  against the round-3 jar.
 - **TypeScript:** `pnpm --filter @rakazo/adapters|testkit|web|api check` clean (re-run after the
   round-2 executor/test edits). `executor.test.ts` + `agentscope-runtime.test.ts` +
   `team-chat-judge.test.ts` — **107/107 green**. The five resident `agentscope` vitest integration
@@ -288,7 +314,10 @@ Round-2 numbers supersede round 1 where they differ.
     the system message); after the carrier move it is green.
   - E (round 2, P1) — remove `DURABLE_MEMORY` from Java `isApplicationContext()`:
     `refreshedDurableMemoryReplacesThePreviousRunScopedCopy` red; restored (re-applied and
-    re-verified at 67/67).
+    re-verified).
+  - F (round 3, P1) — the cleared-context test run against the **unfixed**
+    `refreshApplicationContext` is the standing red evidence (run 3 kept `NEW_DURABLE_MEMORY` in
+    the model context as a user message); green after removing the early return, full suite 68/68.
 - **Web e2e (adapted specs):** `pnpm test:e2e --runtime=agentscope
   --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts"` — **9/9 green** (3.0 min, local
   harness, disposable colima-postgres DB). `capability-rules.spec.ts` (the third spec on the CI

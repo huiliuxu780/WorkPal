@@ -473,12 +473,20 @@ public final class RuntimeEngine {
                 .filter(item -> item.id() == null && "user".equals(item.role())
                         && isApplicationContext(item.content()))
                 .toList();
-        if (current.isEmpty()) return;
-        // The application summary and recall are run-scoped. A restored Harness session can
-        // contain an older copy; replace it before the next model call instead of dropping
-        // all history before the application's compaction cursor.
-        loaded.contextMutable().removeIf(message -> message.getRole() == MsgRole.USER
+        // The application summary, semantic recall and durable memory are run-scoped: the
+        // backend resends the complete current set on every chat run, so a restored Harness
+        // session's copies are always replaced before the next model call instead of dropping
+        // all history before the application's compaction cursor. AG-06 review round 3: when
+        // the current run brings NO application context (every durable memory document was
+        // deleted, the summary was cleared), the persisted copies must be REMOVED — keeping
+        // them would leave deleted content visible to the model. A null history means the
+        // caller sent no history information at all and must not wipe anything.
+        boolean removed = loaded.contextMutable().removeIf(message -> message.getRole() == MsgRole.USER
                 && isApplicationContext(message.getTextContent()));
+        if (current.isEmpty()) {
+            if (removed) store.save(userSlot, sessionSlot, "agent_state", loaded);
+            return;
+        }
         List<Msg> updated = new ArrayList<>();
         for (RunRequest.HistoryMessage item : current) {
             updated.add(userMessage(item.content(), item.images()));

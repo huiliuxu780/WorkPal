@@ -104,6 +104,43 @@ class RuntimeIntegrationTest {
         } finally { model.stop(0); }
     }
 
+    /**
+     * AG-06 review round 3: application context is refreshed per Run, and the
+     * backend resends the complete current set on every chat run — so a run
+     * that brings NONE (the user deleted every durable memory document, the
+     * summary was cleared) must REMOVE the restored session's persisted copy.
+     * Three runs on one session: memory present → memory updated → memory
+     * deleted; the third run's model context must contain no memory at all.
+     */
+    @Test void clearedApplicationContextIsRemovedFromTheRestoredSession() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            String oldMemory = "Durable memory saved by this user or bot follows. OLD_DURABLE_MEMORY";
+            String newMemory = "Durable memory saved by this user or bot follows. NEW_DURABLE_MEMORY";
+            // Run 1: memory present.
+            engine.execute(withHistory(request(model.getAddress().getPort(), "durable-clear-1",
+                    "user-1", "space-1", List.of(), null), oldMemory), event -> {});
+            assertTrue(modelRequests.getLast().path("messages").toString().contains("OLD_DURABLE_MEMORY"));
+            // Run 2: memory updated — the old copy is replaced.
+            engine.execute(withHistory(request(model.getAddress().getPort(), "durable-clear-2",
+                    "user-1", "space-1", List.of(), null), newMemory), event -> {});
+            String second = modelRequests.getLast().path("messages").toString();
+            assertTrue(second.contains("NEW_DURABLE_MEMORY"), second);
+            assertFalse(second.contains("OLD_DURABLE_MEMORY"), second);
+            // Run 3: every document deleted — the backend sends an EMPTY (non-null)
+            // history. The restored session must not keep showing the old copy.
+            engine.execute(request(model.getAddress().getPort(), "durable-clear-3",
+                    "user-1", "space-1", List.of(), null), event -> {});
+            String third = modelRequests.getLast().path("messages").toString();
+            assertFalse(third.contains("NEW_DURABLE_MEMORY"),
+                    "deleted durable memory must not remain visible to the model: " + third);
+            assertFalse(third.contains("OLD_DURABLE_MEMORY"), third);
+            assertTrue(third.contains("Hello from Java Harness."), third);
+        } finally { model.stop(0); }
+    }
+
     @Test void externalToolUsesTheAuthorizedBridgeAndReturnsToHarness() throws Exception {
         List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
         List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();
