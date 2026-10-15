@@ -135,14 +135,26 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
           return;
         }
         if (userText(input).includes("SPAWN_BUDGET_FIXTURE")) {
-          respond(
-            toolCall("spawn-a", "agent_spawn", {
-              agent_id: "helper",
-              task: "SPAWN_BG_MARKER",
-              timeout_seconds: 0,
-            }),
-            "tool_calls",
-          );
+          // AG-02: native delegation is suspended, so agent_spawn is never offered. The model
+          // still attempts it once (a direct call bypassing visibility); the runtime refuses it
+          // (unregistered tool), which surfaces as a tool turn, and the parent then finishes
+          // without any helper having run. The budget/depth enforcement this scenario used to
+          // exercise end-to-end is covered in-JVM by InterruptibleTaskRepositoryTest.
+          const toolTurns = input.messages.filter(
+            (message: { role: string }) => message.role === "tool",
+          ).length;
+          if (toolTurns === 0) {
+            respond(
+              toolCall("spawn-a", "agent_spawn", {
+                agent_id: "helper",
+                task: "SPAWN_BG_MARKER",
+                timeout_seconds: 0,
+              }),
+              "tool_calls",
+            );
+            return;
+          }
+          respond({ content: "SPAWN_SUSPENDED_NO_HELPER" }, "stop");
           return;
         }
         if (lastUserText(input).includes("RESUME_FIXTURE_B")) {
@@ -176,9 +188,6 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
         AGENT_RUNTIME_HOST: "127.0.0.1",
         AGENT_RUNTIME_PORT: String(javaPort),
         AGENT_RUNTIME_DATA_DIR: stateDir,
-        // AG-02: production suspends native helper delegation; this suite verifies the retained
-        // TurnPolicy budget/depth enforcement, so it runs the runtime with delegation enabled.
-        WORKPAL_NATIVE_DELEGATION_SUSPENDED: "false",
       },
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -317,7 +326,7 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
     readOnly: false,
   };
 
-  it("binds Java helper fan-out to the TypeScript-tightened v2 budget", async () => {
+  it("suspends native delegation while still serializing the tightened v2 budget to Java", async () => {
     const policy = turnPolicyFromRun({
       trigger: "user",
       ownerBotId: "bot-tp",
@@ -333,11 +342,21 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
         tools: [subagentTool],
       }),
     );
-    expect(events.at(-1)).toEqual({ type: "done", text: "SPAWN_BUDGET_BOUND" });
-    // The spawn was refused at Java's hard-count boundary: no helper session
-    // ever reached the model, and the backend fallback tool never ran. Had
-    // Java used delegation.maxChildren (3) instead of the tightened budget
-    // value (0), this spawn would have registered and executed.
+    expect(events.at(-1)).toEqual({ type: "done", text: "SPAWN_SUSPENDED_NO_HELPER" });
+    // AG-02: native helper delegation is suspended, so even though the request offers
+    // run_subagent and a permissive policy, no spawn tool is offered and no helper session
+    // ever reaches the model; the model's direct agent_spawn attempt is refused (unregistered)
+    // and never runs a backend fallback tool. The budget/depth enforcement this scenario used
+    // to prove end-to-end is covered in-JVM by InterruptibleTaskRepositoryTest.
+    const spawnRequests = modelRequests.filter((input) =>
+      userText(input).includes("SPAWN_BUDGET_FIXTURE"),
+    );
+    for (const input of spawnRequests) {
+      const offered = (input.tools ?? []).map((tool) => tool.function.name);
+      for (const native of ["agent_spawn", "agent_send", "agent_list", "task_output", "task_cancel", "task_list"]) {
+        expect(offered, `suspended run offered ${native}`).not.toContain(native);
+      }
+    }
     expect(
       modelRequests.some(
         (input) =>

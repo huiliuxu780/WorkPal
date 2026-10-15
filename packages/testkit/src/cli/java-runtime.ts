@@ -38,12 +38,6 @@ export async function startJavaRuntime(dataDir: string, env: NodeJS.ProcessEnv =
       AGENT_RUNTIME_HOST: "127.0.0.1",
       AGENT_RUNTIME_PORT: String(port),
       AGENT_RUNTIME_DATA_DIR: path.join(dataDir, "agent-runtime"),
-      // AG-02: production suspends native helper delegation by default (a declared leaf helper
-      // cannot be given the safe compaction config through AgentScope 2.0.3's public API). The
-      // test harness keeps delegation enabled so the retained spawn/background/delivery/cancel
-      // machinery and TurnPolicy budget/depth enforcement stay covered for the eventual
-      // re-enable. Callers may override by setting the variable in `env`.
-      WORKPAL_NATIVE_DELEGATION_SUSPENDED: env.WORKPAL_NATIVE_DELEGATION_SUSPENDED ?? "false",
     },
     stdio: ["ignore", "inherit", "inherit"],
   });

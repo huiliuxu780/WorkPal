@@ -25,16 +25,14 @@ public final class RuntimeServer {
     private final HttpServer server;
 
     RuntimeServer(String host, int port, Path dataRoot) throws IOException {
-        // AG-02: native helper delegation is suspended by default (a declared leaf helper cannot
-        // be given the safe compaction config through AgentScope 2.0.3's public API). The
-        // WORKPAL_NATIVE_DELEGATION_SUSPENDED escape hatch defaults to suspended; integration
-        // tests that exercise the retained spawn/background/delivery machinery set it to "false"
-        // (see packages/testkit startJavaRuntime). Re-enabling in production is gated on the
-        // recovery conditions documented in RuntimeEngine.delegationSuspended, not on this env.
-        boolean delegationSuspended = !"false".equalsIgnoreCase(
-                System.getenv().getOrDefault("WORKPAL_NATIVE_DELEGATION_SUSPENDED", "true"));
-        engine = new RuntimeEngine(json, dataRoot.resolve("state"), dataRoot.resolve("workspace"),
-                RuntimeEngine.productionCompaction(), delegationSuspended);
+        // AG-02: native helper delegation is suspended for EVERY Run served by the production
+        // HTTP entrypoint. There is deliberately no env/config toggle here — a declared leaf
+        // helper cannot be given the safe compaction config through AgentScope 2.0.3's public
+        // API, so its own compaction would write native memory and emit dangling pointers.
+        // Re-enabling delegation is a CODE change gated on the recovery conditions documented
+        // in RuntimeEngine.delegationSuspended, never a deployment-config flip. Integration
+        // tests exercise the retained machinery through the package-private engine seam in-JVM.
+        engine = new RuntimeEngine(json, dataRoot.resolve("state"), dataRoot.resolve("workspace"));
         server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/health", this::health);

@@ -1,6 +1,6 @@
 # AG-02: AgentScope native compaction boundary
 
-Status: delivered on branch `codex/ag02-compaction-boundary` (base `codex/ag01-judge-auxiliary-isolation` e5e5061, which is itself base `main` d563f28), 2026-10-15. Round 1 = commit `1f858cc` (main-agent compaction flush/offload). Round 2 = commit `7b3c542` (review P1-1/P1-2/P2: tool-result eviction + exact counts) — see [Review follow-up (round 2)](#review-follow-up-round-2-2026-10-15). Round 3 (this revision) suspends native helper delegation for new Runs, closing the production-reachable helper-compaction path — see [Review follow-up (round 3)](#review-follow-up-round-3-2026-10-15). Roadmap status: `done` for the AG-02 boundary goal (no unauthorized native memory write, no dangling pointer, helper-compaction production path closed); native helper delegation is temporarily suspended with hard-coded re-enable conditions.
+Status: delivered on branch `codex/ag02-compaction-boundary` (base `codex/ag01-judge-auxiliary-isolation` e5e5061, which is itself base `main` d563f28), 2026-10-15. Round 1 = commit `1f858cc` (main-agent compaction flush/offload). Round 2 = commit `7b3c542` (review P1-1/P1-2/P2: tool-result eviction + exact counts) — see [Review follow-up (round 2)](#review-follow-up-round-2-2026-10-15). Round 3 = commit `395908b` (suspend native helper delegation for new Runs) — see [Review follow-up (round 3)](#review-follow-up-round-3-2026-10-15). Round 4 (this revision) removes the round-3 env re-enable hatch so the production HTTP entrypoint always suspends — see [Review follow-up (round 4)](#review-follow-up-round-4-2026-10-15). Roadmap status: `done` for the AG-02 boundary goal (no unauthorized native memory write, no dangling pointer, helper-compaction production path closed); native helper delegation is temporarily suspended with hard-coded, code-change-only re-enable conditions.
 Task card: [tasks/AG-02.md](./tasks/AG-02.md); roadmap row: [next-work-roadmap.md](./next-work-roadmap.md).
 
 ## Summary
@@ -343,6 +343,9 @@ memory-write path stays reachable, native helper delegation is **suspended for n
   already refuses reserved spawn names as backend tools.
 - Production default is suspended. `RuntimeServer` reads `WORKPAL_NATIVE_DELEGATION_SUSPENDED`
   (default `"true"`); the package-private engine seam and this env are test/recovery hooks only.
+  **[Superseded in round 4: this env hatch was a production re-enable bypass and has been removed —
+  `RuntimeServer` now always suspends and only the in-JVM package-private seam can enable delegation.
+  See [Review follow-up (round 4)](#review-follow-up-round-4-2026-10-15).]**
 - **Retained flow:** the task repository, `registerBackground`, `cancelTask`, and pending-delivery
   machinery stay wired, so already-spawned background tasks still complete, deliver, and cancel.
   `suspendedEngineStillDeliversAnAlreadyStartedBackgroundTask` proves a suspended engine surfaces an
@@ -384,3 +387,58 @@ Roadmap AG-02 → `done` for the boundary goal: no unauthorized native memory wr
 and the helper-compaction production path is closed by suspension. Native helper delegation is
 temporarily suspended; re-enable is gated on the hard-coded recovery conditions above (tracked as an
 upstream AgentScope dependency, related to ME-02).
+
+## Review follow-up (round 4, 2026-10-15)
+
+Round-3 review found a P1 in the round-3 suspension itself: the `WORKPAL_NATIVE_DELEGATION_SUSPENDED`
+env on `RuntimeServer` was a **production re-enable hatch**. Setting it to `false` in a deployment
+would turn the proven-unsafe helper path (native memory write + dangling pointer) back on by config —
+contradicting the stated "re-enable is a code change, not an env flip". The round-3 testkit default
+(`?? "false"`) also meant the general e2e entrypoint ran with delegation ENABLED, so those suites
+never exercised the production-suspended behavior.
+
+Fix (this revision):
+
+- **`RuntimeServer` no longer reads any delegation env.** Its constructor always builds the engine
+  through the public suspended path (`new RuntimeEngine(json, state, workspace)` →
+  `productionCompaction()` + `delegationSuspended=true`). There is no config/env toggle at the
+  production HTTP entrypoint; re-enabling delegation now requires editing `RuntimeEngine` (the
+  recovery conditions are hard-coded in its `delegationSuspended` javadoc).
+- **The package-private engine seam stays** as the only way to run with delegation enabled, and it is
+  in-JVM (not reachable by a deployment). It keeps the retained machinery under test:
+  `RuntimeIntegrationTest`'s 4 subagent/background tests (spawn, background delivery, cancel, failed
+  registration) and `DelegationSuspensionTest`'s already-started-task recovery test.
+- **testkit `startJavaRuntime` reverted** to the production default (it no longer injects the env), so
+  every suite booting the jar through the harness runs suspended, exactly like production.
+- **New real-entrypoint regression test** `runtimeServerEntrypointNeverOffersSpawnEvenWhenRunSubagentProvided`
+  boots the actual `RuntimeServer` over HTTP, POSTs a run that offers `run_subagent` with a permissive
+  delegation policy, and asserts the model is never offered `agent_spawn`/`agent_send`/`agent_list`/
+  `task_*`/`run_subagent`, that a direct `agent_spawn` attempt bypassing visibility spawns no helper,
+  that the run still completes, and that no `memory/` file is written. Sabotage-verified: pointing
+  `RuntimeServer` at the delegation-enabled seam makes this test fail (`must not offer delegation tool
+  agent_send`), so it genuinely pins the production entrypoint.
+- **`turnpolicy-v2-agentscope` adapted:** the `SPAWN_BUDGET` suite now asserts the suspended reality —
+  the tightened v2 budget still serializes onto the wire to Java, `agent_spawn` is never offered, no
+  helper session reaches the model, and the backend fallback tool never runs. The budget/depth
+  ENFORCEMENT it used to prove end-to-end (refusing a spawn at `maxChildren=0` with "Delegation budget
+  exceeded") is covered in-JVM by `InterruptibleTaskRepositoryTest.refusesBeyondTheHelperBudget` /
+  `budgetIsSharedAcrossAttemptsOfTheSameRun`, which the reviewer's "keep the mechanism in the Java
+  seam" guidance calls for. The `DEPTH_ZERO` suite already passed under suspension (it asserts the
+  spawn surface is hidden). `agentscope-consumers`, `agentscope-auxiliary-isolation` and
+  `team-chat-judge.integration` pass unchanged under the suspended default.
+
+### Round-4 tests and status
+
+`mvn -B -f services/agent-runtime/pom.xml package` (JDK 21): BUILD SUCCESS, **62 tests / 0 failures**
+(DelegationSuspensionTest 3 — including the new real-entrypoint test; ToolResultEvictionBoundaryTest 4;
+CompactionBoundaryIntegrationTest 7; RuntimeIntegrationTest 18; RunRequestPolicyTest 16;
+PromptComposerTest 11; InterruptibleTaskRepositoryTest 3). TypeScript: `pnpm --filter @rakazo/adapters
+--filter @rakazo/testkit check` clean; `executor.test.ts` 83/83; the four CI `agentscope` vitest
+integrations green (turnpolicy-v2 5, agentscope-consumers 2, agentscope-auxiliary-isolation 13,
+team-chat-judge 1) — all now booting the jar under the production-suspended default, with delegation
+mechanism coverage retained in the Java seam. No production env can re-enable delegation.
+
+Roadmap AG-02 → `done`: the production HTTP entrypoint always suspends native helper delegation (no
+env bypass), so the helper-compaction native-memory-write/dangling-pointer path is closed in
+production; re-enable is a gated code change. Main-agent compaction (flush/offload off) and
+tool-result eviction (off + bounded) remain fixed and test-pinned.

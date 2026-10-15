@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -149,6 +153,71 @@ class DelegationSuspensionTest {
                             .contains("RECOVERY_CHILD_RESULT")),
                     "a suspended engine must still deliver an already-started background task result");
         } finally { bridge.stop(0); model.stop(0); }
+    }
+
+    /**
+     * Review round 3: prove the suspension at the REAL production HTTP entrypoint (RuntimeServer),
+     * which no longer reads any delegation env toggle. Even when the request offers run_subagent
+     * with a permissive delegation policy, the model is never offered agent_spawn (or any native
+     * spawn/task tool), a direct agent_spawn attempt that bypasses visibility cannot spawn, and no
+     * native memory is written.
+     */
+    @Test void runtimeServerEntrypointNeverOffersSpawnEvenWhenRunSubagentProvided() throws Exception {
+        List<JsonNode> requests = new CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
+        HttpServer model = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        model.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
+        model.createContext("/v1/chat/completions", exchange -> {
+            JsonNode body = JSON.readTree(exchange.getRequestBody());
+            requests.add(body);
+            if (turns.getAndIncrement() == 0) {
+                streamTool(exchange, "agent_spawn",
+                        "{\"agent_id\":\"helper\",\"task\":\"SERVER_HELPER_SHOULD_NOT_RUN\",\"background\":true}");
+            } else {
+                streamText(exchange, "SERVER_DELEGATION_SUSPENDED");
+            }
+        });
+        model.start();
+        HttpServer bridge = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        bridge.createContext("/v1/background-tasks/events", ex -> respond(ex, "{\"ok\":true}"));
+        bridge.createContext("/v1/background-tasks", ex -> respond(ex, "{\"token\":\"task-secret\"}"));
+        bridge.createContext("/v1/tool-executions", ex -> {
+            ex.getRequestBody().readAllBytes();
+            respond(ex, "{\"status\":\"ok\",\"result\":{\"value\":\"bridge should not be reached\"}}");
+        });
+        bridge.start();
+        RuntimeServer runtime = new RuntimeServer("127.0.0.1", 0, temp.resolve("http-runtime"));
+        runtime.start();
+        try {
+            RunRequest input = permissiveDelegationRequest(model.getAddress().getPort(),
+                    bridge.getAddress().getPort(), "server-suspend-1");
+            HttpClient client = HttpClient.newHttpClient();
+            URI runs = URI.create("http://127.0.0.1:" + runtime.port() + "/v1/runs");
+            HttpResponse<String> response = client.send(HttpRequest.newBuilder(runs)
+                            .header("content-type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(input))).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("SERVER_DELEGATION_SUSPENDED"),
+                    "the run must complete through the real entrypoint: " + response.body());
+
+            assertFalse(requests.isEmpty(), "the run must reach the model");
+            for (JsonNode body : requests) {
+                for (JsonNode tool : body.path("tools")) {
+                    String name = tool.path("function").path("name").asText();
+                    assertFalse(List.of("agent_spawn", "agent_send", "agent_list", "task_output",
+                                    "task_cancel", "task_list", "run_subagent").contains(name),
+                            "RuntimeServer entrypoint must not offer delegation tool " + name);
+                }
+            }
+            assertFalse(requests.stream().anyMatch(b -> b.path("messages").toString()
+                            .contains("SERVER_HELPER_SHOULD_NOT_RUN") && b.path("messages").toString()
+                            .contains("You are a helper")),
+                    "no helper subagent may be constructed through the real entrypoint");
+            assertTrue(filesUnder(temp.resolve("http-runtime"), p -> p.toString().contains("/memory/")
+                            || p.toString().endsWith("MEMORY.md")).isEmpty(),
+                    "RuntimeServer entrypoint must not write native memory files");
+        } finally { runtime.stop(); bridge.stop(0); model.stop(0); }
     }
 
     // ============================ fixtures ============================
