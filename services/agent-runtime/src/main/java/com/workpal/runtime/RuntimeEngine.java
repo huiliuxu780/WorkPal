@@ -164,7 +164,11 @@ public final class RuntimeEngine {
         // TurnPolicy: a disabled planning mode hides the whole native plan
         // surface, so non-interactive runs cannot stall on plan approval.
         if (request.planningAllowed()) harnessTools.addAll(List.of("plan_enter", "plan_write"));
-        harnessTools.add("load_skill_through_path");
+        // AG-01: native skill loading is a chat capability. Auxiliary scopes
+        // (auto-review, history-compaction, turn-routing, team-chat-judge) must
+        // never offer a skill surface to the model, and RunRequest.validate
+        // already refuses skill payloads on those scopes.
+        if (request.isChat()) harnessTools.add("load_skill_through_path");
         if (allowSubagents) harnessTools.addAll(List.of("agent_spawn", "agent_send", "agent_list",
                 "task_output", "task_cancel", "task_list"));
         for (String name : harnessTools) permissions.addAllowRule(name,

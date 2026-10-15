@@ -23,7 +23,7 @@ jobs:
       - run: pnpm --filter @rakazo/worker check
       - run: pnpm --filter @rakazo/web check
       - run: pnpm --filter @rakazo/web build
-      - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts apps/api/src/env.test.ts
+      - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
 
   agentscope:
     runs-on: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @rakazo/db generate
       - run: pnpm --filter @rakazo/testkit check
-      - run: pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts packages/adapters/src/turnpolicy-v2-agentscope.integration.test.ts
+      - run: pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts packages/adapters/src/turnpolicy-v2-agentscope.integration.test.ts packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts apps/api/src/team-chat-judge.integration.test.ts
       - run: pnpm test:integration --spec=agentscope-offline.postgres.test.ts
       - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e --runtime=agentscope --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts|capability-rules.spec.ts"

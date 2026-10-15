@@ -455,8 +455,17 @@ export interface AgentRunRequest {
   threadId: string;
   runId: string;
   sourceMessageId?: string | null;
-  /** Backend-selected auxiliary executions are stateless and do not share the chat lease. */
-  executionScope?: "chat" | "auto-review" | "history-compaction" | "turn-routing";
+  /**
+   * Backend-selected auxiliary executions are stateless and do not share the
+   * chat lease. The runtime refuses backend tools and skills on every
+   * auxiliary scope and never exposes native Plan/Skill/subagent tools there.
+   */
+  executionScope?:
+    | "chat"
+    | "auto-review"
+    | "history-compaction"
+    | "turn-routing"
+    | "team-chat-judge";
   /**
    * Product Harness Phase 2 immutable execution policy for this Run
    * (turn-policy wire shape). The runtime enforces it — plan and subagent

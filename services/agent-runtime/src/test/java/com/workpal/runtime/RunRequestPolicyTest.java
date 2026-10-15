@@ -1,6 +1,7 @@
 package com.workpal.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -118,6 +119,94 @@ class RunRequestPolicyTest {
         RunRequest request = JSON.readValue(body, RunRequest.class);
         assertFalse(request.planningAllowed());
         assertFalse(request.delegationAllowed());
+    }
+
+    /** AG-01: the team-chat engagement judge has its own auxiliary scope. */
+    @Test void teamChatJudgeScopeIsAcceptedAndCapabilityFree() throws Exception {
+        String body = """
+                {"botId":"bot-1","threadId":"team-chat-judge:1","runId":"team-chat-judge:1","executionScope":"team-chat-judge",
+                 "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"team-chat-judge:1","runId":"team-chat-judge:1"},
+                 "prompt":"judge","model":{"provider":"p","id":"m"}}
+                """;
+        RunRequest request = JSON.readValue(body, RunRequest.class);
+        request.validate();
+        assertFalse(request.isChat());
+        assertFalse(request.planningAllowed(), "the engagement judge must never expose plan tools");
+        assertFalse(request.delegationAllowed(), "the engagement judge must never expose subagent tools");
+        assertFalse(request.backgroundAllowed());
+    }
+
+    @Test void unknownExecutionScopeIsRejected() throws Exception {
+        String body = """
+                {"botId":"bot-1","threadId":"t","runId":"r","executionScope":"team-chat-judgex",
+                 "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"t","runId":"r"},
+                 "prompt":"judge","model":{"provider":"p","id":"m"}}
+                """;
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> JSON.readValue(body, RunRequest.class).validate());
+        assertEquals("Unsupported execution scope", failure.getMessage());
+    }
+
+    /**
+     * AG-01 chosen behavior: an auxiliary request that mistakenly carries
+     * backend tools or skills is refused at the trusted boundary — never
+     * silently stripped and never forwarded to the model.
+     */
+    @Test void auxiliaryScopesRefuseBackendToolsAndSkills() throws Exception {
+        for (String scope : List.of("auto-review", "history-compaction", "turn-routing", "team-chat-judge")) {
+            String withTools = """
+                    {"botId":"bot-1","threadId":"t","runId":"r","executionScope":"%s",
+                     "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"t","runId":"r"},
+                     "prompt":"aux","model":{"provider":"p","id":"m"},
+                     "tools":[{"name":"shell","description":"mistaken","inputSchema":{"type":"object"},"readOnly":true}]}
+                    """.formatted(scope);
+            IllegalArgumentException toolsFailure = assertThrows(IllegalArgumentException.class,
+                    () -> JSON.readValue(withTools, RunRequest.class).validate(), scope);
+            assertEquals("Auxiliary execution scope must not carry backend tools or skills",
+                    toolsFailure.getMessage(), scope);
+
+            // The refusal is scope-based: an otherwise fully valid trusted
+            // bridge does not make backend tools acceptable on an auxiliary run.
+            String withToolsAndBridge = """
+                    {"botId":"bot-1","threadId":"t","runId":"r","executionScope":"%s",
+                     "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"t","runId":"r"},
+                     "prompt":"aux","model":{"provider":"p","id":"m"},
+                     "tools":[{"name":"shell","description":"mistaken","inputSchema":{"type":"object"},"readOnly":true}],
+                     "toolBridge":{"url":"http://127.0.0.1:9/v1/tool-executions","token":"bridge-secret",
+                       "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"t","runId":"r"}}}
+                    """.formatted(scope);
+            IllegalArgumentException bridgeFailure = assertThrows(IllegalArgumentException.class,
+                    () -> JSON.readValue(withToolsAndBridge, RunRequest.class).validate(), scope);
+            assertEquals("Auxiliary execution scope must not carry backend tools or skills",
+                    bridgeFailure.getMessage(), scope);
+
+            String withSkills = """
+                    {"botId":"bot-1","threadId":"t","runId":"r","executionScope":"%s",
+                     "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"t","runId":"r"},
+                     "prompt":"aux","model":{"provider":"p","id":"m"},
+                     "skills":[{"id":"skill-1","name":"project-rules","description":"mistaken","content":"SECRET"}]}
+                    """.formatted(scope);
+            IllegalArgumentException skillsFailure = assertThrows(IllegalArgumentException.class,
+                    () -> JSON.readValue(withSkills, RunRequest.class).validate(), scope);
+            assertEquals("Auxiliary execution scope must not carry backend tools or skills",
+                    skillsFailure.getMessage(), scope);
+        }
+    }
+
+    @Test void chatScopeStillAcceptsAuthorizedToolsAndSkills() throws Exception {
+        String body = """
+                {"botId":"bot-1","threadId":"t","runId":"r","executionScope":"chat",
+                 "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"t","runId":"r"},
+                 "prompt":"chat","model":{"provider":"p","id":"m"},
+                 "skills":[{"id":"skill-1","name":"project-rules","description":"rules","content":"C"}],
+                 "tools":[{"name":"shell","description":"authorized","inputSchema":{"type":"object"},"readOnly":true}],
+                 "toolBridge":{"url":"http://127.0.0.1:9/v1/tool-executions","token":"bridge-secret",
+                   "identity":{"userId":"user-1","spaceId":"space-1","botId":"bot-1","threadId":"t","runId":"r"}}}
+                """;
+        RunRequest request = JSON.readValue(body, RunRequest.class);
+        request.validate();
+        assertTrue(request.isChat());
+        assertTrue(request.planningAllowed());
     }
 
     @Test void explicitZeroBudgetIsPreservedAndNegativesFallBack() throws Exception {

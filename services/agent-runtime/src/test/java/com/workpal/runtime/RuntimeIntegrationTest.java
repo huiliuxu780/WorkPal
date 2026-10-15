@@ -674,6 +674,74 @@ class RuntimeIntegrationTest {
         } finally { model.stop(0); }
     }
 
+    /**
+     * AG-01: an auxiliary execution (here the team-chat engagement judge) must
+     * reach the model with zero callable tools even when the request attaches
+     * the most permissive v1 auto plan/delegation policy.
+     */
+    @Test void auxiliaryScopeReachesTheModelWithoutToolsDespiteAutoPolicy() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RunRequest base = request(model.getAddress().getPort(), "aux-judge-1", "user-1", "space-1",
+                    List.of(), null);
+            RunRequest input = new RunRequest(base.botId(), base.threadId(), base.runId(), "team-chat-judge",
+                    base.sourceMessageId(), base.identity(), base.prompt(), base.productName(), base.instructions(),
+                    base.history(), base.currentTurnImages(), base.skills(), base.tools(), base.toolBridge(),
+                    base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration(), null,
+                    new RunRequest.TurnPolicy("v1", true, "auto",
+                            new RunRequest.TurnPolicy.Delegation("auto", true, 3, 1),
+                            new RunRequest.TurnPolicy.Ownership("owner", "bot-1"),
+                            "team-chat-judge", null, null, null, null),
+                    null);
+            List<Map<String, Object>> events = new ArrayList<>();
+            new RuntimeEngine(JSON, temp.resolve("aux-state"), temp.resolve("aux-workspace"))
+                    .execute(input, events::add);
+            assertEquals("done", events.getLast().get("type"));
+            assertFalse(modelRequests.isEmpty());
+            for (JsonNode body : modelRequests) {
+                JsonNode tools = body.path("tools");
+                assertTrue(tools.isMissingNode() || (tools.isArray() && tools.isEmpty()),
+                        "auxiliary model request must expose no tools: " + tools);
+                for (String reserved : List.of("plan_enter", "plan_write", "plan_exit",
+                        "load_skill_through_path", "agent_spawn", "agent_send", "agent_list",
+                        "task_output", "task_cancel", "task_list", "wait_async_results")) {
+                    assertFalse(body.toString().contains("\"name\":\"" + reserved + "\""),
+                            "auxiliary model request leaked native tool " + reserved);
+                }
+            }
+        } finally { model.stop(0); }
+    }
+
+    /**
+     * AG-01 chosen behavior at the engine boundary: an auxiliary request that
+     * mistakenly carries backend tools fails explicitly before any model call.
+     */
+    @Test void auxiliaryScopeExecutionRefusesMistakenToolsBeforeAnyModelCall() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RunRequest base = request(model.getAddress().getPort(), "aux-judge-2", "user-1", "space-1",
+                    List.of(), null);
+            RunRequest.ToolBridge bridge = new RunRequest.ToolBridge(
+                    "http://127.0.0.1:9/v1/tool-executions", null, null, "bridge-secret", base.identity());
+            RunRequest input = new RunRequest(base.botId(), base.threadId(), base.runId(), "team-chat-judge",
+                    base.sourceMessageId(), base.identity(), base.prompt(), base.productName(), base.instructions(),
+                    base.history(), base.currentTurnImages(), base.skills(),
+                    List.of(new RunRequest.ToolDefinition("shell", "Mistaken tool",
+                            Map.of("type", "object"), true)),
+                    bridge, base.model(), base.allowSilentEmpty(), base.emptyResponseText(),
+                    base.sessionGeneration());
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("aux-reject-state"),
+                    temp.resolve("aux-reject-workspace"));
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> engine.execute(input, event -> {}));
+            assertEquals("Auxiliary execution scope must not carry backend tools or skills",
+                    failure.getMessage());
+            assertTrue(modelRequests.isEmpty(), "a refused auxiliary run must never reach the model");
+        } finally { model.stop(0); }
+    }
+
     @Test void constructsSupportedApiKeyModelAdapters() {
         for (String provider : List.of("openai", "openrouter", "openai-compatible", "local",
                 "anthropic", "google", "dashscope", "xai", "deepseek", "minimax",
