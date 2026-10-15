@@ -25,7 +25,16 @@ public final class RuntimeServer {
     private final HttpServer server;
 
     RuntimeServer(String host, int port, Path dataRoot) throws IOException {
-        engine = new RuntimeEngine(json, dataRoot.resolve("state"), dataRoot.resolve("workspace"));
+        // AG-02: native helper delegation is suspended by default (a declared leaf helper cannot
+        // be given the safe compaction config through AgentScope 2.0.3's public API). The
+        // WORKPAL_NATIVE_DELEGATION_SUSPENDED escape hatch defaults to suspended; integration
+        // tests that exercise the retained spawn/background/delivery machinery set it to "false"
+        // (see packages/testkit startJavaRuntime). Re-enabling in production is gated on the
+        // recovery conditions documented in RuntimeEngine.delegationSuspended, not on this env.
+        boolean delegationSuspended = !"false".equalsIgnoreCase(
+                System.getenv().getOrDefault("WORKPAL_NATIVE_DELEGATION_SUSPENDED", "true"));
+        engine = new RuntimeEngine(json, dataRoot.resolve("state"), dataRoot.resolve("workspace"),
+                RuntimeEngine.productionCompaction(), delegationSuspended);
         server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/health", this::health);

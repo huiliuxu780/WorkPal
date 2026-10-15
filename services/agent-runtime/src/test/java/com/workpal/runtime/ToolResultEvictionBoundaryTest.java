@@ -84,17 +84,21 @@ class ToolResultEvictionBoundaryTest {
         HttpServer model = helperModel(requests, "big_tool", "BIG_HELPER_RESULT");
         HttpServer bridge = helperBridgeReturning("BIG_HELPER_RESULT " + BIG);
         try {
-            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            // Native delegation is suspended in production (see DelegationSuspensionTest), so a
+            // helper cannot be spawned there. This test enables delegation through the seam to
+            // verify the resultBlock cap still protects a helper for the eventual re-enable: the
+            // helper's own eviction cannot be configured via AgentScope's public API, so the cap
+            // is what keeps its oversized result below the 80k eviction threshold. Under a
+            // production-like window the capped result also stays under the helper's derived
+            // compaction trigger, so neither pointer nor offload file appears.
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"),
+                    RuntimeEngine.productionCompaction(), false);
             List<Map<String, Object>> events = new ArrayList<>();
             engine.execute(helperRequest(model.getAddress().getPort(), bridge.getAddress().getPort(),
                     "evict-helper"), events::add);
             Thread.sleep(400);
             assertEquals("done", events.getLast().get("type"));
 
-            // The helper's own eviction cannot be disabled via AgentScope's public API, so the
-            // resultBlock bound is what keeps its oversized result below the 80k eviction
-            // threshold. Under a production-like window the capped result also stays under the
-            // helper's derived compaction trigger, so neither pointer nor offload file appears.
             assertFalse(anyMessageContains(requests, EVICTION_PLACEHOLDER),
                     "no eviction placeholder may reach the helper or parent model");
             assertTrue(filesNamed("large_tool_results").isEmpty(),
@@ -123,6 +127,38 @@ class ToolResultEvictionBoundaryTest {
                     "an excluded tool result must not be truncated by the WorkPal cap");
             assertTrue(anyMessageContains(requests, "X".repeat(80_000)),
                     "the full excluded-tool result must remain inline and readable");
+        } finally { bridge.stop(0); model.stop(0); }
+    }
+
+    /**
+     * Review round-2 boundary case: when the first TextBlock ends EXACTLY at the cap and later
+     * text blocks follow, the cap must still leave an honest truncation marker (the earlier
+     * implementation silently dropped the later blocks with no marker). The dropped content is
+     * accounted for, and the bounded result stays under the eviction threshold.
+     */
+    @Test void capLeavesMarkerWhenFirstBlockEndsExactlyAtTheCap() throws Exception {
+        List<JsonNode> requests = new CopyOnWriteArrayList<>();
+        HttpServer model = toolThenDoneModel(requests, "big_tool", "EXACT_CAP_RESULT");
+        // First text item is exactly TOOL_RESULT_TEXT_CAP chars (and starts with the marker the
+        // fixture model waits for); a second item follows it to exercise the boundary drop.
+        String first = "EXACT_CAP_RESULT" + "Z".repeat(60_000 - "EXACT_CAP_RESULT".length());
+        assertEquals(60_000, first.length());
+        HttpServer bridge = bridgeReturningTwoText(first, "SECOND_BLOCK_MARKER_TEXT");
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            List<Map<String, Object>> events = new ArrayList<>();
+            engine.execute(request(model.getAddress().getPort(), bridge.getAddress().getPort(),
+                    "evict-boundary", "big_tool"), events::add);
+            assertEquals("done", events.getLast().get("type"));
+
+            assertTrue(anyMessageContains(requests, CAP_MARKER),
+                    "an over-cap result must always carry the truncation marker, even at the exact boundary");
+            assertFalse(anyMessageContains(requests, "SECOND_BLOCK_MARKER_TEXT"),
+                    "text beyond the cap is dropped, but only with the marker accounting for it");
+            assertTrue(anyMessageContains(requests, "Z".repeat(59_000)),
+                    "the retained head of the first block must remain readable");
+            assertTrue(filesNamed("large_tool_results").isEmpty(), "the bounded result must not be evicted");
+            assertFalse(anyMessageContains(requests, EVICTION_PLACEHOLDER), "no eviction placeholder");
         } finally { bridge.stop(0); model.stop(0); }
     }
 
@@ -220,6 +256,20 @@ class ToolResultEvictionBoundaryTest {
             respond(exchange, JSON.writeValueAsBytes(Map.of("status", "ok", "result",
                     Map.of("kind", "agent_tool_result", "content",
                             List.of(Map.of("type", "text", "text", text))))));
+        });
+        bridge.start();
+        return bridge;
+    }
+
+    /** Bridge whose tool result carries two text items, to exercise multi-block capping. */
+    private static HttpServer bridgeReturningTwoText(String first, String second) throws Exception {
+        HttpServer bridge = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        bridge.createContext("/v1/tool-executions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            respond(exchange, JSON.writeValueAsBytes(Map.of("status", "ok", "result",
+                    Map.of("kind", "agent_tool_result", "content",
+                            List.of(Map.of("type", "text", "text", first),
+                                    Map.of("type", "text", "text", second))))));
         });
         bridge.start();
         return bridge;

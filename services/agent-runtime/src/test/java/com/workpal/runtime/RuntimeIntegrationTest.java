@@ -191,7 +191,7 @@ class RuntimeIntegrationTest {
                     base.history(), base.currentTurnImages(), base.skills(), List.of(delegation, clock), endpoint,
                     base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
             List<Map<String, Object>> events = new ArrayList<>();
-            new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace")).execute(request, events::add);
+            delegationEngine(temp.resolve("state"), temp.resolve("workspace")).execute(request, events::add);
             assertEquals("done", events.getLast().get("type"));
             assertTrue(events.stream().anyMatch(event -> "tool".equals(event.get("type"))
                     && "agent_spawn".equals(event.get("name"))));
@@ -281,7 +281,7 @@ class RuntimeIntegrationTest {
                         new RunRequest.ToolDefinition("run_subagent", "Delegate", Map.of("type", "object"), true),
                         new RunRequest.ToolDefinition("test_clock", "Clock", Map.of("type", "object"), true)),
                     endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
-            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            RuntimeEngine engine = delegationEngine(temp.resolve("state"), temp.resolve("workspace"));
             List<Map<String, Object>> events = new ArrayList<>();
             engine.execute(input, events::add);
             assertEquals("done", events.getLast().get("type"));
@@ -401,7 +401,7 @@ class RuntimeIntegrationTest {
                         new RunRequest.ToolDefinition("run_subagent", "Delegate", Map.of("type", "object"), true),
                         new RunRequest.ToolDefinition("test_clock", "Clock", Map.of("type", "object"), true)),
                     endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
-            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("cancel-state"), temp.resolve("cancel-workspace"));
+            RuntimeEngine engine = delegationEngine(temp.resolve("cancel-state"), temp.resolve("cancel-workspace"));
             List<Map<String, Object>> events = new ArrayList<>();
             engine.execute(input, events::add);
             assertEquals("done", events.getLast().get("type"));
@@ -453,7 +453,7 @@ class RuntimeIntegrationTest {
                     base.history(), base.currentTurnImages(), base.skills(), List.of(
                         new RunRequest.ToolDefinition("run_subagent", "Delegate", Map.of("type", "object"), true)),
                     endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
-            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("reject-state"), temp.resolve("reject-workspace"));
+            RuntimeEngine engine = delegationEngine(temp.resolve("reject-state"), temp.resolve("reject-workspace"));
             Exception failure = assertThrows(Exception.class, () -> engine.execute(input, event -> {}));
             assertTrue(failure.getMessage() != null && failure.getMessage().contains("Cannot stream AgentScope event"),
                     failure.toString());
@@ -764,6 +764,17 @@ class RuntimeIntegrationTest {
     }
 
     private record ToolStep(String name, String arguments) {}
+
+    /**
+     * AG-02: production suspends native helper delegation (a declared leaf helper cannot be
+     * given the safe compaction config through AgentScope 2.0.3's public API). These tests
+     * exercise the spawn/background/delivery/cancel machinery that production keeps wired for
+     * already-spawned tasks and for the eventual re-enable, so they turn delegation on via the
+     * package-private seam while still using the safe production compaction config.
+     */
+    private static RuntimeEngine delegationEngine(Path state, Path workspace) {
+        return new RuntimeEngine(JSON, state, workspace, RuntimeEngine.productionCompaction(), false);
+    }
 
     private static HttpServer scriptedModel(List<JsonNode> requests, List<ToolStep> steps) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

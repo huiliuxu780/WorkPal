@@ -98,6 +98,23 @@ public final class RuntimeEngine {
     private final Path stateRoot;
     private final Path workspaceRoot;
     private final CompactionConfig compaction;
+    /**
+     * AG-02: native helper delegation is suspended for new Runs. A declared AgentScope
+     * leaf helper cannot be given the safe compaction config through the 2.0.3 public API
+     * (SubagentDeclaration exposes no compaction/eviction hook; asLeafSubagent() is
+     * package-private; subagentFactory bypasses deriveChildSessionId, which background
+     * delegation relies on), so its own compaction would keep AgentScope's default
+     * flush/offload=true and could write native memory and emit dangling pointers — reachable
+     * even on production window sizes (a helper read_file result is eviction-excluded and
+     * uncapped, and multiple capped results accumulate). Rather than ship a risky rebuild of
+     * the delegation path, new Runs offer no run_subagent/agent_spawn. Already-spawned
+     * background tasks keep their completion/delivery/cancel flow (the task repository and
+     * background machinery stay wired). RE-ENABLE ONLY WHEN: upstream AgentScope lets a
+     * declared subagent carry compaction/eviction config, AND a real-run test proves the
+     * helper compacts with no flush/offload, AND child session derivation, background
+     * registration, delivery and cancel all regress green.
+     */
+    private final boolean delegationSuspended;
     private final ConcurrentHashMap<String, RunningAgent> running = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BackgroundHandle> background = new ConcurrentHashMap<>();
     /**
@@ -114,20 +131,33 @@ public final class RuntimeEngine {
             ToolBridgeClient bridge, String taskId, String childSession) {}
 
     public RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot) {
-        this(json, stateRoot, workspaceRoot, productionCompaction());
+        this(json, stateRoot, workspaceRoot, productionCompaction(), true);
     }
 
     /**
      * Test seam: lets an integration test drive the real engine under AgentScope's
      * stock CompactionConfig defaults (flush/offload before compact = true) so the
      * pre-fix boundary gap stays reproducible, while every production caller uses
-     * {@link #productionCompaction()}. Not exposed outside this package.
+     * {@link #productionCompaction()}. Delegation stays suspended (production default).
+     * Not exposed outside this package.
      */
     RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot, CompactionConfig compaction) {
+        this(json, stateRoot, workspaceRoot, compaction, true);
+    }
+
+    /**
+     * Test seam: full control of compaction and delegation suspension. Integration tests
+     * use {@code delegationSuspended=false} to exercise the native spawn/background/
+     * delivery/cancel machinery that production keeps wired for already-spawned tasks and
+     * for the eventual re-enable; production uses the public constructor (suspended).
+     */
+    RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot, CompactionConfig compaction,
+            boolean delegationSuspended) {
         this.json = json;
         this.stateRoot = stateRoot;
         this.workspaceRoot = workspaceRoot;
         this.compaction = compaction;
+        this.delegationSuspended = delegationSuspended;
     }
 
     /**
@@ -208,7 +238,12 @@ public final class RuntimeEngine {
         List<String> childToolNames = new ArrayList<>();
         // TurnPolicy (Product Harness Phase 2): native delegation requires both
         // the backend offering run_subagent and the policy allowing it.
-        boolean allowSubagents = request.tools() != null
+        // AG-02: delegation is additionally suspended at the runtime until a declared
+        // helper can be given the safe compaction config (see delegationSuspended). While
+        // suspended, no new Run offers run_subagent/agent_spawn regardless of the request;
+        // already-spawned background tasks keep their delivery/cancel flow below.
+        boolean allowSubagents = !delegationSuspended
+                && request.tools() != null
                 && request.tools().stream().anyMatch(tool -> "run_subagent".equals(tool.name()))
                 && request.delegationAllowed();
         if (request.tools() != null) {
@@ -612,20 +647,23 @@ public final class RuntimeEngine {
         int budget = TOOL_RESULT_TEXT_CAP;
         for (ContentBlock block : output) {
             if (!(block instanceof TextBlock text)) { capped.add(block); continue; }
-            if (budget <= 0) continue;
+            if (budget <= 0) continue; // remaining text is dropped; the marker below accounts for it
             String value = text.getText();
             if (value.length() <= budget) {
                 capped.add(TextBlock.builder().text(value).build());
                 budget -= value.length();
             } else {
-                capped.add(TextBlock.builder().text(value.substring(0, budget)
-                        + "\n\n[WorkPal: tool result truncated from " + total + " to "
-                        + TOOL_RESULT_TEXT_CAP + " chars to stay within the model context boundary."
-                        + " Native large-result offload is disabled because its workspace file"
-                        + " pointer is not readable through WorkPal's authorized tools.]").build());
+                capped.add(TextBlock.builder().text(value.substring(0, budget)).build());
                 budget = 0;
             }
         }
+        // Always append exactly one honest marker when the result was truncated, including the
+        // boundary case where a TextBlock ends exactly at the cap and later text blocks are
+        // dropped — a silent drop with no marker would hide lost content from the model.
+        capped.add(TextBlock.builder().text("\n\n[WorkPal: tool result truncated from " + total
+                + " to " + TOOL_RESULT_TEXT_CAP + " chars to stay within the model context boundary."
+                + " Native large-result offload is disabled because its workspace file pointer is"
+                + " not readable through WorkPal's authorized tools.]").build());
         return capped;
     }
 

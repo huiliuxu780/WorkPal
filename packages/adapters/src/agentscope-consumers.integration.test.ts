@@ -81,6 +81,9 @@ describe("AgentScope consumer integration", () => {
         AGENT_RUNTIME_HOST: "127.0.0.1",
         AGENT_RUNTIME_PORT: String(port),
         AGENT_RUNTIME_DATA_DIR: stateDir,
+        // AG-02: production suspends native helper delegation; this suite verifies the retained
+        // helper-spawn completion and cross-session isolation, so it runs with delegation enabled.
+        WORKPAL_NATIVE_DELEGATION_SUSPENDED: "false",
       },
       stdio: ["ignore", "ignore", "pipe"],
     });

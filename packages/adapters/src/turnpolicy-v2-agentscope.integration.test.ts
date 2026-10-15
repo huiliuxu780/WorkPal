@@ -176,6 +176,9 @@ describe("TurnPolicy v2 TypeScript to Java acceptance", () => {
         AGENT_RUNTIME_HOST: "127.0.0.1",
         AGENT_RUNTIME_PORT: String(javaPort),
         AGENT_RUNTIME_DATA_DIR: stateDir,
+        // AG-02: production suspends native helper delegation; this suite verifies the retained
+        // TurnPolicy budget/depth enforcement, so it runs the runtime with delegation enabled.
+        WORKPAL_NATIVE_DELEGATION_SUSPENDED: "false",
       },
       stdio: ["ignore", "ignore", "pipe"],
     });

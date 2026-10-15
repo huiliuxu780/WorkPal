@@ -1,6 +1,6 @@
 # AG-02: AgentScope native compaction boundary
 
-Status: delivered on branch `codex/ag02-compaction-boundary` (base `codex/ag01-judge-auxiliary-isolation` e5e5061, which is itself base `main` d563f28), 2026-10-15. Round 1 = commit `1f858cc` (main-agent compaction flush/offload). Round 2 (this revision) addresses review findings P1-1/P1-2/P2 — see [Review follow-up](#review-follow-up-round-2-2026-10-15). Roadmap status: `in-progress` (main-agent compaction + eviction and helper eviction closed; helper compaction blocked on an upstream AgentScope API).
+Status: delivered on branch `codex/ag02-compaction-boundary` (base `codex/ag01-judge-auxiliary-isolation` e5e5061, which is itself base `main` d563f28), 2026-10-15. Round 1 = commit `1f858cc` (main-agent compaction flush/offload). Round 2 = commit `7b3c542` (review P1-1/P1-2/P2: tool-result eviction + exact counts) — see [Review follow-up (round 2)](#review-follow-up-round-2-2026-10-15). Round 3 (this revision) suspends native helper delegation for new Runs, closing the production-reachable helper-compaction path — see [Review follow-up (round 3)](#review-follow-up-round-3-2026-10-15). Roadmap status: `done` for the AG-02 boundary goal (no unauthorized native memory write, no dangling pointer, helper-compaction production path closed); native helper delegation is temporarily suspended with hard-coded re-enable conditions.
 Task card: [tasks/AG-02.md](./tasks/AG-02.md); roadmap row: [next-work-roadmap.md](./next-work-roadmap.md).
 
 ## Summary
@@ -310,3 +310,77 @@ did not regress delegation), RunRequestPolicyTest 16, PromptComposerTest 11, Int
 No TypeScript changed. Roadmap AG-02 → `in-progress`: main-agent compaction + eviction and helper
 eviction are closed and test-pinned; helper compaction (flush/offload) remains open, blocked on an
 upstream AgentScope API for declared subagents.
+
+## Review follow-up (round 3, 2026-10-15)
+
+Round-2 review corrected a load-bearing assumption and chose a disposition for the helper gap.
+
+### The "production window is large" assumption was wrong
+
+Round 2 argued helper compaction was practically unreachable because "production models report large
+windows". The reviewer corrected this: the repo's local model default window is **32,768** and
+configurable smaller (`packages/adapters/src/pi-local-provider.ts:28`), so the derived helper
+`triggerTokens` can be as low as ~12,768 — a single capped 60k-char result (~15k tokens) already
+exceeds it. Worse, a helper's `read_file` result is on AgentScope's eviction-exclusion list, so the
+round-2 `resultBlock` cap does **not** bound it: a helper reading a large file (backend allows up to
+250,000 bytes ≈ 62k tokens) trips its own compaction on the first turn, and multiple capped results
+accumulate under any window. So the helper compaction gap (native `memory/` write + offload pointer)
+is production-reachable and cannot be dismissed as "typical usage". Verified empirically: a declared
+helper with a large tool result under a small-window fixture fired its own compaction — 1 native
+`memory/YYYY-MM-DD.md` written and a "full conversation history has been saved to" pointer emitted —
+while the cap correctly prevented eviction (0 `large_tool_results`).
+
+### Disposition: suspend native helper delegation for new Runs (option ③)
+
+Rather than ship a risky custom-factory rebuild of the delegation path (which would bypass
+`deriveChildSessionId` and endanger background delivery) or wait on upstream while a proven native
+memory-write path stays reachable, native helper delegation is **suspended for new Runs**:
+
+- `RuntimeEngine` gains a `delegationSuspended` field; `allowSubagents` is gated on
+  `!delegationSuspended`, so a suspended run registers no `agent_spawn`/`agent_send`/`agent_list`/
+  `task_*` tools and no `SubagentDeclaration`, and calls `disableSubagents()`. A model call to
+  `agent_spawn` that bypasses visibility cannot spawn (the tool is not registered); `RunRequest.validate`
+  already refuses reserved spawn names as backend tools.
+- Production default is suspended. `RuntimeServer` reads `WORKPAL_NATIVE_DELEGATION_SUSPENDED`
+  (default `"true"`); the package-private engine seam and this env are test/recovery hooks only.
+- **Retained flow:** the task repository, `registerBackground`, `cancelTask`, and pending-delivery
+  machinery stay wired, so already-spawned background tasks still complete, deliver, and cancel.
+  `suspendedEngineStillDeliversAnAlreadyStartedBackgroundTask` proves a suspended engine surfaces an
+  already-started task's result on the next Run.
+- **Re-enable conditions (hard-coded in `RuntimeEngine.delegationSuspended` javadoc):** upstream
+  AgentScope lets a declared subagent carry compaction/eviction config; AND a real-run test proves the
+  helper compacts with no flush/offload; AND child session derivation, background registration,
+  delivery, and cancel all regress green. Re-enable is a code change, not an env flip.
+- Backend prompt (`packages/adapters/src/executor.ts`) now reports native helper delegation as
+  temporarily unavailable instead of advertising `run_subagent`; `run_subagent` stays in the catalog
+  as an ignored flag so re-enable is a single Java change.
+
+### Round-2 truncation boundary bug (fixed)
+
+The round-2 cap silently dropped text blocks after the first block ended exactly at the cap, with no
+marker. `capToolResultText` now always appends exactly one honest truncation marker whenever the
+aggregate text exceeds the cap, including the exact-boundary case.
+`capLeavesMarkerWhenFirstBlockEndsExactlyAtTheCap` pins it.
+
+### Round-3 tests and status
+
+`mvn -B -f services/agent-runtime/pom.xml package` (JDK 21): BUILD SUCCESS, **61 tests / 0 failures** —
+DelegationSuspensionTest 2 (new: suspended run offers no spawn tool and creates no helper/memory/
+pointer even when the model tries `agent_spawn`; suspended engine still delivers an already-started
+background task), ToolResultEvictionBoundaryTest 4 (+1 boundary case), CompactionBoundaryIntegrationTest 7,
+RuntimeIntegrationTest 18 (the 4 subagent/background tests now run through the delegation seam, so the
+retained machinery stays covered), RunRequestPolicyTest 16, PromptComposerTest 11, InterruptibleTaskRepositoryTest 3.
+Sabotage-verified: flipping the production default to delegation-enabled fails DelegationSuspensionTest.
+
+TypeScript: `pnpm --filter @rakazo/adapters --filter @rakazo/testkit check` clean; `executor.test.ts`
+83/83 (prompt line updated in lockstep). The CI `agentscope` vitest integrations stay green — the
+testkit `startJavaRuntime` and the two direct-spawn delegation suites (`turnpolicy-v2-agentscope`,
+`agentscope-consumers`) set `WORKPAL_NATIVE_DELEGATION_SUSPENDED=false` to keep exercising the retained
+budget/depth enforcement and helper completion/isolation (7 + 2 tests), while `agentscope-auxiliary-isolation`
+(13) and `team-chat-judge.integration` (1) pass under the suspended default. e2e suites boot through the
+testkit harness (delegation enabled), so their delegation coverage is unchanged.
+
+Roadmap AG-02 → `done` for the boundary goal: no unauthorized native memory write, no dangling pointer,
+and the helper-compaction production path is closed by suspension. Native helper delegation is
+temporarily suspended; re-enable is gated on the hard-coded recovery conditions above (tracked as an
+upstream AgentScope dependency, related to ME-02).
