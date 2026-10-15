@@ -79,6 +79,7 @@ public final class RuntimeEngine {
     private final ObjectMapper json;
     private final Path stateRoot;
     private final Path workspaceRoot;
+    private final CompactionConfig compaction;
     private final ConcurrentHashMap<String, RunningAgent> running = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BackgroundHandle> background = new ConcurrentHashMap<>();
     /**
@@ -95,9 +96,51 @@ public final class RuntimeEngine {
             ToolBridgeClient bridge, String taskId, String childSession) {}
 
     public RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot) {
+        this(json, stateRoot, workspaceRoot, productionCompaction());
+    }
+
+    /**
+     * Test seam: lets an integration test drive the real engine under AgentScope's
+     * stock CompactionConfig defaults (flush/offload before compact = true) so the
+     * pre-fix boundary gap stays reproducible, while every production caller uses
+     * {@link #productionCompaction()}. Not exposed outside this package.
+     */
+    RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot, CompactionConfig compaction) {
         this.json = json;
         this.stateRoot = stateRoot;
         this.workspaceRoot = workspaceRoot;
+        this.compaction = compaction;
+    }
+
+    /**
+     * WorkPal production native compaction (AG-02). Keeps AgentScope's 30-message
+     * trigger and working-context summary, but explicitly disables the two
+     * pre-compaction side effects that AgentScope 2.0.3 defaults to true and that
+     * would otherwise bypass the WorkPal backend:
+     * <ul>
+     *   <li>{@code flushBeforeCompact(false)} — the flush path runs an extra
+     *       "memory extraction assistant" model call and appends native long-term
+     *       memory files ({@code memory/YYYY-MM-DD.md}, later consolidated into
+     *       {@code MEMORY.md}) through the workspace, with no backend
+     *       authorization, persistence, or audit. WorkPal already disables memory
+     *       hooks and tools, but those gates do not cover the compaction-triggered
+     *       flush, so it must be turned off here.</li>
+     *   <li>{@code offloadBeforeCompact(false)} — the offload path replaces the
+     *       model-visible working summary with a pointer to a workspace transcript
+     *       file ("The full conversation history has been saved to <path>").
+     *       Filesystem tools are disabled, so the model has no controlled way to
+     *       read that pointer back; disabling offload keeps the summary inline and
+     *       leaves no dangling pointer.</li>
+     * </ul>
+     * Verified by real-run integration tests, not by builder defaults alone.
+     */
+    static CompactionConfig productionCompaction() {
+        return CompactionConfig.builder()
+                .triggerMessages(30)
+                .keepMessages(10)
+                .flushBeforeCompact(false)
+                .offloadBeforeCompact(false)
+                .build();
     }
 
     public void cancel(String runId) {
@@ -196,7 +239,7 @@ public final class RuntimeEngine {
                 .workspace(workspace)
                 .stateStore(store)
                 .maxIters(20)
-                .compaction(CompactionConfig.builder().triggerMessages(30).keepMessages(10).build())
+                .compaction(compaction)
                 .toolsConfig(toolFilter)
                 .disableFilesystemTools()
                 .disableShellTool()
