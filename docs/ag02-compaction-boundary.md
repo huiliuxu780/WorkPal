@@ -1,6 +1,6 @@
 # AG-02: AgentScope native compaction boundary
 
-Status: delivered on branch `codex/ag02-compaction-boundary` (base `codex/ag01-judge-auxiliary-isolation` e5e5061, which is itself base `main` d563f28), 2026-10-15.
+Status: delivered on branch `codex/ag02-compaction-boundary` (base `codex/ag01-judge-auxiliary-isolation` e5e5061, which is itself base `main` d563f28), 2026-10-15. Round 1 = commit `1f858cc` (main-agent compaction flush/offload). Round 2 (this revision) addresses review findings P1-1/P1-2/P2 — see [Review follow-up](#review-follow-up-round-2-2026-10-15). Roadmap status: `in-progress` (main-agent compaction + eviction and helper eviction closed; helper compaction blocked on an upstream AgentScope API).
 Task card: [tasks/AG-02.md](./tasks/AG-02.md); roadmap row: [next-work-roadmap.md](./next-work-roadmap.md).
 
 ## Summary
@@ -167,6 +167,17 @@ depend on the model "guessing" offloaded content.
 3. **Offload leaves no separate file** to inspect; its only observable effect is the model-visible
    pointer string plus appended transcript bytes. The card's "check the file inventory for offload"
    is therefore answered by the pointer assertion, not by a new file.
+4. **(round 2) A second offload path exists beyond compaction.** The card framed the boundary as
+   compaction flush/offload only. In fact `ToolResultEvictionMiddleware` independently offloads >80k-char
+   tool results to an unreadable `large_tool_results/` pointer, governed by neither `offloadBeforeCompact`
+   nor `disableFilesystemTools`. Fixed for the main agent (`disableToolResultEviction()`) and for both
+   main and helper via a `resultBlock` text bound — see [Review follow-up](#review-follow-up-round-2-2026-10-15).
+5. **(round 2) The declared helper cannot be given the safe config through the public API.** The card
+   assumed the fix could "make the helper use safe config". AgentScope 2.0.3's `SubagentDeclaration`
+   exposes no compaction/eviction hook, `asLeafSubagent()` is package-private, and the custom
+   `subagentFactory` path bypasses `deriveChildSessionId` (which background delegation relies on). So
+   helper eviction is fixed at the shared `resultBlock` boundary, but helper compaction (flush/offload)
+   remains an upstream-blocked gap rather than a WorkPal-side fix — a deviation from the card's assumption.
 
 No deviation expanded scope: native compaction stays enabled, no file/shell/memory tool was added,
 and no alternative executor was introduced.
@@ -201,3 +212,101 @@ JDK 21 (openjdk 21.0.12.1), repo-locked Maven module `services/agent-runtime`:
 - This task does not implement application-layer `history.compact` policy, fact/shard/summary
   long-term memory, or a memory-extraction hook; those remain ME-01/ME-02. It only closes the
   unauthorized native write/pointer path and proves the native 30/10 working context still resumes.
+
+## Review follow-up (round 2, 2026-10-15)
+
+Review of round 1 (`1f858cc`) found two more AgentScope default paths plus two test/wording issues.
+All were verified by real runs before fixing, per the task's "fix only proven gaps" rule.
+
+### P1-2 — native tool-result eviction (a second, independent offload path) — FIXED
+
+`HarnessAgent.Builder` registers `ToolResultEvictionMiddleware` unless `disableToolResultEviction()`
+is called (builder default `false`); WorkPal did not call it. `ToolResultEvictionConfig.defaults()`
+= `maxResultChars=80000`, `previewChars=2000`, `evictionPath="large_tool_results"`,
+`excludedToolNames={read_file, write_file, edit_file, list_files, memory_search, memory_get,
+session_search}`. For any tool result whose name is NOT excluded and whose combined `TextBlock`
+text exceeds 80,000 chars, the middleware writes the full text to
+`large_tool_results/<agent>/<callId-hash>` in the Java workspace and replaces the model-visible
+content with `Tool output was too large (N chars) and has been saved to '<path>'. To read the full
+output, use 'read_file' with path '<path>'.` plus a 2,000-char preview. `offloadBeforeCompact(false)`
+does not govern this middleware.
+
+Empirical baseline (real `RuntimeEngine`, backend tool returning 100k chars, pre-fix): the workspace
+gained `large_tool_results/assistant/call-1-…` (100,018 bytes) and the next model request carried the
+"has been saved to … read_file" pointer while the offered tools were `[big_tool, plan_write,
+plan_enter, plan_exit]` — no `read_file`, so dangling (native filesystem tools disabled; the backend
+`read_file` reads the Bot computer, not the Java workspace). A backend sweep confirmed foreground
+tool results are not size-capped end to end, and `shell` (unbounded), `graphql`/connectors (≤1M) and
+custom tools can exceed 80k chars into Java (`read_file` ≤250k is on the exclusion list).
+
+Fix (reviewer's "disable native offload and constrain model-visible output", no new file tool):
+- Main agent: `.disableToolResultEviction()`.
+- All agents (main and declared helpers share `resultBlock`): bound the combined `TextBlock` text of
+  any non-excluded tool result to `TOOL_RESULT_TEXT_CAP = 60000` chars (below the 80000 threshold)
+  with an honest inline truncation marker. Excluded tools (`read_file`) are left uncapped to preserve
+  the backend's own sizing — they are never evicted anyway.
+
+Evidence (`ToolResultEvictionBoundaryTest`, production-like 200k window): main-agent and declared-helper
+large non-excluded results → no `large_tool_results` file, no "Tool output was too large" placeholder,
+cap marker present, full 100k run absent; `read_file` large result → uncapped, full content inline, no
+eviction. Sabotage-verified: stubbing out the cap fails the main and helper eviction tests.
+
+### P1-1 — declared helper does not inherit the safe config — eviction FIXED, compaction BLOCKED upstream
+
+Bytecode: `HarnessAgentBuilderSupport.buildDeclaredFactory` (the path behind
+`builder.subagent(SubagentDeclaration)`) captures the parent's model/toolkit/disable-flags but NOT its
+`compactionConfig`, `toolResultEvictionConfig`, `disableCompaction` or `disableToolResultEviction`.
+The child built in `lambda$buildDeclaredFactory$3` calls `.disableFilesystemTools/.disableShellTool/
+.disableMemoryTools/.disableMemoryHooks/.disableSessionPersistence` but never `.compaction(...)` or
+`.disableToolResultEviction()`. So the declared helper gets AgentScope default compaction
+(triggerMessages 50, flush/offload TRUE) and default eviction ON. (The built-in general-purpose
+factory does take CompactionConfig + ToolResultEvictionConfig params, but WorkPal uses a declared
+helper, not general-purpose.)
+
+- Helper eviction: FIXED by the shared `resultBlock` cap above (60000 < 80000) — it applies to the
+  helper's `BackendSchemaTool` results too. Empirically the helper no longer evicts.
+- Helper compaction (flush/offload): NOT safely fixable through AgentScope 2.0.3's public API:
+  - `SubagentDeclaration.Builder` exposes only name/description/inlineAgentsBody/maxIters/tools/
+    workspaceMode/workspace/persistSession — no compaction or eviction hook.
+  - The only alternative, `builder.subagentFactory(name, desc, Function<String,Agent>)`, would have
+    WorkPal build the child itself, but (a) `asLeafSubagent()` is package-private (uncallable from
+    `com.workpal.runtime`) and gates build() wiring, and (b) `deriveChildSessionId` is invoked only
+    inside the declared-factory path — the custom factory's `Function` receives just the subagent NAME
+    and bypasses that derivation, so a hand-built child would key session/workspace differently from
+    what background-task delivery (`registerBackground` + `InterruptibleTaskRepository` + outbox)
+    relies on. Shipping that risks regressing shipped background delegation for a narrow gap.
+  - Empirical proof the gap is real (real `RuntimeEngine`, declared helper, small-window 8192 fixture
+    so the capped ~60k-char result exceeds the derived `triggerTokens`): the helper's own compaction
+    fired with default flush/offload — it wrote 1 native `memory/YYYY-MM-DD.md` and emitted a
+    "full conversation history has been saved to" offload pointer, while eviction was prevented
+    (0 `large_tool_results`) by the cap.
+  - Production reachability: the helper's compaction token trigger is `contextWindow - 20000`; one
+    capped result (~15k tokens) is far below any production model window (≥128k → ≥108k trigger), and
+    a leaf helper is bounded to ~10 steps, so typical helpers never compact. It stays reachable only
+    for a tool-heavy helper accumulating many capped large results, or a small-window model. Recorded
+    as an upstream dependency (AgentScope must expose compaction/eviction config on
+    `SubagentDeclaration`, or a public leaf-subagent builder). See Deviations.
+
+### P2 — exact model-call counts (tightened)
+
+`productionCompactionSummarizesWithoutNativeMemoryFlushOrOffload` asserted only SUMMARY≥1 / NORMAL≥1
+/ FLUSH=0, which an extra NORMAL-classified call would still satisfy. It now pins exact counts for the
+deterministic single-compaction run: SUMMARY=1, NORMAL=1, FLUSH=0, total 2. The legacy baseline test
+likewise pins FLUSH=1 / SUMMARY=1 / NORMAL=1.
+
+### Wording — "context visible", not "answered"
+
+The cross-Run continuation test proves the native working summary and a retained recent message's
+unique marker are VISIBLE in the follow-up Run's model request. The fixture returns a fixed reply, so
+it does not prove a real model answered correctly. The note and test comments now state context
+availability, not answer correctness.
+
+### Round-2 tests and status
+
+`mvn -B -f services/agent-runtime/pom.xml package` (JDK 21): BUILD SUCCESS, **58 tests / 0 failures** —
+CompactionBoundaryIntegrationTest 7, ToolResultEvictionBoundaryTest 3 (new), RuntimeIntegrationTest 18
+(including the 4 subagent/background delegation tests, confirming the cap + `disableToolResultEviction`
+did not regress delegation), RunRequestPolicyTest 16, PromptComposerTest 11, InterruptibleTaskRepositoryTest 3.
+No TypeScript changed. Roadmap AG-02 → `in-progress`: main-agent compaction + eviction and helper
+eviction are closed and test-pinned; helper compaction (flush/offload) remains open, blocked on an
+upstream AgentScope API for declared subagents.

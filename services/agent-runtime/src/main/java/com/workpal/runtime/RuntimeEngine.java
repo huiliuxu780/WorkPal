@@ -74,6 +74,24 @@ public final class RuntimeEngine {
     private static final Pattern COMPACTED_CONTEXT = Pattern.compile(
             "^[^\\n]{1,80}-owned compacted context through message sequence ");
     private static final String RECALLED_MEMORY = "Memory recalled from earlier conversations";
+    /**
+     * AG-02: AgentScope's native ToolResultEvictionMiddleware offloads any tool result whose
+     * combined TextBlock text exceeds 80,000 chars to {@code large_tool_results/} in the Java
+     * workspace and replaces the model-visible content with a "saved to <path>, use read_file"
+     * pointer. WorkPal disables the native filesystem tools, and the backend {@code read_file}
+     * tool reads the Bot computer filesystem — not the Java workspace — so that pointer is
+     * unreadable. The main agent turns the middleware off outright ({@code
+     * disableToolResultEviction()}); declared leaf subagents cannot be configured through
+     * AgentScope 2.0.3's public API, so WorkPal instead bounds the model-visible text of every
+     * non-excluded tool result below the eviction threshold. Results stay inline and readable;
+     * no dangling pointer is produced for the main agent or a helper. The excluded names mirror
+     * AgentScope's {@code ToolResultEvictionConfig.DEFAULT_EXCLUDED_TOOLS}: those are never
+     * evicted, so capping them would only shrink legitimate output (e.g. {@code read_file},
+     * which the backend already bounds at 250,000 bytes) without preventing any pointer.
+     */
+    private static final int TOOL_RESULT_TEXT_CAP = 60_000;
+    private static final Set<String> EVICTION_EXCLUDED_TOOLS = Set.of("read_file", "write_file",
+            "edit_file", "list_files", "memory_search", "memory_get", "session_search");
     @FunctionalInterface public interface EventSink { void emit(Map<String, Object> event) throws IOException; }
 
     private final ObjectMapper json;
@@ -245,6 +263,12 @@ public final class RuntimeEngine {
                 .disableShellTool()
                 .disableMemoryTools()
                 .disableMemoryHooks()
+                // AG-02: native tool-result eviction offloads >80k-char results to an
+                // unreadable workspace pointer; keep large results inline and readable
+                // instead. resultBlock() additionally bounds non-excluded tool text below
+                // the eviction threshold so declared leaf helpers (which cannot be
+                // configured through AgentScope's public API) never evict either.
+                .disableToolResultEviction()
                 .disableDefaultWorkspaceSkills();
         if (request.planningAllowed()) builder.enablePlanMode();
         if (allowSubagents) {
@@ -562,9 +586,47 @@ public final class RuntimeEngine {
             output.add(TextBlock.builder().text(json.writeValueAsString(value)).build());
         }
         if (output.isEmpty()) output.add(TextBlock.builder().text("Tool completed without a displayable result.").build());
+        output = capToolResultText(output, call.getName());
         return ToolResultBlock.builder().id(call.getId()).name(call.getName())
                 .output(output)
                 .state(outcome.error() == null ? ToolResultState.SUCCESS : ToolResultState.ERROR).build();
+    }
+
+    /**
+     * AG-02: bound the model-visible text of a non-excluded tool result below AgentScope's
+     * native eviction threshold (80,000 chars) so the unreadable-pointer offload path never
+     * fires — including for declared leaf helpers, whose eviction cannot be disabled through
+     * the public API. Excluded tools (see {@link #EVICTION_EXCLUDED_TOOLS}) are never evicted,
+     * so they are returned unchanged to preserve the backend's own sizing (e.g. read_file).
+     * Images and other non-text blocks are preserved; only the aggregate text is truncated,
+     * with an honest inline marker rather than a dangling file reference.
+     */
+    private static List<ContentBlock> capToolResultText(List<ContentBlock> output, String toolName) {
+        if (toolName != null && EVICTION_EXCLUDED_TOOLS.contains(toolName)) return output;
+        int total = 0;
+        for (ContentBlock block : output) {
+            if (block instanceof TextBlock text) total += text.getText().length();
+        }
+        if (total <= TOOL_RESULT_TEXT_CAP) return output;
+        List<ContentBlock> capped = new ArrayList<>();
+        int budget = TOOL_RESULT_TEXT_CAP;
+        for (ContentBlock block : output) {
+            if (!(block instanceof TextBlock text)) { capped.add(block); continue; }
+            if (budget <= 0) continue;
+            String value = text.getText();
+            if (value.length() <= budget) {
+                capped.add(TextBlock.builder().text(value).build());
+                budget -= value.length();
+            } else {
+                capped.add(TextBlock.builder().text(value.substring(0, budget)
+                        + "\n\n[WorkPal: tool result truncated from " + total + " to "
+                        + TOOL_RESULT_TEXT_CAP + " chars to stay within the model context boundary."
+                        + " Native large-result offload is disabled because its workspace file"
+                        + " pointer is not readable through WorkPal's authorized tools.]").build());
+                budget = 0;
+            }
+        }
+        return capped;
     }
 
     private static UserMessage userMessage(String text, List<RunRequest.InputImage> images) {

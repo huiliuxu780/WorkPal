@@ -82,12 +82,19 @@ class CompactionBoundaryIntegrationTest {
 
             // Prove the compaction path actually executed (not just a config object).
             assertEquals("done", events.getLast().get("type"));
-            assertTrue(kinds.contains("SUMMARY"), "native compaction summary call must fire: " + tally(kinds));
+            Map<String, Long> counts = tally(kinds);
+            // Deterministic single-compaction run under stock defaults: exactly one flush,
+            // one summary, one normal reply (three model calls total).
+            assertEquals(1L, counts.getOrDefault("SUMMARY", 0L),
+                    "native compaction summary call must fire exactly once: " + counts);
+            assertEquals(1L, counts.getOrDefault("NORMAL", 0L),
+                    "exactly one normal reply call: " + counts);
             int ctx = contextSize(state);
             assertTrue(ctx > 0 && ctx < seeded, "compaction must shrink persisted context, got " + ctx);
 
             // PRE-FIX gap 1: extra memory-extraction model call before compaction.
-            assertTrue(kinds.contains("FLUSH"), "legacy default must run a pre-compaction memory flush call");
+            assertEquals(1L, counts.getOrDefault("FLUSH", 0L),
+                    "legacy default must run exactly one pre-compaction memory flush call: " + counts);
 
             // PRE-FIX gap 2: native long-term memory file written to the workspace.
             List<Path> memoryFiles = filesUnder(workspace, p -> {
@@ -131,15 +138,23 @@ class CompactionBoundaryIntegrationTest {
             assertEquals("done", events.getLast().get("type"));
             // Compaction still happens: summary call present and context physically shrank.
             Map<String, Long> counts = tally(kinds);
-            assertTrue(counts.getOrDefault("SUMMARY", 0L) >= 1, "native compaction must still summarize: " + counts);
+            // P2 (review): this is a deterministic single-compaction run, so pin EXACT counts
+            // rather than lower bounds — a loose ">=1 NORMAL" would let an extra reply-classified
+            // call slip through. Exactly one compaction summary, exactly one normal reply, and
+            // zero pre-compaction memory-flush calls; two model calls total.
+            assertEquals(1L, counts.getOrDefault("SUMMARY", 0L),
+                    "exactly one native compaction summary call: " + counts);
+            assertEquals(1L, counts.getOrDefault("NORMAL", 0L),
+                    "exactly one normal reply call: " + counts);
+            assertEquals(0L, counts.getOrDefault("FLUSH", 0L),
+                    "no pre-compaction memory-extraction model call may occur: " + counts);
+            assertEquals(2, kinds.size(),
+                    "a single compaction run makes exactly summary + reply calls: " + counts);
             int ctx = contextSize(state);
             assertTrue(ctx > 0 && ctx < seeded, "compaction must shrink persisted context, got " + ctx);
 
-            // Counted separately: the compaction summary is necessary and allowed; the
-            // pre-compaction memory flush is an unauthorized extra call and must be gone.
-            assertEquals(0L, counts.getOrDefault("FLUSH", 0L),
-                    "no pre-compaction memory-extraction model call may occur: " + counts);
-            assertTrue(counts.getOrDefault("NORMAL", 0L) >= 1, "the normal reply call must still occur: " + counts);
+            // Counted separately above: the compaction summary is necessary and allowed; the
+            // pre-compaction memory flush is an unauthorized extra call and is gone.
 
             // No native long-term memory files anywhere in the workspace.
             List<Path> memoryFiles = filesUnder(workspace, p -> {
@@ -228,8 +243,10 @@ class CompactionBoundaryIntegrationTest {
             assertEquals("done", second.getLast().get("type"));
 
             List<JsonNode> followUp = requests.subList(before, requests.size());
-            // The follow-up Run sees the native working summary AND the retained recent message,
-            // which is exactly what it needs to answer without any offload read-back.
+            // The follow-up Run's model request has the native working summary AND a unique
+            // marker from the retained recent messages VISIBLE. The fixture returns a fixed
+            // reply, so this asserts post-compaction context availability across Runs (what the
+            // model is given), not that a real model answered correctly — see the delivery note.
             assertTrue(anyMessageContains(followUp, WORKING_SUMMARY_MARKER),
                     "the new Run must reuse the native working summary");
             assertTrue(anyMessageContains(followUp, NEEDLE_RETAINED),
