@@ -1,7 +1,7 @@
 # AG-06: fixed untrusted-content rules and execution-boundary verification
 
 Status: delivered on branch `codex/ag06-untrusted-content-boundary` (round 1 `f2b0c4d`; review
-round 2 P1/P2 fixes on the same branch, base `codex/ag02-compaction-boundary` round-4 `6fd87d0`),
+round 2 `7bc2561`, base `codex/ag02-compaction-boundary` round-4 `6fd87d0`),
 2026-10-15.
 Task card: [tasks/AG-06.md](./tasks/AG-06.md); roadmap row: [next-work-roadmap.md](./next-work-roadmap.md).
 
