@@ -310,25 +310,16 @@ test("tool-call budget breach narrows scope through the unified cancellation pat
       apiKey,
       steps: [
         {
+          // AG-02/AG-06: native delegation is suspended, so agent_spawn is
+          // never offered and no background helper can keep the run open. The
+          // model call itself holds the stream while the budget breach is
+          // metered and enforced.
           expect(request) {
             expect(JSON.stringify(request.messages)).toContain("Run the tool budget fixture.");
-            expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(true);
+            expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(false);
           },
-          response: {
-            type: "tool",
-            id: "budget-bg-spawn",
-            name: "agent_spawn",
-            arguments: {
-              agent_id: "helper",
-              task: "BG_HOLD_CASE",
-              timeout_seconds: 0,
-            },
-          },
+          response: { type: "hold" },
         },
-        // The background helper's model call and the parent's next turn both
-        // stay open; either order is fine because both hold.
-        { expect() {}, response: { type: "hold" } },
-        { expect() {}, response: { type: "hold" } },
       ],
     });
     await switchToTaskModel(page, botId, apiKey, task);
@@ -338,17 +329,14 @@ test("tool-call budget breach narrows scope through the unified cancellation pat
     const runId = await waitRunRunning(page, db, botId);
     const run = await db.prisma.run.findUniqueOrThrow({ where: { id: runId } });
     const threadId = run.threadId;
-    // A real background task is live under the Run before the breach.
-    await expect
-      .poll(
-        async () =>
-          db.prisma.backgroundAgentTask.findFirst({
-            where: { parentRunId: runId },
-            select: { taskId: true, status: true },
-          }),
-        { timeout: 30_000 },
-      )
-      .toMatchObject({ status: "running" });
+    // Suspended delegation cannot attach a background task to the run; the
+    // budget breach is enforced on the metered run itself.
+    expect(
+      await db.prisma.backgroundAgentTask.findFirst({
+        where: { parentRunId: runId },
+        select: { taskId: true },
+      }),
+    ).toBeNull();
 
     // Metering facts: real agent.tool.called product events past the 50-call
     // interactive budget, written through the production event append path.
@@ -378,17 +366,15 @@ test("tool-call budget breach narrows scope through the unified cancellation pat
         { timeout: 30_000 },
       )
       .toMatchObject({ status: "cancelled", error: "budget_narrowed" });
-    // The background task is revoked along the unified cancellation path.
-    await expect
-      .poll(
-        async () =>
-          db.prisma.backgroundAgentTask.findFirst({
-            where: { parentRunId: runId },
-            select: { status: true },
-          }),
-        { timeout: 30_000 },
-      )
-      .toMatchObject({ status: "cancelled" });
+    // Still no background task after the unified cancellation path ran; the
+    // cancellation of an ALREADY-started task stays covered in-JVM
+    // (RuntimeIntegrationTest through the delegation seam).
+    expect(
+      await db.prisma.backgroundAgentTask.findFirst({
+        where: { parentRunId: runId },
+        select: { taskId: true },
+      }),
+    ).toBeNull();
 
     const finalRun = await db.prisma.run.findUniqueOrThrow({ where: { id: runId } });
     expect(finalRun.leaseOwner).toBeNull();
