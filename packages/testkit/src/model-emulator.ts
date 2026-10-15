@@ -119,7 +119,9 @@ export async function startModelEmulator(options: {
         if (reply.type === "hold") {
           response.once("close", () => reply.onClose?.());
           reply.onOpen?.(() => {
-            if (!response.writableEnded) {
+            // destroyed: the client (Java runtime) already tore the stream
+            // down, e.g. via a run abort — writing would emit a stream error.
+            if (!response.writableEnded && !response.destroyed) {
               emit({}, "stop");
               response.end("data: [DONE]\n\n");
             }

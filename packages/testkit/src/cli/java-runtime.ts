@@ -54,6 +54,7 @@ export async function startJavaRuntime(dataDir: string, env: NodeJS.ProcessEnv =
       if (response.ok) {
         return {
           url,
+          pid: child.pid ?? -1,
           async stop() {
             if (child.exitCode !== null) return;
             child.kill("SIGTERM");
