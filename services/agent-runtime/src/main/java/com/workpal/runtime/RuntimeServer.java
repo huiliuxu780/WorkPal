@@ -25,6 +25,13 @@ public final class RuntimeServer {
     private final HttpServer server;
 
     RuntimeServer(String host, int port, Path dataRoot) throws IOException {
+        // AG-02: native helper delegation is suspended for EVERY Run served by the production
+        // HTTP entrypoint. There is deliberately no env/config toggle here — a declared leaf
+        // helper cannot be given the safe compaction config through AgentScope 2.0.3's public
+        // API, so its own compaction would write native memory and emit dangling pointers.
+        // Re-enabling delegation is a CODE change gated on the recovery conditions documented
+        // in RuntimeEngine.delegationSuspended, never a deployment-config flip. Integration
+        // tests exercise the retained machinery through the package-private engine seam in-JVM.
         engine = new RuntimeEngine(json, dataRoot.resolve("state"), dataRoot.resolve("workspace"));
         server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());

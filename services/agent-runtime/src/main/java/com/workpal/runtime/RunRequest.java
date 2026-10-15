@@ -153,8 +153,18 @@ public record RunRequest(
         if (model.oauth != null && !model.oauth.isNull()) {
             throw new IllegalArgumentException("OAuth model credentials are unavailable to AgentScope Java");
         }
-        if (executionScope != null && !List.of("chat", "auto-review", "history-compaction", "turn-routing").contains(executionScope)) {
+        if (executionScope != null && !List.of("chat", "auto-review", "history-compaction",
+                "turn-routing", "team-chat-judge").contains(executionScope)) {
             throw new IllegalArgumentException("Unsupported execution scope");
+        }
+        // AG-01: an auxiliary execution must never reach the model with callable
+        // tools. Refuse mistakenly attached backend tool or skill payloads at
+        // this trusted boundary instead of stripping them silently, so a
+        // misconfiguration surfaces as an explicit run failure.
+        if (!isChat() && ((tools != null && !tools.isEmpty())
+                || (skills != null && !skills.isEmpty()))) {
+            throw new IllegalArgumentException(
+                    "Auxiliary execution scope must not carry backend tools or skills");
         }
         if (sessionGeneration != null && sessionGeneration < 0) {
             throw new IllegalArgumentException("Session generation must be non-negative");

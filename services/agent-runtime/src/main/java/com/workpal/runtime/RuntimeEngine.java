@@ -74,11 +74,56 @@ public final class RuntimeEngine {
     private static final Pattern COMPACTED_CONTEXT = Pattern.compile(
             "^[^\\n]{1,80}-owned compacted context through message sequence ");
     private static final String RECALLED_MEMORY = "Memory recalled from earlier conversations";
+    /**
+     * AG-06 review round 2: the backend moved durable bot/user memory out of the
+     * run instructions (system message) into a run-scoped application-context
+     * history message, because memory bodies are untrusted data. The block keeps
+     * this fixed preamble (see packages/adapters/src/memory-context.ts); treating
+     * it as application context lets a restored session replace the previous
+     * run's copy instead of keeping stale memory.
+     */
+    private static final String DURABLE_MEMORY = "Durable memory saved by this user or bot follows";
+    /**
+     * AG-02: AgentScope's native ToolResultEvictionMiddleware offloads any tool result whose
+     * combined TextBlock text exceeds 80,000 chars to {@code large_tool_results/} in the Java
+     * workspace and replaces the model-visible content with a "saved to <path>, use read_file"
+     * pointer. WorkPal disables the native filesystem tools, and the backend {@code read_file}
+     * tool reads the Bot computer filesystem — not the Java workspace — so that pointer is
+     * unreadable. The main agent turns the middleware off outright ({@code
+     * disableToolResultEviction()}); declared leaf subagents cannot be configured through
+     * AgentScope 2.0.3's public API, so WorkPal instead bounds the model-visible text of every
+     * non-excluded tool result below the eviction threshold. Results stay inline and readable;
+     * no dangling pointer is produced for the main agent or a helper. The excluded names mirror
+     * AgentScope's {@code ToolResultEvictionConfig.DEFAULT_EXCLUDED_TOOLS}: those are never
+     * evicted, so capping them would only shrink legitimate output (e.g. {@code read_file},
+     * which the backend already bounds at 250,000 bytes) without preventing any pointer.
+     */
+    private static final int TOOL_RESULT_TEXT_CAP = 60_000;
+    private static final Set<String> EVICTION_EXCLUDED_TOOLS = Set.of("read_file", "write_file",
+            "edit_file", "list_files", "memory_search", "memory_get", "session_search");
     @FunctionalInterface public interface EventSink { void emit(Map<String, Object> event) throws IOException; }
 
     private final ObjectMapper json;
     private final Path stateRoot;
     private final Path workspaceRoot;
+    private final CompactionConfig compaction;
+    /**
+     * AG-02: native helper delegation is suspended for new Runs. A declared AgentScope
+     * leaf helper cannot be given the safe compaction config through the 2.0.3 public API
+     * (SubagentDeclaration exposes no compaction/eviction hook; asLeafSubagent() is
+     * package-private; subagentFactory bypasses deriveChildSessionId, which background
+     * delegation relies on), so its own compaction would keep AgentScope's default
+     * flush/offload=true and could write native memory and emit dangling pointers — reachable
+     * even on production window sizes (a helper read_file result is eviction-excluded and
+     * uncapped, and multiple capped results accumulate). Rather than ship a risky rebuild of
+     * the delegation path, new Runs offer no run_subagent/agent_spawn. Already-spawned
+     * background tasks keep their completion/delivery/cancel flow (the task repository and
+     * background machinery stay wired). RE-ENABLE ONLY WHEN: upstream AgentScope lets a
+     * declared subagent carry compaction/eviction config, AND a real-run test proves the
+     * helper compacts with no flush/offload, AND child session derivation, background
+     * registration, delivery and cancel all regress green.
+     */
+    private final boolean delegationSuspended;
     private final ConcurrentHashMap<String, RunningAgent> running = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, BackgroundHandle> background = new ConcurrentHashMap<>();
     /**
@@ -95,9 +140,64 @@ public final class RuntimeEngine {
             ToolBridgeClient bridge, String taskId, String childSession) {}
 
     public RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot) {
+        this(json, stateRoot, workspaceRoot, productionCompaction(), true);
+    }
+
+    /**
+     * Test seam: lets an integration test drive the real engine under AgentScope's
+     * stock CompactionConfig defaults (flush/offload before compact = true) so the
+     * pre-fix boundary gap stays reproducible, while every production caller uses
+     * {@link #productionCompaction()}. Delegation stays suspended (production default).
+     * Not exposed outside this package.
+     */
+    RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot, CompactionConfig compaction) {
+        this(json, stateRoot, workspaceRoot, compaction, true);
+    }
+
+    /**
+     * Test seam: full control of compaction and delegation suspension. Integration tests
+     * use {@code delegationSuspended=false} to exercise the native spawn/background/
+     * delivery/cancel machinery that production keeps wired for already-spawned tasks and
+     * for the eventual re-enable; production uses the public constructor (suspended).
+     */
+    RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot, CompactionConfig compaction,
+            boolean delegationSuspended) {
         this.json = json;
         this.stateRoot = stateRoot;
         this.workspaceRoot = workspaceRoot;
+        this.compaction = compaction;
+        this.delegationSuspended = delegationSuspended;
+    }
+
+    /**
+     * WorkPal production native compaction (AG-02). Keeps AgentScope's 30-message
+     * trigger and working-context summary, but explicitly disables the two
+     * pre-compaction side effects that AgentScope 2.0.3 defaults to true and that
+     * would otherwise bypass the WorkPal backend:
+     * <ul>
+     *   <li>{@code flushBeforeCompact(false)} — the flush path runs an extra
+     *       "memory extraction assistant" model call and appends native long-term
+     *       memory files ({@code memory/YYYY-MM-DD.md}, later consolidated into
+     *       {@code MEMORY.md}) through the workspace, with no backend
+     *       authorization, persistence, or audit. WorkPal already disables memory
+     *       hooks and tools, but those gates do not cover the compaction-triggered
+     *       flush, so it must be turned off here.</li>
+     *   <li>{@code offloadBeforeCompact(false)} — the offload path replaces the
+     *       model-visible working summary with a pointer to a workspace transcript
+     *       file ("The full conversation history has been saved to <path>").
+     *       Filesystem tools are disabled, so the model has no controlled way to
+     *       read that pointer back; disabling offload keeps the summary inline and
+     *       leaves no dangling pointer.</li>
+     * </ul>
+     * Verified by real-run integration tests, not by builder defaults alone.
+     */
+    static CompactionConfig productionCompaction() {
+        return CompactionConfig.builder()
+                .triggerMessages(30)
+                .keepMessages(10)
+                .flushBeforeCompact(false)
+                .offloadBeforeCompact(false)
+                .build();
     }
 
     public void cancel(String runId) {
@@ -147,7 +247,12 @@ public final class RuntimeEngine {
         List<String> childToolNames = new ArrayList<>();
         // TurnPolicy (Product Harness Phase 2): native delegation requires both
         // the backend offering run_subagent and the policy allowing it.
-        boolean allowSubagents = request.tools() != null
+        // AG-02: delegation is additionally suspended at the runtime until a declared
+        // helper can be given the safe compaction config (see delegationSuspended). While
+        // suspended, no new Run offers run_subagent/agent_spawn regardless of the request;
+        // already-spawned background tasks keep their delivery/cancel flow below.
+        boolean allowSubagents = !delegationSuspended
+                && request.tools() != null
                 && request.tools().stream().anyMatch(tool -> "run_subagent".equals(tool.name()))
                 && request.delegationAllowed();
         if (request.tools() != null) {
@@ -164,7 +269,11 @@ public final class RuntimeEngine {
         // TurnPolicy: a disabled planning mode hides the whole native plan
         // surface, so non-interactive runs cannot stall on plan approval.
         if (request.planningAllowed()) harnessTools.addAll(List.of("plan_enter", "plan_write"));
-        harnessTools.add("load_skill_through_path");
+        // AG-01: native skill loading is a chat capability. Auxiliary scopes
+        // (auto-review, history-compaction, turn-routing, team-chat-judge) must
+        // never offer a skill surface to the model, and RunRequest.validate
+        // already refuses skill payloads on those scopes.
+        if (request.isChat()) harnessTools.add("load_skill_through_path");
         if (allowSubagents) harnessTools.addAll(List.of("agent_spawn", "agent_send", "agent_list",
                 "task_output", "task_cancel", "task_list"));
         for (String name : harnessTools) permissions.addAllowRule(name,
@@ -192,12 +301,18 @@ public final class RuntimeEngine {
                 .workspace(workspace)
                 .stateStore(store)
                 .maxIters(20)
-                .compaction(CompactionConfig.builder().triggerMessages(30).keepMessages(10).build())
+                .compaction(compaction)
                 .toolsConfig(toolFilter)
                 .disableFilesystemTools()
                 .disableShellTool()
                 .disableMemoryTools()
                 .disableMemoryHooks()
+                // AG-02: native tool-result eviction offloads >80k-char results to an
+                // unreadable workspace pointer; keep large results inline and readable
+                // instead. resultBlock() additionally bounds non-excluded tool text below
+                // the eviction threshold so declared leaf helpers (which cannot be
+                // configured through AgentScope's public API) never evict either.
+                .disableToolResultEviction()
                 .disableDefaultWorkspaceSkills();
         if (request.planningAllowed()) builder.enablePlanMode();
         if (allowSubagents) {
@@ -358,12 +473,20 @@ public final class RuntimeEngine {
                 .filter(item -> item.id() == null && "user".equals(item.role())
                         && isApplicationContext(item.content()))
                 .toList();
-        if (current.isEmpty()) return;
-        // The application summary and recall are run-scoped. A restored Harness session can
-        // contain an older copy; replace it before the next model call instead of dropping
-        // all history before the application's compaction cursor.
-        loaded.contextMutable().removeIf(message -> message.getRole() == MsgRole.USER
+        // The application summary, semantic recall and durable memory are run-scoped: the
+        // backend resends the complete current set on every chat run, so a restored Harness
+        // session's copies are always replaced before the next model call instead of dropping
+        // all history before the application's compaction cursor. AG-06 review round 3: when
+        // the current run brings NO application context (every durable memory document was
+        // deleted, the summary was cleared), the persisted copies must be REMOVED — keeping
+        // them would leave deleted content visible to the model. A null history means the
+        // caller sent no history information at all and must not wipe anything.
+        boolean removed = loaded.contextMutable().removeIf(message -> message.getRole() == MsgRole.USER
                 && isApplicationContext(message.getTextContent()));
+        if (current.isEmpty()) {
+            if (removed) store.save(userSlot, sessionSlot, "agent_state", loaded);
+            return;
+        }
         List<Msg> updated = new ArrayList<>();
         for (RunRequest.HistoryMessage item : current) {
             updated.add(userMessage(item.content(), item.images()));
@@ -374,7 +497,8 @@ public final class RuntimeEngine {
 
     private static boolean isApplicationContext(String content) {
         return content != null && (COMPACTED_CONTEXT.matcher(content).find()
-                || content.startsWith(RECALLED_MEMORY));
+                || content.startsWith(RECALLED_MEMORY)
+                || content.startsWith(DURABLE_MEMORY));
     }
 
     private static Msg taskReminder(List<TaskDelivery> deliveries) {
@@ -515,9 +639,50 @@ public final class RuntimeEngine {
             output.add(TextBlock.builder().text(json.writeValueAsString(value)).build());
         }
         if (output.isEmpty()) output.add(TextBlock.builder().text("Tool completed without a displayable result.").build());
+        output = capToolResultText(output, call.getName());
         return ToolResultBlock.builder().id(call.getId()).name(call.getName())
                 .output(output)
                 .state(outcome.error() == null ? ToolResultState.SUCCESS : ToolResultState.ERROR).build();
+    }
+
+    /**
+     * AG-02: bound the model-visible text of a non-excluded tool result below AgentScope's
+     * native eviction threshold (80,000 chars) so the unreadable-pointer offload path never
+     * fires — including for declared leaf helpers, whose eviction cannot be disabled through
+     * the public API. Excluded tools (see {@link #EVICTION_EXCLUDED_TOOLS}) are never evicted,
+     * so they are returned unchanged to preserve the backend's own sizing (e.g. read_file).
+     * Images and other non-text blocks are preserved; only the aggregate text is truncated,
+     * with an honest inline marker rather than a dangling file reference.
+     */
+    private static List<ContentBlock> capToolResultText(List<ContentBlock> output, String toolName) {
+        if (toolName != null && EVICTION_EXCLUDED_TOOLS.contains(toolName)) return output;
+        int total = 0;
+        for (ContentBlock block : output) {
+            if (block instanceof TextBlock text) total += text.getText().length();
+        }
+        if (total <= TOOL_RESULT_TEXT_CAP) return output;
+        List<ContentBlock> capped = new ArrayList<>();
+        int budget = TOOL_RESULT_TEXT_CAP;
+        for (ContentBlock block : output) {
+            if (!(block instanceof TextBlock text)) { capped.add(block); continue; }
+            if (budget <= 0) continue; // remaining text is dropped; the marker below accounts for it
+            String value = text.getText();
+            if (value.length() <= budget) {
+                capped.add(TextBlock.builder().text(value).build());
+                budget -= value.length();
+            } else {
+                capped.add(TextBlock.builder().text(value.substring(0, budget)).build());
+                budget = 0;
+            }
+        }
+        // Always append exactly one honest marker when the result was truncated, including the
+        // boundary case where a TextBlock ends exactly at the cap and later text blocks are
+        // dropped — a silent drop with no marker would hide lost content from the model.
+        capped.add(TextBlock.builder().text("\n\n[WorkPal: tool result truncated from " + total
+                + " to " + TOOL_RESULT_TEXT_CAP + " chars to stay within the model context boundary."
+                + " Native large-result offload is disabled because its workspace file pointer is"
+                + " not readable through WorkPal's authorized tools.]").build());
+        return capped;
     }
 
     private static UserMessage userMessage(String text, List<RunRequest.InputImage> images) {

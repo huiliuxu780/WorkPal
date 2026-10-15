@@ -75,6 +75,72 @@ class RuntimeIntegrationTest {
                 base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
     }
 
+    /**
+     * AG-06 review round 2: durable memory now arrives as a run-scoped
+     * application-context history message (never inside the system message), so
+     * a restored session must replace the previous run's copy with the current
+     * one — stale memory must neither persist nor accumulate.
+     */
+    @Test void refreshedDurableMemoryReplacesThePreviousRunScopedCopy() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            String oldMemory = "Durable memory saved by this user or bot follows. OLD_DURABLE_MEMORY";
+            String newMemory = "Durable memory saved by this user or bot follows. NEW_DURABLE_MEMORY";
+            RunRequest first = withHistory(request(model.getAddress().getPort(), "durable-1",
+                    "user-1", "space-1", List.of(), null), oldMemory);
+            engine.execute(first, event -> {});
+            RunRequest second = withHistory(request(model.getAddress().getPort(), "durable-2",
+                    "user-1", "space-1", List.of(), null), newMemory);
+            engine.execute(second, event -> {});
+            String messages = modelRequests.getLast().path("messages").toString();
+            assertTrue(messages.contains("NEW_DURABLE_MEMORY"), messages);
+            assertFalse(messages.contains("OLD_DURABLE_MEMORY"), messages);
+            assertEquals(1, messages.split("NEW_DURABLE_MEMORY", -1).length - 1, messages);
+            String system = modelRequests.getLast().path("messages").get(0).path("content").asText();
+            assertEquals("system", modelRequests.getLast().path("messages").get(0).path("role").asText());
+            assertFalse(system.contains("DURABLE_MEMORY"), "durable memory must not ride in the system message");
+        } finally { model.stop(0); }
+    }
+
+    /**
+     * AG-06 review round 3: application context is refreshed per Run, and the
+     * backend resends the complete current set on every chat run — so a run
+     * that brings NONE (the user deleted every durable memory document, the
+     * summary was cleared) must REMOVE the restored session's persisted copy.
+     * Three runs on one session: memory present → memory updated → memory
+     * deleted; the third run's model context must contain no memory at all.
+     */
+    @Test void clearedApplicationContextIsRemovedFromTheRestoredSession() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            String oldMemory = "Durable memory saved by this user or bot follows. OLD_DURABLE_MEMORY";
+            String newMemory = "Durable memory saved by this user or bot follows. NEW_DURABLE_MEMORY";
+            // Run 1: memory present.
+            engine.execute(withHistory(request(model.getAddress().getPort(), "durable-clear-1",
+                    "user-1", "space-1", List.of(), null), oldMemory), event -> {});
+            assertTrue(modelRequests.getLast().path("messages").toString().contains("OLD_DURABLE_MEMORY"));
+            // Run 2: memory updated — the old copy is replaced.
+            engine.execute(withHistory(request(model.getAddress().getPort(), "durable-clear-2",
+                    "user-1", "space-1", List.of(), null), newMemory), event -> {});
+            String second = modelRequests.getLast().path("messages").toString();
+            assertTrue(second.contains("NEW_DURABLE_MEMORY"), second);
+            assertFalse(second.contains("OLD_DURABLE_MEMORY"), second);
+            // Run 3: every document deleted — the backend sends an EMPTY (non-null)
+            // history. The restored session must not keep showing the old copy.
+            engine.execute(request(model.getAddress().getPort(), "durable-clear-3",
+                    "user-1", "space-1", List.of(), null), event -> {});
+            String third = modelRequests.getLast().path("messages").toString();
+            assertFalse(third.contains("NEW_DURABLE_MEMORY"),
+                    "deleted durable memory must not remain visible to the model: " + third);
+            assertFalse(third.contains("OLD_DURABLE_MEMORY"), third);
+            assertTrue(third.contains("Hello from Java Harness."), third);
+        } finally { model.stop(0); }
+    }
+
     @Test void externalToolUsesTheAuthorizedBridgeAndReturnsToHarness() throws Exception {
         List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
         List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();
@@ -191,7 +257,7 @@ class RuntimeIntegrationTest {
                     base.history(), base.currentTurnImages(), base.skills(), List.of(delegation, clock), endpoint,
                     base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
             List<Map<String, Object>> events = new ArrayList<>();
-            new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace")).execute(request, events::add);
+            delegationEngine(temp.resolve("state"), temp.resolve("workspace")).execute(request, events::add);
             assertEquals("done", events.getLast().get("type"));
             assertTrue(events.stream().anyMatch(event -> "tool".equals(event.get("type"))
                     && "agent_spawn".equals(event.get("name"))));
@@ -281,7 +347,7 @@ class RuntimeIntegrationTest {
                         new RunRequest.ToolDefinition("run_subagent", "Delegate", Map.of("type", "object"), true),
                         new RunRequest.ToolDefinition("test_clock", "Clock", Map.of("type", "object"), true)),
                     endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
-            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            RuntimeEngine engine = delegationEngine(temp.resolve("state"), temp.resolve("workspace"));
             List<Map<String, Object>> events = new ArrayList<>();
             engine.execute(input, events::add);
             assertEquals("done", events.getLast().get("type"));
@@ -401,7 +467,7 @@ class RuntimeIntegrationTest {
                         new RunRequest.ToolDefinition("run_subagent", "Delegate", Map.of("type", "object"), true),
                         new RunRequest.ToolDefinition("test_clock", "Clock", Map.of("type", "object"), true)),
                     endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
-            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("cancel-state"), temp.resolve("cancel-workspace"));
+            RuntimeEngine engine = delegationEngine(temp.resolve("cancel-state"), temp.resolve("cancel-workspace"));
             List<Map<String, Object>> events = new ArrayList<>();
             engine.execute(input, events::add);
             assertEquals("done", events.getLast().get("type"));
@@ -453,7 +519,7 @@ class RuntimeIntegrationTest {
                     base.history(), base.currentTurnImages(), base.skills(), List.of(
                         new RunRequest.ToolDefinition("run_subagent", "Delegate", Map.of("type", "object"), true)),
                     endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
-            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("reject-state"), temp.resolve("reject-workspace"));
+            RuntimeEngine engine = delegationEngine(temp.resolve("reject-state"), temp.resolve("reject-workspace"));
             Exception failure = assertThrows(Exception.class, () -> engine.execute(input, event -> {}));
             assertTrue(failure.getMessage() != null && failure.getMessage().contains("Cannot stream AgentScope event"),
                     failure.toString());
@@ -674,6 +740,74 @@ class RuntimeIntegrationTest {
         } finally { model.stop(0); }
     }
 
+    /**
+     * AG-01: an auxiliary execution (here the team-chat engagement judge) must
+     * reach the model with zero callable tools even when the request attaches
+     * the most permissive v1 auto plan/delegation policy.
+     */
+    @Test void auxiliaryScopeReachesTheModelWithoutToolsDespiteAutoPolicy() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RunRequest base = request(model.getAddress().getPort(), "aux-judge-1", "user-1", "space-1",
+                    List.of(), null);
+            RunRequest input = new RunRequest(base.botId(), base.threadId(), base.runId(), "team-chat-judge",
+                    base.sourceMessageId(), base.identity(), base.prompt(), base.productName(), base.instructions(),
+                    base.history(), base.currentTurnImages(), base.skills(), base.tools(), base.toolBridge(),
+                    base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration(), null,
+                    new RunRequest.TurnPolicy("v1", true, "auto",
+                            new RunRequest.TurnPolicy.Delegation("auto", true, 3, 1),
+                            new RunRequest.TurnPolicy.Ownership("owner", "bot-1"),
+                            "team-chat-judge", null, null, null, null),
+                    null);
+            List<Map<String, Object>> events = new ArrayList<>();
+            new RuntimeEngine(JSON, temp.resolve("aux-state"), temp.resolve("aux-workspace"))
+                    .execute(input, events::add);
+            assertEquals("done", events.getLast().get("type"));
+            assertFalse(modelRequests.isEmpty());
+            for (JsonNode body : modelRequests) {
+                JsonNode tools = body.path("tools");
+                assertTrue(tools.isMissingNode() || (tools.isArray() && tools.isEmpty()),
+                        "auxiliary model request must expose no tools: " + tools);
+                for (String reserved : List.of("plan_enter", "plan_write", "plan_exit",
+                        "load_skill_through_path", "agent_spawn", "agent_send", "agent_list",
+                        "task_output", "task_cancel", "task_list", "wait_async_results")) {
+                    assertFalse(body.toString().contains("\"name\":\"" + reserved + "\""),
+                            "auxiliary model request leaked native tool " + reserved);
+                }
+            }
+        } finally { model.stop(0); }
+    }
+
+    /**
+     * AG-01 chosen behavior at the engine boundary: an auxiliary request that
+     * mistakenly carries backend tools fails explicitly before any model call.
+     */
+    @Test void auxiliaryScopeExecutionRefusesMistakenToolsBeforeAnyModelCall() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = fakeModel(modelRequests, false);
+        try {
+            RunRequest base = request(model.getAddress().getPort(), "aux-judge-2", "user-1", "space-1",
+                    List.of(), null);
+            RunRequest.ToolBridge bridge = new RunRequest.ToolBridge(
+                    "http://127.0.0.1:9/v1/tool-executions", null, null, "bridge-secret", base.identity());
+            RunRequest input = new RunRequest(base.botId(), base.threadId(), base.runId(), "team-chat-judge",
+                    base.sourceMessageId(), base.identity(), base.prompt(), base.productName(), base.instructions(),
+                    base.history(), base.currentTurnImages(), base.skills(),
+                    List.of(new RunRequest.ToolDefinition("shell", "Mistaken tool",
+                            Map.of("type", "object"), true)),
+                    bridge, base.model(), base.allowSilentEmpty(), base.emptyResponseText(),
+                    base.sessionGeneration());
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("aux-reject-state"),
+                    temp.resolve("aux-reject-workspace"));
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> engine.execute(input, event -> {}));
+            assertEquals("Auxiliary execution scope must not carry backend tools or skills",
+                    failure.getMessage());
+            assertTrue(modelRequests.isEmpty(), "a refused auxiliary run must never reach the model");
+        } finally { model.stop(0); }
+    }
+
     @Test void constructsSupportedApiKeyModelAdapters() {
         for (String provider : List.of("openai", "openrouter", "openai-compatible", "local",
                 "anthropic", "google", "dashscope", "xai", "deepseek", "minimax",
@@ -696,6 +830,17 @@ class RuntimeIntegrationTest {
     }
 
     private record ToolStep(String name, String arguments) {}
+
+    /**
+     * AG-02: production suspends native helper delegation (a declared leaf helper cannot be
+     * given the safe compaction config through AgentScope 2.0.3's public API). These tests
+     * exercise the spawn/background/delivery/cancel machinery that production keeps wired for
+     * already-spawned tasks and for the eventual re-enable, so they turn delegation on via the
+     * package-private seam while still using the safe production compaction config.
+     */
+    private static RuntimeEngine delegationEngine(Path state, Path workspace) {
+        return new RuntimeEngine(JSON, state, workspace, RuntimeEngine.productionCompaction(), false);
+    }
 
     private static HttpServer scriptedModel(List<JsonNode> requests, List<ToolStep> steps) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

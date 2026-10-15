@@ -159,6 +159,9 @@ export class ModelTeamChatEngagementJudge implements TeamChatEngagementJudge {
           botId: input.bot.id,
           threadId: judgeId,
           runId: judgeId,
+          // Dedicated auxiliary scope (AG-01): the runtime keeps the judge's
+          // model request free of backend and native Plan/Skill/subagent tools.
+          executionScope: "team-chat-judge",
           prompt,
           instructions: [
             formatCurrentTimeInstruction(),

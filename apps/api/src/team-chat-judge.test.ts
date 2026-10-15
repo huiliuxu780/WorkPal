@@ -42,6 +42,20 @@ describe("team chat engagement judge", () => {
     expect(parseTeamChatEngagementDecision("not json")).toEqual({ act: false });
   });
 
+  const input = {
+    bot: {
+      id: "bot-1",
+      spaceId: "space-1",
+      userId: "user-1",
+      name: "Arthur",
+      modelProvider: null,
+      modelId: null,
+    },
+    channelId: "C1",
+    rules: "",
+    messages: [],
+  };
+
   it("persists cache-read and cache-write tokens from usage events", async () => {
     const create = vi.fn(async () => ({ id: "usage-1" }));
     const prisma = {
@@ -49,8 +63,10 @@ describe("team chat engagement judge", () => {
       spaceModelPreference: { findFirst: vi.fn(async () => null) },
       usageRecord: { create },
     };
+    const runRequests: unknown[] = [];
     const runtime = {
-      run: async function* () {
+      run: async function* (request: unknown) {
+        runRequests.push(request);
         yield {
           type: "usage",
           inputTokens: 150,
@@ -72,21 +88,7 @@ describe("team chat engagement judge", () => {
       deploymentModelKey: "test-key",
     });
 
-    await expect(
-      judge.decide({
-        bot: {
-          id: "bot-1",
-          spaceId: "space-1",
-          userId: "user-1",
-          name: "Arthur",
-          modelProvider: null,
-          modelId: null,
-        },
-        channelId: "C1",
-        rules: "",
-        messages: [],
-      }),
-    ).resolves.toEqual({ act: false });
+    await expect(judge.decide(input)).resolves.toEqual({ act: false });
     expect(create).toHaveBeenCalledWith({
       data: {
         spaceId: "space-1",
@@ -100,5 +102,95 @@ describe("team chat engagement judge", () => {
         cacheWriteTokens: 10,
       },
     });
+  });
+
+  it("labels the run as the dedicated auxiliary scope with an isolated identity", async () => {
+    const prisma = {
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
+      usageRecord: { create: vi.fn(async () => ({ id: "usage-1" })) },
+    };
+    let captured: Record<string, unknown> | undefined;
+    const runtime = {
+      run: async function* (request: Record<string, unknown>) {
+        captured = request;
+        yield { type: "done", text: '{"act":false}' };
+      },
+    };
+    const judge = new ModelTeamChatEngagementJudge({
+      prisma: prisma as never,
+      runtime: runtime as never,
+      secrets: {} as never,
+      deploymentProvider: "google",
+      deploymentModel: "gemini-3.8-flash",
+      deploymentModelKey: "test-key",
+    });
+
+    await judge.decide(input);
+    expect(captured?.executionScope).toBe("team-chat-judge");
+    expect(captured?.tools).toEqual([]);
+    expect(captured?.history).toEqual([]);
+    // A temporary per-call identity: the judge never shares the chat session.
+    expect(typeof captured?.threadId).toBe("string");
+    expect(captured?.threadId).toMatch(/^team-chat-judge:/);
+    expect(captured?.threadId).toBe(captured?.runId);
+  });
+
+  it("stays silent and returns act=false when the runtime fails", async () => {
+    const prisma = {
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
+      usageRecord: { create: vi.fn(async () => ({ id: "usage-1" })) },
+    };
+    const runtime = {
+      run: async function* () {
+        throw new Error("AgentScope service returned 422: auxiliary refusal");
+      },
+    };
+    const judge = new ModelTeamChatEngagementJudge({
+      prisma: prisma as never,
+      runtime: runtime as never,
+      secrets: {} as never,
+      deploymentProvider: "google",
+      deploymentModel: "gemini-3.8-flash",
+      deploymentModelKey: "test-key",
+    });
+
+    await expect(judge.decide(input)).resolves.toEqual({ act: false });
+  });
+
+  it("treats a request timeout as a silent act=false", async () => {
+    const prisma = {
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
+      usageRecord: { create: vi.fn(async () => ({ id: "usage-1" })) },
+    };
+    const runtime = {
+      run: async function* (
+        _request: unknown,
+        context: { signal?: AbortSignal } | undefined,
+      ) {
+        await new Promise<void>((resolve, reject) => {
+          const signal = context?.signal;
+          if (!signal) return resolve();
+          if (signal.aborted) return reject(new Error("aborted"));
+          signal.addEventListener("abort", () => reject(new Error("aborted")), {
+            once: true,
+          });
+        });
+        yield { type: "done", text: '{"act":true}' };
+      },
+    };
+    const judge = new ModelTeamChatEngagementJudge({
+      prisma: prisma as never,
+      runtime: runtime as never,
+      secrets: {} as never,
+      deploymentProvider: "google",
+      deploymentModel: "gemini-3.8-flash",
+      deploymentModelKey: "test-key",
+      timeoutMs: 1,
+    });
+
+    await expect(judge.decide(input)).resolves.toEqual({ act: false });
   });
 });

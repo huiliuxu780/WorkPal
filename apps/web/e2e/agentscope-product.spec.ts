@@ -278,7 +278,13 @@ test("Web chat resumes a native Harness plan after approval", async ({ page }) =
   }
 });
 
-test("Web chat receives a native Harness subagent result", async ({ page }) => {
+// AG-02/AG-06: native helper delegation is suspended at the production
+// entrypoint and the platform prompt no longer advertises it. This journey
+// pins the Web-visible contract: agent_spawn is never offered, a model that
+// attempts it anyway is refused without ever constructing a helper, the run
+// completes directly, and the AG-06 fixed prompt segment ships on a real
+// Web run.
+test("Web chat never offers native subagent delegation while suspended", async ({ page }) => {
   test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
   const intro = await startModelEmulator({
     apiKey: "web-subagent-fixture-key",
@@ -302,7 +308,13 @@ test("Web chat receives a native Harness subagent result", async ({ page }) => {
       steps: [
         {
           expect(request) {
-            expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(true);
+            expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(false);
+            const system = String(
+              request.messages.find((message) => message.role === "system")?.content ?? "",
+            );
+            expect(system).toContain("<content-trust-rules>");
+            expect(system).not.toContain("helpers are allowed");
+            expect(system).not.toContain("agent_spawn");
           },
           response: {
             type: "tool",
@@ -313,15 +325,13 @@ test("Web chat receives a native Harness subagent result", async ({ page }) => {
         },
         {
           expect(request) {
-            expect(JSON.stringify(request.messages)).toContain("CHILD_WEB_MARKER");
+            // The refused call surfaces as a tool error; no helper session ever
+            // reaches the model.
+            const transcript = JSON.stringify(request.messages);
+            expect(transcript).toContain("Return CHILD_WEB_MARKER.");
+            expect(transcript).not.toContain("You are a helper");
           },
-          response: { type: "text", text: "CHILD_WEB_MARKER" },
-        },
-        {
-          expect(request) {
-            expect(JSON.stringify(request.messages)).toContain("CHILD_WEB_MARKER");
-          },
-          response: { type: "text", text: "Delegation returned CHILD_WEB_MARKER." },
+          response: { type: "text", text: "Delegation is unavailable; finished directly." },
         },
       ],
     });
@@ -340,7 +350,7 @@ test("Web chat receives a native Harness subagent result", async ({ page }) => {
     await composer.fill("Delegate this fixture to the helper and report its result.");
     await page.keyboard.press("Enter");
     await expect(
-      page.getByTestId("transcript").getByText("Delegation returned CHILD_WEB_MARKER."),
+      page.getByTestId("transcript").getByText("Delegation is unavailable; finished directly."),
     ).toBeVisible({ timeout: 40_000 });
     task.assertComplete();
   } finally {
@@ -489,9 +499,16 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
   }
 });
 
-test("Java background result reaches Web without another user message", async ({ page }) => {
+// AG-02/AG-06: background helper spawns are part of the suspended native
+// delegation. The Web contract now: the spawn tool is never offered, an
+// attempted background spawn registers no BackgroundAgentTask, no delivery
+// run follows, and the run completes in-turn. Delivery of an ALREADY-started
+// background task stays covered in-JVM (DelegationSuspensionTest /
+// RuntimeIntegrationTest through the delegation seam).
+test("Web chat refuses background helper spawns while delegation is suspended", async ({ page }) => {
   test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
   test.setTimeout(150_000);
+  const db = createDb(process.env.DATABASE_URL!);
   const intro = await startModelEmulator({
     apiKey: "web-background-fixture-key",
     steps: [{ expect() {}, response: { type: "text", text: "Ready for background work." } }],
@@ -514,39 +531,31 @@ test("Java background result reaches Web without another user message", async ({
       return thread.run?.status ?? "completed";
     }, { timeout: 30_000 }).toBe("completed");
 
-    const finishBackground = (request: {
-      messages: Array<{ role: string; content?: unknown }>;
-    }) => {
-      const userMessages = request.messages
-        .filter((message) => message.role === "user")
-        .map((message) => JSON.stringify(message.content));
-      if (userMessages.some((content) => content.includes("Write one concise user-facing update"))) {
-        return { type: "text" as const, text: "Background delivery arrived: BACKGROUND_CHILD_RESULT." };
-      }
-      if (userMessages.some((content) => content.includes("BACKGROUND_CASE"))) {
-        return { type: "text" as const, text: "BACKGROUND_CHILD_RESULT" };
-      }
-      if (JSON.stringify(request.messages).includes("task_id:")) {
-        return { type: "text" as const, text: "Background task started." };
-      }
-      throw new Error("Unexpected background model turn");
-    };
     task = await startModelEmulator({
       apiKey: "web-background-fixture-key",
       steps: [
         {
           expect(request) {
-            expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(true);
+            expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(false);
+            for (const native of ["agent_send", "agent_list", "task_output", "task_cancel", "task_list"]) {
+              expect(request.tools?.some((tool) => tool.function.name === native)).toBe(false);
+            }
           },
           response: {
             type: "tool", id: "background-spawn", name: "agent_spawn",
             arguments: { agent_id: "helper", task: "BACKGROUND_CASE", timeout_seconds: 0 },
           },
         },
-        ...Array.from({ length: 3 }, () => ({
-          expect() {},
-          response: finishBackground,
-        })),
+        {
+          expect(request) {
+            // The refused spawn never constructed a helper session.
+            expect(JSON.stringify(request.messages)).not.toContain("You are a helper");
+          },
+          response: {
+            type: "text",
+            text: "Background delegation is unavailable; nothing was started.",
+          },
+        },
       ],
     });
     await rpc(page, "models/connect", {
@@ -562,24 +571,28 @@ test("Java background result reaches Web without another user message", async ({
     });
     await page.getByPlaceholder(/Message/).fill("Start a background helper and tell me when it starts.");
     await page.keyboard.press("Enter");
-    await expect(page.getByTestId("transcript").getByText("Background task started.")).toBeVisible({ timeout: 40_000 });
-    const beforeDelivery = await rpc<{ messages: Array<{ role: string }> }>(page, "threads/get", { botId });
     await expect(page.getByTestId("transcript").getByText(
-      "Background delivery arrived: BACKGROUND_CHILD_RESULT.",
-    )).toBeVisible({ timeout: 100_000 });
-    const afterDelivery = await rpc<{
-      messages: Array<{ role: string }>;
-      recentRuns?: Array<{ trigger: string; status: string }>;
-    }>(page, "threads/get", { botId });
-    expect(afterDelivery.messages.filter((message) => message.role === "user")).toHaveLength(
-      beforeDelivery.messages.filter((message) => message.role === "user").length,
+      "Background delegation is unavailable; nothing was started.",
+    )).toBeVisible({ timeout: 40_000 });
+
+    // The refused spawn left no background task behind and no delivery run followed.
+    const runs = await db.prisma.run.findMany({ where: { botId }, select: { id: true } });
+    expect(
+      await db.prisma.backgroundAgentTask.count({
+        where: { parentRunId: { in: runs.map((run) => run.id) } },
+      }),
+    ).toBe(0);
+    const thread = await rpc<{ recentRuns?: Array<{ trigger: string; status: string }> }>(
+      page,
+      "threads/get",
+      { botId },
     );
-    expect(afterDelivery.recentRuns?.filter((run) => run.trigger === "delivery")).toEqual([
-      expect.objectContaining({ status: "completed" }),
-    ]);
+    expect(thread.recentRuns?.filter((run) => run.trigger === "delivery") ?? []).toEqual([]);
     task.assertComplete();
   } finally {
     await task?.close();
     await intro.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
   }
 });
