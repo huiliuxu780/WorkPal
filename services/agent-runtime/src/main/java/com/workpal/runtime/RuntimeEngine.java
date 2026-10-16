@@ -35,9 +35,11 @@ import io.agentscope.core.permission.PermissionMode;
 import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.JsonFileAgentStateStore;
+import io.agentscope.core.state.State;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.agentscope.harness.agent.memory.compaction.ConversationCompactor;
 import io.agentscope.harness.agent.subagent.SubagentDeclaration;
 import io.agentscope.harness.agent.subagent.task.BackgroundTask;
 import io.agentscope.harness.agent.subagent.task.TaskDelivery;
@@ -83,6 +85,30 @@ public final class RuntimeEngine {
      * run's copy instead of keeping stale memory.
      */
     private static final String DURABLE_MEMORY = "Durable memory saved by this user or bot follows";
+    /**
+     * ME-00 (PR #45 review P1): AgentScope's native compaction folds the whole compacted
+     * prefix — including the replaceable durable-memory application-context message — into a
+     * persisted summary message ({@code name = __compaction_summary__}, USER role). That message
+     * matches none of the application-context prefixes, so {@link #refreshApplicationContext}
+     * never touched it and stale memory survived update/deletion. The summary is identified by
+     * its library-defined message name — never by searching its text — and the message name
+     * survives the JSON state round-trip ({@code Msg} persists {@code name} via @JsonCreator).
+     */
+    private static final String NATIVE_SUMMARY_NAME = ConversationCompactor.SUMMARY_MSG_NAME;
+    /**
+     * Sidecar state name (persisted next to {@code agent_state} through the same
+     * {@link JsonFileAgentStateStore}): the durable-memory fingerprint under which this
+     * session's current native summary (if any) is known to be clean. A restored run whose
+     * fingerprint differs — or that finds no sidecar at all while a summary exists (a session
+     * persisted before ME-00) — invalidates the summary by rebuilding the working context from
+     * the trusted history wire. Resume attempts skip this mechanism together with the
+     * application-context refresh, so a memory change during a paused run takes effect on the
+     * next non-resume run.
+     */
+    private static final String MEMORY_STATE_NAME = "memory_context_state";
+
+    /** Persisted sidecar: fingerprint of the durable-memory application context (or "none"). */
+    record MemoryContextState(String fingerprint) implements State {}
     /**
      * AG-02: AgentScope's native ToolResultEvictionMiddleware offloads any tool result whose
      * combined TextBlock text exceeds 80,000 chars to {@code large_tool_results/} in the Java
@@ -235,8 +261,17 @@ public final class RuntimeEngine {
         AgentState loaded = store.get(userSlot, sessionSlot, "agent_state", AgentState.class).orElse(null);
         boolean fresh = loaded == null;
         List<ToolUseBlock> pendingFromPreviousAttempt = pendingToolCalls(loaded);
-        if (loaded != null && pendingFromPreviousAttempt.isEmpty()) {
-            refreshApplicationContext(loaded, request, store, userSlot, sessionSlot);
+        String memoryFingerprint = durableMemoryFingerprint(request);
+        if (pendingFromPreviousAttempt.isEmpty()) {
+            if (loaded != null) {
+                refreshApplicationContext(loaded, request, store, userSlot, sessionSlot, memoryFingerprint);
+            } else if (memoryFingerprint != null) {
+                // ME-00: a fresh session's native summary (if compaction fires this run) is
+                // built under this run's memory state; record the fingerprint up front so the
+                // next restored run can tell "memory unchanged" from "memory replaced/deleted".
+                store.save(userSlot, sessionSlot, MEMORY_STATE_NAME,
+                        new MemoryContextState(memoryFingerprint));
+            }
         }
         RuntimeContext context = RuntimeContext.builder().userId(userSlot).sessionId(sessionSlot).build();
         ToolBridgeClient bridge = new ToolBridgeClient(json, request);
@@ -467,7 +502,7 @@ public final class RuntimeEngine {
     }
 
     private static void refreshApplicationContext(AgentState loaded, RunRequest request,
-            JsonFileAgentStateStore store, String userSlot, String sessionSlot) {
+            JsonFileAgentStateStore store, String userSlot, String sessionSlot, String memoryFingerprint) {
         if (request.history() == null) return;
         List<RunRequest.HistoryMessage> current = request.history().stream()
                 .filter(item -> item.id() == null && "user".equals(item.role())
@@ -481,18 +516,99 @@ public final class RuntimeEngine {
         // deleted, the summary was cleared), the persisted copies must be REMOVED — keeping
         // them would leave deleted content visible to the model. A null history means the
         // caller sent no history information at all and must not wipe anything.
-        boolean removed = loaded.contextMutable().removeIf(message -> message.getRole() == MsgRole.USER
-                && isApplicationContext(message.getTextContent()));
+        // ME-00: the replace/remove cannot reach memory bodies that native compaction already
+        // folded into the persisted __compaction_summary__ (a USER message with no
+        // application-context prefix). When the trusted memory state changed since this
+        // session's summary was proven clean — or no fingerprint was ever recorded while a
+        // summary exists (pre-ME-00 sessions) — the summary is invalidated by its
+        // library-defined message name. This never rewrites summary text and never relies on
+        // string-searching it.
+        boolean staleMemory = false;
+        boolean rebuilt = false;
+        if (memoryFingerprint != null) {
+            MemoryContextState stored = store.get(userSlot, sessionSlot, MEMORY_STATE_NAME,
+                    MemoryContextState.class).orElse(null);
+            staleMemory = stored == null || stored.fingerprint() == null
+                    || !memoryFingerprint.equals(stored.fingerprint());
+            if (staleMemory && loaded.getContext().stream().anyMatch(message ->
+                    NATIVE_SUMMARY_NAME.equals(message.getName()))) {
+                // Review round 2 (PR #47 P1): dropping the summary alone would permanently
+                // discard every early turn represented only by it — a restored run never
+                // replays ordinary request.history() entries (only fresh sessions seed from
+                // the wire), so later compactions could summarize just the retained tail.
+                // Rebuild the working context from the trusted history wire of THIS request
+                // instead: the same PostgreSQL-backed window a fresh session would get. The
+                // current application-context set is prepended below, so stale memory is gone
+                // and the early conversation is restored to exactly the coverage the wire
+                // carries (history window + application-layer compacted summary). If the
+                // rebuilt context crosses the token trigger, native compaction rebuilds
+                // a clean summary;
+                // unchanged memory does not trigger this rebuild.
+                List<Msg> reseeded = new ArrayList<>();
+                seedTrustedHistory(reseeded, request);
+                loaded.contextMutable().clear();
+                loaded.contextMutable().addAll(reseeded);
+                rebuilt = true;
+            }
+        }
+        boolean removed = !rebuilt && loaded.contextMutable().removeIf(message ->
+                message.getRole() == MsgRole.USER && isApplicationContext(message.getTextContent()));
         if (current.isEmpty()) {
-            if (removed) store.save(userSlot, sessionSlot, "agent_state", loaded);
-            return;
+            if (removed || rebuilt) store.save(userSlot, sessionSlot, "agent_state", loaded);
+        } else {
+            List<Msg> updated = new ArrayList<>();
+            for (RunRequest.HistoryMessage item : current) {
+                updated.add(userMessage(item.content(), item.images()));
+            }
+            loaded.contextMutable().addAll(0, updated);
+            store.save(userSlot, sessionSlot, "agent_state", loaded);
         }
-        List<Msg> updated = new ArrayList<>();
-        for (RunRequest.HistoryMessage item : current) {
-            updated.add(userMessage(item.content(), item.images()));
+        // Recorded AFTER the state save: a crash between the two leaves the sidecar stale, and
+        // the next run re-evaluates (and re-purges, idempotently) instead of trusting a
+        // fingerprint whose summary drop was never persisted.
+        if (memoryFingerprint != null && staleMemory) {
+            store.save(userSlot, sessionSlot, MEMORY_STATE_NAME, new MemoryContextState(memoryFingerprint));
         }
-        loaded.contextMutable().addAll(0, updated);
-        store.save(userSlot, sessionSlot, "agent_state", loaded);
+    }
+
+    /**
+     * ME-00: fingerprint of the trusted durable-memory application context carried by this
+     * request. The backend assembles that body per (user, bot) from the current memory documents
+     * — each section heading embeds the document scope, path and revision — so any update or
+     * deletion changes the content and therefore the fingerprint, and user-scope changes change
+     * it for every affected bot session on its next run. Returns null when the caller sent no
+     * history information at all (auxiliary/recovery runs), which skips the mechanism instead of
+     * recording a false guarantee; "none" means memory is verifiably absent right now.
+     */
+    static String durableMemoryFingerprint(RunRequest request) {
+        if (request.history() == null) return null;
+        StringBuilder body = new StringBuilder();
+        for (RunRequest.HistoryMessage item : request.history()) {
+            if (item.id() == null && "user".equals(item.role()) && item.content() != null
+                    && item.content().startsWith(DURABLE_MEMORY)) {
+                if (body.length() > 0) body.append('\u0000');
+                body.append(item.content());
+            }
+        }
+        return body.length() == 0 ? "none" : hash(body.toString());
+    }
+
+    /**
+     * ME-00 review round 2: reseed the real (non-application-context) messages of the current
+     * trusted history wire into {@code target}, mirroring the fresh-session seeding in
+     * {@link #execute} — same sourceMessageId skip, same user/assistant mapping. Application-
+     * context entries are excluded because the caller prepends the CURRENT set, so a stale
+     * memory or summary copy on the wire can never be reseeded.
+     */
+    private static void seedTrustedHistory(List<Msg> target, RunRequest request) {
+        if (request.history() == null) return;
+        for (RunRequest.HistoryMessage item : request.history()) {
+            if (item.id() != null && item.id().equals(request.sourceMessageId())) continue;
+            if (item.id() == null && isApplicationContext(item.content())) continue;
+            if ("user".equals(item.role())) target.add(userMessage(item.content(), item.images()));
+            if ("assistant".equals(item.role())) target.add(Msg.builder().role(MsgRole.ASSISTANT)
+                    .textContent(item.content() == null ? "" : item.content()).build());
+        }
     }
 
     private static boolean isApplicationContext(String content) {
