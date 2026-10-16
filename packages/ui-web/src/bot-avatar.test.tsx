@@ -33,6 +33,39 @@ describe("BotAvatar compatibility entrypoint", () => {
     expect(html).toContain('src="data:image/png;base64,abc"');
   });
 
+  it("shows the server-owned state for uploaded avatars without a nested keyboard stop", () => {
+    const html = renderToString(
+      <AvatarCatalogProvider
+        bots={[{ id: "uploaded", name: "Image Bot", avatarMode: "upload", avatarCharacter: null }]}
+        states={[
+          { botId: "uploaded", state: "approval", runId: "run-1", revision: 1, updatedAt: null },
+        ]}
+        currentBotId={null}
+      >
+        <button type="button">
+          <BotAvatar color="data:image/png;base64,abc" identity="uploaded" size={24} />
+          Image Bot
+        </button>
+      </AvatarCatalogProvider>,
+    );
+    expect(html).toContain('data-state="approval"');
+    expect(html).toContain('aria-label="Image Bot · Needs approval"');
+    expect(html).toContain('class="rakazo-agent-avatar-dot"');
+    expect(html).not.toContain('tabIndex="0"');
+    expect(html).not.toContain('tabindex="0"');
+  });
+
+  it("keeps character avatars non-focusable when embedded in an existing button", () => {
+    const html = renderToString(
+      <button type="button">
+        <BotAvatar color="#8B5CF6" identity="bot-a" size={24} />
+        Bot A
+      </button>,
+    );
+    expect(html).not.toContain('tabIndex="0"');
+    expect(html).not.toContain('tabindex="0"');
+  });
+
   it("uses a stable character when catalog data has not loaded", () => {
     const one = renderToString(<BotAvatar color="#8B5CF6" identity="bot-a" size={14} />);
     const two = renderToString(<BotAvatar color="#8B5CF6" identity="bot-a" size={14} />);

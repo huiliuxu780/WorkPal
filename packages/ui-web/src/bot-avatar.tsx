@@ -6,7 +6,11 @@ import {
   resolvePersonaColorDef,
 } from "@rakazo/core";
 import { memo } from "react";
-import { AgentAvatar, type AgentAvatarSize } from "./agent-avatar/agent-avatar.js";
+import {
+  AgentAvatar,
+  type AgentAvatarSize,
+  avatarStateNames,
+} from "./agent-avatar/agent-avatar.js";
 import { useAvatarCatalog } from "./agent-avatar/catalog.js";
 import { cn } from "./lib/utils.js";
 
@@ -49,16 +53,27 @@ export const BotAvatar = memo(function BotAvatar({
   const catalog = useAvatarCatalog(identity);
   const parsed = parseBotAvatar(color, identity);
   const botId = identity || "bot";
+  const activity = catalog.state?.state ?? "idle";
+  const label = `${catalog.bot?.name ?? "Bot"} · ${avatarStateNames[activity]}`;
   if (catalog.bot?.avatarMode !== "character" && parsed.isImage && parsed.imageUrl) {
     const slot = displaySize(size);
     return (
       <span
         className={cn(
-          "inline-flex shrink-0 overflow-hidden rounded-full border border-border bg-secondary",
+          "rakazo-agent-avatar rakazo-upload-avatar shrink-0 rounded-full border border-border bg-secondary",
           className,
         )}
         role="img"
-        aria-label={catalog.bot?.name ?? "Bot"}
+        data-bot-id={botId}
+        data-state={activity}
+        data-size={slot}
+        aria-label={label}
+        aria-live={
+          activity === "approval" || activity === "waiting" || activity === "failed"
+            ? "polite"
+            : undefined
+        }
+        title={label}
         style={{ width: slot, height: slot }}
       >
         <img
@@ -68,6 +83,9 @@ export const BotAvatar = memo(function BotAvatar({
           alt=""
           className="h-full w-full object-cover"
         />
+        {activity !== "idle" ? (
+          <span className="rakazo-agent-avatar-dot" aria-hidden="true" />
+        ) : null}
       </span>
     );
   }
@@ -81,7 +99,8 @@ export const BotAvatar = memo(function BotAvatar({
       character={character}
       name={catalog.bot?.name ?? "Bot"}
       size={displaySize(size)}
-      activity={catalog.state?.state ?? "idle"}
+      activity={activity}
+      focusable={false}
       current={catalog.current}
       progressToken={catalog.state?.revision ?? null}
       className={className}
