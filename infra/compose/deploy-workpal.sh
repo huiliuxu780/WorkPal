@@ -40,8 +40,13 @@ COMPOSE='docker compose --env-file .env \
   -f infra/compose/docker-compose.prod.docker.yml \
   -f infra/compose/docker-compose.prod.agentscope.yml'
 
-remote() { ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 "$ECS_HOST" "cd ${APP_DIR} && $*"; }
-remote_nocd() { ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 "$ECS_HOST" "$*"; }
+# Long builds ride a single ssh channel; keepalives stop a quiet-looking
+# connection from being dropped by a flaky link (observed during the DEP-01
+# rehearsal: "Connection closed by <host> port 22" aborted a deploy mid-phase).
+SSH_OPTS=(-i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=8)
+
+remote() { ssh "${SSH_OPTS[@]}" "$ECS_HOST" "cd ${APP_DIR} && $*"; }
+remote_nocd() { ssh "${SSH_OPTS[@]}" "$ECS_HOST" "$*"; }
 
 healthy() { curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null 2>&1; }
 
@@ -67,7 +72,7 @@ rollback() {
   # replaces the directory wholesale, so files rsync ADDED are removed, and it
   # leaves APP_DIR untouched (with a loud error) if the snapshot is unusable.
   restore_helper="${ROLLBACK_TAR}.restore.sh"
-  if ! ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 "$ECS_HOST" \
+  if ! ssh "${SSH_OPTS[@]}" "$ECS_HOST" \
       "cat > '${restore_helper}'" < "${REPO_DIR}/infra/compose/restore-deploy-snapshot.sh"; then
     echo "SNAPSHOT RESTORE FAILED: could not stage the restore helper on the host." >&2
     echo "${APP_DIR} still holds the failed deploy's tree; the stack may be down." >&2
@@ -129,7 +134,7 @@ rsync -az --delete \
   --exclude .env \
   --exclude node_modules \
   --exclude 'infra/compose/Caddyfile.ip-http' \
-  -e "ssh -i ${SSH_KEY} -o BatchMode=yes" \
+  -e "ssh -i ${SSH_KEY} -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8" \
   "${REPO_DIR}/" "${ECS_HOST}:${APP_DIR}/"
 echo "Tree synced to ${ECS_HOST}:${APP_DIR}."
 
