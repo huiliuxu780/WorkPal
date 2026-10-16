@@ -1,6 +1,6 @@
 # AG-07 delivery: typed message provenance
 
-Branch: `codex/ag07-message-provenance` (from merged ME-00 `8d263ad`). PR and final gate results are recorded in the roadmap row.
+Branch: `codex/ag07-message-provenance` (from merged ME-00 `8d263ad`); review: [PR #49](https://github.com/huiliuxu780/WorkPal/pull/49). Final gate results are recorded below and in the roadmap row.
 
 ## Baseline audit and corrections
 
