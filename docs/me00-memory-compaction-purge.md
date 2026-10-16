@@ -30,6 +30,8 @@ remotely 2026-10-16; see the ME-00 card §已核实的基线). The risk boundary
 
 ## Red baseline on the unmodified engine
 
+(Round-1 suite shape — 8 tests; review round 2 extended it to 9 with the early-conversation
+regression and realistic run-2 wires, see the fix section.)
 `MemoryCompactionPurgeIntegrationTest` drives the real `RuntimeEngine` (production `CompactionConfig`)
 against a local OpenAI-compatible fixture whose SUMMARY handler **echoes back exactly the memory
 markers it received** in the compacted prefix — a marker can only reach a later model request if it
@@ -53,9 +55,10 @@ unreachable). The six reds are the gap itself:
 
 ## The fix
 
-**Chosen approach: per-session durable-memory fingerprint sidecar + name-based conservative summary
-invalidation** (task card 修复约束 1, first option — safe invalidation of the affected native working
-state). No text search, no replacement markers, no "ask the model to forget".
+**Chosen approach: per-session durable-memory fingerprint sidecar + name-based conservative
+invalidation by rebuild from the trusted history wire** (task card 修复约束 1, first option — safe
+invalidation/rebuild of the affected native working state). No text search, no replacement
+markers, no "ask the model to forget".
 
 1. `durableMemoryFingerprint(request)` — SHA-256 over the concatenated durable-memory
    application-context message contents of the current request (`id==null`, `role=user`, `DURABLE_MEMORY`
@@ -69,19 +72,39 @@ state). No text search, no replacement markers, no "ask the model to forget".
    as `memory_context_state` through the same `JsonFileAgentStateStore` as `agent_state` (survives
    Java restarts; removed by `purgeBot`'s tree delete). Semantics: *the memory fingerprint under
    which this session's current native summary (if any) is known to be clean.*
-3. Invalidation, inside the existing non-resume refresh guard:
-   - restored session, fingerprint differs from the sidecar → remove every context message with
-     `name == ConversationCompactor.SUMMARY_MSG_NAME` (library constant, never a text match), then
-     save `agent_state`, then save the sidecar. Crash between the two saves leaves the sidecar stale,
-     so the next run re-evaluates and re-purges idempotently;
-   - restored session, **no sidecar** (persisted before ME-00) → one-time conservative invalidation
-     of an existing summary, then record;
-   - fingerprint equal → nothing is touched (repeat runs of one memory version never reset — pinned
-     by `unchangedMemoryKeepsNativeSummaryAcrossRuns`);
+3. Invalidation, inside the existing non-resume refresh guard — **review round 2 replaced the
+   original drop-only purge with a rebuild** (see below):
+   - restored session, fingerprint differs from the sidecar (or no sidecar at all while a
+     summary exists — a pre-ME-00 legacy session) **and** a `__compaction_summary__` message is
+     present → rebuild the working context from the trusted history wire of THIS request
+     (`seedTrustedHistory`: the real `id != null` messages of `request.history()`, same mapping
+     and `sourceMessageId` skip as the fresh-session seed; application-context entries excluded),
+     replacing the whole context list, then save `agent_state`, then save the sidecar. Crash
+     between the two saves leaves the sidecar stale, so the next run re-evaluates and re-purges
+     idempotently;
+   - fingerprint equal, or no summary present → nothing is touched (repeat runs of one memory
+     version never reset — pinned by `unchangedMemoryKeepsNativeSummaryAcrossRuns`, which also
+     pins that the always-resent window is NOT reseeded without a memory change);
    - fresh session → sidecar recorded up front (the run's compaction, if any, is built under this
      fingerprint; without this, every session's second run would purge spuriously);
    - resume attempts (pending tool calls / confirmation) skip the purge together with the AG-06
      application-context refresh — see boundaries.
+
+**Review round 2 (PR #47 P1) — drop-only was wrong.** The round-1 implementation merely removed
+the summary message. The reviewer proved that permanently discards every early turn represented
+only by the summary: a restored run never replays ordinary `request.history()` entries (only
+`fresh` sessions seed from the wire, `execute()` line ~393), so later compactions could summarize
+just the retained tail — the early conversation was gone for good, and the round-1 delivery
+claim "one degraded-context run, a later run re-compacts and rebuilds" was false. The regression
+the reviewer required (`earlyConversationSurvivesMemoryUpdatePurgeAndRecompaction`, non-memory
+early marker `EARLY_CONV_ME00`) was written FIRST and verified red on the drop-only engine (7 red
+/ 2 control green), together with the updated existing tests whose run-2 wires now model real
+backend behavior (the trusted window is resent on every chat run — `selectCompactedHistory` +
+`historyWindowSize`: 50 post-cursor / 200 legacy). The fix: invalidate by rebuilding from that
+wire (fresh-session-equivalent coverage: window + application-layer compacted summary), prepend
+the current application context, and let the natural token trigger re-compact a clean summary
+(one extra SUMMARY call, only on memory-change runs). Both sabotages are caught by the suite:
+`staleMemory=false` (no invalidation) → 7 red; drop-only reseed removal → 7 red.
 
 **Rejected alternatives** (task card required proving 2.0.3 API feasibility first):
 
@@ -91,19 +114,28 @@ state). No text search, no replacement markers, no "ask the model to forget".
   upstream-constraint family as the AG-02 leaf-helper compaction config. Recorded for ME-02/upstream.
 - *Search/replace or redact the summary text* — forbidden by the card: content matching cannot prove
   deletion (paraphrase survives), and it would rewrite library-owned model output.
-- *Invalidate the whole session state* — destroys the retained recent tail and pending-free
-  continuity for no additional safety; the summary is the only unproven carrier.
+- *Drop-only summary purge* (the round-1 implementation) — rejected by the PR #47 review: a
+  restored run never replays the ordinary wire history, so dropping the summary permanently lost
+  every early turn it represented; superseded by the rebuild (see Review round 2).
+- *Invalidate the whole session state without reseed* — destroys even what the trusted wire can
+  restore; the round-2 rebuild reseeds from the wire, so only structure the wire does not carry
+  (tool-call blocks of compacted turns) is lost.
 - *Re-summarize to rebuild* — extra model call per memory change with cost/authorization/audit
   consequences; a later run re-compacts naturally when the context grows again.
 
 ## Boundaries and honest limits (card 修复约束 4 / 验收 3–4)
 
-- **The purge drops the entire native summary.** The session loses its summarized early-conversation
-  prefix on the first run after a memory change. What survives (pinned by tests): the retained
-  recent tail (`NEEDLE_RETAINED`) and the application-layer `history.compact` summary (PostgreSQL
-  cursor untouched — it is re-injected by the backend like any application context). A later run
-  re-compacts and rebuilds a native summary from the then-current context. Accurate user impact:
-  one degraded-context run per memory change per session, no data loss in PostgreSQL.
+- **The invalidation rebuilds the working context from the trusted wire.** On the first run after
+  a memory change (per session), the native summary is discarded and the context is reseeded from
+  that run's `request.history()` — the same PostgreSQL-backed window a fresh session would get —
+  plus the current application-context set. Early conversation is restored to exactly the
+  coverage the wire carries: the history window (50 post-cursor / 200 legacy messages) plus the
+  application-layer `history.compact` summary. Material older than both lives only in PostgreSQL
+  and is represented by the application-layer summary — fresh-session-equivalent coverage, not
+  lossless replay; tool-call structure of compacted turns is replaced by the PostgreSQL text
+  equivalents. When the rebuilt context overflows the token trigger, native compaction fires once
+  and rebuilds a clean summary (pinned: exactly one SUMMARY call on the memory-change run, none
+  on unchanged-memory runs).
 - **Paused runs:** a memory change while a run is paused for approval/tool-resume takes effect on
   the next **non-resume** run — resume attempts deliberately skip the application-context refresh
   (AG-06) and the purge with it, so pending tool-call continuity is never rewritten. In-flight model
@@ -111,24 +143,28 @@ state). No text search, no replacement markers, no "ask the model to forget".
   "instant recall".
 - **Independent records are not erased:** if the same fact was restated by a real person in a thread
   message, or written by the model into an ordinary assistant message, those are separate records
-  and survive memory deletion — as does anything already inside the retained tail. Stronger
-  product-level deletion semantics belong to ME-01's fact store.
+  and survive memory deletion — when they lie inside the current window, the rebuild faithfully
+  restores them as wire text. Stronger product-level deletion semantics belong to ME-01's fact store.
 - **Fixtures prove request/state behavior, not model cognition** — a real model that already saw the
   old memory in an earlier turn may still reproduce it from its own prior output; that is outside
   any state-side fix.
-- Model-call accounting (验收 4): the fix adds **zero** model calls (pure persisted-state surgery).
-  Tests pin `FLUSH == 0`, exactly one `SUMMARY` (run 1 only), no re-compaction on short follow-ups,
-  no native `memory/` files, no `MEMORY.md`, no `large_tool_results/`, no offload pointer. AG-02
+- Model-call accounting (验收 4): unchanged-memory runs add **zero** model calls (sidecar compare
+  only). A memory-change run on a compacted session costs exactly **one extra SUMMARY call** (the
+  recomposition of the rebuilt context); the rebuild itself is pure persisted-state surgery.
+  Tests pin `FLUSH == 0`, no native `memory/` files, no `MEMORY.md`, no `large_tool_results/`, no
+  offload pointer, and no re-compaction on short unchanged-memory follow-ups. AG-02
   `productionCompaction()` (trigger 30 / keep 10 / flush false / offload false) is byte-identical.
 
 ## Verification matrix
 
 | Gate | Result |
 | --- | --- |
-| Red baseline, unmodified engine | 6 red / 2 control green (`MemoryCompactionPurgeIntegrationTest`) |
-| Post-fix | 8/8 green |
-| Sabotage (`staleMemory = false`) | exactly the same 6 red again — the regression tests depend on the invalidation mechanism |
-| JDK 21 `mvn package` (full agent-runtime suite) | **76/76**, BUILD SUCCESS — incl. AG-02 `CompactionBoundaryIntegrationTest` 7/7, AG-06 memory-refresh journeys in `RuntimeIntegrationTest` 20/20 (incl. paused/resume flow), `UntrustedContentBoundaryTest` 2/2, `DelegationSuspensionTest` 3/3 |
+| Round-1 red baseline, unmodified engine | 6 red / 2 control green (`MemoryCompactionPurgeIntegrationTest`) |
+| Round-2 red baseline, drop-only engine (reviewer regression first) | 7 red / 2 control green — every red names the early-conversation loss or the missing rebuild |
+| Post-fix (round 2, rebuild) | **9/9** green |
+| Sabotage A (`staleMemory = false`, no invalidation) | 7 red — stale-memory assertions |
+| Sabotage B (reseed removed, drop-only regression) | 7 red — early-conversation / rebuild assertions |
+| JDK 21 `mvn package` (full agent-runtime suite) | **77/77**, BUILD SUCCESS — incl. AG-02 `CompactionBoundaryIntegrationTest` 7/7, AG-06 memory-refresh journeys in `RuntimeIntegrationTest` 20/20 (incl. paused/resume flow), `UntrustedContentBoundaryTest` 2/2, `DelegationSuspensionTest` 3/3 |
 | Jar-booting TS integrations (vitest, real jar spawn) | adapters `agentscope-untrusted-content` + `agentscope-auxiliary-isolation` + `turnpolicy-v2-agentscope` **24/24**; api `team-chat-judge.integration` **1/1** |
 | TS typecheck | not affected — zero TS files changed (`git status`: one modified Java file + one new Java test + docs) |
 | Wire schema | unchanged; one new per-session persisted state file (`memory_context_state.json`), safe to delete (absence only triggers the one-time conservative invalidation) |
