@@ -1,10 +1,22 @@
 import * as z from "zod";
+import type { ActivityKind, ActivityStatus } from "./activity.js";
 
 export const AVATAR_CHARACTERS = ["dot", "treble", "wave", "bounce"] as const;
 export const AvatarCharacterSchema = z.enum(AVATAR_CHARACTERS);
 export type AvatarCharacter = z.infer<typeof AvatarCharacterSchema>;
 export const AvatarModeSchema = z.enum(["legacy", "character", "upload"]);
 export type AvatarMode = z.infer<typeof AvatarModeSchema>;
+
+export const AvatarActivitySchema = z.enum(["idle", "working", "approval", "waiting", "failed"]);
+export type AvatarActivity = z.infer<typeof AvatarActivitySchema>;
+export const BotAvatarStateSchema = z.object({
+  botId: z.string(),
+  state: AvatarActivitySchema,
+  runId: z.string().nullable(),
+  revision: z.number().int().nonnegative(),
+  updatedAt: z.string().nullable(),
+});
+export type BotAvatarState = z.infer<typeof BotAvatarStateSchema>;
 
 /** Stable across Node and browsers; never depends on array/DB iteration order. */
 export function avatarIdHash(id: string): number {
@@ -111,3 +123,72 @@ export const BotAvatarValueSchema = z
   .min(1)
   .max(BOT_AVATAR_VALUE_MAX_LENGTH)
   .refine(isBotAvatarValue, { message: "Invalid bot avatar" });
+
+export const ACTIVITY_TO_AVATAR: Record<ActivityKind, AvatarActivity> = {
+  working: "working",
+  planning: "working",
+  approval: "approval",
+  tool: "working",
+  research: "working",
+  delegation: "working",
+  handoff: "working",
+  background: "working",
+  waiting_input: "waiting",
+  waiting_takeover: "waiting",
+  completed: "idle",
+  failed: "failed",
+  cancelled: "idle",
+};
+
+const priority: Record<AvatarActivity, number> = {
+  idle: 0,
+  working: 1,
+  waiting: 2,
+  approval: 3,
+  failed: 4,
+};
+
+/** Terminal Activity items never keep an avatar working or awaiting a decision. */
+export function avatarActivityForItem(
+  kind: ActivityKind,
+  status: ActivityStatus,
+  failureAcknowledged = false,
+): AvatarActivity {
+  if (status === "cancelled" || status === "completed") return "idle";
+  if (status === "failed") return failureAcknowledged ? "idle" : "failed";
+  const mapped = ACTIVITY_TO_AVATAR[kind];
+  if (mapped === "failed" && failureAcknowledged) return "idle";
+  return mapped;
+}
+
+export type AvatarActivityCandidate = {
+  runId: string;
+  kind: ActivityKind;
+  status: ActivityStatus;
+  updatedAt: string;
+  failureAcknowledged?: boolean;
+};
+
+/** State wins before recency; stable Run ID resolves an exact timestamp tie. */
+export function selectAvatarActivity(candidates: readonly AvatarActivityCandidate[]): {
+  state: AvatarActivity;
+  runId: string | null;
+  updatedAt: string | null;
+} {
+  const ranked = candidates
+    .map((candidate) => ({
+      ...candidate,
+      state: avatarActivityForItem(candidate.kind, candidate.status, candidate.failureAcknowledged),
+    }))
+    .filter((candidate) => candidate.state !== "idle")
+    .sort(
+      (a, b) =>
+        priority[b.state] - priority[a.state] ||
+        b.updatedAt.localeCompare(a.updatedAt) ||
+        a.runId.localeCompare(b.runId),
+    );
+  const winner = ranked[0];
+  return winner
+    ? { state: winner.state, runId: winner.runId, updatedAt: winner.updatedAt }
+    : { state: "idle", runId: null, updatedAt: null };
+}
