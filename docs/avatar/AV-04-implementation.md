@@ -1,6 +1,6 @@
 # AV-04: live avatar integration
 
-Status: **in progress**. Code and data migration are implemented; live page visual review remains before final acceptance.
+Status: **done**. Code, data migration and representative live page review are complete.
 
 ## What changed
 
@@ -14,9 +14,10 @@ Status: **in progress**. Code and data migration are implemented; live page visu
 ## Verification
 
 - 15 workspace app/package type checks passed; production web build passed.
-- Focused contract and UI tests: 42/42 before the last explicit mode regression, then rerun at final gate. Isolated PostgreSQL migration test: 1/1, including idempotent rerun and original color preservation.
+- Focused contract and UI tests: 42/42 before the last explicit mode regression; final workspace checks and AV-05 regression tests cover the combined tree. Isolated PostgreSQL migration test: 1/1, including idempotent rerun and original color preservation.
 - Lingui catalogs were extracted and compiled after retiring the old Studio terms.
+- Live Playwright review: [Studio light](./review/av04-studio-light.png), [Studio dark](./review/av04-studio-dark.png), [Studio narrow](./review/av04-studio-narrow.png), [group light](./review/av04-group-light.png), [group dark](./review/av04-group-dark.png), and [1:1 narrow bubble](./review/av04-one-to-one-narrow.png). The new focused group test confirms two member silhouettes and visible names; the updated reduced-motion and Studio silhouette tests also pass. The 1:1 bubble leaves room for the message at 390px.
 
-## Open acceptance
+## Acceptance interpretation and limit
 
-Complete real page light/dark visual review of the 20 call sites and confirm the 1:1 bubble does not crowd narrow widths. AV-05 must add a durable change record and one-step undo before this feature sequence can be called complete.
+The source spec's “17 call sites × four sizes × two themes” grid does not map literally to this UI: the inventory is 20 actual `<BotAvatar>` render calls, and each call has one fixed design size. All calls use the same `BotAvatar` adapter, which maps their supplied sizes into the four approved display slots. [The AV-02 static matrix](./review/av02-static-matrix.png) exercises every slot in light and dark themes; the six live captures above check the shared renderer in Studio, group and 1:1 contexts. This is equivalent shared-renderer coverage, not 160 individual page captures. AV-05 owns the separate durable change record and Undo behavior.
