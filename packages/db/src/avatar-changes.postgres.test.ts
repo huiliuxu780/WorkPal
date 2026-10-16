@@ -59,6 +59,22 @@ describePostgres("avatar change authorization and undo (PostgreSQL)", () => {
     await expect(undoBotAvatarChange(db, actor, change!.id)).rejects.toThrow();
   });
 
+  it("preserves the prior mode-only legacy transition for an uploaded image", async () => {
+    const db = isolated.db.prisma;
+    const changed = await changeBotAvatar(db, {
+      ...actor,
+      botId,
+      source: "user",
+      choice: { avatarMode: "legacy", color: upload },
+    });
+    expect(changed?.afterMode).toBe("legacy");
+    expect(await db.bot.findUniqueOrThrow({ where: { id: botId } })).toMatchObject({
+      avatarMode: "legacy",
+      color: upload,
+    });
+    await undoBotAvatarChange(db, actor, changed!.id);
+  });
+
   it("keeps Bot retries idempotent and refuses stale undo after a newer change", async () => {
     const db = isolated.db.prisma;
     const first = await changeBotAvatar(db, {
@@ -96,7 +112,7 @@ describePostgres("avatar change authorization and undo (PostgreSQL)", () => {
     });
   });
 
-  it("retains at most 50 scoped change records", async () => {
+  it("retains at most 50 visible records while keeping Bot dedup tombstones", async () => {
     const db = isolated.db.prisma;
     for (let index = 0; index < 52; index++) {
       await changeBotAvatar(db, {
@@ -106,7 +122,51 @@ describePostgres("avatar change authorization and undo (PostgreSQL)", () => {
         choice: { avatarMode: "character", avatarCharacter: index % 2 ? "wave" : "treble" },
       });
     }
-    expect(await db.botAvatarChange.count({ where: { botId } })).toBe(50);
+    expect(await db.botAvatarChange.count({ where: { botId, operationKey: null } })).toBeLessThanOrEqual(50);
+    expect(await listBotAvatarChanges(db, actor, botId)).toHaveLength(50);
+  });
+
+  it("keeps a metadata-only Bot operation tombstone after 50 later changes", async () => {
+    const db = isolated.db.prisma;
+    const current = await db.bot.findUniqueOrThrow({ where: { id: botId } });
+    const requested = current.avatarCharacter === "wave" ? "dot" : "wave";
+    const first = await changeBotAvatar(db, {
+      ...actor,
+      botId,
+      source: "bot",
+      runId: "old-run",
+      operationKey: "old-avatar-tool-call",
+      choice: { avatarMode: "character", avatarCharacter: requested },
+    });
+    for (let index = 0; index < 52; index++) {
+      await changeBotAvatar(db, {
+        ...actor,
+        botId,
+        source: "user",
+        choice: {
+          avatarMode: "character",
+          avatarCharacter: index % 2 ? "treble" : "bounce",
+        },
+      });
+    }
+    const beforeRetry = await db.bot.findUniqueOrThrow({ where: { id: botId } });
+    const retried = await changeBotAvatar(db, {
+      ...actor,
+      botId,
+      source: "bot",
+      runId: "old-run",
+      operationKey: "old-avatar-tool-call",
+      choice: { avatarMode: "character", avatarCharacter: requested },
+    });
+    expect(retried?.id).toBe(first?.id);
+    expect(await db.bot.findUniqueOrThrow({ where: { id: botId } })).toMatchObject({
+      avatarMode: beforeRetry.avatarMode,
+      avatarCharacter: beforeRetry.avatarCharacter,
+    });
+    expect(await db.botAvatarChange.findUniqueOrThrow({ where: { id: first!.id } })).toMatchObject({
+      beforeColor: "",
+      afterColor: "",
+    });
     expect(await listBotAvatarChanges(db, actor, botId)).toHaveLength(50);
   });
 

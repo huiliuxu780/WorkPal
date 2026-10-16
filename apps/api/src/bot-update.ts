@@ -9,6 +9,32 @@ import { getLogger } from "@rakazo/logging";
 
 type AppendEvent = typeof appendEventInTransaction;
 
+/** Append a Bot-scoped refresh event in the avatar transaction. */
+export async function appendAvatarUpdatedEvent(
+  tx: Prisma.TransactionClient,
+  input: { botId: string; spaceId: string },
+  appendEvent: AppendEvent = appendEventInTransaction,
+) {
+  const bot = await tx.bot.findUniqueOrThrow({
+    where: { id: input.botId },
+    select: { name: true, title: true, description: true, thread: { select: { id: true } } },
+  });
+  if (!bot.thread) throw new Error("Bot has no thread for avatar update");
+  const event = await appendEvent(tx, {
+    spaceId: input.spaceId,
+    threadId: bot.thread.id,
+    botId: input.botId,
+    type: "bot.updated",
+    payload: {
+      botId: input.botId,
+      name: bot.name,
+      title: bot.title,
+      description: bot.description,
+    },
+  });
+  return { threadId: bot.thread.id, seq: event.seq };
+}
+
 /**
  * Persist a bot row. When profile labels change, write `bot.updated` in the same
  * transaction so clients never observe a successful rename without a durable event.

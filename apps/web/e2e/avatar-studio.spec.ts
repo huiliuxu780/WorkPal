@@ -13,6 +13,12 @@ test("avatar studio changes a Bot character and offers one-step undo", async ({
     botId: activeBotId(page),
   });
   const selected = initial.avatarCharacter === "wave" ? "bounce" : "wave";
+  const otherTab = await page.context().newPage();
+  await otherTab.goto(page.url());
+  const otherTabAvatar = otherTab
+    .getByTestId("bot-settings-trigger")
+    .locator(".rakazo-agent-avatar");
+  await expect(otherTabAvatar).toBeVisible();
 
   await page.getByTestId("bot-settings-trigger").click();
   const settings = page.getByTestId("bot-settings");
@@ -33,8 +39,12 @@ test("avatar studio changes a Bot character and offers one-step undo", async ({
   await expect(
     settings.getByTestId("avatar-studio-trigger").locator(`[data-character="${selected}"]`),
   ).toBeVisible();
-  await settings.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(settings.getByRole("status")).toHaveCount(0);
+  await expect(otherTabAvatar).toHaveAttribute("data-character", selected);
+  const [latestChange] = await rpc<Array<{ id: string }>>(page, "bots/avatarChanges", {
+    botId: activeBotId(page),
+  });
+  await rpc(page, "bots/undoAvatarChange", { changeId: latestChange!.id });
+  await expect(otherTabAvatar).toHaveAttribute("data-character", initial.avatarCharacter ?? "dot");
   await settings.getByTestId("avatar-studio-trigger").click();
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "dark";

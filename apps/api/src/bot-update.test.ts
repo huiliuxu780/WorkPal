@@ -6,7 +6,37 @@ vi.mock("@rakazo/db", () => ({
 }));
 
 import { changeBotAvatarInTransaction } from "@rakazo/db";
-import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
+import {
+  appendAvatarUpdatedEvent,
+  botProfileLabelsChanged,
+  commitBotUpdate,
+} from "./bot-update.js";
+
+describe("appendAvatarUpdatedEvent", () => {
+  it("writes the Bot thread refresh event in the caller's transaction", async () => {
+    const tx = {
+      bot: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          name: "Chief",
+          title: "",
+          description: "",
+          thread: { id: "thread-1" },
+        }),
+      },
+    };
+    const append = vi.fn().mockResolvedValue({ seq: 7 });
+    await expect(
+      appendAvatarUpdatedEvent(tx as never, { botId: "bot-1", spaceId: "space-1" }, append),
+    ).resolves.toEqual({ threadId: "thread-1", seq: 7 });
+    expect(append).toHaveBeenCalledWith(tx, {
+      spaceId: "space-1",
+      threadId: "thread-1",
+      botId: "bot-1",
+      type: "bot.updated",
+      payload: { botId: "bot-1", name: "Chief", title: "", description: "" },
+    });
+  });
+});
 
 describe("botProfileLabelsChanged", () => {
   it("is true when profile labels or avatar identity change", () => {

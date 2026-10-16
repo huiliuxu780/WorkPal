@@ -20,7 +20,7 @@ function validateChoice(choice: AvatarChoice) {
       throw new AvatarChangeDenied("Invalid character");
   } else if (
     !isBotAvatarValue(choice.color) ||
-    (choice.avatarMode === "upload") !== choice.color.startsWith("data:image/")
+    (choice.avatarMode === "upload" && !choice.color.startsWith("data:image/"))
   ) {
     throw new AvatarChangeDenied("Invalid upload");
   }
@@ -125,10 +125,13 @@ export async function changeBotAvatarInTransaction(
     where: { botId: bot.id },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: 50,
-    select: { id: true },
+    select: { id: true, operationKey: true },
   });
-  if (older.length)
-    await tx.botAvatarChange.deleteMany({ where: { id: { in: older.map((item) => item.id) } } });
+  // A Bot tool call may be retried after any number of later avatar changes.
+  // Keep its key as a metadata-only tombstone until the Bot is deleted.
+  const prunable = older.filter((item) => !item.operationKey);
+  if (prunable.length)
+    await tx.botAvatarChange.deleteMany({ where: { id: { in: prunable.map((item) => item.id) } } });
   // Only the latest entry can be undone. Keep older provenance, not duplicate image bytes.
   await tx.botAvatarChange.updateMany({
     where: { botId: bot.id, id: { not: change.id } },
@@ -171,38 +174,44 @@ export async function listBotAvatarChanges(prisma: PrismaClient, actor: Actor, b
   return changes.map(avatarChangeView);
 }
 
-export async function undoBotAvatarChange(prisma: PrismaClient, actor: Actor, changeId: string) {
-  return prisma.$transaction(async (tx) => {
-    const change = await tx.botAvatarChange.findFirst({
-      where: { id: changeId, userId: actor.userId, spaceId: actor.spaceId },
-    });
-    if (!change) throw new AvatarChangeDenied("Avatar change not found");
-    const bot = await lockedBot(tx, actor, change.botId);
-    const latest = await tx.botAvatarChange.findFirst({
-      where: { botId: bot.id },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    });
-    if (latest?.id !== change.id || change.undoneAt)
-      throw new AvatarChangeDenied("Only the latest avatar change can be undone");
-    if (
-      bot.avatarMode !== change.afterMode ||
-      bot.avatarCharacter !== change.afterCharacter ||
-      bot.color !== change.afterColor
-    ) {
-      throw new AvatarChangeDenied("Avatar changed again; refresh before undoing");
-    }
-    await tx.bot.update({
-      where: { id: bot.id },
-      data: {
-        avatarMode: change.beforeMode,
-        avatarCharacter: change.beforeCharacter,
-        color: change.beforeColor,
-      },
-    });
-    const updated = await tx.botAvatarChange.update({
-      where: { id: change.id },
-      data: { undoneAt: new Date(), beforeColor: "", afterColor: "" },
-    });
-    return avatarChangeView(updated);
+export async function undoBotAvatarChangeInTransaction(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  changeId: string,
+) {
+  const change = await tx.botAvatarChange.findFirst({
+    where: { id: changeId, userId: actor.userId, spaceId: actor.spaceId },
   });
+  if (!change) throw new AvatarChangeDenied("Avatar change not found");
+  const bot = await lockedBot(tx, actor, change.botId);
+  const latest = await tx.botAvatarChange.findFirst({
+    where: { botId: bot.id },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+  if (latest?.id !== change.id || change.undoneAt)
+    throw new AvatarChangeDenied("Only the latest avatar change can be undone");
+  if (
+    bot.avatarMode !== change.afterMode ||
+    bot.avatarCharacter !== change.afterCharacter ||
+    bot.color !== change.afterColor
+  ) {
+    throw new AvatarChangeDenied("Avatar changed again; refresh before undoing");
+  }
+  await tx.bot.update({
+    where: { id: bot.id },
+    data: {
+      avatarMode: change.beforeMode,
+      avatarCharacter: change.beforeCharacter,
+      color: change.beforeColor,
+    },
+  });
+  const updated = await tx.botAvatarChange.update({
+    where: { id: change.id },
+    data: { undoneAt: new Date(), beforeColor: "", afterColor: "" },
+  });
+  return avatarChangeView(updated);
+}
+
+export async function undoBotAvatarChange(prisma: PrismaClient, actor: Actor, changeId: string) {
+  return prisma.$transaction((tx) => undoBotAvatarChangeInTransaction(tx, actor, changeId));
 }

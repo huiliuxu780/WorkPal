@@ -147,13 +147,14 @@ import {
   AvatarChangeDenied,
   acknowledgeAvatarFailure,
   appendEventInTransaction,
+  avatarChangeView,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
   CannotDeleteLastSpaceError,
   CannotDeleteSpaceAsNonOwnerError,
   ComputerLimitError,
   cancelChildrenOfCancelledRuns,
-  changeBotAvatar,
+  changeBotAvatarInTransaction,
   claimEmptySpaceDeletionForMember,
   createExternalConversationRepos,
   createGroupRepos,
@@ -197,7 +198,7 @@ import {
   summarizeModelUsage,
   TaskCenterCursorError,
   touchGroupUpdatedAt,
-  undoBotAvatarChange,
+  undoBotAvatarChangeInTransaction,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
@@ -213,7 +214,11 @@ import {
   listArtifactVersions,
   listSpaceArtifacts,
 } from "./artifacts.js";
-import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
+import {
+  appendAvatarUpdatedEvent,
+  botProfileLabelsChanged,
+  commitBotUpdate,
+} from "./bot-update.js";
 import {
   executionBlocksUserTakeover,
   resolveBusyBotName,
@@ -1414,12 +1419,25 @@ export function createRouter(deps: RouterDeps) {
           }
         }
         try {
-          return await changeBotAvatar(deps.prisma, {
-            ...context.actor,
-            botId: input.botId,
-            choice,
-            source: "user",
+          const committed = await deps.prisma.$transaction(async (tx) => {
+            const change = await changeBotAvatarInTransaction(tx, {
+              ...context.actor,
+              botId: input.botId,
+              choice,
+              source: "user",
+            });
+            if (!change) return null;
+            const event = await appendAvatarUpdatedEvent(tx, {
+              botId: input.botId,
+              spaceId: context.actor.spaceId,
+            });
+            return { view: avatarChangeView(change), event };
           });
+          if (committed)
+            await deps.events
+              .notify(committed.event.threadId, committed.event.seq)
+              .catch((error) => getLogger().error("avatar change realtime notification", error));
+          return committed?.view ?? null;
         } catch (error) {
           if (error instanceof AvatarChangeDenied)
             throw new ORPCError("BAD_REQUEST", { message: error.message });
@@ -1436,7 +1454,18 @@ export function createRouter(deps: RouterDeps) {
       }),
       undoAvatarChange: authed.bots.undoAvatarChange.handler(async ({ context, input }) => {
         try {
-          return await undoBotAvatarChange(deps.prisma, context.actor, input.changeId);
+          const committed = await deps.prisma.$transaction(async (tx) => {
+            const view = await undoBotAvatarChangeInTransaction(tx, context.actor, input.changeId);
+            const event = await appendAvatarUpdatedEvent(tx, {
+              botId: view.botId,
+              spaceId: context.actor.spaceId,
+            });
+            return { view, event };
+          });
+          await deps.events
+            .notify(committed.event.threadId, committed.event.seq)
+            .catch((error) => getLogger().error("avatar undo realtime notification", error));
+          return committed.view;
         } catch (error) {
           if (error instanceof AvatarChangeDenied)
             throw new ORPCError("BAD_REQUEST", { message: error.message });
