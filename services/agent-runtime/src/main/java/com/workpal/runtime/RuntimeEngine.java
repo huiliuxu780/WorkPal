@@ -100,9 +100,10 @@ public final class RuntimeEngine {
      * {@link JsonFileAgentStateStore}): the durable-memory fingerprint under which this
      * session's current native summary (if any) is known to be clean. A restored run whose
      * fingerprint differs — or that finds no sidecar at all while a summary exists (a session
-     * persisted before ME-00) — drops the summary. Resume attempts skip this mechanism together
-     * with the application-context refresh, so a memory change during a paused run takes effect
-     * on the next non-resume run.
+     * persisted before ME-00) — invalidates the summary by rebuilding the working context from
+     * the trusted history wire. Resume attempts skip this mechanism together with the
+     * application-context refresh, so a memory change during a paused run takes effect on the
+     * next non-resume run.
      */
     private static final String MEMORY_STATE_NAME = "memory_context_state";
 
@@ -515,30 +516,45 @@ public final class RuntimeEngine {
         // deleted, the summary was cleared), the persisted copies must be REMOVED — keeping
         // them would leave deleted content visible to the model. A null history means the
         // caller sent no history information at all and must not wipe anything.
-        boolean removed = loaded.contextMutable().removeIf(message -> message.getRole() == MsgRole.USER
-                && isApplicationContext(message.getTextContent()));
-        // ME-00: the replace/remove above cannot reach memory bodies that native compaction
-        // already folded into the persisted __compaction_summary__ (a USER message with no
+        // ME-00: the replace/remove cannot reach memory bodies that native compaction already
+        // folded into the persisted __compaction_summary__ (a USER message with no
         // application-context prefix). When the trusted memory state changed since this
         // session's summary was proven clean — or no fingerprint was ever recorded while a
-        // summary exists (pre-ME-00 sessions) — drop the summary by its library-defined message
-        // name. The retained recent tail and the application-layer compacted-context summary
-        // survive; a later run re-compacts and rebuilds a native summary from the then-current
-        // context. This never rewrites summary text and never relies on string-searching it.
+        // summary exists (pre-ME-00 sessions) — the summary is invalidated by its
+        // library-defined message name. This never rewrites summary text and never relies on
+        // string-searching it.
         boolean staleMemory = false;
-        boolean summaryPurged = false;
+        boolean rebuilt = false;
         if (memoryFingerprint != null) {
             MemoryContextState stored = store.get(userSlot, sessionSlot, MEMORY_STATE_NAME,
                     MemoryContextState.class).orElse(null);
             staleMemory = stored == null || stored.fingerprint() == null
                     || !memoryFingerprint.equals(stored.fingerprint());
-            if (staleMemory) {
-                summaryPurged = loaded.contextMutable().removeIf(message ->
-                        NATIVE_SUMMARY_NAME.equals(message.getName()));
+            if (staleMemory && loaded.getContext().stream().anyMatch(message ->
+                    NATIVE_SUMMARY_NAME.equals(message.getName()))) {
+                // Review round 2 (PR #47 P1): dropping the summary alone would permanently
+                // discard every early turn represented only by it — a restored run never
+                // replays ordinary request.history() entries (only fresh sessions seed from
+                // the wire), so later compactions could summarize just the retained tail.
+                // Rebuild the working context from the trusted history wire of THIS request
+                // instead: the same PostgreSQL-backed window a fresh session would get. The
+                // current application-context set is prepended below, so stale memory is gone
+                // and the early conversation is restored to exactly the coverage the wire
+                // carries (history window + application-layer compacted summary). When the
+                // rebuilt context overflows the token trigger again, native compaction
+                // naturally rebuilds a clean summary — one extra SUMMARY call per memory
+                // change, and never on unchanged-memory runs.
+                List<Msg> reseeded = new ArrayList<>();
+                seedTrustedHistory(reseeded, request);
+                loaded.contextMutable().clear();
+                loaded.contextMutable().addAll(reseeded);
+                rebuilt = true;
             }
         }
+        boolean removed = !rebuilt && loaded.contextMutable().removeIf(message ->
+                message.getRole() == MsgRole.USER && isApplicationContext(message.getTextContent()));
         if (current.isEmpty()) {
-            if (removed || summaryPurged) store.save(userSlot, sessionSlot, "agent_state", loaded);
+            if (removed || rebuilt) store.save(userSlot, sessionSlot, "agent_state", loaded);
         } else {
             List<Msg> updated = new ArrayList<>();
             for (RunRequest.HistoryMessage item : current) {
@@ -575,6 +591,24 @@ public final class RuntimeEngine {
             }
         }
         return body.length() == 0 ? "none" : hash(body.toString());
+    }
+
+    /**
+     * ME-00 review round 2: reseed the real (non-application-context) messages of the current
+     * trusted history wire into {@code target}, mirroring the fresh-session seeding in
+     * {@link #execute} — same sourceMessageId skip, same user/assistant mapping. Application-
+     * context entries are excluded because the caller prepends the CURRENT set, so a stale
+     * memory or summary copy on the wire can never be reseeded.
+     */
+    private static void seedTrustedHistory(List<Msg> target, RunRequest request) {
+        if (request.history() == null) return;
+        for (RunRequest.HistoryMessage item : request.history()) {
+            if (item.id() != null && item.id().equals(request.sourceMessageId())) continue;
+            if (item.id() == null && isApplicationContext(item.content())) continue;
+            if ("user".equals(item.role())) target.add(userMessage(item.content(), item.images()));
+            if ("assistant".equals(item.role())) target.add(Msg.builder().role(MsgRole.ASSISTANT)
+                    .textContent(item.content() == null ? "" : item.content()).build());
+        }
     }
 
     private static boolean isApplicationContext(String content) {
