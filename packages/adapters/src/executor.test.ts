@@ -7,6 +7,7 @@ import {
   createRunExecutor,
   createRunWorkspaceCheckpoint,
   dockerComputerToolInstruction,
+  historyMessageProvenance,
   loadCurrentTurnImages,
   missingTurnImagesInstruction,
   parseUpdateBotPatch,
@@ -20,6 +21,21 @@ import {
   withRecentTurnImages,
 } from "./executor.js";
 import { serializeModelSecret } from "./pi-oauth.js";
+
+describe("history message provenance", () => {
+  it("keeps verified human authors and downgrades unknown or inconsistent rows", () => {
+    expect(historyMessageProvenance({ originKind: "human_web", authorUserId: "user-1", role: "user" }))
+      .toEqual({ kind: "message", originKind: "human_web", authorUserId: "user-1" });
+    expect(historyMessageProvenance({ originKind: "future_source", authorUserId: "user-1", role: "user" }))
+      .toEqual({ kind: "message", originKind: "unknown", authorUserId: null });
+    expect(historyMessageProvenance({ originKind: "human_messaging", authorUserId: null, role: "user" }))
+      .toEqual({ kind: "message", originKind: "unknown", authorUserId: null });
+    expect(historyMessageProvenance({ originKind: "webhook", authorUserId: "user-1", role: "user" }))
+      .toEqual({ kind: "message", originKind: "webhook", authorUserId: null });
+    expect(historyMessageProvenance({ originKind: "human_web", authorUserId: "user-1", role: "bot" }))
+      .toEqual({ kind: "message", originKind: "unknown", authorUserId: null });
+  });
+});
 
 describe("tool completion audit", () => {
   it("records result metadata without persisting tool contents", () => {

@@ -225,6 +225,7 @@ type HarnessMessage = {
   seq: number;
   role: string;
   blocks: MessageBlock[];
+  originKind?: string;
 };
 
 function compactionHarness(
@@ -470,6 +471,22 @@ describe("recordHistoryCompactAttemptsExhausted", () => {
 });
 
 describe("compactHistory", () => {
+  it("omits typed system content without skipping its sequence and retains unknown legacy text", async () => {
+    const harness = compactionHarness({
+      deploymentModelKey: "fixture-key",
+      messages: [
+        { seq: 0, role: "system", originKind: "system", blocks: [{ kind: "text", text: "HIDDEN_WAKE_BODY" }] },
+        { seq: 1, role: "user", originKind: "unknown", blocks: [{ kind: "text", text: "LEGACY_USER_BODY" }] },
+      ],
+    });
+    await compactHistory(harness.deps, "thread-1");
+    const [request] = harness.runtime.run.mock.calls[0]!;
+    expect(request.prompt).not.toContain("HIDDEN_WAKE_BODY");
+    expect(request.prompt).toContain("[system-generated message omitted]");
+    expect(request.prompt).toContain("LEGACY_USER_BODY");
+    expect(harness.thread.historyCompactedUpToSeq).toBe(1);
+  });
+
   it("summarizes the next batch, saves it through the provider, and advances the cursor", async () => {
     const harness = compactionHarness({ deploymentModelKey: "openrouter-key" });
 

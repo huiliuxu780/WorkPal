@@ -144,6 +144,8 @@ async function handleDirectEvent(
     threadId: ids.threadId,
     botId: ids.botId,
     userId: ids.userId,
+    originKind: "human_messaging",
+    authorUserId: ids.userId,
     blocks: [{ kind: "text", text }],
     prompt: text,
     trigger: "messaging",
@@ -616,6 +618,7 @@ async function handleChannelEvent(
       threadId: thread.id,
       botId: identity.botId,
       userId: identity.userId,
+      originKind: "messaging_external",
       blocks: [block],
       prompt,
       trigger: "messaging",
@@ -656,6 +659,7 @@ async function inviteMember(
     const note = await createThreadMessage(deps.prisma, {
       threadId: thread.id,
       role: "system",
+      originKind: "system",
       blocks: [
         {
           kind: "meta",

@@ -1,6 +1,6 @@
 import type { AgentRunRequest, AgentRuntime, JobPublisher } from "@rakazo/adapter-kit";
 import { historyCompactJob } from "@rakazo/adapter-kit";
-import type { MessageBlock } from "@rakazo/contracts";
+import type { AgentHistoryProvenance, MessageBlock } from "@rakazo/contracts";
 import { blocksToAgentHistoryText, PRODUCT_BRAND } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { getLogger, unwrapJobPayload } from "@rakazo/logging";
@@ -48,6 +48,7 @@ export type CompactedHistoryMessage = {
   seq: number;
   role: "user" | "assistant" | "system";
   content: string;
+  provenance?: AgentHistoryProvenance;
 };
 
 export interface CompactedHistorySelection {
@@ -238,7 +239,7 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
   }
 
   let fromSeqExclusive = previousCursor ?? NOTHING_COMPACTED;
-  let batch: Array<{ seq: number; role: string; blocks: unknown }> = [];
+  let batch: Array<{ seq: number; role: string; blocks: unknown; originKind: string }> = [];
   let bootstrappingLocalSummary = false;
   if (needsLocalBootstrap) {
     if (previousCursor < 0) {
@@ -249,7 +250,7 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
       where: { threadId, seq: { lte: previousCursor } },
       orderBy: { seq: "desc" },
       take: LEGACY_HISTORY_WINDOW_SIZE + 1,
-      select: { seq: true, role: true, blocks: true },
+      select: { seq: true, role: true, blocks: true, originKind: true },
     });
     batch = bootstrapCandidates.reverse();
     if (batch.length > 0) {
@@ -278,7 +279,7 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
       where: { threadId, seq: { gt: range.fromSeqExclusive } },
       orderBy: { seq: "asc" },
       take: range.take,
-      select: { seq: true, role: true, blocks: true },
+      select: { seq: true, role: true, blocks: true, originKind: true },
     });
     if (batch.some((message, index) => message.seq !== fromSeqExclusive + index + 1)) {
       logHistoryCompactPermanentFailure(threadId, "message_coverage_gap");
@@ -287,8 +288,13 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
   }
   if (batch.length === 0) return;
 
-  const transcriptParts = batch.map(
-    (message) => `${message.role}: ${blocksToAgentHistoryText(message.blocks as MessageBlock[])}`,
+  // Preserve sequence alignment for the compaction cursor, while withholding the body of
+  // backend-generated system notes from the model's summary input. Unknown legacy rows are
+  // retained conservatively: role or text cannot prove they are synthetic.
+  const transcriptParts = batch.map((message) =>
+    message.originKind === "system"
+      ? "[system-generated message omitted]"
+      : `${message.role}: ${blocksToAgentHistoryText(message.blocks as MessageBlock[])}`,
   );
   let transcript = transcriptParts.join("\n\n");
   if (transcript.length > MAX_TRANSCRIPT_CHARS) {

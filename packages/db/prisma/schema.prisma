@@ -502,6 +502,10 @@ model Message {
   thread           Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
   seq              Int
   role             String
+  /// Trusted server entry path. Existing rows remain unknown after migration.
+  originKind       String    @default("unknown")
+  /// Set only when an authenticated or linked sender identity is known.
+  authorUserId     String?
   blocks           Json
   botId            String?
   replyToMessageId String?

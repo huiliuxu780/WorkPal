@@ -2336,6 +2336,15 @@ describe("sendThreadMessage", () => {
     const actor = { spaceId: "workspace-1", userId: "user-1" } as Actor;
     const target = { kind: "bot", botId: "bot-1", threadId: "thread-1" } as ThreadTarget;
 
+    // Extra client fields cannot override the authenticated actor or the server's origin.
+    const spoofedInput = {
+      text: "why this?",
+      replyToMessageId: "parent",
+      replyQuote: "just this span",
+      clientNonce: "nonce-1",
+      originKind: "bot",
+      authorUserId: "attacker",
+    };
     const result = await sendThreadMessage(
       {
         prisma,
@@ -2344,12 +2353,7 @@ describe("sendThreadMessage", () => {
       },
       actor,
       target,
-      {
-        text: "why this?",
-        replyToMessageId: "parent",
-        replyQuote: "just this span",
-        clientNonce: "nonce-1",
-      },
+      spoofedInput,
     );
 
     expect(result).toMatchObject({ runId: "run-1", taskId: "task-1" });
@@ -2361,6 +2365,8 @@ describe("sendThreadMessage", () => {
       data: expect.objectContaining({
         replyToMessageId: "parent",
         replyQuote: "just this span",
+        originKind: "human_web",
+        authorUserId: "user-1",
       }),
     });
     expect(tx.event.create).toHaveBeenCalledWith({

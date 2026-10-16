@@ -467,6 +467,7 @@ export function createRepos(prisma: PrismaClient) {
             await createThreadMessageInTransaction(tx, {
               threadId: thread.id,
               ...input.initialMessage,
+              originKind: input.initialMessage.role === "bot" ? "bot" : "system",
             });
           }
           if (input.computerMode === "dedicated") {
