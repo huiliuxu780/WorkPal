@@ -540,10 +540,10 @@ public final class RuntimeEngine {
                 // instead: the same PostgreSQL-backed window a fresh session would get. The
                 // current application-context set is prepended below, so stale memory is gone
                 // and the early conversation is restored to exactly the coverage the wire
-                // carries (history window + application-layer compacted summary). When the
-                // rebuilt context overflows the token trigger again, native compaction
-                // naturally rebuilds a clean summary — one extra SUMMARY call per memory
-                // change, and never on unchanged-memory runs.
+                // carries (history window + application-layer compacted summary). If the
+                // rebuilt context crosses the token trigger, native compaction rebuilds
+                // a clean summary;
+                // unchanged memory does not trigger this rebuild.
                 List<Msg> reseeded = new ArrayList<>();
                 seedTrustedHistory(reseeded, request);
                 loaded.contextMutable().clear();

@@ -103,7 +103,8 @@ backend behavior (the trusted window is resent on every chat run — `selectComp
 `historyWindowSize`: 50 post-cursor / 200 legacy). The fix: invalidate by rebuilding from that
 wire (fresh-session-equivalent coverage: window + application-layer compacted summary), prepend
 the current application context, and let the natural token trigger re-compact a clean summary
-(one extra SUMMARY call, only on memory-change runs). Both sabotages are caught by the suite:
+(one extra SUMMARY call in the large-context fixture; production call count depends on the token
+threshold). Both sabotages are caught by the suite:
 `staleMemory=false` (no invalidation) → 7 red; drop-only reseed removal → 7 red.
 
 **Rejected alternatives** (task card required proving 2.0.3 API feasibility first):
@@ -133,9 +134,9 @@ the current application context, and let the natural token trigger re-compact a 
   application-layer `history.compact` summary. Material older than both lives only in PostgreSQL
   and is represented by the application-layer summary — fresh-session-equivalent coverage, not
   lossless replay; tool-call structure of compacted turns is replaced by the PostgreSQL text
-  equivalents. When the rebuilt context overflows the token trigger, native compaction fires once
-  and rebuilds a clean summary (pinned: exactly one SUMMARY call on the memory-change run, none
-  on unchanged-memory runs).
+  equivalents. When the rebuilt context overflows the token trigger in the fixture, native
+  compaction fires once and rebuilds a clean summary (pinned: exactly one SUMMARY call in that
+  memory-change run, none attributable to invalidation on unchanged-memory runs).
 - **Paused runs:** a memory change while a run is paused for approval/tool-resume takes effect on
   the next **non-resume** run — resume attempts deliberately skip the application-context refresh
   (AG-06) and the purge with it, so pending tool-call continuity is never rewritten. In-flight model
@@ -148,9 +149,10 @@ the current application context, and let the natural token trigger re-compact a 
 - **Fixtures prove request/state behavior, not model cognition** — a real model that already saw the
   old memory in an earlier turn may still reproduce it from its own prior output; that is outside
   any state-side fix.
-- Model-call accounting (验收 4): unchanged-memory runs add **zero** model calls (sidecar compare
-  only). A memory-change run on a compacted session costs exactly **one extra SUMMARY call** (the
-  recomposition of the rebuilt context); the rebuild itself is pure persisted-state surgery.
+- Model-call accounting (验收 4): unchanged-memory runs add **zero** calls from this change
+  (sidecar compare only). A memory-change run rebuilds persisted state without a model call; its
+  rebuilt context may then trigger native SUMMARY according to the token threshold. The
+  large-context fixture triggers exactly one such SUMMARY call.
   Tests pin `FLUSH == 0`, no native `memory/` files, no `MEMORY.md`, no `large_tool_results/`, no
   offload pointer, and no re-compaction on short unchanged-memory follow-ups. AG-02
   `productionCompaction()` (trigger 30 / keep 10 / flush false / offload false) is byte-identical.
