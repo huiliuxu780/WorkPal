@@ -78,6 +78,9 @@ export async function createThreadMessageInTransaction(
   if (humanOrigin !== Boolean(authorUserId)) {
     throw new Error("Message author and origin are inconsistent");
   }
+  if (humanOrigin && input.role !== "user") {
+    throw new Error("Human-origin message must have the user role");
+  }
   const thread = await tx.thread.update({
     where: { id: input.threadId },
     data: {

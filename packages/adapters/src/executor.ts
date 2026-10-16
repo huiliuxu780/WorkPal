@@ -5700,14 +5700,16 @@ export function userTurnInstructions(parts: {
 export function historyMessageProvenance(message: {
   originKind: string;
   authorUserId: string | null;
+  role: string;
 }): AgentHistoryProvenance {
   const originKind = isMessageOriginKind(message.originKind) ? message.originKind : "unknown";
   const authorUserId = message.authorUserId?.trim() || null;
   const human = originKind === "human_web" || originKind === "human_messaging";
+  const verifiedHuman = human && Boolean(authorUserId) && message.role === "user";
   return {
     kind: "message",
-    originKind: human && !authorUserId ? "unknown" : originKind,
-    authorUserId: human ? authorUserId : null,
+    originKind: human && !verifiedHuman ? "unknown" : originKind,
+    authorUserId: verifiedHuman ? authorUserId : null,
   };
 }
 

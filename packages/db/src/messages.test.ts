@@ -38,6 +38,10 @@ describe("createThreadMessageInTransaction", () => {
       threadId: "thread-1", role: "user", blocks: [{ kind: "text", text: "unowned" }],
       originKind: "human_web",
     })).rejects.toThrow("Message author and origin are inconsistent");
+    await expect(createThreadMessageInTransaction(tx as unknown as Prisma.TransactionClient, {
+      threadId: "thread-1", role: "bot", blocks: [{ kind: "text", text: "spoofed" }],
+      originKind: "human_web", authorUserId: "user-1",
+    })).rejects.toThrow("Human-origin message must have the user role");
     expect(tx.thread.update).not.toHaveBeenCalled();
   });
 

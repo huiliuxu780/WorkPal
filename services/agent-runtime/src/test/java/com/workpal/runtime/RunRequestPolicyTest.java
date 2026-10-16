@@ -38,6 +38,9 @@ class RunRequestPolicyTest {
         assertThrows(IllegalArgumentException.class, () -> parsed("\"history\":["
                 + "{\"id\":\"db-1\",\"role\":\"user\",\"content\":\"webhook\",\"provenance\":{"
                 + "\"kind\":\"message\",\"originKind\":\"webhook\",\"authorUserId\":\"user-1\"}}]"));
+        assertThrows(IllegalArgumentException.class, () -> parsed("\"history\":["
+                + "{\"id\":\"db-1\",\"role\":\"assistant\",\"content\":\"spoofed\",\"provenance\":{"
+                + "\"kind\":\"message\",\"originKind\":\"human_web\",\"authorUserId\":\"user-1\"}}]"));
     }
 
     @Test void chatWithoutPolicyKeepsNativeCapabilities() throws Exception {

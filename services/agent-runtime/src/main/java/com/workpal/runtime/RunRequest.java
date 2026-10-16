@@ -189,7 +189,10 @@ public record RunRequest(
                         .contains(source.originKind())
                         || (("human_web".equals(source.originKind())
                                 || "human_messaging".equals(source.originKind()))
-                                != !blank(source.authorUserId()))) {
+                                != !blank(source.authorUserId()))
+                        || (("human_web".equals(source.originKind())
+                                || "human_messaging".equals(source.originKind()))
+                                && !"user".equals(message.role()))) {
                     throw new IllegalArgumentException("Invalid message provenance");
                 }
             } else if ("application".equals(source.kind())) {
