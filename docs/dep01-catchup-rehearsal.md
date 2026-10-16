@@ -85,7 +85,8 @@ ECS 侧（真实拓扑、生产副本种子库）的迁移应用已在成功演�
 
 1. `364570e`：快照/回滚路径改为从 `APP_DIR` 推导（默认值与生产旧行为逐字节一致）。修复前：快照与恢复硬编码 `/srv/workpal`，`APP_DIR` 改指他处时回滚会恢复**错误的树**；同时把 ERR trap 提前到快照完成之后，rsync / `compose config` 失败留下的半更新树也会回滚（原脚本这两种失败不回滚）；首次部署（目录不存在）时明确降级为"无回滚目标"并提示。
 2. `dda042c`：回滚中的重建失败原先在 `set -e` 下静默退出（演练 run 1 实测踩中）；改为分支处理并打印 ROLLBACK REBUILD FAILED 诊断。
-3. （评审轮新增）回滚恢复改为 `restore-deploy-snapshot.sh` 的**分阶段整目录替换**：原实现 `tar -x` 覆盖活树只能恢复旧文件，无法清除部署时 rsync **新增**的文件（评审本地复现实证）。helper 流程：解包到 staging → 校验（必须含 `infra/compose/docker-compose.prod.yml`）→ 搬运活 `.git`（快照不含）→ 同文件系统原子换目录（失败自动撤销）；任何失败 APP_DIR 原样不动并输出显式 `restore:` 错误。`rollback()` 对 helper 的投递与执行分别分支：失败报 **SNAPSHOT RESTORE FAILED** 并中止，不再带着半更新/未恢复的树继续重建。回归 `deploy-rollback.smoke.sh`（已接入 `run-smokes.sh`，本地全绿）：新增文件必清除、修改文件还原、`.git` 保留、快照损坏/缺失/错误树三种失败都响亮报错且目录不动。
+3. `77a0435`（评审轮新增）：回滚恢复改为 `restore-deploy-snapshot.sh` 的**分阶段整目录替换**：原实现 `tar -x` 覆盖活树只能恢复旧文件，无法清除部署时 rsync **新增**的文件（评审本地复现实证）。helper 流程：解包到 staging → 校验（必须含 `infra/compose/docker-compose.prod.yml`）→ 搬运活 `.git`（快照不含）→ 同文件系统原子换目录（失败自动撤销）；任何失败 APP_DIR 原样不动并输出显式 `restore:` 错误。`rollback()` 对 helper 的投递与执行分别分支：失败报 **SNAPSHOT RESTORE FAILED** 并中止，不再带着半更新/未恢复的树继续重建。回归 `deploy-rollback.smoke.sh`（已接入 `run-smokes.sh`，本地全绿）：新增文件必清除、修改文件还原、`.git` 保留、快照损坏/缺失/错误树三种失败都响亮报错且目录不动。
+4. `e21a766`（评审轮，实测触发）：所有 ssh 通道（remote/远端 helper 投递/rsync 传输）加 `ServerAliveInterval=15` + `ServerAliveCountMax=8`——run 3a 一次部署因 `Connection closed by <host> port 22`（长连接被链路静默掐断）误入回滚，健康轮询隧道同期静默死亡。
 
 ### Run 1（意外失败 → 回滚路径实证，2026-10-16）
 
@@ -116,6 +117,9 @@ daocloud 镜像源对 `maven:3.9.11-eclipse-temurin-21` manifest 瞬时 **502**�
 1. **磁盘数学**：40G 盘上 buildkit 缓存与 docker store 双份存储；3.8G 的 app 镜像每次 `up --build` 即使全缓存命中也会重新导出（`sending tarball`，暂态 ingest ~4G）。两套 app 镜像链（部署版+回滚版）+ 缓存 + 暂态 ≈ 14G 峰值 → **真实切换前必须预留 ≥10–12G**，且回滚重建依赖缓存链存活。
 2. **`.dockerignore` 不含 `infra/`**：仅改 compose 文件也会失效 app 镜像 COPY 层 → 全量 pnpm 重装重建。drill 分支加 `infra/` 排除（提交 `28ed23f`，演练专用；**建议后续作为独立优化 PR 进主干**——compose YAML 本就不影响镜像内容）。
 3. **corepack/npmjs 抖动**是切换日的现实风险：app Dockerfile 无 registry 镜像钩子，`RUN corepack enable` 后每次缓存失效构建都从 npmjs 拉 pnpm。缓解：切换前**预构建镜像**（缓存链+镜像双就位，窗口内只做缓存命中重建）、失败重跑、以及（可选，另行评审）给 Dockerfile 增加 `COREPACK_NPM_REGISTRY` 类 ARG（对齐既有 `DEBIAN_MIRROR` 模式）。
+4. **`prisma generate` 依赖 `binaries.prisma.sh`**（引擎校验和下载，run 3a 回滚重建实测失败点）：与 npmjs 同属大陆网络抖动面。缓解同上（预构建+重试吸收）；可选后续评审：引擎离线/镜像方案。
+5. **镜像源多点抖动与 fallback**：daocloud 当日两次对关键 manifest 502（maven 3.9.11、node:22-bookworm@digest），blob CDN 却常可用。buildkit 配置已改为 `mirrors = ["docker.1ms.run", "docker.m.daocloud.io"]`（1ms.run 实测 401 握手正常）。切换日探测应对**两个**源都做。
+6. **builder 重启 = buildkit 缓存全灭**（当日两次实测：4.4G→3.3G 退化、配置变更后重启→0B）。切换前"不重启 builder"是硬约束；若被迫重启，必须重新预构建并预留全量构建时间。
 
 ### Run 2rp（compose config 失败 → 半更新树回滚，实证 trap 前移修复）
 
@@ -151,17 +155,30 @@ RUN2T EXIT: 1
 
 ### Run 3（正式构建配置复验，评审整改轮）
 
-Run 2t 的绿色回滚使用了 drill-only 的 `.dockerignore` 排除与 build 段删减（当时为绕开 40G 盘双构建的磁盘数学），**构建配置与正式部署不一致**——评审正确指出这不能作为最终验证。Run 3 取消全部构建配置改动：三层 compose 与 `.dockerignore` 保持正式内容，drill 差异仅限隔离必需的 project 名（workpal-dr）与 Caddy 端口映射（18080:8080，运行期隔离而非构建配置）；镜像 tag 隔离走 `.env`（本就是运维配置）。注入 = `health.ts` 返回 500 **加一个新增标记文件**——后者专门验证 staged restore 在真实流程中清除 rsync 新增文件（评审阻断项 1 的现场回归）。流程：A 树（健康）预构建正式上下文缓存链 → 脚本以 B 树（注入）运行：主构建全量重建 app 镜像（一次 npm 风险窗口）→ api /health 500、compose healthcheck 失败 → 依赖等待失败 → ERR trap → staged restore（标记文件必须消失）→ 回滚重建命中 A 缓存 → 绿色 Rollback complete。
+Run 2t 的绿色回滚使用了 drill-only 的 `.dockerignore` 排除与 build 段删减（当时为绕开 40G 盘双构建的磁盘数学），**构建配置与正式部署不一致**——评审正确指出这不能作为最终验证。Run 3 取消全部构建配置改动：三层 compose 与 `.dockerignore` 保持正式内容，drill 差异仅限隔离必需的 project 名（workpal-dr）与 Caddy 端口映射（18080:8080，运行期隔离而非构建配置）；镜像 tag 隔离走 `.env`（本就是运维配置）。
 
-<!-- PLACEHOLDER: run 3 实际结果 -->
+Run 3 分两步（磁盘数学决定：正式上下文下 A/B 双树全量构建 ≈13G，无法与生产共存于 40G 盘，故 B 的注入选在**不进构建阶段**的 `compose config` 失败点）：
 
-### 演练终态与产物处置
+- **Step 1（成功路径）**：预构建 A 树全部目标 → 脚本以 A 运行 → 期望 `Deployed`、迁移 90→109 再次实证、`.last-deployed-revision` 写入。
+- **Step 2（失败路径 + staged restore 现场回归）**：B2 树 = compose YAML 语法错误 + **新增标记文件**（`apps/api/src/dep01-sabotage-marker.ts`）→ `compose config` 失败（构建前）→ ERR trap → staged restore 必须**清除标记文件**（阻断项 1 的真实流程回归）→ 缓存命中重建 → 绿色 "Rollback complete"。构建失败→回滚的机制本身已由 run 1/2/2r/2rp/2s 多次实证（与注入方式无关），Step 2 的 rebuild 即正式构建配置的完整 bake。
 
-- 演练栈已 `compose stop` 冻结；`workpal-dr/*` 镜像（app 3.75G / agent-runtime 584M / computer 2.05G）、`workpal-oldtest/agentscope:drill`（531M）、演练卷（终态为**恢复演示后的 90 态 DB** + 重解包的 appdata）、A' 树、`/srv/workpal-dr-rollback.tar.gz` 快照，全部保留至验收。
-- **磁盘口径澄清（评审指出）**：演练收尾时主机实测余量约 **4.9G**；上线方案中的 10–12G 是**执行切换前清理步骤之后的当日目标**，不是已达成状态。切换日必须实测复核，不得沿用演练期数字。
-- **切换前清理步骤（runbook）**：删除 `workpal-dr/*` 与 `workpal-oldtest/*` 镜像（约 +6.9G；drill app 缓存链因上下文含 drill-only 修改对正式树不可复用，java/computer 链可复用）→ 磁盘余量目标 ≥10–12G。
-- 主机遗留（有意保留，验收后决定去留）：4G swapfile（未入 fstab；切换日构建峰值保护，演练期间零动用）；`buildkitd-mirror.toml` 追加的 `[worker.oci] gckeepstorage=6000`（原文件备份为 `.bak-dep01`）；`/var/backups/rakazo/20261016T042900Z` 全套备份。
-- 生产终态复核：7 容器 Up 9+ days 未重启、公网 `/health` 200、`mig=90` 不变、postgres 日志 3 小时窗口零错误（覆盖两次演练磁盘打满事件）。
+**Run 3 当日结果（如实记录）**：Step 1 三次尝试均未走通，Step 2 未执行；**Run 3 完成时点顺延至 PR 合并后**（评审原文即"修复合并后须重新固定目标 SHA，并补齐正式构建配置下的失败路径验证"），作为切换前置门槛、对重固定的 SHA 执行。三次尝试：
+
+- run 3a：主构建尚未开始即被 `Connection closed by <host> port 22` 中断（→ keepalive 修复 `e21a766`）；回滚中暴露缓存链已被磁盘压力 GC、`prisma generate` 需访问 `binaries.prisma.sh` 且失败。
+- run 3a2：app 全量重建 + containerd 解包在 6.2G 余量下第四次 ENOSPC；**staged restore 在磁盘满下失败并首次实战验证了 SNAPSHOT RESTORE FAILED 分支**（APP_DIR 原样保留、明确指引人工路径、退出 1）。
+- run 3a3：磁盘恢复到 14G 后，app/java 构建通过，但 bake 的 computer 目标撞上 GitHub release 限速（~12KB/s，15MB 需 ~21 分钟且不稳定；脚本内构建无法注入代理参数）→ 45m 预算内不可靠，人工止损。止损时另有一课：**杀本地脚本进程不会终止远端已进入 rollback 的 `timeout … compose up`，必须同时按 PID 杀远端进程**（已执行，现场确认无残留构建进程）。
+
+当日环境事故链（均为环境而非被测脚本缺陷；生产在四次磁盘打满中均无恙、postgres 日志零错误）：daocloud manifest 间歇 502 → docker.1ms.run fallback → 两源对 node 大 blob 先后僵死（0B/530s+）→ 切 default(docker-driver) builder（FROM 直用 daemon 本地基础镜像，绕开 blob 通道）→ mirrorbuilder 删除（其缓存当日两次归零；死状态卷 +2.5G）→ GitHub release 对 ECS 时段性限速至 ~12KB/s（对照组 Mac ~116KB/s；上午同一下载 1.4s）→ **Mac 侧临时 CONNECT 代理 + docker 预定义 proxy build-args（不改 Dockerfile）实测 52KB/s，computer 镜像经此建成** → daemon 内置 builder 的 GC 上限（~4–5G）放不下三条缓存链，预构建与脚本运行必须紧邻。
+
+**Run 3（合并后）执行前提清单**：①重建 mirrorbuilder（`docker buildx create --name mirrorbuilder --driver docker-container --driver-opt network=host --config /etc/buildkitd-mirror.toml --use`；配置文件在位）或沿用 default builder（node 基础镜像已在 daemon，blob 僵死教训已记录）；②四源探测：daocloud manifest/blob、npmjs tarball、binaries.prisma.sh、github releases——GitHub 限速时用已验证的 Mac CONNECT 代理方案（预构建阶段逐目标注入 proxy build-args，脚本阶段依赖缓存命中不再触网）；③**逐目标串行预构建**（并行 bake 是四次 ENOSPC 的主因）；④预构建完成后立即跑脚本（GC 会消化间隔期缓存）；⑤磁盘 ≥10G（先删 drill 遗留镜像）。
+
+### 演练终态与产物处置（Run 3 止损后，2026-10-16 晚）
+
+- 演练栈**无运行容器**（冻结）；`/srv/workpal-dr` 树 = A（健康命令、无标记文件）；`workpal-dr/agent-runtime:dr` 与 `workpal-dr/computer:dr` 镜像保留，app 镜像已在磁盘抢救中删除（正式配置下重建 ~10 分钟）；演练卷保留（**90 态种子 DB** + 172 文件 appdata）；`/srv/workpal-dr-rollback.tar.gz` 在位。磁盘余量 8.9G。
+- **主机状态变化（相对 run 2t 时点）**：4G swapfile 已删除（全天四次构建峰值零动用，换回 4G 磁盘——后续构建改逐目标串行控峰，切换日不再默认加回）；`mirrorbuilder` 已删除（缓存当日两次意外归零后仅剩死状态卷；`/etc/buildkitd-mirror.toml` 配置文件在位，含 docker.1ms.run fallback 与 gckeepstorage=6000，重建一条命令，见 Run 3 前提清单①）；当前选定 builder = `default`（docker driver）。
+- 保留至验收：`/var/backups/rakazo/20261016T042900Z` 全套备份（offsite 副本在 Mac）、生产三个旧 `:local` 镜像与旧树、演练卷/快照。
+- **切换前清理步骤（runbook）**：删除 `workpal-dr/*` 遗留镜像与（如已重建的）演练产物 → 磁盘余量目标 ≥10–12G，当日实测。
+- 生产终态复核（第四次磁盘打满事件后）：7 容器 Up 9+ days、公网 `/health` 200、`mig=90`、messages=7、postgres 日志零错误。
 
 ## 5. DB+文件一致性恢复步骤（runbook，源码回滚不够时用）
 
@@ -184,13 +201,13 @@ Run 2t 的绿色回滚使用了 drill-only 的 `.dockerignore` 排除与 build �
 ## 6. 上线方案（待批准）
 
 - **目标提交**：**PR #48 合并后重新固定的 main SHA**——脚本修复（快照路径/trap 前移/回滚诊断/staged restore+smoke）必须包含在目标提交内；演练所用的 `8d263ad` 不含这些修复，不作为切换目标。固定后工作树必须干净，并按 §4 Run 3 在正式构建配置下完成失败路径复验。
-- **切换日清单**（当天逐项重验，不得沿用演练期数字）：①当日重跑备份 + `sha256sum -c` 校验 + offsite 副本拉取；②执行"切换前清理步骤"后**实测**磁盘 ≥10–12G；③旧镜像三个 `:local` tag（app/computer/agentscope）与旧树备份均在位、未被 prune；④镜像源探测（`maven:3.9.11-eclipse-temurin-21`、`node:22-bookworm`、`debian:bookworm-slim` manifest 非 5xx；npmjs 的 pnpm tarball 可下载）；⑤**不 prune buildkit 缓存、不重启 builder**；⑥swap 与 `gckeepstorage=6000` 在位。
+- **切换日清单**（当天逐项重验，不得沿用演练期数字）：①当日重跑备份 + `sha256sum -c` 校验 + offsite 副本拉取；②执行"切换前清理步骤"后**实测**磁盘 ≥10–12G；③旧镜像三个 `:local` tag（app/computer/agentscope）与旧树备份均在位、未被 prune；④四源探测（daocloud manifest/blob、npmjs tarball、`binaries.prisma.sh`、github releases——GitHub 限速则启用 Mac CONNECT 代理预案）；⑤**Run 3（正式构建配置失败路径复验）已对重固定的合并后 SHA 完成**；⑥builder 状态确认（mirrorbuilder 按前提清单①重建，或明确沿用 default builder）；⑦预构建逐目标串行完成且与脚本运行紧邻（daemon GC 上限 ~4–5G，缓存链不可隔夜指望）。
 - **预构建**（窗口前，不计入停机）：对目标提交先手动 `compose build` 一次（npm 抖动时重试；缓存链 + 镜像双就位），窗口内脚本构建全部缓存命中 → 停机时间从 ~16 分钟压缩到 ~5 分钟，并消除窗口内网络风险。注意：预构建产物在窗口内不可 prune。
 - **维护窗口**：成功路径预估 15–30 分钟（预构建后：脚本缓存重建 ~5 分钟 + 迁移 ≈3s + 健康与冒烟 10 分钟），**仅适用于无故障情形**。**最坏路径按 ≈2 小时预留**：回滚重建受 BUILD_TIMEOUT=90m 上限约束（旧树若全量重建：Python agentscope `uv sync` 实测 ~23 分钟 + 旧 app 镜像 ~10 分钟；旧树缓存预热在位时为分钟级）+ §5 一致性恢复 ~15 分钟 + 人工决策时间。排期与值守按最坏情形安排；生产闲置 9+ 天，窗口选择无业务压力。
 - **执行顺序**：备份（新快照）→ `deploy-workpal.sh`（ECS_HOST/SSH_KEY/HEALTH_URL=生产地址，APP_DIR=/srv/workpal，**BUILD_TIMEOUT=90m，MIN_FREE_MB=8192**）→ 健康 → 冒烟（登录、建 Bot、单次受控 Run、消息持久化、授权拒绝、无重复投递）→ 写 `.last-deployed-revision`（脚本自动）。
 - **成功判据**：运行镜像 GIT_SHA=目标提交；agentscope 为 Java（健康检查走 runtime.jar）；API/Worker 分进程健康；`_prisma_migrations`=109 且 0 失败；冒烟全过；7 条历史消息可读。
 - **止损**：健康轮询失败脚本自动回滚；回滚后仍不健康 → 手动执行 §5 一致性恢复（备份当日新鲜）；任何数据核对不符 → §5。
-- **残余风险**：①旧 Python runtime 重建依赖旧树 + pypi 低速（~23 分钟实测）——缓解：旧树构建缓存已预热且切换前不清理、旧 `:local` 镜像保留（`up -d --no-build` 兜底）、BUILD_TIMEOUT=90m；②镜像源/npm 抖动（run 1/2/2r/2t 四次实证）——前置检查 + 预构建 + 失败重跑，可选后续评审给 app Dockerfile 增加 corepack/npm registry 镜像 ARG（对齐 DEBIAN_MIRROR 模式）；③单主机资源竞争——切换前演练产物已清理、swap 在位；④孤儿迁移——已证无害；⑤`.dockerignore` 未排除 `infra/`导致 compose-only 变更也全量重建 app 镜像——建议作为独立优化 PR（非切换阻塞项）。
+- **残余风险**：①旧 Python runtime 重建依赖旧树 + pypi 低速（~23 分钟实测）——缓解：旧树构建缓存已预热且切换前不清理、旧 `:local` 镜像保留（`up -d --no-build` 兜底）、BUILD_TIMEOUT=90m；②镜像源/npm 抖动（run 1/2/2r/2t 四次实证）——前置检查 + 预构建 + 失败重跑，可选后续评审给 app Dockerfile 增加 corepack/npm registry 镜像 ARG（对齐 DEBIAN_MIRROR 模式）；③单主机资源竞争——切换前演练产物已清理、逐目标串行预构建控峰（swapfile 已删：全天零动用，4G 磁盘价值更高）；④孤儿迁移——已证无害；⑤`.dockerignore` 未排除 `infra/`导致 compose-only 变更也全量重建 app 镜像——建议作为独立优化 PR（非切换阻塞项）。
 
 ## 7. 实际部署后补录
 
