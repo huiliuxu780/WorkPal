@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@rakazo/db", () => ({
   appendEventInTransaction: vi.fn(),
+  changeBotAvatarInTransaction: vi.fn(),
 }));
 
+import { changeBotAvatarInTransaction } from "@rakazo/db";
 import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
 
 describe("botProfileLabelsChanged", () => {
@@ -19,6 +21,45 @@ describe("botProfileLabelsChanged", () => {
 });
 
 describe("commitBotUpdate", () => {
+  it("routes existing update-RPC avatar fields through the audit transaction", async () => {
+    const tx = {
+      bot: {
+        update: vi.fn().mockResolvedValue({ id: "bot-1", name: "Bot", title: "", description: "" }),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx)),
+    };
+    const appendEvent = vi.fn().mockResolvedValue({ seq: 1 });
+    const notify = vi.fn().mockResolvedValue(undefined);
+    await commitBotUpdate(
+      {
+        prisma: prisma as never,
+        notify,
+        spaceId: "space-1",
+        threadId: "thread-1",
+        botId: "bot-1",
+        data: { name: "Bot" },
+        emitBotUpdated: true,
+        avatarChange: {
+          userId: "user-1",
+          choice: { avatarMode: "character", avatarCharacter: "wave" },
+        },
+      },
+      appendEvent,
+    );
+    expect(changeBotAvatarInTransaction).toHaveBeenCalledWith(tx, {
+      userId: "user-1",
+      spaceId: "space-1",
+      botId: "bot-1",
+      source: "user",
+      choice: { avatarMode: "character", avatarCharacter: "wave" },
+    });
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(tx.bot.update).toHaveBeenCalledOnce();
+    expect(appendEvent).toHaveBeenCalledOnce();
+  });
+
   it("writes the bot row and bot.updated in one transaction when labels change", async () => {
     const updated = {
       id: "bot-1",

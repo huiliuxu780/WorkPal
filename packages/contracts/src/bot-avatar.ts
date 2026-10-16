@@ -6,6 +6,29 @@ export const AvatarCharacterSchema = z.enum(AVATAR_CHARACTERS);
 export type AvatarCharacter = z.infer<typeof AvatarCharacterSchema>;
 export const AvatarModeSchema = z.enum(["legacy", "character", "upload"]);
 export type AvatarMode = z.infer<typeof AvatarModeSchema>;
+export const AvatarChoiceSchema = z.discriminatedUnion("avatarMode", [
+  z.object({ avatarMode: z.literal("character"), avatarCharacter: AvatarCharacterSchema }),
+  z.object({
+    avatarMode: z.literal("upload"),
+    color: z
+      .string()
+      .max(200_000)
+      .regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+  }),
+]);
+export const BotAvatarChangeViewSchema = z.object({
+  id: z.string(),
+  botId: z.string(),
+  source: z.enum(["user", "bot"]),
+  runId: z.string().nullable(),
+  beforeMode: AvatarModeSchema,
+  beforeCharacter: AvatarCharacterSchema.nullable(),
+  afterMode: AvatarModeSchema,
+  afterCharacter: AvatarCharacterSchema.nullable(),
+  createdAt: z.string(),
+  undoneAt: z.string().nullable(),
+});
+export type BotAvatarChangeView = z.infer<typeof BotAvatarChangeViewSchema>;
 
 export const AvatarActivitySchema = z.enum(["idle", "working", "approval", "waiting", "failed"]);
 export type AvatarActivity = z.infer<typeof AvatarActivitySchema>;

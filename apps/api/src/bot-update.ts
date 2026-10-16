@@ -1,4 +1,10 @@
-import { appendEventInTransaction, type Prisma, type PrismaClient } from "@rakazo/db";
+import {
+  type AvatarChoice,
+  appendEventInTransaction,
+  changeBotAvatarInTransaction,
+  type Prisma,
+  type PrismaClient,
+} from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 
 type AppendEvent = typeof appendEventInTransaction;
@@ -17,10 +23,11 @@ export async function commitBotUpdate(
     botId: string;
     data: Prisma.BotUncheckedUpdateInput;
     emitBotUpdated: boolean;
+    avatarChange?: { userId: string; choice: AvatarChoice };
   },
   appendEvent: AppendEvent = appendEventInTransaction,
 ): Promise<{ id: string; name: string; title: string; description: string }> {
-  if (!options.emitBotUpdated) {
+  if (!options.emitBotUpdated && !options.avatarChange) {
     return options.prisma.bot.update({
       where: { id: options.botId },
       data: options.data,
@@ -29,6 +36,15 @@ export async function commitBotUpdate(
   }
 
   const committed = await options.prisma.$transaction(async (tx) => {
+    if (options.avatarChange) {
+      await changeBotAvatarInTransaction(tx, {
+        userId: options.avatarChange.userId,
+        spaceId: options.spaceId,
+        botId: options.botId,
+        choice: options.avatarChange.choice,
+        source: "user",
+      });
+    }
     const updated = await tx.bot.update({
       where: { id: options.botId },
       data: options.data,

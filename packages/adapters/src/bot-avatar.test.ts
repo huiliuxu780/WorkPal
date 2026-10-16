@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   attachedImageArtifactIds,
   encodeBotAvatarImage,
+  normalizeEncodedBotAvatarImage,
   resolveUpdateBotAvatar,
 } from "./bot-avatar.js";
 import { builtinAgentTools } from "./builtin-tools.js";
@@ -16,6 +17,15 @@ describe("bot avatar encoding", () => {
     const dataUrl = await encodeBotAvatarImage(PNG_1X1);
     expect(dataUrl.startsWith("data:image/webp;base64,")).toBe(true);
     expect(dataUrl.length).toBeGreaterThan("data:image/webp;base64,".length);
+  });
+
+  it("normalizes a valid direct upload and rejects invalid image data", async () => {
+    const source = `data:image/png;base64,${PNG_1X1.toString("base64")}`;
+    await expect(normalizeEncodedBotAvatarImage(source)).resolves.toMatch(
+      /^data:image\/webp;base64,/,
+    );
+    await expect(normalizeEncodedBotAvatarImage("data:image/png;base64,AA==")).rejects.toThrow();
+    await expect(normalizeEncodedBotAvatarImage("data:image/gif;base64,AAAA")).rejects.toThrow();
   });
 
   it("lists attached image artifact ids in order", () => {
@@ -86,19 +96,19 @@ describe("bot avatar encoding", () => {
 });
 
 describe("update_bot tool schema", () => {
-  it("exposes avatar and notifyOnFinish fields the executor applies", () => {
+  it("keeps avatar writes out of the general profile tool", () => {
     const tool = builtinAgentTools.find((entry) => entry.name === "update_bot");
     if (!tool) throw new Error("missing update_bot");
     const properties =
       (tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
     expect(Object.keys(properties).sort()).toEqual([
-      "artifact_id",
-      "color",
       "description",
       "name",
       "notifyOnFinish",
       "title",
-      "use_attached_image",
     ]);
+    const change = builtinAgentTools.find((entry) => entry.name === "change_avatar");
+    expect(change).toBeDefined();
+    expect((change!.inputSchema as { oneOf?: unknown[] }).oneOf).toHaveLength(2);
   });
 });

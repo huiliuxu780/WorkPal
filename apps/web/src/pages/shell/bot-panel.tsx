@@ -5,6 +5,7 @@ import type {
   AvatarCharacter,
   AvatarMode,
   Bot,
+  BotAvatarChangeView,
   ComputerMode,
   Me,
   ModelCatalogEntry,
@@ -243,6 +244,7 @@ export function BotSettings({
   onSave,
   onExport,
   onClear,
+  onAvatarChanged,
 }: {
   bot: Bot;
   onSkillsChange: (skills: AgentSkillCatalogEntry[]) => void;
@@ -266,6 +268,7 @@ export function BotSettings({
   }) => Promise<void>;
   onExport: () => Promise<void>;
   onClear: () => void;
+  onAvatarChanged: () => Promise<void>;
 }) {
   const { t } = useLingui();
   const [advancedOpened, setAdvancedOpened] = useState(false);
@@ -273,12 +276,18 @@ export function BotSettings({
   const [name, setName] = useState(bot.name);
   const [title, setTitle] = useState(bot.title);
   const [description, setDescription] = useState(bot.description);
-  const [color, setColor] = useState(bot.color);
   const [avatarSelection, setAvatarSelection] = useState<AvatarSelection>(() =>
     bot.avatarMode === "upload" && bot.color.startsWith("data:image/")
       ? { avatarMode: "upload", color: bot.color }
       : { avatarMode: "character", avatarCharacter: bot.avatarCharacter ?? "dot" },
   );
+  useEffect(() => {
+    setAvatarSelection(
+      bot.avatarMode === "upload" && bot.color.startsWith("data:image/")
+        ? { avatarMode: "upload", color: bot.color }
+        : { avatarMode: "character", avatarCharacter: bot.avatarCharacter ?? "dot" },
+    );
+  }, [bot.id, bot.color, bot.avatarMode, bot.avatarCharacter]);
   const [notifyOnFinish, setNotifyOnFinish] = useState(bot.notifyOnFinish ?? true);
   const [computerMode, setComputerMode] = useState(bot.computerMode);
   const [memoryScope, setMemoryScope] = useState(bot.memoryScope);
@@ -292,14 +301,31 @@ export function BotSettings({
   const [me, setMe] = useState<Me | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avatarUndo, setAvatarUndo] = useState<{ changeId: string } | null>(null);
+  const [avatarHistory, setAvatarHistory] = useState<BotAvatarChangeView[]>([]);
+  useEffect(() => {
+    let active = true;
+    void rpc.bots
+      .avatarChanges({ botId: bot.id })
+      .then((changes) => {
+        if (active) setAvatarHistory(changes);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [bot.id, bot.avatarMode, bot.avatarCharacter, bot.color]);
   const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
+  useEffect(() => {
+    if (!avatarUndo) return;
+    const timer = window.setTimeout(() => setAvatarUndo(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [avatarUndo]);
   const executeSaveRef = useRef<
     (patchOverrides?: {
       name?: string;
       title?: string;
       description?: string;
-      color?: string;
-      avatarSelection?: AvatarSelection;
       notifyOnFinish?: boolean;
     }) => Promise<boolean>
   >(async () => true);
@@ -340,8 +366,6 @@ export function BotSettings({
     name?: string;
     title?: string;
     description?: string;
-    color?: string;
-    avatarSelection?: AvatarSelection;
     notifyOnFinish?: boolean;
   }): Promise<boolean> {
     const selected = modelKey ? parseModelOptionKey(modelKey) : null;
@@ -350,8 +374,6 @@ export function BotSettings({
     const nextDescription = (
       patchOverrides?.description !== undefined ? patchOverrides.description : description
     ).trim();
-    const nextColor = patchOverrides?.color !== undefined ? patchOverrides.color : color;
-    const nextAvatar = patchOverrides?.avatarSelection ?? avatarSelection;
     const nextNotify =
       patchOverrides?.notifyOnFinish !== undefined ? patchOverrides.notifyOnFinish : notifyOnFinish;
 
@@ -367,15 +389,6 @@ export function BotSettings({
         title: nextTitle,
         description: nextDescription,
         instructions: nextDescription,
-        // Unchanged color stays off the wire so a legacy named value cannot fail a name save.
-        ...(nextAvatar.avatarMode === "upload" && nextColor !== bot.color
-          ? { color: nextColor }
-          : {}),
-        ...(patchOverrides?.avatarSelection
-          ? nextAvatar.avatarMode === "character"
-            ? { avatarMode: "character" as const, avatarCharacter: nextAvatar.avatarCharacter }
-            : { avatarMode: "upload" as const, color: nextAvatar.color }
-          : {}),
         notifyOnFinish: nextNotify,
         computerMode,
         memoryScope,
@@ -405,8 +418,6 @@ export function BotSettings({
     name?: string;
     title?: string;
     description?: string;
-    color?: string;
-    avatarSelection?: AvatarSelection;
     notifyOnFinish?: boolean;
   }) {
     // Serialize full-object auto-saves so an older in-flight request cannot
@@ -427,22 +438,84 @@ export function BotSettings({
           name={bot.name}
           onChange={async (next) => {
             const prior = avatarSelection;
-            const priorColor = color;
             setAvatarSelection(next);
-            if (next.avatarMode === "upload") setColor(next.color);
-            const saved = await enqueueSave({
-              avatarSelection: next,
-              ...(next.avatarMode === "upload" ? { color: next.color } : {}),
-            });
-            if (!saved) {
+            try {
+              const change = await rpc.bots.changeAvatar({ botId: bot.id, choice: next });
+              if (change) setAvatarUndo({ changeId: change.id });
+              void rpc.bots
+                .avatarChanges({ botId: bot.id })
+                .then(setAvatarHistory)
+                .catch(() => undefined);
+              window.dispatchEvent(new Event("workpal:avatar-refresh"));
+              await onAvatarChanged().catch(() => undefined);
+            } catch (cause) {
               setAvatarSelection(prior);
-              setColor(priorColor);
-              throw new Error(t`Could not save avatar`);
+              throw cause;
             }
-            window.dispatchEvent(new Event("workpal:avatar-refresh"));
           }}
         />
       </div>
+      {avatarUndo ? (
+        <div
+          role="status"
+          className="mx-3 mb-2 flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2 text-sm"
+        >
+          <Trans>Avatar updated</Trans>
+          <button
+            type="button"
+            className="font-medium text-primary"
+            onClick={() => {
+              const target = avatarUndo;
+              void rpc.bots
+                .undoAvatarChange({ changeId: target.changeId })
+                .then(async () => {
+                  const restored = await rpc.bots.get({ botId: bot.id });
+                  setAvatarSelection(
+                    restored.avatarMode === "upload" && restored.color.startsWith("data:image/")
+                      ? { avatarMode: "upload", color: restored.color }
+                      : {
+                          avatarMode: "character",
+                          avatarCharacter: restored.avatarCharacter ?? "dot",
+                        },
+                  );
+                  setAvatarUndo(null);
+                  void rpc.bots
+                    .avatarChanges({ botId: bot.id })
+                    .then(setAvatarHistory)
+                    .catch(() => undefined);
+                  window.dispatchEvent(new Event("workpal:avatar-refresh"));
+                  await onAvatarChanged();
+                })
+                .catch((cause) =>
+                  setError(
+                    cause instanceof Error ? cause.message : t`Could not undo avatar change`,
+                  ),
+                );
+            }}
+          >
+            <Trans>Undo</Trans>
+          </button>
+        </div>
+      ) : null}
+      {avatarHistory.length ? (
+        <details className="mx-3 mt-1 text-[13px] text-muted-foreground">
+          <summary className="cursor-pointer">
+            <Trans>Avatar history</Trans>
+          </summary>
+          <ol className="mt-2 space-y-1.5">
+            {avatarHistory.slice(0, 5).map((change) => (
+              <li key={change.id}>
+                {change.source === "bot" ? <Trans>Bot</Trans> : <Trans>You</Trans>}
+                {" · "}
+                {change.afterCharacter ?? t`Uploaded image`}
+                {change.undoneAt ? ` · ${t`Undone`}` : ""}
+                {" · "}
+                {new Date(change.createdAt).toLocaleString()}
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
       <label htmlFor={`${ids}-name`} className="mt-4 block text-[13.5px] text-muted-foreground/80">
         <Trans>Name</Trans>
         <Input
@@ -626,7 +699,6 @@ export function BotSettings({
               name,
               title,
               description,
-              color,
               notifyOnFinish,
             });
           }}

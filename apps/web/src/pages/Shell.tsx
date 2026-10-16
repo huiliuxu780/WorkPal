@@ -1437,8 +1437,13 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
         }
         if (event.type === "thread.message.created") {
           const blocks = (event.payload.blocks as Array<{ kind?: string }>) ?? [];
-          if (blocks.some((block) => block.kind === "child_bot")) {
+          if (
+            blocks.some((block) => block.kind === "child_bot" || block.kind === "avatar_change")
+          ) {
             void refreshBots().catch(() => undefined);
+          }
+          if (blocks.some((block) => block.kind === "avatar_change")) {
+            window.dispatchEvent(new Event("workpal:avatar-refresh"));
           }
           if (event.payload.role === "bot") markBotReadIfVisible(active.id);
         }
@@ -1532,6 +1537,11 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
         if (event.type === "thread.message.created" && event.payload.role === "bot") {
           readVisibleGroups.current.delete(groupId);
           markVisibleGroupRead();
+          const blocks = (event.payload.blocks as Array<{ kind?: string }>) ?? [];
+          if (blocks.some((block) => block.kind === "avatar_change")) {
+            window.dispatchEvent(new Event("workpal:avatar-refresh"));
+            void refreshBots().catch(() => undefined);
+          }
         }
         if (
           event.type === "run.started" ||
@@ -4083,6 +4093,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                   await rpc.bots.update({ botId: active.id, ...patch });
                   await refreshBots();
                 }}
+                onAvatarChanged={refreshBots}
                 onExport={async () => {
                   const manifest = await rpc.export.bot({ botId: active.id });
                   const blob = new Blob([JSON.stringify(manifest, null, 2)], {
@@ -6877,6 +6888,86 @@ function ComputerReleaseActions({
   );
 }
 
+function AvatarChangeCard({
+  botId,
+  changeId,
+  before,
+  after,
+  onChanged,
+}: {
+  botId: string | null;
+  changeId: string;
+  before: string;
+  after: string;
+  onChanged: () => Promise<void>;
+}) {
+  const [canUndo, setCanUndo] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!botId) return;
+    let active = true;
+    let request = 0;
+    const refresh = () => {
+      const current = ++request;
+      void rpc.bots
+        .avatarChanges({ botId })
+        .then((changes) => {
+          if (active && current === request)
+            setCanUndo(changes[0]?.id === changeId && changes[0]?.undoneAt == null);
+        })
+        .catch(() => undefined);
+    };
+    refresh();
+    window.addEventListener("workpal:avatar-refresh", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener("workpal:avatar-refresh", refresh);
+    };
+  }, [botId, changeId]);
+  return (
+    <div
+      className="w-[min(380px,90%)] rounded-[18px] border border-border bg-muted px-[18px] py-3 text-[14px]"
+      role="status"
+    >
+      <div className="font-medium">
+        <Trans>Avatar updated</Trans>
+      </div>
+      <div className="mt-1 text-muted-foreground">
+        {before} → {after}
+      </div>
+      {canUndo ? (
+        <button
+          type="button"
+          disabled={busy}
+          className="mt-2 font-medium text-primary disabled:opacity-50"
+          onClick={() => {
+            setBusy(true);
+            void rpc.bots
+              .undoAvatarChange({ changeId })
+              .then(async () => {
+                setCanUndo(false);
+                window.dispatchEvent(new Event("workpal:avatar-refresh"));
+                await onChanged();
+              })
+              .catch((cause) =>
+                setError(cause instanceof Error ? cause.message : "Could not undo avatar change"),
+              )
+              .finally(() => setBusy(false));
+          }}
+        >
+          <Trans>Undo</Trans>
+        </button>
+      ) : null}
+      {error ? (
+        <div role="alert" className="mt-2 text-destructive">
+          {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
@@ -7218,6 +7309,21 @@ const MessageView = memo(function MessageView({
                   : block.title || t`Opened its thread.`}
               </div>
             </button>
+          );
+        }
+        if (block.kind === "avatar_change") {
+          return (
+            <AvatarChangeCard
+              key={i}
+              botId={message.botId ?? null}
+              changeId={block.changeId}
+              before={
+                block.beforeCharacter ??
+                (block.beforeMode === "upload" ? t`Uploaded image` : t`Previous avatar`)
+              }
+              after={block.afterCharacter ?? t`Uploaded image`}
+              onChanged={onBotChanged}
+            />
           );
         }
         if (block.kind === "choice") {

@@ -823,6 +823,10 @@ msgstr "Automated senders will appear after they post here."
 msgid "Available after the routine is saved"
 msgstr "Available after the routine is saved"
 
+#: src/pages/shell/bot-panel.tsx
+msgid "Avatar history"
+msgstr "Avatar history"
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Avatar source"
 msgstr "Avatar source"
@@ -830,6 +834,11 @@ msgstr "Avatar source"
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Avatar Studio"
 msgstr "Avatar Studio"
+
+#: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Avatar updated"
+msgstr "Avatar updated"
 
 #: src/components/computer/FilesApp.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -1643,7 +1652,6 @@ msgid "Could not save Auto Review"
 msgstr "Could not save Auto Review"
 
 #: src/pages/shell/avatar-studio-popover.tsx
-#: src/pages/shell/bot-panel.tsx
 msgid "Could not save avatar"
 msgstr "Could not save avatar"
 
@@ -1714,6 +1722,10 @@ msgstr "Could not submit this answer"
 #: src/pages/Shell.tsx
 msgid "Could not take control"
 msgstr "Could not take control"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Could not undo avatar change"
+msgstr "Could not undo avatar change"
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Could not update"
@@ -3364,6 +3376,10 @@ msgstr "Preview {0}"
 msgid "Preview isn't available for this file type — download it to view it."
 msgstr "Preview isn't available for this file type — download it to view it."
 
+#: src/pages/Shell.tsx
+msgid "Previous avatar"
+msgstr "Previous avatar"
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Privacy"
 msgstr "Privacy"
@@ -4355,6 +4371,15 @@ msgstr "Unassigned"
 msgid "Unavailable"
 msgstr "Unavailable"
 
+#: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Undo"
+msgstr "Undo"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Undone"
+msgstr "Undone"
+
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Unfinished"
 msgstr "Unfinished"
@@ -4436,6 +4461,11 @@ msgstr "Updating…"
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Upload"
 msgstr "Upload"
+
+#: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Uploaded image"
+msgstr "Uploaded image"
 
 #: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/SettingsOverlay.tsx
@@ -4598,6 +4628,7 @@ msgid "Yesterday"
 msgstr "Yesterday"
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "You"
 msgstr "You"
 

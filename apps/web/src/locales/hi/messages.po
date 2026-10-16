@@ -823,6 +823,10 @@ msgstr ""
 msgid "Available after the routine is saved"
 msgstr ""
 
+#: src/pages/shell/bot-panel.tsx
+msgid "Avatar history"
+msgstr ""
+
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Avatar source"
 msgstr ""
@@ -830,6 +834,11 @@ msgstr ""
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Avatar Studio"
 msgstr "अवतार स्टूडियो"
+
+#: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Avatar updated"
+msgstr ""
 
 #: src/components/computer/FilesApp.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -1643,7 +1652,6 @@ msgid "Could not save Auto Review"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
-#: src/pages/shell/bot-panel.tsx
 msgid "Could not save avatar"
 msgstr ""
 
@@ -1714,6 +1722,10 @@ msgstr "यह उत्तर सबमिट नहीं किया जा 
 #: src/pages/Shell.tsx
 msgid "Could not take control"
 msgstr "नियंत्रण नहीं लिया जा सका"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Could not undo avatar change"
+msgstr ""
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Could not update"
@@ -3364,6 +3376,10 @@ msgstr "{0} का प्रीव्यू"
 msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
 
+#: src/pages/Shell.tsx
+msgid "Previous avatar"
+msgstr ""
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Privacy"
 msgstr "गोपनीयता"
@@ -4355,6 +4371,15 @@ msgstr "असाइन नहीं किया गया"
 msgid "Unavailable"
 msgstr ""
 
+#: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Undo"
+msgstr ""
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Undone"
+msgstr ""
+
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Unfinished"
 msgstr ""
@@ -4436,6 +4461,11 @@ msgstr "अपडेट हो रहा है…"
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Upload"
 msgstr "अपलोड"
+
+#: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Uploaded image"
+msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/SettingsOverlay.tsx
@@ -4598,6 +4628,7 @@ msgid "Yesterday"
 msgstr "कल"
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "You"
 msgstr "आप"
 
