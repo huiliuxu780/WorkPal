@@ -1,6 +1,6 @@
 # AV-05: avatar changes, provenance and undo
 
-Status: **done in the review branch**. The stacked PR and CI remain the merge gate.
+Status: **done in [PR #55](https://github.com/huiliuxu780/WorkPal/pull/55)**, stacked on AV-04. CI and review remain the merge gate.
 
 ## Product behavior
 
