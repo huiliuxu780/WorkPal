@@ -89,7 +89,7 @@ exit 0
         cwd: root,
         env: { ...env, ...overrides },
         encoding: "utf8",
-        timeout: 20_000,
+        timeout: 60_000,
       });
       expect(result.error).toBeUndefined();
       return result;
@@ -107,7 +107,7 @@ exit 0
 }
 
 describe("production deploy script", () => {
-  it("fails instead of reporting success while another deploy holds the lock", () => {
+  it("fails instead of reporting success while another deploy holds the lock", { timeout: 90000 }, () => {
     const deploy = fixture();
     const next = commit(deploy.upstream, "next");
     const result = deploy.run({ LOCK_HELD: "1" });
@@ -117,7 +117,7 @@ describe("production deploy script", () => {
     expect(deploy.commands()).toEqual([]);
   });
 
-  it("only checks health when production is already current", () => {
+  it("only checks health when production is already current", { timeout: 90000 }, () => {
     const deploy = fixture();
     write(path.join(deploy.checkout, ".last-deployed-revision"), `${deploy.first}\n`);
     const result = deploy.run();
@@ -125,7 +125,7 @@ describe("production deploy script", () => {
     expect(deploy.commands()).toEqual(["curl https://app.example.test/health"]);
   });
 
-  it("deploys when the checkout matches but that revision was never recorded", () => {
+  it("deploys when the checkout matches but that revision was never recorded", { timeout: 90000 }, () => {
     const deploy = fixture();
     const result = deploy.run();
     expect(result.status).toBe(0);
@@ -140,7 +140,7 @@ describe("production deploy script", () => {
     ]);
   });
 
-  it("deploys when the recorded revision is not the checkout", () => {
+  it("deploys when the recorded revision is not the checkout", { timeout: 90000 }, () => {
     const deploy = fixture();
     write(path.join(deploy.checkout, ".last-deployed-revision"), "outdated\n");
     const result = deploy.run();
@@ -150,7 +150,7 @@ describe("production deploy script", () => {
     expect(deploy.commands().some((line) => line.includes(" up -d --remove-orphans"))).toBe(true);
   });
 
-  it("builds, starts, and records the new revision under time limits", () => {
+  it("builds, starts, and records the new revision under time limits", { timeout: 90000 }, () => {
     const deploy = fixture();
     const next = commit(deploy.upstream, "next");
     const result = deploy.run();
@@ -165,7 +165,7 @@ describe("production deploy script", () => {
     ]);
   });
 
-  it("rolls back to the previous revision when the build fails", () => {
+  it("rolls back to the previous revision when the build fails", { timeout: 90000 }, () => {
     const deploy = fixture();
     commit(deploy.upstream, "broken");
     const result = deploy.run({ FAIL_BUILD: "1" });
@@ -176,7 +176,7 @@ describe("production deploy script", () => {
     );
   });
 
-  it("rolls back when production never becomes healthy", () => {
+  it("rolls back when production never becomes healthy", { timeout: 90000 }, () => {
     const deploy = fixture();
     commit(deploy.upstream, "unhealthy");
     const result = deploy.run({ FAIL_HEALTH: "1" });

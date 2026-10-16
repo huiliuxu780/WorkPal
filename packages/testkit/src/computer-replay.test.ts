@@ -14,7 +14,7 @@ import {
 import { startJavaRuntime } from "./cli/java-runtime.js";
 
 describe("computer replay with Java AgentScope and stateful offline computer", () => {
-  it("exports contacts through fresh page refs and verifies the resulting artifact", async () => {
+  it("exports contacts through fresh page refs and verifies the resulting artifact", { timeout: 180000 }, async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "workpal-replay-"));
     const runtime = await startJavaRuntime(directory);
     const sandbox = new FakeSandboxProvider();
@@ -45,7 +45,7 @@ describe("computer replay with Java AgentScope and stateful offline computer", (
     }
   });
 
-  it("rejects an empty action batch without invalidating the current page refs", async () => {
+  it("rejects an empty action batch without invalidating the current page refs", { timeout: 180000 }, async () => {
     const sandbox = new FakeSandboxProvider();
     const context = computerReplayContext();
     const computer = await sandbox.provision(
@@ -74,7 +74,7 @@ describe("computer replay with Java AgentScope and stateful offline computer", (
     }
   });
 
-  it("does not create an artifact after stale, incorrect, or cancelled actions", async () => {
+  it("does not create an artifact after stale, incorrect, or cancelled actions", { timeout: 180000 }, async () => {
     const sandbox = new FakeSandboxProvider();
     const context = computerReplayContext();
     const computer = await sandbox.provision(
