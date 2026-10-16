@@ -24,6 +24,7 @@
     "test:compose-smoke": "bash infra/compose/run-smokes.sh",
     "test:integration": "tsx packages/testkit/src/cli/harness.ts --integration",
     "test:e2e": "tsx packages/testkit/src/cli/harness.ts --e2e",
+    "test:worker-chain": "tsx packages/testkit/src/cli/worker-chain.ts",
     "test:topology": "tsx packages/testkit/src/cli/topology.ts",
     "test:canary": "tsx packages/testkit/src/cli/canary.ts",
     "test:evals": "tsx packages/testkit/src/cli/evals.ts",

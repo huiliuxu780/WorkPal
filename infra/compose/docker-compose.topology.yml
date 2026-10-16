@@ -71,7 +71,10 @@ services:
       - -lc
       - pnpm --filter @rakazo/db exec prisma migrate deploy && pnpm --filter @rakazo/api start
     environment: &app-environment
-      NODE_ENV: production
+      # The api/worker production guard reserves AGENT_RUNTIME=scripted for
+      # deterministic tests (NODE_ENV=production + scripted throws at boot), so
+      # this scripted smoke must not claim a production environment.
+      NODE_ENV: test
       DATABASE_URL: postgres://rakazo:topology-only-password@postgres:5432/rakazo
       DATA_DIR: /data
       BETTER_AUTH_SECRET: topology-only-auth-secret-at-least-32-characters

@@ -50,6 +50,11 @@ jobs:
       - run: pnpm test:integration --spec=agentscope-offline.postgres.test.ts
       - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e --runtime=agentscope --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts|capability-rules.spec.ts"
+      # Standalone-Worker production chain: real apps/worker process, Graphile
+      # handoff, outbox delivery and crash recovery. Reuses the jar built above.
+      - run: pnpm test:worker-chain
+        env:
+          AGENT_RUNTIME_SKIP_BUILD: "1"
 
   agent-runtime-image:
     runs-on: ubuntu-latest

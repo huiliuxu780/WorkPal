@@ -1,75 +1,24 @@
-# Production overlay: AgentScope as the sole agent runtime on the single-VM stack.
-# Layer it after docker-compose.prod.yml (and after docker-compose.prod.docker.yml when
-# local Docker computers are enabled) in every Compose invocation:
+# Legacy AgentScope overlay, reduced to the IP-direct HTTP delta.
+#
+# The base docker-compose.prod.yml now natively carries the Java AgentScope
+# runtime: the `agentscope` service builds services/agent-runtime/Dockerfile,
+# and api/worker already set AGENT_RUNTIME=agentscope, AGENTSCOPE_URL and the
+# tool-bridge environment. This overlay previously redefined `agentscope` with
+# the removed Python runtime (services/agentscope/Dockerfile), which overrode
+# the base Java service and broke `deploy-workpal.sh` at build time; that
+# definition was dropped in the WK-01 topology audit (2026-10-16).
+#
+# What remains is the only delta over the base file: the plain-HTTP 8080
+# publication used by the IP-direct Caddyfile (infra/compose/Caddyfile.ip-http
+# listens on :8080). Layer order is unchanged:
 #
 #   docker compose --env-file .env \
 #     -f infra/compose/docker-compose.prod.yml \
 #     -f infra/compose/docker-compose.prod.docker.yml \
 #     -f infra/compose/docker-compose.prod.agentscope.yml \
 #     up -d --build
-#
-# The base prod file still carries AGENT_RUNTIME: pi from before the AgentScope
-# migration; AGENTS.md forbids Pi in production, so this overlay flips api/worker to
-# agentscope and adds the service, mirroring docker-compose.yml.
 
 services:
-  agentscope:
-    image: ${AGENTSCOPE_IMAGE:-workpal/agentscope}:${AGENTSCOPE_IMAGE_TAG:-local}
-    build:
-      context: ../..
-      dockerfile: services/agentscope/Dockerfile
-    restart: unless-stopped
-    logging:
-      driver: local
-      options:
-        max-size: "10m"
-        max-file: "3"
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 256
-    mem_limit: 1g
-    environment:
-      AGENTSCOPE_STATE_DIR: /data/agentscope-state
-    volumes:
-      - appdata:/data
-    networks:
-      - app
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "uv",
-          "run",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2)",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-
-  api:
-    environment:
-      AGENT_RUNTIME: agentscope
-      AGENTSCOPE_URL: http://agentscope:8090
-      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: "0.0.0.0"
-      AGENTSCOPE_TOOL_BRIDGE_PORT: "8092"
-      AGENTSCOPE_TOOL_BRIDGE_URL: http://api:8092
-    depends_on:
-      agentscope:
-        condition: service_healthy
-
-  worker:
-    environment:
-      AGENT_RUNTIME: agentscope
-      AGENTSCOPE_URL: http://agentscope:8090
-      AGENTSCOPE_TOOL_BRIDGE_BIND_HOST: "0.0.0.0"
-      AGENTSCOPE_TOOL_BRIDGE_PORT: "8091"
-      AGENTSCOPE_TOOL_BRIDGE_URL: http://worker:8091
-    depends_on:
-      agentscope:
-        condition: service_healthy
-
   caddy:
     ports:
       - "80:80"
