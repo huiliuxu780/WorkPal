@@ -61,8 +61,24 @@ rollback() {
     echo "The half-synced tree and any containers this attempt started are left in place for inspection." >&2
     exit 1
   fi
-  echo "Rolling back: restoring snapshot ${ROLLBACK_TAR}." >&2
-  remote "tar -xzf '${ROLLBACK_TAR}' -C '${APP_PARENT}'"
+  echo "Rolling back: restoring snapshot ${ROLLBACK_TAR} into ${APP_DIR} (wholesale tree replacement)." >&2
+  # The restore helper must not come from the remote tree (it may be half-updated);
+  # ship this checkout's copy next to the snapshot, then run it. The helper
+  # replaces the directory wholesale, so files rsync ADDED are removed, and it
+  # leaves APP_DIR untouched (with a loud error) if the snapshot is unusable.
+  restore_helper="${ROLLBACK_TAR}.restore.sh"
+  if ! ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 "$ECS_HOST" \
+      "cat > '${restore_helper}'" < "${REPO_DIR}/infra/compose/restore-deploy-snapshot.sh"; then
+    echo "SNAPSHOT RESTORE FAILED: could not stage the restore helper on the host." >&2
+    echo "${APP_DIR} still holds the failed deploy's tree; the stack may be down." >&2
+    echo "Manual path: ssh -i ${SSH_KEY} ${ECS_HOST} and restore ${ROLLBACK_TAR} by hand." >&2
+    exit 1
+  fi
+  if ! remote_nocd "bash '${restore_helper}' '${ROLLBACK_TAR}' '${APP_DIR}'"; then
+    echo "SNAPSHOT RESTORE FAILED: ${APP_DIR} was left untouched; the stack may be down or on the failed revision." >&2
+    echo "Verify ${ROLLBACK_TAR} and restore manually (backups: /var/backups/rakazo): ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
+    exit 1
+  fi
   # Rebuild from restored sources without contacting registries (mirrorbuilder
   # cache + prior image layers make this far faster than the failed build).
   if remote "timeout --kill-after=30s ${BUILD_TIMEOUT} ${COMPOSE} up -d --build --pull never"; then
