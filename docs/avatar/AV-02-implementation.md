@@ -1,6 +1,6 @@
 # AV-02 static avatar and trusted state
 
-Status: implemented on `codex/av02-static-avatar`, 2026-10-17. Stacked on AV-01.
+Status: implemented on `codex/av02-static-avatar` ([PR #52](https://github.com/huiliuxu780/WorkPal/pull/52)), 2026-10-17. Stacked on AV-01.
 
 ## Visual contract
 
