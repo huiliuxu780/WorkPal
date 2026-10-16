@@ -1,6 +1,6 @@
 # AV-01 avatar identity and assignment
 
-Status: implemented on `codex/av01-avatar-storage`, 2026-10-17. Based on the [AV-00 decisions](./AV-00-decision.md). This is the first of five avatar delivery stages; visible character rendering begins in AV-02.
+Status: implemented on `codex/av01-avatar-storage` ([PR #51](https://github.com/huiliuxu780/WorkPal/pull/51)), 2026-10-17. Based on the [AV-00 decisions](./AV-00-decision.md). This is the first of five avatar delivery stages; visible character rendering begins in AV-02.
 
 ## Contract and migration
 
