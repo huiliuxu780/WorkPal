@@ -3899,7 +3899,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if ("error" in avatar && avatar.error !== "missing") {
               return finish({ error: avatar.error });
             }
-            if ("color" in avatar) patch.color = avatar.color;
+            if ("color" in avatar) {
+              patch.color = avatar.color;
+              patch.avatarMode = avatar.color.startsWith("data:image/") ? "upload" : "legacy";
+              patch.avatarCharacter = null;
+            }
             if (Object.keys(patch).length === 0) {
               return finish({
                 error:
@@ -5459,6 +5463,8 @@ export type UpdateBotPatch = {
   title?: string;
   description?: string;
   color?: string;
+  avatarMode?: "legacy" | "upload";
+  avatarCharacter?: null;
   notifyOnFinish?: boolean;
 };
 
