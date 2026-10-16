@@ -85,6 +85,7 @@ ECS 侧（真实拓扑、生产副本种子库）的迁移应用已在成功演�
 
 1. `364570e`：快照/回滚路径改为从 `APP_DIR` 推导（默认值与生产旧行为逐字节一致）。修复前：快照与恢复硬编码 `/srv/workpal`，`APP_DIR` 改指他处时回滚会恢复**错误的树**；同时把 ERR trap 提前到快照完成之后，rsync / `compose config` 失败留下的半更新树也会回滚（原脚本这两种失败不回滚）；首次部署（目录不存在）时明确降级为"无回滚目标"并提示。
 2. `dda042c`：回滚中的重建失败原先在 `set -e` 下静默退出（演练 run 1 实测踩中）；改为分支处理并打印 ROLLBACK REBUILD FAILED 诊断。
+3. （评审轮新增）回滚恢复改为 `restore-deploy-snapshot.sh` 的**分阶段整目录替换**：原实现 `tar -x` 覆盖活树只能恢复旧文件，无法清除部署时 rsync **新增**的文件（评审本地复现实证）。helper 流程：解包到 staging → 校验（必须含 `infra/compose/docker-compose.prod.yml`）→ 搬运活 `.git`（快照不含）→ 同文件系统原子换目录（失败自动撤销）；任何失败 APP_DIR 原样不动并输出显式 `restore:` 错误。`rollback()` 对 helper 的投递与执行分别分支：失败报 **SNAPSHOT RESTORE FAILED** 并中止，不再带着半更新/未恢复的树继续重建。回归 `deploy-rollback.smoke.sh`（已接入 `run-smokes.sh`，本地全绿）：新增文件必清除、修改文件还原、`.git` 保留、快照损坏/缺失/错误树三种失败都响亮报错且目录不动。
 
 ### Run 1（意外失败 → 回滚路径实证，2026-10-16）
 
@@ -148,9 +149,16 @@ RUN2T EXIT: 1
 - 本测试已把旧树构建链灌入 buildkit 缓存：切换前不 prune 缓存/不重启 builder，则回滚重建缓存命中、分钟级完成。
 - 终极兜底：旧 `:local` 镜像全部保留在 daemon，`up -d --no-build` 可跳过重建直接以旧镜像起栈。
 
+### Run 3（正式构建配置复验，评审整改轮）
+
+Run 2t 的绿色回滚使用了 drill-only 的 `.dockerignore` 排除与 build 段删减（当时为绕开 40G 盘双构建的磁盘数学），**构建配置与正式部署不一致**——评审正确指出这不能作为最终验证。Run 3 取消全部构建配置改动：三层 compose 与 `.dockerignore` 保持正式内容，drill 差异仅限隔离必需的 project 名（workpal-dr）与 Caddy 端口映射（18080:8080，运行期隔离而非构建配置）；镜像 tag 隔离走 `.env`（本就是运维配置）。注入 = `health.ts` 返回 500 **加一个新增标记文件**——后者专门验证 staged restore 在真实流程中清除 rsync 新增文件（评审阻断项 1 的现场回归）。流程：A 树（健康）预构建正式上下文缓存链 → 脚本以 B 树（注入）运行：主构建全量重建 app 镜像（一次 npm 风险窗口）→ api /health 500、compose healthcheck 失败 → 依赖等待失败 → ERR trap → staged restore（标记文件必须消失）→ 回滚重建命中 A 缓存 → 绿色 Rollback complete。
+
+<!-- PLACEHOLDER: run 3 实际结果 -->
+
 ### 演练终态与产物处置
 
 - 演练栈已 `compose stop` 冻结；`workpal-dr/*` 镜像（app 3.75G / agent-runtime 584M / computer 2.05G）、`workpal-oldtest/agentscope:drill`（531M）、演练卷（终态为**恢复演示后的 90 态 DB** + 重解包的 appdata）、A' 树、`/srv/workpal-dr-rollback.tar.gz` 快照，全部保留至验收。
+- **磁盘口径澄清（评审指出）**：演练收尾时主机实测余量约 **4.9G**；上线方案中的 10–12G 是**执行切换前清理步骤之后的当日目标**，不是已达成状态。切换日必须实测复核，不得沿用演练期数字。
 - **切换前清理步骤（runbook）**：删除 `workpal-dr/*` 与 `workpal-oldtest/*` 镜像（约 +6.9G；drill app 缓存链因上下文含 drill-only 修改对正式树不可复用，java/computer 链可复用）→ 磁盘余量目标 ≥10–12G。
 - 主机遗留（有意保留，验收后决定去留）：4G swapfile（未入 fstab；切换日构建峰值保护，演练期间零动用）；`buildkitd-mirror.toml` 追加的 `[worker.oci] gckeepstorage=6000`（原文件备份为 `.bak-dep01`）；`/var/backups/rakazo/20261016T042900Z` 全套备份。
 - 生产终态复核：7 容器 Up 9+ days 未重启、公网 `/health` 200、`mig=90` 不变、postgres 日志 3 小时窗口零错误（覆盖两次演练磁盘打满事件）。
@@ -168,12 +176,17 @@ RUN2T EXIT: 1
 
 演练实证（2026-10-16，在演练栈按上述步骤执行）：恢复前 mig=109、users=2（含演练注册用户）、appdata 172+ 文件；停 api/worker/supervisor → `DROP DATABASE … WITH (FORCE)` + `CREATE DATABASE` + `pg_restore`（exit 0）→ appdata 清空重解包 → agentstate（演练期由 Java runtime 新建）清空 → 核验：**mig=90、messages=7（seq 0–6 role 序列完整可读）、users=1（演练注册被回收）、bots=1、runs=4、events=49、appdata 恰为 172 文件**；源码树=回滚快照的健康状态。DB 与文件一致地回到备份时间点。
 
+## 5.5 旧 Python runtime 状态取舍与 agentstate 处置（评审补充项）
+
+- **切换方向（Python→Java）**：完整聊天记录的权威源是 PostgreSQL，随切换原样保留（run 1b 已在迁移后库上实证 7 条消息可读）。旧 Python runtime 的工作上下文/压缩状态在 appdata 的 `agentscope-state/`；Java runtime **不读取**它——Java 用新的 `agentstate` 卷（切换前生产不存在该卷，首次启动自动创建，按架构约定单独持久化）。取舍：**旧 thread 的 AgentScope 工作上下文不迁移**；续聊时由 Java runtime 基于 PostgreSQL 历史重建工作上下文（ME-00 的重建语义）。`agentscope-state/` 文件原样保留（惰性数据，不删除，供回滚与事后检查）。bot computer 的 `homes/` 走同一 appdata 卷，直接沿用。生产闲置（7 条消息、无进行中 run），上下文不迁移无实际业务损失。
+- **回滚方向（Java→Python）**：回滚后 `agentstate` 卷成为孤儿（旧三层 compose 不挂载它）。默认处置=**原样保留**（惰性，不影响旧栈运行，无需清理动作）；若执行 §5 一致性恢复，则连同清空（演练已实证该步骤：清空 agentstate → 重解包 appdata → 计数回到备份基准），避免下一次 roll-forward 继承过期的新 runtime 状态。
+
 ## 6. 上线方案（待批准）
 
-- **目标提交**：`8d263ad`（或执行日重新固定的更新 main；固定后工作树必须干净）。
-- **前置检查**（窗口开始前）：镜像源可达性（对 `maven:3.9.11-eclipse-temurin-21`、`node:22-bookworm`、`debian:bookworm-slim` manifest 探测非 5xx；npmjs 的 pnpm tarball 探测）；**磁盘 ≥10–12G**（演练实证：40G 盘、双份存储 + 导出暂态；执行上文"切换前清理步骤"）；**不 prune buildkit 缓存、不重启 builder**（回滚速度与旧树重建兜底都依赖在位缓存）；swap 在位；备份当日重跑且校验通过。
+- **目标提交**：**PR #48 合并后重新固定的 main SHA**——脚本修复（快照路径/trap 前移/回滚诊断/staged restore+smoke）必须包含在目标提交内；演练所用的 `8d263ad` 不含这些修复，不作为切换目标。固定后工作树必须干净，并按 §4 Run 3 在正式构建配置下完成失败路径复验。
+- **切换日清单**（当天逐项重验，不得沿用演练期数字）：①当日重跑备份 + `sha256sum -c` 校验 + offsite 副本拉取；②执行"切换前清理步骤"后**实测**磁盘 ≥10–12G；③旧镜像三个 `:local` tag（app/computer/agentscope）与旧树备份均在位、未被 prune；④镜像源探测（`maven:3.9.11-eclipse-temurin-21`、`node:22-bookworm`、`debian:bookworm-slim` manifest 非 5xx；npmjs 的 pnpm tarball 可下载）；⑤**不 prune buildkit 缓存、不重启 builder**；⑥swap 与 `gckeepstorage=6000` 在位。
 - **预构建**（窗口前，不计入停机）：对目标提交先手动 `compose build` 一次（npm 抖动时重试；缓存链 + 镜像双就位），窗口内脚本构建全部缓存命中 → 停机时间从 ~16 分钟压缩到 ~5 分钟，并消除窗口内网络风险。注意：预构建产物在窗口内不可 prune。
-- **维护窗口预估**：15–30 分钟（预构建后：脚本缓存重建 ~5 分钟 + 迁移 ≈3s + 健康与冒烟 10 分钟；回滚预留 15 分钟）。生产闲置 9 天，窗口选择无业务压力。
+- **维护窗口**：成功路径预估 15–30 分钟（预构建后：脚本缓存重建 ~5 分钟 + 迁移 ≈3s + 健康与冒烟 10 分钟），**仅适用于无故障情形**。**最坏路径按 ≈2 小时预留**：回滚重建受 BUILD_TIMEOUT=90m 上限约束（旧树若全量重建：Python agentscope `uv sync` 实测 ~23 分钟 + 旧 app 镜像 ~10 分钟；旧树缓存预热在位时为分钟级）+ §5 一致性恢复 ~15 分钟 + 人工决策时间。排期与值守按最坏情形安排；生产闲置 9+ 天，窗口选择无业务压力。
 - **执行顺序**：备份（新快照）→ `deploy-workpal.sh`（ECS_HOST/SSH_KEY/HEALTH_URL=生产地址，APP_DIR=/srv/workpal，**BUILD_TIMEOUT=90m，MIN_FREE_MB=8192**）→ 健康 → 冒烟（登录、建 Bot、单次受控 Run、消息持久化、授权拒绝、无重复投递）→ 写 `.last-deployed-revision`（脚本自动）。
 - **成功判据**：运行镜像 GIT_SHA=目标提交；agentscope 为 Java（健康检查走 runtime.jar）；API/Worker 分进程健康；`_prisma_migrations`=109 且 0 失败；冒烟全过；7 条历史消息可读。
 - **止损**：健康轮询失败脚本自动回滚；回滚后仍不健康 → 手动执行 §5 一致性恢复（备份当日新鲜）；任何数据核对不符 → §5。
