@@ -1,24 +1,23 @@
-export { type AvatarStyle, AvatarStyleProvider, useAvatarStyle } from "./avatar-style.js";
-export { AgentAvatar, type AgentAvatarProps, type AgentAvatarSize, type AvatarSurface } from "./agent-avatar/agent-avatar.js";
-export { ACTIVITY_TO_AVATAR, avatarActivityForItem, selectAvatarActivity, type AvatarActivity } from "./agent-avatar/activity-map.js";
-export { COLORS as BLOUB_COLORS, DEFAULT_COLOR as BLOUB_DEFAULT_COLOR } from "./bloub/skins.js";
 export {
-  BLOUB_EXPRESSION_IDS,
-  BLOUB_SHAPE_IDS,
-  DEFAULT_EXPRESSION as BLOUB_DEFAULT_EXPRESSION,
-  DEFAULT_SHAPE as BLOUB_DEFAULT_SHAPE,
-} from "./bloub/static.js";
-export { BloubAvatar, type BloubAvatarProps } from "./bloub-avatar.js";
+  ACTIVITY_TO_AVATAR,
+  type AvatarActivity,
+  avatarActivityForItem,
+  selectAvatarActivity,
+} from "./agent-avatar/activity-map.js";
+export {
+  AgentAvatar,
+  type AgentAvatarProps,
+  type AgentAvatarSize,
+  type AvatarSurface,
+} from "./agent-avatar/agent-avatar.js";
+export { type AvatarCatalogBot, AvatarCatalogProvider } from "./agent-avatar/catalog.js";
 export {
   BotAvatar,
   DEFAULT_GROK_BOT_COLOR,
   GROK_BOT_COLORS,
-  GROK_MASCOT_SHAPES,
-  GrokShapePreview,
+  GROK_COLOR_LIST,
   parseBotAvatar,
   resolvePersonaColorDef,
-  resolvePersonaShape,
-  Wordmark,
 } from "./bot-avatar.js";
 export * from "./components/ui/alert-dialog.js";
 export * from "./components/ui/badge.js";

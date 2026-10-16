@@ -824,6 +824,10 @@ msgid "Available after the routine is saved"
 msgstr "Available after the routine is saved"
 
 #: src/pages/shell/avatar-studio-popover.tsx
+msgid "Avatar source"
+msgstr "Avatar source"
+
+#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Avatar Studio"
 msgstr "Avatar Studio"
 
@@ -859,10 +863,6 @@ msgstr "Bearer token"
 msgid "Blocked"
 msgstr "Blocked"
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Bloub"
-msgstr "Bloub"
-
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Booting live desktop…"
@@ -878,6 +878,7 @@ msgstr "bot"
 
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Bot"
 msgstr "Bot"
 
@@ -944,6 +945,7 @@ msgstr "Can't reach the server."
 #: src/pages/Artifacts.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/PluginsOverlay.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Cancel"
 msgstr "Cancel"
@@ -984,6 +986,10 @@ msgstr "Changing…"
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Channels"
 msgstr "Channels"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Characters"
+msgstr "Characters"
 
 #: src/pages/shell/message-cards.tsx
 msgid "Chart failed to render: {error}"
@@ -1031,13 +1037,25 @@ msgstr "Checkout has local changes. Clean it before updating."
 msgid "Choose a bot…"
 msgstr "Choose a bot…"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose a character or upload an image for this bot"
+msgstr "Choose a character or upload an image for this bot"
+
 #: src/pages/Auth.tsx
 msgid "Choose a new password"
 msgstr "Choose a new password"
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Choose file"
-msgstr "Choose file"
+msgid "Choose a PNG, JPEG, or WebP image"
+msgstr "Choose a PNG, JPEG, or WebP image"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose avatar image"
+msgstr "Choose avatar image"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose or drop a PNG, JPEG, or WebP image (5 MB max)"
+msgstr "Choose or drop a PNG, JPEG, or WebP image (5 MB max)"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Choose which connected model {productName} uses."
@@ -1073,7 +1091,6 @@ msgstr "Client secret"
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 #: src/pages/RoutineEditor.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/WindowChrome.tsx
 msgid "Close"
 msgstr "Close"
@@ -1155,10 +1172,6 @@ msgstr "Collapse"
 #: src/pages/Shell.tsx
 msgid "Collapse {0}"
 msgstr "Collapse {0}"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Colour"
-msgstr "Colour"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Coming soon"
@@ -1557,9 +1570,17 @@ msgstr "Could not open local settings. Start the local server and create its own
 msgid "Could not open terminal"
 msgstr "Could not open terminal"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Could not open this image"
+msgstr "Could not open this image"
+
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not play a test clip"
 msgstr "Could not play a test clip"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Could not prepare this image"
+msgstr "Could not prepare this image"
 
 #: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/Auth.tsx
@@ -1620,6 +1641,11 @@ msgstr "Could not save"
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save Auto Review"
 msgstr "Could not save Auto Review"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Could not save avatar"
+msgstr "Could not save avatar"
 
 #: src/pages/GroupPanel.tsx
 msgid "Could not save group"
@@ -1993,7 +2019,6 @@ msgstr "done"
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
 #: src/pages/Shell.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Done"
 msgstr "Done"
 
@@ -2028,10 +2053,6 @@ msgstr "Downloading…"
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Draft skill"
 msgstr "Draft skill"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Drag, drop, or paste an image"
-msgstr "Drag, drop, or paste an image"
 
 #: src/pages/BotContextMenu.tsx
 msgid "Duplicate"
@@ -2194,10 +2215,6 @@ msgstr "Export"
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Expression"
-msgstr "Expression"
 
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -2437,8 +2454,12 @@ msgid "Ignore"
 msgstr "Ignore"
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Image upload area"
-msgstr "Image upload area"
+msgid "Image dimensions are not supported"
+msgstr "Image dimensions are not supported"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Image must be smaller than 5 MB"
+msgstr "Image must be smaller than 5 MB"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
@@ -3314,10 +3335,6 @@ msgstr "Pending"
 msgid "Personal credential"
 msgstr "Personal credential"
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Pick the bloub shape, expression, and colour"
-msgstr "Pick the bloub shape, expression, and colour"
-
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
 msgstr "Pin"
@@ -3596,7 +3613,6 @@ msgid "Research & writing"
 msgstr "Research & writing"
 
 #: src/components/ComputerMaintenanceActions.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Reset"
 msgstr "Reset"
 
@@ -3741,6 +3757,7 @@ msgstr "Runs when this bot receives a verified message from this provider."
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Save"
@@ -3904,10 +3921,6 @@ msgstr "Settings: Usage"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Setup help"
 msgstr "Setup help"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Shape"
-msgstr "Shape"
 
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx

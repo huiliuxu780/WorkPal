@@ -21,12 +21,8 @@ export const BOT_COLORS = [
   "#D9508A",
 ] as const;
 
-/**
- * Default avatar for new bots: the Avatar Studio's first ball — the cercle
- * shape in the palette's first colour (encre), neutral expression. Encoded in
- * the `color::bloub::shape::expression` format the studio writes.
- */
-export const DEFAULT_BOT_AVATAR_COLOR = "#0a0a0c::bloub::cercle::neutre";
+/** Rollback-compatible color; new character identity is assigned separately. */
+export const DEFAULT_BOT_AVATAR_COLOR = "#0a0a0c";
 
 export const RunStatus = z.enum([
   "queued",
@@ -65,8 +61,15 @@ export type RunTrigger = z.infer<typeof RunTrigger>;
 // Existing rows can contain legacy failed/ambiguous/reconciled values; the
 // executor currently writes approved/denied/executing/uncertain as well.
 export const EffectStatus = z.enum([
-  "intended", "approved", "denied", "executing", "completed", "uncertain",
-  "failed", "ambiguous", "reconciled",
+  "intended",
+  "approved",
+  "denied",
+  "executing",
+  "completed",
+  "uncertain",
+  "failed",
+  "ambiguous",
+  "reconciled",
 ]);
 export type EffectStatus = z.infer<typeof EffectStatus>;
 

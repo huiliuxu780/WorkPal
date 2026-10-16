@@ -63,7 +63,7 @@ export const GroupAvatar = memo(function GroupAvatar({
   }
 
   const pair = members.length === 2;
-  const miniSize = Math.round(size * (pair ? 0.65 : 0.54));
+  const miniSize = size >= 56 ? 32 : size >= 36 ? 24 : 16;
   const positions: CSSProperties[] = pair
     ? [
         { top: 0, left: 0 },
@@ -101,6 +101,15 @@ export const GroupAvatar = memo(function GroupAvatar({
       ))}
       {members.length > 3 ? (
         <div
+          role="img"
+          aria-label={`${members.length - 2} more bots: ${members
+            .slice(2)
+            .map((member) => member.name ?? member.botId ?? "Bot")
+            .join(", ")}`}
+          title={members
+            .slice(2)
+            .map((member) => member.name ?? member.botId ?? "Bot")
+            .join(", ")}
           className="absolute right-0 bottom-0 z-[3] flex items-center justify-center rounded-full bg-secondary border border-border text-[10px] font-semibold text-secondary-foreground shadow-md"
           style={{
             width: miniSize,

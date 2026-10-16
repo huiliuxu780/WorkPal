@@ -4,8 +4,8 @@ import { toolActionLabel } from "@rakazo/core";
 import { BotAvatar, Button } from "@rakazo/ui-web";
 import { Bell, BellOff, ChevronRight, FileText, Monitor, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { formatRelativeTime } from "../lib/relative-time";
 import { effectView } from "../lib/effect-view";
+import { formatRelativeTime } from "../lib/relative-time";
 import { rpc } from "../lib/rpc";
 import {
   isRunActive,
@@ -132,6 +132,31 @@ export function RunDetailsPanel({
   }, [botId, runId]);
 
   const run = detail?.run ?? null;
+  useEffect(() => {
+    if (run?.runId !== runId || run.status !== "failed") return;
+    let cancelled = false;
+    let frame: number | null = null;
+    const acknowledgeAfterVisiblePaint = () => {
+      if (document.visibilityState !== "visible" || frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        if (cancelled || document.visibilityState !== "visible") return;
+        void rpc.bots
+          .acknowledgeAvatarFailure({ runId })
+          .then(() => {
+            if (!cancelled) window.dispatchEvent(new Event("workpal:avatar-refresh"));
+          })
+          .catch(() => undefined);
+      });
+    };
+    acknowledgeAfterVisiblePaint();
+    document.addEventListener("visibilitychange", acknowledgeAfterVisiblePaint);
+    return () => {
+      cancelled = true;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      document.removeEventListener("visibilitychange", acknowledgeAfterVisiblePaint);
+    };
+  }, [run?.runId, run?.status, runId]);
   const active = run ? isRunActive(run.status) : false;
   useEffect(() => {
     if (!active) return;
@@ -473,11 +498,15 @@ export function RunDetailsPanel({
                         <span className="block truncate text-[12.5px] text-foreground">
                           {toolActionLabel(effect.kind)}
                         </span>
-                        <span className={`mt-0.5 block text-[12px] ${EFFECT_TONE_CLASS[view.tone]}`}>
+                        <span
+                          className={`mt-0.5 block text-[12px] ${EFFECT_TONE_CLASS[view.tone]}`}
+                        >
                           {view.label}
                         </span>
                         {view.note ? (
-                          <span className="mt-1 block text-xs text-muted-foreground">{view.note}</span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            {view.note}
+                          </span>
                         ) : null}
                       </span>
                       <span className="shrink-0 pt-0.5 font-mono text-[11.5px] text-muted-foreground/80">

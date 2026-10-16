@@ -1,133 +1,166 @@
 import { t } from "@lingui/core/macro";
 import { Trans } from "@lingui/react/macro";
+import type { AvatarCharacter } from "@rakazo/contracts";
 import {
-  BLOUB_COLORS,
-  BLOUB_DEFAULT_COLOR,
-  BLOUB_DEFAULT_EXPRESSION,
-  BLOUB_DEFAULT_SHAPE,
-  BLOUB_EXPRESSION_IDS,
-  BLOUB_SHAPE_IDS,
-  BloubAvatar,
-  BotAvatar,
+  AgentAvatar,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  parseBotAvatar,
 } from "@rakazo/ui-web";
 import { Check, Pencil, Upload, X } from "lucide-react";
-import { type ClipboardEvent, type DragEvent, useRef, useState } from "react";
+import { type ChangeEvent, type DragEvent, useRef, useState } from "react";
 
-const BLOUB_INK = BLOUB_COLORS.find((c) => c.id === BLOUB_DEFAULT_COLOR)?.hex ?? "#0a0a0c";
+export type AvatarSelection =
+  | { avatarMode: "character"; avatarCharacter: AvatarCharacter }
+  | { avatarMode: "upload"; color: string };
 
-function studioCellClass(selected: boolean): string {
+const characters: readonly AvatarCharacter[] = ["dot", "treble", "wave", "bounce"];
+const allowedImages = new Set(["image/png", "image/jpeg", "image/webp"]);
+const maxImageBytes = 5 * 1024 * 1024;
+
+function Preview({
+  selection,
+  identity,
+  name,
+  size,
+}: {
+  selection: AvatarSelection;
+  identity: string;
+  name: string;
+  size: 16 | 24 | 32 | 64;
+}) {
+  if (selection.avatarMode === "character") {
+    return (
+      <AgentAvatar
+        botId={identity}
+        character={selection.avatarCharacter}
+        name={name}
+        size={size}
+        activity="idle"
+        ariaHidden
+      />
+    );
+  }
   return (
-    "relative flex size-11 items-center justify-center rounded-xl transition-transform hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover " +
-    (selected
-      ? "ring-2 ring-primary ring-offset-2 ring-offset-popover bg-white/10"
-      : "hover:bg-white/5")
+    <img
+      src={selection.color}
+      width={size}
+      height={size}
+      alt=""
+      className="rounded-full object-cover"
+    />
   );
 }
 
-export interface AvatarStudioPopoverProps {
-  value: string;
-  identity?: string;
-  status?: string;
-  size?: number;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}
-
 export function AvatarStudioPopover({
-  value,
-  identity,
-  status,
-  size = 72,
+  selection,
+  identity = "preview",
+  name = "Bot",
   onChange,
   disabled = false,
-}: AvatarStudioPopoverProps) {
+}: {
+  selection: AvatarSelection;
+  identity?: string;
+  name?: string;
+  onChange: (selection: AvatarSelection) => void | Promise<void>;
+  disabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"bloub" | "upload">("bloub");
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState<AvatarSelection>(selection);
+  const [tab, setTab] = useState<"character" | "upload">(selection.avatarMode);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const parsed = parseBotAvatar(value, identity);
-  const currentColor = parsed.color || BLOUB_INK;
-  const currentShape = parsed.bloubShape ?? BLOUB_DEFAULT_SHAPE;
-  const currentExpression = parsed.bloubExpression ?? BLOUB_DEFAULT_EXPRESSION;
-  const currentBloub = parsed.bloub === true;
-
-  function bloubValue(color: string, shape: string, expression: string) {
-    return `${color}::bloub::${shape}::${expression}`;
+  function setDialogOpen(next: boolean) {
+    if (next) {
+      setDraft(selection);
+      setTab(selection.avatarMode);
+      setError(null);
+    }
+    setOpen(next);
   }
 
-  function selectBloubShape(shape: string) {
-    onChange(bloubValue(currentColor, shape, currentExpression));
-  }
-
-  function selectBloubExpression(expression: string) {
-    onChange(bloubValue(currentColor, currentShape, expression));
-  }
-
-  function selectColor(color: string) {
-    onChange(currentBloub ? bloubValue(color, currentShape, currentExpression) : `${color}::bloub`);
-  }
-
-  function resetAvatar() {
-    onChange(bloubValue(BLOUB_INK, BLOUB_DEFAULT_SHAPE, BLOUB_DEFAULT_EXPRESSION));
-  }
-
-  function processImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const src = event.target?.result as string;
-      if (!src) return;
-      const img = new Image();
-      img.onload = () => {
+  function processImage(file: File | undefined) {
+    if (!file) return;
+    if (!allowedImages.has(file.type)) {
+      setError(t`Choose a PNG, JPEG, or WebP image`);
+      return;
+    }
+    if (file.size > maxImageBytes) {
+      setError(t`Image must be smaller than 5 MB`);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      if (
+        !image.naturalWidth ||
+        !image.naturalHeight ||
+        image.naturalWidth > 8192 ||
+        image.naturalHeight > 8192
+      ) {
+        setError(t`Image dimensions are not supported`);
+        return;
+      }
+      try {
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        const targetSize = 256;
-        canvas.width = targetSize;
-        canvas.height = targetSize;
-        if (!ctx) return;
-
-        ctx.beginPath();
-        ctx.arc(targetSize / 2, targetSize / 2, targetSize / 2, 0, Math.PI * 2);
-        ctx.clip();
-
-        const minDim = Math.min(img.width, img.height);
-        const sx = (img.width - minDim) / 2;
-        const sy = (img.height - minDim) / 2;
-        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, targetSize, targetSize);
-
-        onChange(canvas.toDataURL("image/webp", 0.9));
-        setOpen(false);
-      };
-      img.src = src;
+        canvas.width = 256;
+        canvas.height = 256;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas unavailable");
+        const edge = Math.min(image.naturalWidth, image.naturalHeight);
+        context.drawImage(
+          image,
+          (image.naturalWidth - edge) / 2,
+          (image.naturalHeight - edge) / 2,
+          edge,
+          edge,
+          0,
+          0,
+          256,
+          256,
+        );
+        const color = canvas.toDataURL("image/webp", 0.9);
+        if (!color.startsWith("data:image/webp;")) throw new Error("WebP export unavailable");
+        setDraft({ avatarMode: "upload", color });
+        setTab("upload");
+        setError(null);
+      } catch {
+        setError(t`Could not prepare this image`);
+      }
     };
-    reader.readAsDataURL(file);
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      setError(t`Could not open this image`);
+    };
+    image.src = url;
+  }
+
+  function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    processImage(event.target.files?.[0]);
+    event.target.value = "";
   }
 
   function handleDrop(event: DragEvent<HTMLButtonElement>) {
     event.preventDefault();
-    setDragOver(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) processImageFile(file);
+    processImage(event.dataTransfer.files?.[0]);
   }
 
-  function handlePaste(event: ClipboardEvent<HTMLButtonElement>) {
-    const items = event.clipboardData?.items;
-    if (!items) return;
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item?.type.startsWith("image/")) continue;
-      const file = item.getAsFile();
-      if (file) {
-        processImageFile(file);
-        break;
-      }
+  async function save() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onChange(draft);
+      setOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t`Could not save avatar`);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -136,20 +169,18 @@ export function AvatarStudioPopover({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(true)}
-        className="group relative cursor-pointer rounded-2xl outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => setDialogOpen(true)}
+        className="group relative rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={t`Customize bot avatar`}
         data-testid="avatar-studio-trigger"
       >
-        <BotAvatar color={value} identity={identity} size={size} status={status} />
-        <div className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-foreground shadow-md transition-transform group-hover:scale-110">
+        <Preview selection={selection} identity={identity} name={name} size={64} />
+        <span className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-foreground shadow-md">
           <Pencil size={12} strokeWidth={2.2} />
-        </div>
+        </span>
       </button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={setDialogOpen}>
         <DialogContent
-          showCloseButton={false}
           className="w-[calc(100vw-32px)] max-w-[660px] gap-0 overflow-hidden rounded-3xl p-0 sm:max-w-[660px]"
           data-testid="avatar-studio"
         >
@@ -157,204 +188,114 @@ export function AvatarStudioPopover({
             <DialogTitle>
               <Trans>Avatar Studio</Trans>
             </DialogTitle>
-            <DialogDescription className="sr-only">
-              <Trans>Pick the bloub shape, expression, and colour</Trans>
+            <DialogDescription>
+              <Trans>Choose a character or upload an image for this bot</Trans>
             </DialogDescription>
           </DialogHeader>
-
-          <div className="flex">
-            {/* 左：大预览——头像在这里是主角 */}
-            <div className="flex w-[248px] shrink-0 flex-col items-center justify-center gap-4 border-e border-border bg-muted/40 p-6">
-              <div className="grid size-[184px] place-items-center overflow-hidden rounded-3xl border border-border bg-background">
-                <BotAvatar color={value} identity={identity} size={148} status={status} />
+          <div className="flex flex-col sm:flex-row">
+            <div className="flex w-full shrink-0 items-center justify-center border-b border-border bg-muted/40 p-6 sm:w-[248px] sm:border-b-0 sm:border-e">
+              <div className="grid size-[184px] place-items-center rounded-3xl border border-border bg-background">
+                <Preview selection={draft} identity={identity} name={name} size={64} />
               </div>
-              <button
-                type="button"
-                onClick={resetAvatar}
-                className="rounded-lg px-2.5 py-1 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <Trans>Reset</Trans>
-              </button>
             </div>
-
-            {/* 右：形状 / 表情 / 颜色 */}
             <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex items-center justify-between border-b border-border px-5 py-3">
-                <div className="flex items-center rounded-full bg-muted p-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("bloub")}
-                    aria-pressed={activeTab === "bloub"}
-                    className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                      activeTab === "bloub"
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Trans>Bloub</Trans>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("upload")}
-                    aria-pressed={activeTab === "upload"}
-                    className={`rounded-full px-3 py-1 font-medium transition-colors ${
-                      activeTab === "upload"
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Trans>Upload</Trans>
-                  </button>
-                </div>
+              <div
+                className="flex gap-2 border-b border-border px-5 py-3"
+                role="tablist"
+                aria-label={t`Avatar source`}
+              >
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
-                  className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  aria-label={t`Close`}
+                  role="tab"
+                  aria-selected={tab === "character"}
+                  onClick={() => setTab("character")}
+                  className="rounded-lg px-3 py-2 text-sm aria-selected:bg-muted"
                 >
-                  <X size={16} />
+                  <Trans>Characters</Trans>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "upload"}
+                  onClick={() => setTab("upload")}
+                  className="rounded-lg px-3 py-2 text-sm aria-selected:bg-muted"
+                >
+                  <Trans>Upload</Trans>
                 </button>
               </div>
-
-              <div
-                className="rk-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-5"
-                data-testid={activeTab === "bloub" ? "avatar-studio-bot-tab" : undefined}
-              >
-                {activeTab === "bloub" ? (
-                  <>
-                    <div>
-                      <div className="mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                        <Trans>Shape</Trans>
-                      </div>
-                      <div className="grid grid-cols-4 place-items-center gap-2">
-                        {BLOUB_SHAPE_IDS.map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => selectBloubShape(s)}
-                            aria-label={s}
-                            aria-pressed={currentBloub && s === currentShape}
-                            data-testid={`avatar-bloub-shape-${s}`}
-                            className={studioCellClass(currentBloub && s === currentShape)}
-                          >
-                            <BloubAvatar
-                              color={currentColor}
-                              shape={s}
-                              expression={currentExpression}
-                              size={36}
-                              animated={false}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                        <Trans>Expression</Trans>
-                      </div>
-                      <div className="grid grid-cols-4 place-items-center gap-2">
-                        {BLOUB_EXPRESSION_IDS.map((e) => (
-                          <button
-                            key={e}
-                            type="button"
-                            onClick={() => selectBloubExpression(e)}
-                            aria-label={e}
-                            aria-pressed={currentBloub && e === currentExpression}
-                            data-testid={`avatar-bloub-expression-${e}`}
-                            className={studioCellClass(currentBloub && e === currentExpression)}
-                          >
-                            <BloubAvatar
-                              color={currentColor}
-                              shape={currentShape}
-                              expression={e}
-                              size={36}
-                              animated={false}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border pt-3">
-                      <div className="mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                        <Trans>Colour</Trans>
-                      </div>
-                      <div className="grid grid-cols-6 place-items-center gap-2">
-                        {BLOUB_COLORS.map((c) => {
-                          const selected =
-                            currentColor.toLowerCase() === c.hex.toLowerCase() && !parsed.isImage;
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => selectColor(c.hex)}
-                              aria-label={c.id}
-                              aria-pressed={selected}
-                              data-testid={`avatar-bloub-color-${c.id}`}
-                              className={`size-6 rounded-full border transition-transform hover:scale-110 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring ${
-                                selected
-                                  ? "scale-105 border-transparent ring-2 ring-foreground ring-offset-2 ring-offset-popover"
-                                  : "border-border"
-                              }`}
-                              style={{ backgroundColor: c.hex }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </>
+              <div className="rk-scroll min-h-[210px] flex-1 space-y-4 overflow-y-auto p-5">
+                {tab === "character" ? (
+                  <div className="grid grid-cols-4 gap-2" role="tabpanel">
+                    {characters.map((character) => (
+                      <button
+                        key={character}
+                        type="button"
+                        aria-label={character}
+                        aria-pressed={
+                          draft.avatarMode === "character" && draft.avatarCharacter === character
+                        }
+                        onClick={() =>
+                          setDraft({ avatarMode: "character", avatarCharacter: character })
+                        }
+                        className="relative flex h-20 items-center justify-center rounded-xl border border-border bg-background focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-primary"
+                      >
+                        <AgentAvatar
+                          botId={`${identity}-${character}`}
+                          character={character}
+                          name={character}
+                          size={64}
+                          activity="idle"
+                          ariaHidden
+                        />
+                        {draft.avatarMode === "character" && draft.avatarCharacter === character ? (
+                          <Check className="absolute right-1 top-1" size={14} />
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
                 ) : (
-                  <button
-                    type="button"
-                    aria-label={t`Image upload area`}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      setDragOver(true);
-                    }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={handleDrop}
-                    onPaste={handlePaste}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`flex w-full flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center transition-colors ${
-                      dragOver
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-muted hover:border-foreground/30"
-                    }`}
-                  >
+                  <div role="tabpanel" className="space-y-3">
                     <input
-                      ref={fileInputRef}
+                      ref={fileRef}
                       type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) processImageFile(file);
-                      }}
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleFile}
+                      className="sr-only"
+                      aria-label={t`Choose avatar image`}
                     />
-                    <div className="mb-2 grid size-10 place-items-center rounded-full bg-secondary text-muted-foreground">
-                      <Upload size={18} strokeWidth={1.8} />
-                    </div>
-                    <p className="text-[12.5px] font-medium text-muted-foreground">
-                      <Trans>Drag, drop, or paste an image</Trans>
-                    </p>
-                    <span className="mt-3 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground">
-                      <Trans>Choose file</Trans>
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => fileRef.current?.click()}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={handleDrop}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-8 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Upload size={16} />
+                      <Trans>Choose or drop a PNG, JPEG, or WebP image (5 MB max)</Trans>
+                    </button>
+                  </div>
                 )}
+                {error ? (
+                  <p role="alert" className="text-sm text-destructive">
+                    {error}
+                  </p>
+                ) : null}
               </div>
-
-              {/* Plain footer bar: DialogFooter's -mx-4 -mb-4 assumes p-4 content,
-                  but this dialog is p-0 — the negative margin would overflow the edge. */}
-              <div className="flex items-center justify-end border-t border-border px-5 py-3">
+              <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-1.5 rounded-xl bg-secondary px-4 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-accent"
+                  onClick={() => setDialogOpen(false)}
+                  className="rounded-lg px-3 py-2 text-sm text-muted-foreground"
                 >
-                  <Check size={14} />
-                  <Trans>Done</Trans>
+                  <X size={14} className="inline" /> <Trans>Cancel</Trans>
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || (tab === "upload" && draft.avatarMode !== "upload")}
+                  onClick={() => void save()}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                >
+                  <Trans>Save</Trans>
                 </button>
               </div>
             </div>

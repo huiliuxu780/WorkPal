@@ -1,5 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { AvatarCatalogProvider } from "./agent-avatar/catalog.js";
 import { GroupAvatar } from "./group-avatar.js";
 
 describe("GroupAvatar", () => {
@@ -10,7 +11,7 @@ describe("GroupAvatar", () => {
 
   it("renders single BotAvatar when 1 member", () => {
     const html = renderToString(<GroupAvatar members={[{ name: "Harry", color: "#8B5CF6" }]} />);
-    expect(html).toContain("rakazo-bot-avatar");
+    expect(html).toContain("rakazo-agent-avatar");
   });
 
   it("renders 2 overlapping bot avatars for 2 members", () => {
@@ -22,22 +23,38 @@ describe("GroupAvatar", () => {
         ]}
       />,
     );
-    const count = (html.match(/data-working=/g) || []).length;
+    const count = (html.match(/data-character=/g) || []).length;
     expect(count).toBe(2);
-    expect(html).toContain('data-working="false"');
+    expect(html).toContain('data-state="idle"');
   });
 
   it("renders a working member inside a group avatar", () => {
     const html = renderToString(
-      <GroupAvatar
-        members={[
-          { name: "Sherlock", color: "#8B5CF6", status: "running" },
-          { name: "Elon", color: "#06B6D4", status: "idle" },
+      <AvatarCatalogProvider
+        bots={[
+          { id: "sherlock", name: "Sherlock", avatarMode: "character", avatarCharacter: "dot" },
         ]}
-      />,
+        states={[
+          {
+            botId: "sherlock",
+            state: "working",
+            runId: "run",
+            revision: 1,
+            updatedAt: "2026-10-17T00:00:00Z",
+          },
+        ]}
+        currentBotId="sherlock"
+      >
+        <GroupAvatar
+          members={[
+            { botId: "sherlock", name: "Sherlock", color: "#8B5CF6", status: "running" },
+            { name: "Elon", color: "#06B6D4", status: "idle" },
+          ]}
+        />
+      </AvatarCatalogProvider>,
     );
-    expect(html).toContain('data-working="true"');
-    expect(html).toContain("rakazo-bot-avatar");
+    expect(html).toContain('data-state="working"');
+    expect(html).toContain("rakazo-agent-avatar");
   });
 
   it("renders 3 mini bot avatars for 3 members", () => {
@@ -50,7 +67,7 @@ describe("GroupAvatar", () => {
         ]}
       />,
     );
-    const count = (html.match(/data-working=/g) || []).length;
+    const count = (html.match(/data-character=/g) || []).length;
     expect(count).toBe(3);
   });
 
@@ -66,5 +83,6 @@ describe("GroupAvatar", () => {
       />,
     );
     expect(html).toContain("+2");
+    expect(html).toContain("Penny, Harry");
   });
 });
