@@ -110,7 +110,17 @@ public record RunRequest(
     public record Identity(String userId, String spaceId, String botId, String threadId, String runId) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record HistoryMessage(String id, String role, String content, List<InputImage> images) {}
+    public record HistoryMessage(String id, String role, String content, List<InputImage> images,
+            HistoryProvenance provenance) {
+        public HistoryMessage(String id, String role, String content, List<InputImage> images) {
+            this(id, role, content, images, null);
+        }
+    }
+
+    /** Metadata supplied by the authenticated backend, never parsed from message text. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record HistoryProvenance(String kind, String originKind, String authorUserId,
+            String contextKind, Integer generation, String revision) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record InputImage(String name, String mimeType, String data) {}
@@ -168,6 +178,30 @@ public record RunRequest(
         }
         if (sessionGeneration != null && sessionGeneration < 0) {
             throw new IllegalArgumentException("Session generation must be non-negative");
+        }
+        if (history != null) for (HistoryMessage message : history) {
+            if (message == null) throw new IllegalArgumentException("Invalid history message");
+            HistoryProvenance source = message.provenance();
+            if (source == null) continue; // Old wire data is conservatively unknown.
+            if ("message".equals(source.kind())) {
+                if (blank(message.id()) || blank(source.originKind()) || !Set.of("human_web", "human_messaging",
+                        "messaging_external", "webhook", "automation", "bot", "system", "unknown")
+                        .contains(source.originKind())
+                        || (("human_web".equals(source.originKind())
+                                || "human_messaging".equals(source.originKind()))
+                                != !blank(source.authorUserId()))) {
+                    throw new IllegalArgumentException("Invalid message provenance");
+                }
+            } else if ("application".equals(source.kind())) {
+                if (message.id() != null || !"user".equals(message.role()) || blank(source.contextKind())
+                        || !Set.of("compacted_summary", "semantic_recall", "durable_memory")
+                                .contains(source.contextKind())
+                        || source.generation() == null || source.generation() != generation()) {
+                    throw new IllegalArgumentException("Invalid application-context provenance");
+                }
+            } else if (!"unknown".equals(source.kind())) {
+                throw new IllegalArgumentException("Unsupported history provenance");
+            }
         }
         if (turnPolicy != null && "v2".equals(turnPolicy.version())) {
             TurnPolicy.Budget budget = turnPolicy.budget();

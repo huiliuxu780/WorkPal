@@ -14,6 +14,7 @@ export type WebhookEvents = {
     threadId: string;
     botId: string;
     userId: string;
+    originKind: "webhook";
     blocks: Array<{ kind: "text"; text: string }>;
     prompt: string;
     trigger: "webhook";
@@ -185,6 +186,7 @@ export async function deliverWebhookEvent(
     threadId: target.threadId,
     botId: target.bot.id,
     userId: target.bot.userId,
+    originKind: "webhook",
     blocks: [{ kind: "text", text: promptText }],
     prompt: promptText,
     trigger: "webhook",

@@ -148,6 +148,10 @@ describe("messaging another bot", () => {
     expect(harness.notify).toHaveBeenCalledWith("thread-target", 7);
     expect(harness.notify).toHaveBeenCalledWith("thread-sender", 7);
     expect(harness.tx.message.create).toHaveBeenCalledTimes(2);
+    for (const [call] of harness.tx.message.create.mock.calls) {
+      expect((call as { data: { originKind: string; authorUserId: string | null } }).data)
+        .toMatchObject({ originKind: "bot", authorUserId: null });
+    }
     expect(
       harness.tx.thread.update.mock.calls.filter(
         ([call]) => (call as { data?: { unread?: boolean } }).data?.unread,

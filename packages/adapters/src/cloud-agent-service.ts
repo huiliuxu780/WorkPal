@@ -72,6 +72,7 @@ export async function executeCloudAgentTool(
       const blocks = [cloudAgentBlock(created)];
       const message = await createThreadMessageInTransaction(tx, {
         threadId: run.threadId,
+        originKind: "bot",
         botId: context.botId,
         runId: run.id,
         role: "bot",

@@ -1078,6 +1078,8 @@ export async function sendThreadMessage(
         const message = await createThreadMessageInTransaction(tx, {
           threadId: target.threadId,
           role: "user",
+          originKind: "human_web",
+          authorUserId: actor.userId,
           blocks,
           replyToMessageId,
           replyQuote,
@@ -1258,6 +1260,8 @@ export async function sendThreadMessage(
       const message = await createThreadMessageInTransaction(tx, {
         threadId: target.threadId,
         role: "user",
+        originKind: "human_web",
+        authorUserId: actor.userId,
         blocks,
         replyToMessageId,
         replyQuote,
@@ -1468,6 +1472,8 @@ export async function reactToThreadMessage(
     const message = await createThreadMessageInTransaction(tx, {
       threadId: target.threadId,
       role: "user",
+      originKind: "human_web",
+      authorUserId: actor.userId,
       blocks,
       replyToMessageId: parent.id,
       clientNonce: input.clientNonce,

@@ -31,7 +31,7 @@ import {
   routineWakeupJob,
   runContinueJob,
 } from "@rakazo/adapter-kit";
-import type { ComputerCommand, MessageBlock, RunStatus } from "@rakazo/contracts";
+import type { AgentHistoryProvenance, ComputerCommand, MessageBlock, RunStatus } from "@rakazo/contracts";
 import {
   ATTACHMENT_MAX_BYTES,
   BOT_DESCRIPTION_MAX_LENGTH,
@@ -41,6 +41,7 @@ import {
   botSecretSubmissionSchema,
   COMPUTER_COMMAND_OUTPUT_MAX_CHARS,
   isAttachmentImageMimeType,
+  isMessageOriginKind,
   OPENAI_COMPATIBLE_PROVIDER_ID,
 } from "@rakazo/contracts";
 import {
@@ -1491,6 +1492,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 | "assistant"
                 | "system",
               content: messageToAgentHistoryText(m),
+              provenance: historyMessageProvenance(m),
             })),
             summary: thread.historyCompactionSummary,
             historyCompactedUpToSeq: thread.historyCompactedUpToSeq,
@@ -1502,10 +1504,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           summary: threadContext.summary,
           historyCompactedUpToSeq: threadContext.historyCompactedUpToSeq,
         });
-        let history = compactedHistory.history.map(({ id, role, content }) => ({
+        let history = compactedHistory.history.map(({ id, role, content, provenance }) => ({
           id,
           role,
           content,
+          provenance,
         }));
         const historyMessages = messages.map((message) => ({
           id: message.id,
@@ -4192,6 +4195,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
         if (compactedHistory.usedLocalSummary && compactedHistory.summary) {
           historicalContext.push({
             role: "user",
+            provenance: {
+              kind: "application",
+              contextKind: "compacted_summary",
+              generation: thread.historyCompactionGeneration,
+              revision: String(thread.historyCompactedUpToSeq),
+            },
             content: redactSecrets(
               formatCompactedSummary(compactedHistory.summary, thread.historyCompactedUpToSeq!),
               runSecrets,
@@ -4201,6 +4210,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
         if (recalledMemory) {
           historicalContext.push({
             role: "user",
+            provenance: {
+              kind: "application",
+              contextKind: "semantic_recall",
+              generation: thread.historyCompactionGeneration,
+            },
             content: redactSecrets(recalledMemory, runSecrets),
           });
         }
@@ -4209,12 +4223,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
         // data message instead of the run instructions (which Java renders
         // into the system message). The block keeps its <durable_memory> fence
         // and "data rather than instructions" preamble; the Java runtime
-        // recognizes the same prefix as run-scoped application context, so a
+        // receives typed provenance as run-scoped application context, so a
         // restored session replaces the previous copy instead of keeping a
         // stale one.
         if (memoryContext) {
           historicalContext.push({
             role: "user",
+            provenance: {
+              kind: "application",
+              contextKind: "durable_memory",
+              generation: thread.historyCompactionGeneration,
+            },
             content: redactSecrets(memoryContext, runSecrets),
           });
         }
@@ -5677,6 +5696,21 @@ export function userTurnInstructions(parts: {
   ];
 }
 
+/** Unknown/future DB values and inconsistent legacy author claims never become human proof. */
+export function historyMessageProvenance(message: {
+  originKind: string;
+  authorUserId: string | null;
+}): AgentHistoryProvenance {
+  const originKind = isMessageOriginKind(message.originKind) ? message.originKind : "unknown";
+  const authorUserId = message.authorUserId?.trim() || null;
+  const human = originKind === "human_web" || originKind === "human_messaging";
+  return {
+    kind: "message",
+    originKind: human && !authorUserId ? "unknown" : originKind,
+    authorUserId: human ? authorUserId : null,
+  };
+}
+
 export function threadContextForRun<T>(
   trigger: string,
   context: {
@@ -5985,6 +6019,7 @@ async function persistMessageInTransaction(
   const message = await createThreadMessageInTransaction(tx, {
     threadId: run.threadId,
     role,
+    originKind: role === "bot" ? "bot" : "system",
     blocks,
     botId: run.botId,
     runId: run.id,

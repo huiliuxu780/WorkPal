@@ -139,6 +139,21 @@ describe.skipIf(!databaseAvailable)("offline AgentScope Java product journey", (
       const messages = JSON.stringify(thread.messages);
       expect(messages).toContain("Saved notes/result.txt.");
       expect(messages).not.toContain(fixtureKey);
+      expect(thread.messages.every((message) => !("originKind" in message))).toBe(true);
+      const productThread = await handles.prisma.thread.findFirstOrThrow({
+        where: { botId: bot.id }, select: { id: true, userId: true },
+      });
+      const storedMessages = await handles.prisma.message.findMany({
+        where: { threadId: productThread.id },
+        select: { role: true, originKind: true, authorUserId: true, blocks: true },
+      });
+      const human = storedMessages.find((message) =>
+        JSON.stringify(message.blocks).includes("Save hello to notes/result.txt."));
+      expect(human).toMatchObject({ role: "user", originKind: "human_web",
+        authorUserId: productThread.userId });
+      const answer = storedMessages.find((message) =>
+        JSON.stringify(message.blocks).includes("Saved notes/result.txt."));
+      expect(answer).toMatchObject({ role: "bot", originKind: "bot", authorUserId: null });
       const tools = await handles.prisma.event.findMany({
         where: { botId: bot.id, type: "agent.tool.called" },
         select: { payload: true },

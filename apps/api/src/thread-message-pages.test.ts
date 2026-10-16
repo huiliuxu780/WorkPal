@@ -87,6 +87,8 @@ describe("thread message pages", () => {
         threadId: "thread-1",
         seq: 1,
         role: "bot",
+        originKind: "bot",
+        authorUserId: null,
         blocks: [{ kind: "text", text: "Visible answer" }],
         botId: "bot-1",
         replyToMessageId: null,
@@ -106,6 +108,8 @@ describe("thread message pages", () => {
       "message-received",
       "message-reply",
     ]);
+    expect(page.messages[0]).not.toHaveProperty("originKind");
+    expect(page.messages[0]).not.toHaveProperty("authorUserId");
   });
 
   it("filters peer-run activity when its receipt is outside the loaded page", async () => {

@@ -349,7 +349,11 @@ class CompactionBoundaryIntegrationTest {
 
             // Run 1: produce a native compaction summary.
             engine.execute(chat(model.getAddress().getPort(), "cur-1", "user-1", "space-1", "bot-1",
-                    "thread-1", "Continue.", largeHistory(40, NEEDLE_COMPACTED, NEEDLE_RETAINED)), e -> {});
+                    "thread-1", "Continue.", largeHistory(40, NEEDLE_COMPACTED, NEEDLE_RETAINED)
+                            .stream().map(item -> new RunRequest.HistoryMessage("db-" + item.content().hashCode(),
+                                    item.role(), item.content(), item.images(),
+                                    new RunRequest.HistoryProvenance("message", "unknown", null, null, null, null)))
+                            .toList()), e -> {});
             assertTrue(kinds.contains("SUMMARY"), "native compaction must fire");
             // The native summary text must NOT carry the application-layer cursor phrasing.
             assertTrue(anyMessageContains(requests, CLEAN_SUMMARY), "native summary present");
@@ -363,7 +367,9 @@ class CompactionBoundaryIntegrationTest {
             int before = requests.size();
             engine.execute(chat(model.getAddress().getPort(), "cur-2", "user-1", "space-1", "bot-1",
                     "thread-1", "Next question.",
-                    List.of(new RunRequest.HistoryMessage(null, "user", appSummary, null))), e -> {});
+                    List.of(new RunRequest.HistoryMessage(null, "user", appSummary, null,
+                            new RunRequest.HistoryProvenance("application", null, null,
+                                    "compacted_summary", 0, null)))), e -> {});
             List<JsonNode> secondTurn = requests.subList(before, requests.size());
             assertTrue(anyMessageContains(secondTurn, APP_CURSOR_MARKER),
                     "the application-layer summary must reach the model");

@@ -2072,6 +2072,8 @@ export function createRouter(deps: RouterDeps) {
             threadId: target.threadId,
             botId: target.botId,
             userId: context.actor.userId,
+            originKind: "human_web",
+            authorUserId: context.actor.userId,
             blocks: [{ kind: "text", text: input.text }],
             prompt: input.text,
             trigger: "follow_up",
@@ -2168,6 +2170,8 @@ export function createRouter(deps: RouterDeps) {
           const message = await createThreadMessageInTransaction(tx, {
             threadId: target.threadId,
             role: "user",
+            originKind: "human_web",
+            authorUserId: context.actor.userId,
             blocks,
             clientNonce: input.clientNonce,
           });
@@ -2276,6 +2280,7 @@ export function createRouter(deps: RouterDeps) {
             const message = await createThreadMessageInTransaction(tx, {
               threadId,
               role: "bot",
+              originKind: "system",
               botId,
               blocks,
               clientNonce: callMarkerClientNonce(input.callId),

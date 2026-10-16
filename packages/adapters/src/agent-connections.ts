@@ -301,12 +301,14 @@ export async function messageConnectedAgent(
       const inbound = await createThreadMessageInTransaction(tx, {
         threadId: targetThreadId,
         role: "user",
+        originKind: "bot",
         blocks: [inboundBlock],
         clientNonce: deliveryKey,
       });
       const outbound = await createThreadMessageInTransaction(tx, {
         threadId: run.threadId,
         role: "bot",
+        originKind: "bot",
         blocks: [outboundBlock],
         botId: run.botId,
         runId: run.id,

@@ -1,4 +1,4 @@
-import type { ConnectionCatalogItem, SandboxKind } from "@rakazo/contracts";
+import type { AgentHistoryProvenance, ConnectionCatalogItem, SandboxKind } from "@rakazo/contracts";
 
 export interface AdapterContext {
   operationId: string;
@@ -493,6 +493,8 @@ export interface AgentRunRequest {
     id?: string;
     role: "user" | "assistant" | "system";
     content: string;
+    /** Trusted backend metadata; never rendered as model text or accepted from message bodies. */
+    provenance?: AgentHistoryProvenance;
     /** Images attached to this message, hydrated only for recent user turns. */
     images?: AgentInputImage[];
   }>;

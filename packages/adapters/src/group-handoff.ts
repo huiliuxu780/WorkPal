@@ -165,6 +165,7 @@ export async function handoffToGroupBot(
     const message = await createThreadMessageInTransaction(tx, {
       threadId: run.threadId,
       role: "bot",
+      originKind: "bot",
       blocks: [handoffBlock],
       botId: run.botId,
       runId: run.id,

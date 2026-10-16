@@ -216,6 +216,7 @@ async function mirrorChannelRun(
           threadId: peerThread.id,
           botId: peerIdentity.botId,
           userId: peerIdentity.userId,
+          originKind: "messaging_external",
           blocks: [block],
           prompt: `[Group "${channel.name ?? "group"}" — ${fromLabel}]: ${text}`,
           trigger: "messaging",
@@ -237,6 +238,7 @@ async function mirrorChannelRun(
         const created = await createThreadMessageInTransaction(tx, {
           threadId: peerThread.id,
           role: "user",
+          originKind: "messaging_external",
           blocks: [block],
           clientNonce,
         });
