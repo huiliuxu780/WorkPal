@@ -1,6 +1,6 @@
 # ME-00: closing the native compaction summary memory-deletion gap (PR #45 review P1)
 
-Branch: `codex/me00-compaction-memory-purge`, base `main` @ `0df02fb` (WK-01 merge). Task card:
+Branch: `codex/me00-compaction-memory-purge` (PR [#47](https://github.com/huiliuxu780/WorkPal/pull/47)), base `main` @ `0df02fb` (WK-01 merge). Task card:
 [ME-00.md](./tasks/ME-00.md). Runtime changes are Java-only (`services/agent-runtime`); the wire
 protocol and all TS packages are untouched.
 
