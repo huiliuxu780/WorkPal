@@ -65,11 +65,15 @@ rollback() {
   remote "tar -xzf '${ROLLBACK_TAR}' -C '${APP_PARENT}'"
   # Rebuild from restored sources without contacting registries (mirrorbuilder
   # cache + prior image layers make this far faster than the failed build).
-  remote "timeout --kill-after=30s ${BUILD_TIMEOUT} ${COMPOSE} up -d --build --pull never"
-  if poll_health; then
-    echo "Rollback complete: production is healthy at the previous revision."
+  if remote "timeout --kill-after=30s ${BUILD_TIMEOUT} ${COMPOSE} up -d --build --pull never"; then
+    if poll_health; then
+      echo "Rollback complete: production is healthy at the previous revision."
+    else
+      echo "ROLLBACK ALSO FAILED HEALTH CHECK. Investigate manually: ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
+    fi
   else
-    echo "ROLLBACK ALSO FAILED HEALTH CHECK. Investigate manually: ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
+    echo "ROLLBACK REBUILD FAILED: ${ROLLBACK_TAR} was restored to ${APP_DIR}, but 'up --build' did not succeed." >&2
+    echo "Previous-revision sources are in place; the stack may be down. Inspect build/container logs: ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
   fi
   exit 1
 }
