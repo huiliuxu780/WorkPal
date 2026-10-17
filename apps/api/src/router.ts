@@ -143,6 +143,7 @@ import {
 } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
+  acknowledgeAvatarFailure,
   appendEventInTransaction,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
@@ -170,6 +171,7 @@ import {
   IsolationError,
   issueMessagingLinkCode,
   listDescendantRunIds,
+  loadBotAvatarStates,
   loadExecutionSnapshot,
   loadRunActivityPage,
   loadTaskCenterPage,
@@ -1381,6 +1383,16 @@ export function createRouter(deps: RouterDeps) {
     },
     bots: {
       list: authed.bots.list.handler(async ({ context }) => repos.listBots(context.actor)),
+      avatarStates: authed.bots.avatarStates.handler(async ({ context }) =>
+        loadBotAvatarStates(deps.prisma, context.actor),
+      ),
+      acknowledgeAvatarFailure: authed.bots.acknowledgeAvatarFailure.handler(
+        async ({ context, input }) => {
+          const acknowledged = await acknowledgeAvatarFailure(deps.prisma, context.actor, input.runId);
+          if (!acknowledged) throw new ORPCError("NOT_FOUND");
+          return { ok: true as const };
+        },
+      ),
       listArchived: authed.bots.listArchived.handler(async ({ context }) =>
         repos.listBots(context.actor, { archived: true }),
       ),
