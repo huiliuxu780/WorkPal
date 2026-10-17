@@ -51,6 +51,9 @@ describe("BotAvatar compatibility entrypoint", () => {
     expect(html).toContain('data-state="approval"');
     expect(html).toContain('aria-label="Image Bot · Needs approval"');
     expect(html).toContain('class="rakazo-agent-avatar-dot"');
+    // Upload badges carry the same non-color shape cue as compact characters
+    // (AV-00 acceptance addendum): approval = diamond.
+    expect(html).toContain('data-point-shape="diamond"');
     expect(html).not.toContain('tabIndex="0"');
     expect(html).not.toContain('tabindex="0"');
   });

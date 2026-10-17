@@ -9,6 +9,7 @@ import { memo } from "react";
 import {
   AgentAvatar,
   type AgentAvatarSize,
+  AVATAR_POINT_SHAPES,
   avatarStateNames,
 } from "./agent-avatar/agent-avatar.js";
 import { useAvatarCatalog } from "./agent-avatar/catalog.js";
@@ -84,7 +85,11 @@ export const BotAvatar = memo(function BotAvatar({
           className="h-full w-full object-cover"
         />
         {activity !== "idle" ? (
-          <span className="rakazo-agent-avatar-dot" aria-hidden="true" />
+          <span
+            className="rakazo-agent-avatar-dot"
+            data-point-shape={AVATAR_POINT_SHAPES[activity]}
+            aria-hidden="true"
+          />
         ) : null}
       </span>
     );
