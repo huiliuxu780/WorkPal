@@ -1,13 +1,21 @@
+import { randomUUID } from "node:crypto";
 import {
   type Actor,
+  AvatarCharacterSchema,
+  type AvatarCharacter,
+  type AvatarMode,
   type Bot,
   type BotSection,
   DEFAULT_BOT_AVATAR_COLOR,
   type MessageBlock,
   type SpaceBot,
+  isBotAvatarValue,
+  pickAvatarCharacter,
+  resolveAvatarIdentity,
 } from "@rakazo/contracts";
 import { userVisibleMessages } from "@rakazo/core";
 import type { PrismaClient } from "./client.js";
+import { Prisma } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
 import { createThreadMessageInTransaction } from "./messages.js";
 import { BotSectionNameConflictError, IsolationError } from "./scope.js";
@@ -39,6 +47,8 @@ function mapBot(
     description: string;
     instructions: string;
     color: string;
+    avatarMode?: string;
+    avatarCharacter?: string | null;
     notifyOnFinish: boolean;
     pinned: boolean;
     sectionId: string | null;
@@ -73,6 +83,7 @@ function mapBot(
     description: bot.description,
     instructions: bot.instructions,
     color: bot.color,
+    ...resolveAvatarIdentity(bot.avatarMode, bot.avatarCharacter, bot.color),
     notifyOnFinish: bot.notifyOnFinish,
     pinned: bot.pinned,
     sectionId: bot.sectionId,
@@ -132,6 +143,8 @@ export function createRepos(prisma: PrismaClient) {
         name: true,
         title: true,
         color: true,
+        avatarMode: true,
+        avatarCharacter: true,
         notifyOnFinish: true,
         pinned: true,
         sectionId: true,
@@ -159,6 +172,7 @@ export function createRepos(prisma: PrismaClient) {
         name: bot.name,
         title: bot.title,
         color: bot.color,
+        ...resolveAvatarIdentity(bot.avatarMode, bot.avatarCharacter, bot.color),
         notifyOnFinish: bot.notifyOnFinish,
         pinned: bot.pinned,
         sectionId: bot.sectionId,
@@ -382,6 +396,8 @@ export function createRepos(prisma: PrismaClient) {
         instructions: string;
         notifyOnFinish: boolean;
         color?: string;
+        avatarMode?: AvatarMode;
+        avatarCharacter?: AvatarCharacter | null;
         parentBotId?: string | null;
         computerMode?: ComputerMode;
         spawnKey?: string;
@@ -395,6 +411,8 @@ export function createRepos(prisma: PrismaClient) {
         };
       },
     ): Promise<Bot> {
+      // A preallocated id makes the hash tie-break repeatable across transaction retries.
+      const botId = randomUUID();
       let color = input.color;
       if (color === undefined) {
         color = DEFAULT_BOT_AVATAR_COLOR;
@@ -437,8 +455,39 @@ export function createRepos(prisma: PrismaClient) {
             userId: actor.userId,
             kind,
           });
+          let avatarMode: AvatarMode;
+          let avatarCharacter: AvatarCharacter | null = null;
+          if (input.avatarMode === "character") {
+            const parsed = AvatarCharacterSchema.safeParse(input.avatarCharacter);
+            if (!parsed.success) {
+              throw new Error("Character avatar requires one valid character");
+            }
+            avatarMode = "character";
+            avatarCharacter = parsed.data;
+          } else if (input.avatarMode === "upload") {
+            if (!input.color?.startsWith("data:image/") || !isBotAvatarValue(input.color)) {
+              throw new Error("Upload avatar requires a valid data image");
+            }
+            avatarMode = "upload";
+          } else if (input.avatarMode === "legacy" || input.color !== undefined) {
+            avatarMode =
+              input.avatarMode ?? (input.color?.startsWith("data:image/") ? "upload" : "legacy");
+          } else {
+            // Creation already holds the Space lock. Computer quota takes user
+            // lock seed 1; avatar assignment takes seed 2 after it, keeping lock order.
+            await tx.$queryRaw(Prisma.sql`
+              SELECT pg_advisory_xact_lock(hashtextextended(${actor.userId}, 2))::text AS "lock"
+            `);
+            const existing = await tx.bot.findMany({
+              where: { userId: actor.userId, avatarMode: "character" },
+              select: { avatarMode: true, avatarCharacter: true },
+            });
+            avatarMode = "character";
+            avatarCharacter = pickAvatarCharacter(existing, botId);
+          }
           const created = await tx.bot.create({
             data: {
+              id: botId,
               spaceId: actor.spaceId,
               userId: actor.userId,
               name: input.name,
@@ -447,6 +496,8 @@ export function createRepos(prisma: PrismaClient) {
               instructions: input.instructions,
               notifyOnFinish: input.notifyOnFinish,
               color,
+              avatarMode,
+              avatarCharacter,
               position: (positions._max.position ?? -1) + 1,
               parentBotId: input.parentBotId ?? null,
               computerId: teamComputer.id,

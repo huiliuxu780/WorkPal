@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  AVATAR_CHARACTERS,
   BOT_AVATAR_VALUE_MAX_LENGTH,
   BotAvatarValueSchema,
   isBotAvatarValue,
+  pickAvatarCharacter,
   parseBotAvatarValue,
+  resolveAvatarIdentity,
+  CreateBotInput,
   UpdateBotInput,
 } from "./index.js";
 
@@ -58,5 +62,65 @@ describe("bot avatar values", () => {
     ).toBe(false);
     expect(UpdateBotInput.safeParse({ botId: "bot-1", color: "gray" }).success).toBe(false);
     expect(UpdateBotInput.safeParse({ botId: "bot-1", name: "Atlas" }).success).toBe(true);
+  });
+});
+
+describe("character avatar assignment", () => {
+  it("uses every character once for the first four Bots, then reuses the least-used", () => {
+    const existing: Array<{ avatarMode: string; avatarCharacter: string | null }> = [];
+    const firstFour: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const chosen = pickAvatarCharacter(existing, `bot-${i}`);
+      firstFour.push(chosen);
+      existing.push({ avatarMode: "character", avatarCharacter: chosen });
+    }
+    expect(new Set(firstFour)).toEqual(new Set(AVATAR_CHARACTERS));
+    expect(AVATAR_CHARACTERS).toContain(pickAvatarCharacter(existing, "bot-4"));
+  });
+
+  it("uses a stable id tie-break and ignores legacy/invalid rows", () => {
+    const existing = [
+      { avatarMode: "legacy", avatarCharacter: "dot" },
+      { avatarMode: "character", avatarCharacter: "bad" },
+      { avatarMode: "character", avatarCharacter: "dot" },
+    ];
+    const selected = pickAvatarCharacter(existing, "stable-id");
+    expect(selected).not.toBe("dot");
+    expect(pickAvatarCharacter([...existing].reverse(), "stable-id")).toBe(selected);
+  });
+
+  it("keeps legacy images and falls back from malformed character rows", () => {
+    const image = "data:image/png;base64,abc";
+    expect(resolveAvatarIdentity("legacy", null, image)).toEqual({
+      avatarMode: "legacy",
+      avatarCharacter: null,
+    });
+    expect(resolveAvatarIdentity("upload", null, image)).toEqual({
+      avatarMode: "upload",
+      avatarCharacter: null,
+    });
+    expect(resolveAvatarIdentity("character", "unknown", "#fff")).toEqual({
+      avatarMode: "character",
+      avatarCharacter: "dot",
+    });
+  });
+
+  it("validates explicit mode/character and image writes", () => {
+    expect(
+      CreateBotInput.safeParse({ name: "New", avatarMode: "character", avatarCharacter: "wave" })
+        .success,
+    ).toBe(true);
+    expect(CreateBotInput.safeParse({ name: "New", avatarMode: "character" }).success).toBe(false);
+    expect(
+      UpdateBotInput.safeParse({ botId: "bot-1", avatarMode: "character", avatarCharacter: "x" })
+        .success,
+    ).toBe(false);
+    expect(
+      UpdateBotInput.safeParse({ botId: "bot-1", avatarMode: "upload", color: "#ffffff" }).success,
+    ).toBe(false);
+    expect(
+      UpdateBotInput.safeParse({ botId: "bot-1", avatarMode: "character", avatarCharacter: "dot" })
+        .success,
+    ).toBe(true);
   });
 });

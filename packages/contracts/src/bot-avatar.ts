@@ -1,5 +1,56 @@
 import * as z from "zod";
 
+export const AVATAR_CHARACTERS = ["dot", "treble", "wave", "bounce"] as const;
+export const AvatarCharacterSchema = z.enum(AVATAR_CHARACTERS);
+export type AvatarCharacter = z.infer<typeof AvatarCharacterSchema>;
+export const AvatarModeSchema = z.enum(["legacy", "character", "upload"]);
+export type AvatarMode = z.infer<typeof AvatarModeSchema>;
+
+/** Stable across Node and browsers; never depends on array/DB iteration order. */
+export function avatarIdHash(id: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = Math.imul(hash ^ id.charCodeAt(i), 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/** Count archived and live character Bots from every Space owned by one user. */
+export function pickAvatarCharacter(
+  existing: readonly { avatarMode: string; avatarCharacter: string | null }[],
+  botId: string,
+): AvatarCharacter {
+  const counts = new Map<AvatarCharacter, number>(AVATAR_CHARACTERS.map((name) => [name, 0]));
+  for (const bot of existing) {
+    const parsed = AvatarCharacterSchema.safeParse(bot.avatarCharacter);
+    if (bot.avatarMode === "character" && parsed.success) {
+      counts.set(parsed.data, counts.get(parsed.data)! + 1);
+    }
+  }
+  const minimum = Math.min(...counts.values());
+  const tied = AVATAR_CHARACTERS.filter((name) => counts.get(name) === minimum);
+  return tied[avatarIdHash(botId) % tied.length]!;
+}
+
+/** Malformed historical DB values fail safely while their raw bytes remain for rollback. */
+export function resolveAvatarIdentity(
+  mode: unknown,
+  character: unknown,
+  color: string,
+): { avatarMode: AvatarMode; avatarCharacter: AvatarCharacter | null } {
+  if (mode === "character") {
+    const parsed = AvatarCharacterSchema.safeParse(character);
+    return {
+      avatarMode: "character",
+      avatarCharacter: parsed.success ? parsed.data : "dot",
+    };
+  }
+  if (mode === "upload" && isBotAvatarValue(color) && color.startsWith("data:image/")) {
+    return { avatarMode: "upload", avatarCharacter: null };
+  }
+  return { avatarMode: "legacy", avatarCharacter: null };
+}
+
 /** Matches the eight shipped mascot shapes in `@rakazo/core`. */
 export const BOT_AVATAR_SHAPE_COUNT = 8;
 
