@@ -1,7 +1,7 @@
 # UX-01 决策：Plan / Todo / Steps 展示收敛
 
 > **状态：决策已由徐哥于 2026-10-18 02:16（UTC+8）亲自批准。UX-01 仍是 in-progress，不是 done。**
-> 本文计划放进仓库的 `docs/ux/UX-01-decision.md`，目前只是 box 上的稿子，还没进仓库，roadmap 也没改。
+> 本文随 PR #57 进入仓库 `docs/ux/UX-01-decision.md`，roadmap 的 UX-01 行同一 PR 更新，状态仍为 in-progress。
 > 代码行号按 `codex/dep01-deploy-rehearsal @96283eb`。#54 和 #55 合入后，`Shell.tsx` 的行号会偏移（#54 改了 +19/−8，#55 改了 +107/−1），开工时以最新 main 为准，重新定位。
 > 依据：`REQ-plan-todo-steps.md`、`ux-notes.md`、`code-facts.md`、`gpt-advice-review-product.md`、`gpt-advice-review-dev.md`、`gpt-advice2-review-dev.md`、`prototype/`。
 
@@ -198,7 +198,7 @@
 
 ---
 
-## 7. 还要按本决策更新的文档（只列出来，本次没有改）
+## 7. 按本决策更新的文档（10-18 已同步：REQ、ux-notes、prototype、侧栏评审加 superseded 标记、roadmap 随 PR #57；execution-card.md 暂不改）
 
 | 文档 | 要改的地方 |
 |---|---|
