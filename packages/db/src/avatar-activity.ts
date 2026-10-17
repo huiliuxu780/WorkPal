@@ -17,18 +17,19 @@ export async function loadBotAvatarStates(
     async (tx) => {
       const bots = await tx.bot.findMany({
         where: { userId: viewer.userId, spaceId: viewer.spaceId, archivedAt: null },
-        select: { id: true, thread: { select: { id: true } } },
+        select: { id: true },
       });
       if (bots.length === 0) return [];
       const botIds = bots.map((bot) => bot.id);
-      const threadIds = bots.flatMap((bot) => (bot.thread ? [bot.thread.id] : []));
-      const [runs, pending, backgrounds, clears] = await Promise.all([
+      // Ownership of these Bots is the whole authorization scope: neither the
+      // triggering user nor the Bot's direct thread may narrow the activity
+      // queries, or Runs and background tasks in group chats and external
+      // conversations go invisible while the Bot is actually busy (PR #52 P1).
+      const [runs, pending, backgrounds] = await Promise.all([
         tx.run.findMany({
           where: {
-            userId: viewer.userId,
             spaceId: viewer.spaceId,
             botId: { in: botIds },
-            threadId: { in: threadIds },
             OR: [
               { status: { in: ["leased", "running", "waiting_input", "waiting_takeover"] } },
               { status: "failed", avatarFailureReceipts: { none: { userId: viewer.userId } } },
@@ -54,7 +55,6 @@ export async function loadBotAvatarStates(
         }),
         tx.backgroundAgentTask.findMany({
           where: {
-            userId: viewer.userId,
             spaceId: viewer.spaceId,
             botId: { in: botIds },
             status: "running",
@@ -67,12 +67,27 @@ export async function loadBotAvatarStates(
             heartbeatAt: true,
           },
         }),
-        tx.event.findMany({
-          where: { spaceId: viewer.spaceId, threadId: { in: threadIds }, type: "thread.cleared" },
-          select: { threadId: true, createdAt: true },
-          orderBy: { createdAt: "desc" },
-        }),
       ]);
+      // Cleared-thread suppression must cover every thread a fact came from —
+      // direct, group and external alike — not just the Bot's direct thread.
+      const factThreadIds = [
+        ...new Set([
+          ...runs.map((run) => run.threadId),
+          ...backgrounds.map((task) => task.threadId),
+        ]),
+      ];
+      const clears =
+        factThreadIds.length === 0
+          ? []
+          : await tx.event.findMany({
+              where: {
+                spaceId: viewer.spaceId,
+                threadId: { in: factThreadIds },
+                type: "thread.cleared",
+              },
+              select: { threadId: true, createdAt: true },
+              orderBy: { createdAt: "desc" },
+            });
       const clearByThread = new Map<string, Date>();
       for (const clear of clears) {
         if (!clearByThread.has(clear.threadId)) clearByThread.set(clear.threadId, clear.createdAt);
@@ -173,7 +188,8 @@ export async function acknowledgeAvatarFailure(
     const run = await tx.run.findFirst({
       where: {
         id: runId,
-        userId: viewer.userId,
+        // No Run.userId filter: Bot ownership below is the authorization, so a
+        // failure triggered by another Space member is still ackable by the owner.
         spaceId: viewer.spaceId,
         status: "failed",
         bot: { userId: viewer.userId, spaceId: viewer.spaceId, archivedAt: null },
