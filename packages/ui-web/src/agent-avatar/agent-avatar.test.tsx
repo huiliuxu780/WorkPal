@@ -81,7 +81,7 @@ describe("AgentAvatar static rendering", () => {
     expect(render(24, "working")).toContain('id="laptop"');
     expect(render(24, "waiting")).toContain('id="question"');
     expect(render(24, "failed")).toContain('id="xeyes"');
-    expect(render(24, "idle")).not.toContain("rakazo-agent-avatar-prop");
+    expect(render(24, "idle")).toContain('data-avatar-prop="laptop" aria-hidden="true" style="opacity:0"');
     expect(render(16, "idle")).not.toContain("rakazo-agent-avatar-dot");
     const hidden = renderToStaticMarkup(
       <AgentAvatar
