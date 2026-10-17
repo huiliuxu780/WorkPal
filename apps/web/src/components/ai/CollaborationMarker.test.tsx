@@ -1,3 +1,4 @@
+import { AvatarCatalogProvider } from "@rakazo/ui-web";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ActiveBotGlyph, CollaborationMarker } from "./CollaborationMarker";
@@ -19,21 +20,31 @@ describe("collaboration transcript markers", () => {
     expect(html).toContain('class="flex justify-start"');
     expect(html).toContain('class="inline-flex max-w-full');
     expect(html).toContain('class="truncate"');
-    expect(html).toContain("rakazo-bot-avatar");
+    // BotAvatar delegates to the durable AgentAvatar surface.
+    expect(html).toContain("rakazo-agent-avatar");
+    expect(html).toContain('data-bot-id="research"');
     expect(html).toContain("Message from Research");
     expect(html).not.toContain("{peer}");
   });
 
-  it("animates the active bot glyph from its run status", () => {
+  it("renders the active bot glyph from the server-owned avatar state", () => {
     const html = renderToString(
-      <ActiveBotGlyph
-        bots={[{ botId: "research", color: "#14B8A6", status: "running" }]}
-        label="Research is working"
-      />,
+      <AvatarCatalogProvider
+        bots={[{ id: "research", name: "Research", avatarMode: "character", avatarCharacter: "dot" }]}
+        states={[
+          { botId: "research", state: "working", runId: null, revision: 1, updatedAt: null },
+        ]}
+        currentBotId={null}
+      >
+        <ActiveBotGlyph
+          bots={[{ botId: "research", color: "#14B8A6", status: "running" }]}
+          label="Research is working"
+        />
+      </AvatarCatalogProvider>,
     );
 
     expect(html).toContain('role="status"');
-    expect(html).toContain('data-working="true"');
-    expect(html).toContain("rakazo-bot-avatar-ring");
+    expect(html).toContain("rakazo-group-avatar");
+    expect(html).toContain('data-state="working"');
   });
 });

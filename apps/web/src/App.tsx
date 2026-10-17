@@ -1,12 +1,12 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { type Bot, type BotAvatarState, LOCAL_SETTINGS_PAGE } from "@rakazo/contracts";
-import { AvatarCatalogProvider, Button, Skeleton } from "@rakazo/ui-web";
+import { LOCAL_SETTINGS_PAGE } from "@rakazo/contracts";
+import { Button, Skeleton } from "@rakazo/ui-web";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
+import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { LoadingState } from "./components/ai/primitives";
 import { authClient } from "./lib/auth";
+import { AvatarRuntime } from "./lib/avatar-runtime";
 import { markAfterPaint, markOnce } from "./lib/performance";
-import { rpc } from "./lib/rpc";
 import {
   holdUnreachableGate,
   sessionGate,
@@ -145,66 +145,6 @@ function SessionApp() {
         </Suspense>
       </AvatarRuntime>
     </div>
-  );
-}
-
-/** The API read model, not local Run status strings, owns avatar state. */
-function AvatarRuntime({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
-  const location = useLocation();
-  const [bots, setBots] = useState<Bot[]>([]);
-  const [states, setStates] = useState<BotAvatarState[]>([]);
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-    let botRequest = 0;
-    let stateRequest = 0;
-    const refreshBots = async () => {
-      const request = ++botRequest;
-      try {
-        const [current, archived] = await Promise.all([rpc.bots.list(), rpc.bots.listArchived()]);
-        if (active && request === botRequest) setBots([...current, ...archived]);
-      } catch {
-        /* The existing shell owns the user-facing connection error. */
-      }
-    };
-    const refreshStates = async () => {
-      const request = ++stateRequest;
-      try {
-        const next = await rpc.bots.avatarStates();
-        if (active && request === stateRequest) setStates(next);
-      } catch {
-        /* Keep the last confirmed server state until connectivity returns. */
-      }
-    };
-    const refreshVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      void refreshBots();
-      void refreshStates();
-    };
-    refreshVisible();
-    const stateTimer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshStates();
-    }, 2000);
-    const botTimer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshBots();
-    }, 15000);
-    document.addEventListener("visibilitychange", refreshVisible);
-    window.addEventListener("workpal:avatar-refresh", refreshVisible);
-    return () => {
-      active = false;
-      window.clearInterval(stateTimer);
-      window.clearInterval(botTimer);
-      document.removeEventListener("visibilitychange", refreshVisible);
-      window.removeEventListener("workpal:avatar-refresh", refreshVisible);
-    };
-  }, [enabled, location.pathname]);
-  const match = /^\/app\/([^/]+)$/.exec(location.pathname);
-  const currentBotId =
-    match && !["tasks", "artifacts"].includes(match[1]!) ? decodeURIComponent(match[1]!) : null;
-  return (
-    <AvatarCatalogProvider bots={bots} states={states} currentBotId={currentBotId}>
-      {children}
-    </AvatarCatalogProvider>
   );
 }
 
