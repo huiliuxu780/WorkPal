@@ -23,4 +23,21 @@ Visual inspection of the unlabeled silhouettes found four distinct cues on both 
 
 ## Implementation boundary
 
-AV-02 uses these four v0.7 files for 16px. The original full SVGs remain the approved files for 24/32/64px. The light-theme point colors follow the [AV-00 contrast decision](../AV-00-decision.md); dark-theme colors follow MOTION-SPEC v0.6. This review does not certify the final mounted component, other backgrounds, model behavior, or recognition by every user. The 16px static state code still relies mainly on point color; accessible state text and names remain required, and AV-02 must recheck contrast and point placement in its real surfaces.
+AV-02 uses these four v0.7 files for 16px. The original full SVGs remain the approved files for 24/32/64px. The light-theme point colors follow the [AV-00 contrast decision](../AV-00-decision.md); dark-theme colors follow MOTION-SPEC v0.6. This review does not certify the final mounted component, other backgrounds, model behavior, or recognition by every user. The 16px static state code still relies mainly on point color; accessible state text and names remain required, and AV-02 must recheck contrast and point placement in its real surfaces. *(The "relies mainly on point color" sentence is superseded by the addendum below.)*
+
+## Addendum (2026-10-18): non-color state cues at 16px
+
+Codex review on PR #50 found that on 16px surfaces without adjacent state text (example cited: the `Artifacts.tsx` bot chips), the working, approval and waiting points are the same 6px circle differing only by hue — inaccessible to a sighted color-blind user and contradicting the acceptance condition that color must not be the only signal. This addendum closes that finding; the frozen compact SVG bytes and all frozen point colors are untouched.
+
+The 6px state point gains a per-state **shape** alongside its color:
+
+| State | Shape | Silhouette |
+| --- | --- | --- |
+| working | filled circle | round, solid |
+| approval | filled diamond (square rotated 45°) | angular, solid |
+| waiting | hollow ring (state-colored border, transparent center) | round, hollow |
+| failed | circle with the existing “!” glyph | round, solid + glyph |
+
+The four shapes are distinguishable without hue (round/angular × filled/hollow, plus the failed glyph). Constraints kept unchanged: every point color token (dark set and light-theme contrast set), and the 1.5px background-colored separation — the waiting ring moves that separation to an equivalent 1.5px outer halo so the gap is preserved.
+
+Implementation contract: the component marks the dot with `data-point-shape="circle|diamond|ring|alert"`, and the shape CSS keys only off that attribute, so the mapping is pinned by DOM-level unit tests (jsdom cannot evaluate the stylesheet). Both 16px point surfaces — the compact character avatar (AV-02) and the uploaded-image badge (AV-04) — carry the attribute. Accessible state text and names remain required where the design provides them; this note still does not certify recognition by every user.
