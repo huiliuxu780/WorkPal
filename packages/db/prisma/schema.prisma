@@ -51,6 +51,35 @@ model User {
   @@map("user")
 }
 
+model BotAvatarChange {
+  id              String    @id @default(cuid())
+  botId           String
+  bot             Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  userId          String
+  spaceId         String
+  source          String
+  runId           String?
+  operationKey    String?   @unique
+  /// Metadata-only marker for a keyed request that was already satisfied.
+  /// Never visible in history; keeps a lost-result retry idempotent.
+  noop            Boolean   @default(false)
+  /// Serialized write order, assigned at INSERT after the Bot lock. createdAt
+  /// is transaction-start time and can disagree with commit order under lock
+  /// waits, so all ordering goes through seq.
+  seq             BigInt    @default(autoincrement())
+  beforeMode      String
+  beforeCharacter String?
+  beforeColor     String
+  afterMode       String
+  afterCharacter  String?
+  afterColor      String
+  createdAt       DateTime  @default(now())
+  undoneAt        DateTime?
+
+  @@index([botId, seq])
+  @@map("bot_avatar_changes")
+}
+
 model Session {
   id                   String   @id
   expiresAt            DateTime
@@ -393,6 +422,7 @@ model Bot {
   botSecrets BotSecret[]
 
   externalConversations ExternalConversation[]
+  avatarChanges BotAvatarChange[]
 
   @@unique([spaceId, spawnKey])
   @@index([spaceId, userId, archivedAt, pinned, updatedAt])

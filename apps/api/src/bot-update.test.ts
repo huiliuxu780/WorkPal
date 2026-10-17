@@ -2,9 +2,41 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@rakazo/db", () => ({
   appendEventInTransaction: vi.fn(),
+  changeBotAvatarInTransaction: vi.fn(),
 }));
 
-import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
+import { changeBotAvatarInTransaction } from "@rakazo/db";
+import {
+  appendAvatarUpdatedEvent,
+  botProfileLabelsChanged,
+  commitBotUpdate,
+} from "./bot-update.js";
+
+describe("appendAvatarUpdatedEvent", () => {
+  it("writes the Bot thread refresh event in the caller's transaction", async () => {
+    const tx = {
+      bot: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          name: "Chief",
+          title: "",
+          description: "",
+          thread: { id: "thread-1" },
+        }),
+      },
+    };
+    const append = vi.fn().mockResolvedValue({ seq: 7 });
+    await expect(
+      appendAvatarUpdatedEvent(tx as never, { botId: "bot-1", spaceId: "space-1" }, append),
+    ).resolves.toEqual({ threadId: "thread-1", seq: 7 });
+    expect(append).toHaveBeenCalledWith(tx, {
+      spaceId: "space-1",
+      threadId: "thread-1",
+      botId: "bot-1",
+      type: "bot.updated",
+      payload: { botId: "bot-1", name: "Chief", title: "", description: "" },
+    });
+  });
+});
 
 describe("botProfileLabelsChanged", () => {
   it("is true when profile labels or avatar identity change", () => {
@@ -19,6 +51,45 @@ describe("botProfileLabelsChanged", () => {
 });
 
 describe("commitBotUpdate", () => {
+  it("routes existing update-RPC avatar fields through the audit transaction", async () => {
+    const tx = {
+      bot: {
+        update: vi.fn().mockResolvedValue({ id: "bot-1", name: "Bot", title: "", description: "" }),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx)),
+    };
+    const appendEvent = vi.fn().mockResolvedValue({ seq: 1 });
+    const notify = vi.fn().mockResolvedValue(undefined);
+    await commitBotUpdate(
+      {
+        prisma: prisma as never,
+        notify,
+        spaceId: "space-1",
+        threadId: "thread-1",
+        botId: "bot-1",
+        data: { name: "Bot" },
+        emitBotUpdated: true,
+        avatarChange: {
+          userId: "user-1",
+          choice: { avatarMode: "character", avatarCharacter: "wave" },
+        },
+      },
+      appendEvent,
+    );
+    expect(changeBotAvatarInTransaction).toHaveBeenCalledWith(tx, {
+      userId: "user-1",
+      spaceId: "space-1",
+      botId: "bot-1",
+      source: "user",
+      choice: { avatarMode: "character", avatarCharacter: "wave" },
+    });
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(tx.bot.update).toHaveBeenCalledOnce();
+    expect(appendEvent).toHaveBeenCalledOnce();
+  });
+
   it("writes the bot row and bot.updated in one transaction when labels change", async () => {
     const updated = {
       id: "bot-1",

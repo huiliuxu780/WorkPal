@@ -303,6 +303,14 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     status: z.enum(["created", "archived", "deleted"]),
   }),
   z.object({
+    kind: z.literal("avatar_change"),
+    changeId: z.string(),
+    beforeMode: z.enum(["legacy", "character", "upload"]),
+    beforeCharacter: z.enum(["dot", "treble", "wave", "bounce"]).nullable(),
+    afterMode: z.enum(["character", "upload"]),
+    afterCharacter: z.enum(["dot", "treble", "wave", "bounce"]).nullable(),
+  }),
+  z.object({
     /** Compact card for a remote cloud coding agent (not the bot computer). */
     kind: z.literal("cloud_agent"),
     agentId: z.string(),

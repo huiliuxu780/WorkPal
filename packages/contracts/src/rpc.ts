@@ -7,7 +7,11 @@ import {
   ATTACHMENT_MAX_BASE64_LENGTH,
   ATTACHMENT_MAX_COUNT,
 } from "./attachments.js";
-import { BotAvatarStateSchema } from "./bot-avatar.js";
+import {
+  AvatarChoiceSchema,
+  BotAvatarChangeViewSchema,
+  BotAvatarStateSchema,
+} from "./bot-avatar.js";
 import {
   ActionApprovalRuleSchema,
   ActionAutoReviewSettingsSchema,
@@ -75,8 +79,8 @@ import {
   UpdateBotInput,
   UpdateExternalConversationPolicyInput,
   UpdateGroupInput,
-  UsageRecordSchema,
   UsageRangeSchema,
+  UsageRecordSchema,
   UsageSummarySchema,
   VoiceCatalogEntrySchema,
   VoiceCredentialSchema,
@@ -252,7 +256,14 @@ export const appContract = {
   bots: {
     list: oc.output(z.array(BotSchema)),
     avatarStates: oc.output(z.array(BotAvatarStateSchema)),
-    acknowledgeAvatarFailure: oc.input(z.object({ runId: Id })).output(z.object({ ok: z.literal(true) })),
+    acknowledgeAvatarFailure: oc
+      .input(z.object({ runId: Id }))
+      .output(z.object({ ok: z.literal(true) })),
+    changeAvatar: oc
+      .input(z.object({ botId: Id, choice: AvatarChoiceSchema }))
+      .output(BotAvatarChangeViewSchema.nullable()),
+    avatarChanges: oc.input(z.object({ botId: Id })).output(z.array(BotAvatarChangeViewSchema)),
+    undoAvatarChange: oc.input(z.object({ changeId: Id })).output(BotAvatarChangeViewSchema),
     listArchived: oc.output(z.array(BotSchema)),
     get: oc.input(botId).output(BotSchema),
     create: oc.input(CreateBotInput).output(BotSchema),
