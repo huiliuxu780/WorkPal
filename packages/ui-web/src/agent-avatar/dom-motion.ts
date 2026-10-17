@@ -9,13 +9,32 @@ const propForState: Partial<Record<AvatarActivity, string>> = {
 };
 
 /** Mutate only wrapper transforms; frozen path data and the feet never change. */
-export function createAvatarDomRenderer(root: HTMLElement) {
+export type AvatarDomRenderer = ((presentation: MotionPresentation) => void) & {
+  /**
+   * Put every mutated attribute and inline style back to its captured base.
+   * The registration effect must call this on cleanup: when botId/character
+   * change without a remount, React does not rewrite transforms shared by two
+   * characters, and the next renderer would capture the animated value as its
+   * "original" and compound transforms from there (PR #53 review P2).
+   */
+  restore(): void;
+};
+
+export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
   const art = root.querySelector<SVGSVGElement>(".rakazo-agent-avatar-art svg");
-  if (!art) return () => {};
-  const layers = new Map<string, { node: SVGGElement; original: string }>();
+  if (!art) return Object.assign(() => {}, { restore: () => {} });
+  const layers = new Map<
+    string,
+    { node: SVGGElement; original: string; originalOpacity: string | null }
+  >();
   for (const name of ["body", "eyewhite", "pupilL", "pupilR", "symbol"]) {
     const node = art.querySelector<SVGGElement>(`g[id="${name}"]`);
-    if (node) layers.set(name, { node, original: node.getAttribute("transform") ?? "" });
+    if (node)
+      layers.set(name, {
+        node,
+        original: node.getAttribute("transform") ?? "",
+        originalOpacity: node.getAttribute("opacity"),
+      });
   }
   const props = [...root.querySelectorAll<HTMLElement>("[data-avatar-prop]")];
   const character = root.dataset.character ?? "dot";
@@ -32,7 +51,7 @@ export function createAvatarDomRenderer(root: HTMLElement) {
     layer.node.setAttribute("transform", `${prefix} ${layer.original}`);
     if (opacity !== undefined) layer.node.setAttribute("opacity", String(opacity));
   };
-  return (presentation: MotionPresentation) => {
+  const render = (presentation: MotionPresentation) => {
     const { frame, state, outgoingState, outgoingScale } = presentation;
     const { tx, ty, sx, sy, rot } = frame.body;
     const foot = BODY_FOOT;
@@ -75,4 +94,22 @@ export function createAvatarDomRenderer(root: HTMLElement) {
     }
     root.dataset.motionReady = "true";
   };
+  return Object.assign(render, {
+    restore() {
+      for (const { node, original, originalOpacity } of layers.values()) {
+        node.setAttribute("transform", original);
+        if (originalOpacity === null) node.removeAttribute("opacity");
+        else node.setAttribute("opacity", originalOpacity);
+      }
+      for (const node of props) {
+        node.style.opacity = "";
+        node.style.transform = "";
+        const glow = node.querySelector<SVGElement>("#glow");
+        const cursor = node.querySelector<SVGElement>("#cursor");
+        if (glow) glow.style.opacity = "";
+        if (cursor) cursor.style.opacity = "";
+      }
+      delete root.dataset.motionReady;
+    },
+  });
 }

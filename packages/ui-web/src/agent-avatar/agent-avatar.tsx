@@ -76,14 +76,22 @@ export const AgentAvatar = memo(function AgentAvatar({
   useEffect(() => {
     if (isCompact || !root.current) return;
     const director = avatarDirector();
-    return director.register({
+    const renderer = createAvatarDomRenderer(root.current);
+    const unregister = director.register({
       instanceKey,
       botId,
       character: resolved,
       state: activity,
       current,
-      render: createAvatarDomRenderer(root.current),
+      render: renderer,
     });
+    return () => {
+      unregister();
+      // Characters can share base layer transforms, so React never rewrites
+      // those attributes on an identity change; restoring them here keeps the
+      // next renderer from capturing animated values as its base (PR #53 P2).
+      renderer.restore();
+    };
     // Registration is tied to the displayed identity and SVG, not every activity update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceKey, botId, resolved, isCompact]);
