@@ -246,4 +246,33 @@ describe("AvatarDirector", () => {
     expect(observed.at(-1)?.outgoingState).toBe("waiting");
     director.dispose();
   });
+
+  it("cancels a queued transition when the state reverts before landing", () => {
+    const env = new FakeEnvironment();
+    const director = new AvatarDirector(env);
+    const observed: MotionPresentation[] = [];
+    director.register({
+      instanceKey: "revert",
+      botId: "revert",
+      character: "dot",
+      state: "working",
+      current: true,
+      render: (value) => observed.push(value),
+    });
+    // Queue a waiting transition mid-hop (elapsed < 1260, hopAge < 420).
+    env.step(100);
+    director.pulse("revert");
+    director.update("revert", { state: "waiting" });
+    env.step(100);
+    expect(observed.at(-1)?.state).toBe("working");
+    // Activity reverts before the queued transition lands. Without clearing
+    // entry.pending on the revert, the tick after the deadline commits the
+    // stale waiting state and the avatar disagrees with its data-state
+    // until the next activity change (PR #53 review P2).
+    director.update("revert", { state: "working" });
+    env.step(400);
+    expect(observed.some((value) => value.state === "waiting")).toBe(false);
+    expect(observed.at(-1)?.state).toBe("working");
+    director.dispose();
+  });
 });

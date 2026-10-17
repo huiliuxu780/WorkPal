@@ -25,6 +25,19 @@ export const avatarStateNames: Record<AvatarActivity, string> = {
   failed: "Error",
 };
 
+export type AvatarPointShape = "circle" | "diamond" | "ring" | "alert";
+
+/**
+ * Non-color cue for the 16px state point (AV-00 acceptance addendum 2026-10-18):
+ * hue is never the only channel. Shape CSS keys only off `data-point-shape`.
+ */
+export const AVATAR_POINT_SHAPES: Record<Exclude<AvatarActivity, "idle">, AvatarPointShape> = {
+  working: "circle",
+  approval: "diamond",
+  waiting: "ring",
+  failed: "alert",
+};
+
 export interface AgentAvatarProps {
   botId: string;
   character: AvatarCharacter | null | undefined;
@@ -66,14 +79,22 @@ export const AgentAvatar = memo(function AgentAvatar({
   useEffect(() => {
     if (isCompact || !root.current) return;
     const director = avatarDirector();
-    return director.register({
+    const renderer = createAvatarDomRenderer(root.current);
+    const unregister = director.register({
       instanceKey,
       botId,
       character: resolved,
       state: activity,
       current,
-      render: createAvatarDomRenderer(root.current),
+      render: renderer,
     });
+    return () => {
+      unregister();
+      // Characters can share base layer transforms, so React never rewrites
+      // those attributes on an identity change; restoring them here keeps the
+      // next renderer from capturing animated values as its base (PR #53 P2).
+      renderer.restore();
+    };
     // Registration is tied to the displayed identity and SVG, not every activity update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceKey, botId, resolved, isCompact]);
@@ -152,7 +173,11 @@ export const AgentAvatar = memo(function AgentAvatar({
         </>
       ) : null}
       {isCompact && activity !== "idle" ? (
-        <span className="rakazo-agent-avatar-dot" aria-hidden="true" />
+        <span
+          className="rakazo-agent-avatar-dot"
+          data-point-shape={AVATAR_POINT_SHAPES[activity]}
+          aria-hidden="true"
+        />
       ) : null}
     </span>
   );

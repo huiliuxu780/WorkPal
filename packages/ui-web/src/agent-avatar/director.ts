@@ -173,6 +173,11 @@ export class AvatarDirector {
   private requestState(entry: Entry, next: AvatarActivity) {
     const now = this.time();
     if (next === entry.state) {
+      // A revert to the current state must also cancel a transition queued
+      // mid-hop, or the tick after its deadline commits the stale pending
+      // state and the rendered avatar disagrees with its data-state until
+      // the next activity change (PR #53 review P2).
+      entry.pending = null;
       if (next === "approval" || next === "failed") this.commitState(entry, next, now);
       return;
     }
