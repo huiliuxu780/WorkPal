@@ -88,7 +88,8 @@ export async function changeBotAvatarInTransaction(
       ) {
         throw new AvatarChangeDenied("Operation belongs to another Bot");
       }
-      return prior;
+      // A replayed keyed no-op stays a no-op even if the avatar changed since.
+      return prior.noop ? null : prior;
     }
   }
   const nextColor = input.choice.avatarMode === "character" ? bot.color : input.choice.color;
@@ -99,6 +100,27 @@ export async function changeBotAvatarInTransaction(
     bot.avatarCharacter === nextCharacter &&
     bot.color === nextColor
   ) {
+    if (input.operationKey) {
+      // Keyed no-op: persist an invisible tombstone so a lost result retried
+      // after later avatar changes cannot re-apply the stale request.
+      await tx.botAvatarChange.create({
+        data: {
+          botId: bot.id,
+          userId: input.userId,
+          spaceId: input.spaceId,
+          source: input.source,
+          runId: input.runId ?? null,
+          operationKey: input.operationKey,
+          noop: true,
+          beforeMode: bot.avatarMode,
+          beforeCharacter: bot.avatarCharacter,
+          beforeColor: "",
+          afterMode: bot.avatarMode,
+          afterCharacter: bot.avatarCharacter,
+          afterColor: "",
+        },
+      });
+    }
     return null;
   }
   await tx.bot.update({
@@ -122,13 +144,14 @@ export async function changeBotAvatarInTransaction(
     },
   });
   const older = await tx.botAvatarChange.findMany({
-    where: { botId: bot.id },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    where: { botId: bot.id, noop: false },
+    orderBy: [{ seq: "desc" }],
     skip: 50,
     select: { id: true, operationKey: true },
   });
   // A Bot tool call may be retried after any number of later avatar changes.
-  // Keep its key as a metadata-only tombstone until the Bot is deleted.
+  // Keep its key (change row or no-op tombstone) until the Bot is deleted;
+  // only keyless visible entries past the 50-entry window are prunable.
   const prunable = older.filter((item) => !item.operationKey);
   if (prunable.length)
     await tx.botAvatarChange.deleteMany({ where: { id: { in: prunable.map((item) => item.id) } } });
@@ -155,8 +178,8 @@ export async function listBotAvatarChanges(prisma: PrismaClient, actor: Actor, b
   });
   if (!bot) throw new AvatarChangeDenied("Bot not found in this Space");
   const changes = await prisma.botAvatarChange.findMany({
-    where: { botId },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    where: { botId, noop: false },
+    orderBy: [{ seq: "desc" }],
     take: 50,
     select: {
       id: true,
@@ -185,8 +208,8 @@ export async function undoBotAvatarChangeInTransaction(
   if (!change) throw new AvatarChangeDenied("Avatar change not found");
   const bot = await lockedBot(tx, actor, change.botId);
   const latest = await tx.botAvatarChange.findFirst({
-    where: { botId: bot.id },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    where: { botId: bot.id, noop: false },
+    orderBy: [{ seq: "desc" }],
   });
   if (latest?.id !== change.id || change.undoneAt)
     throw new AvatarChangeDenied("Only the latest avatar change can be undone");
