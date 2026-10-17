@@ -117,3 +117,22 @@
 [data-theme="light"] .rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot {
   background: #c2410c;
 }
+
+/* Non-color 16px state cues (AV-00 acceptance addendum, 2026-10-18): the point
+   shape distinguishes states when hue is not perceivable. Point colors and the
+   1.5px separation stay frozen; the waiting ring moves the separation to an
+   equivalent outer halo so the gap survives the transparent center. */
+.rakazo-agent-avatar-dot[data-point-shape="diamond"] {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] {
+  background: transparent;
+  border-color: #7cb8f2;
+  box-shadow: 0 0 0 1.5px var(--avatar-surface);
+}
+[data-theme="light"]
+  .rakazo-agent-avatar[data-state="waiting"]
+  .rakazo-agent-avatar-dot[data-point-shape="ring"] {
+  border-color: #2563eb;
+}

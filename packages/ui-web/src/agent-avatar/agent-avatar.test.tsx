@@ -6,7 +6,7 @@ import {
   avatarActivityForItem,
   selectAvatarActivity,
 } from "./activity-map.js";
-import { AgentAvatar } from "./agent-avatar.js";
+import { AgentAvatar, AVATAR_POINT_SHAPES } from "./agent-avatar.js";
 
 describe("avatar activity mapping", () => {
   it("covers all 13 product ActivityKinds", () => {
@@ -155,6 +155,39 @@ describe("compact point contrast", () => {
       }
     }
     expect(avatarCss).toContain("border: 1.5px solid var(--avatar-surface)");
+  });
+});
+
+describe("compact point shape coding", () => {
+  const avatarCss = readFileSync(new URL("./agent-avatar.css", import.meta.url), "utf8");
+  const render = (activity: AvatarActivity) =>
+    renderToStaticMarkup(
+      <AgentAvatar botId="bot" character="treble" name="Maya" size={16} activity={activity} />,
+    );
+
+  it.each([
+    ["working", "circle"],
+    ["approval", "diamond"],
+    ["waiting", "ring"],
+    ["failed", "alert"],
+  ] as const)("marks the 16px %s point as %s", (state, shape) => {
+    expect(render(state)).toContain(`data-point-shape="${shape}"`);
+  });
+
+  it("keeps the four shapes distinct and styles them only via data-point-shape", () => {
+    expect(new Set(Object.values(AVATAR_POINT_SHAPES)).size).toBe(4);
+    // Diamond: the frozen approval point rotated to an angular silhouette.
+    expect(avatarCss).toMatch(
+      /\.rakazo-agent-avatar-dot\[data-point-shape="diamond"\]\s*\{[^}]*transform: rotate\(45deg\);[^}]*\}/,
+    );
+    // Ring: transparent center, frozen waiting hue as the ring, separation kept
+    // as an equivalent outer halo (AV-00 acceptance addendum, 2026-10-18).
+    expect(avatarCss).toMatch(
+      /\.rakazo-agent-avatar\[data-state="waiting"\][^{]*\.rakazo-agent-avatar-dot\[data-point-shape="ring"\]\s*\{[^}]*background: transparent;[^}]*border-color: #7cb8f2;[^}]*box-shadow: 0 0 0 1\.5px var\(--avatar-surface\);[^}]*\}/,
+    );
+    expect(avatarCss).toMatch(
+      /\[data-theme="light"\][^{]*\.rakazo-agent-avatar\[data-state="waiting"\][^{]*\.rakazo-agent-avatar-dot\[data-point-shape="ring"\]\s*\{[^}]*border-color: #2563eb;[^}]*\}/,
+    );
   });
 });
 

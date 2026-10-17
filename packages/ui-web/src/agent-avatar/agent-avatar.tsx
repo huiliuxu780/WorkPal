@@ -23,6 +23,19 @@ const stateNames: Record<AvatarActivity, string> = {
   failed: "Error",
 };
 
+export type AvatarPointShape = "circle" | "diamond" | "ring" | "alert";
+
+/**
+ * Non-color cue for the 16px state point (AV-00 acceptance addendum 2026-10-18):
+ * hue is never the only channel. Shape CSS keys only off `data-point-shape`.
+ */
+export const AVATAR_POINT_SHAPES: Record<Exclude<AvatarActivity, "idle">, AvatarPointShape> = {
+  working: "circle",
+  approval: "diamond",
+  waiting: "ring",
+  failed: "alert",
+};
+
 export interface AgentAvatarProps {
   botId: string;
   character: AvatarCharacter | null | undefined;
@@ -91,7 +104,11 @@ export const AgentAvatar = memo(function AgentAvatar({
         </span>
       ) : null}
       {isCompact && activity !== "idle" ? (
-        <span className="rakazo-agent-avatar-dot" aria-hidden="true" />
+        <span
+          className="rakazo-agent-avatar-dot"
+          data-point-shape={AVATAR_POINT_SHAPES[activity]}
+          aria-hidden="true"
+        />
       ) : null}
     </span>
   );
