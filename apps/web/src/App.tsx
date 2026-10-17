@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { LoadingState } from "./components/ai/primitives";
 import { authClient } from "./lib/auth";
+import { AvatarRuntime } from "./lib/avatar-runtime";
 import { markAfterPaint, markOnce } from "./lib/performance";
 import {
   holdUnreachableGate,
@@ -73,69 +74,76 @@ function SessionApp() {
   const user = session.data?.user;
   return (
     <div className="h-full" data-rakazo-app-state="ready">
-      <Suspense fallback={<div className="h-full bg-background" />}>
-        <Routes>
-          <Route path="/" element={user ? <Navigate to="/app" replace /> : <WelcomePage />} />
-          <Route
-            path="/sign-in"
-            element={
-              user ? <Navigate to={signInDestination} replace /> : <AuthPage key="in" mode="in" />
-            }
-          />
-          <Route
-            path="/sign-up"
-            element={user ? <Navigate to="/onboarding" replace /> : <AuthPage key="up" mode="up" />}
-          />
-          <Route
-            path="/forgot-password"
-            element={
-              user ? <Navigate to="/app" replace /> : <AuthPage key="forgot" mode="forgot" />
-            }
-          />
-          <Route path="/reset-password" element={<PasswordResetPage />} />
-          <Route
-            path="/onboarding"
-            element={user ? <OnboardingPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/mcp/oauth/callback"
-            element={user ? <McpOAuthCallbackPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/integrations/setup"
-            element={
-              user ? (
-                <IntegrationSetupPage />
-              ) : (
-                <Navigate to="/sign-in?next=/integrations/setup" replace />
-              )
-            }
-          />
-          <Route path="/app" element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />} />
-          {/* Task Center: the Shell keeps its sidebar; the main area becomes the
+      <AvatarRuntime enabled={Boolean(user)}>
+        <Suspense fallback={<div className="h-full bg-background" />}>
+          <Routes>
+            <Route path="/" element={user ? <Navigate to="/app" replace /> : <WelcomePage />} />
+            <Route
+              path="/sign-in"
+              element={
+                user ? <Navigate to={signInDestination} replace /> : <AuthPage key="in" mode="in" />
+              }
+            />
+            <Route
+              path="/sign-up"
+              element={
+                user ? <Navigate to="/onboarding" replace /> : <AuthPage key="up" mode="up" />
+              }
+            />
+            <Route
+              path="/forgot-password"
+              element={
+                user ? <Navigate to="/app" replace /> : <AuthPage key="forgot" mode="forgot" />
+              }
+            />
+            <Route path="/reset-password" element={<PasswordResetPage />} />
+            <Route
+              path="/onboarding"
+              element={user ? <OnboardingPage /> : <Navigate to="/sign-in" replace />}
+            />
+            <Route
+              path="/mcp/oauth/callback"
+              element={user ? <McpOAuthCallbackPage /> : <Navigate to="/sign-in" replace />}
+            />
+            <Route
+              path="/integrations/setup"
+              element={
+                user ? (
+                  <IntegrationSetupPage />
+                ) : (
+                  <Navigate to="/sign-in?next=/integrations/setup" replace />
+                )
+              }
+            />
+            <Route
+              path="/app"
+              element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}
+            />
+            {/* Task Center: the Shell keeps its sidebar; the main area becomes the
               background-tasks list. Must precede /app/:botId. */}
-          <Route
-            path="/app/tasks"
-            element={user ? <ShellPage tasksMode /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/app/g/:groupId"
-            element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/app/artifacts"
-            element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/app/artifacts/:artifactId"
-            element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/app/:botId"
-            element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}
-          />
-        </Routes>
-      </Suspense>
+            <Route
+              path="/app/tasks"
+              element={user ? <ShellPage tasksMode /> : <Navigate to="/sign-in" replace />}
+            />
+            <Route
+              path="/app/g/:groupId"
+              element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}
+            />
+            <Route
+              path="/app/artifacts"
+              element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
+            />
+            <Route
+              path="/app/artifacts/:artifactId"
+              element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
+            />
+            <Route
+              path="/app/:botId"
+              element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}
+            />
+          </Routes>
+        </Suspense>
+      </AvatarRuntime>
     </div>
   );
 }

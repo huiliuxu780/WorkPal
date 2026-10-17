@@ -55,11 +55,13 @@ test("shows peer chips in transcript and opens view-only peer chat", async ({ pa
   await expect(chip).toBeVisible({ timeout: 30_000 });
   await expect(chip.getByText(/Messaged|Message from/)).toBeVisible();
   await expect(chip).toHaveAccessibleName(/Messaged Researcher|Message from Researcher/);
-  await expect(chip.locator(".rakazo-bot-avatar")).toBeVisible();
+  await expect(chip.locator(".rakazo-agent-avatar")).toBeVisible();
   await expect(chip).not.toContainText("{peer}");
   // User bubble still contains the phrase; peer body must not appear outside the chip.
   await expect(chip).not.toContainText("peer-exchange-alpha");
-  await expect(transcript.getByText("peer-exchange-alpha")).toHaveCount(1);
+  await expect(
+    transcript.getByTestId("message-user-bubble").getByText("peer-exchange-alpha"),
+  ).toHaveCount(1);
   const assertChipLeftAligned = async () => {
     const transcriptBox = await transcript.boundingBox();
     const chipBox = await chip.boundingBox();

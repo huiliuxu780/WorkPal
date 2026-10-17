@@ -1,231 +1,112 @@
-import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AvatarStyleProvider } from "./avatar-style.js";
-import {
-  BotAvatar,
-  DEFAULT_GROK_BOT_COLOR,
-  GROK_BOT_COLORS,
-  GrokShapePreview,
-  parseBotAvatar,
-  resolvePersonaColorDef,
-  resolvePersonaShape,
-} from "./bot-avatar.js";
+import { AvatarCatalogProvider } from "./agent-avatar/catalog.js";
+import { BotAvatar, parseBotAvatar } from "./bot-avatar.js";
 
-describe("BotAvatar", () => {
-  it("renders distinct SVG gradient IDs for concurrent working avatars", () => {
+describe("BotAvatar compatibility entrypoint", () => {
+  it("uses persisted character and state while uploaded images retain their bytes", () => {
     const html = renderToString(
-      <div>
-        <BotAvatar color="#8B5CF6" status="running" />
-        <BotAvatar color="#10B981" status="running" />
-      </div>,
+      <AvatarCatalogProvider
+        bots={[
+          { id: "bot-a", name: "Maya", avatarMode: "character", avatarCharacter: "wave" },
+          { id: "bot-b", name: "Image Bot", avatarMode: "upload", avatarCharacter: null },
+        ]}
+        states={[
+          {
+            botId: "bot-a",
+            state: "approval",
+            runId: "run-a",
+            revision: 2,
+            updatedAt: "2026-10-17T00:00:00Z",
+          },
+        ]}
+        currentBotId="bot-a"
+      >
+        <BotAvatar color="#8B5CF6" identity="bot-a" size={28} status="idle" />
+        <BotAvatar color="data:image/png;base64,abc" identity="bot-b" size={32} />
+      </AvatarCatalogProvider>,
     );
-
-    const gradMatches = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
-    expect(gradMatches).toHaveLength(4);
-    expect(new Set(gradMatches).size).toBe(4);
-    for (const id of gradMatches) {
-      expect(id).toBeTruthy();
-      expect(html).toContain(`url(#${id})`);
-    }
+    expect(html).toContain('data-character="wave"');
+    expect(html).toContain('data-state="approval"');
+    expect(html).toContain('data-size="32"');
+    expect(html).toContain('aria-label="Maya · Needs approval"');
+    expect(html).toContain('src="data:image/png;base64,abc"');
   });
 
-  it.each([...ACTIVE_RUN_STATUSES])("marks active run status %s as working", (status) => {
-    const html = renderToString(<BotAvatar color="#3B82F6" status={status} />);
-    expect(html).toContain("<svg");
-    expect(html).toContain('data-working="true"');
-  });
-
-  it("keeps working attribute false when idle", () => {
-    const html = renderToString(<BotAvatar color="#F59E0B" status="idle" />);
-    expect(html).toContain('data-working="false"');
-  });
-
-  it("renders a geometric mascot for plain color values", () => {
+  it("shows the server-owned state for uploaded avatars without a nested keyboard stop", () => {
     const html = renderToString(
-      <BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="maya" size={28} status="running" />,
+      <AvatarCatalogProvider
+        bots={[{ id: "uploaded", name: "Image Bot", avatarMode: "upload", avatarCharacter: null }]}
+        states={[
+          { botId: "uploaded", state: "approval", runId: "run-1", revision: 1, updatedAt: null },
+        ]}
+        currentBotId={null}
+      >
+        <button type="button">
+          <BotAvatar color="data:image/png;base64,abc" identity="uploaded" size={24} />
+          Image Bot
+        </button>
+      </AvatarCatalogProvider>,
     );
-    expect(html).toContain("<svg");
-    expect(html).toContain("<path");
-    expect(html).toContain("<ellipse");
-    expect(html).toContain('data-working="true"');
+    expect(html).toContain('data-state="approval"');
+    expect(html).toContain('aria-label="Image Bot · Needs approval"');
+    expect(html).toContain('class="rakazo-agent-avatar-dot"');
+    // Upload badges carry the same non-color shape cue as compact characters
+    // (AV-00 acceptance addendum): approval = diamond.
+    expect(html).toContain('data-point-shape="diamond"');
+    expect(html).not.toContain('tabIndex="0"');
+    expect(html).not.toContain('tabindex="0"');
   });
 
-  it("renders distinct shapes for distinct bot identities", () => {
-    const maya = renderToString(<BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="maya" />);
-    const github = renderToString(<BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="github" />);
-    expect(maya).not.toEqual(github);
-  });
-
-  it("parses shape indexes from encoded color values", () => {
-    const parsed = parseBotAvatar(`${DEFAULT_GROK_BOT_COLOR}::shape_3`);
-    expect(parsed.color).toBe(DEFAULT_GROK_BOT_COLOR);
-    expect(parsed.shapeIndex).toBe(3);
-    expect(parsed.isImage).toBe(false);
-  });
-
-  it("normalizes malformed shape suffixes to shape 0", () => {
-    expect(parseBotAvatar(`${DEFAULT_GROK_BOT_COLOR}::shape_-1`).shapeIndex).toBe(0);
-    expect(parseBotAvatar(`${DEFAULT_GROK_BOT_COLOR}::shape_3junk`).shapeIndex).toBe(0);
-    expect(parseBotAvatar(`${DEFAULT_GROK_BOT_COLOR}::shape_`).shapeIndex).toBe(0);
-  });
-
-  it("exposes the violet identity color as the shared default", () => {
-    expect(GROK_BOT_COLORS).toContain(DEFAULT_GROK_BOT_COLOR);
-    expect(parseBotAvatar(`${DEFAULT_GROK_BOT_COLOR}::shape_0`).color).toBe(DEFAULT_GROK_BOT_COLOR);
-  });
-
-  it("resolves explicit colors and shapes", () => {
-    expect(resolvePersonaColorDef("bot", "#10B981").hex.toLowerCase()).toBe("#10b981");
-    expect(resolvePersonaColorDef("bot", "#fff").hex).toBe("#fff");
-    expect(resolvePersonaShape("bot", "hex")).toContain("M");
-    expect(GROK_BOT_COLORS.length).toBeGreaterThan(0);
-  });
-
-  it("falls back to the identity palette for invalid custom hex", () => {
-    expect(resolvePersonaColorDef("bot", "#zzzzzz")).toEqual(resolvePersonaColorDef("bot"));
-    expect(resolvePersonaColorDef("bot", "#ggg")).toEqual(resolvePersonaColorDef("bot"));
-  });
-
-  it("renders uploaded images without the geometric svg", () => {
+  it("keeps character avatars non-focusable when embedded in an existing button", () => {
     const html = renderToString(
-      <BotAvatar color="data:image/png;base64,abc" identity="maya" size={32} />,
+      <button type="button">
+        <BotAvatar color="#8B5CF6" identity="bot-a" size={24} />
+        Bot A
+      </button>,
     );
-    expect(html).toContain("<img");
-    expect(html).not.toContain("<path");
-    expect(html).not.toContain("grok-character-eyes");
+    expect(html).not.toContain('tabIndex="0"');
+    expect(html).not.toContain('tabindex="0"');
   });
 
-  it("does not treat arbitrary http(s) color values as remote images", () => {
-    const parsed = parseBotAvatar("https://evil.example/track.png");
-    expect(parsed.isImage).toBe(false);
-    expect(parsed.imageUrl).toBeUndefined();
+  it("uses a stable character when catalog data has not loaded", () => {
+    const one = renderToString(<BotAvatar color="#8B5CF6" identity="bot-a" size={14} />);
+    const two = renderToString(<BotAvatar color="#8B5CF6" identity="bot-a" size={14} />);
+    expect(one).toBe(two);
+    expect(one).toContain('data-size="16"');
+    expect(one).toContain('data-state="idle"');
+  });
+
+  it("lets explicit character mode override a retained upload color", () => {
     const html = renderToString(
-      <BotAvatar color="https://evil.example/track.png" identity="maya" size={32} />,
+      <AvatarCatalogProvider
+        bots={[{ id: "bot", name: "Maya", avatarMode: "character", avatarCharacter: "dot" }]}
+        states={[]}
+        currentBotId={null}
+      >
+        <BotAvatar color="data:image/png;base64,abc" identity="bot" size={24} />
+      </AvatarCatalogProvider>,
     );
+    expect(html).toContain('data-character="dot"');
     expect(html).not.toContain("<img");
-    expect(html).not.toContain("evil.example");
   });
 
-  it("honors reduced-motion for the working mascot pulse class", () => {
-    const html = renderToString(
-      <BotAvatar color="#8B5CF6" identity="maya" size={32} status="running" />,
+  it("never puts remote URLs into an img source", () => {
+    expect(parseBotAvatar("https://evil.example/track.png").isImage).toBe(false);
+    expect(
+      renderToString(<BotAvatar color="https://evil.example/track.png" identity="bot" />),
+    ).not.toContain("<img");
+  });
+
+  it.each([
+    [16, 16],
+    [20, 24],
+    [28, 32],
+    [36, 32],
+    [148, 64],
+  ])("normalizes %ipx to %ipx", (input, expected) => {
+    expect(renderToString(<BotAvatar color="#fff" identity="bot" size={input} />)).toContain(
+      `data-size="${expected}"`,
     );
-    expect(html).toContain("animate-pulse");
-    expect(html).toContain("motion-reduce:animate-none");
-  });
-
-  it("exposes shape picker name and pressed state", () => {
-    const html = renderToString(
-      <GrokShapePreview shapeIndex={0} color="#8B5CF6" selected onClick={() => undefined} />,
-    );
-    expect(html).toContain('aria-label="hex"');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain("focus-visible:ring-2");
-  });
-
-  it("renders distinct robot and organic previews for the same identity", () => {
-    const robot = renderToString(
-      <BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="avatar-style-preview" variant="robot" />,
-    );
-    const organic = renderToString(
-      <BotAvatar
-        color={DEFAULT_GROK_BOT_COLOR}
-        identity="avatar-style-preview"
-        variant="organic"
-      />,
-    );
-    expect(robot).not.toEqual(organic);
-    expect(robot).toContain("grok-character-eyes");
-    expect(organic).toContain("rakazo-organic-avatar");
-    expect(organic).not.toContain("grok-character-eyes");
-  });
-
-  it("uses the preferred avatar style when variant is omitted", () => {
-    const html = renderToString(
-      <AvatarStyleProvider value="organic">
-        <BotAvatar color={DEFAULT_GROK_BOT_COLOR} identity="maya" />
-      </AvatarStyleProvider>,
-    );
-    expect(html).toContain("rakazo-organic-avatar");
-    expect(html).not.toContain("grok-character-eyes");
-  });
-
-  it("keeps uploaded images when the organic style is preferred", () => {
-    const html = renderToString(
-      <BotAvatar color="data:image/png;base64,abc" identity="maya" variant="organic" />,
-    );
-    expect(html).toContain("<img");
-    expect(html).not.toContain("rakazo-organic-avatar");
-  });
-
-  it("keeps an encoded studio shape when the organic style is preferred", () => {
-    const html = renderToString(
-      <BotAvatar color={`${DEFAULT_GROK_BOT_COLOR}::shape_3`} identity="maya" variant="organic" />,
-    );
-    expect(html).toContain("grok-character-eyes");
-    expect(html).not.toContain("rakazo-organic-avatar");
-  });
-
-  it("fills the organic body with the resolved palette hex when the custom color is invalid", () => {
-    const fallback = resolvePersonaColorDef("maya", "#zzzzzz");
-    const html = renderToString(<BotAvatar color="#zzzzzz" identity="maya" variant="organic" />);
-    expect(html).toContain("rakazo-organic-avatar");
-    expect(html).toContain(`fill="${fallback.hex}"`);
-    expect(html).not.toContain("#zzzzzz");
-  });
-
-  it("renders the bloub avatar for the bloub variant", () => {
-    const html = renderToString(<BotAvatar color="#D9508A" identity="maya" variant="bloub" />);
-    expect(html).toContain("rakazo-bloub-avatar");
-    expect(html).toContain("<mask");
-    expect(html).toContain('data-shape="cercle"');
-    expect(html).toContain('data-expression="neutre"');
-    expect(html).not.toContain("NaN");
-    expect(html).not.toContain("grok-character-eyes");
-  });
-
-  it("renders bloub with the studio shape and expression encoding", () => {
-    const html = renderToString(
-      <BotAvatar color="#0a0a0c::bloub::nuage::colere" identity="maya" />,
-    );
-    expect(html).toContain('data-shape="nuage"');
-    expect(html).toContain('data-expression="colere"');
-    expect(html).toContain('fill="#0a0a0c"');
-  });
-
-  it("prefers bloub from the style context when no variant is given", () => {
-    const html = renderToString(
-      <AvatarStyleProvider value="bloub">
-        <BotAvatar color="#D9508A" identity="maya" />
-      </AvatarStyleProvider>,
-    );
-    expect(html).toContain("rakazo-bloub-avatar");
-  });
-
-  it("keeps an encoded studio shape when the bloub style is preferred", () => {
-    const html = renderToString(
-      <BotAvatar color={`${DEFAULT_GROK_BOT_COLOR}::shape_3`} identity="maya" variant="bloub" />,
-    );
-    expect(html).toContain("grok-character-eyes");
-    expect(html).not.toContain("rakazo-bloub-avatar");
-  });
-
-  it("parses the bloub studio encoding", () => {
-    expect(parseBotAvatar("#D9508A::bloub")).toEqual({
-      color: "#D9508A",
-      isImage: false,
-      bloub: true,
-    });
-  });
-
-  it("renders bloub for the studio encoding even when the account style is robot", () => {
-    const html = renderToString(
-      <AvatarStyleProvider value="robot">
-        <BotAvatar color="#D9508A::bloub" identity="maya" />
-      </AvatarStyleProvider>,
-    );
-    expect(html).toContain("rakazo-bloub-avatar");
-    expect(html).toContain('fill="#D9508A"');
   });
 });

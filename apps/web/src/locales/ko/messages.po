@@ -824,6 +824,10 @@ msgid "Available after the routine is saved"
 msgstr "루틴을 저장한 후 사용할 수 있습니다"
 
 #: src/pages/shell/avatar-studio-popover.tsx
+msgid "Avatar source"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Avatar Studio"
 msgstr "아바타 스튜디오"
 
@@ -859,10 +863,6 @@ msgstr "Bearer 토큰"
 msgid "Blocked"
 msgstr ""
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Bloub"
-msgstr ""
-
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "라이브 데스크톱 시작 중…"
@@ -878,6 +878,7 @@ msgstr "Bot"
 
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Bot"
 msgstr "봇"
 
@@ -944,6 +945,7 @@ msgstr "서버에 연결할 수 없습니다."
 #: src/pages/Artifacts.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/PluginsOverlay.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Cancel"
 msgstr "취소"
@@ -984,6 +986,10 @@ msgstr "변경 중…"
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Channels"
 msgstr "채널"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Characters"
+msgstr ""
 
 #: src/pages/shell/message-cards.tsx
 msgid "Chart failed to render: {error}"
@@ -1031,13 +1037,25 @@ msgstr "체크아웃에 로컬 변경 사항이 있습니다. 업데이트하기
 msgid "Choose a bot…"
 msgstr "Bot 선택…"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose a character or upload an image for this bot"
+msgstr ""
+
 #: src/pages/Auth.tsx
 msgid "Choose a new password"
 msgstr "새 비밀번호 선택"
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Choose file"
-msgstr "파일 선택"
+msgid "Choose a PNG, JPEG, or WebP image"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose avatar image"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose or drop a PNG, JPEG, or WebP image (5 MB max)"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Choose which connected model {productName} uses."
@@ -1073,7 +1091,6 @@ msgstr ""
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 #: src/pages/RoutineEditor.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/WindowChrome.tsx
 msgid "Close"
 msgstr "닫기"
@@ -1155,10 +1172,6 @@ msgstr ""
 #: src/pages/Shell.tsx
 msgid "Collapse {0}"
 msgstr "{0} 접기"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Colour"
-msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Coming soon"
@@ -1557,9 +1570,17 @@ msgstr ""
 msgid "Could not open terminal"
 msgstr "터미널을 열 수 없습니다"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Could not open this image"
+msgstr ""
+
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not play a test clip"
 msgstr "샘플 음성을 재생하지 못했습니다."
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Could not prepare this image"
+msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/Auth.tsx
@@ -1620,6 +1641,11 @@ msgstr "저장하지 못했습니다."
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save Auto Review"
 msgstr "자동 검토를 저장할 수 없습니다"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Could not save avatar"
+msgstr ""
 
 #: src/pages/GroupPanel.tsx
 msgid "Could not save group"
@@ -1993,7 +2019,6 @@ msgstr ""
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
 #: src/pages/Shell.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Done"
 msgstr "완료"
 
@@ -2028,10 +2053,6 @@ msgstr ""
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Draft skill"
 msgstr "작업 기술 초안"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Drag, drop, or paste an image"
-msgstr "이미지를 끌어다 놓거나 붙여넣으세요"
 
 #: src/pages/BotContextMenu.tsx
 msgid "Duplicate"
@@ -2194,10 +2215,6 @@ msgstr "내보내기"
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "CRM에서 이번 주 목록을 내려받아 공유 폴더에 넣기"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Expression"
-msgstr ""
 
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -2437,8 +2454,12 @@ msgid "Ignore"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Image upload area"
-msgstr "이미지 업로드 영역"
+msgid "Image dimensions are not supported"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Image must be smaller than 5 MB"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
@@ -3314,10 +3335,6 @@ msgstr ""
 msgid "Personal credential"
 msgstr "내 인증 정보"
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Pick the bloub shape, expression, and colour"
-msgstr ""
-
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
 msgstr "고정"
@@ -3596,7 +3613,6 @@ msgid "Research & writing"
 msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Reset"
 msgstr "재설정"
 
@@ -3741,6 +3757,7 @@ msgstr ""
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Save"
@@ -3904,10 +3921,6 @@ msgstr "설정: 사용량"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Setup help"
 msgstr "설정 도움말"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Shape"
-msgstr "모양"
 
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx

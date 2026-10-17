@@ -3,11 +3,11 @@ import {
   AVATAR_CHARACTERS,
   BOT_AVATAR_VALUE_MAX_LENGTH,
   BotAvatarValueSchema,
-  isBotAvatarValue,
-  pickAvatarCharacter,
-  parseBotAvatarValue,
-  resolveAvatarIdentity,
   CreateBotInput,
+  isBotAvatarValue,
+  parseBotAvatarValue,
+  pickAvatarCharacter,
+  resolveAvatarIdentity,
   UpdateBotInput,
 } from "./index.js";
 
@@ -33,21 +33,15 @@ describe("bot avatar values", () => {
     expect(isBotAvatarValue("https://evil.example/track.png")).toBe(false);
   });
 
-  it("accepts persisted writes and rejects oversized or remote values", () => {
+  it("accepts supported writes and rejects old style, oversized or remote values", () => {
     expect(isBotAvatarValue("#3EC5A8")).toBe(true);
     expect(isBotAvatarValue("#8B5CF6::shape_0")).toBe(true);
     expect(isBotAvatarValue("data:image/webp;base64,aGVsbG8=")).toBe(true);
-    expect(isBotAvatarValue("#8B5CF6::bloub")).toBe(true);
+    expect(isBotAvatarValue("#8B5CF6::bloub")).toBe(false);
     expect(isBotAvatarValue("#8B5CF6::bloubjunk")).toBe(false);
     expect(isBotAvatarValue("#8B5CF6::shape_3::bloub")).toBe(false);
-    expect(parseBotAvatarValue("#8B5CF6::bloub")).toEqual({ kind: "bloub", color: "#8B5CF6" });
-    expect(parseBotAvatarValue("#0a0a0c::bloub::galet::colere")).toEqual({
-      kind: "bloub",
-      color: "#0a0a0c",
-      shape: "galet",
-      expression: "colere",
-    });
-    expect(isBotAvatarValue("#0a0a0c::bloub::cercle::neutre")).toBe(true);
+    expect(parseBotAvatarValue("#8B5CF6::bloub")).toEqual({ kind: "other", raw: "#8B5CF6::bloub" });
+    expect(isBotAvatarValue("#0a0a0c::bloub::cercle::neutre")).toBe(false);
     expect(isBotAvatarValue("#0a0a0c::bloub::cercle::neutre::extra")).toBe(false);
     expect(
       isBotAvatarValue(`data:image/png;base64,${"A".repeat(BOT_AVATAR_VALUE_MAX_LENGTH)}`),
