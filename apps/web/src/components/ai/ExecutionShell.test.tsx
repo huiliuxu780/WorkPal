@@ -6,6 +6,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ExecutionShell } from "./ExecutionShell";
+import { RunPlanDisclosure } from "./RunPlanDisclosure";
+import { RunStepsDisclosure } from "./RunStepsDisclosure";
 
 vi.mock("@lingui/core/macro", () => ({
   t: (strings: TemplateStringsArray, ...values: unknown[]) =>
@@ -29,6 +31,32 @@ function plan(overrides: Partial<RunPlanRevision> = {}): RunPlanRevision {
     ],
     changeReason: null,
     createdAt: "2026-10-12T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+const STEP_ISO = "2026-10-12T00:00:00.000Z";
+
+function stepFixture(overrides: Partial<RunStepSnapshot> = {}): RunStepSnapshot {
+  return {
+    stepId: "deploy",
+    runId: "run-1",
+    sourceMessageId: null,
+    revision: 1,
+    order: 0,
+    title: "Deploy change",
+    status: "failed",
+    resultSummary: "Deploy blocked by policy",
+    planItemId: null,
+    parentStepId: null,
+    attemptId: null,
+    attemptNumber: 1,
+    startedAt: STEP_ISO,
+    completedAt: null,
+    evidence: [],
+    batch: null,
+    createdAt: STEP_ISO,
+    updatedAt: STEP_ISO,
     ...overrides,
   };
 }
@@ -368,26 +396,214 @@ describe("ExecutionShell failed reason focus (acceptance 8)", () => {
     container = null;
   });
 
-  it("moves focus to the failure target when a failed card is open", () => {
+  function mount(element: React.ReactElement): HTMLDivElement {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     act(() => {
-      root!.render(
-        <ExecutionShell
-          run={run("failed")}
-          activity={[]}
-          expansion={{ open: true, toggle: () => undefined }}
-          canExpand
-        >
-          <p data-testid="execution-failure-reason" data-failure-target tabIndex={-1}>
-            The billing service timed out
-          </p>
-        </ExecutionShell>,
-      );
+      root!.render(element);
     });
+    return container;
+  }
+
+  function rerender(element: React.ReactElement): void {
+    act(() => {
+      root!.render(element);
+    });
+  }
+
+  it("moves focus to the failure target when a failed card is open", () => {
+    mount(
+      <ExecutionShell
+        run={run("failed")}
+        activity={[]}
+        expansion={{ open: true, toggle: () => undefined }}
+        canExpand
+      >
+        <p data-testid="execution-failure-reason" data-failure-target tabIndex={-1}>
+          The billing service timed out
+        </p>
+      </ExecutionShell>,
+    );
     const active = document.activeElement;
     expect(active).not.toBeNull();
     expect(active!.hasAttribute("data-failure-target")).toBe(true);
+  });
+
+  it("focuses the REAL failed Step detail composed from RunStepsDisclosure (sync)", () => {
+    // Regression (review round P2): the production target must itself be
+    // focusable — a hand-written tabIndex node used to hide that it was not.
+    mount(
+      <ExecutionShell
+        run={run("failed")}
+        activity={[]}
+        steps={[stepFixture()]}
+        expansion={{ open: true, toggle: () => undefined }}
+        canExpand
+      >
+        <RunStepsDisclosure steps={[stepFixture()]} failed />
+      </ExecutionShell>,
+    );
+    const active = document.activeElement as HTMLElement | null;
+    expect(active).not.toBeNull();
+    expect(active!.hasAttribute("data-failure-target")).toBe(true);
+    // It is the real level-2 detail of the failed Step, inside the steps list.
+    expect(active!.closest('[data-step-id="deploy"]')).not.toBeNull();
+    expect(active!.textContent).toContain("Deploy blocked by policy");
+  });
+
+  it("focuses the REAL failed Step detail under its Plan item (RunPlanDisclosure)", () => {
+    const matched = stepFixture({ planItemId: "p2" });
+    mount(
+      <ExecutionShell
+        run={run("failed")}
+        activity={[]}
+        plan={plan()}
+        steps={[matched]}
+        expansion={{ open: true, toggle: () => undefined }}
+        canExpand
+      >
+        <RunPlanDisclosure plan={plan()} steps={[matched]} failed />
+      </ExecutionShell>,
+    );
+    const active = document.activeElement as HTMLElement | null;
+    expect(active).not.toBeNull();
+    expect(active!.hasAttribute("data-failure-target")).toBe(true);
+    expect(active!.closest('[data-plan-item-id="p2"]')).not.toBeNull();
+    expect(active!.textContent).toContain("Deploy blocked by policy");
+  });
+
+  it("lands focus on the failed Step detail that arrives AFTER the card opened", () => {
+    // Regression (review round P2): the detail loads asynchronously — opening
+    // a failed card before the Step exists must still land focus once it does.
+    const shell = (steps: RunStepSnapshot[], children: React.ReactNode) => (
+      <ExecutionShell
+        run={run("failed")}
+        activity={[]}
+        steps={steps}
+        expansion={{ open: true, toggle: () => undefined }}
+        canExpand
+      >
+        {children}
+      </ExecutionShell>
+    );
+    // Initially the failed Step is unknown: only the Run-level reason exists.
+    mount(
+      shell(
+        [],
+        <p data-testid="execution-failure-reason" data-failure-target tabIndex={-1}>
+          Scripted run failure
+        </p>,
+      ),
+    );
+    const first = document.activeElement as HTMLElement | null;
+    expect(first?.getAttribute("data-testid")).toBe("execution-failure-reason");
+
+    // The detail arrives: the reason block yields to the failed Step's own
+    // level-2 detail, and focus must move to the real target.
+    rerender(shell([stepFixture()], <RunStepsDisclosure steps={[stepFixture()]} failed />));
+    const active = document.activeElement as HTMLElement | null;
+    expect(active).not.toBeNull();
+    expect(active!.hasAttribute("data-failure-target")).toBe(true);
+    expect(active!.closest('[data-step-id="deploy"]')).not.toBeNull();
+  });
+});
+
+describe("ExecutionShell waiting card disclosure entry (review round P1)", () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+  let open = false;
+
+  afterEach(() => {
+    if (root) {
+      act(() => {
+        root!.unmount();
+      });
+      root = null;
+    }
+    container?.remove();
+    container = null;
+  });
+
+  function mountWaiting() {
+    open = false;
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const render = () =>
+      act(() => {
+        root!.render(
+          <ExecutionShell
+            run={run("waiting_input", "approval")}
+            activity={[]}
+            pendingInterventionKinds={["approval"]}
+            plan={plan()}
+            expansion={{
+              open,
+              toggle: () => {
+                open = !open;
+                render();
+              },
+            }}
+            canExpand
+            interventions={
+              <div data-testid="execution-interventions">
+                <button type="button">Allow once</button>
+              </div>
+            }
+          >
+            <RunPlanDisclosure plan={plan()} steps={[]} failed={false} />
+          </ExecutionShell>,
+        );
+      });
+    render();
+    return container!;
+  }
+
+  function click(host: HTMLElement, name: string) {
+    const button = [...host.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent === name,
+    );
+    expect(button, `button ${name}`).toBeTruthy();
+    act(() => {
+      button!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+  }
+
+  it("keeps the attention action AND offers an independent View progress / Collapse entry", () => {
+    const host = mountWaiting();
+    // Collapsed by default; the approval control is outside and operable.
+    expect(host.querySelector(".exc-details")!.hasAttribute("hidden")).toBe(true);
+    const attention = [...host.querySelectorAll("button")].find(
+      (button) => button.textContent === "Needs your attention",
+    );
+    expect(attention).toBeTruthy();
+    // The attention button is not a disclosure control any more — the
+    // independent toggle entry carries aria-expanded instead.
+    expect(attention!.hasAttribute("aria-expanded")).toBe(false);
+    const toggle = [...host.querySelectorAll("button")].find(
+      (button) => button.textContent === "View progress",
+    );
+    expect(toggle).toBeTruthy();
+    expect(toggle!.getAttribute("aria-expanded")).toBe("false");
+
+    // Expanding reveals the Plan (level 1) while the intervention stays put.
+    click(host, "View progress");
+    expect(host.querySelector(".exc-details")!.hasAttribute("hidden")).toBe(false);
+    expect(host.querySelector('[data-slot="plan"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="execution-interventions"]')).not.toBeNull();
+    const collapse = [...host.querySelectorAll("button")].find(
+      (button) => button.textContent === "Collapse",
+    );
+    expect(collapse).toBeTruthy();
+
+    // The attention action still focuses the first operable control.
+    click(host, "Needs your attention");
+    const active = document.activeElement as HTMLElement | null;
+    expect(active?.closest('[data-testid="execution-interventions"]')).not.toBeNull();
+
+    // And the disclosure closes again.
+    click(host, "Collapse");
+    expect(host.querySelector(".exc-details")!.hasAttribute("hidden")).toBe(true);
   });
 });

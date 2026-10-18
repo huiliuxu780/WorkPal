@@ -178,6 +178,44 @@ describe("buildExecutionCardModel status coverage", () => {
       text: "Send the report to billing@example.com?",
     });
     expect(card.action).toEqual({ verb: "Needs your attention", act: "attention" });
+    // Review round P1: the attention card keeps an INDEPENDENT disclosure
+    // entry so Plan/Steps/evidence stay reachable while waiting.
+    expect(card.secondaryAction).toEqual({ verb: "View progress", act: "toggle" });
+  });
+
+  it("flips the secondary disclosure entry to Collapse while expanded", () => {
+    const card = model(
+      run("waiting_input", "approval"),
+      [],
+      { pendingInterventionKinds: ["approval"] },
+      {
+        summary: summary({ status: "waiting_input", waitKind: "approval" }),
+        pendingInterventions: [intervention()],
+        expanded: true,
+      },
+    );
+    expect(card.action).toEqual({ verb: "Needs your attention", act: "attention" });
+    expect(card.secondaryAction).toEqual({ verb: "Collapse", act: "toggle" });
+  });
+
+  it("omits the secondary entry without a detail body or under an action override", () => {
+    const waiting = model(
+      run("waiting_input", "approval"),
+      [],
+      { pendingInterventionKinds: ["approval"] },
+      { pendingInterventions: [intervention()], canExpand: false },
+    );
+    expect(waiting.action).toEqual({ verb: "Needs your attention", act: "attention" });
+    expect(waiting.secondaryAction).toBeNull();
+    const overridden = buildExecutionCardModel({
+      expanded: false,
+      canExpand: false,
+      status: deriveExecutionStatus(run("waiting_input", "approval"), []),
+      actionOverride: { verb: "Handle now", act: "navigate" },
+    });
+    expect(overridden.secondaryAction).toBeNull();
+    const plain = model(run("running"), [], {}, { summary: summary({ status: "running" }) });
+    expect(plain.secondaryAction).toBeNull();
   });
 
   it("orders an approval ahead of an older input question", () => {
