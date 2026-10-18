@@ -150,9 +150,10 @@ export class ScriptedAgentRuntime implements AgentRuntime {
           return;
         }
       }
-      // UX-01B E2E fixture: the Run fails AFTER its scripted turns published
-      // a real failed semantic Step — the "View reason" path with a Step.
-      if (/fail this tracked run/i.test(request.prompt)) {
+      // UX-01B/C E2E fixtures: the Run fails AFTER its scripted turns ran —
+      // "tracked" publishes a real failed semantic Step (the "View reason"
+      // Step path), "todo" publishes only Todos (the 事项清单 fallback path).
+      if (/fail this (?:tracked|todo) run/i.test(request.prompt)) {
         throw new Error("Scripted run failure");
       }
       yield { type: "text", text: "done." };
@@ -433,6 +434,57 @@ export function inferScript(
       },
     ];
   }
+  // UX-01C fixtures: Todo-only Runs. Todos alone never create an execution
+  // surface; a failed Todo-only Run shows the legacy 事项清单 fallback inside
+  // its (legally failed) surface, expanded only.
+  if (/^publish tracked todos/i.test(prompt)) {
+    return [
+      {
+        assistant: `done. i handled: ${prompt}`,
+        toolCalls: [
+          {
+            name: "publish_run_todo",
+            args: {
+              todoId: "todo-1",
+              expectedRevision: 0,
+              order: 0,
+              title: "First working item",
+              status: "resolved",
+            },
+          },
+          {
+            name: "publish_run_todo",
+            args: {
+              todoId: "todo-2",
+              expectedRevision: 0,
+              order: 1,
+              title: "Second working item",
+              status: "pending",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ];
+  }
+  if (/^fail this todo run/i.test(prompt)) {
+    return [
+      {
+        toolCalls: [
+          {
+            name: "publish_run_todo",
+            args: {
+              todoId: "todo-f1",
+              expectedRevision: 0,
+              order: 0,
+              title: "Unfinished working item",
+              status: "pending",
+            },
+          },
+        ],
+      },
+    ];
+  }
   // Before every content-based intent so payload text cannot steal the branch.
   const shellCommand = /run the shell command\s+([\s\S]+)$/i.exec(prompt)?.[1]?.trim();
   if (shellCommand) {
@@ -503,6 +555,30 @@ export function inferScript(
                 name: "example_login",
                 origin: "https://login.example.test",
                 auth: { type: "login" },
+              },
+            },
+          },
+        ],
+      },
+    ];
+  }
+  // UX-01C fixture: the secret ask on a Run that also carries a semantic
+  // Step, so its settled receipt keeps a legal surface after history reload.
+  if (lower.includes("tracked secret card")) {
+    return [
+      {
+        assistant: "i need that value in a protected field.",
+        toolCalls: [
+          trackedStepCall("secret-step", 0, "Store the key", "running"),
+          {
+            name: "request_secret",
+            args: {
+              label: "API key",
+              purpose: "api_key",
+              credential: {
+                name: "example_api",
+                origin: "https://api.example.test",
+                auth: { type: "bearer" },
               },
             },
           },

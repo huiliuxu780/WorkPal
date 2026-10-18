@@ -10,6 +10,7 @@ import type {
   RunTodoSnapshot,
   ThreadSnapshot,
 } from "@rakazo/contracts";
+import { unlinkedRunTodos } from "./work-progress-view";
 
 /**
  * Web consumption of the per-Run ExecutionSnapshot read model (HISTORY-001).
@@ -68,7 +69,10 @@ export function executionDataForRun(input: {
     return {
       ...(detail.plan ? { plan: detail.plan } : {}),
       steps: detail.steps.items,
-      todos: detail.todos.items,
+      // UX-01C acceptance 17: the detail path applies the SAME linked-Todo
+      // dedupe as the legacy path — a Todo whose linkedStepId names a Step
+      // of this Run never renders as a duplicate row on either path.
+      todos: unlinkedRunTodos(detail.todos.items, detail.steps.items),
       // The full first Activity page — not the short semantic timeline — so
       // nothing between the timeline bound and the page bound is ever lost.
       activity: detail.activityPage.items,
@@ -76,12 +80,16 @@ export function executionDataForRun(input: {
       ...(detail.result ? { result: detail.result } : {}),
     };
   }
+  const steps = (legacy.steps ?? []).filter((step) => step.runId === runId);
   return {
     ...(legacy.plans?.find((plan) => plan.runId === runId)
       ? { plan: legacy.plans.find((plan) => plan.runId === runId) }
       : {}),
-    steps: (legacy.steps ?? []).filter((step) => step.runId === runId),
-    todos: (legacy.todos ?? []).filter((todo) => todo.runId === runId),
+    steps,
+    todos: unlinkedRunTodos(
+      (legacy.todos ?? []).filter((todo) => todo.runId === runId),
+      steps,
+    ),
     activity: (legacy.activity ?? []).filter((item) => item.runId === runId),
   };
 }

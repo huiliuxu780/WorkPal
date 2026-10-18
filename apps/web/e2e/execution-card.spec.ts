@@ -211,6 +211,10 @@ test("pending approval stays discoverable, focuses and submits without a duplica
   const shell = page.locator('section[data-testid="execution-shell"]').first();
   const card = shell.locator('article[data-testid="execution-card"]');
   await expect(card).toHaveAttribute("data-status", "approval");
+  // UX-01C scenario B: no Plan → the approval card carries no progress DOM.
+  await expect(card.locator(".exc-rail")).toHaveCount(0);
+  await expect(card.locator('[data-testid="execution-plan-count"]')).toHaveCount(0);
+  await expect(card.locator('[role="progressbar"]')).toHaveCount(0);
   const attention = card.getByRole("button", { name: "Needs your attention", exact: true });
   await expect(attention).toBeVisible();
   // UX-01B acceptance 4/7 + review round P1: the waiting card is collapsed by
@@ -855,5 +859,49 @@ test("clicking a waiting Bot in the sidebar focuses its approval control", async
       .toBe(true);
   } finally {
     await rpc(page, "threads/stop", { botId: chiefId }).catch(() => undefined);
+  }
+});
+
+test("a plain active Run shows only the lightweight status until it stops (scenario A)", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  await signup(page, `card-light-${stamp}@rakazo.test`, "password12", "Card Light");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+  try {
+    await send(page, `keep working until i stop you ${stamp}`);
+    await expect
+      .poll(
+        async () => {
+          const snapshot = await rpc<{ run?: { status: string } | null }>(page, "threads/get", {
+            botId,
+          });
+          return snapshot.run?.status ?? null;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe("running");
+    // Running: no execution surface, no slots, no progress DOM — only the
+    // single-line lightweight status of the live progress message.
+    await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      page.locator('[data-slot="plan"], [data-slot="steps"], [data-slot="todos"]'),
+    ).toHaveCount(0);
+    await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
+    await expect(page.getByTestId("transcript").getByText("still working…").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Stopped: the lightweight line leaves the DOM; still no execution surface.
+    await rpc(page, "threads/stop", { botId });
+    await expect(page.locator('[data-message-id^="progress:"]')).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0);
+  } finally {
+    await rpc(page, "threads/stop", { botId }).catch(() => undefined);
   }
 });

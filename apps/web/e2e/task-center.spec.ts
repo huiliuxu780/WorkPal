@@ -278,6 +278,13 @@ test("查看结果 returns to the right conversation, expands the card and keeps
   await gotoTaskCenter(page);
   const item = tcItem(page, `quarter ${stamp}`);
   await expect(item).toBeVisible({ timeout: 30_000 });
+  // UX-01C acceptance 15: a summary-only card (no Plan reachable) shows no
+  // count, no bar, no rail and no placeholder — the list never guesses.
+  const tcCard = cardOfItem(item);
+  await expect(tcCard.locator(".exc-rail")).toHaveCount(0);
+  await expect(tcCard.locator('[data-testid="execution-plan-count"]')).toHaveCount(0);
+  await expect(tcCard.locator('[role="progressbar"]')).toHaveCount(0);
+  expect(await tcCard.innerText()).not.toContain("--");
   await item.getByRole("button", { name: "View result" }).click();
 
   await page.waitForURL(new RegExp(`/app/${botId}`), { timeout: 15_000 });

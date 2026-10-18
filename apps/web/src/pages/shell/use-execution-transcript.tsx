@@ -13,8 +13,16 @@ import { InterventionRegion } from "../../components/ai/InterventionRegion";
 import { RunPlanDisclosure } from "../../components/ai/RunPlanDisclosure";
 import { RunResult } from "../../components/ai/RunResult";
 import { RunStepsDisclosure } from "../../components/ai/RunStepsDisclosure";
+import { RunTodoList } from "../../components/ai/RunTodoList";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { resultHasText } from "../../lib/execution-card";
+import {
+  beginDetailRequest,
+  type DetailRequestMap,
+  detailRequestStatus,
+  failDetailRequest,
+  settleDetailRequest,
+} from "../../lib/execution-detail-request";
 import {
   appendExecutionActivityPage,
   type ExecutionDetailCache,
@@ -121,6 +129,11 @@ export function useExecutionTranscript({
   // loaded older pages are ONE versioned unit per Run: a moved rev replaces
   // all three together and a stale response can never mix versions.
   const [executionDetails, setExecutionDetails] = useState<ExecutionDetailCache>({});
+  // UX-01C acceptance 14: per-Run detail REQUEST state (idle | loading |
+  // error), deliberately OUTSIDE the rev-versioned cache — an error is a
+  // transport fact, never a snapshot version.
+  const [detailRequests, setDetailRequests] = useState<DetailRequestMap>({});
+  const detailInFlight = useRef<Set<string>>(new Set());
   // UX-01B core rule 1: only Runs with a structured Plan, a semantic Step, a
   // pending Intervention (or any waiting state) or a failure get an Execution
   // surface. Todos, tool Activity and plain running states never create one;
@@ -382,6 +395,11 @@ export function useExecutionTranscript({
   ]);
   const loadExecutionDetail = useCallback(
     (runId: string) => {
+      // UX-01C acceptance 14: one concurrent request per Run — a repeat
+      // click while a fetch is in flight is a no-op, never a second request.
+      if (detailInFlight.current.has(runId)) return;
+      detailInFlight.current.add(runId);
+      setDetailRequests((current) => beginDetailRequest(current, runId));
       void rpc.runs
         .executionSnapshot({ ...artifactTarget, runId })
         .then((snapshot) => {
@@ -391,7 +409,10 @@ export function useExecutionTranscript({
           // A newer rev installs the snapshot together with its own first
           // page cursor and clears the pages loaded against the old version.
           setExecutionDetails((current) => installExecutionDetail(current, runId, snapshot));
-          // Review round: the open-triggered load must not self-close the
+          // Success clears any previous error: request state never mixes
+          // with the rev-versioned cache it describes.
+          setDetailRequests((current) => settleDetailRequest(current, runId));
+          // Review round (B): the open-triggered load must not self-close the
           // card — an actively eventing Run's detail arrives at a fresher
           // rev of the SAME projection the user just opened, so the stored
           // expansion decision is re-keyed to it (never downgraded, no-op
@@ -400,7 +421,14 @@ export function useExecutionTranscript({
             rekeyExpansionRev({ entries, threadId, runId, rev: snapshot.summary.rev }),
           );
         })
-        .catch(() => undefined);
+        .catch(() => {
+          // The failure becomes a stable safe retry state in the open card —
+          // never a raw transport message, never a cleared level-0 fact.
+          setDetailRequests((current) => failDetailRequest(current, runId));
+        })
+        .finally(() => {
+          detailInFlight.current.delete(runId);
+        });
     },
     [artifactTarget, threadId],
   );
@@ -614,6 +642,31 @@ export function useExecutionTranscript({
             <RunPlanDisclosure plan={data.plan} steps={data.steps} failed={isFailed} />
           ) : data.steps.length > 0 ? (
             <RunStepsDisclosure steps={data.steps} failed={isFailed} />
+          ) : isOpen && data.todos.length > 0 ? (
+            // UX-01C acceptance 16, fixed degradation order Plan → Steps →
+            // 事项清单: legacy Todos surface only inside an already-legal,
+            // EXPANDED detail with neither Plan nor Steps — collapsed, they
+            // are not in the DOM at all, and they never trigger the surface.
+            <RunTodoList todos={data.todos} />
+          ) : null}
+          {detailRequestStatus(detailRequests, execution.runId) === "error" && !detail ? (
+            // UX-01C acceptance 14: a failed detail load is honest and
+            // retryable — stable safe copy (never the raw transport error),
+            // and the level-0 card above keeps every fact it already had.
+            <div
+              data-testid="execution-detail-error"
+              className="ms-1 my-2 border-s border-destructive ps-4 text-[13px] text-muted-foreground"
+            >
+              <p dir="auto">{t`Couldn't load the execution detail.`}</p>
+              <button
+                type="button"
+                data-testid="execution-detail-retry"
+                onClick={() => loadExecutionDetail(execution.runId)}
+                className="mt-1 min-h-11 text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                {t`Retry`}
+              </button>
+            </div>
           ) : null}
           {failureText ? (
             <p

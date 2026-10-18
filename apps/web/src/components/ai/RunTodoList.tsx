@@ -2,6 +2,16 @@ import { t } from "@lingui/core/macro";
 import type { RunTodoSnapshot } from "@rakazo/contracts";
 import { memo } from "react";
 
+/**
+ * The legacy Todo fallback ("事项清单", UX-01C acceptance 16).
+ *
+ * Renders ONLY inside an already-legal execution surface whose expanded data
+ * has neither a structured Plan nor semantic Steps, and only while expanded
+ * (the caller gates on the fixed degradation order Plan → Steps → 事项清单).
+ * User-visible copy never says "Todo"/"待办" and never carries a count,
+ * fraction or bar — this is old-data context, not progress.
+ */
+
 const marks: Record<RunTodoSnapshot["status"], string> = {
   pending: "○",
   active: "●",
@@ -15,7 +25,11 @@ const labels: Record<RunTodoSnapshot["status"], () => string> = {
   deferred: () => t`Deferred`,
 };
 
-export const RunTodoList = memo(function RunTodoList({ todos }: { todos: readonly RunTodoSnapshot[] }) {
+export const RunTodoList = memo(function RunTodoList({
+  todos,
+}: {
+  todos: readonly RunTodoSnapshot[];
+}) {
   if (todos.length === 0) return null;
   const ordered = [...todos].sort(
     (left, right) => left.order - right.order || left.todoId.localeCompare(right.todoId),
@@ -25,7 +39,10 @@ export const RunTodoList = memo(function RunTodoList({ todos }: { todos: readonl
       data-slot="todos"
       className="ms-1 my-2 border-s border-border ps-4 text-[13px] text-foreground/85"
     >
-      <h3 className="py-2 text-xs font-medium text-muted-foreground">{t`To do`}</h3>
+      <h3 className="py-2 text-xs font-medium text-muted-foreground">{t`Work items`}</h3>
+      <p dir="auto" className="pb-2 text-xs text-muted-foreground">
+        {t`This run has no plan. These were the working items at the time.`}
+      </p>
       <ul className="space-y-1.5 pb-2">
         {ordered.map((todo) => (
           <li

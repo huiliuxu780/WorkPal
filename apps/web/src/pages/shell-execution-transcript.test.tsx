@@ -961,7 +961,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(card!.textContent).toContain("1/1");
     const calls = rpcMocks.executionSnapshot.mock.calls;
     expect(calls.length).toBeGreaterThanOrEqual(2);
-    expect(calls[calls.length - 1][0]).toEqual({ botId: BOT, runId: "run-e" });
+    expect(calls[calls.length - 1]![0]).toEqual({ botId: BOT, runId: "run-e" });
   });
 
   it("keeps a failed detail request from clearing an already-cached detail", async () => {
@@ -981,9 +981,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
       ],
       steps: [step("run-c", "step-c", "CACHED-STEP-TITLE", 0)],
       runs: [run("run-c", "completed", { completedAt: ISO })],
-      executions: [
-        summary({ runId: "run-c", rev: 7, title: "CACHED-RUN", anchorMessageId: "m2" }),
-      ],
+      executions: [summary({ runId: "run-c", rev: 7, title: "CACHED-RUN", anchorMessageId: "m2" })],
     });
     const card = host.querySelector('article[data-testid="execution-card"]');
     const toggle = card!.querySelector<HTMLElement>(".exc-entry");
