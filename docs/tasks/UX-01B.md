@@ -178,4 +178,3 @@ corepack pnpm --filter @rakazo/web intl:compile
 2. 更新本任务状态与 roadmap：PR 未合并时 UX-01 保持 `in-progress`，写 `delivered, ready-to-merge`；只有 main 合入后才能写 B done。
 3. 推送 `codex/ux01b-progress-convergence` 并创建 base=`main` 的 PR，不自行合并。
 4. B 的定向门禁全绿且接口稳定后，不等评审空转：从 B 的精确 head 创建 `codex/ux01c-compatibility-e2e`，按 UX-01C 任务卡继续。本地/PR diff 必须能分别审查 B 和 C。
-

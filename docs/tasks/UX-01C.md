@@ -173,4 +173,3 @@ corepack pnpm --filter @rakazo/web intl:compile
 2. C PR 初始 base=B 分支；B 合入后改 base=`main`，确认 diff 只剩 C。不要 squash 掉 B/C 边界，也不要自行合并。
 3. B、C 可以连续开发和评审；合并必须按 B → C。若两者 PR head 都基于相同已验证 ancestry 且树未变化，不机械重复本地全套测试；C 的最终门禁是批次完整证据。
 4. C 合入 main 且 main CI 绿后，roadmap 才把 UX-01 标成 `done`，并链接 B/C PR、两份交付说明和最终 20 条证据。未部署。
-
