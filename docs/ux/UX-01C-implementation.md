@@ -104,6 +104,13 @@ C PR 初始 base=`codex/ux01b-progress-convergence`；**B（PR #62）合入 main
 - **修复**：`DetailRequestMap` 条目改为 `{status, rev}`（请求发起时的 summary rev 戳记）；**读取按当前 rev 解析**——`entry.rev !== currentRev` 一律读作 idle，投影移动即自然失效旧错误，无需显式清理；`failDetailRequest` 对 rev 不匹配的条目整体忽略（晚到失败永不覆写）；in-flight 去重键改为 `runId@rev`（新 rev 的请求不被旧 in-flight 阻塞）。hook 三处调用点（toggle/intent/retry）传入各自 rev。
 - **回归**：reducer 单测 2 条点名场景（"invalidates an old error when the summary revision moved on"、"a late failure from a superseded request never rewrites newer state"）+ transcript 集成 2 条（同 root 重渲染推进 rev 后错误消失；deferred promise 排序验证晚到失败不 surfaced、新请求成功渲染 detail）。红→绿：5 failed → 0。
 
+### 第二轮审查（2026-10-19）：旧请求晚到成功清除新请求错误
+
+- **缺陷（审查反向时序复现）**：`settleDetailRequest` 不检查 revision——A@rev5 在途、rev 前进后 B@rev6 失败并正确显示错误+重试，随后 A 晚到**成功**，settle 直接删除该 Run 的请求状态，rev6 的错误与重试入口被旧成功清掉（旧快照本身已被 rev-guard 丢弃，无法满足 rev6）。
+- **修复**：`settleDetailRequest(map, runId, rev)` 只清理**自己拥有**的状态（`entry.rev === rev` 才删除）；hook 成功回调传入发起请求时的 rev。新请求的 loading 同样不被旧成功清除；owning settle 行为不变。
+- **回归**：reducer 单测 2 条（stale success vs 新 error / vs 新 loading，含 identity 断言）+ transcript deferred-promise 集成 1 条（A@5 pending → rev6 → B@6 failed → 错误+重试可见 → A@5 晚到成功 → 错误+重试仍在、旧快照内容不渲染）。红 3 failed → 绿。
+- 门禁：apps/web 全量 **85 文件 / 666 测试绿**（5.4s）、web check 0 错误、build 成功；三 spec E2E 收口以全新库 `workpal_e2e_ux01c3` 单次重跑：**38 / 38 passed（1.4m）**，0 失败 0 flake。
+
 ### Rebase 记录
 
 - `git rebase --onto 2f2e757 7599874`：6 个 C 提交全部保留；两处冲突均为 B 修复轮与 C 的同款修改（`loadExecutionDetail.then` 的 rekey+settle 并存；approval E2E 的 Denied 终态断言注释措辞），按"两者都保留/取 B 版本"解决，无语义丢失。
