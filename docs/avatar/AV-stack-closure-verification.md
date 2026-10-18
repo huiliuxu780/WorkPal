@@ -1,7 +1,9 @@
 # Avatar stack closure verification
 
-Date: 2026-10-18 (UTC+8)  
-Stack head: `codex/av05-avatar-change-history @ 355d133`  
+Date: 2026-10-18 (UTC+8)
+
+Stack head: `codex/av05-avatar-change-history @ 355d133`
+
 Runtime: Node 24.21.0, pnpm 9.15.0, local disposable PostgreSQL, scripted E2E runtime
 
 This record makes the reported `612 / 15 / 6` result independently reproducible from the repository. The AV-05 head contains the stacked AV-00 through AV-04 changes, so these commands exercise the final combined avatar tree before the stack is reconciled with the newer `main`.
