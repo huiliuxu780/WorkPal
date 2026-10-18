@@ -394,12 +394,14 @@ export function useExecutionTranscript({
     serverSummaries,
   ]);
   const loadExecutionDetail = useCallback(
-    (runId: string) => {
-      // UX-01C acceptance 14: one concurrent request per Run — a repeat
-      // click while a fetch is in flight is a no-op, never a second request.
-      if (detailInFlight.current.has(runId)) return;
-      detailInFlight.current.add(runId);
-      setDetailRequests((current) => beginDetailRequest(current, runId));
+    (runId: string, rev: number) => {
+      // UX-01C acceptance 14: one concurrent request per Run AND revision —
+      // a repeat click while the same-rev fetch is in flight is a no-op, but
+      // a newer revision is never blocked behind a stale in-flight request.
+      const flightKey = `${runId}@${rev}`;
+      if (detailInFlight.current.has(flightKey)) return;
+      detailInFlight.current.add(flightKey);
+      setDetailRequests((current) => beginDetailRequest(current, runId, rev));
       void rpc.runs
         .executionSnapshot({ ...artifactTarget, runId })
         .then((snapshot) => {
@@ -424,10 +426,13 @@ export function useExecutionTranscript({
         .catch(() => {
           // The failure becomes a stable safe retry state in the open card —
           // never a raw transport message, never a cleared level-0 fact.
-          setDetailRequests((current) => failDetailRequest(current, runId));
+          // Review round P3: stamped with the requested rev — a late failure
+          // from a superseded request can never rewrite newer state, and the
+          // error stops surfacing as soon as the projection moves on.
+          setDetailRequests((current) => failDetailRequest(current, runId, rev));
         })
         .finally(() => {
-          detailInFlight.current.delete(runId);
+          detailInFlight.current.delete(flightKey);
         });
     },
     [artifactTarget, threadId],
@@ -459,7 +464,7 @@ export function useExecutionTranscript({
     setExpansionEntries((entries) =>
       forceOpenExpansion({ entries, threadId, runId: intent.runId, rev: summary.rev }),
     );
-    loadExecutionDetail(intent.runId);
+    loadExecutionDetail(intent.runId, summary.rev);
     setTaskCenterFocus({ attention: intent.attention, nonce: summary.rev });
   }, [threadId, serverSummaries, loadExecutionDetail, intentPing]);
   useEffect(() => {
@@ -572,7 +577,7 @@ export function useExecutionTranscript({
               // Reopening must read the authoritative detail even when the
               // cached detail supplied the current displayed rev.
               if (!isOpen) {
-                loadExecutionDetail(execution.runId);
+                loadExecutionDetail(execution.runId, rev);
               }
             },
           }
@@ -649,7 +654,7 @@ export function useExecutionTranscript({
             // are not in the DOM at all, and they never trigger the surface.
             <RunTodoList todos={data.todos} />
           ) : null}
-          {detailRequestStatus(detailRequests, execution.runId) === "error" && !detail ? (
+          {detailRequestStatus(detailRequests, execution.runId, rev) === "error" && !detail ? (
             // UX-01C acceptance 14: a failed detail load is honest and
             // retryable — stable safe copy (never the raw transport error),
             // and the level-0 card above keeps every fact it already had.
@@ -661,7 +666,7 @@ export function useExecutionTranscript({
               <button
                 type="button"
                 data-testid="execution-detail-retry"
-                onClick={() => loadExecutionDetail(execution.runId)}
+                onClick={() => loadExecutionDetail(execution.runId, rev)}
                 className="mt-1 min-h-11 text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
               >
                 {t`Retry`}
