@@ -2,7 +2,7 @@
 
 状态：`not-started`
 
-冻结开工基线：`main @ 165aff7068fcddb7667463ccc3769e2f174390b2`（Avatar stack #49–#55 全部以 merge commit 进入 `main`，最终 main CI run `39110281001` 全绿；未部署）。
+冻结代码基线：`main @ 165aff7068fcddb7667463ccc3769e2f174390b2`（Avatar stack #49–#55 全部以 merge commit 进入 `main`，最终 main CI run `39110281001` 全绿；未部署）。实现分支应从**包含本任务书的最新 `main`**创建，并证明该提交是其祖先；如果其后有任何产品代码改动，先重新核实本文代码事实和冒烟基线。
 
 ## 目标
 
@@ -12,7 +12,7 @@
 
 ## 开工基线
 
-1. 从任务书记录的最终 `main` SHA 新建 `codex/ux01a-shell-extraction`；不要接着使用废弃的 `refactor/shell-split-01`。
+1. 从包含本任务书的最新 `main` 新建 `codex/ux01a-shell-extraction`，确认冻结代码基线 `165aff7068fcddb7667463ccc3769e2f174390b2` 是其祖先；不要接着使用废弃的 `refactor/shell-split-01`。如果冻结基线后出现了非文档代码改动，先重跑 preflight，不得直接沿用本文行号和结论。
 2. 先读 `docs/ux/UX-01-decision.md`，本任务以其中 G4 和“UX-01A”边界为准。
 3. 重新用 `rg -n` 定位下列符号，不依赖本文行号：
    - `Transcript`
@@ -114,7 +114,7 @@
 
 ## 验收标准
 
-1. 分支确实基于任务书记录的 Avatar stack 最终 `main` SHA；PR diff 不包含其他旧分支提交。
+1. 分支从包含本任务书的最新 `main` 创建，冻结代码基线 `165aff7068fcddb7667463ccc3769e2f174390b2` 是其祖先；若其后有产品代码变化，preflight 已重新核实。PR diff 不包含其他旧分支提交。
 2. `Shell.tsx` 不再定义 `plansByAnchor`、`stepsByAnchor`、`todosByAnchor`、`executionsByAnchor`、`loadExecutionDetail`、Task Center 执行卡回焦逻辑或 `renderExecutions` 主体。
 3. 新模块的输入/输出只暴露执行区所需能力；普通消息、滚动、回复、语音和后台任务仍由 `Transcript` 管理。
 4. 冒烟测试在原实现上先绿，拆分后继续绿，并覆盖锚定合并、summary-only、失败尾部兜底、Intervention/Ask 去重和 Task Center 回焦。

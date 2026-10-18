@@ -60,7 +60,7 @@ When work starts or completes, update its status here and add the branch/PR link
 
 **Immediate next slice (2026-10-18, UX-01A developer handoff):**
 
-1. **UX-01A only.** Hand [UX-01A.md](./tasks/UX-01A.md) to the implementation owner. They must branch from `main @ 165aff70`, add the Shell behavior smoke on the unchanged implementation first, then extract the execution region with zero product-behavior change. UX-01B rules are explicitly out of scope.
+1. **UX-01A only.** Hand [UX-01A.md](./tasks/UX-01A.md) to the implementation owner. They must branch from the latest `main` containing the task card, prove frozen code baseline `165aff70` is its ancestor (and re-run preflight if later product code landed), add the Shell behavior smoke on the unchanged implementation first, then extract the execution region with zero product-behavior change. UX-01B rules are explicitly out of scope.
 2. **Review UX-01A against the task card.** Existing execution-card/history/task-center assertions stay unchanged; typecheck, build, targeted Vitest and focused E2E must be green. The delivery note must include a manual Hook/effect dependency audit because Biome does not enforce exhaustive dependencies.
 3. **Then write/start UX-01B.** Do not implement progress convergence until UX-01A is merged and its main CI is green. UX-01C follows UX-01B.
 4. **No deployment.** DEP-01 remains a separate draft/cutover track. Avatar/AG-07/UX documentation merges do not approve production deployment.
