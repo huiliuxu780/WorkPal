@@ -1,5 +1,6 @@
 export * from "./artifact-versions.js";
 export * from "./avatar-activity.js";
+export * from "./avatar-changes.js";
 export * from "./background-task-registration.js";
 export * from "./bootstrap-user.js";
 export * from "./cancel-child-runs.js";

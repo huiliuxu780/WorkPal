@@ -27,6 +27,25 @@ export async function encodeBotAvatarImage(bytes: Uint8Array): Promise<string> {
   return dataUrl;
 }
 
+/** Validate direct RPC uploads too; the Studio preview is not an authorization boundary. */
+export async function normalizeEncodedBotAvatarImage(dataUrl: string): Promise<string> {
+  const match = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if (!match) throw new Error("Choose a PNG, JPEG, or WebP image");
+  const bytes = Buffer.from(match[1]!, "base64");
+  const { default: sharp } = await import("sharp");
+  const metadata = await sharp(bytes, { limitInputPixels: 8192 * 8192 }).metadata();
+  if (
+    !metadata.width ||
+    !metadata.height ||
+    metadata.width > 8192 ||
+    metadata.height > 8192 ||
+    !["png", "jpeg", "webp"].includes(metadata.format)
+  ) {
+    throw new Error("Image dimensions or format are not supported");
+  }
+  return encodeBotAvatarImage(bytes);
+}
+
 export async function resolveUpdateBotAvatar(input: {
   color?: unknown;
   artifactId?: unknown;

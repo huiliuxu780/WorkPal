@@ -1,7 +1,39 @@
-import { appendEventInTransaction, type Prisma, type PrismaClient } from "@rakazo/db";
+import {
+  type AvatarChoice,
+  appendEventInTransaction,
+  changeBotAvatarInTransaction,
+  type Prisma,
+  type PrismaClient,
+} from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 
 type AppendEvent = typeof appendEventInTransaction;
+
+/** Append a Bot-scoped refresh event in the avatar transaction. */
+export async function appendAvatarUpdatedEvent(
+  tx: Prisma.TransactionClient,
+  input: { botId: string; spaceId: string },
+  appendEvent: AppendEvent = appendEventInTransaction,
+) {
+  const bot = await tx.bot.findUniqueOrThrow({
+    where: { id: input.botId },
+    select: { name: true, title: true, description: true, thread: { select: { id: true } } },
+  });
+  if (!bot.thread) throw new Error("Bot has no thread for avatar update");
+  const event = await appendEvent(tx, {
+    spaceId: input.spaceId,
+    threadId: bot.thread.id,
+    botId: input.botId,
+    type: "bot.updated",
+    payload: {
+      botId: input.botId,
+      name: bot.name,
+      title: bot.title,
+      description: bot.description,
+    },
+  });
+  return { threadId: bot.thread.id, seq: event.seq };
+}
 
 /**
  * Persist a bot row. When profile labels change, write `bot.updated` in the same
@@ -17,10 +49,11 @@ export async function commitBotUpdate(
     botId: string;
     data: Prisma.BotUncheckedUpdateInput;
     emitBotUpdated: boolean;
+    avatarChange?: { userId: string; choice: AvatarChoice };
   },
   appendEvent: AppendEvent = appendEventInTransaction,
 ): Promise<{ id: string; name: string; title: string; description: string }> {
-  if (!options.emitBotUpdated) {
+  if (!options.emitBotUpdated && !options.avatarChange) {
     return options.prisma.bot.update({
       where: { id: options.botId },
       data: options.data,
@@ -29,6 +62,15 @@ export async function commitBotUpdate(
   }
 
   const committed = await options.prisma.$transaction(async (tx) => {
+    if (options.avatarChange) {
+      await changeBotAvatarInTransaction(tx, {
+        userId: options.avatarChange.userId,
+        spaceId: options.spaceId,
+        botId: options.botId,
+        choice: options.avatarChange.choice,
+        source: "user",
+      });
+    }
     const updated = await tx.bot.update({
       where: { id: options.botId },
       data: options.data,
