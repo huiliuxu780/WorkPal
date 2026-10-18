@@ -824,6 +824,10 @@ msgid "Available after the routine is saved"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
+msgid "Avatar source"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Avatar Studio"
 msgstr "Avatar-Studio"
 
@@ -859,10 +863,6 @@ msgstr "Bearer-Token"
 msgid "Blocked"
 msgstr ""
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Bloub"
-msgstr ""
-
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Live-Desktop wird gestartet…"
@@ -878,6 +878,7 @@ msgstr "Bot"
 
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Bot"
 msgstr "Bot"
 
@@ -944,6 +945,7 @@ msgstr "Server nicht erreichbar."
 #: src/pages/Artifacts.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/PluginsOverlay.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Cancel"
 msgstr "Abbrechen"
@@ -983,6 +985,10 @@ msgstr "Wird geändert…"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Channels"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Characters"
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -1031,13 +1037,25 @@ msgstr ""
 msgid "Choose a bot…"
 msgstr ""
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose a character or upload an image for this bot"
+msgstr ""
+
 #: src/pages/Auth.tsx
 msgid "Choose a new password"
 msgstr "Wähle ein neues Passwort"
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Choose file"
-msgstr "Datei wählen"
+msgid "Choose a PNG, JPEG, or WebP image"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose avatar image"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Choose or drop a PNG, JPEG, or WebP image (5 MB max)"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Choose which connected model {productName} uses."
@@ -1073,7 +1091,6 @@ msgstr ""
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 #: src/pages/RoutineEditor.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/WindowChrome.tsx
 msgid "Close"
 msgstr "Schließen"
@@ -1154,10 +1171,6 @@ msgstr ""
 #. placeholder {0}: item.chat.name
 #: src/pages/Shell.tsx
 msgid "Collapse {0}"
-msgstr ""
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Colour"
 msgstr ""
 
 #: src/pages/RoutineEditor.tsx
@@ -1557,9 +1570,17 @@ msgstr ""
 msgid "Could not open terminal"
 msgstr "Terminal konnte nicht geöffnet werden"
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Could not open this image"
+msgstr ""
+
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not play a test clip"
 msgstr "Testclip konnte nicht abgespielt werden"
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Could not prepare this image"
+msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/Auth.tsx
@@ -1619,6 +1640,11 @@ msgstr "Speichern fehlgeschlagen"
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save Auto Review"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+#: src/pages/shell/bot-panel.tsx
+msgid "Could not save avatar"
 msgstr ""
 
 #: src/pages/GroupPanel.tsx
@@ -1993,7 +2019,6 @@ msgstr ""
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
 #: src/pages/Shell.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Done"
 msgstr "Fertig"
 
@@ -2028,10 +2053,6 @@ msgstr ""
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Draft skill"
 msgstr "Skill-Entwurf"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Drag, drop, or paste an image"
-msgstr "Bild ziehen, ablegen oder einfügen"
 
 #: src/pages/BotContextMenu.tsx
 msgid "Duplicate"
@@ -2194,10 +2215,6 @@ msgstr "Exportieren"
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Exportiere die Liste dieser Woche aus dem CRM und lege sie im freigegebenen Ordner ab"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Expression"
-msgstr ""
 
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -2437,8 +2454,12 @@ msgid "Ignore"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
-msgid "Image upload area"
-msgstr "Bild-Upload-Bereich"
+msgid "Image dimensions are not supported"
+msgstr ""
+
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Image must be smaller than 5 MB"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
@@ -3314,10 +3335,6 @@ msgstr ""
 msgid "Personal credential"
 msgstr "Persönliche Zugangsdaten"
 
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Pick the bloub shape, expression, and colour"
-msgstr ""
-
 #: src/pages/BotContextMenu.tsx
 msgid "Pin"
 msgstr "Anheften"
@@ -3596,7 +3613,6 @@ msgid "Research & writing"
 msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
-#: src/pages/shell/avatar-studio-popover.tsx
 msgid "Reset"
 msgstr ""
 
@@ -3741,6 +3757,7 @@ msgstr ""
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/avatar-studio-popover.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Save"
@@ -3904,10 +3921,6 @@ msgstr "Einstellungen: Nutzung"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Setup help"
 msgstr "Einrichtungshilfe"
-
-#: src/pages/shell/avatar-studio-popover.tsx
-msgid "Shape"
-msgstr "Form"
 
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx

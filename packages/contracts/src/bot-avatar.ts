@@ -74,29 +74,17 @@ export const BOT_AVATAR_VALUE_MAX_LENGTH = 200_000;
 
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const SHAPE_SUFFIX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})::shape_\d+$/;
-/** `#hex::bloub` with optional `::shape::expression` suffixes (ids validated at parse). */
-const BLOUB_SUFFIX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})::bloub(?:::[a-z]+){0,2}$/;
 const DATA_IMAGE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 export type ParsedBotAvatar =
   | { kind: "image"; imageUrl: string }
   | { kind: "shape"; color: string; shapeIndex: number }
-  | { kind: "bloub"; color: string; shape?: string; expression?: string }
   | { kind: "color"; color: string }
   | { kind: "other"; raw: string };
 
 export function parseBotAvatarValue(raw: string): ParsedBotAvatar {
   if (raw.startsWith("data:image/")) {
     return { kind: "image", imageUrl: raw };
-  }
-  if (BLOUB_SUFFIX.test(raw)) {
-    const parts = raw.split("::");
-    return {
-      kind: "bloub",
-      color: parts[0] || "#F97316",
-      ...(parts[2] ? { shape: parts[2] } : {}),
-      ...(parts[3] ? { expression: parts[3] } : {}),
-    };
   }
   if (raw.includes("::shape_")) {
     const parts = raw.split("::shape_");
@@ -113,9 +101,7 @@ export function parseBotAvatarValue(raw: string): ParsedBotAvatar {
 /** True for values we persist on `bots.color` (hex, encoded shape, or data image). */
 export function isBotAvatarValue(raw: string): boolean {
   if (!raw || raw.length > BOT_AVATAR_VALUE_MAX_LENGTH) return false;
-  return (
-    HEX_COLOR.test(raw) || SHAPE_SUFFIX.test(raw) || BLOUB_SUFFIX.test(raw) || DATA_IMAGE.test(raw)
-  );
+  return HEX_COLOR.test(raw) || SHAPE_SUFFIX.test(raw) || DATA_IMAGE.test(raw);
 }
 
 export const BotAvatarValueSchema = z

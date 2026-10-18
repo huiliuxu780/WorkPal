@@ -2,6 +2,8 @@ import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   AgentSkillCatalogEntry,
+  AvatarCharacter,
+  AvatarMode,
   Bot,
   ComputerMode,
   Me,
@@ -23,17 +25,15 @@ import {
   Textarea,
   Toggle,
 } from "@rakazo/ui-web";
-import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { ModelTreePicker } from "../../components/ModelTreePicker";
 import {
-  modelLabelFor,
   modelOptionKey,
   parseModelOptionKey,
   useConnectedModelOptions,
 } from "../../lib/model-options";
 import { rpc } from "../../lib/rpc";
-import { AvatarStudioPopover } from "./avatar-studio-popover";
+import { type AvatarSelection, AvatarStudioPopover } from "./avatar-studio-popover";
 
 const ScratchpadSection = lazy(() =>
   import("../ScratchpadSection").then((module) => ({ default: module.ScratchpadSection })),
@@ -90,13 +90,19 @@ export function CreateBotForm({
     description: string;
     computerMode: ComputerMode;
     color?: string;
+    avatarMode?: AvatarMode;
+    avatarCharacter?: AvatarCharacter;
     modelProvider?: string;
     modelId?: string;
   }) => Promise<void>;
 }) {
   const { t } = useLingui();
   const ids = useId();
-  const [color, setColor] = useState("#3b93f0::bloub");
+  const [avatarSelection, setAvatarSelection] = useState<AvatarSelection>({
+    avatarMode: "character",
+    avatarCharacter: "dot",
+  });
+  const [avatarChosen, setAvatarChosen] = useState(false);
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -128,7 +134,7 @@ export function CreateBotForm({
         title: title.trim(),
         description: description.trim(),
         computerMode,
-        ...(color ? { color } : {}),
+        ...(avatarChosen ? avatarSelection : {}),
         ...(model ? { modelProvider: model.provider, modelId: model.modelId } : {}),
       });
     } catch (err) {
@@ -151,10 +157,13 @@ export function CreateBotForm({
       ) : null}
       <div className="flex justify-center pb-1 pt-1">
         <AvatarStudioPopover
-          value={color}
+          selection={avatarSelection}
           identity={`new-bot-${ids}`}
-          onChange={setColor}
-          size={76}
+          name={name || t`Bot`}
+          onChange={(next) => {
+            setAvatarSelection(next);
+            setAvatarChosen(true);
+          }}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -244,6 +253,8 @@ export function BotSettings({
     description?: string;
     instructions?: string;
     color?: string;
+    avatarMode?: AvatarMode;
+    avatarCharacter?: AvatarCharacter;
     notifyOnFinish?: boolean;
     computerMode: ComputerMode;
     memoryScope?: "isolated" | "shared" | null;
@@ -263,6 +274,11 @@ export function BotSettings({
   const [title, setTitle] = useState(bot.title);
   const [description, setDescription] = useState(bot.description);
   const [color, setColor] = useState(bot.color);
+  const [avatarSelection, setAvatarSelection] = useState<AvatarSelection>(() =>
+    bot.avatarMode === "upload" && bot.color.startsWith("data:image/")
+      ? { avatarMode: "upload", color: bot.color }
+      : { avatarMode: "character", avatarCharacter: bot.avatarCharacter ?? "dot" },
+  );
   const [notifyOnFinish, setNotifyOnFinish] = useState(bot.notifyOnFinish ?? true);
   const [computerMode, setComputerMode] = useState(bot.computerMode);
   const [memoryScope, setMemoryScope] = useState(bot.memoryScope);
@@ -276,22 +292,18 @@ export function BotSettings({
   const [me, setMe] = useState<Me | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const saveQueueRef = useRef(Promise.resolve());
+  const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const executeSaveRef = useRef<
     (patchOverrides?: {
       name?: string;
       title?: string;
       description?: string;
       color?: string;
+      avatarSelection?: AvatarSelection;
       notifyOnFinish?: boolean;
-    }) => Promise<void>
-  >(async () => undefined);
-  const {
-    options: connectedOptions,
-    credentials,
-    catalog,
-    ready: modelMetaReady,
-  } = useConnectedModelOptions();
+    }) => Promise<boolean>
+  >(async () => true);
+  const { credentials, catalog, ready: modelMetaReady } = useConnectedModelOptions();
   useEffect(() => {
     void rpc.voice
       .voices({})
@@ -329,8 +341,9 @@ export function BotSettings({
     title?: string;
     description?: string;
     color?: string;
+    avatarSelection?: AvatarSelection;
     notifyOnFinish?: boolean;
-  }) {
+  }): Promise<boolean> {
     const selected = modelKey ? parseModelOptionKey(modelKey) : null;
     const nextName = (patchOverrides?.name !== undefined ? patchOverrides.name : name).trim();
     const nextTitle = (patchOverrides?.title !== undefined ? patchOverrides.title : title).trim();
@@ -338,6 +351,7 @@ export function BotSettings({
       patchOverrides?.description !== undefined ? patchOverrides.description : description
     ).trim();
     const nextColor = patchOverrides?.color !== undefined ? patchOverrides.color : color;
+    const nextAvatar = patchOverrides?.avatarSelection ?? avatarSelection;
     const nextNotify =
       patchOverrides?.notifyOnFinish !== undefined ? patchOverrides.notifyOnFinish : notifyOnFinish;
 
@@ -354,7 +368,14 @@ export function BotSettings({
         description: nextDescription,
         instructions: nextDescription,
         // Unchanged color stays off the wire so a legacy named value cannot fail a name save.
-        ...(nextColor !== bot.color ? { color: nextColor } : {}),
+        ...(nextAvatar.avatarMode === "upload" && nextColor !== bot.color
+          ? { color: nextColor }
+          : {}),
+        ...(patchOverrides?.avatarSelection
+          ? nextAvatar.avatarMode === "character"
+            ? { avatarMode: "character" as const, avatarCharacter: nextAvatar.avatarCharacter }
+            : { avatarMode: "upload" as const, color: nextAvatar.color }
+          : {}),
         notifyOnFinish: nextNotify,
         computerMode,
         memoryScope,
@@ -370,8 +391,10 @@ export function BotSettings({
             }
           : {}),
       });
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : t`Could not save`);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -383,13 +406,14 @@ export function BotSettings({
     title?: string;
     description?: string;
     color?: string;
+    avatarSelection?: AvatarSelection;
     notifyOnFinish?: boolean;
   }) {
     // Serialize full-object auto-saves so an older in-flight request cannot
     // finish after a newer one and clobber fields. Always call through a ref so
     // queued work reads the latest field values, not a stale render closure.
     saveQueueRef.current = saveQueueRef.current
-      .catch(() => undefined)
+      .catch(() => false)
       .then(() => executeSaveRef.current(patchOverrides));
     return saveQueueRef.current;
   }
@@ -398,13 +422,24 @@ export function BotSettings({
     <div data-testid="bot-settings">
       <div className="flex justify-center py-4">
         <AvatarStudioPopover
-          value={color}
+          selection={avatarSelection}
           identity={bot.id}
-          status={bot.status}
-          size={76}
-          onChange={(newColor) => {
-            setColor(newColor);
-            void enqueueSave({ color: newColor });
+          name={bot.name}
+          onChange={async (next) => {
+            const prior = avatarSelection;
+            const priorColor = color;
+            setAvatarSelection(next);
+            if (next.avatarMode === "upload") setColor(next.color);
+            const saved = await enqueueSave({
+              avatarSelection: next,
+              ...(next.avatarMode === "upload" ? { color: next.color } : {}),
+            });
+            if (!saved) {
+              setAvatarSelection(prior);
+              setColor(priorColor);
+              throw new Error(t`Could not save avatar`);
+            }
+            window.dispatchEvent(new Event("workpal:avatar-refresh"));
           }}
         />
       </div>

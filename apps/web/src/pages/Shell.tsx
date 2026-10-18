@@ -36,7 +36,6 @@ import {
   type MessageReaction,
   normalizeCreateBotProfile,
 } from "@rakazo/contracts";
-import { createUsageLoader, type UsageLoadState, type UsageLoader } from "../lib/usage-loader";
 import {
   attachmentsForThread,
   buildComposerMentionOptions,
@@ -69,7 +68,6 @@ import {
   withLiveStreamingProgress,
 } from "@rakazo/core";
 import {
-  AvatarStyleProvider,
   BotAvatar,
   Button,
   cn,
@@ -95,7 +93,6 @@ import {
   ArrowUp,
   Bell,
   Box,
-  Check,
   ChevronDown,
   Clock,
   Copy,
@@ -237,7 +234,7 @@ import {
 import { localTimezone } from "../lib/local-timezone";
 import { copyableMessageText } from "../lib/message-text";
 import { messageProviderLabel } from "../lib/messaging";
-import { modelLabelFor, useConnectedModelOptions } from "../lib/model-options";
+import { useConnectedModelOptions } from "../lib/model-options";
 import {
   isFileDrag,
   isFilePaste,
@@ -283,6 +280,7 @@ import {
   transcriptMovedDown,
 } from "../lib/transcript-scroll";
 import { speaker } from "../lib/tts";
+import { createUsageLoader, type UsageLoader, type UsageLoadState } from "../lib/usage-loader";
 import { unlinkedRunTodos } from "../lib/work-progress-view";
 import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
@@ -2518,10 +2516,18 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     title: string;
     description: string;
     computerMode: ComputerMode;
+    color?: string;
+    avatarMode?: "character" | "legacy" | "upload";
+    avatarCharacter?: "dot" | "treble" | "wave" | "bounce";
   }) {
     const isFirstBot = botsRef.current.length === 0;
     const bot = await rpc.bots.create({
       ...normalizeCreateBotProfile(input),
+      ...(input.avatarMode === "character"
+        ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter! }
+        : input.avatarMode === "upload"
+          ? { avatarMode: "upload" as const, color: input.color! }
+          : {}),
       notifyOnFinish: true,
       computerMode: input.computerMode,
     });
@@ -4829,9 +4835,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     </div>
   );
 
-  return (
-    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "bloub"}>{shell}</AvatarStyleProvider>
-  );
+  return shell;
 }
 
 const Transcript = memo(function Transcript({
@@ -6989,7 +6993,14 @@ const MessageView = memo(function MessageView({
     return (
       <>
         {messageContext}
-        <div className="flex w-fit max-w-full justify-start [@media(hover:none)]:w-full">
+        <div className="flex w-fit max-w-full items-start justify-start gap-2 [@media(hover:none)]:w-full">
+          {!speakerName && message.botId ? (
+            <BotAvatar
+              color={speakerBot?.color ?? FALLBACK_BOT_COLOR}
+              identity={message.botId}
+              size={32}
+            />
+          ) : null}
           <div
             data-testid="message-bot-bubble"
             className="max-w-full space-y-2.5 rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"

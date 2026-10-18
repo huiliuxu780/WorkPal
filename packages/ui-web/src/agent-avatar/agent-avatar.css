@@ -110,6 +110,40 @@
   font: 700 5px / 5px sans-serif;
 }
 
+/* Uploaded images cannot convey expression or props, so keep a visible state badge. */
+.rakazo-upload-avatar:not([data-size="16"]) .rakazo-agent-avatar-dot {
+  right: -2px;
+  bottom: -2px;
+  width: 10px;
+  height: 10px;
+}
+.rakazo-upload-avatar[data-size="64"] .rakazo-agent-avatar-dot {
+  width: 13px;
+  height: 13px;
+}
+.rakazo-upload-avatar:not([data-size="16"]) .rakazo-agent-avatar-dot::after {
+  position: absolute;
+  inset: -1px;
+  color: #000;
+  text-align: center;
+  font: 700 8px / 9px sans-serif;
+}
+.rakazo-upload-avatar[data-size="64"] .rakazo-agent-avatar-dot::after {
+  font: 700 10px / 12px sans-serif;
+}
+.rakazo-upload-avatar[data-state="approval"] .rakazo-agent-avatar-dot::after {
+  content: "!";
+}
+.rakazo-upload-avatar[data-state="waiting"] .rakazo-agent-avatar-dot::after {
+  content: "?";
+}
+.rakazo-upload-avatar[data-state="failed"] .rakazo-agent-avatar-dot::after {
+  content: "×";
+}
+[data-theme="light"] .rakazo-upload-avatar:not([data-size="16"]) .rakazo-agent-avatar-dot::after {
+  color: #fff;
+}
+
 [data-theme="light"] .rakazo-agent-avatar[data-state="working"] .rakazo-agent-avatar-dot {
   background: #228b3b;
 }

@@ -58,7 +58,9 @@ export function ActivityRows({
             {actor?.botId ? (
               <BotAvatar
                 color={botColors?.[actor.botId] ?? "#8a8a8e"}
-                identity={actor.name ?? actor.botId}
+                // Catalog lookup identity must be the bot id; the display name
+                // is already carried by the row text.
+                identity={actor.botId}
                 size={18}
               />
             ) : (

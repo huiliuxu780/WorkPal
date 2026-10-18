@@ -17,7 +17,7 @@ function renderSvg(node: SvgNode, key = "root"): ReactNode {
   );
 }
 
-const stateNames: Record<AvatarActivity, string> = {
+export const avatarStateNames: Record<AvatarActivity, string> = {
   idle: "Idle",
   working: "Working",
   approval: "Needs approval",
@@ -47,6 +47,8 @@ export interface AgentAvatarProps {
   surface?: AvatarSurface;
   /** Use when the nearby text already supplies the Bot name and state. */
   ariaHidden?: boolean;
+  /** Embedded avatars inherit keyboard focus from their parent control. */
+  focusable?: boolean;
   className?: string;
   /** Current conversation wins only among avatars with the same state. */
   current?: boolean;
@@ -63,13 +65,14 @@ export const AgentAvatar = memo(function AgentAvatar({
   activity,
   surface = "background",
   ariaHidden = false,
+  focusable = true,
   className,
   current = false,
   progressToken,
 }: AgentAvatarProps) {
   const resolved: AvatarCharacter = character && character in avatarAssets.full ? character : "dot";
   const isCompact = size === 16;
-  const label = `${name} · ${stateNames[activity]}`;
+  const label = `${name} · ${avatarStateNames[activity]}`;
   const root = useRef<HTMLSpanElement>(null);
   const instanceKey = useId();
   const priorProgressToken = useRef(progressToken);
@@ -127,7 +130,7 @@ export const AgentAvatar = memo(function AgentAvatar({
         !ariaHidden && ["approval", "waiting", "failed"].includes(activity) ? "polite" : undefined
       }
       title={ariaHidden ? undefined : label}
-      tabIndex={ariaHidden ? undefined : 0}
+      tabIndex={ariaHidden || !focusable ? undefined : 0}
       style={{ width: size, height: size }}
     >
       <span className="rakazo-agent-avatar-art" aria-hidden="true">
