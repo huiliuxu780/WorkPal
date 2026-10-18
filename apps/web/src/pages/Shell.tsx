@@ -4849,7 +4849,9 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
   return shell;
 }
 
-const Transcript = memo(function Transcript({
+// Exported as a test seam for the UX-01A execution-region smoke baseline
+// (shell-execution-transcript.test.tsx); rendering behavior is unchanged.
+export const Transcript = memo(function Transcript({
   scrollRef,
   scrollRequest,
   onScrollRequestHandled,
