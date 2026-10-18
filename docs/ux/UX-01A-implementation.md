@@ -1,6 +1,6 @@
 # UX-01A 交付说明：Shell 执行区无行为变化拆分
 
-状态：`delivered`（2026-10-18）。实施分支 `codex/ux01a-shell-extraction`，任务书见 [UX-01A.md](../tasks/UX-01A.md)，产品边界以 [UX-01-decision.md](./UX-01-decision.md) G4 为准。
+状态：`delivered`（2026-10-18）。实施分支 `codex/ux01a-shell-extraction`，PR [#60](https://github.com/huiliuxu780/WorkPal/pull/60)，任务书见 [UX-01A.md](../tasks/UX-01A.md)，产品边界以 [UX-01-decision.md](./UX-01-decision.md) G4 为准。
 
 ## 1. 基线
 

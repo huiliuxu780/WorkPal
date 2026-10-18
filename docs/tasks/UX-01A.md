@@ -1,6 +1,6 @@
 # UX-01A：Shell 执行区无行为变化拆分
 
-状态：`delivered`。实施分支 `codex/ux01a-shell-extraction`（基线 `main @ ed1cf48`，冻结代码基线 `165aff70` 为其祖先）；冒烟基线先在原实现跑绿（`b0f3a44`），拆分提交 `51f9129` 搬移代码逐字节 verbatim。证据见 [UX-01A 交付说明](../ux/UX-01A-implementation.md)。
+状态：`delivered`。实施分支 `codex/ux01a-shell-extraction`，PR [#60](https://github.com/huiliuxu780/WorkPal/pull/60)（基线 `main @ ed1cf48`，冻结代码基线 `165aff70` 为其祖先）；冒烟基线先在原实现跑绿（`b0f3a44`），拆分提交 `51f9129` 搬移代码逐字节 verbatim。证据见 [UX-01A 交付说明](../ux/UX-01A-implementation.md)。
 
 冻结代码基线：`main @ 165aff7068fcddb7667463ccc3769e2f174390b2`（Avatar stack #49–#55 全部以 merge commit 进入 `main`，最终 main CI run `39110281001` 全绿；未部署）。实现分支应从**包含本任务书的最新 `main`**创建，并证明该提交是其祖先；如果其后有任何产品代码改动，先重新核实本文代码事实和冒烟基线。
 
