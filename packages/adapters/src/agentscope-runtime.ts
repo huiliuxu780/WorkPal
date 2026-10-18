@@ -612,6 +612,7 @@ function serializableRequest(
       id: message.id,
       role: message.role,
       content: message.content,
+      provenance: message.provenance,
       images: message.images?.map(serializeImage),
     })),
     currentTurnImages: request.currentTurnImages?.map(serializeImage),

@@ -308,6 +308,8 @@ describe("createMessagingInboundHandler DM routing", () => {
       threadId: "thread-1",
       botId: "bot-1",
       userId: "user-1",
+      originKind: "human_messaging",
+      authorUserId: "user-1",
       blocks: [{ kind: "text", text: "hello bot" }],
       prompt: "hello bot",
       trigger: "messaging",
@@ -871,6 +873,8 @@ describe("createMessagingInboundHandler channel routing", () => {
     expect(fanout).toHaveLength(2);
     for (const input of fanout as Array<Record<string, unknown>>) {
       expect(input.trigger).toBe("messaging");
+      expect(input.originKind).toBe("messaging_external");
+      expect(input.authorUserId).toBeUndefined();
       expect(input.clientNonce).toBe("messaging:sendblue:handle-1");
       expect(input.blocks).toEqual([
         {

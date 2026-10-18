@@ -11,6 +11,40 @@ function transaction() {
 }
 
 describe("createThreadMessageInTransaction", () => {
+  it("defaults unclassified legacy-style writes to unknown and records explicit trusted provenance", async () => {
+    const tx = transaction();
+    await createThreadMessageInTransaction(tx as unknown as Prisma.TransactionClient, {
+      threadId: "thread-1", role: "user", blocks: [{ kind: "text", text: "old" }],
+    });
+    expect(tx.message.create).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ originKind: "unknown", authorUserId: null }),
+    }));
+    await createThreadMessageInTransaction(tx as unknown as Prisma.TransactionClient, {
+      threadId: "thread-1", role: "user", blocks: [{ kind: "text", text: "new" }],
+      originKind: "human_web", authorUserId: "user-1",
+    });
+    expect(tx.message.create).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ originKind: "human_web", authorUserId: "user-1" }),
+    }));
+  });
+
+  it("rejects an author claim on a nonhuman entry before advancing sequence", async () => {
+    const tx = transaction();
+    await expect(createThreadMessageInTransaction(tx as unknown as Prisma.TransactionClient, {
+      threadId: "thread-1", role: "user", blocks: [{ kind: "text", text: "forged" }],
+      originKind: "webhook", authorUserId: "user-1",
+    })).rejects.toThrow("Message author and origin are inconsistent");
+    await expect(createThreadMessageInTransaction(tx as unknown as Prisma.TransactionClient, {
+      threadId: "thread-1", role: "user", blocks: [{ kind: "text", text: "unowned" }],
+      originKind: "human_web",
+    })).rejects.toThrow("Message author and origin are inconsistent");
+    await expect(createThreadMessageInTransaction(tx as unknown as Prisma.TransactionClient, {
+      threadId: "thread-1", role: "bot", blocks: [{ kind: "text", text: "spoofed" }],
+      originKind: "human_web", authorUserId: "user-1",
+    })).rejects.toThrow("Human-origin message must have the user role");
+    expect(tx.thread.update).not.toHaveBeenCalled();
+  });
+
   it("allows an automated bot message to opt out of unread without changing the default", async () => {
     const silent = transaction();
     await createThreadMessageInTransaction(silent as unknown as Prisma.TransactionClient, {

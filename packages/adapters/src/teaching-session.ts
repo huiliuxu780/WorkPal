@@ -406,6 +406,7 @@ async function emitSkillDraftMessages(
       const message = await createThreadMessageInTransaction(tx, {
         threadId,
         role: "bot",
+        originKind: "bot",
         blocks,
       });
       created = { id: message.id, blocks };

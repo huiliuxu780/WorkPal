@@ -6,6 +6,7 @@ import {
   encodeLoginSecret,
   LoginSecretValue,
   type MessageBlock,
+  type MessageOriginKind,
   MessageBlock as MessageBlockSchema,
   type ProductEvent,
 } from "@rakazo/contracts";
@@ -246,6 +247,9 @@ export interface SendUserMessageInput {
   threadId: string;
   botId: string;
   userId: string;
+  /** Trusted entry point classification; the owning userId is not necessarily the author. */
+  originKind?: MessageOriginKind;
+  authorUserId?: string | null;
   blocks: MessageBlock[];
   prompt: string;
   trigger: "user" | "follow_up" | "webhook" | "messaging";
@@ -432,6 +436,8 @@ export async function sendUserMessage(
       const message = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "user",
+        originKind: input.originKind ?? "unknown",
+        authorUserId: input.authorUserId ?? null,
         blocks: input.blocks,
         clientNonce: input.clientNonce,
       });
@@ -712,6 +718,7 @@ export async function commitAnswerRunInput(
       const note = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "bot",
+        originKind: "system",
         botId: run.botId,
         runId: input.runId,
         blocks: guidance,
@@ -1131,6 +1138,7 @@ export async function pauseRunForInput(
       id: messageId,
       threadId: input.threadId,
       role: "bot",
+      originKind: "system",
       blocks: pausedIntervention.blocks,
       botId: input.botId,
       runId: input.runId,
@@ -1511,6 +1519,7 @@ async function finalizeRunOnce(
         const message = await createThreadMessageInTransaction(tx, {
           threadId: input.threadId,
           role: "bot",
+          originKind: "bot",
           blocks: completedBlocks,
           botId: input.botId,
           runId: input.runId,

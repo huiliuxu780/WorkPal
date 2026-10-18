@@ -175,6 +175,7 @@ async function ensureSpawnRun(
       await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "user",
+        originKind: "bot",
         blocks: [{ kind: "text", text: input.prompt }],
         runId: input.sourceRunId,
       });

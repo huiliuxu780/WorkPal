@@ -282,6 +282,7 @@ export async function messageBot(
         const outbound = await createThreadMessageInTransaction(tx, {
           threadId: run.threadId,
           role: "bot",
+          originKind: "bot",
           blocks: [outboundBlock],
           botId: run.botId,
           runId: run.id,
@@ -299,6 +300,7 @@ export async function messageBot(
         const inbound = await createThreadMessageInTransaction(tx, {
           threadId: targetThreadId,
           role: "user",
+          originKind: "bot",
           blocks: [inboundBlock],
           replyToMessageId:
             sourceContext?.fromBotId === target.id && intent !== "fyi"

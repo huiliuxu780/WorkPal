@@ -450,7 +450,7 @@ class MemoryCompactionPurgeIntegrationTest {
             // Thread Clear advanced the generation: a different session slot, no restored state.
             engine.execute(chat(model.getAddress().getPort(), "gen-2", "user-1", "space-1", "bot-1",
                     "thread-1", 1, "Fresh start after clear.",
-                    windowedHistory(durableMemory("USERA_MEM_R1", 1), 0)),
+                    windowedHistory(durableMemory("USERA_MEM_R1", 1), 0, 1)),
                     IGNORE);
             List<JsonNode> nextTurn = requests.subList(before, requests.size());
             assertFalse(anyMessageContains(nextTurn, WORKING_SUMMARY_MARKER),
@@ -481,7 +481,7 @@ class MemoryCompactionPurgeIntegrationTest {
             int before = requests.size();
             String appSummary = "WorkPal-" + APP_LAYER_PHRASE + " 9. " + APP_CURSOR_MARKER;
             List<RunRequest.HistoryMessage> history = windowedHistory(durableMemory("USERA_MEM_R2", 2), 40);
-            history.add(1, new RunRequest.HistoryMessage(null, "user", appSummary, null));
+            history.add(1, applicationContext("compacted_summary", appSummary));
             engine.execute(chat(model.getAddress().getPort(), "app-2", "user-1", "space-1", "bot-1",
                     "thread-1", 0, "Follow-up.", history),
                     IGNORE);
@@ -496,6 +496,31 @@ class MemoryCompactionPurgeIntegrationTest {
         } finally { model.stop(0); }
     }
 
+    @Test void changedApplicationSummaryCannotSurviveInsideNativeSummary() throws Exception {
+        List<JsonNode> requests = new CopyOnWriteArrayList<>();
+        List<String> kinds = new CopyOnWriteArrayList<>();
+        HttpServer model = memoryEchoModel(requests, kinds);
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            List<RunRequest.HistoryMessage> first = windowedHistory(null, 40);
+            first.add(0, applicationContext("compacted_summary", "OLD_APP_SUMMARY_MARKER"));
+            engine.execute(chat(model.getAddress().getPort(), "app-native-1", "user-1", "space-1",
+                    "bot-1", "thread-1", 0, "Continue.", first), IGNORE);
+            assertTrue(kinds.contains("SUMMARY"), "run 1 must fold the old application summary");
+            int before = requests.size();
+            List<RunRequest.HistoryMessage> second = windowedHistory(null, 40);
+            second.add(0, applicationContext("compacted_summary", "NEW_APP_SUMMARY_MARKER"));
+            engine.execute(chat(model.getAddress().getPort(), "app-native-2", "user-1", "space-1",
+                    "bot-1", "thread-1", 0, "Continue.", second), IGNORE);
+            List<JsonNode> next = requests.subList(before, requests.size());
+            assertFalse(anyMessageContains(next, "OLD_APP_SUMMARY_MARKER"),
+                    "the replaced application summary must be absent from the native summary too");
+            assertTrue(anyMessageContains(next, "NEW_APP_SUMMARY_MARKER"));
+            assertTrue(anyMessageContains(next, EARLY_CONV),
+                    "the trusted window must restore ordinary earlier conversation");
+        } finally { model.stop(0); }
+    }
+
     // ============================ fixture helpers ============================
 
     /** Mirrors packages/adapters/src/memory-context.ts (preamble + fenced body with revision heading). */
@@ -506,14 +531,27 @@ class MemoryCompactionPurgeIntegrationTest {
                 + " — the user's current preferences.\n</durable_memory>";
     }
 
+    private static RunRequest.HistoryMessage applicationContext(String kind, String content, int generation) {
+        return new RunRequest.HistoryMessage(null, "user", content, null,
+                new RunRequest.HistoryProvenance("application", null, null, kind, generation, null));
+    }
+
+    private static RunRequest.HistoryMessage applicationContext(String kind, String content) {
+        return applicationContext(kind, content, 0);
+    }
+
     /**
      * A realistic chat wire: the current application context (memory, nullable) followed by the
      * backend's trusted PostgreSQL window — the early marker at the oldest position, the
      * retained-tail marker at the newest.
      */
     private static List<RunRequest.HistoryMessage> windowedHistory(String memory, int count) {
+        return windowedHistory(memory, count, 0);
+    }
+
+    private static List<RunRequest.HistoryMessage> windowedHistory(String memory, int count, int generation) {
         List<RunRequest.HistoryMessage> history = new ArrayList<>();
-        if (memory != null) history.add(new RunRequest.HistoryMessage(null, "user", memory, null));
+        if (memory != null) history.add(applicationContext("durable_memory", memory, generation));
         for (int i = 0; i < count; i++) {
             String role = (i % 2 == 0) ? "user" : "assistant";
             String marker = (i == 0) ? EARLY_CONV : (i == count - 1) ? NEEDLE_RETAINED : "";
@@ -529,7 +567,7 @@ class MemoryCompactionPurgeIntegrationTest {
      */
     private static List<RunRequest.HistoryMessage> recentWindow(String memory, int count) {
         List<RunRequest.HistoryMessage> history = new ArrayList<>();
-        if (memory != null) history.add(new RunRequest.HistoryMessage(null, "user", memory, null));
+        if (memory != null) history.add(applicationContext("durable_memory", memory));
         for (int i = 0; i < count; i++) {
             String role = (i % 2 == 0) ? "user" : "assistant";
             history.add(new RunRequest.HistoryMessage("db-recent-" + i, role,

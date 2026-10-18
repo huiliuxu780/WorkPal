@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@rakazo/contracts";
+import type { MessageBlock, MessageOriginKind } from "@rakazo/contracts";
 import { parseRunOrchestration } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
 import { withTransactionRetry } from "./transaction-retry.js";
@@ -32,6 +32,8 @@ export function loadRunHistoryMessages(
       threadId: true,
       seq: true,
       role: true,
+      originKind: true,
+      authorUserId: true,
       runId: true,
       blocks: true,
       replyToMessageId: true,
@@ -46,6 +48,9 @@ export interface CreateThreadMessageInput {
   id?: string;
   threadId: string;
   role: "user" | "bot" | "system";
+  /** Explicitly derived by the trusted entry point; omission is conservative. */
+  originKind?: MessageOriginKind;
+  authorUserId?: string | null;
   blocks: MessageBlock[];
   botId?: string;
   replyToMessageId?: string;
@@ -67,6 +72,15 @@ export async function createThreadMessageInTransaction(
   tx: Prisma.TransactionClient,
   input: CreateThreadMessageInput,
 ) {
+  const originKind = input.originKind ?? "unknown";
+  const authorUserId = input.authorUserId?.trim() || null;
+  const humanOrigin = originKind === "human_web" || originKind === "human_messaging";
+  if (humanOrigin !== Boolean(authorUserId)) {
+    throw new Error("Message author and origin are inconsistent");
+  }
+  if (humanOrigin && input.role !== "user") {
+    throw new Error("Human-origin message must have the user role");
+  }
   const thread = await tx.thread.update({
     where: { id: input.threadId },
     data: {
@@ -82,6 +96,8 @@ export async function createThreadMessageInTransaction(
       threadId: input.threadId,
       seq: thread.nextMessageSeq - 1,
       role: input.role,
+      originKind,
+      authorUserId,
       blocks: input.blocks as Prisma.InputJsonValue,
       botId: input.botId,
       replyToMessageId: input.replyToMessageId,

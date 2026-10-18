@@ -78,6 +78,7 @@ async function post(
     const message = await createThreadMessageInTransaction(tx, {
       threadId: target.threadId,
       role: "bot",
+      originKind: "system",
       blocks,
     });
     const event = await appendEventInTransaction(tx, {
@@ -146,6 +147,7 @@ export async function promptFocus(
     const message = await createThreadMessageInTransaction(tx, {
       threadId: target.threadId,
       role: "bot",
+      originKind: "system",
       blocks,
     });
     const event = await appendEventInTransaction(tx, {

@@ -63,7 +63,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -73,24 +72,12 @@ import reactor.core.Disposables;
 
 /** WorkPal protocol adapter around AgentScope's own reasoning and tool lifecycle. */
 public final class RuntimeEngine {
-    private static final Pattern COMPACTED_CONTEXT = Pattern.compile(
-            "^[^\\n]{1,80}-owned compacted context through message sequence ");
-    private static final String RECALLED_MEMORY = "Memory recalled from earlier conversations";
-    /**
-     * AG-06 review round 2: the backend moved durable bot/user memory out of the
-     * run instructions (system message) into a run-scoped application-context
-     * history message, because memory bodies are untrusted data. The block keeps
-     * this fixed preamble (see packages/adapters/src/memory-context.ts); treating
-     * it as application context lets a restored session replace the previous
-     * run's copy instead of keeping stale memory.
-     */
-    private static final String DURABLE_MEMORY = "Durable memory saved by this user or bot follows";
     /**
      * ME-00 (PR #45 review P1): AgentScope's native compaction folds the whole compacted
      * prefix — including the replaceable durable-memory application-context message — into a
      * persisted summary message ({@code name = __compaction_summary__}, USER role). That message
-     * matches none of the application-context prefixes, so {@link #refreshApplicationContext}
-     * never touched it and stale memory survived update/deletion. The summary is identified by
+     * is not an application-context message, so {@link #refreshApplicationContext}
+     * does not remove it during ordinary refresh. The summary is identified by
      * its library-defined message name — never by searching its text — and the message name
      * survives the JSON state round-trip ({@code Msg} persists {@code name} via @JsonCreator).
      */
@@ -106,9 +93,14 @@ public final class RuntimeEngine {
      * next non-resume run.
      */
     private static final String MEMORY_STATE_NAME = "memory_context_state";
+    private static final String APPLICATION_STATE_NAME = "application_context_state";
+    private static final String PROVENANCE_STATE_NAME = "history_provenance_state";
+    private static final String APP_CONTEXT_NAME_PREFIX = "workpal_application_context:";
 
     /** Persisted sidecar: fingerprint of the durable-memory application context (or "none"). */
     record MemoryContextState(String fingerprint) implements State {}
+    record ApplicationContextState(String fingerprint) implements State {}
+    record HistoryProvenanceState(int version) implements State {}
     /**
      * AG-02: AgentScope's native ToolResultEvictionMiddleware offloads any tool result whose
      * combined TextBlock text exceeds 80,000 chars to {@code large_tool_results/} in the Java
@@ -262,15 +254,43 @@ public final class RuntimeEngine {
         boolean fresh = loaded == null;
         List<ToolUseBlock> pendingFromPreviousAttempt = pendingToolCalls(loaded);
         String memoryFingerprint = durableMemoryFingerprint(request);
+        String applicationFingerprint = applicationContextFingerprint(request);
+        if (applicationFingerprint == null && request.history() != null && request.history().isEmpty()
+                && store.get(userSlot, sessionSlot, APPLICATION_STATE_NAME,
+                        ApplicationContextState.class).isPresent()) {
+            applicationFingerprint = "none";
+        }
         if (pendingFromPreviousAttempt.isEmpty()) {
             if (loaded != null) {
-                refreshApplicationContext(loaded, request, store, userSlot, sessionSlot, memoryFingerprint);
+                // Old persisted contexts have no stable application-context names. On the
+                // first typed request, replace them from the trusted PostgreSQL window once;
+                // never guess their identity from model-controlled message text.
+                if (request.history() != null && request.history().stream()
+                        .anyMatch(item -> item.provenance() != null)
+                        && store.get(userSlot, sessionSlot, PROVENANCE_STATE_NAME,
+                                HistoryProvenanceState.class).isEmpty()) {
+                    List<Msg> reseeded = new ArrayList<>();
+                    seedTrustedHistory(reseeded, request);
+                    loaded.contextMutable().clear();
+                    loaded.contextMutable().addAll(reseeded);
+                    store.save(userSlot, sessionSlot, "agent_state", loaded);
+                    store.save(userSlot, sessionSlot, PROVENANCE_STATE_NAME,
+                            new HistoryProvenanceState(1));
+                }
+                refreshApplicationContext(loaded, request, store, userSlot, sessionSlot,
+                        memoryFingerprint, applicationFingerprint);
             } else if (memoryFingerprint != null) {
                 // ME-00: a fresh session's native summary (if compaction fires this run) is
                 // built under this run's memory state; record the fingerprint up front so the
                 // next restored run can tell "memory unchanged" from "memory replaced/deleted".
                 store.save(userSlot, sessionSlot, MEMORY_STATE_NAME,
                         new MemoryContextState(memoryFingerprint));
+                if (request.history().stream().anyMatch(item -> item.provenance() != null)) {
+                    store.save(userSlot, sessionSlot, PROVENANCE_STATE_NAME,
+                            new HistoryProvenanceState(1));
+                    store.save(userSlot, sessionSlot, APPLICATION_STATE_NAME,
+                            new ApplicationContextState(applicationFingerprint));
+                }
             }
         }
         RuntimeContext context = RuntimeContext.builder().userId(userSlot).sessionId(sessionSlot).build();
@@ -428,7 +448,7 @@ public final class RuntimeEngine {
             if (fresh && request.history() != null) {
                 for (RunRequest.HistoryMessage item : request.history()) {
                     if (item.id() != null && item.id().equals(request.sourceMessageId())) continue;
-                    if ("user".equals(item.role())) input.add(userMessage(item.content(), item.images()));
+                    if ("user".equals(item.role())) input.add(historyUserMessage(item));
                     if ("assistant".equals(item.role())) input.add(Msg.builder().role(MsgRole.ASSISTANT)
                             .textContent(item.content() == null ? "" : item.content()).build());
                 }
@@ -502,11 +522,11 @@ public final class RuntimeEngine {
     }
 
     private static void refreshApplicationContext(AgentState loaded, RunRequest request,
-            JsonFileAgentStateStore store, String userSlot, String sessionSlot, String memoryFingerprint) {
+            JsonFileAgentStateStore store, String userSlot, String sessionSlot,
+            String memoryFingerprint, String applicationFingerprint) {
         if (request.history() == null) return;
         List<RunRequest.HistoryMessage> current = request.history().stream()
-                .filter(item -> item.id() == null && "user".equals(item.role())
-                        && isApplicationContext(item.content()))
+                .filter(RuntimeEngine::isApplicationContext)
                 .toList();
         // The application summary, semantic recall and durable memory are run-scoped: the
         // backend resends the complete current set on every chat run, so a restored Harness
@@ -524,13 +544,33 @@ public final class RuntimeEngine {
         // library-defined message name. This never rewrites summary text and never relies on
         // string-searching it.
         boolean staleMemory = false;
+        boolean staleApplication = false;
         boolean rebuilt = false;
+        if (applicationFingerprint != null) {
+            ApplicationContextState stored = store.get(userSlot, sessionSlot, APPLICATION_STATE_NAME,
+                    ApplicationContextState.class).orElse(null);
+            staleApplication = stored == null || stored.fingerprint() == null
+                    || !applicationFingerprint.equals(stored.fingerprint());
+            // A summary made while no non-memory application context existed cannot contain
+            // a stale copy when a summary/recall is added for the first time. Every other
+            // change may have been folded into the native summary, so rebuild from the
+            // trusted PostgreSQL window before refreshing the current named copies.
+            if (staleApplication && (stored == null || !"none".equals(stored.fingerprint()))
+                    && loaded.getContext().stream().anyMatch(message ->
+                            NATIVE_SUMMARY_NAME.equals(message.getName()))) {
+                List<Msg> reseeded = new ArrayList<>();
+                seedTrustedHistory(reseeded, request);
+                loaded.contextMutable().clear();
+                loaded.contextMutable().addAll(reseeded);
+                rebuilt = true;
+            }
+        }
         if (memoryFingerprint != null) {
             MemoryContextState stored = store.get(userSlot, sessionSlot, MEMORY_STATE_NAME,
                     MemoryContextState.class).orElse(null);
             staleMemory = stored == null || stored.fingerprint() == null
                     || !memoryFingerprint.equals(stored.fingerprint());
-            if (staleMemory && loaded.getContext().stream().anyMatch(message ->
+            if (staleMemory && !rebuilt && loaded.getContext().stream().anyMatch(message ->
                     NATIVE_SUMMARY_NAME.equals(message.getName()))) {
                 // Review round 2 (PR #47 P1): dropping the summary alone would permanently
                 // discard every early turn represented only by it — a restored run never
@@ -552,13 +592,14 @@ public final class RuntimeEngine {
             }
         }
         boolean removed = !rebuilt && loaded.contextMutable().removeIf(message ->
-                message.getRole() == MsgRole.USER && isApplicationContext(message.getTextContent()));
+                message.getRole() == MsgRole.USER && message.getName() != null
+                        && message.getName().startsWith(APP_CONTEXT_NAME_PREFIX));
         if (current.isEmpty()) {
             if (removed || rebuilt) store.save(userSlot, sessionSlot, "agent_state", loaded);
         } else {
             List<Msg> updated = new ArrayList<>();
             for (RunRequest.HistoryMessage item : current) {
-                updated.add(userMessage(item.content(), item.images()));
+                updated.add(historyUserMessage(item));
             }
             loaded.contextMutable().addAll(0, updated);
             store.save(userSlot, sessionSlot, "agent_state", loaded);
@@ -569,6 +610,29 @@ public final class RuntimeEngine {
         if (memoryFingerprint != null && staleMemory) {
             store.save(userSlot, sessionSlot, MEMORY_STATE_NAME, new MemoryContextState(memoryFingerprint));
         }
+        if (applicationFingerprint != null && staleApplication) {
+            store.save(userSlot, sessionSlot, APPLICATION_STATE_NAME,
+                    new ApplicationContextState(applicationFingerprint));
+        }
+    }
+
+    /** Fingerprint only replaceable summary/recall data; ME-00 tracks durable memory separately. */
+    static String applicationContextFingerprint(RunRequest request) {
+        if (request.history() == null) return null;
+        // An old wire with only untyped entries supplies no trustworthy application-context
+        // inventory. Avoid rebuilding its native summary merely because the new sidecar is
+        // absent; the first typed request performs the migration from trusted history.
+        if (request.history().stream().noneMatch(item -> item.provenance() != null)) return null;
+        StringBuilder body = new StringBuilder();
+        for (RunRequest.HistoryMessage item : request.history()) {
+            if (isApplicationContext(item) && !"durable_memory".equals(item.provenance().contextKind())) {
+                String kind = item.provenance().contextKind();
+                String content = item.content() == null ? "" : item.content();
+                body.append(kind.length()).append(':').append(kind)
+                        .append(content.length()).append(':').append(content);
+            }
+        }
+        return body.length() == 0 ? "none" : hash(body.toString());
     }
 
     /**
@@ -584,8 +648,7 @@ public final class RuntimeEngine {
         if (request.history() == null) return null;
         StringBuilder body = new StringBuilder();
         for (RunRequest.HistoryMessage item : request.history()) {
-            if (item.id() == null && "user".equals(item.role()) && item.content() != null
-                    && item.content().startsWith(DURABLE_MEMORY)) {
+            if (isApplicationContext(item) && "durable_memory".equals(item.provenance().contextKind())) {
                 if (body.length() > 0) body.append('\u0000');
                 body.append(item.content());
             }
@@ -604,17 +667,25 @@ public final class RuntimeEngine {
         if (request.history() == null) return;
         for (RunRequest.HistoryMessage item : request.history()) {
             if (item.id() != null && item.id().equals(request.sourceMessageId())) continue;
-            if (item.id() == null && isApplicationContext(item.content())) continue;
-            if ("user".equals(item.role())) target.add(userMessage(item.content(), item.images()));
+            if (isApplicationContext(item)) continue;
+            if ("user".equals(item.role())) target.add(historyUserMessage(item));
             if ("assistant".equals(item.role())) target.add(Msg.builder().role(MsgRole.ASSISTANT)
                     .textContent(item.content() == null ? "" : item.content()).build());
         }
     }
 
-    private static boolean isApplicationContext(String content) {
-        return content != null && (COMPACTED_CONTEXT.matcher(content).find()
-                || content.startsWith(RECALLED_MEMORY)
-                || content.startsWith(DURABLE_MEMORY));
+    private static boolean isApplicationContext(RunRequest.HistoryMessage item) {
+        return item.id() == null && "user".equals(item.role()) && item.provenance() != null
+                && "application".equals(item.provenance().kind());
+    }
+
+    private static Msg historyUserMessage(RunRequest.HistoryMessage item) {
+        if (isApplicationContext(item)) {
+            return Msg.builder().role(MsgRole.USER)
+                    .name(APP_CONTEXT_NAME_PREFIX + item.provenance().contextKind())
+                    .textContent(item.content() == null ? "" : item.content()).build();
+        }
+        return userMessage(item.content(), item.images());
     }
 
     private static Msg taskReminder(List<TaskDelivery> deliveries) {

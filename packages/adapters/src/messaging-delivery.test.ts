@@ -848,6 +848,7 @@ describe("deliverMessagingOutbound channel runs", () => {
     expect(deps.sendUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         botId: "bot-2",
+        originKind: "messaging_external",
         blocks: [
           expect.objectContaining({
             kind: "channel_message",

@@ -666,6 +666,7 @@ describe("pauseRunForInput", () => {
           botId: "bot-1",
           runId: "run-1",
           role: "bot",
+          originKind: "system",
         }),
       }),
     );
