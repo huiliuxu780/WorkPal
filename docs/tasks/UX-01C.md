@@ -1,6 +1,6 @@
 # UX-01C：Compatibility, Retry and E2E Closure
 
-状态：`not-started`
+状态：`delivered, ready-to-merge`（2026-10-18，分支 `codex/ux01c-compatibility-e2e` 基于 B head `7599874`，stacked PR base=`codex/ux01b-progress-convergence`，证据见 [UX-01C-implementation.md](../ux/UX-01C-implementation.md)；B 合入后改 base=main，未合并，main 合入后才可标 done）
 
 依赖：UX-01B 的实现、定向门禁和接口边界已经完成。开发分支 `codex/ux01c-compatibility-e2e` 必须从 UX-01B 的精确已验证 head 创建；初始 PR base 指向 `codex/ux01b-progress-convergence`。B 合入 main 后再把 C 的 base 改成 `main`，确认 PR diff 只剩 C。
 
