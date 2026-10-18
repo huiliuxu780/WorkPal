@@ -27,6 +27,7 @@ import {
   mergeActivityPages,
   planExpansionDefaults,
   readExecutionExpansions,
+  rekeyExpansionRev,
   resolveExecutionAnchor,
   selectCachedDetailEntry,
   summariesByRun,
@@ -390,10 +391,18 @@ export function useExecutionTranscript({
           // A newer rev installs the snapshot together with its own first
           // page cursor and clears the pages loaded against the old version.
           setExecutionDetails((current) => installExecutionDetail(current, runId, snapshot));
+          // Review round: the open-triggered load must not self-close the
+          // card — an actively eventing Run's detail arrives at a fresher
+          // rev of the SAME projection the user just opened, so the stored
+          // expansion decision is re-keyed to it (never downgraded, no-op
+          // without a stored decision).
+          setExpansionEntries((entries) =>
+            rekeyExpansionRev({ entries, threadId, runId, rev: snapshot.summary.rev }),
+          );
         })
         .catch(() => undefined);
     },
-    [artifactTarget],
+    [artifactTarget, threadId],
   );
   // Task Center "return to conversation": a module-memory intent (never the
   // DOM, never browser storage) asks this Thread to open one Run's card and

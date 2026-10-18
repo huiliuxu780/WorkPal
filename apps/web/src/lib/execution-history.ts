@@ -318,6 +318,26 @@ export function toggleExpansion(input: {
   return writeExpansions(next);
 }
 
+/**
+ * Re-key a stored expansion decision to the rev of the detail that just
+ * loaded (review round). The toggle stores the thread-summary rev; an
+ * actively eventing Run's own detail arrives at a FRESHER rev of the same
+ * projection the user just opened — without re-keying, the open-triggered
+ * load would immediately invalidate the stored decision and self-close the
+ * card. Never downgrades a newer stored rev; unknown Run/Thread untouched.
+ */
+export function rekeyExpansionRev(input: {
+  entries: ExpansionMap;
+  threadId: string;
+  runId: string;
+  rev: number;
+}): ExpansionMap {
+  const key = expansionId(input.threadId, input.runId);
+  const entry = input.entries[key];
+  if (!entry || entry.rev >= input.rev) return input.entries;
+  return writeExpansions({ ...input.entries, [key]: { ...entry, rev: input.rev } });
+}
+
 /** Only ever the four expansion fields — snapshots, answers, and secrets never enter storage. */
 export function expansionLogShape(entries: ExpansionMap): ExpansionEntry[] {
   return Object.values(entries);

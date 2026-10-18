@@ -542,9 +542,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
       interventions: [
         approvalIntervention({ id: "iv-9", runId: "run-9", messageId: "m2", status: "answered" }),
       ],
-      executions: [
-        summary({ runId: "run-9", title: "SETTLED-ASK-RUN", anchorMessageId: "m2" }),
-      ],
+      executions: [summary({ runId: "run-9", title: "SETTLED-ASK-RUN", anchorMessageId: "m2" })],
     });
     // No Plan/Steps/pending/failed → no surface; the bubble's own answered
     // AskCard is the honest history echo instead of a vanished region card.
@@ -566,9 +564,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
       interventions: [
         approvalIntervention({ id: "iv-8", runId: "run-8", messageId: "m2", status: "answered" }),
       ],
-      executions: [
-        summary({ runId: "run-8", title: "ELIGIBLE-ASK-RUN", anchorMessageId: "m2" }),
-      ],
+      executions: [summary({ runId: "run-8", title: "ELIGIBLE-ASK-RUN", anchorMessageId: "m2" })],
     });
     // The Run is eligible (semantic Step), so its region owns the settled
     // card and the bubble ask stays suppressed — exactly one presentation.

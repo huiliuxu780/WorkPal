@@ -155,3 +155,37 @@
 - `git diff 5f5ea7a..HEAD --stat`：仅 `apps/web`（src+e2e+locales）、`packages/ui-web/src/index.ts`（导出既有 hook）、`packages/adapters/src/scripted-runtime.ts`（测试 runtime fixtures）。
 - **无** contracts、数据库、Prisma、API、Worker、Java Runtime、工具 schema、事件、迁移改动（`packages/contracts`、`packages/db`、`apps/api`、`apps/worker`、`services/` 零 diff；scripted-runtime 仅新增 fixture 分支，既有分支与 `applyTool` 生产路径未动）。
 - 无密钥、真实用户数据、私有 URL、本机身份信息入库；`.qoder/`（本机会话期外部工具生成的未跟踪目录）已从提交中剔除并保持未跟踪。
+
+## 9. 修复轮（2026-10-19 审查反馈：P1/P2）
+
+审查确认 CI 全绿、既有相关测试通过，但补充回归暴露两项缺陷，均已红→绿修复于本分支：
+
+### P1：等待审批时执行详情无法展开
+
+- **缺陷**：主按钮被 attention action 替换且 `onToggle` 在 `needsAttention` 时直接返回；默认收起后用户无法从卡片查看已有 Plan/Steps/证据。
+- **修复**：`ExecutionCardModel` 新增 `secondaryAction` —— attention 主动作卡在 `canExpand` 时渲染**独立**的「View progress / Collapse」toggle；`aria-expanded`/`aria-controls` 从 attention 按钮移到这个真正的 disclosure 控件上（顺带修正了 aria 语义：attention 是聚焦动作，不是展开控件）；`ExecutionShell.onToggle` 移除 `needsAttention` 拦截。审批卡仍渲染在折叠体外，展开/收起不影响其可操作性；`actionOverride`（Task Center）无 secondary。
+- **回归**：ExecutionShell jsdom 交互测试（真实 `RunPlanDisclosure` 子组件：默认收起 → View progress 展开见 `[data-slot="plan"]` → attention 仍聚焦 Allow → Collapse 收起）；模型 `secondaryAction` 3 条（waiting 收起/展开、无 detail 或 override 时省略、非 attention 卡省略）；E2E approval 测试更新为双按钮断言 + 展开后 region 仍可操作。
+
+### P2：「查看原因」没有真正定位到失败 Step
+
+- **缺陷**：生产路径的 `data-failure-target` 节点（`StepDetailBody`、`PlanItemSteps` 容器）不可聚焦，`.focus()` 无效；旧测试用手写 `tabIndex={-1}` 节点掩盖了这一点；且详情异步到达后焦点 effect 不再执行。
+- **修复**：两处真实失败目标容器补 `tabIndex={-1}`；焦点 effect 从一次性布尔改为**目标身份跟踪**（`focusedFailureTarget` ref），依赖加入从 `steps` 派生的 `failedStepId` —— 详情晚到时随失败 Step 身份变化重跑并把焦点移到新目标；Run-level reason 块先获焦、随后被真实 failed Step detail 接管的路径同样覆盖；收起或状态离开 failed 时重置。
+- **回归**：3 条组合真实组件的 jsdom 测试（`RunStepsDisclosure` 同步、`RunPlanDisclosure` plan-item 分组、延迟到达后焦点迁移），断言 `document.activeElement` 就是真实 `data-failure-target` 且位于对应 `data-step-id` / `data-plan-item-id` 内；E2E `a failed Run with a failed Step…` 增加 `activeElement.closest("[data-failure-target]")` 轮询断言（覆盖真实异步 detail 路径）。
+
+### 追加缺陷（本轮门禁重跑暴露的 B 潜伏问题）：live 卡"自关闭"循环
+
+- **缺陷**：打开活动 Run 的卡片时，toggle 以 thread summary rev（R1）写入存储展开决策，而这次打开触发的 `loadExecutionDetail` 对持续产生事件的 Run 会带回更高的 detail rev（R2，rev=MAX(event seq)，hang/流式 Run 每 50ms 前进）；`expansionPlan` 以 detail 优先计算当前 rev → 存储条目（R1）被判陈旧丢弃 → 卡片在打开后立刻自动收起。此前 3 次门禁通过属轮询竞态幸存（采样早于 detail 返回），本轮时序变化后确定性复现（E2E "an active Run and a failed Run never open two details at once"）。
+- **修复**：新增纯函数 `rekeyExpansionRev`（只升不降、未知 Run/Thread 不动、收起决策同样只换 rev 不改 open），`loadExecutionDetail` 成功安装快照后把该 Run 的存储决策 re-key 到 detail rev——用户刚打开的同一投影的新版本到达不构成"rev 移动"。真实投影移动（后续新事件）仍按冻结语义丢弃决策。Task Center 回焦 force-open 在活动 Run 上的同类竞态一并修复。
+- **回归**：`rekeyExpansionRev` 3 条单测 + transcript 集成回归"keeps a live card open when its own detail load lands on a fresher rev"（summary rev5 / detail rev9，红→绿实证）+ 上述 E2E 恢复确定性通过。
+
+### 同轮顺带修正（本分支规则引起的 E2E 竞态）
+
+- approval E2E 的 "Denied" 回执断言在 B 规则下是瞬态竞态（plain Run 的 region 随取消卸载；此前两次门禁通过属首查竞态幸存），改为确定性终态断言（region 消失、无可操作控件），与 C 分支同一修法（C rebase 后该提交去重）。
+
+### 修复轮门禁
+
+- 红色回归：4 failed（3 条 `rekeyExpansionRev` 单测 + 1 条 transcript 集成回归）→ 实现后全绿。
+- `pnpm --filter @rakazo/web check`：0 错误；`build`：成功。
+- apps/web 全量 Vitest：**83 文件 / 641 测试全绿**（修复前 637 → 新增 4 条回归；P1/P2 修复轮此前已 +6）。
+- 定向组件/纯函数（ExecutionShell + ExecutionCard + RunPlan/RunSteps + execution-card lib + execution-history + transcript）：60/60 绿。
+- E2E 门禁重跑（`execution-card.spec.ts|task-center.spec.ts`，独立库 `workpal_e2e_ux01b3`）：**27 / 27 passed（1.6m）**，含更新后的 approval 双按钮断言与 failed-step 焦点轮询断言。

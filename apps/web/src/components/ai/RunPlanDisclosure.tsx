@@ -77,7 +77,7 @@ const PlanItemSteps = memo(function PlanItemSteps({
       {open ? (
         <div
           data-testid="plan-item-steps"
-          {...(hasFailedMatch ? { "data-failure-target": "" } : {})}
+          {...(hasFailedMatch ? { "data-failure-target": "", tabIndex: -1 } : {})}
           className="space-y-1.5 pb-1"
         >
           {steps.map((step) => (

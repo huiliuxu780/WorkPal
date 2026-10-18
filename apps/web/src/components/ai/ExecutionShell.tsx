@@ -130,21 +130,25 @@ export function ExecutionShell({
     return () => window.clearTimeout(timer);
   }, [planRevision]);
 
-  // "View reason" landing (acceptance 8): when a failed card is open, land on
-  // its failure target — the failed Step's level-2 detail when one exists,
-  // the Run-level safe reason otherwise (both carry data-failure-target).
-  const failureFocused = useRef(false);
+  // "View reason" landing (acceptance 8 + review round P2): when a failed
+  // card is open, land on its failure target — the failed Step's level-2
+  // detail when one exists, the Run-level safe reason otherwise (both carry
+  // data-failure-target). The detail can arrive ASYNC after the card opened,
+  // so the effect re-runs whenever the failed Step identity changes and moves
+  // focus to a newly-appeared target (it never steals focus once that exact
+  // target is already the one it landed on).
+  const failedStepId = steps?.find((step) => step.status === "failed")?.stepId ?? null;
+  const focusedFailureTarget = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!open || status.status !== "failed") {
-      failureFocused.current = false;
+      focusedFailureTarget.current = null;
       return;
     }
-    if (failureFocused.current) return;
     const target = sectionRef.current?.querySelector<HTMLElement>("[data-failure-target]");
-    if (!target) return;
-    failureFocused.current = true;
+    if (!target || target === focusedFailureTarget.current) return;
+    focusedFailureTarget.current = target;
     target.focus({ preventScroll: true });
-  }, [open, status.status]);
+  }, [open, status.status, failedStepId]);
 
   const focusAttention = () => {
     const control = interventionsRef.current?.querySelector<HTMLElement>(FOCUSABLE_CONTROL);
@@ -172,7 +176,7 @@ export function ExecutionShell({
           detailsId={detailsId}
           planUpdated={planUpdated}
           onToggle={() => {
-            if (!hasDetail || status.needsAttention) return;
+            if (!hasDetail) return;
             if (expansion) expansion.toggle();
             else setExpanded((value) => !value);
           }}

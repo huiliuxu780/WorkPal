@@ -81,6 +81,13 @@ export type ExecutionCardModel = {
   planUpdatedLabel: string;
   /** Primary action; null when there is nothing to open and nothing to attend. */
   action: ExecutionCardAction | null;
+  /**
+   * Independent disclosure entry beside an attention/navigate primary action
+   * (review round P1): a waiting card stays collapsed by default, so without
+   * its own toggle the Plan/Steps/evidence inside would be unreachable.
+   * Null for every card whose primary action already toggles.
+   */
+  secondaryAction: ExecutionCardAction | null;
 };
 
 export type ExecutionCardInput = {
@@ -332,19 +339,25 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
       ? formatRelativeTime(summary.completedAt ?? summary.updatedAt) || null
       : null;
 
+  const toggleVerb = expanded
+    ? t`Collapse`
+    : status.status === "failed"
+      ? t`View reason`
+      : status.status === "done"
+        ? t`View result`
+        : t`View progress`;
   let action: ExecutionCardAction | null = null;
+  let secondaryAction: ExecutionCardAction | null = null;
   if (input.actionOverride !== undefined) {
     action = input.actionOverride;
   } else if (status.needsAttention) {
     action = { verb: t`Needs your attention`, act: "attention" };
+    // Review round P1: the attention verb focuses the Intervention control;
+    // the detail body keeps its OWN toggle so a waiting Run's Plan/Steps and
+    // evidence stay reachable while the approval card lives outside.
+    if (canExpand) secondaryAction = { verb: toggleVerb, act: "toggle" };
   } else if (canExpand) {
-    action = expanded
-      ? { verb: t`Collapse`, act: "toggle" }
-      : status.status === "failed"
-        ? { verb: t`View reason`, act: "toggle" }
-        : status.status === "done"
-          ? { verb: t`View result`, act: "toggle" }
-          : { verb: t`View progress`, act: "toggle" };
+    action = { verb: toggleVerb, act: "toggle" };
   }
 
   return {
@@ -361,5 +374,6 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
     planProgress: progress,
     planUpdatedLabel: t`Plan updated`,
     action,
+    secondaryAction,
   };
 }

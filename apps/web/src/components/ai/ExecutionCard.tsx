@@ -143,21 +143,34 @@ export function ExecutionCard({
           {card.planUpdatedLabel}
         </p>
       ) : null}
-      {card.action ? (
+      {card.action || card.secondaryAction ? (
         <div className="exc-actions">
-          <button
-            type="button"
-            className="exc-entry"
-            aria-expanded={hasDetail ? open : undefined}
-            aria-controls={hasDetail ? detailsId : undefined}
-            onClick={() => {
-              if (card.action?.act === "attention") onAttention();
-              else if (card.action?.act === "navigate") onNavigate?.();
-              else onToggle();
-            }}
-          >
-            {card.action.verb}
-          </button>
+          {card.action ? (
+            <button
+              type="button"
+              className="exc-entry"
+              aria-expanded={card.action.act === "toggle" && hasDetail ? open : undefined}
+              aria-controls={card.action.act === "toggle" && hasDetail ? detailsId : undefined}
+              onClick={() => {
+                if (card.action?.act === "attention") onAttention();
+                else if (card.action?.act === "navigate") onNavigate?.();
+                else onToggle();
+              }}
+            >
+              {card.action.verb}
+            </button>
+          ) : null}
+          {card.secondaryAction ? (
+            <button
+              type="button"
+              className="exc-entry"
+              aria-expanded={hasDetail ? open : undefined}
+              aria-controls={hasDetail ? detailsId : undefined}
+              onClick={onToggle}
+            >
+              {card.secondaryAction.verb}
+            </button>
+          ) : null}
         </div>
       ) : null}
       {interventions ? (

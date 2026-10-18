@@ -575,7 +575,12 @@ describe("currentPlanItem / currentItemElapsedMinutes (UX-01B boundary ruling)",
     const minutes = currentItemElapsedMinutes({
       item: currentPlanItem(plan()),
       steps: [
-        planStep({ stepId: "old", startedAt: "2026-10-12T10:00:00.000Z", completedAt: "2026-10-12T10:10:00.000Z", status: "completed" }),
+        planStep({
+          stepId: "old",
+          startedAt: "2026-10-12T10:00:00.000Z",
+          completedAt: "2026-10-12T10:10:00.000Z",
+          status: "completed",
+        }),
         planStep({ stepId: "new", startedAt: "2026-10-12T10:20:00.000Z" }),
       ],
       now,
@@ -599,11 +604,16 @@ describe("buildExecutionCardModel Plan integration (UX-01B acceptance 4/5/6)", (
   });
 
   it("shows the current Plan item line with trusted elapsed minutes", () => {
-    const card = model(run("running"), [activity("Checking ticket")], {}, {
-      plan: plan(),
-      steps: [planStep()],
-      now: Date.parse("2026-10-12T10:06:30.000Z"),
-    });
+    const card = model(
+      run("running"),
+      [activity("Checking ticket")],
+      {},
+      {
+        plan: plan(),
+        steps: [planStep()],
+        now: Date.parse("2026-10-12T10:06:30.000Z"),
+      },
+    );
     // The Plan current-item line replaces the raw activity line at level 0.
     expect(card.aux).toEqual({ kind: "current", text: "Current: Deliver result · 6 min elapsed" });
   });
@@ -614,11 +624,16 @@ describe("buildExecutionCardModel Plan integration (UX-01B acceptance 4/5/6)", (
   });
 
   it("shows under-1-min elapsed honestly", () => {
-    const card = model(run("running"), [], {}, {
-      plan: plan(),
-      steps: [planStep({ startedAt: "2026-10-12T10:06:00.000Z" })],
-      now: Date.parse("2026-10-12T10:06:30.000Z"),
-    });
+    const card = model(
+      run("running"),
+      [],
+      {},
+      {
+        plan: plan(),
+        steps: [planStep({ startedAt: "2026-10-12T10:06:00.000Z" })],
+        now: Date.parse("2026-10-12T10:06:30.000Z"),
+      },
+    );
     expect(card.aux).toEqual({
       kind: "current",
       text: "Current: Deliver result · under 1 min elapsed",
@@ -657,10 +672,15 @@ describe("buildExecutionCardModel Plan integration (UX-01B acceptance 4/5/6)", (
   });
 
   it("omits the current item line on terminal Runs", () => {
-    const card = model(run("completed"), [], {}, {
-      plan: plan(),
-      summary: summary({ outcome: "All done" }),
-    });
+    const card = model(
+      run("completed"),
+      [],
+      {},
+      {
+        plan: plan(),
+        summary: summary({ outcome: "All done" }),
+      },
+    );
     expect(card.aux).toEqual({ kind: "outcome", text: "All done" });
   });
 

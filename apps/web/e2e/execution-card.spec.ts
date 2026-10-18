@@ -213,12 +213,30 @@ test("pending approval stays discoverable, focuses and submits without a duplica
   await expect(card).toHaveAttribute("data-status", "approval");
   const attention = card.getByRole("button", { name: "Needs your attention", exact: true });
   await expect(attention).toBeVisible();
-  // UX-01B acceptance 4/7: the waiting card is collapsed by default, yet the
-  // approval controls render OUTSIDE the collapsible detail — visible and
-  // operable without any expansion.
-  await expect(attention).toHaveAttribute("aria-expanded", "false");
+  // UX-01B acceptance 4/7 + review round P1: the waiting card is collapsed by
+  // default; the approval controls render OUTSIDE the collapsible detail
+  // (visible and operable without expansion), AND the card keeps its own
+  // independent View progress toggle so the Plan/Steps/evidence inside stay
+  // reachable while waiting. The attention verb is a focus action, not a
+  // disclosure, so it carries no aria-expanded — the toggle does.
+  // The toggle is the ONLY button in the action row carrying aria-expanded
+  // (the attention verb is a focus action, not a disclosure); its label flips
+  // View progress ↔ Collapse with the open state.
+  const disclosure = card.locator(".exc-actions button[aria-expanded]");
+  await expect(disclosure).toHaveText("View progress");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await expect(shell.locator(".exc-details")).toHaveAttribute("hidden", "");
   await expect(region.getByRole("button", { name: "Deny", exact: true })).toBeEnabled();
+
+  // The independent toggle expands the detail without touching the approval.
+  await disclosure.click();
+  await expect(disclosure).toHaveText("Collapse");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(shell.locator(".exc-details")).not.toHaveAttribute("hidden", "");
+  await expect(region.getByRole("button", { name: "Deny", exact: true })).toBeEnabled();
+  await disclosure.click();
+  await expect(disclosure).toHaveText("View progress");
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
 
   // The attention action focuses the first authoritative Intervention control.
   await attention.click();
@@ -234,9 +252,12 @@ test("pending approval stays discoverable, focuses and submits without a duplica
   await expect(page.locator("[data-intervention-id]")).toHaveCount(1);
 
   await region.getByRole("button", { name: "Deny", exact: true }).click();
-  await expect(
-    region.locator("[data-intervention-id]").first().getByText("Denied", { exact: true }),
-  ).toBeVisible({ timeout: 30_000 });
+  // UX-01B: for a plain Run the settled receipt is transient — the denied Run
+  // loses its execution surface entirely, so the deterministic end state is no
+  // region and nothing operable (receipt rendering itself is covered by the
+  // InterventionRegion unit tests).
+  await expect(page.getByTestId("intervention-region")).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Deny", exact: true })).toHaveCount(0);
 
   await expect
     .poll(
@@ -377,6 +398,14 @@ test("a failed Run with a failed Step lands View reason on that Step's detail", 
   const target = card.locator("[data-failure-target]");
   await expect(target.first()).toBeVisible();
   await expect(target.first()).toContainText("Deploy blocked by policy");
+  // Review round P2: focus really lands on the production target — it is
+  // focusable itself and reached even when the detail arrives after opening.
+  await expect
+    .poll(
+      () => page.evaluate(() => document.activeElement?.closest("[data-failure-target]") !== null),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   await expect(card.getByText("Collected", { exact: true })).toHaveCount(0);
   // No progress fabrication on the failed card: no Plan, no bar, no numbers.
   await expect(card.locator(".exc-rail")).toHaveCount(0);

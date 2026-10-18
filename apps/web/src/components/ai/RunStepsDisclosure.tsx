@@ -88,7 +88,7 @@ export const StepDetailBody = memo(function StepDetailBody({ step }: { step: Run
   return (
     <div
       data-testid="step-detail"
-      {...(step.status === "failed" ? { "data-failure-target": "" } : {})}
+      {...(step.status === "failed" ? { "data-failure-target": "", tabIndex: -1 } : {})}
       className="border-s border-border ps-2 text-xs text-muted-foreground"
     >
       {time ? <p className="tabular-nums">{time}</p> : null}
