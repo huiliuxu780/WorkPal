@@ -222,15 +222,15 @@ msgstr "{0} connection"
 msgid "{0} default"
 msgstr "{0} default"
 
+#. placeholder {0}: step.evidence.length
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "{0} evidence references"
+msgstr "{0} evidence references"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} handling"
 msgstr "{0} handling"
-
-#. placeholder {0}: current.length
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{0} items in progress"
-msgstr "{0} items in progress"
 
 #. placeholder {0}: format(size / 1024)
 #: src/components/ArtifactFileCard.tsx
@@ -286,14 +286,6 @@ msgstr "{botName}’s computer"
 msgid "{days}d ago"
 msgstr "{days}d ago"
 
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{done} done · some statuses unconfirmed"
-msgstr "{done} done · some statuses unconfirmed"
-
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{done}/{eligible} done"
-msgstr "{done}/{eligible} done"
-
 #: src/components/ToolActivityDisclosure.tsx
 msgid "{hidden, plural, one {+# earlier step} other {+# earlier steps}}"
 msgstr "{hidden, plural, one {+# earlier step} other {+# earlier steps}}"
@@ -323,10 +315,6 @@ msgstr "{n} artifacts"
 #: src/lib/execution-card.ts
 msgid "{n} collaborators"
 msgstr "{n} collaborators"
-
-#: src/lib/execution-card.ts
-msgid "{n} steps"
-msgstr "{n} steps"
 
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts
@@ -388,9 +376,9 @@ msgstr "1 artifact"
 msgid "1 collaborator"
 msgstr "1 collaborator"
 
-#: src/lib/execution-card.ts
-msgid "1 step"
-msgstr "1 step"
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "1 evidence reference"
+msgstr "1 evidence reference"
 
 #: src/pages/shell/message-cards.tsx
 msgid "A bit of everything"
@@ -1847,6 +1835,21 @@ msgstr "Cron expression"
 msgid "Current password"
 msgstr "Current password"
 
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0}"
+msgstr "Current: {0}"
+
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0} · {minutes} min elapsed"
+msgstr "Current: {0} · {minutes} min elapsed"
+
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0} · under 1 min elapsed"
+msgstr "Current: {0} · under 1 min elapsed"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Customer support"
 msgstr "Customer support"
@@ -1973,6 +1976,7 @@ msgstr "Desktop app"
 msgid "Desktop update"
 msgstr "Desktop update"
 
+#: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Details"
 msgstr "Details"
@@ -2021,10 +2025,6 @@ msgstr "Docker limits access to your computer for added security. Using {hostLab
 #: src/pages/Auth.tsx
 msgid "Don’t have an account?"
 msgstr "Don’t have an account?"
-
-#: src/components/ai/RunPlanDisclosure.tsx
-msgid "done"
-msgstr "done"
 
 #: src/components/activity/ActivityRows.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
@@ -2192,10 +2192,6 @@ msgstr "Every month"
 #: src/pages/RoutineSchedule.tsx
 msgid "Every week"
 msgstr "Every week"
-
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "evidence references"
-msgstr "evidence references"
 
 #. placeholder {0}: history.length
 #: src/components/RunDetailsPanel.tsx
@@ -2629,7 +2625,7 @@ msgstr "Listen"
 msgid "Listening"
 msgstr "Listening"
 
-#: src/pages/Shell.tsx
+#: src/pages/shell/use-execution-transcript.tsx
 msgid "Load earlier activity"
 msgstr "Load earlier activity"
 
@@ -3280,6 +3276,10 @@ msgstr "Or paste an API key"
 msgid "Organization API key"
 msgstr "Organization API key"
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Other execution records"
+msgstr "Other execution records"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Other model…"
@@ -3355,7 +3355,12 @@ msgstr "Pin"
 msgid "Plan"
 msgstr "Plan"
 
+#: src/lib/execution-card.ts
+msgid "Plan progress"
+msgstr "Plan progress"
+
 #: src/components/ai/RunPlanDisclosure.tsx
+#: src/lib/execution-card.ts
 msgid "Plan updated"
 msgstr "Plan updated"
 
@@ -4518,12 +4523,16 @@ msgstr "Verifying…"
 msgid "Version"
 msgstr "Version"
 
-#: src/lib/execution-card.ts
 #: src/lib/task-center.ts
 msgid "View execution"
 msgstr "View execution"
 
+#: src/lib/execution-card.ts
+msgid "View progress"
+msgstr "View progress"
+
 #: src/components/ai/RunPlanDisclosure.tsx
+#: src/lib/execution-card.ts
 msgid "View reason"
 msgstr "View reason"
 

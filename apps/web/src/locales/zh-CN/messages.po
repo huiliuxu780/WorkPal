@@ -222,14 +222,14 @@ msgstr "{0} 连接"
 msgid "{0} default"
 msgstr ""
 
+#. placeholder {0}: step.evidence.length
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "{0} evidence references"
+msgstr "{0} 条证据引用"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} handling"
-msgstr ""
-
-#. placeholder {0}: current.length
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{0} items in progress"
 msgstr ""
 
 #. placeholder {0}: format(size / 1024)
@@ -286,14 +286,6 @@ msgstr "{botName} 的电脑"
 msgid "{days}d ago"
 msgstr "{days} 天前"
 
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{done} done · some statuses unconfirmed"
-msgstr ""
-
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{done}/{eligible} done"
-msgstr ""
-
 #: src/components/ToolActivityDisclosure.tsx
 msgid "{hidden, plural, one {+# earlier step} other {+# earlier steps}}"
 msgstr ""
@@ -323,10 +315,6 @@ msgstr "{n} 个产物"
 #: src/lib/execution-card.ts
 msgid "{n} collaborators"
 msgstr "{n} 位协作者"
-
-#: src/lib/execution-card.ts
-msgid "{n} steps"
-msgstr "{n} 步"
 
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts
@@ -388,9 +376,9 @@ msgstr "1 个产物"
 msgid "1 collaborator"
 msgstr "1 位协作者"
 
-#: src/lib/execution-card.ts
-msgid "1 step"
-msgstr "1 步"
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "1 evidence reference"
+msgstr "1 条证据引用"
 
 #: src/pages/shell/message-cards.tsx
 msgid "A bit of everything"
@@ -1847,6 +1835,21 @@ msgstr "Cron 表达式"
 msgid "Current password"
 msgstr "当前密码"
 
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0}"
+msgstr "当前：{0}"
+
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0} · {minutes} min elapsed"
+msgstr "当前：{0} · 已 {minutes} 分钟"
+
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0} · under 1 min elapsed"
+msgstr "当前：{0} · 已不足 1 分钟"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Customer support"
 msgstr "客户支持"
@@ -1973,6 +1976,7 @@ msgstr ""
 msgid "Desktop update"
 msgstr ""
 
+#: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Details"
 msgstr ""
@@ -2021,10 +2025,6 @@ msgstr "Docker 限制对你电脑的访问，以提高安全性。使用{hostLab
 #: src/pages/Auth.tsx
 msgid "Don’t have an account?"
 msgstr "还没有账户？"
-
-#: src/components/ai/RunPlanDisclosure.tsx
-msgid "done"
-msgstr ""
 
 #: src/components/activity/ActivityRows.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
@@ -2192,10 +2192,6 @@ msgstr "每月"
 #: src/pages/RoutineSchedule.tsx
 msgid "Every week"
 msgstr "每周"
-
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "evidence references"
-msgstr ""
 
 #. placeholder {0}: history.length
 #: src/components/RunDetailsPanel.tsx
@@ -2629,7 +2625,7 @@ msgstr ""
 msgid "Listening"
 msgstr ""
 
-#: src/pages/Shell.tsx
+#: src/pages/shell/use-execution-transcript.tsx
 msgid "Load earlier activity"
 msgstr ""
 
@@ -3280,6 +3276,10 @@ msgstr "或粘贴 API 密钥"
 msgid "Organization API key"
 msgstr "组织 API 密钥"
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Other execution records"
+msgstr "其他执行记录"
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Other model…"
@@ -3355,9 +3355,14 @@ msgstr "置顶"
 msgid "Plan"
 msgstr ""
 
+#: src/lib/execution-card.ts
+msgid "Plan progress"
+msgstr "计划进度"
+
 #: src/components/ai/RunPlanDisclosure.tsx
+#: src/lib/execution-card.ts
 msgid "Plan updated"
-msgstr ""
+msgstr "计划已更新"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Playing…"
@@ -4518,14 +4523,18 @@ msgstr "正在校验…"
 msgid "Version"
 msgstr ""
 
-#: src/lib/execution-card.ts
 #: src/lib/task-center.ts
 msgid "View execution"
 msgstr "查看执行"
 
+#: src/lib/execution-card.ts
+msgid "View progress"
+msgstr "查看进展"
+
 #: src/components/ai/RunPlanDisclosure.tsx
+#: src/lib/execution-card.ts
 msgid "View reason"
-msgstr ""
+msgstr "查看原因"
 
 #: src/lib/execution-card.ts
 #: src/lib/task-center.ts
