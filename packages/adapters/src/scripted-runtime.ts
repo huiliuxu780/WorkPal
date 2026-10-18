@@ -74,8 +74,8 @@ export class ScriptedAgentRuntime implements AgentRuntime {
         // UX-01B E2E fixture pacing: give the client a deterministic window
         // to render the first Plan revision before the next turn revises it
         // (the revision flash must not depend on a race).
-        if (turnIndex > 0 && /paced plan/i.test(request.prompt)) {
-          await abortableDelay(1_500, controller.signal);
+        if (turnIndex > 0 && /paced tracked plan/i.test(request.prompt)) {
+          await abortableDelay(4_000, controller.signal);
           if (signal.aborted || controller.signal.aborted) {
             yield { type: "done", text: "stopped" };
             return;
@@ -392,20 +392,9 @@ export function inferScript(
         ],
       },
       {
-        assistant: `done. i handled: ${prompt}`,
+        // Revision 2 lands on its own turn (paced): the client renders 3/4
+        // first, then the honest 3/6 regression with the update flash.
         toolCalls: [
-          {
-            name: "publish_run_step",
-            args: {
-              stepId: "final-check",
-              expectedRevision: 1,
-              order: 0,
-              title: "Final check",
-              status: "completed",
-              planItemId: "d",
-              resultSummary: "Checked",
-            },
-          },
           {
             name: "publish_run_plan",
             args: {
@@ -420,6 +409,23 @@ export function inferScript(
                 { id: "e", title: "Peer review", status: "pending" },
                 { id: "f", title: "Publish result", status: "pending" },
               ],
+            },
+          },
+        ],
+      },
+      {
+        assistant: `done. i handled: ${prompt}`,
+        toolCalls: [
+          {
+            name: "publish_run_step",
+            args: {
+              stepId: "final-check",
+              expectedRevision: 1,
+              order: 0,
+              title: "Final check",
+              status: "completed",
+              planItemId: "d",
+              resultSummary: "Checked",
             },
           },
         ],

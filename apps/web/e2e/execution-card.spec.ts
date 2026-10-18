@@ -133,7 +133,7 @@ test("a completed Run restores its card across a refresh without doubling the re
   const card = cardOf(page, title);
   await expect(card).toBeVisible({ timeout: 15_000 });
   await expect(card).toHaveAttribute("data-status", "done");
-  await expect(card).toContainText("write a file named");
+  await expect(card).toContainText("write a tracked file named");
   await expect(card.getByRole("button", { name: "View result", exact: true })).toBeVisible();
   // The result bubble on the page is the canonical surface: the card must not
   // repeat its text, and the transcript shows it exactly once.
@@ -706,6 +706,18 @@ test("a paced Plan revision moves the single a/b and flashes the update hint", a
   });
   await expect(card.getByTestId("execution-plan-updated")).toBeVisible({ timeout: 5_000 });
 
+  // Terminal first: the result sentence appears exactly once (the bubble),
+  // the card never repeats it as an outcome line, and the rev settles so the
+  // expansion opened below cannot be discarded by a rev move mid-assertion.
+  const summary = await settledSummary(page, botId, "publish a paced tracked plan");
+  expect(summary.status).toBe("completed");
+  await expect(
+    page
+      .getByTestId("transcript")
+      .getByText(`done. i handled: publish a paced tracked plan named report-${stamp}`),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(card.locator('.exc-line[data-kind="outcome"]')).toHaveCount(0);
+
   // Level 1 is the single Plan list; the matched Step's evidence is level 2.
   await expandCard(page, `report-${stamp}`);
   const plan = card.locator('[data-slot="plan"]');
@@ -717,17 +729,6 @@ test("a paced Plan revision moves the single a/b and flashes the update hint", a
   await expect(item.getByText("Checked", { exact: true })).toHaveCount(0);
   await item.getByRole("button", { name: "Details", exact: true }).click();
   await expect(item.getByText("Checked", { exact: true })).toBeVisible();
-
-  // Terminal: the result sentence appears exactly once (the bubble), and the
-  // card never repeats it as an outcome line.
-  const summary = await settledSummary(page, botId, "publish a paced tracked plan");
-  expect(summary.status).toBe("completed");
-  await expect(
-    page
-      .getByTestId("transcript")
-      .getByText(`done. i handled: publish a paced tracked plan named report-${stamp}`),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(card.locator('.exc-line[data-kind="outcome"]')).toHaveCount(0);
   await expectOneCardPerShell(page);
 });
 
