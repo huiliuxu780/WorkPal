@@ -1,6 +1,6 @@
 # UX-01B：Execution Progress Convergence
 
-状态：`not-started`
+状态：`delivered, ready-to-merge`（2026-10-18，分支 `codex/ux01b-progress-convergence`，证据见 [UX-01B-implementation.md](../ux/UX-01B-implementation.md)；未合并，main 合入后才可标 done）
 
 冻结基线：`main @ 1ba98958edf462d85a20006e03b144d51a54b647`（UX-01A 已经通过 PR #60 合入；`apps/web/src/pages/shell/use-execution-transcript.tsx` 是执行区唯一装配入口）。实现分支使用 `codex/ux01b-progress-convergence`。只有当该基线的 main CI 全绿后才开始写产品代码；若开始时 `main` 已前进，先重新核实本文代码事实。
 
