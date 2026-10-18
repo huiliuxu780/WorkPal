@@ -411,9 +411,11 @@ export function useExecutionTranscript({
           // A newer rev installs the snapshot together with its own first
           // page cursor and clears the pages loaded against the old version.
           setExecutionDetails((current) => installExecutionDetail(current, runId, snapshot));
-          // Success clears any previous error: request state never mixes
-          // with the rev-versioned cache it describes.
-          setDetailRequests((current) => settleDetailRequest(current, runId));
+          // Success clears any previous error OF THE SAME REVISION: a stale
+          // success never deletes a newer request's loading/error state
+          // (review round 2), and request state never mixes with the
+          // rev-versioned cache it describes.
+          setDetailRequests((current) => settleDetailRequest(current, runId, rev));
           // Review round (B): the open-triggered load must not self-close the
           // card — an actively eventing Run's detail arrives at a fresher
           // rev of the SAME projection the user just opened, so the stored

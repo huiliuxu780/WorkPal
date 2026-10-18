@@ -45,9 +45,20 @@ export function beginDetailRequest(
   return { ...map, [runId]: { status: "loading", rev } };
 }
 
-/** The response landed (installed or dropped by the rev guard): clear any error. */
-export function settleDetailRequest(map: DetailRequestMap, runId: string): DetailRequestMap {
-  if (!map[runId]) return map;
+/**
+ * The request made at `rev` landed (its snapshot installed or dropped by the
+ * rev guard). A settle only clears the state it OWNS: when a newer revision's
+ * request has taken over the entry, a stale success leaves that loading or
+ * error state untouched (review round 2 — otherwise a late old success would
+ * erase the newer revision's error and its retry entry).
+ */
+export function settleDetailRequest(
+  map: DetailRequestMap,
+  runId: string,
+  rev: number,
+): DetailRequestMap {
+  const entry = map[runId];
+  if (!entry || entry.rev !== rev) return map;
   const next = { ...map };
   delete next[runId];
   return next;
