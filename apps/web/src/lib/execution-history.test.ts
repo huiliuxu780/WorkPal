@@ -143,6 +143,40 @@ describe("execution data resolution", () => {
   });
 });
 
+describe("executionDataForRun Todo dedupe (UX-01C acceptance 17)", () => {
+  const stepRow = { stepId: "s1", runId: "run-1", order: 0 } as never;
+  const otherStep = { stepId: "sx", runId: "run-other", order: 0 } as never;
+  const linkedTodo = { todoId: "t1", runId: "run-1", linkedStepId: "s1", order: 0 } as never;
+  const looseTodo = { todoId: "t2", runId: "run-1", linkedStepId: null, order: 1 } as never;
+
+  it("filters Step-linked Todos on the detail path", () => {
+    const detail = {
+      ...detailSnapshot([], []),
+      steps: { items: [stepRow], truncated: false },
+      todos: { items: [linkedTodo, looseTodo], truncated: false },
+    } as never;
+    const data = executionDataForRun({ runId: "run-1", detail, legacy: {} });
+    expect(data.todos.map((todo) => todo.todoId)).toEqual(["t2"]);
+  });
+
+  it("filters Step-linked Todos on the legacy path with the same result", () => {
+    const data = executionDataForRun({
+      runId: "run-1",
+      legacy: { steps: [stepRow, otherStep], todos: [linkedTodo, looseTodo] },
+    });
+    expect(data.todos.map((todo) => todo.todoId)).toEqual(["t2"]);
+  });
+
+  it("keeps a Todo whose linkedStepId names another Run's Step", () => {
+    const crossRun = { todoId: "t3", runId: "run-1", linkedStepId: "sx", order: 2 } as never;
+    const data = executionDataForRun({
+      runId: "run-1",
+      legacy: { steps: [stepRow, otherStep], todos: [crossRun] },
+    });
+    expect(data.todos.map((todo) => todo.todoId)).toEqual(["t3"]);
+  });
+});
+
 describe("mergeActivityPages", () => {
   it("covers every id exactly once and keeps the newer status", () => {
     const newer = [activityItem("tool:a", "completed"), activityItem("tool:b", "completed")];
