@@ -895,7 +895,9 @@ test("a plain active Run shows only the lightweight status until it stops (scena
       page.locator('[data-slot="plan"], [data-slot="steps"], [data-slot="todos"]'),
     ).toHaveCount(0);
     await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByTestId("composer-bar").getByRole("button", { name: "Stop" }),
+    ).toBeVisible({ timeout: 15_000 });
     expect(await page.getByTestId("transcript").innerText()).not.toContain("still working");
 
     // Stopped: the lightweight line leaves the DOM; still no execution surface.
