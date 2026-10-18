@@ -249,53 +249,71 @@ function unmountTranscript(): void {
   container?.remove();
 }
 
+let currentOverrides: Partial<ComponentProps<typeof Transcript>> = {};
+
+function Harness() {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  return (
+    <Transcript
+      scrollRef={scrollRef}
+      scrollRequest={null}
+      onScrollRequestHandled={() => undefined}
+      artifactTarget={{ botId: BOT }}
+      messages={[]}
+      runs={[]}
+      activeRunIds={[]}
+      showToolActivity={false}
+      olderCursor={null}
+      loadingOlder={false}
+      threadId={THREAD}
+      running={false}
+      onLoadOlder={() => undefined}
+      onOpenBot={() => undefined}
+      onAnswer={async () => undefined}
+      onReply={() => undefined}
+      onQuote={() => undefined}
+      onReact={async () => undefined}
+      onJumpToMessage={() => undefined}
+      onOpenPeerMessages={() => undefined}
+      peerBot={() => undefined}
+      onRefresh={async () => undefined}
+      onBotChanged={async () => undefined}
+      onAddRoutine={() => undefined}
+      voiceReady={false}
+      speakingMessageId={null}
+      onSpeak={() => undefined}
+      onOpenComputer={() => undefined}
+      {...currentOverrides}
+    />
+  );
+}
+
 function renderTranscript(
   overrides: Partial<ComponentProps<typeof Transcript>> = {},
 ): HTMLDivElement {
   unmountTranscript();
+  currentOverrides = overrides;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  function Harness() {
-    const scrollRef = useRef<HTMLDivElement | null>(null);
-    return (
-      <Transcript
-        scrollRef={scrollRef}
-        scrollRequest={null}
-        onScrollRequestHandled={() => undefined}
-        artifactTarget={{ botId: BOT }}
-        messages={[]}
-        runs={[]}
-        activeRunIds={[]}
-        showToolActivity={false}
-        olderCursor={null}
-        loadingOlder={false}
-        threadId={THREAD}
-        running={false}
-        onLoadOlder={() => undefined}
-        onOpenBot={() => undefined}
-        onAnswer={async () => undefined}
-        onReply={() => undefined}
-        onQuote={() => undefined}
-        onReact={async () => undefined}
-        onJumpToMessage={() => undefined}
-        onOpenPeerMessages={() => undefined}
-        peerBot={() => undefined}
-        onRefresh={async () => undefined}
-        onBotChanged={async () => undefined}
-        onAddRoutine={() => undefined}
-        voiceReady={false}
-        speakingMessageId={null}
-        onSpeak={() => undefined}
-        onOpenComputer={() => undefined}
-        {...overrides}
-      />
-    );
-  }
   act(() => {
-    root.render(<Harness />);
+    root!.render(<Harness />);
   });
   return container;
+}
+
+/**
+ * Re-render the SAME mounted Transcript with merged props (a thread refresh
+ * landing a newer summary, an event updating an array) — the hook instance
+ * and all of its state persist, unlike renderTranscript's fresh mount.
+ */
+function rerenderTranscript(
+  overrides: Partial<ComponentProps<typeof Transcript>>,
+): void {
+  currentOverrides = { ...currentOverrides, ...overrides };
+  act(() => {
+    root!.render(<Harness />);
+  });
 }
 
 /** A pending approval Ask block, shaped the way the runtime persists it. */
@@ -1127,5 +1145,128 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(host.querySelectorAll('[data-slot="plan"]')).toHaveLength(0);
     expect(host.querySelector('[role="progressbar"]')).toBeNull();
     expect(host.querySelector('[data-testid="execution-plan-count"]')).toBeNull();
+  });
+
+  it("invalidates a stale detail error when the summary revision advances (review round P3)", async () => {
+    rpcMocks.executionSnapshot.mockRejectedValueOnce(new Error("transient"));
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-18" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-18" }], "run-r"),
+      ],
+      steps: [step("run-r", "s-r", "STEP-R", 0)],
+      runs: [run("run-r", "completed", { completedAt: ISO })],
+      executions: [
+        summary({ runId: "run-r", rev: 5, title: "REV-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    const toggle = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(50);
+    });
+    // The rev-5 request failed: the safe retry state is visible.
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).not.toBeNull();
+
+    // The projection moves to rev 6 (thread refresh): the rev-5 error
+    // describes a request against a projection that no longer exists and
+    // must not survive the move.
+    rerenderTranscript({
+      executions: [
+        summary({ runId: "run-r", rev: 6, title: "REV-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+  });
+
+  it("a late failure from a superseded request never surfaces at the newer revision (review round P3)", async () => {
+    let rejectFirst: ((error: unknown) => void) | null = null;
+    let resolveSecond: ((snapshot: unknown) => void) | null = null;
+    rpcMocks.executionSnapshot
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-19" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-19" }], "run-r2"),
+      ],
+      steps: [step("run-r2", "s-old", "STEP-OLD", 0)],
+      runs: [run("run-r2", "completed", { completedAt: ISO })],
+      executions: [
+        summary({ runId: "run-r2", rev: 5, title: "LATE-FAIL-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    // Request A goes out at rev 5 and stays in flight.
+    const toggleA = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleA!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+
+    // The projection moves to rev 6 and the card is reopened → request B at
+    // rev 6 (the in-flight dedupe must not block the newer revision).
+    rerenderTranscript({
+      executions: [
+        summary({ runId: "run-r2", rev: 6, title: "LATE-FAIL-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    const toggleB = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleB!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    // A fails late: the rev-6 request state must not be rewritten.
+    act(() => {
+      rejectFirst!(new Error("stale transport failure"));
+    });
+    await act(async () => {
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+    expect(host.textContent).not.toContain("stale transport failure");
+
+    // B succeeds: its detail renders and no error state appears.
+    await act(async () => {
+      resolveSecond!({
+        summary: summary({
+          runId: "run-r2",
+          rev: 6,
+          title: "LATE-FAIL-RUN",
+          anchorMessageId: "m2",
+        }),
+        steps: { items: [step("run-r2", "s-fresh", "FRESH-STEP", 0)], truncated: false },
+        todos: { items: [], truncated: false },
+        timeline: [],
+        activityPage: { items: [], olderCursor: null, truncated: false },
+        interventions: [],
+      });
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+    expect(host.textContent).toContain("FRESH-STEP");
   });
 });
