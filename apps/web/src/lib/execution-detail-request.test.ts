@@ -27,14 +27,14 @@ describe("execution detail request state", () => {
     expect(detailRequestStatus(map, "run-1", 5)).toBe("error");
     map = beginDetailRequest(map, "run-1", 5);
     expect(detailRequestStatus(map, "run-1", 5)).toBe("loading");
-    map = settleDetailRequest(map, "run-1");
+    map = settleDetailRequest(map, "run-1", 5);
     expect(detailRequestStatus(map, "run-1", 5)).toBe("idle");
   });
 
   it("clears a previous error on success", () => {
     let map = failDetailRequest({}, "run-1", 5);
     map = beginDetailRequest(map, "run-1", 5);
-    map = settleDetailRequest(map, "run-1");
+    map = settleDetailRequest(map, "run-1", 5);
     expect(detailRequestStatus(map, "run-1", 5)).toBe("idle");
   });
 
@@ -57,7 +57,7 @@ describe("execution detail request state", () => {
     const map = {};
     expect(beginDetailRequest(map, "run-1", 5)).not.toBe(map);
     const loading = beginDetailRequest(map, "run-1", 5);
-    expect(settleDetailRequest(loading, "run-2")).toBe(loading);
+    expect(settleDetailRequest(loading, "run-2", 5)).toBe(loading);
     // A repeat begin at the same rev is a no-op; a stale fail is ignored.
     expect(beginDetailRequest(loading, "run-1", 5)).toBe(loading);
     expect(failDetailRequest(loading, "run-1", 4)).toBe(loading);
@@ -73,6 +73,28 @@ describe("execution detail request state", () => {
     // And a fresh request at the new rev starts clean.
     map = beginDetailRequest(map, "run-1", 6);
     expect(detailRequestStatus(map, "run-1", 6)).toBe("loading");
+  });
+
+  it("a stale success never clears the newer revision's error (review round 2)", () => {
+    // A@5 in flight → rev moves → B@6 in flight → B fails (error@6 shown) →
+    // A's late SUCCESS must not delete the state it does not own.
+    let map = beginDetailRequest({}, "run-1", 5);
+    map = beginDetailRequest(map, "run-1", 6);
+    map = failDetailRequest(map, "run-1", 6);
+    expect(detailRequestStatus(map, "run-1", 6)).toBe("error");
+    const afterStaleSuccess = settleDetailRequest(map, "run-1", 5);
+    expect(afterStaleSuccess).toBe(map);
+    expect(detailRequestStatus(afterStaleSuccess, "run-1", 6)).toBe("error");
+  });
+
+  it("a stale success never clears the newer request's loading state (review round 2)", () => {
+    let map = beginDetailRequest({}, "run-1", 5);
+    map = beginDetailRequest(map, "run-1", 6);
+    const afterStaleSuccess = settleDetailRequest(map, "run-1", 5);
+    expect(afterStaleSuccess).toBe(map);
+    expect(detailRequestStatus(afterStaleSuccess, "run-1", 6)).toBe("loading");
+    // The owning request still settles its own state.
+    expect(detailRequestStatus(settleDetailRequest(map, "run-1", 6), "run-1", 6)).toBe("idle");
   });
 
   it("a late failure from a superseded request never rewrites newer state (P3 regression 2)", () => {

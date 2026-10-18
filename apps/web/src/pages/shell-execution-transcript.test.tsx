@@ -1178,6 +1178,93 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
   });
 
+  it("a stale success never clears the newer revision's error or retry (review round 2)", async () => {
+    let resolveFirst: ((snapshot: unknown) => void) | null = null;
+    let rejectSecond: ((error: unknown) => void) | null = null;
+    rpcMocks.executionSnapshot
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSecond = reject;
+          }),
+      );
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-20" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-20" }], "run-s"),
+      ],
+      steps: [step("run-s", "s-cur", "STEP-CURRENT", 0)],
+      runs: [run("run-s", "completed", { completedAt: ISO })],
+      executions: [
+        summary({ runId: "run-s", rev: 5, title: "STALE-SUCCESS-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    // Request A goes out at rev 5 and stays in flight.
+    const toggleA = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleA!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    // The projection moves to rev 6; the user reopens → request B at rev 6.
+    rerenderTranscript({
+      executions: [
+        summary({ runId: "run-s", rev: 6, title: "STALE-SUCCESS-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    const toggleB = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleB!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    // B fails: the safe error and its retry entry are visible at rev 6.
+    act(() => {
+      rejectSecond!(new Error("fresh transport failure"));
+    });
+    await act(async () => {
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="execution-detail-retry"]')).not.toBeNull();
+
+    // A's stale rev-5 success lands late: the rev guard drops the snapshot,
+    // and the settle must NOT delete the rev-6 error it does not own.
+    await act(async () => {
+      resolveFirst!({
+        summary: summary({
+          runId: "run-s",
+          rev: 5,
+          title: "STALE-SUCCESS-RUN",
+          anchorMessageId: "m2",
+        }),
+        steps: { items: [step("run-s", "s-stale", "STALE-STEP", 0)], truncated: false },
+        todos: { items: [], truncated: false },
+        timeline: [],
+        activityPage: { items: [], olderCursor: null, truncated: false },
+        interventions: [],
+      });
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="execution-detail-retry"]')).not.toBeNull();
+    // The stale snapshot never rendered either (rev-versioned cache guard).
+    expect(host.textContent).not.toContain("STALE-STEP");
+  });
+
   it("a late failure from a superseded request never surfaces at the newer revision (review round P3)", async () => {
     let rejectFirst: ((error: unknown) => void) | null = null;
     let resolveSecond: ((snapshot: unknown) => void) | null = null;
