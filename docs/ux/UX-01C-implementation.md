@@ -1,6 +1,6 @@
 # UX-01C 交付说明：Compatibility, Retry and E2E Closure
 
-状态：`delivered, ready-to-merge`（2026-10-18）。实施分支 `codex/ux01c-compatibility-e2e`，从 UX-01B 的精确已验证 head `7599874` 创建；初始 PR base=`codex/ux01b-progress-convergence`（stacked）。任务书见 [UX-01C.md](../tasks/UX-01C.md)，B 的行为契约见 [UX-01B-implementation.md](./UX-01B-implementation.md)，产品边界以 [UX-01-decision.md](./UX-01-decision.md) §2.6/G6 与验收 14–20 为准。
+状态：`delivered, ready-to-merge`（2026-10-18 首发；2026-10-19 完成审查修复轮并 rebase）。实施分支 `codex/ux01c-compatibility-e2e`，从 UX-01B 的精确已验证 head `7599874` 创建；B 审查修复轮（P1/P2 + live 卡 rekey，`2f2e757`）后 `git rebase --onto 2f2e757 7599874` 到新 B head（两处冲突均为同款修复去重，见 §9）；初始 PR base=`codex/ux01b-progress-convergence`（stacked）。任务书见 [UX-01C.md](../tasks/UX-01C.md)，B 的行为契约见 [UX-01B-implementation.md](./UX-01B-implementation.md)，产品边界以 [UX-01-decision.md](./UX-01-decision.md) §2.6/G6 与验收 14–20 为准。
 
 ## 1. 红色证明（先证明缺陷，再修复）
 
@@ -95,3 +95,16 @@
 ## 8. 合并顺序
 
 C PR 初始 base=`codex/ux01b-progress-convergence`；**B（PR #62）合入 main 后**把 C base 改为 `main`，此时 PR diff 自动只剩 C 的 5 个提交（红测试、实现、i18n、docs、roadmap 回填）。合并严格 B → C；两者都未合并、未部署，等待审查。UX-01 只有在 C 合入 main 且 main CI 绿后才可标 `done`。
+
+## 9. 修复轮（2026-10-19 审查反馈：P3 + rebase）
+
+### P3：summary revision 前进后旧加载错误未清理
+
+- **缺陷（审查复现确认）**：请求状态只按 runId 键控——rev 5 请求失败后线程推进到 rev 6，rev 5 的错误仍然显示；且被取代请求的晚到失败可覆写新状态。违反任务卡"summary rev 前进、Thread/target 切换时不能显示旧错误；防止旧请求晚到失败重新写入"。
+- **修复**：`DetailRequestMap` 条目改为 `{status, rev}`（请求发起时的 summary rev 戳记）；**读取按当前 rev 解析**——`entry.rev !== currentRev` 一律读作 idle，投影移动即自然失效旧错误，无需显式清理；`failDetailRequest` 对 rev 不匹配的条目整体忽略（晚到失败永不覆写）；in-flight 去重键改为 `runId@rev`（新 rev 的请求不被旧 in-flight 阻塞）。hook 三处调用点（toggle/intent/retry）传入各自 rev。
+- **回归**：reducer 单测 2 条点名场景（"invalidates an old error when the summary revision moved on"、"a late failure from a superseded request never rewrites newer state"）+ transcript 集成 2 条（同 root 重渲染推进 rev 后错误消失；deferred promise 排序验证晚到失败不 surfaced、新请求成功渲染 detail）。红→绿：5 failed → 0。
+
+### Rebase 记录
+
+- `git rebase --onto 2f2e757 7599874`：6 个 C 提交全部保留；两处冲突均为 B 修复轮与 C 的同款修改（`loadExecutionDetail.then` 的 rekey+settle 并存；approval E2E 的 Denied 终态断言注释措辞），按"两者都保留/取 B 版本"解决，无语义丢失。
+- rebase 后全量验证：`@rakazo/web` check 0 错误、apps/web 全量 **85 文件 / 663 测试绿**（6.3s）、build 成功；三 spec E2E 收口以全新库 `workpal_e2e_ux01c2` 单次重跑：**38 / 38 passed（1.7m）**，0 失败 0 flake。
