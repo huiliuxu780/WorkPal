@@ -2,6 +2,7 @@ import type {
   ActivityItem,
   ExecutionSummary,
   InterventionView,
+  RunPlanRevision,
   RunStepSnapshot,
 } from "@rakazo/contracts";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
@@ -13,6 +14,9 @@ import { ExecutionCard, ExecutionCardContext } from "./ExecutionCard";
 export const FOCUSABLE_CONTROL =
   'button:not([disabled]):not([aria-disabled="true"]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
+/** The revision flash is short-lived by design; timers are always cleaned up. */
+export const PLAN_UPDATED_FLASH_MS = 3_000;
+
 export function ExecutionShell({
   run,
   activity,
@@ -22,8 +26,9 @@ export function ExecutionShell({
   canExpand,
   summary,
   pendingInterventionViews,
+  plan,
   steps,
-  stepsTruncated,
+  now,
   hasResult,
   resultOnPage,
   confirmedRootBackground,
@@ -35,14 +40,16 @@ export function ExecutionShell({
   pendingInterventionKinds?: readonly ("approval" | "input")[];
   /**
    * The Intervention Region for this Run. It renders OUTSIDE the collapsible
-   * detail body: a settled card must stay visible in the 「需要你处理」 region
-   * after the Run completes, instead of hiding inside a collapsed shell.
+   * detail body: a pending card stays visible and operable while the detail
+   * is collapsed (UX-01B acceptance 7), and a settled card of an eligible
+   * Run keeps its 「需要你处理」 surface.
    */
   interventions?: ReactNode;
   /**
    * Server-driven expansion (HISTORY-001): the caller owns the open decision
    * (rev-checked sessionStorage, one Run open at a time). Without it the shell
-   * keeps its legacy local behavior.
+   * keeps its legacy local behavior. Either way the DEFAULT is collapsed —
+   * running and failed Runs never auto-expand (UX-01B acceptance 4).
    */
   expansion?: { open: boolean; toggle: () => void };
   /** A summary exists, so opening lazily loads the Run's detail. */
@@ -51,9 +58,12 @@ export function ExecutionShell({
   summary?: ExecutionSummary | null;
   /** Pending Intervention views for this Run, for the card's auxiliary line. */
   pendingInterventionViews?: readonly InterventionView[];
-  /** Loaded detail steps — lifecycle rail and failed-step line. */
+  /** The backend-published structured Plan — the only progress source. */
+  plan?: RunPlanRevision | null;
+  /** Loaded semantic steps — failed-step line and current-item elapsed. */
   steps?: readonly RunStepSnapshot[];
-  stepsTruncated?: boolean;
+  /** Evaluation time for the current-item elapsed; injected by tests. */
+  now?: number;
   /** True when the expanded detail renders the Result section. */
   hasResult?: boolean;
   /** The result message bubble is loaded on the current page (canonical result surface). */
@@ -66,23 +76,20 @@ export function ExecutionShell({
     pendingInterventionKinds,
     confirmedRootBackground,
   });
-  const live =
-    run &&
-    ["queued", "leased", "running", "waiting_input", "waiting_takeover"].includes(run.status);
-  const [expanded, setExpanded] = useState(Boolean(live) || run?.status === "failed");
+  // UX-01B: no auto-expansion. Uncontrolled shells start collapsed and only
+  // collapse further when the Run reaches a terminal state; every open is an
+  // explicit user action (or the Task Center / sidebar return intent).
+  const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const interventionsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (expansion) return;
-    if (status.needsAttention) setExpanded(true);
-    else if (status.status === "failed") setExpanded(true);
-    else if (status.status === "done" || status.status === "cancelled") setExpanded(false);
-  }, [status.needsAttention, status.status, expansion]);
+    if (status.status === "done" || status.status === "cancelled") setExpanded(false);
+  }, [status.status, expansion]);
   // Server-driven expansion is the single authority when present (one open
-  // detail per Thread, waiting Runs included); the legacy local state keeps
-  // its attention-forced behavior only for uncontrolled (older-server) shells.
-  const open = expansion ? expansion.open : status.needsAttention || expanded;
+  // detail per Thread); the legacy local state stays for uncontrolled shells.
+  const open = expansion ? expansion.open : expanded;
   const hasDetail =
     Boolean(children) || Boolean(status.detail) || canExpand === true || expansion !== undefined;
   // One derivation feeds the card head and the detail body: same status,
@@ -91,13 +98,54 @@ export function ExecutionShell({
     status,
     summary,
     pendingInterventions: pendingInterventionViews,
+    ...(plan ? { plan } : {}),
     steps,
-    stepsTruncated,
+    ...(now !== undefined ? { now } : {}),
     hasResult,
     resultOnPage,
     expanded: open,
     canExpand: hasDetail,
   });
+
+  // Plan revision flash (acceptance 9): only a GROWING revision on the same
+  // mounted Run flashes — first mount, the first Plan sighting, a repeated or
+  // stale revision never do. The timer is cleaned up on unmount and re-flash.
+  const planRevision = plan?.revision ?? null;
+  const seenPlanRevision = useRef<number | null>(null);
+  const [planUpdated, setPlanUpdated] = useState(false);
+  useEffect(() => {
+    if (planRevision === null) {
+      seenPlanRevision.current = null;
+      return;
+    }
+    const previous = seenPlanRevision.current;
+    if (previous === null) {
+      seenPlanRevision.current = planRevision;
+      return;
+    }
+    if (planRevision <= previous) return;
+    seenPlanRevision.current = planRevision;
+    setPlanUpdated(true);
+    const timer = window.setTimeout(() => setPlanUpdated(false), PLAN_UPDATED_FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [planRevision]);
+
+  // "View reason" landing (acceptance 8): when a failed card is open, land on
+  // its failure target — the failed Step's level-2 detail when one exists,
+  // the Run-level safe reason otherwise (both carry data-failure-target).
+  const failureFocused = useRef(false);
+  useEffect(() => {
+    if (!open || status.status !== "failed") {
+      failureFocused.current = false;
+      return;
+    }
+    if (failureFocused.current) return;
+    const target = sectionRef.current?.querySelector<HTMLElement>("[data-failure-target]");
+    if (!target) return;
+    failureFocused.current = true;
+    target.focus({ preventScroll: true });
+  }, [open, status.status]);
+
   const focusAttention = () => {
     const control = interventionsRef.current?.querySelector<HTMLElement>(FOCUSABLE_CONTROL);
     if (control) {
@@ -122,6 +170,7 @@ export function ExecutionShell({
           open={open}
           hasDetail={hasDetail}
           detailsId={detailsId}
+          planUpdated={planUpdated}
           onToggle={() => {
             if (!hasDetail || status.needsAttention) return;
             if (expansion) expansion.toggle();

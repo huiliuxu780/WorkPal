@@ -86,6 +86,7 @@ import {
   PopoverContent,
   PopoverTrigger,
   resolvePersonaColorDef,
+  useAvatarCatalog,
 } from "@rakazo/ui-web";
 import {
   ArrowDown,
@@ -127,6 +128,7 @@ import {
   lazy,
   type MutableRefObject,
   memo,
+  type ReactNode,
   type RefObject,
   Suspense,
   useCallback,
@@ -217,6 +219,11 @@ import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/r
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
 import { sharedInflight } from "../lib/shared-inflight";
+import {
+  EXECUTION_NAV_INTENT_EVENT,
+  rosterAttentionIntent,
+  setTaskCenterNavIntent,
+} from "../lib/task-center";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
@@ -334,6 +341,25 @@ type PendingBrowserNotification = {
 const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_MIME_TYPES.join(",");
 /** Identity colour for bots the roster no longer knows about. */
 const FALLBACK_BOT_COLOR = "#85858A";
+
+/**
+ * Sidebar refocus (UX-01B acceptance 12): reads the ONE trusted avatar state
+ * source (`AvatarCatalogProvider` via `useAvatarCatalog`) for a roster row —
+ * never a second status source, never the roster's raw `chat.status` string.
+ * Render-prop so the per-row hook lives in its own component while the row
+ * button keeps its existing drag/click handlers.
+ */
+function RosterRowCatalog({
+  botId,
+  children,
+}: {
+  botId: string | null;
+  children: (state: ReturnType<typeof useAvatarCatalog>["state"] | null) => ReactNode;
+}) {
+  const catalog = useAvatarCatalog(botId ?? "");
+  return <>{children(botId ? (catalog.state ?? null) : null)}</>;
+}
+
 const THREAD_SNAPSHOT_TIMEOUT_MS = 2_000;
 /** Bound Settings leave so a hung voice status refresh cannot block dismissal. */
 const VOICE_STATUS_REFRESH_TIMEOUT_MS = 10_000;
@@ -3178,163 +3204,197 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                                 </button>
                               </span>
                             ) : null}
-                            <button
-                              type="button"
-                              draggable={item.kind === "bot"}
-                              data-roster-bot-id={item.kind === "bot" ? item.chat.id : undefined}
-                              data-roster-depth={
-                                item.kind === "bot" && treeActive ? depth : undefined
-                              }
-                              aria-keyshortcuts={
-                                item.kind === "bot" ? "Alt+ArrowUp Alt+ArrowDown" : undefined
-                              }
-                              onDragStart={(event) => {
-                                if (item.kind !== "bot") return;
-                                setDraggedBotId(item.chat.id);
-                                event.dataTransfer.effectAllowed = "move";
-                                event.dataTransfer.setData("text/plain", item.chat.id);
-                              }}
-                              onDragOver={(event) => {
-                                if (
-                                  item.kind === "bot" &&
-                                  draggedBotId &&
-                                  groupBotIds.includes(draggedBotId) &&
-                                  rosterParent.get(draggedBotId) === parentId
-                                ) {
-                                  event.preventDefault();
-                                  event.dataTransfer.dropEffect = "move";
-                                }
-                              }}
-                              onDrop={(event) => {
-                                if (
-                                  item.kind !== "bot" ||
-                                  !draggedBotId ||
-                                  rosterParent.get(draggedBotId) !== parentId
-                                )
-                                  return;
-                                event.preventDefault();
-                                reorderRosterBot(draggedBotId, item.chat.id, groupBotIds);
-                                setDraggedBotId(null);
-                              }}
-                              onDragEnd={() => setDraggedBotId(null)}
-                              onKeyDown={(event) => {
-                                if (
-                                  item.kind !== "bot" ||
-                                  !event.altKey ||
-                                  (event.key !== "ArrowUp" && event.key !== "ArrowDown")
-                                )
-                                  return;
-                                const siblings = siblingBotIds(parentId);
-                                const index = siblings.indexOf(item.chat.id);
-                                const target = siblings[index + (event.key === "ArrowUp" ? -1 : 1)];
-                                if (!target) return;
-                                event.preventDefault();
-                                reorderRosterBot(item.chat.id, target, groupBotIds);
-                              }}
-                              onClick={() => {
-                                openSpaceChat(
-                                  item.chat.spaceId,
-                                  item.kind === "bot"
-                                    ? `/app/${item.chat.id}`
-                                    : `/app/g/${item.chat.id}`,
-                                );
-                              }}
-                              onContextMenu={(event) => {
-                                if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
-                                event.preventDefault();
-                                botMenuAnchor.current = event.currentTarget;
-                                setBotMenu({
-                                  kind: item.kind,
-                                  id: item.chat.id,
-                                  position: { x: event.clientX, y: event.clientY },
-                                });
-                              }}
-                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-start ${
-                                item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
-                              } ${
-                                selected ? "bg-sidebar-accent" : "group-hover/row:bg-sidebar-accent"
-                              }`}
-                              style={
-                                treeActive
-                                  ? { paddingInlineStart: `${24 + depth * 14}px` }
-                                  : undefined
-                              }
-                            >
-                              {item.kind === "bot" ? (
-                                <BotAvatar
-                                  color={item.chat.color}
-                                  identity={item.chat.id}
-                                  size={36}
-                                  status={
-                                    activeBotLiveStatus && item.chat.id === active?.id
-                                      ? activeBotLiveStatus
-                                      : item.chat.status
+                            <RosterRowCatalog botId={item.kind === "bot" ? item.chat.id : null}>
+                              {(avatarState) => (
+                                <button
+                                  type="button"
+                                  draggable={item.kind === "bot"}
+                                  data-roster-bot-id={
+                                    item.kind === "bot" ? item.chat.id : undefined
                                   }
-                                />
-                              ) : (
-                                <GroupAvatar
-                                  members={
-                                    item.chat.id === activeSnapshot?.groupId
-                                      ? (activeSnapshot.members ?? item.chat.members)
-                                      : item.chat.members
+                                  data-roster-depth={
+                                    item.kind === "bot" && treeActive ? depth : undefined
                                   }
-                                  size={36}
-                                />
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-baseline justify-between gap-2">
-                                  <div className="flex min-w-0 items-baseline gap-1.5 overflow-hidden">
-                                    <span
+                                  aria-keyshortcuts={
+                                    item.kind === "bot" ? "Alt+ArrowUp Alt+ArrowDown" : undefined
+                                  }
+                                  onDragStart={(event) => {
+                                    if (item.kind !== "bot") return;
+                                    setDraggedBotId(item.chat.id);
+                                    event.dataTransfer.effectAllowed = "move";
+                                    event.dataTransfer.setData("text/plain", item.chat.id);
+                                  }}
+                                  onDragOver={(event) => {
+                                    if (
+                                      item.kind === "bot" &&
+                                      draggedBotId &&
+                                      groupBotIds.includes(draggedBotId) &&
+                                      rosterParent.get(draggedBotId) === parentId
+                                    ) {
+                                      event.preventDefault();
+                                      event.dataTransfer.dropEffect = "move";
+                                    }
+                                  }}
+                                  onDrop={(event) => {
+                                    if (
+                                      item.kind !== "bot" ||
+                                      !draggedBotId ||
+                                      rosterParent.get(draggedBotId) !== parentId
+                                    )
+                                      return;
+                                    event.preventDefault();
+                                    reorderRosterBot(draggedBotId, item.chat.id, groupBotIds);
+                                    setDraggedBotId(null);
+                                  }}
+                                  onDragEnd={() => setDraggedBotId(null)}
+                                  onKeyDown={(event) => {
+                                    if (
+                                      item.kind !== "bot" ||
+                                      !event.altKey ||
+                                      (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+                                    )
+                                      return;
+                                    const siblings = siblingBotIds(parentId);
+                                    const index = siblings.indexOf(item.chat.id);
+                                    const target =
+                                      siblings[index + (event.key === "ArrowUp" ? -1 : 1)];
+                                    if (!target) return;
+                                    event.preventDefault();
+                                    reorderRosterBot(item.chat.id, target, groupBotIds);
+                                  }}
+                                  onClick={() => {
+                                    if (item.kind === "bot") {
+                                      // Waiting/approval Bots reuse the Task Center
+                                      // return-intent: after the target Thread loads,
+                                      // focus lands on the Intervention's first
+                                      // operable control. The roster row carries a
+                                      // SpaceBot projection without threadId, so the
+                                      // full Bot list resolves it; without a trusted
+                                      // threadId/runId it only navigates — never guesses.
+                                      const botThreadId = bots.find(
+                                        (bot) => bot.id === item.chat.id,
+                                      )?.threadId;
+                                      const intent = botThreadId
+                                        ? rosterAttentionIntent({
+                                            threadId: botThreadId,
+                                            state: avatarState,
+                                          })
+                                        : null;
+                                      if (intent) {
+                                        setTaskCenterNavIntent(intent);
+                                        window.dispatchEvent(new Event(EXECUTION_NAV_INTENT_EVENT));
+                                      }
+                                    }
+                                    openSpaceChat(
+                                      item.chat.spaceId,
+                                      item.kind === "bot"
+                                        ? `/app/${item.chat.id}`
+                                        : `/app/g/${item.chat.id}`,
+                                    );
+                                  }}
+                                  onContextMenu={(event) => {
+                                    if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
+                                    event.preventDefault();
+                                    botMenuAnchor.current = event.currentTarget;
+                                    setBotMenu({
+                                      kind: item.kind,
+                                      id: item.chat.id,
+                                      position: { x: event.clientX, y: event.clientY },
+                                    });
+                                  }}
+                                  className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-start ${
+                                    item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
+                                  } ${
+                                    selected
+                                      ? "bg-sidebar-accent"
+                                      : "group-hover/row:bg-sidebar-accent"
+                                  }`}
+                                  style={
+                                    treeActive
+                                      ? { paddingInlineStart: `${24 + depth * 14}px` }
+                                      : undefined
+                                  }
+                                >
+                                  {item.kind === "bot" ? (
+                                    /* The avatar state comes from the durable catalog
+                                   (BotAvatar reads it itself); the raw chat.status
+                                   string is not a trusted state source. */
+                                    <BotAvatar
+                                      color={item.chat.color}
+                                      identity={item.chat.id}
+                                      size={36}
+                                    />
+                                  ) : (
+                                    <GroupAvatar
+                                      members={
+                                        item.chat.id === activeSnapshot?.groupId
+                                          ? (activeSnapshot.members ?? item.chat.members)
+                                          : item.chat.members
+                                      }
+                                      size={36}
+                                    />
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-baseline justify-between gap-2">
+                                      <div className="flex min-w-0 items-baseline gap-1.5 overflow-hidden">
+                                        <span
+                                          dir="auto"
+                                          data-roster-bot-name={
+                                            item.kind === "bot" ? "" : undefined
+                                          }
+                                          className={`min-w-0 truncate text-[14px] text-foreground ${
+                                            item.chat.unread ? "font-semibold" : "font-medium"
+                                          }`}
+                                        >
+                                          {item.chat.name}
+                                        </span>
+                                        {item.kind === "bot" && item.chat.title ? (
+                                          <span
+                                            dir="auto"
+                                            className="shrink-0 text-[11.5px] font-normal text-muted-foreground"
+                                          >
+                                            {item.chat.title}
+                                          </span>
+                                        ) : null}
+                                        {item.chat.unread ? (
+                                          <span className="sr-only">
+                                            <Trans> (unread)</Trans>
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-1.5">
+                                        <span className="text-[11.5px] text-muted-foreground/60 tabular-nums">
+                                          {formatRosterTime(item.chat.updatedAt)}
+                                        </span>
+                                        {item.chat.unread ? (
+                                          <span
+                                            aria-hidden="true"
+                                            className="inline-block h-2 w-2 rounded-full bg-foreground"
+                                          />
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <div
                                       dir="auto"
-                                      data-roster-bot-name={item.kind === "bot" ? "" : undefined}
-                                      className={`min-w-0 truncate text-[14px] text-foreground ${
-                                        item.chat.unread ? "font-semibold" : "font-medium"
+                                      className={`mt-0.5 truncate text-[12.5px] ${
+                                        item.chat.unread
+                                          ? "font-medium text-foreground/75"
+                                          : "text-muted-foreground/60"
                                       }`}
                                     >
-                                      {item.chat.name}
-                                    </span>
-                                    {item.kind === "bot" && item.chat.title ? (
-                                      <span
-                                        dir="auto"
-                                        className="shrink-0 text-[11.5px] font-normal text-muted-foreground"
-                                      >
-                                        {item.chat.title}
-                                      </span>
-                                    ) : null}
-                                    {item.chat.unread ? (
-                                      <span className="sr-only">
-                                        <Trans> (unread)</Trans>
-                                      </span>
-                                    ) : null}
+                                      {/* UX-01B acceptance 12: Bot rows show the real
+                                      preview only — never a status-text fallback;
+                                      state is expressed by the avatar badge with
+                                      its accessible label. */}
+                                      {item.kind === "bot"
+                                        ? item.chat.preview
+                                        : item.chat.preview ||
+                                          item.chat.members.map((member) => member.name).join(", ")}
+                                    </div>
                                   </div>
-                                  <div className="flex shrink-0 items-center gap-1.5">
-                                    <span className="text-[11.5px] text-muted-foreground/60 tabular-nums">
-                                      {formatRosterTime(item.chat.updatedAt)}
-                                    </span>
-                                    {item.chat.unread ? (
-                                      <span
-                                        aria-hidden="true"
-                                        className="inline-block h-2 w-2 rounded-full bg-foreground"
-                                      />
-                                    ) : null}
-                                  </div>
-                                </div>
-                                <div
-                                  dir="auto"
-                                  className={`mt-0.5 truncate text-[12.5px] ${
-                                    item.chat.unread
-                                      ? "font-medium text-foreground/75"
-                                      : "text-muted-foreground/60"
-                                  }`}
-                                >
-                                  {item.kind === "bot"
-                                    ? item.chat.preview ||
-                                      (item.chat.status !== "idle" ? item.chat.status : "")
-                                    : item.chat.preview ||
-                                      item.chat.members.map((member) => member.name).join(", ")}
-                                </div>
-                              </div>
-                            </button>
+                                </button>
+                              )}
+                            </RosterRowCatalog>
                           </div>
                         );
                       })}

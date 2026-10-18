@@ -27,7 +27,9 @@
   background: var(--background);
 }
 
-/* Lifecycle rail: faint full-height base + state-colored fill by real step progress. */
+/* Progress rail: rendered ONLY with a structured Plan (UX-01B) — faint
+   full-height track + state-colored fill at the Plan fraction. No Plan, no
+   rail DOM at all. */
 .exc-rail {
   position: absolute;
   left: 0;
@@ -63,7 +65,6 @@
 .exc-card[data-status="failed"] .exc-rail i {
   background: var(--destructive);
 }
-/* cancelled / background: base rail only — no fill claims progress. */
 
 .exc-head {
   display: flex;
@@ -126,6 +127,30 @@
   font-weight: 500;
   color: var(--foreground);
   overflow-wrap: anywhere;
+}
+/* Title and the single Plan a/b share one baseline row (UX-01B level 0). */
+.exc-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.exc-count {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Short-lived "Plan updated" notice after a revision moved the numbers. */
+.exc-flash {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
 }
 /* One auxiliary line: intervention question / current activity / outcome /
    safe failure summary. Two-line clamp; the full text lives in the detail. */

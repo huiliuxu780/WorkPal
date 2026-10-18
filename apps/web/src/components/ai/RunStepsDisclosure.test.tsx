@@ -104,7 +104,6 @@ describe("RunStepsDisclosure (steps-only level 1 + level 2)", () => {
 
   it("omits an untrusted completion ratio for unknown statuses", () => {
     const host = mount(<RunStepsDisclosure steps={[step({ status: "unknown" })]} failed={false} />);
-    expect(host.textContent).toContain('data-step-status');
     expect(host.querySelector('[data-step-status="unknown"]')).not.toBeNull();
     expect(host.textContent).not.toContain("0/1 done");
   });

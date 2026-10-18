@@ -13,7 +13,6 @@ import { InterventionRegion } from "../../components/ai/InterventionRegion";
 import { RunPlanDisclosure } from "../../components/ai/RunPlanDisclosure";
 import { RunResult } from "../../components/ai/RunResult";
 import { RunStepsDisclosure } from "../../components/ai/RunStepsDisclosure";
-import { RunTodoList } from "../../components/ai/RunTodoList";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { resultHasText } from "../../lib/execution-card";
 import {
@@ -33,6 +32,7 @@ import {
   summariesByRun,
   toggleExpansion,
 } from "../../lib/execution-history";
+import { eligibleExecutionRunIds } from "../../lib/execution-surface";
 import {
   coveredAskMessageIds,
   mergeInterventionViews,
@@ -40,7 +40,11 @@ import {
 } from "../../lib/intervention-view";
 import { rpc } from "../../lib/rpc";
 import { isRunActive } from "../../lib/run-status";
-import { clearTaskCenterNavIntent, peekTaskCenterNavIntent } from "../../lib/task-center";
+import {
+  clearTaskCenterNavIntent,
+  EXECUTION_NAV_INTENT_EVENT,
+  peekTaskCenterNavIntent,
+} from "../../lib/task-center";
 import { unlinkedRunTodos } from "../../lib/work-progress-view";
 
 /**
@@ -53,7 +57,10 @@ import { unlinkedRunTodos } from "../../lib/work-progress-view";
  * - expansion state (sessionStorage, one open card per Thread, rev-matched);
  * - the versioned detail cache, Activity paging lock and stale-revision guard;
  * - Plan / Steps / Todo / Activity / summary / Intervention / active-Run
- *   anchoring and merging into one shell per Run;
+ *   anchoring and merging into one shell per Run, gated by the UX-01B
+ *   surface eligibility (Plan, semantic Step, pending Intervention, failed —
+ *   Todos and Activity never create a shell on their own, and the legacy
+ *   Todo list no longer renders; its "事项清单" fallback is UX-01C scope);
  * - Task Center "return to conversation" intent consumption, force-open and
  *   focus retry;
  * - the per-anchor `ExecutionShell` rendering.
@@ -105,7 +112,6 @@ export function useExecutionTranscript({
     () => mergeInterventionViews(interventions, settledInterventions),
     [interventions, settledInterventions],
   );
-  const coveredAsks = useMemo(() => coveredAskMessageIds(shownInterventions), [shownInterventions]);
   // HISTORY-001: server-driven execution state. Null summaries (older server)
   // keeps every legacy derivation below untouched.
   const serverSummaries = useMemo(() => summariesByRun({ executions }), [executions]);
@@ -114,6 +120,40 @@ export function useExecutionTranscript({
   // loaded older pages are ONE versioned unit per Run: a moved rev replaces
   // all three together and a stale response can never mix versions.
   const [executionDetails, setExecutionDetails] = useState<ExecutionDetailCache>({});
+  // UX-01B core rule 1: only Runs with a structured Plan, a semantic Step, a
+  // pending Intervention (or any waiting state) or a failure get an Execution
+  // surface. Todos, tool Activity and plain running states never create one;
+  // a plain Run lives in the lightweight progress-message line only.
+  const eligibleRunIds = useMemo(
+    () =>
+      eligibleExecutionRunIds({
+        runs,
+        plans,
+        steps,
+        serverSummaries,
+        executionDetails,
+        interventions: shownInterventions,
+      }),
+    [runs, plans, steps, serverSummaries, executionDetails, shownInterventions],
+  );
+  // Message ids whose bubble ask block already carries a settled status: a
+  // settled Intervention of a surface-less Run yields its ask back to the
+  // bubble (honest history) instead of vanishing with the region.
+  const settledAskMessageIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const message of messages) {
+      for (const block of message.blocks) {
+        if (block.kind === "ask" && (block.status === "answered" || block.status === "expired")) {
+          ids.add(message.id);
+        }
+      }
+    }
+    return ids;
+  }, [messages]);
+  const coveredAsks = useMemo(
+    () => coveredAskMessageIds(shownInterventions, { eligibleRunIds, settledAskMessageIds }),
+    [shownInterventions, eligibleRunIds, settledAskMessageIds],
+  );
   const activityLoading = useRef<Record<string, boolean>>({});
   // The server-chosen anchor wins when its message is actually loaded; a
   // paged-out anchor must never hide a shell whose content is a pending
@@ -132,21 +172,23 @@ export function useExecutionTranscript({
     },
     [serverSummaries, messageById],
   );
-  // One open detail per Thread at any moment — initial render, refresh, rev
-  // moves and waiting states included. Stored rev-matching entries stay
-  // authoritative; defaults open active/failed Runs only while nothing else
-  // in the Thread is open. Runs outside the summary window (detail-only)
-  // fall back to the per-Run stored/default resolution below.
+  // One open detail per Thread at any moment — initial render, refresh and
+  // rev moves included. Stored rev-matching entries stay authoritative;
+  // UX-01B removed every status-based default-open, so the plan only
+  // normalizes stored decisions (surface-less Runs cannot consume the
+  // single-open budget). Runs outside the summary window (detail-only) fall
+  // back to the per-Run stored resolution below.
   const expansionPlan = useMemo(() => {
     if (!serverSummaries) return null;
     const planned: Array<{ runId: string; rev: number; status: string }> = [];
     for (const summary of serverSummaries.values()) {
+      if (!eligibleRunIds.has(summary.runId)) continue;
       const entry = selectCachedDetailEntry(executionDetails, summary.runId, summary.rev);
       const source = entry?.snapshot.summary ?? summary;
       planned.push({ runId: summary.runId, rev: source.rev, status: source.status });
     }
     return planExpansionDefaults({ entries: expansionEntries, threadId, runs: planned });
-  }, [serverSummaries, executionDetails, expansionEntries, threadId]);
+  }, [serverSummaries, executionDetails, expansionEntries, threadId, eligibleRunIds]);
 
   const plansByAnchor = useMemo(() => {
     const anchors = new Map<string, NonNullable<ThreadSnapshot["plans"]>>();
@@ -362,6 +404,15 @@ export function useExecutionTranscript({
     attention: boolean;
     nonce: number;
   } | null>(null);
+  // A sidebar click on the ALREADY-open conversation sets an intent without
+  // any thread/summary change; the ping event makes this consumer re-check
+  // (UX-01B acceptance 12 — same return-intent mechanism, no new storage).
+  const [intentPing, setIntentPing] = useState(0);
+  useEffect(() => {
+    const handler = () => setIntentPing((value) => value + 1);
+    window.addEventListener(EXECUTION_NAV_INTENT_EVENT, handler);
+    return () => window.removeEventListener(EXECUTION_NAV_INTENT_EVENT, handler);
+  }, []);
   useEffect(() => {
     const intent = peekTaskCenterNavIntent();
     if (!intent || intent.threadId !== threadId) return;
@@ -373,7 +424,7 @@ export function useExecutionTranscript({
     );
     loadExecutionDetail(intent.runId);
     setTaskCenterFocus({ attention: intent.attention, nonce: summary.rev });
-  }, [threadId, serverSummaries, loadExecutionDetail]);
+  }, [threadId, serverSummaries, loadExecutionDetail, intentPing]);
   useEffect(() => {
     if (!taskCenterFocus) return;
     // The card can lag the intent by a page commit (the anchor jump still in
@@ -405,6 +456,9 @@ export function useExecutionTranscript({
   }, [taskCenterFocus]);
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
+      // UX-01B core rule 1: no Plan, no semantic Step, no pending
+      // Intervention and no failure → no execution shell at all.
+      if (!eligibleRunIds.has(execution.runId)) return null;
       const run = runs.find((candidate) => candidate.id === execution.runId) ?? null;
       const summary = serverSummaries?.get(execution.runId) ?? null;
       // A fresh detail may outrun the thread-level summary after an Activity
@@ -417,9 +471,7 @@ export function useExecutionTranscript({
       const detail = detailEntry?.snapshot;
       const currentSummary = detail?.summary ?? summary;
       const displayRun = executionRunState({ run, summary, detail });
-      const live = Boolean(
-        displayRun && ["queued", "leased", "running"].includes(displayRun.status),
-      );
+      const isFailed = displayRun?.status === "failed";
       const data = executionDataForRun({
         runId: execution.runId,
         detail,
@@ -430,6 +482,11 @@ export function useExecutionTranscript({
           activity: execution.activity,
         },
       });
+      const hasFailedStep = data.steps.some((step) => step.status === "failed");
+      // Acceptance 8, second path: a failed Run without a failed semantic
+      // Step shows the SAFE Run-level failure projection (never a raw error).
+      const failureText =
+        isFailed && !hasFailedStep ? currentSummary?.failure?.trim() || null : null;
       // The transcript bubble is the canonical result surface. The detail's
       // Result section only renders while that message is NOT loaded (paged
       // out), so the same text never appears twice next to each other; the
@@ -448,9 +505,8 @@ export function useExecutionTranscript({
       );
       const controlled = currentSummary !== null;
       const rev = currentSummary?.rev ?? 0;
-      const openByDefault = Boolean(
-        displayRun && (isRunActive(displayRun.status) || displayRun.status === "failed"),
-      );
+      // UX-01B acceptance 4: no auto-expansion — every detail starts
+      // collapsed and opens only on an explicit user action or return intent.
       const plannedOpen = expansionPlan?.get(execution.runId);
       const isOpen = controlled
         ? (plannedOpen ??
@@ -459,9 +515,9 @@ export function useExecutionTranscript({
             threadId,
             runId: execution.runId,
             rev,
-            defaultOpen: openByDefault,
+            defaultOpen: false,
           }))
-        : openByDefault;
+        : false;
       const expansion = controlled
         ? {
             open: isOpen,
@@ -518,8 +574,8 @@ export function useExecutionTranscript({
           canExpand={currentSummary !== null}
           summary={currentSummary}
           pendingInterventionViews={scopedInterventions.filter((view) => view.status === "pending")}
+          plan={data.plan ?? null}
           steps={data.steps}
-          stepsTruncated={detail?.steps.truncated}
           hasResult={resultHasText(detachedResult)}
           resultOnPage={
             data.result
@@ -545,9 +601,22 @@ export function useExecutionTranscript({
             ) : null
           }
         >
-          {data.plan ? <RunPlanDisclosure plan={data.plan} live={live} /> : null}
-          {data.steps.length > 0 ? <RunStepsDisclosure steps={data.steps} live={live} /> : null}
-          {data.todos.length > 0 ? <RunTodoList todos={data.todos} /> : null}
+          {data.plan ? (
+            <RunPlanDisclosure plan={data.plan} steps={data.steps} failed={isFailed} />
+          ) : data.steps.length > 0 ? (
+            <RunStepsDisclosure steps={data.steps} failed={isFailed} />
+          ) : null}
+          {failureText ? (
+            <p
+              data-testid="execution-failure-reason"
+              data-failure-target=""
+              tabIndex={-1}
+              dir="auto"
+              className="ms-1 my-2 border-s border-destructive ps-4 text-[13px] text-destructive focus:outline-none"
+            >
+              {failureText}
+            </p>
+          ) : null}
           {runActivityItems.length > 0 || displayRun?.status === "running" ? (
             <ExecutionActivity
               run={displayRun}

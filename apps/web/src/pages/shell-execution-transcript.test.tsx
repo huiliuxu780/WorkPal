@@ -313,6 +313,27 @@ function approvalAskBlock(text: string, interventionId: string, effectId: string
   };
 }
 
+/** The same ask block after the runtime rewrote it to its answered state. */
+function answeredAskBlock(
+  text: string,
+  interventionId: string,
+  effectId: string,
+  answer: string,
+): MessageBlock {
+  return {
+    kind: "ask",
+    text,
+    interventionId,
+    approvalEffectId: effectId,
+    status: "answered",
+    answer,
+    actions: [
+      { id: "allow", label: "Allow" },
+      { id: "deny", label: "Deny" },
+    ],
+  };
+}
+
 function transcriptOf(host: HTMLElement): Element {
   const transcript = host.querySelector('[data-testid="transcript"]');
   if (!transcript) throw new Error("transcript container missing");
@@ -511,11 +532,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
   });
 
   it("returns a settled ask bubble when its plain Run has no surface", () => {
-    const answeredAsk: MessageBlock = {
-      ...approvalAskBlock("HISTORICAL-ASK-TEXT", "iv-9", "eff-9"),
-      status: "answered",
-      answer: "allow",
-    };
+    const answeredAsk = answeredAskBlock("HISTORICAL-ASK-TEXT", "iv-9", "eff-9", "allow");
     const host = renderTranscript({
       messages: [
         message("m1", "user", [{ kind: "text", text: "USER-QUESTION-9" }]),
@@ -538,11 +555,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
   });
 
   it("keeps a settled ask suppressed while its Run keeps a surface", () => {
-    const answeredAsk: MessageBlock = {
-      ...approvalAskBlock("COVERED-ASK-TEXT", "iv-8", "eff-8"),
-      status: "answered",
-      answer: "allow",
-    };
+    const answeredAsk = answeredAskBlock("COVERED-ASK-TEXT", "iv-8", "eff-8", "allow");
     const host = renderTranscript({
       messages: [
         message("m1", "user", [{ kind: "text", text: "USER-QUESTION-10" }]),
