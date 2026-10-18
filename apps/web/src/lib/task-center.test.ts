@@ -14,6 +14,7 @@ import {
   clearTaskCenterNavIntent,
   emptyTaskCenterList,
   peekTaskCenterNavIntent,
+  rosterAttentionIntent,
   setTaskCenterNavIntent,
   type TaskCenterListState,
   taskCenterVerb,
@@ -183,5 +184,38 @@ describe("navigation intent handoff", () => {
     expect(peekTaskCenterNavIntent()).toEqual(intent);
     clearTaskCenterNavIntent();
     expect(peekTaskCenterNavIntent()).toBeNull();
+  });
+});
+
+describe("rosterAttentionIntent (UX-01B acceptance 12: sidebar refocus)", () => {
+  it("builds an attention intent for a waiting Bot with a trusted runId", () => {
+    expect(
+      rosterAttentionIntent({
+        threadId: "thread-9",
+        state: { state: "waiting", runId: "run-9", revision: 3 },
+      }),
+    ).toEqual({ threadId: "thread-9", runId: "run-9", rev: 3, attention: true });
+  });
+
+  it("builds an attention intent for an approval Bot", () => {
+    expect(
+      rosterAttentionIntent({
+        threadId: "thread-9",
+        state: { state: "approval", runId: "run-9", revision: 7 },
+      }),
+    ).toEqual({ threadId: "thread-9", runId: "run-9", rev: 7, attention: true });
+  });
+
+  it("never guesses without a trusted runId or for non-waiting states", () => {
+    expect(
+      rosterAttentionIntent({ threadId: "thread-9", state: { state: "waiting", runId: null, revision: 1 } }),
+    ).toBeNull();
+    expect(rosterAttentionIntent({ threadId: "thread-9", state: null })).toBeNull();
+    expect(rosterAttentionIntent({ threadId: "thread-9", state: undefined })).toBeNull();
+    for (const state of ["idle", "working", "failed"] as const) {
+      expect(
+        rosterAttentionIntent({ threadId: "thread-9", state: { state, runId: "run-9", revision: 1 } }),
+      ).toBeNull();
+    }
   });
 });

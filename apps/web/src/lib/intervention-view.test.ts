@@ -56,6 +56,44 @@ describe("intervention view helpers", () => {
     expect(coveredAskMessageIds(undefined).size).toBe(0);
   });
 
+  describe("surface-scoped coverage (UX-01B)", () => {
+    it("always covers a pending Intervention's ask", () => {
+      const covered = coveredAskMessageIds([view()], {
+        eligibleRunIds: new Set<string>(),
+        settledAskMessageIds: new Set(["message-1"]),
+      });
+      expect(covered.has("message-1")).toBe(true);
+    });
+
+    it("covers settled cards while their Run keeps an Execution surface", () => {
+      const covered = coveredAskMessageIds([view({ status: "answered" })], {
+        eligibleRunIds: new Set(["run-1"]),
+        settledAskMessageIds: new Set(["message-1"]),
+      });
+      expect(covered.has("message-1")).toBe(true);
+    });
+
+    it("un-covers a settled ask of a surface-less Run once the bubble block is settled", () => {
+      // The Run completed without Plan/Steps: no region renders, so the
+      // bubble's own answered AskCard stays as the honest history echo.
+      const covered = coveredAskMessageIds([view({ status: "answered" })], {
+        eligibleRunIds: new Set<string>(),
+        settledAskMessageIds: new Set(["message-1"]),
+      });
+      expect(covered.has("message-1")).toBe(false);
+    });
+
+    it("keeps covering a settled view whose bubble block is still pending", () => {
+      // A stopped Run's ask block never reached a settled status; uncovering
+      // it would show an operable card for a dead Run.
+      const covered = coveredAskMessageIds([view({ status: "expired" })], {
+        eligibleRunIds: new Set<string>(),
+        settledAskMessageIds: new Set<string>(),
+      });
+      expect(covered.has("message-1")).toBe(true);
+    });
+  });
+
   it("reports pending kinds for the header without treating terminal cards as waiting", () => {
     const approval = view({
       id: "approval-1",
