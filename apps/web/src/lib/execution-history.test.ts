@@ -18,6 +18,7 @@ import {
   mergeActivityPages,
   planExpansionDefaults,
   readExecutionExpansions,
+  rekeyExpansionRev,
   resolveExecutionAnchor,
   selectCachedDetailEntry,
   summariesByRun,
@@ -496,6 +497,57 @@ describe("planExpansionDefaults", () => {
     expect(plan.get("a1")).toBe(true);
     expect(plan.get("c1")).toBe(false);
     expect([...plan.values()].filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("rekeyExpansionRev (live-Run detail arrival must not self-close)", () => {
+  it("moves a stored entry to the freshly loaded detail rev, keeping its open state", () => {
+    const entries = toggleExpansion({
+      entries: {},
+      threadId: "t",
+      runId: "live",
+      rev: 5,
+      currentlyOpen: false,
+    });
+    expect(entries["t:live"]).toEqual({ threadId: "t", runId: "live", rev: 5, open: true });
+    // The detail response carries a fresher rev of the SAME projection the
+    // user just opened — re-key instead of letting the entry go stale.
+    const rekeyed = rekeyExpansionRev({ entries, threadId: "t", runId: "live", rev: 8 });
+    expect(rekeyed["t:live"]).toEqual({ threadId: "t", runId: "live", rev: 8, open: true });
+    // The plan authority now agrees with the detail-derived rev.
+    const plan = planExpansionDefaults({
+      entries: rekeyed,
+      threadId: "t",
+      runs: [{ runId: "live", rev: 8, status: "running" }],
+    });
+    expect(plan.get("live")).toBe(true);
+  });
+
+  it("never downgrades a newer stored rev and ignores unknown Runs", () => {
+    const entries = toggleExpansion({
+      entries: {},
+      threadId: "t",
+      runId: "live",
+      rev: 9,
+      currentlyOpen: false,
+    });
+    expect(rekeyExpansionRev({ entries, threadId: "t", runId: "live", rev: 6 })).toBe(entries);
+    expect(rekeyExpansionRev({ entries, threadId: "t", runId: "other", rev: 12 })).toBe(entries);
+    expect(rekeyExpansionRev({ entries, threadId: "t2", runId: "live", rev: 12 })).toBe(entries);
+  });
+
+  it("keeps a stored collapse collapsed (only the rev moves)", () => {
+    let entries = toggleExpansion({
+      entries: {},
+      threadId: "t",
+      runId: "w",
+      rev: 3,
+      currentlyOpen: false,
+    });
+    entries = toggleExpansion({ entries, threadId: "t", runId: "w", rev: 3, currentlyOpen: true });
+    expect(entries["t:w"]!.open).toBe(false);
+    const rekeyed = rekeyExpansionRev({ entries, threadId: "t", runId: "w", rev: 7 });
+    expect(rekeyed["t:w"]).toEqual({ threadId: "t", runId: "w", rev: 7, open: false });
   });
 });
 

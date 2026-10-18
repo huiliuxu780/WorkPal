@@ -787,6 +787,58 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(host.textContent).not.toContain("PLAIN-RUN-TITLE");
   });
 
+  it("keeps a live card open when its own detail load lands on a fresher rev", async () => {
+    // Review-round regression: opening a live Run's card triggers the detail
+    // fetch; for an actively-eventing Run the response carries a NEWER rev
+    // than the thread summary the toggle stored. That arrival is the same
+    // projection the user just opened — it must re-key the stored decision,
+    // never self-close the card.
+    rpcMocks.executionSnapshot.mockResolvedValue({
+      summary: summary({
+        runId: "run-live",
+        rev: 9,
+        status: "running",
+        title: "LIVE-RUN-TITLE",
+        anchorMessageId: "m2",
+      }),
+      steps: { items: [step("run-live", "s1", "LIVE-STEP", 0)], truncated: false },
+      todos: { items: [], truncated: false },
+      timeline: [],
+      activityPage: { items: [], olderCursor: null, truncated: false },
+      interventions: [],
+    } as never);
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-17" }]),
+        message("m2", "bot", [{ kind: "text", text: "PARTIAL-ANSWER-17" }], "run-live"),
+      ],
+      steps: [step("run-live", "s1", "LIVE-STEP", 0)],
+      runs: [run("run-live", "running")],
+      activeRunIds: ["run-live"],
+      executions: [
+        summary({
+          runId: "run-live",
+          rev: 5,
+          status: "running",
+          title: "LIVE-RUN-TITLE",
+          anchorMessageId: "m2",
+        }),
+      ],
+    });
+    const collapsed = host.querySelector('article[data-testid="execution-card"]');
+    expect(collapsed!.getAttribute("data-open")).toBe("0");
+    const toggle = collapsed!.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(80);
+    });
+    const opened = host.querySelector('article[data-testid="execution-card"]');
+    expect(opened!.getAttribute("data-open")).toBe("1");
+    expect(host.textContent).toContain("LIVE-STEP");
+  });
+
   it("re-checks a sidebar-set intent on the ping event without a remount (acceptance 12)", async () => {
     // The transcript is ALREADY mounted on the target thread — the sidebar
     // click on the same conversation cannot rely on a threadId change, so it
