@@ -1747,6 +1747,10 @@ msgstr ""
 msgid "Couldn't load messaging settings"
 msgstr ""
 
+#: src/pages/shell/use-execution-transcript.tsx
+msgid "Couldn't load the execution detail."
+msgstr ""
+
 #: src/components/ai/TaskCenterView.tsx
 msgid "Couldn't open this task. Try again."
 msgstr ""
@@ -3689,6 +3693,10 @@ msgstr ""
 msgid "Result preview truncated"
 msgstr ""
 
+#: src/pages/shell/use-execution-transcript.tsx
+msgid "Retry"
+msgstr ""
+
 #: src/App.tsx
 #: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
@@ -4288,6 +4296,10 @@ msgstr ""
 msgid "This reset link is invalid or expired"
 msgstr "Bu sıfırlama bağlantısı geçersiz veya süresi dolmuş"
 
+#: src/components/ai/RunTodoList.tsx
+msgid "This run has no plan. These were the working items at the time."
+msgstr ""
+
 #: src/pages/shell/message-cards.tsx
 msgid "This server cannot be assigned without a bot."
 msgstr "Bu sunucu bir bot olmadan atanamaz."
@@ -4319,10 +4331,6 @@ msgstr "Günün saati"
 #: src/pages/shell/bot-panel.tsx
 msgid "Title"
 msgstr "Başlık"
-
-#: src/components/ai/RunTodoList.tsx
-msgid "To do"
-msgstr ""
 
 #: src/pages/shell/bot-picker.tsx
 msgid "To:"
@@ -4617,6 +4625,10 @@ msgstr "Ne zaman kullanılır"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Botlar nerede çalışsın?"
+
+#: src/components/ai/RunTodoList.tsx
+msgid "Work items"
+msgstr ""
 
 #: src/components/activity/ActivityRows.tsx
 #: src/pages/Shell.tsx
