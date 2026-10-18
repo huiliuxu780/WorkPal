@@ -45,6 +45,7 @@ model User {
   createdSpaces               Space[]                      @relation("SpaceCreator")
   botSecrets BotSecret[]
   agentSecrets               AgentSecret[]
+  avatarFailureReceipts       AvatarFailureReceipt[]
 
   @@unique([email])
   @@map("user")
@@ -549,6 +550,7 @@ model Event {
   @@unique([threadId, seq])
   @@index([spaceId, createdAt])
   @@index([threadId, seq])
+  @@index([threadId, type, createdAt])
   @@index([runId, type, seq])
   @@map("events")
 }
@@ -619,6 +621,7 @@ model Run {
   steeringMessages     SteeringMessage[]
   externalMessage      ExternalMessage?
   backgroundTasks       BackgroundAgentTask[]
+  avatarFailureReceipts AvatarFailureReceipt[]
   deliverySourceRecords DeliveryRecord[] @relation("DeliverySourceRun")
   plan                 RunPlan?
   steps                RunStep[]
@@ -737,6 +740,20 @@ model RunTodoMutation {
 }
 
 /// Product projection only. AgentScope WorkspaceTaskRepository owns execution and reminders.
+/** A failed Run stops claiming the Bot's avatar after its focused detail was viewed. */
+model AvatarFailureReceipt {
+  userId  String
+  runId   String
+  spaceId String
+  seenAt  DateTime @default(now())
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  run     Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@id([userId, runId])
+  @@index([spaceId, userId])
+  @@map("avatar_failure_receipts")
+}
+
 model BackgroundAgentTask {
   taskId       String    @id
   parentRunId  String

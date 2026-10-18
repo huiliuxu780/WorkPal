@@ -7,6 +7,7 @@ import {
   ATTACHMENT_MAX_BASE64_LENGTH,
   ATTACHMENT_MAX_COUNT,
 } from "./attachments.js";
+import { BotAvatarStateSchema } from "./bot-avatar.js";
 import {
   ActionApprovalRuleSchema,
   ActionAutoReviewSettingsSchema,
@@ -250,6 +251,8 @@ export const appContract = {
   },
   bots: {
     list: oc.output(z.array(BotSchema)),
+    avatarStates: oc.output(z.array(BotAvatarStateSchema)),
+    acknowledgeAvatarFailure: oc.input(z.object({ runId: Id })).output(z.object({ ok: z.literal(true) })),
     listArchived: oc.output(z.array(BotSchema)),
     get: oc.input(botId).output(BotSchema),
     create: oc.input(CreateBotInput).output(BotSchema),

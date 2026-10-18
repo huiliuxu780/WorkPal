@@ -1,4 +1,6 @@
 export { type AvatarStyle, AvatarStyleProvider, useAvatarStyle } from "./avatar-style.js";
+export { AgentAvatar, type AgentAvatarProps, type AgentAvatarSize, type AvatarSurface } from "./agent-avatar/agent-avatar.js";
+export { ACTIVITY_TO_AVATAR, avatarActivityForItem, selectAvatarActivity, type AvatarActivity } from "./agent-avatar/activity-map.js";
 export { COLORS as BLOUB_COLORS, DEFAULT_COLOR as BLOUB_DEFAULT_COLOR } from "./bloub/skins.js";
 export {
   BLOUB_EXPRESSION_IDS,

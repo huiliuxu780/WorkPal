@@ -1,0 +1,138 @@
+.rakazo-agent-avatar {
+  --avatar-surface: var(--background);
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+}
+
+.rakazo-agent-avatar[data-surface="card"] {
+  --avatar-surface: var(--card);
+}
+.rakazo-agent-avatar[data-surface="sidebar"] {
+  --avatar-surface: var(--sidebar);
+}
+.rakazo-agent-avatar[data-surface="secondary"] {
+  --avatar-surface: var(--secondary);
+}
+.rakazo-agent-avatar[data-surface="chat-user"] {
+  --avatar-surface: var(--chat-user);
+}
+
+.rakazo-agent-avatar-art,
+.rakazo-agent-avatar-prop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.rakazo-agent-avatar-art svg,
+.rakazo-agent-avatar-prop svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.rakazo-agent-avatar-prop-dark {
+  display: none;
+}
+[data-theme="dark"]
+  .rakazo-agent-avatar[data-state="waiting"]
+  .rakazo-agent-avatar-prop:not(.rakazo-agent-avatar-prop-dark) {
+  display: none;
+}
+[data-theme="dark"] .rakazo-agent-avatar-prop-dark {
+  display: block;
+}
+:where(:root:not([data-theme="light"]):not([data-theme="dark"]))
+  .rakazo-agent-avatar[data-state="waiting"]
+  .rakazo-agent-avatar-prop:not(.rakazo-agent-avatar-prop-dark) {
+  display: none;
+}
+:where(:root:not([data-theme="light"]):not([data-theme="dark"])) .rakazo-agent-avatar-prop-dark {
+  display: block;
+}
+
+[data-theme="dark"] .rakazo-agent-avatar-art svg,
+:where(:root:not([data-theme="light"]):not([data-theme="dark"])) .rakazo-agent-avatar-art svg {
+  filter: drop-shadow(0.6px 0 #fff) drop-shadow(-0.6px 0 #fff) drop-shadow(0 0.6px #fff)
+    drop-shadow(0 -0.6px #fff);
+}
+
+[data-size="24"][data-state="approval"] .rakazo-agent-avatar-prop svg,
+[data-size="24"][data-state="waiting"] .rakazo-agent-avatar-prop svg {
+  transform: translate(-1px, -1px) scale(1.34);
+  transform-origin: 85% 73%;
+}
+
+.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-art [id="pupilL"],
+.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-art [id="pupilR"] {
+  visibility: hidden;
+}
+
+.rakazo-agent-avatar-dot {
+  position: absolute;
+  box-sizing: border-box;
+  right: -1px;
+  bottom: -1px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--avatar-surface);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.rakazo-agent-avatar[data-state="working"] .rakazo-agent-avatar-dot {
+  background: #4ade80;
+}
+.rakazo-agent-avatar[data-state="approval"] .rakazo-agent-avatar-dot {
+  background: #f5c84b;
+}
+.rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot {
+  background: #7cb8f2;
+}
+.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot {
+  background: #f28b6b;
+}
+.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot::after {
+  content: "!";
+  position: absolute;
+  inset: -1px;
+  color: white;
+  text-align: center;
+  font: 700 5px / 5px sans-serif;
+}
+
+[data-theme="light"] .rakazo-agent-avatar[data-state="working"] .rakazo-agent-avatar-dot {
+  background: #228b3b;
+}
+[data-theme="light"] .rakazo-agent-avatar[data-state="approval"] .rakazo-agent-avatar-dot {
+  background: #9a6700;
+}
+[data-theme="light"] .rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot {
+  background: #2563eb;
+}
+[data-theme="light"] .rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot {
+  background: #c2410c;
+}
+
+/* Non-color 16px state cues (AV-00 acceptance addendum, 2026-10-18): the point
+   shape distinguishes states when hue is not perceivable. Point colors and the
+   1.5px separation stay frozen; the waiting ring moves the separation to an
+   equivalent outer halo so the gap survives the transparent center. */
+.rakazo-agent-avatar-dot[data-point-shape="diamond"] {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] {
+  background: transparent;
+  border-color: #7cb8f2;
+  box-shadow: 0 0 0 1.5px var(--avatar-surface);
+}
+[data-theme="light"]
+  .rakazo-agent-avatar[data-state="waiting"]
+  .rakazo-agent-avatar-dot[data-point-shape="ring"] {
+  border-color: #2563eb;
+}
