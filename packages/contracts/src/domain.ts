@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { ActivityItemSchema } from "./activity.js";
-import { BotAvatarValueSchema } from "./bot-avatar.js";
+import { AvatarCharacterSchema, AvatarModeSchema, BotAvatarValueSchema } from "./bot-avatar.js";
 import { ExecutionSummarySchema } from "./execution-snapshot.js";
 import { ThreadMessageSchema } from "./events.js";
 import { Id, MemoryScope, RunStatus, RunTrigger, SandboxKind, WaitKind } from "./ids.js";
@@ -54,6 +54,8 @@ export const BotSchema = z.object({
   description: z.string(),
   instructions: z.string(),
   color: z.string(),
+  avatarMode: AvatarModeSchema,
+  avatarCharacter: AvatarCharacterSchema.nullable(),
   notifyOnFinish: z.boolean(),
   pinned: z.boolean(),
   sectionId: Id.nullable(),
@@ -171,6 +173,8 @@ export const SpaceBotSchema = BotSchema.pick({
   name: true,
   title: true,
   color: true,
+  avatarMode: true,
+  avatarCharacter: true,
   notifyOnFinish: true,
   pinned: true,
   sectionId: true,
@@ -294,17 +298,42 @@ export const BOT_TITLE_MAX_LENGTH = 500;
 export const BOT_DESCRIPTION_MAX_LENGTH = 4000;
 export const BOT_INSTRUCTIONS_MAX_LENGTH = 20000;
 
-export const CreateBotInput = z.object({
-  name: z.string().trim().min(1).max(BOT_NAME_MAX_LENGTH),
-  title: z.string().max(BOT_TITLE_MAX_LENGTH).default(""),
-  description: z.string().max(BOT_DESCRIPTION_MAX_LENGTH).default(""),
-  instructions: z.string().max(BOT_INSTRUCTIONS_MAX_LENGTH).default(""),
-  notifyOnFinish: z.boolean().default(true),
-  color: BotAvatarValueSchema.optional(),
-  computerMode: ComputerModeSchema.default("team"),
-  /** Idempotency key within a space (unique with spaceId). */
-  spawnKey: z.string().trim().min(1).max(120).optional(),
-});
+export const CreateBotInput = z
+  .object({
+    name: z.string().trim().min(1).max(BOT_NAME_MAX_LENGTH),
+    title: z.string().max(BOT_TITLE_MAX_LENGTH).default(""),
+    description: z.string().max(BOT_DESCRIPTION_MAX_LENGTH).default(""),
+    instructions: z.string().max(BOT_INSTRUCTIONS_MAX_LENGTH).default(""),
+    notifyOnFinish: z.boolean().default(true),
+    color: BotAvatarValueSchema.optional(),
+    avatarMode: AvatarModeSchema.optional(),
+    avatarCharacter: AvatarCharacterSchema.optional(),
+    computerMode: ComputerModeSchema.default("team"),
+    /** Idempotency key within a space (unique with spaceId). */
+    spawnKey: z.string().trim().min(1).max(120).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.avatarMode === "character" && value.avatarCharacter === undefined) {
+      ctx.addIssue({ code: "custom", path: ["avatarCharacter"], message: "Choose a character" });
+    }
+    if (value.avatarCharacter !== undefined && value.avatarMode !== "character") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["avatarMode"],
+        message: "Character requires character mode",
+      });
+    }
+    if (value.avatarMode === "character" && value.color !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["color"],
+        message: "Character mode cannot include a legacy color",
+      });
+    }
+    if (value.avatarMode === "upload" && !value.color?.startsWith("data:image/")) {
+      ctx.addIssue({ code: "custom", path: ["color"], message: "Upload mode requires an image" });
+    }
+  });
 export type CreateBotInput = z.infer<typeof CreateBotInput>;
 
 export function normalizeCreateBotProfile(
@@ -328,6 +357,8 @@ export const UpdateBotInput = z
     instructions: z.string().trim().max(BOT_INSTRUCTIONS_MAX_LENGTH).optional(),
     notifyOnFinish: z.boolean().optional(),
     color: BotAvatarValueSchema.optional(),
+    avatarMode: AvatarModeSchema.optional(),
+    avatarCharacter: AvatarCharacterSchema.optional(),
     pinned: z.boolean().optional(),
     memoryScope: MemoryScopeSchema.nullable().optional(),
     sectionId: Id.nullable().optional(),
@@ -340,6 +371,26 @@ export const UpdateBotInput = z
     teamChatRules: z.string().max(TEAM_CHAT_RULES_MAX_LENGTH).optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.avatarMode === "character" && value.avatarCharacter === undefined) {
+      ctx.addIssue({ code: "custom", path: ["avatarCharacter"], message: "Choose a character" });
+    }
+    if (value.avatarCharacter !== undefined && value.avatarMode !== "character") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["avatarMode"],
+        message: "Character requires character mode",
+      });
+    }
+    if (value.avatarMode === "character" && value.color !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["color"],
+        message: "Character mode cannot include a legacy color",
+      });
+    }
+    if (value.avatarMode === "upload" && !value.color?.startsWith("data:image/")) {
+      ctx.addIssue({ code: "custom", path: ["color"], message: "Upload mode requires an image" });
+    }
     const providerProvided = value.modelProvider !== undefined;
     const modelProvided = value.modelId !== undefined;
     if (!providerProvided && !modelProvided) return;

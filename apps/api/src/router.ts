@@ -124,6 +124,7 @@ import {
   foldComputerCommands,
   IntegrationProviderIdSchema,
   OPENAI_COMPATIBLE_PROVIDER_ID,
+  resolveAvatarIdentity,
   usableModelId,
 } from "@rakazo/contracts";
 import {
@@ -1410,6 +1411,7 @@ export function createRouter(deps: RouterDeps) {
             instructions: source.instructions,
             notifyOnFinish: source.notifyOnFinish,
             color: source.color,
+            ...resolveAvatarIdentity(source.avatarMode, source.avatarCharacter, source.color),
             computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
             modelProvider: source.modelProvider,
             modelId: source.modelId,
@@ -1547,6 +1549,18 @@ export function createRouter(deps: RouterDeps) {
           }
         }
         if (!existing.thread) throw new IsolationError();
+        if (input.avatarMode === "character" && !input.avatarCharacter) {
+          throw new ORPCError("BAD_REQUEST", { message: "Choose a character" });
+        }
+        const avatarPatch =
+          input.avatarMode !== undefined || input.color !== undefined
+            ? {
+                avatarMode:
+                  input.avatarMode ??
+                  (input.color?.startsWith("data:image/") ? "upload" : "legacy"),
+                avatarCharacter: input.avatarMode === "character" ? input.avatarCharacter! : null,
+              }
+            : {};
         await commitBotUpdate({
           prisma: deps.prisma,
           notify: (threadId, seq) => deps.events.notify(threadId, seq),
@@ -1561,6 +1575,7 @@ export function createRouter(deps: RouterDeps) {
             instructions: input.instructions,
             notifyOnFinish: input.notifyOnFinish,
             color: input.color,
+            ...avatarPatch,
             pinned: input.pinned,
             memoryScope: input.memoryScope,
             sectionId: input.sectionId,
@@ -5895,6 +5910,8 @@ async function spaceNavigationDto(
           name: bot.name,
           title: bot.title,
           color: bot.color,
+          avatarMode: bot.avatarMode,
+          avatarCharacter: bot.avatarCharacter,
           notifyOnFinish: bot.notifyOnFinish,
           pinned: bot.pinned,
           sectionId: bot.sectionId,

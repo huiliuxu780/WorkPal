@@ -7,12 +7,14 @@ vi.mock("@rakazo/db", () => ({
 import { botProfileLabelsChanged, commitBotUpdate } from "./bot-update.js";
 
 describe("botProfileLabelsChanged", () => {
-  it("is true when name, title, description, or color is present", () => {
+  it("is true when profile labels or avatar identity change", () => {
     expect(botProfileLabelsChanged({})).toBe(false);
     expect(botProfileLabelsChanged({ name: "SEO" })).toBe(true);
     expect(botProfileLabelsChanged({ title: "Strategist" })).toBe(true);
     expect(botProfileLabelsChanged({ description: "Helps with SEO" })).toBe(true);
     expect(botProfileLabelsChanged({ color: "#8B5CF6::shape_1" })).toBe(true);
+    expect(botProfileLabelsChanged({ avatarMode: "character" })).toBe(true);
+    expect(botProfileLabelsChanged({ avatarCharacter: "wave" })).toBe(true);
   });
 });
 

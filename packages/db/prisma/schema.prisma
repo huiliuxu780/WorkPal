@@ -349,6 +349,8 @@ model Bot {
   instructions      String            @default("")
   capabilityRules    Json?
   color             String
+  avatarMode        String            @default("legacy")
+  avatarCharacter   String?
   notifyOnFinish    Boolean           @default(true)
   pinned            Boolean           @default(false)
   position          Int               @default(0)
@@ -396,6 +398,7 @@ model Bot {
   @@index([sectionId])
   @@index([computerId])
   @@index([parentBotId])
+  @@index([userId, avatarMode, avatarCharacter])
   @@map("bots")
 }
 
