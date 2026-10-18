@@ -307,9 +307,7 @@ function renderTranscript(
  * landing a newer summary, an event updating an array) — the hook instance
  * and all of its state persist, unlike renderTranscript's fresh mount.
  */
-function rerenderTranscript(
-  overrides: Partial<ComponentProps<typeof Transcript>>,
-): void {
+function rerenderTranscript(overrides: Partial<ComponentProps<typeof Transcript>>): void {
   currentOverrides = { ...currentOverrides, ...overrides };
   act(() => {
     root!.render(<Harness />);
@@ -1156,9 +1154,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
       ],
       steps: [step("run-r", "s-r", "STEP-R", 0)],
       runs: [run("run-r", "completed", { completedAt: ISO })],
-      executions: [
-        summary({ runId: "run-r", rev: 5, title: "REV-RUN", anchorMessageId: "m2" }),
-      ],
+      executions: [summary({ runId: "run-r", rev: 5, title: "REV-RUN", anchorMessageId: "m2" })],
     });
     const toggle = host.querySelector<HTMLElement>(".exc-entry");
     act(() => {
@@ -1174,9 +1170,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     // describes a request against a projection that no longer exists and
     // must not survive the move.
     rerenderTranscript({
-      executions: [
-        summary({ runId: "run-r", rev: 6, title: "REV-RUN", anchorMessageId: "m2" }),
-      ],
+      executions: [summary({ runId: "run-r", rev: 6, title: "REV-RUN", anchorMessageId: "m2" })],
     });
     await act(async () => {
       await sleep(20);
