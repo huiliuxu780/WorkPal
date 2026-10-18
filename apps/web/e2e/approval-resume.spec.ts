@@ -61,9 +61,13 @@ test("approval input resumes durable work", async ({ page }, testInfo) => {
 
   await composer.fill("ask me which city to use");
   await page.keyboard.press("Enter");
-  await expect(prompt).toHaveCount(3, { timeout: 30_000 });
+  // UX-01B: each waiting Run's region holds only its own card — the earlier
+  // plain Runs keep no surface, so their answered asks live in their bubbles.
+  await expect(prompt).toHaveCount(1, { timeout: 30_000 });
   await page.getByRole("button", { name: "Stop" }).click();
-  await expect(page.getByText("No longer active", { exact: true })).toBeVisible();
+  // A stopped plain Run keeps no execution surface, and its never-settled ask
+  // never reappears as an operable card anywhere.
+  await expect(page.getByTestId("intervention-region")).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Send it" })).toHaveCount(0);
   await captureScreenshot(page, testInfo, "25-stopped-approval-prompt");
 });

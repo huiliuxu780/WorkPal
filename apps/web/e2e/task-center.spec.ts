@@ -270,18 +270,20 @@ test("查看结果 returns to the right conversation, expands the card and keeps
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, `summarize the quarter ${stamp}`);
-  await settledSummary(page, botId, `summarize the quarter ${stamp}`);
+  // UX-01B: the return-navigation target needs a real semantic Step to own
+  // an execution surface in the chat; a plain Run would show only its bubble.
+  await send(page, `run 2 tracked steps quarter ${stamp}`);
+  await settledSummary(page, botId, `quarter ${stamp}`);
 
   await gotoTaskCenter(page);
-  const item = tcItem(page, `summarize the quarter ${stamp}`);
+  const item = tcItem(page, `quarter ${stamp}`);
   await expect(item).toBeVisible({ timeout: 30_000 });
   await item.getByRole("button", { name: "View result" }).click();
 
   await page.waitForURL(new RegExp(`/app/${botId}`), { timeout: 15_000 });
   const shell = page
     .locator('section[data-testid="execution-shell"]')
-    .filter({ hasText: `summarize the quarter ${stamp}` });
+    .filter({ hasText: `quarter ${stamp}` });
   await expect(shell.locator('article[data-testid="execution-card"]')).toHaveAttribute(
     "data-open",
     "1",
@@ -309,7 +311,9 @@ test("an anchor pushed beyond 100 messages is still located and expanded", async
   const botId = activeBotId(page);
   const title = `tc-anchor-${stamp}`;
 
-  await send(page, title);
+  // Tracked fixture: the run owns a real semantic Step so it keeps a chat
+  // execution surface to return to (UX-01B — a plain run shows only its bubble).
+  await send(page, `run 1 tracked steps ${title}`);
   const summary = await settledSummary(page, botId, title);
   expect(summary.anchorMessageId).toBeTruthy();
   const anchorMessageId = summary.anchorMessageId!;
@@ -499,7 +503,8 @@ test("DOM and browser storage carry no secrets, tokens or raw Run ids", async ({
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, `summarize the vault ${stamp}`);
+  // Tracked so the returned-to conversation owns a chat execution surface.
+  await send(page, `run 2 tracked steps summarize the vault ${stamp}`);
   const summary = await settledSummary(page, botId, `summarize the vault ${stamp}`);
 
   await gotoTaskCenter(page);
@@ -554,12 +559,14 @@ test("390px: no horizontal overflow and a keyboard-only card flow", async ({ pag
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, `keep working until i stop you ${stamp}`);
-  await appearedSummary(page, botId, `keep working until i stop you ${stamp}`);
+  await send(page, `keep working with tracked steps until i stop you ${stamp}`);
+  await appearedSummary(page, botId, `keep working with tracked steps until i stop you ${stamp}`);
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoTaskCenter(page);
   try {
-    await expect(tcItem(page, `keep working until i stop you ${stamp}`).first()).toBeVisible({
+    await expect(
+      tcItem(page, `keep working with tracked steps until i stop you ${stamp}`).first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
     const overflow = await page.evaluate(() => ({

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
+import { activeBotId, completeOnboarding, createNamedBot, rpc, signup } from "./helpers";
 
 type Summary = {
   runId: string;
@@ -123,8 +123,10 @@ test("a completed Run restores its card across a refresh without doubling the re
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, `write a file named card-${stamp}.txt saying card quarter numbers`);
-  const summary = await settledSummary(page, botId, "write a file named");
+  // UX-01B: a plain tool Run no longer earns an execution surface, so the
+  // restore flow uses the tracked fixture (a real semantic Step).
+  await send(page, `write a tracked file named card-${stamp}.txt saying card quarter numbers`);
+  const summary = await settledSummary(page, botId, "write a tracked file named");
   expect(summary.outcome).toContain("writing that into my home");
   const title = `card-${stamp}.txt`;
 
@@ -136,9 +138,9 @@ test("a completed Run restores its card across a refresh without doubling the re
   // The result bubble on the page is the canonical surface: the card must not
   // repeat its text, and the transcript shows it exactly once.
   await expect(card).not.toContainText("writing that into my home");
-  await expect(
-    page.getByTestId("transcript").getByText("writing that into my home"),
-  ).toHaveCount(1);
+  await expect(page.getByTestId("transcript").getByText("writing that into my home")).toHaveCount(
+    1,
+  );
   await expectOneCardPerShell(page);
 
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -147,9 +149,9 @@ test("a completed Run restores its card across a refresh without doubling the re
   await expect(restoredCard).toBeVisible({ timeout: 15_000 });
   await expect(restoredCard).toHaveAttribute("data-status", "done");
   await expect(restoredCard).not.toContainText("writing that into my home");
-  await expect(
-    page.getByTestId("transcript").getByText("writing that into my home"),
-  ).toHaveCount(1);
+  await expect(page.getByTestId("transcript").getByText("writing that into my home")).toHaveCount(
+    1,
+  );
 
   const firstDetail = page.waitForResponse((response) =>
     response.url().includes("/rpc/runs/executionSnapshot"),
@@ -158,14 +160,14 @@ test("a completed Run restores its card across a refresh without doubling the re
   await firstDetail;
   // Expanded: the verb becomes Collapse, one status head, and no second
   // Result section next to the loaded bubble.
-  await expect(
-    restoredCard.getByRole("button", { name: "Collapse", exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(restoredCard.getByRole("button", { name: "Collapse", exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
   expect(await restoredCard.locator(".exc-status").count()).toBe(1);
   await expect(page.getByTestId("execution-result")).toHaveCount(0);
-  await expect(
-    page.getByTestId("transcript").getByText("writing that into my home"),
-  ).toHaveCount(1);
+  await expect(page.getByTestId("transcript").getByText("writing that into my home")).toHaveCount(
+    1,
+  );
 
   // No raw Run id hook anywhere in the app DOM, and none in the card head.
   // (Activity projection ids in `data-activity-id` embed the run id as a
@@ -211,8 +213,12 @@ test("pending approval stays discoverable, focuses and submits without a duplica
   await expect(card).toHaveAttribute("data-status", "approval");
   const attention = card.getByRole("button", { name: "Needs your attention", exact: true });
   await expect(attention).toBeVisible();
-  await expect(attention).toHaveAttribute("aria-expanded", "true");
-  await expect(shell.locator(".exc-details")).not.toHaveAttribute("hidden", "");
+  // UX-01B acceptance 4/7: the waiting card is collapsed by default, yet the
+  // approval controls render OUTSIDE the collapsible detail — visible and
+  // operable without any expansion.
+  await expect(attention).toHaveAttribute("aria-expanded", "false");
+  await expect(shell.locator(".exc-details")).toHaveAttribute("hidden", "");
+  await expect(region.getByRole("button", { name: "Deny", exact: true })).toBeEnabled();
 
   // The attention action focuses the first authoritative Intervention control.
   await attention.click();
@@ -254,9 +260,10 @@ test("a pending input ask submits from the card region without a duplicate bubbl
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, "run 3 shell steps then ask");
+  // Tracked steps keep the Run eligible after the answer settles it.
+  await send(page, "run 3 tracked steps then ask");
   await waitingRun(page, botId);
-  const pending = await summaryByTitle(page, botId, "run 3 shell steps then ask");
+  const pending = await summaryByTitle(page, botId, "run 3 tracked steps then ask");
   if ((await page.getByTestId("intervention-region").count()) === 0) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
@@ -329,14 +336,51 @@ test("a failed Run shows the safe failure summary and offers no retry", async ({
   // No retry affordance anywhere on the card.
   await expect(card.getByRole("button", { name: /retry/i })).toHaveCount(0);
   await expect(card.getByRole("button", { name: /重试/ })).toHaveCount(0);
-  // A failed Run starts expanded (waiting detail stays visible), so the verb
-  // is Collapse; collapsing flips it to the failed-state entry verb.
+  // UX-01B acceptance 8: a failed Run stays collapsed and its primary action
+  // is the reason path; without a failed semantic Step, opening reveals the
+  // safe Run-level failure reason.
   const toggle = card.locator("button[aria-expanded]").first();
+  await expect(toggle).toHaveText("View reason");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
   await expect(toggle).toHaveText("Collapse");
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  await toggle.click();
-  await expect(toggle).toHaveText("View execution");
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const reason = card.getByTestId("execution-failure-reason");
+  await expect(reason).toBeVisible();
+  await expect(reason).toContainText("Scripted run failure");
+});
+
+test("a failed Run with a failed Step lands View reason on that Step's detail", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  await signup(page, `card-failstep-${stamp}@rakazo.test`, "password12", "Card FailStep");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+
+  await send(page, `fail this tracked run ${stamp}`);
+  await settledSummary(page, botId, "fail this tracked run");
+
+  if ((await cardOf(page, "fail this tracked run").count()) === 0) {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  }
+  const card = cardOf(page, "fail this tracked run");
+  await expect(card).toHaveAttribute("data-status", "failed");
+  // Collapsed by default; the failed Step's level-2 detail is the target.
+  await expect(card.locator('[data-step-status="failed"]')).not.toBeVisible();
+  await card.getByRole("button", { name: "View reason", exact: true }).click();
+  const failedStep = card.locator('[data-step-status="failed"]');
+  await expect(failedStep).toBeVisible({ timeout: 15_000 });
+  // The failed Step's level 2 auto-opened with its safe result summary, and
+  // the healthy Step's level 2 stayed closed.
+  const target = card.locator("[data-failure-target]");
+  await expect(target.first()).toBeVisible();
+  await expect(target.first()).toContainText("Deploy blocked by policy");
+  await expect(card.getByText("Collected", { exact: true })).toHaveCount(0);
+  // No progress fabrication on the failed card: no Plan, no bar, no numbers.
+  await expect(card.locator(".exc-rail")).toHaveCount(0);
+  await expect(card.locator('[data-testid="execution-plan-count"]')).toHaveCount(0);
 });
 
 test("multiple Runs in one Thread keep exactly one detail expanded", async ({ page }) => {
@@ -345,29 +389,29 @@ test("multiple Runs in one Thread keep exactly one detail expanded", async ({ pa
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, "run 2 shell steps");
-  const first = await settledSummary(page, botId, "run 2 shell steps");
-  await send(page, "run 3 shell steps");
-  const second = await settledSummary(page, botId, "run 3 shell steps");
+  await send(page, "run 2 tracked steps");
+  const first = await settledSummary(page, botId, "run 2 tracked steps");
+  await send(page, "run 3 tracked steps");
+  const second = await settledSummary(page, botId, "run 3 tracked steps");
   expect(first.runId).not.toBe(second.runId);
 
-  await expandCard(page, "run 2 shell steps");
-  await expect(shellOf(page, "run 2 shell steps").locator(".exc-details")).not.toHaveAttribute(
+  await expandCard(page, "run 2 tracked steps");
+  await expect(shellOf(page, "run 2 tracked steps").locator(".exc-details")).not.toHaveAttribute(
     "hidden",
     "",
   );
-  await expect(shellOf(page, "run 3 shell steps").locator(".exc-details")).toHaveAttribute(
+  await expect(shellOf(page, "run 3 tracked steps").locator(".exc-details")).toHaveAttribute(
     "hidden",
     "",
   );
 
-  await expandCard(page, "run 3 shell steps");
-  await expect(shellOf(page, "run 3 shell steps").locator(".exc-details")).not.toHaveAttribute(
+  await expandCard(page, "run 3 tracked steps");
+  await expect(shellOf(page, "run 3 tracked steps").locator(".exc-details")).not.toHaveAttribute(
     "hidden",
     "",
     { timeout: 15_000 },
   );
-  await expect(shellOf(page, "run 2 shell steps").locator(".exc-details")).toHaveAttribute(
+  await expect(shellOf(page, "run 2 tracked steps").locator(".exc-details")).toHaveAttribute(
     "hidden",
     "",
   );
@@ -382,12 +426,12 @@ test("an active Run and a failed Run never open two details at once", async ({ p
 
   await send(page, `fail this run ${stamp}`);
   const failed = await settledSummary(page, botId, "fail this run");
-  // The failed Run takes the single default-open slot while it is alone.
+  // UX-01B acceptance 4: the failed Run stays collapsed — nothing auto-opens.
   await expect(cardOf(page, "fail this run")).toBeVisible({ timeout: 15_000 });
-  await expect.poll(() => openDetailCount(page), { timeout: 15_000 }).toBe(1);
+  await expect.poll(() => openDetailCount(page), { timeout: 15_000 }).toBe(0);
 
-  // A newly active Run wins the slot; the failed detail collapses on its own.
-  await send(page, "keep working until i stop");
+  // A newly active Run with a semantic Step keeps its own (collapsed) card.
+  await send(page, `keep working with tracked steps until i stop ${stamp}`);
   await expect
     .poll(
       async () => {
@@ -399,11 +443,21 @@ test("an active Run and a failed Run never open two details at once", async ({ p
       { timeout: 60_000 },
     )
     .toBe("running");
-  const runningShell = shellOf(page, "keep working until i stop");
+  const runningShell = shellOf(page, "keep working with tracked steps");
   if ((await runningShell.count()) === 0) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   }
+  await expect
+    .poll(() => runningShell.locator(".exc-details").count(), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  await expect.poll(() => openDetailCount(page), { timeout: 15_000 }).toBe(0);
+
+  // Opening the failed card takes the single slot...
+  await expandCard(page, "fail this run");
+  await expect.poll(() => openDetailCount(page), { timeout: 15_000 }).toBe(1);
+  // ...and opening the running one closes the failed detail again.
+  await expandCard(page, "keep working with tracked steps");
   await expect.poll(() => openDetailCount(page), { timeout: 15_000 }).toBe(1);
   await expect(runningShell.locator(".exc-details")).not.toHaveAttribute("hidden", "");
   await expect(shellOf(page, "fail this run").locator(".exc-details")).toHaveAttribute(
@@ -421,9 +475,9 @@ test("a paged-out historical Run expands from its card after loading earlier mes
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, "ask me which city to use");
+  await send(page, "run 2 tracked steps then ask");
   await waitingRun(page, botId);
-  const pending = await summaryByTitle(page, botId, "ask me which city");
+  const pending = await summaryByTitle(page, botId, "run 2 tracked steps then ask");
   const region = page.getByRole("region", { name: "需要你处理" });
   await expect(region.getByRole("button", { name: "Edit first", exact: true })).toBeVisible({
     timeout: 15_000,
@@ -460,7 +514,9 @@ test("a paged-out historical Run expands from its card after loading earlier mes
         const more = page.getByRole("button", { name: "Load earlier messages" });
         if ((await more.count()) === 0 || !(await more.isEnabled())) return 0;
         await more.click();
-        await expect(more).toBeEnabled({ timeout: 15_000 }).catch(() => undefined);
+        await expect(more)
+          .toBeEnabled({ timeout: 15_000 })
+          .catch(() => undefined);
         return (await shellOf(page, title).count()) > 0 ? 1 : 0;
       },
       { timeout: 60_000, intervals: [300, 700] },
@@ -493,8 +549,11 @@ test("a cleared Run's card never revives through artifact maintenance", async ({
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, `attach to the thread with path notes/card-${stamp}.txt says card marker`);
-  const summary = await settledSummary(page, botId, "attach to the thread");
+  await send(
+    page,
+    `attach a tracked file to the thread with path notes/card-${stamp}.txt says card marker`,
+  );
+  const summary = await settledSummary(page, botId, "attach a tracked file");
   let artifactId: string | undefined;
   await expect
     .poll(
@@ -511,7 +570,7 @@ test("a cleared Run's card never revives through artifact maintenance", async ({
       { timeout: 30_000 },
     )
     .toBe(1);
-  await expect(cardOf(page, "attach to the thread")).toBeVisible({ timeout: 15_000 });
+  await expect(cardOf(page, "attach a tracked file")).toBeVisible({ timeout: 15_000 });
 
   await rpc(page, "threads/clear", { botId });
   await expect
@@ -528,7 +587,7 @@ test("a cleared Run's card never revives through artifact maintenance", async ({
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(1_000);
-  await expect(shellOf(page, "attach to the thread")).toHaveCount(0);
+  await expect(shellOf(page, "attach a tracked file")).toHaveCount(0);
   expect((await executionsOf(page, botId)).some((item) => item.runId === summary.runId)).toBe(
     false,
   );
@@ -540,11 +599,11 @@ test("cards never render invented percentages or processed/total counters", asyn
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, "run 5 shell steps");
-  const summary = await settledSummary(page, botId, "run 5 shell steps");
-  const card = cardOf(page, "run 5 shell steps");
+  await send(page, "run 5 tracked steps");
+  const summary = await settledSummary(page, botId, "run 5 tracked steps");
+  const card = cardOf(page, "run 5 tracked steps");
   await expect(card).toBeVisible({ timeout: 15_000 });
-  await expandCard(page, "run 5 shell steps");
+  await expandCard(page, "run 5 tracked steps");
   await page.waitForTimeout(500);
 
   const texts = await page
@@ -566,9 +625,9 @@ test("a long title wraps without horizontal overflow at 390px", async ({ page })
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  const longPrompt = `summarize the ticket history ${"ticket-analysis-chunk ".repeat(30)}${stamp}`;
+  const longPrompt = `run 1 tracked steps summarize the ticket history ${"ticket-analysis-chunk ".repeat(30)}${stamp}`;
   await send(page, longPrompt);
-  const summary = await settledSummary(page, botId, "summarize the ticket history");
+  await settledSummary(page, botId, "summarize the ticket history");
 
   await page.setViewportSize({ width: 390, height: 844 });
   const card = cardOf(page, "summarize the ticket history");
@@ -593,7 +652,7 @@ test("reduced motion disables the working glyph animation", async ({ page }) => 
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, "keep working until i stop");
+  await send(page, "keep working with tracked steps until i stop");
   await expect
     .poll(
       async () => {
@@ -617,4 +676,154 @@ test("reduced motion disables the working glyph animation", async ({ page }) => 
   expect(animation).toBe("none");
   const statusText = await shell.locator(".exc-status").innerText();
   expect(statusText).toBe("Executing");
+});
+
+test("a paced Plan revision moves the single a/b and flashes the update hint", async ({ page }) => {
+  const stamp = Date.now();
+  await signup(page, `card-plan-${stamp}@rakazo.test`, "password12", "Card Plan");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+
+  await send(page, `publish a paced tracked plan named report-${stamp}`);
+  const card = cardOf(page, `report-${stamp}`);
+  // Level 0: the first revision lands as 3/4 with the accessible bar.
+  await expect(card.getByTestId("execution-plan-count")).toHaveText("3/4", {
+    timeout: 30_000,
+  });
+  await expect(card.locator('[role="progressbar"]')).toHaveAttribute("aria-valuenow", "3");
+  await expect(card.locator('[role="progressbar"]')).toHaveAttribute("aria-valuemax", "4");
+  // The current-item line names the active Plan item.
+  await expect(card.locator('.exc-line[data-kind="current"]')).toContainText(
+    "Current: Final check",
+  );
+  // Running with a Plan: collapsed by default (acceptance 4).
+  await expect(card).toHaveAttribute("data-open", "0");
+
+  // The paced second revision regresses the fraction honestly (3/4 → 3/6)
+  // and flashes the short-lived update hint.
+  await expect(card.getByTestId("execution-plan-count")).toHaveText("3/6", {
+    timeout: 30_000,
+  });
+  await expect(card.getByTestId("execution-plan-updated")).toBeVisible({ timeout: 5_000 });
+
+  // Level 1 is the single Plan list; the matched Step's evidence is level 2.
+  await expandCard(page, `report-${stamp}`);
+  const plan = card.locator('[data-slot="plan"]');
+  await expect(plan).toBeVisible();
+  await expect(plan).toContainText(`Deliver report-${stamp}`);
+  await expect(plan.getByText("Peer review", { exact: true })).toBeVisible();
+  expect(await plan.innerText()).not.toMatch(/\d+\s*\/\s*\d+/);
+  const item = plan.locator('[data-plan-item-id="d"]');
+  await expect(item.getByText("Checked", { exact: true })).toHaveCount(0);
+  await item.getByRole("button", { name: "Details", exact: true }).click();
+  await expect(item.getByText("Checked", { exact: true })).toBeVisible();
+
+  // Terminal: the result sentence appears exactly once (the bubble), and the
+  // card never repeats it as an outcome line.
+  const summary = await settledSummary(page, botId, "publish a paced tracked plan");
+  expect(summary.status).toBe("completed");
+  await expect(
+    page
+      .getByTestId("transcript")
+      .getByText(`done. i handled: publish a paced tracked plan named report-${stamp}`),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(card.locator('.exc-line[data-kind="outcome"]')).toHaveCount(0);
+  await expectOneCardPerShell(page);
+});
+
+test("a plain request keeps no execution surface before or after its reply", async ({ page }) => {
+  const stamp = Date.now();
+  await signup(page, `card-plain-${stamp}@rakazo.test`, "password12", "Card Plain");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+
+  await send(page, `summarize the short note ${stamp}`);
+  await settledSummary(page, botId, `summarize the short note ${stamp}`);
+  await expect(
+    page.getByTestId("transcript").getByText("done. i handled:", { exact: false }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // Acceptance 1/2: no Plan, no semantic Step, no Intervention, no failure —
+  // no shell, no slots, and the lightweight progress line is gone from the DOM.
+  await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.locator('[data-slot="plan"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="steps"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="todos"]')).toHaveCount(0);
+  await expect(page.locator('[data-message-id^="progress:"]')).toHaveCount(0, {
+    timeout: 15_000,
+  });
+
+  // A reload restores the durable summaries alone — still no invented surface.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="plan"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="steps"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="todos"]')).toHaveCount(0);
+});
+
+test("clicking a waiting Bot in the sidebar focuses its approval control", async ({ page }) => {
+  const stamp = Date.now();
+  await signup(page, `card-sidebar-${stamp}@rakazo.test`, "password12", "Card Sidebar");
+  await completeOnboarding(page);
+  const chiefId = activeBotId(page);
+  const runnerId = await createNamedBot(page, `Sidebar Runner ${stamp}`);
+
+  try {
+    // Chief enters a real approval wait through the existing effect path.
+    await page.goto(`/app/${chiefId}`);
+    await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 20_000 });
+    await rpc(page, "approvalRules/set", {
+      effect: "require_approval",
+      matchKind: "connector",
+      matchValue: "destination.write",
+    });
+    await send(page, `write this to the destination crm as a note ${stamp}`);
+    await expect
+      .poll(
+        async () => {
+          const snapshot = await rpc<{ run?: { status: string } | null }>(page, "threads/get", {
+            botId: chiefId,
+          });
+          return snapshot.run?.status ?? null;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe("waiting_input");
+    // The roster avatar reaches the trusted waiting/approval state (the
+    // sidebar row itself shows no status text and no numbers — acceptance 12).
+    const row = page.locator(`[data-roster-bot-id="${chiefId}"]`);
+    await expect
+      .poll(
+        async () =>
+          row
+            .locator(".rakazo-agent-avatar, .rakazo-upload-avatar")
+            .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-state")).join(",")),
+        { timeout: 20_000 },
+      )
+      .toMatch(/approval|waiting/);
+    const rowText = await row.innerText();
+    expect(rowText).not.toMatch(/\d+\s*\/\s*\d+/);
+    expect(rowText).not.toMatch(/running|waiting|failed|completed/i);
+
+    // From another conversation, clicking the waiting Bot's row navigates and
+    // lands focus on the first operable Intervention control.
+    await page.goto(`/app/${runnerId}`);
+    await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    await page.waitForURL(new RegExp(`/app/${chiefId}`), { timeout: 15_000 });
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () => document.activeElement?.closest('[data-testid="intervention-region"]') !== null,
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+  } finally {
+    await rpc(page, "threads/stop", { botId: chiefId }).catch(() => undefined);
+  }
 });

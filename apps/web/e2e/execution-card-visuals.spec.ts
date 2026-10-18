@@ -1,6 +1,6 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { activeBotId, completeOnboarding, createBotFromPicker, rpc, signup } from "./helpers";
 
 /**
@@ -10,11 +10,9 @@ import { activeBotId, completeOnboarding, createBotFromPicker, rpc, signup } fro
  * review artifacts compared against the Task 15.1 v2 design, not CI gates —
  * the repo has no toHaveScreenshot baselines and this spec adds none.
  *
- * Capture order is state-honest: the completed card is shot COLLAPSED first
- * (verb "View result"), only then expanded (verb "Collapse", shot as
- * card-expanded-*); the failed card is shot in its default-expanded state
- * (card-failed-expanded-*) and again collapsed (card-failed-*, verb
- * "View execution").
+ * Capture order is state-honest under the UX-01B rules: every card is shot
+ * COLLAPSED first (verbs "View result" / "View reason" — nothing auto-expands
+ * any more), and only then expanded (verb "Collapse", shot as card-expanded-*).
  *
  * Note on "background": production has no trusted root-Run background signal
  * yet (docs/execution-shell-progress.md remaining gate), so a background card
@@ -82,7 +80,8 @@ test("capture execution card states across widths and themes", async ({ page }) 
   // Phase A (Chief thread): completed, failed, approval-pending. The hang run
   // gets its own bot below — a message sent while it runs would steer that
   // Run instead of starting a new one.
-  const doneTitle = "run 2 shell steps";
+  // Tracked fixtures: plain tool Runs no longer earn an execution surface.
+  const doneTitle = "run 2 tracked steps";
   await send(page, doneTitle);
   await settled(page, botId, doneTitle);
 
@@ -90,24 +89,20 @@ test("capture execution card states across widths and themes", async ({ page }) 
   await send(page, `fail this run ${stamp}`);
   await settled(page, botId, failedTitle);
 
-  // State-honest verbs before any interaction: completed collapsed, failed
-  // holding the single default-open slot.
+  // State-honest verbs before any interaction: everything collapsed (UX-01B).
   const doneToggle = cardOf(page, doneTitle).locator("button[aria-expanded]").first();
   await expect(doneToggle).toHaveText("View result");
   await expect(doneToggle).toHaveAttribute("aria-expanded", "false");
   const failedToggle = cardOf(page, failedTitle).locator("button[aria-expanded]").first();
-  await expect(failedToggle).toHaveText("Collapse");
-  await expect(failedToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(failedToggle).toHaveText("View reason");
+  await expect(failedToggle).toHaveAttribute("aria-expanded", "false");
 
   const approvalShell = page
     .locator('section[data-testid="execution-shell"]')
     .filter({ has: page.getByTestId("intervention-region") })
     .first();
 
-  const captureSet = async (
-    theme: "light" | "dark",
-    targets: Array<[string, Locator]>,
-  ) => {
+  const captureSet = async (theme: "light" | "dark", targets: Array<[string, Locator]>) => {
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(250);
@@ -118,14 +113,14 @@ test("capture execution card states across widths and themes", async ({ page }) 
     }
   };
 
-  // Pass 1: completed collapsed + failed default-expanded.
+  // Pass 1: completed collapsed + failed collapsed.
   await captureSet("light", [
     ["card-completed", cardOf(page, doneTitle)],
-    ["card-failed-expanded", shellOf(page, failedTitle)],
+    ["card-failed-collapsed", shellOf(page, failedTitle)],
   ]);
 
-  // The pending approval now takes the single open slot; the failed detail
-  // collapses on its own while its card stays visible.
+  // The pending approval arrives; every card stays collapsed while the
+  // Intervention region renders outside the detail (UX-01B acceptance 7).
   await rpc(page, "approvalRules/set", {
     effect: "require_approval",
     matchKind: "connector",
@@ -148,7 +143,7 @@ test("capture execution card states across widths and themes", async ({ page }) 
     await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   }
   await expect(page.getByTestId("intervention-region")).toBeVisible({ timeout: 15_000 });
-  await expect(failedToggle).toHaveText("View execution");
+  await expect(failedToggle).toHaveText("View reason");
   await expect(failedToggle).toHaveAttribute("aria-expanded", "false");
 
   // Pass 2: failed collapsed + the waiting-approval card with its region.
@@ -157,8 +152,8 @@ test("capture execution card states across widths and themes", async ({ page }) 
     ["card-waiting-approval", approvalShell],
   ]);
 
-  // Pass 3: expand the completed Run (card + detail as one object). Opening
-  // it closes the approval detail — the region stays visible outside.
+  // Pass 3: expand the completed Run (card + detail as one object). The
+  // approval region stays visible outside every collapsible detail.
   const detail = page.waitForResponse((response) =>
     response.url().includes("/rpc/runs/executionSnapshot"),
   );
@@ -192,7 +187,7 @@ test("capture execution card states across widths and themes", async ({ page }) 
   // Run from steering Phase A's sends.
   await createBotFromPicker(page, { name: "Runner" });
   const runnerBotId = activeBotId(page);
-  await send(page, "keep working until i stop");
+  await send(page, "keep working with tracked steps until i stop");
   await expect
     .poll(
       async () => {
@@ -204,14 +199,14 @@ test("capture execution card states across widths and themes", async ({ page }) 
       { timeout: 60_000 },
     )
     .toBe("running");
-  const runningShell = shellOf(page, "keep working until i stop");
+  const runningShell = shellOf(page, "keep working with tracked steps");
   if ((await runningShell.count()) === 0) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   }
   await expect(runningShell).toBeVisible({ timeout: 15_000 });
-  await captureSet("light", [["card-running", cardOf(page, "keep working until i stop")]]);
+  await captureSet("light", [["card-running", cardOf(page, "keep working with tracked steps")]]);
   await page.emulateMedia({ colorScheme: "dark" });
   await page.waitForTimeout(250);
-  await captureSet("dark", [["card-running", cardOf(page, "keep working until i stop")]]);
+  await captureSet("dark", [["card-running", cardOf(page, "keep working with tracked steps")]]);
 });

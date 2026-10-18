@@ -35,6 +35,23 @@ export class ScriptedAgentRuntime implements AgentRuntime {
         throw new Error("Scripted run failure");
       }
       if (shouldHang(request.prompt)) {
+        // UX-01B E2E fixture: a hang that first publishes a real semantic
+        // Step, so the running Run keeps an execution surface (tool progress
+        // alone no longer creates one).
+        if (/tracked steps/i.test(request.prompt)) {
+          yield {
+            type: "tool",
+            name: "publish_run_step",
+            args: {
+              stepId: "hang-step",
+              expectedRevision: 0,
+              order: 0,
+              title: "Working until stopped",
+              status: "running",
+            },
+            executionId: `${request.runId}:publish_run_step:hang`,
+          };
+        }
         yield { type: "progress", text: "still working…", activity: true };
         while (!controller.signal.aborted && !signal.aborted) {
           await abortableDelay(50, controller.signal);
@@ -48,11 +65,23 @@ export class ScriptedAgentRuntime implements AgentRuntime {
       // Per-run call index so repeated tools (e.g. message_agent) get distinct
       // executionIds — delivery keys and effect replays key off this value.
       let toolCallSeq = 0;
+      let turnIndex = 0;
       for (const turn of script) {
         if (signal.aborted || controller.signal.aborted) {
           yield { type: "done", text: "stopped" };
           return;
         }
+        // UX-01B E2E fixture pacing: give the client a deterministic window
+        // to render the first Plan revision before the next turn revises it
+        // (the revision flash must not depend on a race).
+        if (turnIndex > 0 && /paced plan/i.test(request.prompt)) {
+          await abortableDelay(1_500, controller.signal);
+          if (signal.aborted || controller.signal.aborted) {
+            yield { type: "done", text: "stopped" };
+            return;
+          }
+        }
+        turnIndex += 1;
         if (turn.assistant) {
           yield { type: "progress", text: "working…", activity: true };
           yield { type: "text", text: turn.assistant };
@@ -120,6 +149,11 @@ export class ScriptedAgentRuntime implements AgentRuntime {
           yield { type: "done", text: turn.assistant };
           return;
         }
+      }
+      // UX-01B E2E fixture: the Run fails AFTER its scripted turns published
+      // a real failed semantic Step — the "View reason" path with a Step.
+      if (/fail this tracked run/i.test(request.prompt)) {
+        throw new Error("Scripted run failure");
       }
       yield { type: "text", text: "done." };
       yield { type: "done", text: "done." };
@@ -220,6 +254,175 @@ export function inferScript(
                 args: { path: `notes/step-${index}.txt`, content: `step ${index}` },
               },
         ),
+        complete: true,
+      },
+    ];
+  }
+  // UX-01B/C E2E fixtures: Runs carrying REAL semantic Steps and structured
+  // Plans. publish_run_step / publish_run_plan execute through the same
+  // production tool path as any other tool, so the four execution-surface
+  // conditions exist for real. The "shell steps" fixtures above stay
+  // tool-activity-only on purpose (lightweight status / Activity paging).
+  const trackedAskRun = /^run (\d+) tracked steps then ask$/i.exec(prompt);
+  if (trackedAskRun) {
+    const count = Math.min(Math.max(Number(trackedAskRun[1]), 1), 250);
+    return [
+      {
+        assistant: "running them, then i need a decision.",
+        toolCalls: trackedStepCalls(count),
+        ask: { text: "Which city should I use?", detail: "Reply with one city name." },
+      },
+    ];
+  }
+  const trackedRun = /^run (\d+) tracked steps(?:\s+([\s\S]+))?$/i.exec(prompt);
+  if (trackedRun) {
+    const count = Math.min(Math.max(Number(trackedRun[1]), 1), 250);
+    return [
+      {
+        assistant: `done. i handled: ${prompt}`,
+        toolCalls: trackedStepCalls(count),
+        complete: true,
+      },
+    ];
+  }
+  const trackedWrite =
+    /^write a tracked file named\s+([A-Za-z0-9._/-]+)\s+saying\s+([\s\S]+)$/i.exec(prompt);
+  if (trackedWrite) {
+    const filePath = trackedWrite[1]!;
+    const content = `${trackedWrite[2]!.trim()}\n`;
+    return [
+      { toolCalls: [trackedStepCall("write-file", 0, "Write the file", "running")] },
+      { toolCalls: [{ name: "write_file" as const, args: { path: filePath, content } }] },
+      {
+        assistant: "writing that into my home now.",
+        toolCalls: [
+          {
+            name: "publish_run_step",
+            args: {
+              stepId: "write-file",
+              expectedRevision: 1,
+              order: 0,
+              title: "Write the file",
+              status: "completed",
+              resultSummary: "File written",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ];
+  }
+  const trackedAttach =
+    /^attach a tracked file to the thread with path\s+([A-Za-z0-9._/-]+)\s+says\s+([\s\S]+)$/i.exec(
+      prompt,
+    );
+  if (trackedAttach) {
+    const filePath = trackedAttach[1]!;
+    const content = `${trackedAttach[2]!.trim().replace(/[.]+$/, "")}\n`;
+    return [
+      {
+        assistant: "writing that into my home and attaching it to the thread.",
+        toolCalls: [trackedStepCall("attach-file", 0, "Attach the note", "running")],
+      },
+      { toolCalls: [{ name: "write_file" as const, args: { path: filePath, content } }] },
+      {
+        toolCalls: [
+          { name: "attach_file" as const, args: { path: filePath } },
+          {
+            name: "publish_run_step",
+            args: {
+              stepId: "attach-file",
+              expectedRevision: 1,
+              order: 0,
+              title: "Attach the note",
+              status: "completed",
+              resultSummary: "Attached to the thread",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ];
+  }
+  if (/^fail this tracked run/i.test(prompt)) {
+    return [
+      {
+        toolCalls: [
+          trackedStepCall("collect", 0, "Collect input", "completed", {
+            resultSummary: "Collected",
+          }),
+          trackedStepCall("deploy", 1, "Deploy change", "failed", {
+            resultSummary: "Deploy blocked by policy",
+          }),
+        ],
+      },
+    ];
+  }
+  const trackedPlan = /^publish a (?:paced )?tracked plan named\s+([\s\S]+)$/i.exec(prompt);
+  if (trackedPlan) {
+    const label = trackedPlan[1]!.trim();
+    return [
+      {
+        assistant: `publishing the plan for ${label}.`,
+        toolCalls: [
+          {
+            name: "publish_run_plan",
+            args: {
+              expectedRevision: 0,
+              goal: `Deliver ${label}`,
+              items: [
+                { id: "a", title: "Collect input", status: "completed" },
+                { id: "b", title: "Analyze findings", status: "completed" },
+                { id: "c", title: "Draft report", status: "completed" },
+                { id: "d", title: "Final check", status: "active" },
+              ],
+            },
+          },
+          {
+            name: "publish_run_step",
+            args: {
+              stepId: "final-check",
+              expectedRevision: 0,
+              order: 0,
+              title: "Final check",
+              status: "running",
+              planItemId: "d",
+            },
+          },
+        ],
+      },
+      {
+        assistant: `done. i handled: ${prompt}`,
+        toolCalls: [
+          {
+            name: "publish_run_step",
+            args: {
+              stepId: "final-check",
+              expectedRevision: 1,
+              order: 0,
+              title: "Final check",
+              status: "completed",
+              planItemId: "d",
+              resultSummary: "Checked",
+            },
+          },
+          {
+            name: "publish_run_plan",
+            args: {
+              expectedRevision: 1,
+              changeReason: "Scope grew after review",
+              goal: `Deliver ${label}`,
+              items: [
+                { id: "a", title: "Collect input", status: "completed" },
+                { id: "b", title: "Analyze findings", status: "completed" },
+                { id: "c", title: "Draft report", status: "completed" },
+                { id: "d", title: "Final check", status: "active" },
+                { id: "e", title: "Peer review", status: "pending" },
+                { id: "f", title: "Publish result", status: "pending" },
+              ],
+            },
+          },
+        ],
         complete: true,
       },
     ];
@@ -630,6 +833,28 @@ function shouldHang(prompt: string): boolean {
 
 function namedBot(prompt: string) {
   return /named\s+([A-Za-z0-9][A-Za-z0-9_-]{0,39})/i.exec(prompt)?.[1];
+}
+
+/** One publish_run_step call through the production tool path. */
+function trackedStepCall(
+  stepId: string,
+  order: number,
+  title: string,
+  status: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    name: "publish_run_step",
+    args: { stepId, expectedRevision: 0, order, title, status, ...extra },
+  };
+}
+
+function trackedStepCalls(count: number) {
+  return Array.from({ length: count }, (_unused, index) =>
+    trackedStepCall(`tracked-${index}`, index, `Tracked step ${index}`, "completed", {
+      resultSummary: `Step ${index} finished`,
+    }),
+  );
 }
 
 function namedSpace(prompt: string) {
