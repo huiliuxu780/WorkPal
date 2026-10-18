@@ -932,11 +932,16 @@ function trackedStepCall(
 }
 
 function trackedStepCalls(count: number) {
-  return Array.from({ length: count }, (_unused, index) =>
+  // Alternate a real shell call between publish_run_step calls so adjacent-row
+  // folding cannot swallow the Activity fixture into a single line (same
+  // rationale as the shell-steps fixtures); each pair keeps distinct rows for
+  // Activity pagination.
+  return Array.from({ length: count }, (_unused, index) => [
     trackedStepCall(`tracked-${index}`, index, `Tracked step ${index}`, "completed", {
       resultSummary: `Step ${index} finished`,
     }),
-  );
+    { name: "shell" as const, args: { command: `echo tracked-${index}` } },
+  ]).flat();
 }
 
 function namedSpace(prompt: string) {

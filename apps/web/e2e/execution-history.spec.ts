@@ -539,17 +539,16 @@ test("a late stale detail response never mixes into the newer version's paging",
   });
 
   await revealShell(page, pendingTitle);
-  await expandShell(page, pendingTitle); // fetch #1 (rev1) — held in the gate
-
-  // Answering appends real events: rev moves and the Run completes. The rev
-  // bump drops the stored expansion decision, collapsing the shell.
+  // UX-01B/C: a waiting card is collapsed and its primary action is the
+  // attention focus (never a toggle), so the detail expansion happens after
+  // the answer, on the settled Run. The route gate above is pre-existing.
   await answerTextAsk(page, "Paris");
   const settled = await settledSummaryById(page, botId, pending.runId);
   const settledTitle = settled.title;
   expect(settled.rev).toBeGreaterThan(rev1);
 
-  await collapseShell(page, settledTitle); // no-op when the rev bump already collapsed it
-  await expandShell(page, settledTitle); // fetch #2 (rev2) — lands, releases #1
+  await revealShell(page, settledTitle);
+  await expandShell(page, settledTitle); // detail fetch on the settled rev
   const loadMore = shellOf(page, settledTitle).getByTestId("execution-activity-more");
   await expect(loadMore).toBeVisible({ timeout: 30_000 });
 
