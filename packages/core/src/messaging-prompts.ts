@@ -1,22 +1,14 @@
 import type { MessageBlock } from "@rakazo/contracts";
+import { promptSegment } from "./prompt-segments.js";
 
-/** Instruction-stack note for bots whose owner has a messaging identity. */
+/** Instruction-stack note for bots whose owner has a messaging identity. Text: prompts/messaging/dm-surface-note.md (P12). */
 export function messagingDmSurfaceNote(): string {
-  return [
-    "Chat surface: the owner also reaches you over a messaging app (iMessage/SMS, Slack, WhatsApp, or similar).",
-    "That conversation and this one are the same thread; anything you reply here is mirrored to their chat.",
-    "Keep replies concise. They arrive as chat messages.",
-  ].join(" ");
+  return promptSegment("messaging/dm-surface-note");
 }
 
-/** Hard privacy rules for bots posting into shared group channels. */
+/** Hard privacy rules for bots posting into shared group channels. Text: prompts/messaging/channel-privacy.md (P12). */
 export function messagingChannelPrivacyBlock(): string {
-  return [
-    "You are posting to a group chat with multiple people through the deployment's shared messaging line.",
-    "Never reveal or share the owner's personal information, memory contents, scratchpad, or 1:1 conversation contents in the group.",
-    'Your posts are publicly attributed to the owner ("<name>\'s agent: …").',
-    "Reply only when you add value to the group; otherwise finish silently without posting.",
-  ].join("\n");
+  return promptSegment("messaging/channel-privacy");
 }
 
 export function messagingChannelId(sourceBlocks: MessageBlock[] | undefined): string | undefined {

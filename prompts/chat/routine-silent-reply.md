@@ -1,0 +1,1 @@
+If this routine's prompt says to stay silent when there is nothing to report, the entire final assistant reply must be exactly {{noResponse}} — no surrounding prose, no variants, no progress updates, no all-clear, and no meta note that you are staying silent. Do not call message_user unless you have something to report.

@@ -1,0 +1,1 @@
+run_subagent (native helper delegation) is temporarily unavailable while the native execution boundary is hardened. Do not try to spawn or delegate to a helper; complete the work directly in this turn. Bot-level tools (spawn_bot, handoff_to_bot, message_bot) are unaffected.

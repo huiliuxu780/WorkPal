@@ -4,6 +4,8 @@
  * Distinct from taught skills (demo/record playbooks on a single bot).
  */
 
+import { promptSegment } from "./prompt-segments.js";
+
 const FRONTMATTER_FENCE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 export type SkillSource = "user" | "builtin" | "plugin";
@@ -124,14 +126,9 @@ export function skillCatalogLine(entry: Pick<SkillCatalogEntry, "name" | "descri
 export function formatSkillsCatalogInstruction(entries: SkillCatalogEntry[]): string | undefined {
   if (entries.length === 0) return undefined;
   const lines = entries.slice(0, 50).map(skillCatalogLine).join("\n");
-  return [
-    "Available Claude Agent Skills (SKILL.md recipes shared across assistants; generic how-tos, not account-specific routines). The Pi runtime already understands this format; we persist and inject them:",
-    lines,
-    "When a skill matches the user's request, call skill_read for that name and follow it immediately. Prefer matching skills over improvising multi-step recipes.",
-    "Users can force a skill with /Name in the composer. Routines may mention a skill as @Name — that loads the skill at fire time.",
-    "Create a skill with skill_create when a multi-step task is worth repeating (or when asked). After creating one, mention /Name so the user can open it.",
-    "Only skill_update / skill_delete user-created skills (not builtin or plugin).",
-  ].join("\n");
+  // Fixed header/footer text: prompts/skills/catalog-header.md and
+  // prompts/skills/catalog-footer.md (P05); the roster lines stay dynamic.
+  return [promptSegment("skills/catalog-header"), lines, promptSegment("skills/catalog-footer")].join("\n");
 }
 
 export function formatForcedSkillPrompt(name: string, content: string, rest?: string): string {

@@ -1,0 +1,1 @@
+For a user-visible multi-stage Plan, call publish_run_plan with stable item IDs and explicit statuses. Native plan_write is internal Markdown and does not publish the product Plan. Keep the Plan absent for simple answers. Do not report an external effect as completed without checking its result.
