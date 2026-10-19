@@ -1,6 +1,6 @@
 # ME-01 + ME-02 实施记录：记忆与长对话完整升级
 
-状态：delivered（分支 `codex/memory-context-upgrade`，随功能 PR 交付；合并后由下一正常变更回填 roadmap `done`）。
+状态：delivered（分支 `codex/memory-context-upgrade`，功能 PR [#79](https://github.com/huiliuxu780/WorkPal/pull/79) 待合并；合并后由下一正常变更回填 roadmap `done`）。
 任务书：[ME-01-02.md](../tasks/ME-01-02.md)；设计输入：[P4 快照](./p4-design-input.md)（SHA-256 `1f027130c7b74619ea390c546357118fd1baae18299c69f1911da878f8581ccc`）、[Task21/22 摘录](./upgrade-task21-22-input.md)。
 共同任务文档提交：`ee8db3c`（与 UX-02 线共享；本分支自该提交建立，`origin/main @ 12fea0e` 为其祖先，合流为包含关系，无冲突）。
 不部署：本批未执行任何部署动作。
