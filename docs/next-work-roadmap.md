@@ -65,7 +65,7 @@ When work starts or completes, update its status here and add the branch/PR link
 
 1. Merge closure: #67 and #64 are merged; AG-03 #74 → AG-04 #75 merged normally. Finish avatar #76 integrated CI/review and main gate. No deployment.
 2. **Line A: [MR-01-R3](./tasks/MR-01-R3.md)** — finish stable operation identity, the existing budget-adjustment acceptance and unified prompt loading before merging #73. Continue its branch in a dedicated worktree.
-3. **Line B: [AG-05](./tasks/AG-05.md) → [AG-08](./tasks/AG-08.md)** — per-model-call tool visibility, then pending-tool/session recovery. Continuous development from the exact verified prior head, separate PRs; no merge wait between slices.
+3. **Line B: [AG-05](./tasks/AG-05.md) → [AG-08](./tasks/AG-08.md)** — per-model-call tool visibility, then pending-tool/session recovery. One branch/worktree, task-separated commits and acceptance, one final PR/CI for both slices.
 4. The two lines can run in parallel with isolated worktrees; coordinate only the executor/tool contract intersections. [Copyable start prompts](./tasks/NEXT-BATCH-20261019.md).
 5. ME-01 follows this batch; ME-02/UX-02 retain their prerequisites. DEP-01 stays a separate deployment decision.
 
