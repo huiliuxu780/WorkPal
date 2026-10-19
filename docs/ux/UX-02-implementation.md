@@ -81,7 +81,7 @@
 | U-A06 | e2e 测试 3（拒绝原因可选、cancelled、无 result 气泡、无 pending、头像 idle）；PG 断言 `run.cancelled{plan_rejected}`、轮次 rejected+decidedBy、无 `approval.resolved` |
 | U-A07 | PG：进度修订不开轮次、内容变化开 v2、幂等重放不重复发卡（`unchanged`/`replayed`）；e2e paced 场景 v1→批准→v2 自动重审（`execution-card.spec.ts`） |
 | U-A08 | e2e 测试 4：同 submissionId 重放 accepted、异 client already_handled、竞态 reject 不生效；PG：过期版本 CAS conflict、owner-only |
-| U-A09 | 执行边界 gate：pending/PLAN 阶段 mutating 工具零外发（executor gate + 阶段工具面过滤，`filterToolsForPlanPhase`）；已发未知结果沿用既有 uncertain 语义（未触碰）；AG-05 撤权路径不变（`agentscope-tool-visibility` 4 例绿） |
+| U-A09 | 执行边界 gate：pending/PLAN 阶段 mutating 工具零外发（executor gate + 阶段工具面过滤，`filterToolsForPlanPhase`；executor 单测：PLAN 阶段拦截 `remember` 零 effect 零 commit，attempt-start repair 在任何模型调用/工具执行前以同一版本绑定重开审阅卡）；已发未知结果沿用既有 uncertain 语义（未触碰）；AG-05 撤权路径不变（`agentscope-tool-visibility` 4 例绿） |
 | U-A10 | Java `legacyAskingPlanExitResumesThroughTheBridgeOnce`（合成旧 ASKING 状态→bridge 恰好一次、无第二张卡）；`PermissionRevokedResumeIntegrationTest` 绿；attempt-start repair（PG `loadPendingPlanReviewRepair` + executor 接线）；无 `workpal-plan-approval` 字符串残留于新流程 |
 | U-A11 | e2e 测试 1/3：头像 `data-state=approval`（等待）/`idle`（拒绝后）；region 卡继承 `FOCUSABLE_CONTROL` 回焦（既有机制，plan 卡为首组）；Task Center 经 `deriveExecutionStatus`→attention verb 定位同一审阅（`task-center.spec.ts` 回归绿）；详情仍可展开（`execution-card.spec.ts`） |
 | U-A12 | UX-01 定向回归全绿：`execution-card`/`execution-history`/`task-center`/`intervention-region` specs + web 674 单测（唯一 a/b、summary-only 兜底、detail-retry、失败原因、去重） |
