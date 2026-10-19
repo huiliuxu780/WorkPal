@@ -15,3 +15,5 @@ MyPal 为自托管产品。部署者管理服务器、访问权限、备份和�
 For questions about a particular deployment, contact its owner. Product feedback: [GitHub Issues](https://github.com/huiliuxu780/WorkPal/issues).
 
 具体部署的数据问题请联系部署者。产品反馈：[GitHub Issues](https://github.com/huiliuxu780/WorkPal/issues)。
+
+CI-01 docs-only proof.
