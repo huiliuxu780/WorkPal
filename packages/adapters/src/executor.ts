@@ -94,6 +94,7 @@ import {
   type ToolCallStreak,
   toolRequiresApproval,
   toolRequiresExplicitApproval,
+  toolsForRetryRun,
   truncatedPlainText,
   turnPolicyFromRun,
   unattendedTriggerToolRequiresApproval,
@@ -106,6 +107,15 @@ import {
   stableJsonValue,
   toolEffectIdempotencyKey,
 } from "@rakazo/core/node/approval-effect-key";
+import { takeRetryOperationId } from "@rakazo/core/node/manual-retry-match";
+import {
+  emptyManualRetryChain,
+  loadManualRetryChain,
+  matchManualRetryEffect,
+  manualRetryPromptPrefix,
+  manualRetryUncertainAsk,
+  rememberCurrentRetryEffect,
+} from "./manual-retry-effects.js";
 import {
   appendEventInTransaction,
   avatarChangeView,
@@ -1458,6 +1468,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             },
           }),
         ]);
+        const retryChain = run.retryOfRunId
+          ? await loadManualRetryChain(deps.prisma, run.id)
+          : emptyManualRetryChain();
         const agentEnvironment = decryptAgentEnvironment(agentSecretRows, deps.secretStore);
         runSecrets.push(...Object.values(agentEnvironment));
         const agentEnvironmentInstruction = formatAgentEnvironmentInstruction(agentEnvironment);
@@ -2079,6 +2092,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           executionId: string,
         ) => {
           context.signal.throwIfAborted();
+          const retryOperationId = takeRetryOperationId(args);
           if (handedOff) {
             return { error: "This stage was handed off. End the turn without more tool calls." };
           }
@@ -2378,7 +2392,92 @@ export function createRunExecutor(deps: ExecutorDeps) {
             usesApprovalKey && occurrence === 0
               ? approvalEffectKey(runId, replayEffectToolName, args)
               : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence);
-          // Connector read-only hints must not bypass approval, review, or replay decisions.
+          // Connector read-only hints must not bypass approval or review. Retry
+          // reuse skips declared reads so they re-read current state.
+          let continueOperationId: string | undefined;
+          if (run.retryOfRunId && !READ_ONLY_AGENT_TOOLS.has(name) && declaredReadOnly !== true) {
+            const retryDecision = matchManualRetryEffect(
+              retryChain,
+              replayEffectToolName,
+              effectRequest,
+              retryOperationId,
+            );
+            if (retryDecision.kind === "reject") {
+              return {
+                error:
+                  retryDecision.reason === "bind_mismatch"
+                    ? "retryOperationId does not match this tool, resource, or arguments. Continue the listed operation with the same request, or omit retryOperationId to start a new operation."
+                    : "This operation is not part of the current retry.",
+              };
+            }
+            if (retryDecision.kind === "execute") {
+              continueOperationId = retryDecision.operationId;
+            }
+            if (retryDecision.kind === "reuse") {
+              await deps.events.append({
+                spaceId: run.spaceId,
+                threadId: run.threadId,
+                botId: run.botId,
+                type: "effect.reconciled",
+                runId,
+                payload: {
+                  executionId: effectKey,
+                  kind: replayEffectToolName,
+                  sourceEffectId: retryDecision.effect.id,
+                  reuse: "manual_retry",
+                },
+              });
+              return retryDecision.effect.result;
+            }
+            if (retryDecision.kind === "skip") {
+              return {
+                skipped: true,
+                reason:
+                  retryDecision.reason === "cancelled"
+                    ? "The user skipped this operation for the retry."
+                    : "The previous attempt was confirmed complete without a stored result.",
+              };
+            }
+            if (retryDecision.kind === "pause") {
+              if (!(await renewRunLease(deps, runId, workerId, fence))) {
+                approvalPausePending = true;
+                return {
+                  skipped: true,
+                  reason: "Waiting for confirmation of the previous attempt of this operation.",
+                };
+              }
+              await workspaceCheckpoint.flush();
+              const ask = manualRetryUncertainAsk(name, retryDecision.effect.id);
+              const paused = await deps.events.pauseRunForInput({
+                spaceId: run.spaceId,
+                threadId: run.threadId,
+                botId: run.botId,
+                runId,
+                attemptId: attempt.id,
+                leaseOwner: workerId,
+                leaseFence: fence,
+                blocks: [
+                  {
+                    kind: "ask",
+                    text: ask.text,
+                    detail: ask.detail,
+                    status: "pending",
+                    actions: ask.actions,
+                  },
+                ],
+                offeredActions: ask.actions,
+                manualRetryEffectId: ask.sourceEffectId,
+              });
+              if (!paused) {
+                throw new Error("Could not pause this run to confirm the previous operation.");
+              }
+              approvalPausePending = true;
+              return {
+                skipped: true,
+                reason: "Waiting for confirmation of the previous attempt of this operation.",
+              };
+            }
+          }
           const applied = READ_ONLY_AGENT_TOOLS.has(name)
             ? undefined
             : await recordEffect(
@@ -2389,7 +2488,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 effectRequest,
                 executionId,
                 consumedEffectIds,
+                continueOperationId,
               );
+          if (applied) rememberCurrentRetryEffect(retryChain, applied.effect);
 
           const runAutoReview = async () => {
             if (!injectedReview && !checker) return;
@@ -2656,15 +2757,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
             const early = await claimOrReturn("intended");
             if (early !== undefined) return early;
           }
-          const persistEffectResult = (result: unknown) =>
-            applied
-              ? completeEffect(
+          const persistEffectResult = async (result: unknown) => {
+            const ok = applied
+              ? await completeEffect(
                   deps,
                   applied.effect.id,
                   claimedEffect ? "executing" : "intended",
                   result,
                 )
-              : Promise.resolve(true);
+              : true;
+            if (applied) {
+              rememberCurrentRetryEffect(retryChain, {
+                ...applied.effect,
+                status: ok ? "completed" : applied.effect.status,
+                result: ok ? result : applied.effect.result,
+              });
+            }
+            return ok;
+          };
           const finish = async (result: unknown) =>
             (await persistEffectResult(result)) ? result : uncertainEffectResult(name);
           const registerRunSecrets = (values: string[]) => {
@@ -4345,7 +4455,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           { exposedToolNames: new Set(tools.map((tool) => tool.name)) },
         );
         const replyContext = await loadReplyContext(deps.prisma, thread.id, run.sourceMessageId);
+        const retryFraming = run.retryOfRunId
+          ? manualRetryPromptPrefix(task.prompt, retryChain)
+          : undefined;
         const prompt = [
+          retryFraming,
           replyContext,
           basePrompt,
           takeoverResume?.promptNote,
@@ -4595,12 +4709,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 description: skill.description,
                 content: skill.content,
               })),
-              tools,
+              tools: toolsForRetryRun(tools, run.retryOfRunId),
               currentTools: scripted ? undefined : async () => {
                 try {
-                  return await loadLiveRunTools();
+                  return toolsForRetryRun(await loadLiveRunTools(), run.retryOfRunId);
                 } catch {
-                  return [...builtins, ...connectorTools.values()];
+                  return toolsForRetryRun(
+                    [...builtins, ...connectorTools.values()],
+                    run.retryOfRunId,
+                  );
                 }
               },
               model: {
@@ -6283,6 +6400,7 @@ async function recordEffect(
   request: unknown,
   legacyIdempotencyKey?: string,
   consumedIds?: Set<string>,
+  operationId?: string,
 ) {
   const existing = await deps.prisma.externalEffect.findUnique({
     where: { idempotencyKey },
@@ -6385,6 +6503,7 @@ async function recordEffect(
       idempotencyKey,
       status: "intended",
       request: request as never,
+      ...(operationId ? { operationId } : {}),
     },
   });
   consumedIds?.add(effect.id);

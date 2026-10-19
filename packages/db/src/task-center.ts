@@ -72,7 +72,7 @@ type TaskCenterRunRow = SummaryRunRow & {
 
 const RUN_COLUMNS = Prisma.sql`r.id, r."threadId", r."botId", r."taskId", r.status,
        r."waitKind", r.trigger, r.error, r.orchestration, r."sourceMessageId",
-       r."startedAt", r."completedAt", r."createdAt", r."snapshotRev",
+       r."startedAt", r."completedAt", r."createdAt", r."snapshotRev", r."retryOfRunId",
        COALESCE((SELECT MAX(e2."createdAt") FROM events e2 WHERE e2."runId" = r.id),
                 r."createdAt") AS "sortTime",
        t."botId" AS "threadBotId", t."groupId" AS "threadGroupId"`;
@@ -122,6 +122,7 @@ function mapRow(row: Record<string, unknown>): TaskCenterRunRow {
     completedAt: (row.completedAt as Date | null) ?? null,
     createdAt: row.createdAt as Date,
     snapshotRev: Number(row.snapshotRev ?? 0),
+    retryOfRunId: (row.retryOfRunId as string | null) ?? null,
     sortTime: row.sortTime as Date,
     threadBotId: (row.threadBotId as string | null) ?? null,
     threadGroupId: (row.threadGroupId as string | null) ?? null,

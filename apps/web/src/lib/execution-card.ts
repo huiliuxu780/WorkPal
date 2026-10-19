@@ -39,9 +39,10 @@ export type ExecutionCardAction = {
    * Intervention discoverable — it focuses the first authoritative control
    * instead of collapsing; `navigate` returns to the original conversation
    * (Task Center second entry — the compact list card carries no detail of
-   * its own).
+   * its own); `retry` requests a manual retry; `view_successor` opens the
+   * already-created retry Run.
    */
-  act: "toggle" | "attention" | "navigate";
+  act: "toggle" | "attention" | "navigate" | "retry" | "view_successor";
 };
 
 /**
@@ -88,6 +89,9 @@ export type ExecutionCardModel = {
    * Null for every card whose primary action already toggles.
    */
   secondaryAction: ExecutionCardAction | null;
+  /** Manual retry or "View retry" — independent of the UX-01 primary/secondary matrix. */
+  retryAction: ExecutionCardAction | null;
+  alreadyRetriedLabel: string | null;
 };
 
 export type ExecutionCardInput = {
@@ -130,6 +134,8 @@ export type ExecutionCardInput = {
    * never a second status matrix. `null` renders no action.
    */
   actionOverride?: ExecutionCardAction | null;
+  /** True while a manual retry mutation is in flight for this Run. */
+  retrying?: boolean;
 };
 
 const TERMINAL_STATUSES: readonly ExecutionDisplayStatus[] = ["done", "failed", "cancelled"];
@@ -360,6 +366,15 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
     action = { verb: toggleVerb, act: "toggle" };
   }
 
+  let retryAction: ExecutionCardAction | null = null;
+  let alreadyRetriedLabel: string | null = null;
+  if (summary?.retrySuccessorRunId) {
+    retryAction = { verb: t`View retry`, act: "view_successor" };
+    alreadyRetriedLabel = t`Already retried`;
+  } else if (summary?.manualRetry?.allowed) {
+    retryAction = { verb: input.retrying ? t`Retrying…` : t`Retry`, act: "retry" };
+  }
+
   return {
     status: status.status,
     statusLabel: status.label,
@@ -375,5 +390,7 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
     planUpdatedLabel: t`Plan updated`,
     action,
     secondaryAction,
+    retryAction,
+    alreadyRetriedLabel,
   };
 }

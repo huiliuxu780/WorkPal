@@ -26,6 +26,7 @@ import {
   encodeExecutionActivityCursor,
   pickExecutionResult,
   projectActivity,
+  projectManualRetryEligibility,
 } from "@rakazo/core";
 import type { PrismaClient } from "./client.js";
 import { Prisma } from "./client.js";
@@ -159,6 +160,7 @@ export type SummaryRunRow = {
   completedAt: Date | null;
   createdAt: Date;
   snapshotRev: number;
+  retryOfRunId?: string | null;
 };
 
 /** Latest `thread.cleared` seq per Thread in one grouped pass (absent = 0). */
@@ -225,6 +227,15 @@ export async function buildExecutionSummariesForRuns(
   });
   if (present.length === 0) return [];
   const scopedIds = present.map((run) => run.id);
+  const successorRows = await db.run.findMany({
+    where: { retryOfRunId: { in: scopedIds } },
+    select: { id: true, retryOfRunId: true, status: true },
+  });
+  const successorByPredecessor = new Map<string, { id: string; status: string }>();
+  for (const row of successorRows) {
+    if (!row.retryOfRunId) continue;
+    successorByPredecessor.set(row.retryOfRunId, { id: row.id, status: row.status });
+  }
   const taskIds = [...new Set(present.map((run) => run.taskId))];
   const sourceIds = present
     .filter((run) => run.trigger === "bot_message" && run.sourceMessageId)
@@ -365,6 +376,14 @@ export async function buildExecutionSummariesForRuns(
       artifacts: artifactsByRun.get(run.id) ?? [],
       artifactsTotal,
       anchorMessageId: anchorMessage?.id ?? null,
+      retryOfRunId: run.retryOfRunId ?? null,
+      retrySuccessorRunId: successorByPredecessor.get(run.id)?.id ?? null,
+      manualRetry: projectManualRetryEligibility({
+        status: run.status,
+        trigger: run.trigger,
+        orchestration: run.orchestration,
+        successorStatus: successorByPredecessor.get(run.id)?.status ?? null,
+      }),
     };
     summaries.push(buildExecutionSummary(facts));
   }
@@ -402,6 +421,7 @@ export async function loadExecutionSummaries(
       completedAt: true,
       createdAt: true,
       snapshotRev: true,
+      retryOfRunId: true,
     },
   });
   return buildExecutionSummariesForRuns(db, { spaceId: input.spaceId, runs });

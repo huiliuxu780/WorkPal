@@ -374,6 +374,7 @@ export const PROMPT_FAMILY_SEGMENTS: Record<PromptFamilyId, string[]> = {
     "approval/continuation-intro",
     "approval/continuation-rules",
     "chat/hang-up",
+    "retry/manual-retry-context",
   ],
   P05: [
     "skills/catalog-header",

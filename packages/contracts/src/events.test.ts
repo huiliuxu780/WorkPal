@@ -6,6 +6,24 @@ import {
 } from "./events.js";
 
 describe("Product Event v2 contract", () => {
+  it("accepts existing and manual-retry effect reconciliation payloads", () => {
+    const schema = ProductEventPayloadSchemas["effect.reconciled"];
+    for (const payload of [
+      { executionId: "key-1", kind: "send_email" },
+      { executionId: "key-1", kind: "send_email", legacy: true },
+      {
+        executionId: "key-1",
+        kind: "send_email",
+        sourceEffectId: "effect-1",
+        reuse: "manual_retry",
+      },
+    ])
+      expect(schema.safeParse(payload).success).toBe(true);
+    expect(
+      schema.safeParse({ executionId: "key-1", kind: "send_email", reuse: "manual_retry" }).success,
+    ).toBe(false);
+  });
+
   it("rejects a Step lifecycle event whose payload reports a different status", () => {
     const payload = {
       stepId: "step-1",
@@ -34,6 +52,17 @@ describe("Product Event v2 contract", () => {
   it("parses each new event payload and rejects an incomplete approval resolution", () => {
     const valid = {
       "run.retried": { attempt: 2, reason: "transient_unavailable" },
+      "run.manual_retry_requested": {
+        sourceRunId: "run-1",
+        taskId: "task-1",
+        actorUserId: "user-1",
+      },
+      "effect.reconciled": {
+        executionId: "effect-key-1",
+        kind: "send_email",
+        sourceEffectId: "effect-1",
+        reuse: "manual_retry",
+      },
       "budget.exceeded": { reason: "tool_calls", limit: 20 },
       "delivery.created": { deliveryId: "delivery-1", sourceRunId: "run-1" },
       "delivery.sent": { deliveryId: "delivery-1", messageId: "message-1" },

@@ -87,6 +87,9 @@ export type ExecutionSummaryFacts = {
   anchorMessageId?: string | null;
   /** True when the timeline scan was clipped by its window. */
   activityTruncated?: boolean;
+  retryOfRunId?: string | null;
+  retrySuccessorRunId?: string | null;
+  manualRetry?: ExecutionSummary["manualRetry"];
 };
 
 function factsTitle(facts: ExecutionSummaryFacts): string {
@@ -177,6 +180,9 @@ export function buildExecutionSummary(facts: ExecutionSummaryFacts): ExecutionSu
     entry: executionEntryFor({ trigger: run.trigger, orchestration: run.orchestration }),
     ...(facts.anchorMessageId ? { anchorMessageId: facts.anchorMessageId } : {}),
     ...(incomplete.length > 0 ? { incompleteSections: incomplete } : {}),
+    ...(facts.retryOfRunId ? { retryOfRunId: facts.retryOfRunId } : {}),
+    ...(facts.retrySuccessorRunId ? { retrySuccessorRunId: facts.retrySuccessorRunId } : {}),
+    ...(facts.manualRetry ? { manualRetry: facts.manualRetry } : {}),
   });
 }
 

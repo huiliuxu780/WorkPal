@@ -124,6 +124,19 @@ describe("buildExecutionSummary", () => {
     expect(summary.title).toContain("Scout asked");
     expect(summary.title).toContain("Which region?");
   });
+
+  it("carries manual-retry lineage when the facts include it", () => {
+    const summary = buildExecutionSummary(
+      facts({
+        retryOfRunId: "run-0",
+        retrySuccessorRunId: "run-2",
+        manualRetry: { allowed: false, reason: "already_active" },
+      }),
+    );
+    expect(summary.retryOfRunId).toBe("run-0");
+    expect(summary.retrySuccessorRunId).toBe("run-2");
+    expect(summary.manualRetry).toEqual({ allowed: false, reason: "already_active" });
+  });
 });
 
 describe("executionEntryFor", () => {

@@ -614,6 +614,10 @@ msgstr "Permitido una vez"
 msgid "Already have an account?"
 msgstr "¿Ya tienes una cuenta?"
 
+#: src/lib/execution-card.ts
+msgid "Already retried"
+msgstr ""
+
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
 msgstr ""
@@ -1757,6 +1761,10 @@ msgstr ""
 
 #: src/components/ai/TaskCenterView.tsx
 msgid "Couldn't open this task. Try again."
+msgstr ""
+
+#: src/lib/manual-retry.ts
+msgid "Couldn't retry this task. Try again."
 msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -3697,6 +3705,7 @@ msgstr ""
 msgid "Result preview truncated"
 msgstr ""
 
+#: src/lib/execution-card.ts
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Retry"
 msgstr ""
@@ -3713,6 +3722,10 @@ msgstr "Reintentar pantalla"
 
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Retrying"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "Retrying…"
 msgstr ""
 
 #: src/pages/McpOAuthCallback.tsx
@@ -4275,6 +4288,10 @@ msgstr "Este chat es de solo lectura"
 msgid "this computer"
 msgstr "esta computadora"
 
+#: src/lib/manual-retry.ts
+msgid "This conversation already has work in progress."
+msgstr ""
+
 #. placeholder {0}: pendingDelete.versionCount
 #: src/pages/Artifacts.tsx
 msgid "This deletes all {0} versions of this artifact. This can't be undone."
@@ -4300,8 +4317,20 @@ msgstr "Esto elimina de forma permanente todos los mensajes y detiene el trabajo
 msgid "This reset link is invalid or expired"
 msgstr "Este enlace de restablecimiento no es válido o expiró"
 
+#: src/lib/manual-retry.ts
+msgid "This retry request was already used for a different task."
+msgstr ""
+
+#: src/lib/manual-retry.ts
+msgid "This run cannot be retried."
+msgstr ""
+
 #: src/components/ai/RunTodoList.tsx
 msgid "This run has no plan. These were the working items at the time."
+msgstr ""
+
+#: src/lib/manual-retry.ts
+msgid "This run is still in progress."
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -4320,7 +4349,12 @@ msgstr "Este servidor ya está conectado. Desconéctalo primero para autorizarlo
 msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
 msgstr "Este inicio de sesión por suscripción aún no está disponible en {productName}. Usa una credencial de despliegue o elige otro proveedor."
 
+#: src/lib/manual-retry.ts
+msgid "This task already completed."
+msgstr ""
+
 #: src/components/ai/TaskCenterView.tsx
+#: src/lib/manual-retry.ts
 msgid "This task is no longer available."
 msgstr ""
 
@@ -4551,6 +4585,10 @@ msgstr ""
 #: src/lib/execution-card.ts
 #: src/lib/task-center.ts
 msgid "View result"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "View retry"
 msgstr ""
 
 #: src/pages/SettingsOverlay.tsx

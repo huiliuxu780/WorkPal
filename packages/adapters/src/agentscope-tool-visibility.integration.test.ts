@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRunRequest, AgentRuntimeEvent, ConnectorTool } from "@rakazo/adapter-kit";
+import { toolsForRetryRun } from "@rakazo/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
 
@@ -42,6 +43,33 @@ const flipV2: ConnectorTool = {
   readOnly: true,
 };
 
+const retryDirect: ConnectorTool = {
+  name: "hook_write",
+  description: "POST a countable local fixture",
+  readOnly: false,
+  inputSchema: {
+    type: "object",
+    properties: { url: { type: "string" }, body: { type: "string" } },
+    required: ["url", "body"],
+    additionalProperties: false,
+  },
+};
+
+const retryCatalog: ConnectorTool = {
+  name: "fixture_execute_tool",
+  description: "Run a fixture tool by id",
+  readOnly: false,
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      arguments: { type: "object" },
+    },
+    required: ["id", "arguments"],
+    additionalProperties: false,
+  },
+};
+
 describe("AgentScope per-call tool visibility", () => {
   let child: ChildProcess;
   let stateDir: string;
@@ -69,7 +97,43 @@ describe("AgentScope per-call tool visibility", () => {
       );
     };
     emit({ role: "assistant" });
-    if (input.model === "vis-refuse" && keepCount === 2) {
+    if (input.model === "retry-schema" || input.model === "ordinary-schema") {
+      if (keepCount === 1) {
+        emit({
+          tool_calls: [
+            {
+              index: 0,
+              id: "direct-1",
+              type: "function",
+              function: {
+                name: "hook_write",
+                arguments: '{"url":"https://example.test","body":"one"}',
+              },
+            },
+          ],
+        });
+        emit({}, "tool_calls");
+      } else if (keepCount === 2) {
+        emit({
+          tool_calls: [
+            {
+              index: 0,
+              id: "catalog-1",
+              type: "function",
+              function: {
+                name: "fixture_execute_tool",
+                arguments:
+                  '{"id":"hook:write","arguments":{"url":"https://example.test","body":"one"}}',
+              },
+            },
+          ],
+        });
+        emit({}, "tool_calls");
+      } else {
+        emit({ content: "RETRY_SCHEMA_OK" });
+        emit({}, "stop");
+      }
+    } else if (input.model === "vis-refuse" && keepCount === 2) {
       emit({
         tool_calls: [
           {
@@ -112,7 +176,7 @@ describe("AgentScope per-call tool visibility", () => {
             index: 0,
             id: "flip-1",
             type: "function",
-            function: { name: "flip_tool", arguments: "{\"mode\":\"restored\"}" },
+            function: { name: "flip_tool", arguments: '{"mode":"restored"}' },
           },
         ],
       });
@@ -226,7 +290,11 @@ describe("AgentScope per-call tool visibility", () => {
     expect(toolNames(captured[1]!)).not.toContain("flip_tool");
     expect(toolNames(captured[2]!)).toEqual(expect.arrayContaining(["keep_tool", "flip_tool"]));
     expect(JSON.stringify(schemaOf(captured[2]!, "flip_tool"))).toContain("mode");
-    expect(toolExecutions.map((entry) => entry.name)).toEqual(["keep_tool", "keep_tool", "flip_tool"]);
+    expect(toolExecutions.map((entry) => entry.name)).toEqual([
+      "keep_tool",
+      "keep_tool",
+      "flip_tool",
+    ]);
     expect(toolExecutions[2]?.args).toEqual({ mode: "restored" });
     expect(events.some((event) => event.type === "tool" && event.name === "flip_tool")).toBe(true);
   });
@@ -304,6 +372,80 @@ describe("AgentScope per-call tool visibility", () => {
     expect(captured.length).toBeGreaterThan(0);
     expect(toolNames(captured[0]!)).toEqual([]);
   });
+
+  it("keeps retryOperationId on direct and catalog schemas across every model round", async () => {
+    const live = [retryDirect, retryCatalog];
+    const request: AgentRunRequest = {
+      botId: "bot-1",
+      threadId: "retry-schema",
+      runId: "retry-schema",
+      prompt: "Continue the listed operations.",
+      instructions: "Reply with the requested output only.",
+      history: [],
+      tools: toolsForRetryRun(live, "run-old"),
+      currentTools: async () => toolsForRetryRun(live, "run-old"),
+      executeTool: async (name, args) => {
+        toolExecutions.push({ name, args });
+        return {
+          kind: "agent_tool_result",
+          terminate: false,
+          content: [{ type: "text", text: `${name} ok` }],
+        };
+      },
+      model: {
+        provider: "openai-compatible",
+        id: "retry-schema",
+        apiKey: "fixture",
+        baseUrl: modelUrl,
+      },
+    };
+    const events: AgentRuntimeEvent[] = [];
+    for await (const event of runtime.run(request, context("retry-schema"))) events.push(event);
+    expect(events.at(-1)).toEqual({ type: "done", text: "RETRY_SCHEMA_OK" });
+    const captured = modelRequests.filter((entry) => entry.model === "retry-schema");
+    expect(captured.length).toBeGreaterThanOrEqual(3);
+    for (const round of captured) {
+      expectRetryIdentity(parametersOf(round, "hook_write"), ["url", "body"]);
+      expectRetryIdentity(parametersOf(round, "fixture_execute_tool"), ["id", "arguments"]);
+    }
+  });
+
+  it("does not declare retryOperationId on an ordinary run's model schemas", async () => {
+    const live = [retryDirect, retryCatalog];
+    const request: AgentRunRequest = {
+      botId: "bot-1",
+      threadId: "ordinary-schema",
+      runId: "ordinary-schema",
+      prompt: "Use the live tools.",
+      instructions: "Reply with the requested output only.",
+      history: [],
+      tools: live,
+      currentTools: async () => live,
+      executeTool: async (name, args) => {
+        toolExecutions.push({ name, args });
+        return {
+          kind: "agent_tool_result",
+          terminate: false,
+          content: [{ type: "text", text: `${name} ok` }],
+        };
+      },
+      model: {
+        provider: "openai-compatible",
+        id: "ordinary-schema",
+        apiKey: "fixture",
+        baseUrl: modelUrl,
+      },
+    };
+    const events: AgentRuntimeEvent[] = [];
+    for await (const event of runtime.run(request, context("ordinary-schema"))) events.push(event);
+    expect(events.at(-1)).toEqual({ type: "done", text: "RETRY_SCHEMA_OK" });
+    const captured = modelRequests.filter((entry) => entry.model === "ordinary-schema");
+    expect(captured.length).toBeGreaterThanOrEqual(3);
+    for (const round of captured) {
+      expectOrdinaryIdentity(parametersOf(round, "hook_write"), ["url", "body"]);
+      expectOrdinaryIdentity(parametersOf(round, "fixture_execute_tool"), ["id", "arguments"]);
+    }
+  });
 });
 
 function toolNames(request: FixtureModelRequest): string[] {
@@ -313,7 +455,34 @@ function toolNames(request: FixtureModelRequest): string[] {
 }
 
 function schemaOf(request: FixtureModelRequest, name: string) {
-  return (request.tools ?? []).find(
-    (tool) => (tool.function?.name ?? tool.name) === name,
+  return (request.tools ?? []).find((tool) => (tool.function?.name ?? tool.name) === name);
+}
+
+function parametersOf(request: FixtureModelRequest, name: string) {
+  return schemaOf(request, name)?.function?.parameters as Record<string, unknown> | undefined;
+}
+
+function expectRetryIdentity(schema: Record<string, unknown> | undefined, keys: string[]) {
+  expect(schema).toEqual(
+    expect.objectContaining({
+      additionalProperties: false,
+      properties: expect.objectContaining({
+        ...Object.fromEntries(keys.map((key) => [key, expect.anything()])),
+        retryOperationId: expect.objectContaining({ type: "string" }),
+      }),
+    }),
   );
+}
+
+function expectOrdinaryIdentity(schema: Record<string, unknown> | undefined, keys: string[]) {
+  const properties = schema?.properties as Record<string, unknown> | undefined;
+  expect(schema).toEqual(
+    expect.objectContaining({
+      additionalProperties: false,
+      properties: expect.objectContaining(
+        Object.fromEntries(keys.map((key) => [key, expect.anything()])),
+      ),
+    }),
+  );
+  expect(properties?.retryOperationId).toBeUndefined();
 }

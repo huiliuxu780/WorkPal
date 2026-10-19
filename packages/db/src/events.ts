@@ -176,13 +176,35 @@ export interface PauseRunForInput {
    * (not in message blocks) so clients still see redacted labels.
    */
   offeredActions?: Array<{ id: string; label: string }>;
+  /** Predecessor ExternalEffect id for a manual-retry uncertain-result choice. */
+  manualRetryEffectId?: string;
   budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number; observed: number };
 }
 
 const CHOICE_ASK_CHECKPOINT_KIND = "choice_ask_v1";
 
-function choiceAskCheckpoint(actions: Array<{ id: string; label: string }>): string {
-  return JSON.stringify({ kind: CHOICE_ASK_CHECKPOINT_KIND, actions });
+function choiceAskCheckpoint(
+  actions: Array<{ id: string; label: string }>,
+  extra?: { manualRetryEffectId?: string },
+): string {
+  return JSON.stringify({
+    kind: CHOICE_ASK_CHECKPOINT_KIND,
+    actions,
+    ...(extra?.manualRetryEffectId ? { manualRetryEffectId: extra.manualRetryEffectId } : {}),
+  });
+}
+
+function manualRetryEffectIdFromCheckpoint(checkpoint: string | null | undefined): string | null {
+  if (!checkpoint) return null;
+  try {
+    const parsed = JSON.parse(checkpoint) as { kind?: unknown; manualRetryEffectId?: unknown };
+    if (parsed.kind !== CHOICE_ASK_CHECKPOINT_KIND) return null;
+    return typeof parsed.manualRetryEffectId === "string" && parsed.manualRetryEffectId
+      ? parsed.manualRetryEffectId
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function resumeChoiceLabel(
@@ -790,6 +812,24 @@ export async function commitAnswerRunInput(
 
   const recordedAnswer = secretAsk ? "" : (selectedChoice?.id ?? input.answer);
 
+  const retryEffectId = manualRetryEffectIdFromCheckpoint(run.checkpoint);
+  if (choiceAsk && retryEffectId && selectedChoice) {
+    const reviewDecision =
+      selectedChoice.id === "authorize_retry"
+        ? "manual_retry_authorized"
+        : selectedChoice.id === "confirm_completed"
+          ? "manual_retry_confirmed"
+          : selectedChoice.id === "cancel"
+            ? "manual_retry_cancelled"
+            : null;
+    if (reviewDecision) {
+      await tx.externalEffect.updateMany({
+        where: { id: retryEffectId, spaceId: input.spaceId },
+        data: { reviewDecision },
+      });
+    }
+  }
+
   if (approvalAsk) {
     const allowed = input.answer === "allow" || input.answer === "always";
     const effectWrite = await tx.externalEffect.updateMany({
@@ -840,7 +880,7 @@ export async function commitAnswerRunInput(
         ...(pendingAsk.credential ? { result: { credentialSaved: pendingAsk.credential } } : {}),
       },
     });
-  } else if (!budgetAsk) {
+  } else if (!budgetAsk && !retryEffectId) {
     const resumeLabel = selectedChoice
       ? resumeChoiceLabel(selectedChoice, run.checkpoint)
       : undefined;
@@ -1109,7 +1149,11 @@ export async function pauseRunForInput(
         ...(input.budgetExceeded
           ? { checkpoint: budgetAskCheckpoint(input.budgetExceeded) }
           : input.offeredActions?.length
-            ? { checkpoint: choiceAskCheckpoint(input.offeredActions) }
+            ? {
+                checkpoint: choiceAskCheckpoint(input.offeredActions, {
+                  manualRetryEffectId: input.manualRetryEffectId,
+                }),
+              }
             : {}),
       },
     });

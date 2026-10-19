@@ -99,6 +99,7 @@ import {
   IntegrationSetupStateSchema,
 } from "./integration-settings.js";
 import { ResolveInterventionResultSchema } from "./intervention.js";
+import { ManualRetryInputSchema, ManualRetryOutputSchema } from "./manual-retry.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
@@ -906,6 +907,11 @@ export const appContract = {
         }),
       )
       .output(TaskCenterPageSchema),
+    /**
+     * Manual retry: same Task, new Run, original Thread. Distinct from
+     * automatic same-Run Attempt retry (`run.retried`).
+     */
+    retry: oc.input(ManualRetryInputSchema).output(ManualRetryOutputSchema),
   },
   voice: {
     catalog: oc.output(z.array(VoiceCatalogEntrySchema)),

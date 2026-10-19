@@ -344,7 +344,59 @@ describe("buildExecutionCardModel status coverage", () => {
     });
     // UX-01B acceptance 8: the failed Run's primary action is the reason path.
     expect(card.action).toEqual({ verb: "View reason", act: "toggle" });
-    expect(JSON.stringify(card)).not.toMatch(/retry/i);
+    expect(card.retryAction).toBeNull();
+  });
+
+  it("adds Retry beside View reason when the server allows a manual retry", () => {
+    const card = model(
+      run("failed"),
+      [],
+      {},
+      {
+        summary: summary({
+          status: "failed",
+          failure: "The billing service timed out",
+          manualRetry: { allowed: true },
+        }),
+      },
+    );
+    expect(card.action).toEqual({ verb: "View reason", act: "toggle" });
+    expect(card.retryAction).toEqual({ verb: "Retry", act: "retry" });
+  });
+
+  it("shows Retrying… while a manual retry is submitting", () => {
+    const card = model(
+      run("failed"),
+      [],
+      {},
+      {
+        summary: summary({
+          status: "failed",
+          failure: "The billing service timed out",
+          manualRetry: { allowed: true },
+        }),
+        retrying: true,
+      },
+    );
+    expect(card.retryAction).toEqual({ verb: "Retrying…", act: "retry" });
+  });
+
+  it("marks an already-retried card and offers View retry instead of Retry", () => {
+    const card = model(
+      run("failed"),
+      [],
+      {},
+      {
+        summary: summary({
+          status: "failed",
+          failure: "The billing service timed out",
+          retrySuccessorRunId: "run-id-2",
+          manualRetry: { allowed: true },
+        }),
+      },
+    );
+    expect(card.retryAction).toEqual({ verb: "View retry", act: "view_successor" });
+    expect(card.alreadyRetriedLabel).toBe("Already retried");
   });
 
   it("maps cancelled without a result sentence", () => {

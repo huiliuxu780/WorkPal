@@ -15,6 +15,7 @@ export * from "./execution-revocations.js";
 export * from "./external-conversations.js";
 export * from "./groups.js";
 export * from "./interventions.js";
+export * from "./manual-retry.js";
 export * from "./memory-config.js";
 export * from "./messages.js";
 export * from "./messaging.js";
