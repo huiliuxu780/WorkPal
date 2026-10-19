@@ -135,3 +135,9 @@ Read-only tools are not matched; they read current state. Matching never inspect
 - Space-level remaining budget is current; a space that is already exhausted can still enqueue a retry that fails again. Per-run usage is not inherited.
 - Local Web E2E used a disposable Postgres named `workpal_e2e_*` because this machine has no `/var/run/docker.sock` for testcontainers. CI still uses the existing harness.
 - Not merged, not deployed.
+
+## Merge review follow-up — 2026-10-19
+
+The wrapped connector and foreign-nonce fixes at `626142c` were reviewed. Two further regressions were reproduced and fixed at `35aa7ee`: normal/legacy `effect.reconciled` payloads remain accepted, while manual-retry payloads still require their source effect; resolving all three uncertain-operation choices preserves the shared original Task.prompt. Contract regression failed before the schema fix; three PostgreSQL choices failed before the prompt fix. Final focused checks: contracts/DB/adapters type checks, 19 contract/core/executor tests and 10 PostgreSQL tests passed. A follow-up only removes unrelated formatting from the DB diff.
+
+**Not approved for merge yet:** the current per-execution occurrence index is not a stable cross-Run operation identity. Skipping/reordering completed identical-argument operations can associate a retry with the wrong prior effect. This is a remaining acceptance 6/7 issue; the original delivery's ready-to-merge claim does not cover it. Complete `docs/tasks/MR-01-R3.md` before merging #73. Also prove the existing budget-adjustment journey and unify the retry prompt loader with merged AG-04. No deployment occurred.
