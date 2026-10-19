@@ -720,6 +720,11 @@ test("a paced Plan revision moves the single a/b and flashes the update hint", a
 
   await send(page, `publish a paced tracked plan named report-${stamp}`);
   const card = cardOf(page, `report-${stamp}`);
+  // UX-02: the first publish pauses on the unified plan review card, and the
+  // published revision is visible while the run waits.
+  const review = page.locator('[data-testid="plan-review-card"][data-status="pending"]');
+  await expect(review).toHaveCount(1, { timeout: 45_000 });
+  await expect(review).toHaveAttribute("data-content-version", "1");
   // Level 0: the first revision lands as 3/4 with the accessible bar.
   await expect(card.getByTestId("execution-plan-count")).toHaveText("3/4", {
     timeout: 30_000,
@@ -730,15 +735,21 @@ test("a paced Plan revision moves the single a/b and flashes the update hint", a
   await expect(card.locator('.exc-line[data-kind="current"]')).toContainText(
     "Current: Final check",
   );
-  // Running with a Plan: collapsed by default (acceptance 4).
+  // Waiting with a Plan: collapsed by default (acceptance 4).
   await expect(card).toHaveAttribute("data-open", "0");
+  await review.getByTestId("plan-review-approve").click();
 
-  // The paced second revision regresses the fraction honestly (3/4 → 3/6)
-  // and flashes the short-lived update hint.
+  // The paced second revision changes plan CONTENT (two new stages): it lands
+  // as content version 2 behind a NEW review card, regresses the fraction
+  // honestly (3/4 → 3/6) and flashes the short-lived update hint.
+  const review2 = page.locator('[data-testid="plan-review-card"][data-status="pending"]');
+  await expect(review2).toHaveCount(1, { timeout: 60_000 });
+  await expect(review2).toHaveAttribute("data-content-version", "2");
   await expect(card.getByTestId("execution-plan-count")).toHaveText("3/6", {
     timeout: 30_000,
   });
   await expect(card.getByTestId("execution-plan-updated")).toBeVisible({ timeout: 5_000 });
+  await review2.getByTestId("plan-review-approve").click();
 
   // Terminal first: the result sentence appears exactly once (the bubble),
   // the card never repeats it as an outcome line, and the rev settles so the

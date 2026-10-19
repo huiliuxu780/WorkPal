@@ -252,12 +252,28 @@ export type ManualRetryPromptOp = {
   summary: string;
 };
 
+/**
+ * UX-02 / U-A13: plan, step, and todo records are internal run-scoped state,
+ * not external operations. They never enter the retry operation inventory or
+ * operation matching: a successor run records its own plan and gets its own
+ * plan review instead of reusing or skipping the predecessor's records.
+ */
+export const PLAN_RECORD_OPERATION_KINDS = new Set([
+  "publish_run_plan",
+  "publish_run_step",
+  "publish_run_todo",
+  "plan_enter",
+  "plan_write",
+  "plan_exit",
+]);
+
 export function operationsForRetryPrompt(
   predecessors: ReadonlyArray<{ effects: readonly ManualRetryChainEffect[] }>,
 ): ManualRetryPromptOp[] {
   const nearest = new Map<string, ManualRetryChainEffect>();
   for (const predecessor of predecessors) {
     for (const effect of [...predecessor.effects].sort(byCreatedThenId)) {
+      if (PLAN_RECORD_OPERATION_KINDS.has(effect.kind)) continue;
       const operationId = logicalOperationId(effect);
       if (!nearest.has(operationId)) nearest.set(operationId, effect);
     }
@@ -266,6 +282,7 @@ export function operationsForRetryPrompt(
   const seen = new Set<string>();
   for (const predecessor of [...predecessors].reverse()) {
     for (const effect of [...predecessor.effects].sort(byCreatedThenId)) {
+      if (PLAN_RECORD_OPERATION_KINDS.has(effect.kind)) continue;
       const operationId = logicalOperationId(effect);
       if (seen.has(operationId)) continue;
       seen.add(operationId);

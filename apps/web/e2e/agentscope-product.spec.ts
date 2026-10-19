@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createDb } from "../../../packages/db/src/index.js";
 import { startModelEmulator } from "../../../packages/testkit/src/model-emulator.js";
-import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
+import { activeBotId, completeOnboarding, resolvePlanReview, rpc, signup } from "./helpers";
 
 test("Web chat completes a Java Harness tool round trip", async ({ page }) => {
   test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
@@ -530,6 +530,10 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     });
     await page.getByPlaceholder(/Message/).fill("Complete the structured fixture.");
     await page.keyboard.press("Enter");
+    // UX-02: the first structured publish pauses on the typed plan review;
+    // approving resumes the same run through the real Worker and Java bridge,
+    // and the status-only republication later stays a progress revision.
+    await resolvePlanReview(page, { botId }, "approve");
     await expect(
       page.getByTestId("transcript").getByText("Structured fixture completed."),
     ).toBeVisible({ timeout: 40_000 });

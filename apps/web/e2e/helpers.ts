@@ -156,3 +156,72 @@ export async function createNamedBot(
   await expect(page.getByPlaceholder(`Message ${name}`)).toBeVisible();
   return bot.id;
 }
+
+// ---------------------------------------------------------------------------
+// UX-02 unified plan review helpers. The decision always goes through the real
+// threads/resolveIntervention RPC against the pending typed plan_review
+// Intervention, so specs exercise the same CAS/idempotency path as the card.
+// ---------------------------------------------------------------------------
+
+export type PlanReviewDecision = "approve" | "request_changes" | "reject";
+
+export type PendingPlanReview = {
+  id: string;
+  runId: string;
+  planReview?: { content?: { planId?: string; contentVersion?: number; goal?: string } };
+};
+
+export async function findPendingPlanReview(
+  page: Page,
+  target: { botId: string } | { groupId: string },
+): Promise<PendingPlanReview | undefined> {
+  const thread = await rpc<{
+    interventions?: Array<PendingPlanReview & { kind: string; status: string }>;
+  }>(page, "threads/get", target);
+  return (thread.interventions ?? []).find(
+    (view) => view.kind === "plan_review" && view.status === "pending",
+  );
+}
+
+/**
+ * Wait for the pending plan_review card (optionally a specific content
+ * version) and resolve it. Retries tolerate the pause landing slightly after
+ * the send; an already-decided card reports the honest business outcome.
+ */
+export async function resolvePlanReview(
+  page: Page,
+  target: { botId: string } | { groupId: string },
+  decision: PlanReviewDecision,
+  options: { feedback?: string; expectedContentVersion?: number } = {},
+): Promise<{ outcome: string }> {
+  let result: { outcome: string } | undefined;
+  await expect
+    .poll(
+      async () => {
+        const thread = await rpc<{
+          interventions?: Array<PendingPlanReview & { kind: string; status: string }>;
+        }>(page, "threads/get", target);
+        const view = (thread.interventions ?? []).find(
+          (item) => item.kind === "plan_review" && item.status === "pending",
+        );
+        if (!view) return "missing";
+        if (
+          options.expectedContentVersion !== undefined &&
+          view.planReview?.content?.contentVersion !== options.expectedContentVersion
+        ) {
+          return "stale";
+        }
+        result = await rpc<{ outcome: string }>(page, "threads/resolveIntervention", {
+          ...target,
+          interventionId: view.id,
+          clientSubmissionId: `plan-review-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          answer: decision,
+          ...(options.feedback ? { feedback: options.feedback } : {}),
+        });
+        return result.outcome;
+      },
+      { timeout: 60_000, intervals: [250, 500, 1_000] },
+    )
+    .toMatch(/accepted|already_handled/);
+  return result!;
+}

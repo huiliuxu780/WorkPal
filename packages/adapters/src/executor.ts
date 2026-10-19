@@ -109,7 +109,10 @@ import {
   stableJsonValue,
   toolEffectIdempotencyKey,
 } from "@rakazo/core/node/approval-effect-key";
-import { takeRetryOperationId } from "@rakazo/core/node/manual-retry-match";
+import {
+  PLAN_RECORD_OPERATION_KINDS,
+  takeRetryOperationId,
+} from "@rakazo/core/node/manual-retry-match";
 import {
   emptyManualRetryChain,
   loadManualRetryChain,
@@ -432,16 +435,13 @@ export const PLAN_SERVICE_TOOL_NAMES = new Set([
 ]);
 
 /**
- * Internal record operations: they write plan/step/todo state for THIS run
- * only and never send anything external. Manual-retry operation matching must
- * not reuse or skip them — a successor run records its own plan and steps and
- * gets its own plan review (U-A13: never inherit the old approval).
+ * Internal record operations (single source in core): they write plan/step/
+ * todo state for THIS run only and never send anything external. Manual-retry
+ * operation matching must not reuse or skip them — a successor run records its
+ * own plan and steps and gets its own plan review (U-A13: never inherit the
+ * old approval).
  */
-const PLAN_RECORD_TOOL_NAMES = new Set([
-  ...PLAN_SERVICE_TOOL_NAMES,
-  "publish_run_step",
-  "publish_run_todo",
-]);
+const PLAN_RECORD_TOOL_NAMES = PLAN_RECORD_OPERATION_KINDS;
 
 /** Tools that stay visible while the run is in the read-only PLAN phase. */
 const PLAN_PHASE_KEEP_TOOLS = new Set([
