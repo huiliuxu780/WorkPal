@@ -242,6 +242,11 @@ function fixture(runId = "run-1") {
     results,
     scratchpadRows,
     memoryCommit,
+    prisma,
+    runRow: run,
+    executor,
+    pauseRunForInput,
+    runtimeRun,
     setCalls(next: ToolCall[]) {
       calls = next;
     },
@@ -559,5 +564,85 @@ describe("mutating tool effect idempotency keys", () => {
     expect(f.memoryCommit).not.toHaveBeenCalled();
     expect(f.effects).toHaveLength(1);
     expect(f.results[0]).toEqual({ ok: true, legacy: true });
+  });
+});
+
+describe("unified plan review execution gate (UX-02)", () => {
+  it("blocks mutating tools during the read-only PLAN phase with zero effects", async () => {
+    const f = fixture("run-gate-phase");
+    f.runRow.planPhase = "planning";
+    f.setCalls([
+      {
+        name: "remember",
+        args: { path: "MEMORY.md", content: "team preference" },
+        executionId: "call_gate_1",
+      },
+    ]);
+    await f.run();
+    expect(f.results[0]).toEqual({ error: expect.stringContaining("PLAN mode (read-only)") });
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.effects).toHaveLength(0);
+  });
+
+  it("re-opens the review card at attempt start when a pending round never paired with its pause", async () => {
+    const f = fixture("run-gate-repair");
+    const plan = {
+      planId: "plan:run-gate-repair",
+      runId: "run-gate-repair",
+      sourceMessageId: null,
+      revisionId: "plan:run-gate-repair:1",
+      revision: 1,
+      goal: "Deliver the gated fixture",
+      items: [{ id: "a", title: "Stage A", status: "pending" }],
+      changeReason: null,
+      createdAt: new Date().toISOString(),
+    };
+    f.prisma.runPlanReview.findFirst.mockResolvedValue({
+      id: "round-1",
+      runId: "run-gate-repair",
+      planId: plan.planId,
+      contentVersion: 1,
+      revision: 1,
+      status: "pending",
+      source: "plan_exit",
+      toolExecutionId: "exit-1",
+      interventionId: null,
+      submittedAt: new Date(),
+    });
+    f.prisma.runPlan.findUnique.mockResolvedValue({
+      reviewStatus: "pending",
+      current: plan,
+    });
+    f.setCalls([
+      {
+        name: "remember",
+        args: { path: "MEMORY.md", content: "team preference" },
+        executionId: "call_gate_2",
+      },
+    ]);
+    f.runRow.status = "queued";
+    await f.executor.continueRun("run-gate-repair", "worker-1");
+    // The run re-pauses on the SAME version binding before any model call or
+    // tool execution: a crash between submit and pause never leaks forward.
+    expect(f.pauseRunForInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planReviewRound: expect.objectContaining({
+          roundId: "round-1",
+          planId: plan.planId,
+          contentVersion: 1,
+          source: "plan_exit",
+        }),
+      }),
+    );
+    const ask = f.pauseRunForInput.mock.calls[0]![0].blocks[0];
+    expect(ask.planReview).toMatchObject({
+      planId: plan.planId,
+      contentVersion: 1,
+      goal: plan.goal,
+      source: "plan_exit",
+    });
+    expect(f.runtimeRun).not.toHaveBeenCalled();
+    expect(f.results).toHaveLength(0);
+    expect(f.effects).toHaveLength(0);
   });
 });
