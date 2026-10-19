@@ -1,6 +1,6 @@
 # AG-03 delivery note: S01–S14 executable scenario contracts
 
-Branch `codex/ag03-scenario-contracts`, base `main @ c2dfea4` (CI run 39188374800 green). Status: **delivered, ready-to-merge** ([PR #74](https://github.com/huiliuxu780/WorkPal/pull/74)) — not merged, not deployed. Task card: [AG-03](./tasks/AG-03.md); matrix: [agent-scenario-matrix.md](./agent-scenario-matrix.md); inventory: [agent-prompt-inventory.md](./agent-prompt-inventory.md).
+Branch `codex/ag03-scenario-contracts`, base `main @ c2dfea4` (CI run 39188374800 green). Status: **done, merged** ([PR #74](https://github.com/huiliuxu780/WorkPal/pull/74)) — merged, not deployed. Task card: [AG-03](./tasks/AG-03.md); matrix: [agent-scenario-matrix.md](./agent-scenario-matrix.md); inventory: [agent-prompt-inventory.md](./agent-prompt-inventory.md).
 
 **Ancestry note**: the task-card commit (`docs: define AG-03 AG-04 and manual retry delivery tasks`) is content-identical to `ad4ef00` on the unmerged PR #64 branch; it was re-applied on `main @ c2dfea4` as `6231d06` because PR #64 had not merged at branch time. Work was performed in a dedicated git worktree (`WorkPal-ag03`) because the primary checkout was concurrently occupied by the parallel MR-01 branch; nothing from MR-01's uncommitted work entered this branch, and no MR-01 module (retry/schema/RPC/UI) was touched.
 
@@ -74,3 +74,7 @@ Existing AG-01/02/06/07 and ME-00 suites were run in the same gate (no regressio
 - Real-model quality/injection resistance: **未评估 (not evaluated)** — offline contract tests only.
 - MR-01 intersection: none of its modules were touched; the only executor change is the `voiceTurnInstruction` extraction. Whoever merges second adds a targeted test around the prompt-assembly line if MR-01's retry framing lands there.
 - AG-04 continues from this exact head per the continuous-delivery plan.
+
+## Merge closure (2026-10-19)
+
+PR #74 merged normally as `c293dfa`; integrated main `b3ae7dc` passed all nine selected CI checks. AG-03 review fixes capture the actual hang-up prompt and constrain the reaction exception to its one read-path filter. AG-04 retained the selective CI graph and final-request baseline. Runtime-import loading of the app-owned prompt respects the adapters TypeScript compilation root. No deployment.
