@@ -27,6 +27,8 @@ import {
   createBackgroundJobHandlers,
   createCloudAgentConnection,
   createConnectorStack,
+  compactionMarginsFromEnv,
+  compactionModeFromEnv,
   createJobReconciler,
   createMessagingContextLoader,
   createMessagingTeamChatSender,
@@ -50,6 +52,7 @@ import {
   LocalArtifactStore,
   McpConnector,
   McpOAuthBroker,
+  memoryJobsConfigFromEnv,
   messagingPlatformsFromEnv,
   PiOAuthLogins,
   PipedreamConnector,
@@ -277,6 +280,7 @@ export async function createApp(
   const home = new LocalAgentHomeStore(env.dataDir);
   const artifacts = new LocalArtifactStore(env.dataDir);
   const memory = new MarkdownMemoryStore(prisma);
+  const memoryJobsConfig = memoryJobsConfigFromEnv();
   const mcp = new McpConnector(
     prisma,
     secrets,
@@ -446,6 +450,12 @@ export async function createApp(
     memory,
     memoryProviders,
     memoryDigestKey: deriveMemoryDigestKey(env.encryptionKey),
+    memoryFactsEnabled: memoryJobsConfig.factsEnabled,
+    memoryLegacyInjectionRetired: process.env.WORKPAL_MEMORY_LEGACY_INJECTION_RETIRED === "true",
+    historyCompaction: {
+      modeOverride: compactionModeFromEnv(),
+      margins: compactionMarginsFromEnv(),
+    },
     home,
     artifacts,
     connector: stack.connector,
@@ -494,6 +504,8 @@ export async function createApp(
     secretStore: secrets,
     memoryProviders,
     deploymentModelKey: env.deploymentModelKey,
+    memoryDigestKey: deriveMemoryDigestKey(env.encryptionKey),
+    memoryConfig: memoryJobsConfig,
     messaging,
     cloudAgent,
   });

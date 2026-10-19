@@ -297,7 +297,7 @@ export interface MemoryInjectionReadModel {
 }
 
 export async function loadMemoryInjectionReadModel(
-  deps: FactServiceDeps,
+  deps: Pick<FactServiceDeps, "prisma">,
   query: { spaceId: string; userId: string; botId: string | null },
 ): Promise<MemoryInjectionReadModel> {
   const scopes: Array<{ scopeKind: MemoryScopeKind; scopeId: string }> = [

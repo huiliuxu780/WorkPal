@@ -1984,6 +1984,7 @@ description: Prepare standup notes
       attempt: {
         create: vi.fn(async () => ({ id: "attempt-1" })),
         updateMany: vi.fn(async () => ({ count: 1 })),
+        count: vi.fn(async () => 0),
       },
       thread: {
         findUniqueOrThrow: vi.fn(async () => ({
@@ -1995,6 +1996,9 @@ description: Prepare standup notes
         })),
       },
       message: { findMany: vi.fn(async () => []) },
+      memoryFact: { findMany: vi.fn(async () => []) },
+      memoryShard: { findMany: vi.fn(async () => []) },
+      contextSummary: { findFirst: vi.fn(async () => null) },
       task: { findUniqueOrThrow: vi.fn(async () => ({ id: "task-1", prompt: "hello" })) },
       connection: { findMany: vi.fn(async () => []) },
       spaceModelPreference: { findFirst: vi.fn(async () => null) },

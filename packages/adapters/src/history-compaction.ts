@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import type { AgentRunRequest, AgentRuntime, JobPublisher } from "@rakazo/adapter-kit";
 import { historyCompactJob } from "@rakazo/adapter-kit";
 import type { AgentHistoryProvenance, MessageBlock } from "@rakazo/contracts";
 import { blocksToAgentHistoryText, PRODUCT_BRAND } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
+import { compactionInputDigest, persistCompactionRevision } from "@rakazo/db";
 import { getLogger, unwrapJobPayload } from "@rakazo/logging";
 import { formatCurrentTimeInstruction } from "./current-time.js";
 import { resolveDeploymentModel } from "./deployment-model.js";
@@ -234,17 +236,92 @@ export function recordHistoryCompactAttemptsExhausted(
   });
 }
 
+/**
+ * Prompt identity recorded on every compaction revision: digest of the exact
+ * AG-04 segment bytes (git remains the version tracker; the digest makes the
+ * recorded identity unambiguous).
+ */
+export const HISTORY_COMPACTION_PROMPT_VERSION = `history-compaction@${createHash("sha256")
+  .update(HISTORY_COMPACTION_INSTRUCTIONS, "utf8")
+  .digest("hex")
+  .slice(0, 12)}`;
+
+/**
+ * Model identity pinned at enqueue time (ME-02 M4). The job summarizes with
+ * exactly this provider/model; a later bot-model change must not redirect it
+ * and a revoked credential must fail the job visibly without advancing the
+ * cursor or silently swapping models.
+ */
+export interface PinnedCompactionModel {
+  modelProvider: string;
+  modelId: string;
+  sourceRunId?: string;
+}
+
 export interface CompactHistoryDeps {
   prisma: PrismaClient;
   runtime: AgentRuntime;
   jobs: JobPublisher;
   memoryProviders: MemoryProviderResolver;
   deploymentModelKey?: string;
+  /** Server-keyed HMAC key for the revision input digest. */
+  memoryDigestKey: string;
+  /** Identity fixed when the job was enqueued; wins over every fallback. */
+  pinnedModel?: PinnedCompactionModel;
+  /** Resolves current credentials for exactly the pinned provider/model. */
+  resolvePinnedModel?: (
+    scope: { userId: string; spaceId: string },
+    provider: string,
+    modelId: string,
+  ) => Promise<AgentRunRequest["model"]>;
   resolveModel?: (scope: {
     userId: string;
     spaceId: string;
     botId?: string;
   }) => Promise<AgentRunRequest["model"]>;
+}
+
+/**
+ * Finds the most recent completed main-conversation Run whose messages cover
+ * `tailSeq`, so a backlog re-enqueue pins the identity of the conversation
+ * that actually produced the batch tail (P4 §4.1). Null when no completed Run
+ * recorded a model identity — the caller then falls back to the unpinned
+ * resolution chain and records that honestly in the revision.
+ */
+export async function findCompactionModelPin(
+  prisma: PrismaClient,
+  threadId: string,
+  tailSeq: number,
+): Promise<PinnedCompactionModel | null> {
+  const covering = await prisma.message.findFirst({
+    where: { threadId, seq: { lte: tailSeq }, runId: { not: null }, role: "assistant" },
+    orderBy: { seq: "desc" },
+    select: { runId: true },
+  });
+  const candidateRunIds = covering?.runId ? [covering.runId] : [];
+  if (candidateRunIds.length === 0) {
+    const latest = await prisma.run.findFirst({
+      where: {
+        threadId,
+        status: "completed",
+        modelProvider: { not: null },
+        modelId: { not: null },
+      },
+      orderBy: { completedAt: "desc" },
+      select: { id: true },
+    });
+    if (latest) candidateRunIds.push(latest.id);
+  }
+  for (const runId of candidateRunIds) {
+    const run = await prisma.run.findUnique({
+      where: { id: runId },
+      select: { id: true, status: true, modelProvider: true, modelId: true },
+    });
+    if (run && run.modelProvider && run.modelId && run.status !== "failed") {
+      return { sourceRunId: run.id, modelProvider: run.modelProvider, modelId: run.modelId };
+    }
+  }
+  return null;
 }
 
 export async function compactHistory(deps: CompactHistoryDeps, threadId: string): Promise<void> {
@@ -361,29 +438,59 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
   // text keyed off the prompt, so summarizing with it would save nonsense to external memory and
   // advance the cursor past messages that are then lost from both stores. Skip instead.
   const deploymentFallback = resolveDeploymentModel();
-  const model = deps.resolveModel
-    ? await deps.resolveModel({
-        userId: thread.userId,
-        spaceId: thread.spaceId,
-        botId: thread.botId,
-      })
-    : deps.deploymentModelKey
-      ? {
-          // Provider must come from the same resolver as the key, not a hardcoded one.
-          provider: deploymentFallback.provider,
-          id: deploymentFallback.model,
-          apiKey: deps.deploymentModelKey,
-        }
-      : await (async () => {
-          const settings = await deps.prisma.deploymentSettings.findUnique({
-            where: { id: "default" },
-          });
-          return {
-            provider: settings?.defaultModelProvider ?? "scripted",
-            id: settings?.defaultModelId ?? "scripted",
-            apiKey: undefined,
-          };
-        })();
+  let model: AgentRunRequest["model"];
+  let pinnedSourceRunId: string | null = null;
+  if (deps.pinnedModel) {
+    // ME-02 M4: the enqueueing turn fixed this identity from the Run that
+    // produced the batch tail. Resolve credentials for exactly this model —
+    // a bot-model change in between must not redirect the job, and a revoked
+    // credential fails visibly without advancing the cursor.
+    if (!deps.resolvePinnedModel) {
+      logHistoryCompactPermanentFailure(threadId, "pinned_model_resolver_missing");
+      return;
+    }
+    try {
+      model = await deps.resolvePinnedModel(
+        { userId: thread.userId, spaceId: thread.spaceId },
+        deps.pinnedModel.modelProvider,
+        deps.pinnedModel.modelId,
+      );
+      pinnedSourceRunId = deps.pinnedModel.sourceRunId ?? null;
+    } catch (error) {
+      logHistoryCompactPermanentFailure(threadId, "pinned_model_credential_unavailable", error, {
+        "history.compact.model_provider": deps.pinnedModel.modelProvider,
+        "history.compact.model_id": deps.pinnedModel.modelId,
+        ...(deps.pinnedModel.sourceRunId
+          ? { "history.compact.source_run_id": deps.pinnedModel.sourceRunId }
+          : {}),
+      });
+      return;
+    }
+  } else {
+    model = deps.resolveModel
+      ? await deps.resolveModel({
+          userId: thread.userId,
+          spaceId: thread.spaceId,
+          botId: thread.botId,
+        })
+      : deps.deploymentModelKey
+        ? {
+            // Provider must come from the same resolver as the key, not a hardcoded one.
+            provider: deploymentFallback.provider,
+            id: deploymentFallback.model,
+            apiKey: deps.deploymentModelKey,
+          }
+        : await (async () => {
+            const settings = await deps.prisma.deploymentSettings.findUnique({
+              where: { id: "default" },
+            });
+            return {
+              provider: settings?.defaultModelProvider ?? "scripted",
+              id: settings?.defaultModelId ?? "scripted",
+              apiKey: undefined,
+            };
+          })();
+  }
   if (!deps.runtime.describe().capabilities.compaction || model.provider === "scripted") {
     getLogger().info(`history.compact skipped for thread ${threadId}: no usable summarizer model`);
     return;
@@ -435,18 +542,24 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
   }
 
   const lastSeq = batch[batch.length - 1]!.seq;
-  const advanced = await deps.prisma.thread.updateMany({
-    where: {
-      id: threadId,
-      historyCompactedUpToSeq: previousCursor,
-      historyCompactionGeneration: previousGeneration,
-    },
-    data: {
-      historyCompactedUpToSeq: lastSeq,
-      historyCompactionSummary: summary,
-    },
+  // ME-02 M4: the auditable revision row and the CAS pointer advance commit in
+  // one transaction. includesToolResults stays false: product messages do not
+  // cover full tool results, and this summary must not claim they do.
+  const revisionResult = await persistCompactionRevision(deps.prisma, {
+    threadId,
+    expectedCursor: previousCursor,
+    expectedGeneration: previousGeneration,
+    fromSeqExclusive,
+    toSeqInclusive: lastSeq,
+    summary,
+    inputDigest: compactionInputDigest(deps.memoryDigestKey, [previousSummary ?? "", transcript]),
+    sourceRunId: pinnedSourceRunId,
+    modelProvider: model.provider,
+    modelId: model.id,
+    promptVersion: HISTORY_COMPACTION_PROMPT_VERSION,
+    includesToolResults: false,
   });
-  if (advanced.count === 0) return;
+  if (!revisionResult.advanced) return;
 
   // Local compaction is first-party behavior and must not depend on an optional external store.
   // Saving only after the compare-and-set also prevents losing workers from creating duplicates.
@@ -527,6 +640,13 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
       COMPACTION_BATCH_SIZE,
     )
   ) {
-    await deps.jobs.enqueue(historyCompactJob(threadId));
+    // Re-pin per batch: the next tail belongs to an older conversation segment
+    // whose Run identity may differ from the one this job was enqueued with.
+    const nextTail = Math.min(
+      (latest.historyCompactedUpToSeq ?? NOTHING_COMPACTED) + COMPACTION_BATCH_SIZE,
+      latest.nextMessageSeq - 1,
+    );
+    const nextPin = await findCompactionModelPin(deps.prisma, threadId, nextTail);
+    await deps.jobs.enqueue(historyCompactJob(threadId, nextPin ?? undefined));
   }
 }
