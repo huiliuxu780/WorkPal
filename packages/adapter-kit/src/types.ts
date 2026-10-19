@@ -507,6 +507,13 @@ export interface AgentRunRequest {
     content: string;
   }>;
   tools: ConnectorTool[];
+  /**
+   * AG-05: live tool surface for this Run. Called immediately before every
+   * model HTTP request so connector/resource/stage changes take effect without
+   * a new Run. Fail closed (keep the previous set) when omitted or when the
+   * callback throws.
+   */
+  currentTools?: () => Promise<ConnectorTool[]>;
   model: AgentRunModel;
   /** Resolve an explicitly requested helper model within the active user and space scope. */
   resolveModel?: (provider: string, modelId: string) => Promise<AgentRunModel>;

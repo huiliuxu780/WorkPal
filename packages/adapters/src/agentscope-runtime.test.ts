@@ -406,6 +406,116 @@ describe("AgentScopeAgentRuntime", () => {
     });
   });
 
+  it("refreshes the live tool surface for the same run without mixing another run", async () => {
+    const fixture = await listen((_request, response) => {
+      void (async () => {
+        const outbound = fixture.requests[0] as {
+          runId: string;
+          toolBridge: { url: string; token: string };
+        };
+        const surfaceUrl = outbound.toolBridge.url.replace("/v1/tool-executions", "/v1/tool-surface");
+        const first = await fetch(surfaceUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ runId: outbound.runId }),
+        });
+        expect(first.status).toBe(200);
+        expect(await first.json()).toEqual({
+          tools: [
+            {
+              name: "alpha_tool",
+              description: "Alpha",
+              inputSchema: { type: "object", properties: {} },
+              readOnly: true,
+            },
+          ],
+        });
+        const second = await fetch(surfaceUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ runId: outbound.runId }),
+        });
+        expect(await second.json()).toEqual({
+          tools: [
+            {
+              name: "beta_tool",
+              description: "Beta",
+              inputSchema: { type: "object", properties: { mode: { type: "string" } } },
+              readOnly: true,
+            },
+          ],
+        });
+        const execute = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "alpha_tool",
+            executionId: "call-stale",
+            args: {},
+          }),
+        });
+        expect(execute.status).toBe(403);
+        const live = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "beta_tool",
+            executionId: "call-live",
+            args: { mode: "restored" },
+          }),
+        });
+        expect(live.status).toBe(200);
+        expect(await live.json()).toEqual({ status: "ok", result: { ok: true } });
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
+      })();
+    });
+    let round = 0;
+    const executeTool = vi.fn(async () => ({ ok: true }));
+    const request = runRequest("run-surface");
+    request.tools = [
+      {
+        name: "alpha_tool",
+        description: "Alpha",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: true,
+      },
+    ];
+    request.currentTools = async () => {
+      round += 1;
+      if (round === 1) return request.tools;
+      return [
+        {
+          name: "beta_tool",
+          description: "Beta",
+          inputSchema: { type: "object", properties: { mode: { type: "string" } } },
+          readOnly: true,
+        },
+      ];
+    };
+    request.executeTool = executeTool;
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    for await (const _event of runtime.run(request, runContext("run-surface"))) {
+      // drain
+    }
+    expect(executeTool).toHaveBeenCalledWith("beta_tool", { mode: "restored" }, "call-live");
+    expect(executeTool).not.toHaveBeenCalledWith("alpha_tool", expect.anything(), expect.anything());
+  });
+
   it("keeps only a task-scoped bridge after the parent stream ends", async () => {
     let registration:
       | Promise<{ bridge: { url: string; taskEventUrl: string; token: string }; taskToken: string }>

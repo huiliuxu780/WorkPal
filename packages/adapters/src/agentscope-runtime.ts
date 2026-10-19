@@ -226,7 +226,7 @@ class AgentScopeToolBridge {
     token: string;
     identity: ActiveBridgeRun["identity"];
   }> {
-    if (request.tools.length > 0 && !request.executeTool) {
+    if ((request.tools.length > 0 || request.currentTools) && !request.executeTool) {
       throw new Error("AgentScope tools require the backend executor");
     }
     if (!context?.userId || !context.spaceId) {
@@ -338,6 +338,7 @@ class AgentScopeToolBridge {
       request.method !== "POST" ||
       ![
         "/v1/tool-executions",
+        "/v1/tool-surface",
         "/v1/steering",
         "/v1/model-resolutions",
         "/v1/background-tasks",
@@ -480,6 +481,26 @@ class AgentScopeToolBridge {
             contextWindow: model.contextWindow,
             thinkingLevel: model.thinkingLevel,
           },
+        });
+        return;
+      }
+      if (request.url === "/v1/tool-surface") {
+        let tools: ConnectorTool[] = [...run.tools.values()];
+        if (run.request.currentTools) {
+          try {
+            tools = await run.request.currentTools();
+            run.tools = new Map(tools.map((tool) => [tool.name, tool]));
+          } catch {
+            tools = [...run.tools.values()];
+          }
+        }
+        writeJson(response, 200, {
+          tools: tools.map(({ name, description, inputSchema, readOnly }) => ({
+            name,
+            description,
+            inputSchema,
+            readOnly,
+          })),
         });
         return;
       }
@@ -799,7 +820,12 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       if (!identity) {
         throw new Error("AgentScope runs require trusted user and space context");
       }
-      if (request.tools.length > 0 || request.claimSteering || request.resolveModel) {
+      if (
+        request.tools.length > 0 ||
+        request.currentTools ||
+        request.claimSteering ||
+        request.resolveModel
+      ) {
         bridgeRegistration = await this.toolBridge.register(request, context);
       }
       let response: Response;

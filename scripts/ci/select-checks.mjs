@@ -129,6 +129,7 @@ const JAVA_WORKER_FILES = new Set([
   "services/agent-runtime/src/main/java/com/workpal/runtime/RuntimeServer.java",
   "services/agent-runtime/src/main/java/com/workpal/runtime/InterruptibleTaskRepository.java",
   "services/agent-runtime/src/main/java/com/workpal/runtime/ToolBridgeClient.java",
+  "services/agent-runtime/src/main/java/com/workpal/runtime/ToolSurfaceRefresh.java",
   "services/agent-runtime/src/main/java/com/workpal/runtime/RuntimeHealthcheck.java",
 ]);
 

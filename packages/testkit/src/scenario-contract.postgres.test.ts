@@ -632,6 +632,81 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
     180_000,
   );
 
+  // --- AG-05: same Run live tool surface across three model requests ---------------
+  it(
+    "AG-05 same-run connector revoke and restore refresh every model call",
+    async () => {
+      let cookie = "";
+      let connectionId = "";
+      const model = await startModelEmulator({
+        apiKey: fixtureKey,
+        steps: [
+          {
+            async expect(request) {
+              expect(toolNamesOf(request)).toContain("GMAIL_SEND_EMAIL");
+              expect(toolNamesOf(request)).toContain("runtime_current_time");
+              await rpc(cookie, "connections/revoke", { connectionId });
+            },
+            response: {
+              type: "tool",
+              id: "ag05-keep-1",
+              name: "runtime_current_time",
+              arguments: {},
+            },
+          },
+          {
+            async expect(request) {
+              expect(toolNamesOf(request)).not.toContain("GMAIL_SEND_EMAIL");
+              expect(toolNamesOf(request)).toContain("runtime_current_time");
+              const restored = await rpc<{ connectionId: string }>(cookie, "connections/begin", {
+                connectorId: "composio",
+                provider: "GMAIL",
+                displayName: "Scenario Gmail restored",
+              });
+              connectionId = restored.connectionId;
+            },
+            response: {
+              type: "tool",
+              id: "ag05-keep-2",
+              name: "runtime_current_time",
+              arguments: {},
+            },
+          },
+          {
+            expect(request) {
+              expect(toolNamesOf(request)).toContain("GMAIL_SEND_EMAIL");
+              expect(toolNamesOf(request)).toContain("runtime_current_time");
+            },
+            response: { type: "text", text: "Mail tools are available again." },
+          },
+        ],
+      });
+      try {
+        cookie = await signup("ag05surface");
+        await connectModel(cookie, model);
+        const bot = await createBot(cookie, model, "Live surface fixture");
+        const connection = await rpc<{ connectionId: string }>(cookie, "connections/begin", {
+          connectorId: "composio",
+          provider: "GMAIL",
+          displayName: "Scenario Gmail",
+        });
+        connectionId = connection.connectionId;
+        const actor = await rpc<{ userId: string }>(cookie, "me");
+        const sent = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "Check the clock, then tell me whether mail tools are available.",
+        });
+        await waitForRun(sent.runId, "completed");
+        model.assertComplete();
+        expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toEqual([]);
+        expect(model.requests).toHaveLength(3);
+      } finally {
+        await model.close();
+      }
+    },
+    180_000,
+  );
+
   // --- S01-C5: reaction entry creates a message and never a Run ----------------------
   it(
     "S01-C5 reaction creates a message and no Run",

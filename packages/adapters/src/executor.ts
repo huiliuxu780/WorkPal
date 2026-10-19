@@ -1856,6 +1856,61 @@ export function createRunExecutor(deps: ExecutorDeps) {
           run.trigger === "created" || run.trigger === "delivery"
             ? []
             : [...builtins, ...exposedConnectorTools];
+        const loadLiveRunTools = async (): Promise<ConnectorTool[]> => {
+          if (run.trigger === "created" || run.trigger === "delivery") return [];
+          const stored = await deps.prisma.connection.findMany({
+            where: { userId: run.userId, spaceId: run.spaceId },
+            select: {
+              id: true,
+              connectorId: true,
+              provider: true,
+              providerRef: true,
+              displayName: true,
+              status: true,
+            },
+          });
+          const liveComposioRows = stored.filter((connection) => connection.connectorId === "composio");
+          let refreshSlugs: string[] = [];
+          if (needsLivePluginSync(liveComposioRows)) {
+            const listing = await loadLivePluginSlugs(deps.listConnectedPluginSlugs, run.userId);
+            if (listing.ok) refreshSlugs = listing.slugs;
+          }
+          const liveComposio = mergeConnectedPlugins(liveComposioRows, refreshSlugs);
+          const livePlugins = selectRunConnections(
+            stored,
+            liveComposio.map((row) => row.provider),
+          );
+          context.connectedConnections = livePlugins.map((row) => ({
+            id: row.id,
+            connectorId: row.connectorId,
+            externalId: row.provider,
+            displayName: row.displayName,
+            providerRef: row.providerRef ?? undefined,
+          }));
+          context.connectedProviders = liveComposio.map((row) => row.provider);
+          const discoveredNow = deps.connector ? await deps.connector.discoverTools(context) : [];
+          const exposedNow = discoveredNow.filter(
+            (tool) => !builtinAgentTools.some((builtin) => builtin.name === tool.name),
+          );
+          connectorTools.clear();
+          for (const tool of exposedNow) connectorTools.set(tool.name, tool);
+          const liveBuiltins = [
+            ...selectBuiltinToolsForRun({
+              graphicalToolsAllowed,
+              pageBrowserAllowed,
+              groupId: thread.groupId,
+              trigger: run.trigger,
+              semanticMemoryEnabled,
+              cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
+              messagingChannelRun,
+              voiceCall,
+              mailEnabled: Boolean(deps.mail),
+              planningEnabled: turnPolicy.planning.mode === "auto",
+            }),
+            ...(hasMessagingIdentity ? agentConnectionTools : []),
+          ];
+          return [...liveBuiltins, ...exposedNow];
+        };
         const taskCatalogInstruction = tools.some((tool) => tool.name === "task_catalog")
           ? TASK_CATALOG_GUIDANCE
           : undefined;
@@ -2211,6 +2266,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           }
           const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
+          if (viaConnector && !resolvedTool && !connectorTools.has(name)) {
+            return { error: `Tool ${name} is not authorized for this run` };
+          }
           // Declared effect of the operation this call dispatches (installed API method and
           // flag). Install config is immutable per route resource, so it cannot drift before
           // execute; a catalog call uses the tool it was just resolved to.
@@ -4520,6 +4578,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 content: skill.content,
               })),
               tools,
+              currentTools: scripted ? undefined : async () => {
+                try {
+                  return await loadLiveRunTools();
+                } catch {
+                  return [...builtins, ...connectorTools.values()];
+                }
+              },
               model: {
                 provider: runModelProvider,
                 id: runModelId,
