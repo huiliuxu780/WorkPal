@@ -15,6 +15,7 @@ import { RunResult } from "../../components/ai/RunResult";
 import { RunStepsDisclosure } from "../../components/ai/RunStepsDisclosure";
 import { RunTodoList } from "../../components/ai/RunTodoList";
 import type { ArtifactTarget } from "../../lib/artifact-open";
+import { newClientId } from "../../lib/client-id";
 import { resultHasText } from "../../lib/execution-card";
 import {
   beginDetailRequest,
@@ -47,12 +48,14 @@ import {
   mergeInterventionViews,
   pendingInterventionKindsForRun,
 } from "../../lib/intervention-view";
+import { manualRetryErrorMessage } from "../../lib/manual-retry";
 import { rpc } from "../../lib/rpc";
 import { isRunActive } from "../../lib/run-status";
 import {
   clearTaskCenterNavIntent,
   EXECUTION_NAV_INTENT_EVENT,
   peekTaskCenterNavIntent,
+  setTaskCenterNavIntent,
 } from "../../lib/task-center";
 import { unlinkedRunTodos } from "../../lib/work-progress-view";
 
@@ -133,6 +136,9 @@ export function useExecutionTranscript({
   // error), deliberately OUTSIDE the rev-versioned cache — an error is a
   // transport fact, never a snapshot version.
   const [detailRequests, setDetailRequests] = useState<DetailRequestMap>({});
+  const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<{ runId: string; message: string } | null>(null);
+  const retryNonceByRun = useRef(new Map<string, string>());
   const detailInFlight = useRef<Set<string>>(new Set());
   // UX-01B core rule 1: only Runs with a structured Plan, a semantic Step, a
   // pending Intervention (or any waiting state) or a failure get an Execution
@@ -439,6 +445,52 @@ export function useExecutionTranscript({
     },
     [artifactTarget, threadId],
   );
+  const retryRun = useCallback(
+    (runId: string) => {
+      if (retryingRunId) return;
+      const nonce = retryNonceByRun.current.get(runId) ?? newClientId();
+      retryNonceByRun.current.set(runId, nonce);
+      setRetryingRunId(runId);
+      setRetryError(null);
+      void rpc.runs
+        .retry({ runId, clientNonce: nonce })
+        .then(async (result) => {
+          retryNonceByRun.current.delete(runId);
+          setTaskCenterNavIntent({
+            threadId: result.threadId,
+            runId: result.runId,
+            rev: 0,
+            attention: false,
+          });
+          await onRefresh();
+        })
+        .catch((error: unknown) => {
+          setRetryError({ runId, message: manualRetryErrorMessage(error) });
+        })
+        .finally(() => {
+          setRetryingRunId((current) => (current === runId ? null : current));
+        });
+    },
+    [onRefresh, retryingRunId],
+  );
+  const viewSuccessor = useCallback(
+    (runId: string) => {
+      const summary = serverSummaries?.get(runId);
+      const successorId = summary?.retrySuccessorRunId;
+      if (!successorId) return;
+      const successor = serverSummaries?.get(successorId);
+      setExpansionEntries((entries) =>
+        forceOpenExpansion({
+          entries,
+          threadId,
+          runId: successorId,
+          rev: successor?.rev ?? summary?.rev ?? 0,
+        }),
+      );
+      if (successor) loadExecutionDetail(successorId, successor.rev);
+    },
+    [loadExecutionDetail, serverSummaries, threadId],
+  );
   // Task Center "return to conversation": a module-memory intent (never the
   // DOM, never browser storage) asks this Thread to open one Run's card and
   // focus it — the Intervention control for waiting states (mirroring the
@@ -628,6 +680,10 @@ export function useExecutionTranscript({
                   (message) => message.runId === execution.runId && message.role === "bot",
                 )
           }
+          retrying={retryingRunId === execution.runId}
+          retryError={retryError?.runId === execution.runId ? retryError.message : null}
+          onRetry={() => retryRun(execution.runId)}
+          onViewSuccessor={() => viewSuccessor(execution.runId)}
           interventions={
             scopedInterventions.length > 0 ? (
               <InterventionRegion

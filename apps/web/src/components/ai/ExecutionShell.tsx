@@ -32,6 +32,10 @@ export function ExecutionShell({
   hasResult,
   resultOnPage,
   confirmedRootBackground,
+  retrying,
+  retryError,
+  onRetry,
+  onViewSuccessor,
   children,
 }: {
   run: ExecutionRunState | null;
@@ -70,6 +74,10 @@ export function ExecutionShell({
   resultOnPage?: boolean;
   /** Trusted root-Run background identity (no production source yet). */
   confirmedRootBackground?: boolean;
+  retrying?: boolean;
+  retryError?: string | null;
+  onRetry?: () => void;
+  onViewSuccessor?: () => void;
   children: ReactNode;
 }) {
   const status = deriveExecutionStatus(run, activity, {
@@ -105,6 +113,7 @@ export function ExecutionShell({
     resultOnPage,
     expanded: open,
     canExpand: hasDetail,
+    retrying,
   });
 
   // Plan revision flash (acceptance 9): only a GROWING revision on the same
@@ -181,6 +190,10 @@ export function ExecutionShell({
             else setExpanded((value) => !value);
           }}
           onAttention={focusAttention}
+          onRetry={onRetry}
+          onViewSuccessor={onViewSuccessor}
+          retrying={retrying}
+          retryError={retryError}
           interventions={interventions}
           interventionsRef={interventionsRef}
         >

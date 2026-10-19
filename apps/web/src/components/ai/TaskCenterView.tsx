@@ -3,8 +3,10 @@ import type { TaskCenterItem } from "@rakazo/contracts";
 import { Menu } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { newClientId } from "../../lib/client-id";
 import { buildExecutionCardModel } from "../../lib/execution-card";
 import { deriveExecutionStatus } from "../../lib/execution-status";
+import { manualRetryErrorMessage } from "../../lib/manual-retry";
 import { rpc } from "../../lib/rpc";
 import {
   applyTaskCenterAppend,
@@ -43,12 +45,20 @@ function TaskCenterCard({
   item,
   unavailable,
   busy,
+  retrying,
+  retryError,
   onOpen,
+  onRetry,
+  onViewSuccessor,
 }: {
   item: TaskCenterItem;
   unavailable: boolean;
   busy: boolean;
+  retrying: boolean;
+  retryError: string | null;
   onOpen: (item: TaskCenterItem) => void;
+  onRetry: (item: TaskCenterItem) => void;
+  onViewSuccessor: (item: TaskCenterItem) => void;
 }) {
   // The Task Center page IS the trusted cross-conversation background entry,
   // so its eligible root Runs use the card's EXISTING background presentation
@@ -70,6 +80,7 @@ function TaskCenterCard({
     expanded: false,
     canExpand: false,
     actionOverride: unavailable || busy ? null : { verb: taskCenterVerb(status), act: "navigate" },
+    retrying,
   });
   return (
     <div data-testid="task-center-item" data-status={status.status}>
@@ -81,6 +92,10 @@ function TaskCenterCard({
         onToggle={noop}
         onAttention={noop}
         onNavigate={() => onOpen(item)}
+        onRetry={() => onRetry(item)}
+        onViewSuccessor={() => onViewSuccessor(item)}
+        retrying={retrying}
+        retryError={retryError}
       >
         {null}
       </ExecutionCard>
@@ -120,8 +135,11 @@ export function TaskCenterView({
   const [openError, setOpenError] = useState(false);
   const [unavailable, setUnavailable] = useState<ReadonlySet<string>>(new Set());
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
+  const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<{ runId: string; message: string } | null>(null);
   const requestSeq = useRef(0);
   const busyRef = useRef(false);
+  const retryNonceByRun = useRef(new Map<string, string>());
 
   const refresh = useCallback(() => {
     const requestId = ++requestSeq.current;
@@ -238,6 +256,51 @@ export function TaskCenterView({
     [navigate, onBeforeNavigate],
   );
 
+  const retryItem = useCallback(
+    (item: TaskCenterItem) => {
+      if (busyRef.current || retryingRunId) return;
+      const runId = item.summary.runId;
+      const nonce = retryNonceByRun.current.get(runId) ?? newClientId();
+      retryNonceByRun.current.set(runId, nonce);
+      setRetryingRunId(runId);
+      setRetryError(null);
+      void rpc.runs
+        .retry({ runId, clientNonce: nonce })
+        .then((result) => {
+          retryNonceByRun.current.delete(runId);
+          const { target } = result;
+          const route = target.kind === "bot" ? `/app/${target.botId}` : `/app/g/${target.groupId}`;
+          setTaskCenterNavIntent({
+            threadId: result.threadId,
+            runId: result.runId,
+            rev: 0,
+            attention: false,
+          });
+          onBeforeNavigate?.();
+          navigate(route);
+        })
+        .catch((error: unknown) => {
+          setRetryError({ runId, message: manualRetryErrorMessage(error) });
+        })
+        .finally(() => {
+          setRetryingRunId((current) => (current === runId ? null : current));
+        });
+    },
+    [navigate, onBeforeNavigate, retryingRunId],
+  );
+
+  const viewSuccessor = useCallback(
+    (item: TaskCenterItem) => {
+      const successorId = item.summary.retrySuccessorRunId;
+      if (!successorId) return;
+      openItem({
+        ...item,
+        summary: { ...item.summary, runId: successorId, anchorMessageId: undefined },
+      });
+    },
+    [openItem],
+  );
+
   const subtitle =
     list.activeCount > 0
       ? t`${list.activeCount} running in background`
@@ -301,7 +364,11 @@ export function TaskCenterView({
                   item={item}
                   unavailable={unavailable.has(item.summary.runId)}
                   busy={busyRunId === item.summary.runId}
+                  retrying={retryingRunId === item.summary.runId}
+                  retryError={retryError?.runId === item.summary.runId ? retryError.message : null}
                   onOpen={openItem}
+                  onRetry={retryItem}
+                  onViewSuccessor={viewSuccessor}
                 />
               </li>
             ))}

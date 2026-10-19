@@ -104,6 +104,12 @@ import {
   toolEffectIdempotencyKey,
 } from "@rakazo/core/node/approval-effect-key";
 import {
+  loadManualRetryChain,
+  matchManualRetryEffect,
+  manualRetryPromptPrefix,
+  manualRetryUncertainAsk,
+} from "./manual-retry-effects.js";
+import {
   appendEventInTransaction,
   avatarChangeView,
   backgroundTaskLockTransactionOptions,
@@ -1444,6 +1450,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             },
           }),
         ]);
+        const retryChain = run.retryOfRunId ? await loadManualRetryChain(deps.prisma, run.id) : [];
         const agentEnvironment = decryptAgentEnvironment(agentSecretRows, deps.secretStore);
         runSecrets.push(...Object.values(agentEnvironment));
         const agentEnvironmentInstruction = formatAgentEnvironmentInstruction(agentEnvironment);
@@ -2285,7 +2292,80 @@ export function createRunExecutor(deps: ExecutorDeps) {
             usesApprovalKey && occurrence === 0
               ? approvalEffectKey(runId, replayEffectToolName, args)
               : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence);
-          // Connector read-only hints must not bypass approval, review, or replay decisions.
+          // Connector read-only hints must not bypass approval or review. Retry
+          // reuse skips declared reads so they re-read current state.
+          if (run.retryOfRunId && !READ_ONLY_AGENT_TOOLS.has(name) && declaredReadOnly !== true) {
+            const retryDecision = matchManualRetryEffect(
+              retryChain,
+              replayEffectToolName,
+              args,
+              occurrence,
+            );
+            if (retryDecision.kind === "reuse") {
+              await deps.events.append({
+                spaceId: run.spaceId,
+                threadId: run.threadId,
+                botId: run.botId,
+                type: "effect.reconciled",
+                runId,
+                payload: {
+                  executionId: effectKey,
+                  kind: replayEffectToolName,
+                  sourceEffectId: retryDecision.effect.id,
+                  reuse: "manual_retry",
+                },
+              });
+              return retryDecision.effect.result;
+            }
+            if (retryDecision.kind === "skip") {
+              return {
+                skipped: true,
+                reason:
+                  retryDecision.reason === "cancelled"
+                    ? "The user skipped this operation for the retry."
+                    : "The previous attempt was confirmed complete without a stored result.",
+              };
+            }
+            if (retryDecision.kind === "pause") {
+              if (!(await renewRunLease(deps, runId, workerId, fence))) {
+                approvalPausePending = true;
+                return {
+                  skipped: true,
+                  reason: "Waiting for confirmation of the previous attempt of this operation.",
+                };
+              }
+              await workspaceCheckpoint.flush();
+              const ask = manualRetryUncertainAsk(name, retryDecision.effect.id);
+              const paused = await deps.events.pauseRunForInput({
+                spaceId: run.spaceId,
+                threadId: run.threadId,
+                botId: run.botId,
+                runId,
+                attemptId: attempt.id,
+                leaseOwner: workerId,
+                leaseFence: fence,
+                blocks: [
+                  {
+                    kind: "ask",
+                    text: ask.text,
+                    detail: ask.detail,
+                    status: "pending",
+                    actions: ask.actions,
+                  },
+                ],
+                offeredActions: ask.actions,
+                manualRetryEffectId: ask.sourceEffectId,
+              });
+              if (!paused) {
+                throw new Error("Could not pause this run to confirm the previous operation.");
+              }
+              approvalPausePending = true;
+              return {
+                skipped: true,
+                reason: "Waiting for confirmation of the previous attempt of this operation.",
+              };
+            }
+          }
           const applied = READ_ONLY_AGENT_TOOLS.has(name)
             ? undefined
             : await recordEffect(
@@ -4248,7 +4328,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           { exposedToolNames: new Set(tools.map((tool) => tool.name)) },
         );
         const replyContext = await loadReplyContext(deps.prisma, thread.id, run.sourceMessageId);
+        const retryFraming = run.retryOfRunId
+          ? manualRetryPromptPrefix(task.prompt, retryChain)
+          : undefined;
         const prompt = [
+          retryFraming,
           replyContext,
           basePrompt,
           takeoverResume?.promptNote,

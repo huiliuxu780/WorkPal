@@ -656,6 +656,10 @@ model Run {
   plan                 RunPlan?
   steps                RunStep[]
   todos                RunTodo[]
+  /// Direct predecessor of a manual retry (new Run). Unique so one hop has one successor.
+  retryOfRunId         String?          @unique
+  retryOfRun           Run?             @relation("RunManualRetry", fields: [retryOfRunId], references: [id], onDelete: Restrict)
+  manualRetrySuccessor Run?             @relation("RunManualRetry")
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])

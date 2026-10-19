@@ -20,11 +20,14 @@ vi.mock("@lingui/react/macro", () => {
     strings.reduce((acc, part, index) => acc + part + String(values[index] ?? ""), "");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children?: ReactNode }) => children };
 });
+const retryRpc = vi.hoisted(() => vi.fn());
+
 vi.mock("../../lib/rpc", () => ({
   rpc: {
     runs: {
       taskCenter: taskCenterRpc,
       executionSnapshot: executionSnapshotRpc,
+      retry: retryRpc,
     },
   },
 }));
@@ -371,5 +374,101 @@ describe("TaskCenterView", () => {
       cursor: "opaque-cursor-value",
       limit: 30,
     });
+  });
+
+  it("offers Retry on failed and cancelled items the server marks eligible", async () => {
+    taskCenterRpc.mockResolvedValue(
+      page([
+        item("bad", { status: "failed", manualRetry: { allowed: true } }),
+        item("off", { status: "cancelled", manualRetry: { allowed: true } }),
+        item("work"),
+      ]),
+    );
+    await mount();
+    const retries = container.querySelectorAll('[data-testid="execution-retry"]');
+    expect(retries).toHaveLength(2);
+    expect(retries[0]!.textContent).toBe("Retry");
+    expect(container.querySelectorAll('[data-testid="execution-retry"]').length).toBe(2);
+  });
+
+  it("submits a manual retry, keeps the nonce until success, and navigates to the successor", async () => {
+    retryRpc.mockResolvedValue({
+      sourceRunId: "bad",
+      runId: "run-new",
+      taskId: "task-bad",
+      threadId: "thread-bad",
+      botId: "bot-bad",
+      replayed: false,
+      target: { kind: "bot", botId: "bot-bad" },
+    });
+    taskCenterRpc.mockResolvedValue(
+      page([item("bad", { status: "failed", manualRetry: { allowed: true } })]),
+    );
+    await mount();
+    const retry = container.querySelector('[data-testid="execution-retry"]') as HTMLButtonElement;
+    await act(async () => {
+      retry.click();
+    });
+    expect(retryRpc).toHaveBeenCalledTimes(1);
+    expect(retryRpc).toHaveBeenCalledWith({
+      runId: "bad",
+      clientNonce: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      ),
+    });
+    expect(navigateMock).toHaveBeenCalledWith("/app/bot-bad");
+    expect(peekTaskCenterNavIntent()).toEqual({
+      threadId: "thread-bad",
+      runId: "run-new",
+      rev: 0,
+      attention: false,
+    });
+  });
+
+  it("keeps the nonce after a business error so the user can submit again", async () => {
+    retryRpc.mockRejectedValue({ data: { reason: "thread_busy" } });
+    taskCenterRpc.mockResolvedValue(
+      page([item("bad", { status: "failed", manualRetry: { allowed: true } })]),
+    );
+    await mount();
+    const retry = container.querySelector('[data-testid="execution-retry"]') as HTMLButtonElement;
+    await act(async () => {
+      retry.click();
+    });
+    expect(container.querySelector('[data-testid="execution-retry-error"]')?.textContent).toBe(
+      "This conversation already has work in progress.",
+    );
+    retryRpc.mockRejectedValue({ data: { reason: "thread_busy" } });
+    await act(async () => {
+      retry.click();
+    });
+    expect(retryRpc).toHaveBeenCalledTimes(2);
+    const first = retryRpc.mock.calls[0]![0] as { clientNonce: string };
+    const second = retryRpc.mock.calls[1]![0] as { clientNonce: string };
+    expect(second.clientNonce).toBe(first.clientNonce);
+  });
+
+  it("offers View retry on an already-retried ancestor instead of Retry", async () => {
+    executionSnapshotRpc.mockResolvedValue({});
+    taskCenterRpc.mockResolvedValue(
+      page([
+        item("bad", {
+          status: "failed",
+          retrySuccessorRunId: "run-new",
+          manualRetry: { allowed: true },
+        }),
+      ]),
+    );
+    await mount();
+    expect(container.querySelector('[data-testid="execution-retry"]')).toBeNull();
+    expect(container.querySelector('[data-testid="execution-already-retried"]')?.textContent).toBe(
+      "Already retried",
+    );
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="execution-view-retry"]') as HTMLButtonElement
+      ).click();
+    });
+    expect(executionSnapshotRpc).toHaveBeenCalledWith({ botId: "bot-bad", runId: "run-new" });
   });
 });

@@ -614,6 +614,10 @@ msgstr "已允许一次"
 msgid "Already have an account?"
 msgstr "已有账户？"
 
+#: src/lib/execution-card.ts
+msgid "Already retried"
+msgstr "已重试"
+
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
 msgstr ""
@@ -1754,6 +1758,10 @@ msgstr "无法加载执行详情。"
 #: src/components/ai/TaskCenterView.tsx
 msgid "Couldn't open this task. Try again."
 msgstr "无法打开这个任务。请重试。"
+
+#: src/lib/manual-retry.ts
+msgid "Couldn't retry this task. Try again."
+msgstr "无法重试此任务。请再试一次。"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't update messaging settings"
@@ -3693,6 +3701,7 @@ msgstr "结果"
 msgid "Result preview truncated"
 msgstr "结果预览已截断"
 
+#: src/lib/execution-card.ts
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Retry"
 msgstr "重试"
@@ -3710,6 +3719,10 @@ msgstr ""
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Retrying"
 msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "Retrying…"
+msgstr "重试中…"
 
 #: src/pages/McpOAuthCallback.tsx
 msgid "Return to {productName}"
@@ -4271,6 +4284,10 @@ msgstr "此对话为只读"
 msgid "this computer"
 msgstr "这台电脑"
 
+#: src/lib/manual-retry.ts
+msgid "This conversation already has work in progress."
+msgstr "此对话已有进行中的工作。"
+
 #. placeholder {0}: pendingDelete.versionCount
 #: src/pages/Artifacts.tsx
 msgid "This deletes all {0} versions of this artifact. This can't be undone."
@@ -4296,9 +4313,17 @@ msgstr "将永久删除全部消息并停止当前工作。聊天仍可使用。
 msgid "This reset link is invalid or expired"
 msgstr "此重置链接无效或已过期"
 
+#: src/lib/manual-retry.ts
+msgid "This run cannot be retried."
+msgstr "此执行无法重试。"
+
 #: src/components/ai/RunTodoList.tsx
 msgid "This run has no plan. These were the working items at the time."
 msgstr "这次运行没有计划，以下是当时的事项清单"
+
+#: src/lib/manual-retry.ts
+msgid "This run is still in progress."
+msgstr "此执行仍在进行中。"
 
 #: src/pages/shell/message-cards.tsx
 msgid "This server cannot be assigned without a bot."
@@ -4316,7 +4341,12 @@ msgstr "此服务器已连接。请先断开再重新授权。"
 msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
 msgstr "此订阅登录在 {productName} 中尚不可用。请使用部署凭据或选择其他提供方。"
 
+#: src/lib/manual-retry.ts
+msgid "This task already completed."
+msgstr "此任务已完成。"
+
 #: src/components/ai/TaskCenterView.tsx
+#: src/lib/manual-retry.ts
 msgid "This task is no longer available."
 msgstr "该任务已不可用。"
 
@@ -4548,6 +4578,10 @@ msgstr "查看原因"
 #: src/lib/task-center.ts
 msgid "View result"
 msgstr "查看结果"
+
+#: src/lib/execution-card.ts
+msgid "View retry"
+msgstr "查看重试"
 
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/Shell.tsx

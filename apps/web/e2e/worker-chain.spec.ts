@@ -400,6 +400,143 @@ test("a user Run stays queued while the Worker is down and is claimed and execut
   }
 });
 
+test("a cancelled Run retried while the Worker is down stays queued until the Worker claims it", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  const apiKey = "worker-chain-retry-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  let release: (() => void) | undefined;
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the manual retry worker test.",
+      "Worker Chain Retry",
+    );
+    intro = setup.intro;
+    const { botId } = setup;
+    const retryMarker = `WORKER_CHAIN_RETRY_FIXTURE ${Date.now()}`;
+    const retryReply = "WORKER_CHAIN_RETRY_REPLY completed by the standalone worker.";
+    const expectRetryFixture = {
+      expect(request: { messages: unknown }) {
+        // Keep this expect from throwing on the wrap string: a failed
+        // fixture assertion aborts the HTTP response and hangs the Worker.
+        expect(JSON.stringify(request.messages)).toContain("WORKER_CHAIN_RETRY_FIXTURE");
+      },
+    };
+    task = await startModelEmulator({
+      apiKey,
+      steps: [
+        {
+          ...expectRetryFixture,
+          response: {
+            type: "hold",
+            text: "holding the original attempt",
+            onOpen: (end) => {
+              release = end;
+            },
+          },
+        },
+        {
+          ...expectRetryFixture,
+          response: { type: "text", text: retryReply },
+        },
+        // Abort of the held original can issue a follow-up model request.
+        // Keep a spare text step so that leftover does not starve the retry.
+        {
+          ...expectRetryFixture,
+          response: { type: "text", text: retryReply },
+        },
+      ],
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+    await sendMessage(page, retryMarker);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const original = await waitUserRun(db, thread.id);
+    await pollRunStatus(db, original.id, "running", 60_000);
+    // The Run is promoted before Java issues the model call. Stopping before
+    // that call leaves the hold step unused, and the successor then hangs on it.
+    await expect.poll(async () => task?.requests.length ?? 0, { timeout: 30_000 }).toBe(1);
+    await expect.poll(() => release !== undefined, { timeout: 10_000 }).toBe(true);
+    await rpc(page, "threads/stop", { botId });
+    await pollRunStatus(db, original.id, "cancelled", 60_000);
+    try {
+      release?.();
+    } catch {
+      // Stream already closed by stop.
+    }
+    await releaseNativeRun(original.id);
+    await expect
+      .poll(
+        async () => db.prisma.attempt.count({ where: { runId: original.id, status: "running" } }),
+        { timeout: 30_000 },
+      )
+      .toBe(0);
+
+    await stopWorker();
+    const requestsBeforeRetry = task.requests.length;
+    const retried = await rpc<{ runId: string; taskId: string; replayed: boolean }>(
+      page,
+      "runs/retry",
+      { runId: original.id, clientNonce: `worker-chain-retry-${Date.now()}` },
+    );
+    expect(retried.replayed).toBe(false);
+    expect(retried.taskId).toBe(original.taskId);
+    for (let index = 0; index < 16; index += 1) {
+      const run = await db.prisma.run.findUniqueOrThrow({
+        where: { id: retried.runId },
+        select: { status: true, leaseOwner: true, retryOfRunId: true },
+      });
+      expect(run.status).toBe("queued");
+      expect(run.leaseOwner).toBeNull();
+      expect(run.retryOfRunId).toBe(original.id);
+      expect(task.requests.length, "model fixture called without a Worker").toBe(
+        requestsBeforeRetry,
+      );
+      await page.waitForTimeout(500);
+    }
+
+    const worker = await startWorker();
+    await pollRunStatus(db, retried.runId, "running", 60_000);
+    const running = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
+    expect(running.leaseOwner).not.toBe("api");
+    const leasePid = running.leaseOwner!.split("-")[0]!;
+    expect(workerNodePids().has(leasePid)).toBe(true);
+    await pollRunStatus(db, retried.runId, "completed", 60_000);
+    await expect(page.getByTestId("transcript").getByText(retryReply)).toBeVisible({
+      timeout: 15_000,
+    });
+    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
+    expect(final.status).toBe("completed");
+    const source = await db.prisma.run.findUniqueOrThrow({ where: { id: original.id } });
+    expect(source.status).toBe("cancelled");
+    expect(final.taskId).toBe(original.taskId);
+    expect(final.threadId).toBe(original.threadId);
+    expect(worker.pid).toBeGreaterThan(0);
+    expect(task.requests.length).toBeGreaterThan(requestsBeforeRetry);
+    const retryRequest = task.requests.at(-1);
+    expect(JSON.stringify(retryRequest?.messages ?? [])).toContain("WORKER_CHAIN_RETRY_FIXTURE");
+    expect(JSON.stringify(retryRequest?.messages ?? []).toLowerCase()).toContain("manual retry");
+    await recordTimings();
+  } finally {
+    await startWorker().catch(() => undefined);
+    try {
+      release?.();
+    } catch {
+      // Stream already closed.
+    }
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
 test("a Routine over-budget failure is proactively delivered exactly once by the standalone Worker", async ({
   page,
 }) => {

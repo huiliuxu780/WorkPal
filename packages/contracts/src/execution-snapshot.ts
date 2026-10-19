@@ -3,6 +3,7 @@ import { ActivityItemSchema } from "./activity.js";
 import { MessageBlock } from "./events.js";
 import { Id, RunStatus, RunTrigger, WaitKind } from "./ids.js";
 import { InterventionViewSchema } from "./intervention.js";
+import { ManualRetryDenyReason } from "./manual-retry.js";
 import { RunPlanRevisionSchema } from "./run-plans.js";
 import { RunStepSnapshotSchema } from "./run-steps.js";
 import { RunTodoSnapshotSchema } from "./run-todos.js";
@@ -89,6 +90,17 @@ export const ExecutionSummarySchema = z.strictObject({
   anchorMessageId: Id.optional(),
   /** Sections the server knows are incomplete for this view (truncated/missing). */
   incompleteSections: z.array(ExecutionSectionSchema).optional(),
+  /** Predecessor in the manual-retry chain; omitted when this Run is not a retry. */
+  retryOfRunId: Id.optional(),
+  /** Direct successor created by a later manual retry; omitted when none exists. */
+  retrySuccessorRunId: Id.optional(),
+  /** Whether the actor may request a manual retry of this Run. */
+  manualRetry: z
+    .strictObject({
+      allowed: z.boolean(),
+      reason: ManualRetryDenyReason.optional(),
+    })
+    .optional(),
 });
 export type ExecutionSummary = z.infer<typeof ExecutionSummarySchema>;
 

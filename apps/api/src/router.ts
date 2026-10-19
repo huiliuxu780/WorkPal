@@ -158,6 +158,7 @@ import {
   claimEmptySpaceDeletionForMember,
   createExternalConversationRepos,
   createGroupRepos,
+  createManualRetryRun,
   createRepos,
   createSpaceForMember,
   createThreadMessageInTransaction,
@@ -181,6 +182,7 @@ import {
   loadRunActivityPage,
   loadTaskCenterPage,
   lockOwnedGroup,
+  ManualRetryDenied,
   newestModelCredentialOrder,
   newestVoiceCredentialOrder,
   Prisma,
@@ -662,6 +664,24 @@ export function callMarkerClientNonce(callId: string): string {
 
 const HANG_UP_PROMPT =
   "The voice call just ended because the user hung up. First call end_call with a short title for the call (leave farewell empty). Then, if anything the user asked for during the call is still unfinished, complete it now as a normal chat reply with full formatting. If nothing is pending, reply with one short sentence.";
+
+function manualRetryMessage(reason: string): string {
+  switch (reason) {
+    case "thread_cleared":
+    case "bot_unavailable":
+      return "This task is no longer available.";
+    case "completed":
+      return "This task already completed.";
+    case "already_active":
+    case "not_terminal":
+      return "This run is still in progress.";
+    case "ineligible_trigger":
+    case "not_root":
+      return "This run cannot be retried.";
+    default:
+      return "This task cannot be retried.";
+  }
+}
 
 function spaceTeardownTimeoutMs(): number {
   const override = Number(process.env.SPACE_TEARDOWN_TIMEOUT_MS ?? "");
@@ -5800,6 +5820,48 @@ export function createRouter(deps: RouterDeps) {
           if (error instanceof TaskCenterCursorError) {
             throw new ORPCError("BAD_REQUEST", {
               message: "This task list cursor is no longer valid. Refresh the list.",
+            });
+          }
+          throw error;
+        }
+      }),
+      retry: authed.runs.retry.handler(async ({ context, input }) => {
+        try {
+          const result = await createManualRetryRun(deps.prisma, {
+            spaceId: context.actor.spaceId,
+            userId: context.actor.userId,
+            runId: input.runId,
+            clientNonce: input.clientNonce,
+          });
+          if (!result.replayed) {
+            await deps.jobs.enqueue(runContinueJob(result.runId)).catch((error) => {
+              getLogger().error("manual retry enqueue", error);
+            });
+          }
+          return result;
+        } catch (error) {
+          if (error instanceof ManualRetryDenied) {
+            if (error.reason === "not_found") {
+              throw new ORPCError("NOT_FOUND", {
+                message: "This task is no longer available.",
+                data: { reason: error.reason },
+              });
+            }
+            if (error.reason === "forbidden") {
+              throw new ORPCError("FORBIDDEN", {
+                message: "You cannot retry this task.",
+                data: { reason: error.reason },
+              });
+            }
+            if (error.reason === "thread_busy") {
+              throw new ORPCError("CONFLICT", {
+                message: "This conversation already has work in progress.",
+                data: { reason: error.reason },
+              });
+            }
+            throw new ORPCError("BAD_REQUEST", {
+              message: manualRetryMessage(error.reason),
+              data: { reason: error.reason },
             });
           }
           throw error;

@@ -24,7 +24,9 @@ loadRootEnv();
  */
 
 const specArg = process.argv.find((arg) => arg.startsWith("--spec="));
+const grepArg = process.argv.find((arg) => arg.startsWith("--grep="));
 const e2eSpec = specArg?.slice("--spec=".length) ?? "worker-chain.spec.ts";
+const e2eGrep = grepArg?.slice("--grep=".length);
 
 type WorkerHandle = {
   pid: number;
@@ -354,7 +356,16 @@ async function main() {
     try {
       await runProcess(
         "pnpm",
-        ["--filter", "@rakazo/web", "exec", "playwright", "test", "--workers=1", e2eSpec],
+        [
+          "--filter",
+          "@rakazo/web",
+          "exec",
+          "playwright",
+          "test",
+          "--workers=1",
+          e2eSpec,
+          ...(e2eGrep ? ["--grep", e2eGrep] : []),
+        ],
         {
           ...process.env,
           CI: "1",

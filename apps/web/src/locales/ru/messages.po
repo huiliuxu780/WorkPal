@@ -614,6 +614,10 @@ msgstr "Разрешено один раз"
 msgid "Already have an account?"
 msgstr "У вас уже есть аккаунт?"
 
+#: src/lib/execution-card.ts
+msgid "Already retried"
+msgstr ""
+
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
 msgstr "Всегда выполнять"
@@ -1753,6 +1757,10 @@ msgstr ""
 
 #: src/components/ai/TaskCenterView.tsx
 msgid "Couldn't open this task. Try again."
+msgstr ""
+
+#: src/lib/manual-retry.ts
+msgid "Couldn't retry this task. Try again."
 msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -3693,6 +3701,7 @@ msgstr ""
 msgid "Result preview truncated"
 msgstr ""
 
+#: src/lib/execution-card.ts
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Retry"
 msgstr ""
@@ -3709,6 +3718,10 @@ msgstr "Повторить загрузку экрана"
 
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Retrying"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "Retrying…"
 msgstr ""
 
 #: src/pages/McpOAuthCallback.tsx
@@ -4271,6 +4284,10 @@ msgstr "Этот чат доступен только для просмотра"
 msgid "this computer"
 msgstr "этот компьютер"
 
+#: src/lib/manual-retry.ts
+msgid "This conversation already has work in progress."
+msgstr ""
+
 #. placeholder {0}: pendingDelete.versionCount
 #: src/pages/Artifacts.tsx
 msgid "This deletes all {0} versions of this artifact. This can't be undone."
@@ -4296,8 +4313,16 @@ msgstr "Это навсегда удалит все сообщения и ост
 msgid "This reset link is invalid or expired"
 msgstr "Эта ссылка для сброса недействительна или срок ее действия истек."
 
+#: src/lib/manual-retry.ts
+msgid "This run cannot be retried."
+msgstr ""
+
 #: src/components/ai/RunTodoList.tsx
 msgid "This run has no plan. These were the working items at the time."
+msgstr ""
+
+#: src/lib/manual-retry.ts
+msgid "This run is still in progress."
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -4316,7 +4341,12 @@ msgstr "Этот сервер уже подключен. Сначала откл
 msgid "This subscription sign-in is not available in {productName} yet. Use a deployment credential or choose another provider."
 msgstr "Вход по этой подписке пока недоступен в {productName}. Используйте учетные данные развертывания или выберите другого поставщика."
 
+#: src/lib/manual-retry.ts
+msgid "This task already completed."
+msgstr ""
+
 #: src/components/ai/TaskCenterView.tsx
+#: src/lib/manual-retry.ts
 msgid "This task is no longer available."
 msgstr ""
 
@@ -4547,6 +4577,10 @@ msgstr ""
 #: src/lib/execution-card.ts
 #: src/lib/task-center.ts
 msgid "View result"
+msgstr ""
+
+#: src/lib/execution-card.ts
+msgid "View retry"
 msgstr ""
 
 #: src/pages/SettingsOverlay.tsx

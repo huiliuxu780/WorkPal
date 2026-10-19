@@ -50,6 +50,10 @@ export function ExecutionCard({
   onToggle,
   onAttention,
   onNavigate,
+  onRetry,
+  onViewSuccessor,
+  retrying,
+  retryError,
   interventions,
   interventionsRef,
   children,
@@ -64,6 +68,10 @@ export function ExecutionCard({
   onAttention: () => void;
   /** Task Center second entry: the primary action returns to the conversation. */
   onNavigate?: () => void;
+  onRetry?: () => void;
+  onViewSuccessor?: () => void;
+  retrying?: boolean;
+  retryError?: string | null;
   interventions?: ReactNode;
   interventionsRef?: RefObject<HTMLDivElement | null>;
   children: ReactNode;
@@ -143,7 +151,17 @@ export function ExecutionCard({
           {card.planUpdatedLabel}
         </p>
       ) : null}
-      {card.action || card.secondaryAction ? (
+      {card.alreadyRetriedLabel ? (
+        <p
+          className="exc-line"
+          data-kind="retry"
+          data-testid="execution-already-retried"
+          dir="auto"
+        >
+          {card.alreadyRetriedLabel}
+        </p>
+      ) : null}
+      {card.action || card.secondaryAction || card.retryAction ? (
         <div className="exc-actions">
           {card.action ? (
             <button
@@ -171,7 +189,35 @@ export function ExecutionCard({
               {card.secondaryAction.verb}
             </button>
           ) : null}
+          {card.retryAction ? (
+            <button
+              type="button"
+              className="exc-entry"
+              data-testid={
+                card.retryAction.act === "retry" ? "execution-retry" : "execution-view-retry"
+              }
+              disabled={retrying && card.retryAction.act === "retry"}
+              aria-busy={retrying && card.retryAction.act === "retry" ? true : undefined}
+              onClick={() => {
+                if (card.retryAction?.act === "view_successor") onViewSuccessor?.();
+                else onRetry?.();
+              }}
+            >
+              {card.retryAction.verb}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+      {retryError ? (
+        <p
+          className="exc-line"
+          data-kind="retry-error"
+          role="alert"
+          data-testid="execution-retry-error"
+          dir="auto"
+        >
+          {retryError}
+        </p>
       ) : null}
       {interventions ? (
         <div

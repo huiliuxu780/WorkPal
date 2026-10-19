@@ -333,7 +333,9 @@ test("a pending input ask submits from the card region without a duplicate bubbl
   }
 });
 
-test("a failed Run shows the safe failure summary and offers no retry", async ({ page }) => {
+test("a failed Run shows the safe failure summary and Retry beside View reason", async ({
+  page,
+}) => {
   const stamp = Date.now();
   await signup(page, `card-failed-${stamp}@rakazo.test`, "password12", "Card Failed");
   await completeOnboarding(page);
@@ -358,9 +360,8 @@ test("a failed Run shows the safe failure summary and offers no retry", async ({
   const cardText = await card.innerText();
   expect(cardText).not.toContain("Error:");
   expect(cardText).not.toMatch(/\n\s+at\s/);
-  // No retry affordance anywhere on the card.
-  await expect(card.getByRole("button", { name: /retry/i })).toHaveCount(0);
-  await expect(card.getByRole("button", { name: /重试/ })).toHaveCount(0);
+  // MR-01: Retry sits beside the reason path; UX-01B still owns View reason.
+  await expect(card.getByTestId("execution-retry")).toHaveText("Retry");
   // UX-01B acceptance 8: a failed Run stays collapsed and its primary action
   // is the reason path; without a failed semantic Step, opening reveals the
   // safe Run-level failure reason.
