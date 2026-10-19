@@ -1,0 +1,14 @@
+name: setup-pnpm
+description: pnpm 9.15, Node 24, frozen lockfile install, pnpm cache
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash

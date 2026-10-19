@@ -24,7 +24,7 @@ required secrets, and startup commands.
 | `pnpm check` | TypeScript (`tsc`) across the monorepo. |
 | `pnpm lint` | Biome lint and format check. |
 
-CI runs `pnpm lint`, `pnpm check`, production builds (including Electron preload smoke), `pnpm test`, `pnpm test:integration`, and `pnpm test:e2e` on every PR.
+CI selects jobs from the changed-file set (docs / web / backend / AgentScope / worker-chain / runtime image) and always reports a `CI result` check. Feature-branch pushes do not start a second copy of the PR run. Full verification is `workflow_dispatch` `mode=full` and a daily schedule. Path map, job names, and how to add a rule: [docs/ci01-selective-checks.md](docs/ci01-selective-checks.md). Local selector tests: `pnpm test:ci-select`.
 
 ## Adding a UI language
 
