@@ -445,6 +445,7 @@ export async function createApp(
     sandbox,
     memory,
     memoryProviders,
+    memoryDigestKey: deriveMemoryDigestKey(env.encryptionKey),
     home,
     artifacts,
     connector: stack.connector,

@@ -317,6 +317,9 @@ importers:
       '@rakazo/logging':
         specifier: workspace:*
         version: link:../logging
+      '@rakazo/memory':
+        specifier: workspace:*
+        version: link:../memory
       chat:
         specifier: 4.40.0
         version: 4.40.0(zod@4.6.2)
@@ -10986,9 +10989,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
     optional: true
 
   '@react-native/normalize-colors@0.74.89':
