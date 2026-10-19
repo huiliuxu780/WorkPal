@@ -613,47 +613,47 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
 
 /** DM, user trigger, no graphics/page/semantic-memory/cloud/mail, planning on. */
 export const BACKEND_MINIMAL_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
-  "create_space", "forget_secret", "list_files", "list_secrets", "message_bot",
-  "message_user", "publish_run_plan", "publish_run_step", "publish_run_todo",
-  "read_file", "remember", "render_plot", "request_secret", "request_takeover",
-  "run_subagent", "runtime_current_time", "schedule_cancel", "schedule_create",
-  "schedule_list", "scratchpad_add", "scratchpad_complete", "scratchpad_list",
-  "scratchpad_remove", "scratchpad_update", "secret_request", "shell",
-  "skill_create", "skill_delete", "skill_read", "skill_update", "spawn_bot",
-  "task_catalog", "update_bot", "web_fetch", "web_search", "write_file",
+ "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
+ "create_space", "forget_secret", "list_files", "list_secrets", "message_bot",
+ "message_user", "plan_enter", "plan_exit", "plan_write", "publish_run_plan",
+ "publish_run_step", "publish_run_todo", "read_file", "remember", "render_plot",
+ "request_secret", "request_takeover", "run_subagent", "runtime_current_time",
+ "schedule_cancel", "schedule_create", "schedule_list", "scratchpad_add",
+ "scratchpad_complete", "scratchpad_list", "scratchpad_remove", "scratchpad_update",
+ "secret_request", "shell", "skill_create", "skill_delete", "skill_read",
+ "skill_update", "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
+ "write_file",
 ];
 
 /** DM, user trigger, everything available (graphics, page browser, semantic memory, cloud agent, mail). */
 export const BACKEND_FULL_GRAPHICAL_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "browser_act",
-  "browser_navigate", "browser_snapshot", "change_avatar", "cloud_agent_cancel",
-  "cloud_agent_launch", "cloud_agent_reply", "cloud_agent_status",
-  "computer_act", "computer_observe", "create_space", "forget_memory",
-  "forget_secret", "launch_app", "list_files", "list_secrets", "message_bot",
-  "message_user", "open_path", "publish_run_plan", "publish_run_step",
-  "publish_run_todo", "read_file", "recall_memory", "render_plot",
-  "request_secret", "request_takeover", "run_subagent", "runtime_current_time",
-  "save_memory", "schedule_cancel", "schedule_create", "schedule_list",
-  "scratchpad_add", "scratchpad_complete", "scratchpad_list",
-  "scratchpad_remove", "scratchpad_update", "secret_request", "send_email",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
-  "write_file",
+ "add_mcp_server", "archive_bot", "ask_user", "attach_file", "browser_act",
+ "browser_navigate", "browser_snapshot", "change_avatar", "cloud_agent_cancel",
+ "cloud_agent_launch", "cloud_agent_reply", "cloud_agent_status", "computer_act",
+ "computer_observe", "create_space", "forget_memory", "forget_secret", "launch_app",
+ "list_files", "list_secrets", "message_bot", "message_user", "open_path",
+ "plan_enter", "plan_exit", "plan_write", "publish_run_plan", "publish_run_step",
+ "publish_run_todo", "read_file", "recall_memory", "render_plot", "request_secret",
+ "request_takeover", "run_subagent", "runtime_current_time", "save_memory",
+ "schedule_cancel", "schedule_create", "schedule_list", "scratchpad_add",
+ "scratchpad_complete", "scratchpad_list", "scratchpad_remove", "scratchpad_update",
+ "secret_request", "send_email", "shell", "skill_create", "skill_delete", "skill_read",
+ "skill_update", "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
+ "write_file",
 ];
 
 /** Group thread, user trigger, minimal options: message_bot out, handoff_to_bot in. */
 export const BACKEND_GROUP_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
-  "create_space", "forget_secret", "handoff_to_bot", "list_files",
-  "list_secrets", "message_user", "publish_run_plan", "publish_run_step",
-  "publish_run_todo", "read_file", "remember", "render_plot", "request_secret",
-  "request_takeover", "run_subagent", "runtime_current_time", "schedule_cancel",
-  "schedule_create", "schedule_list", "scratchpad_add", "scratchpad_complete",
-  "scratchpad_list", "scratchpad_remove", "scratchpad_update", "secret_request",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
-  "write_file",
+ "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
+ "create_space", "forget_secret", "handoff_to_bot", "list_files", "list_secrets",
+ "message_user", "plan_enter", "plan_exit", "plan_write", "publish_run_plan",
+ "publish_run_step", "publish_run_todo", "read_file", "remember", "render_plot",
+ "request_secret", "request_takeover", "run_subagent", "runtime_current_time",
+ "schedule_cancel", "schedule_create", "schedule_list", "scratchpad_add",
+ "scratchpad_complete", "scratchpad_list", "scratchpad_remove", "scratchpad_update",
+ "secret_request", "shell", "skill_create", "skill_delete", "skill_read",
+ "skill_update", "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
+ "write_file",
 ];
 
 /** Routine trigger (automation → planning off): schedule_create removed. */
@@ -695,16 +695,16 @@ export const BACKEND_MESSAGING_DM = [
 
 /** Voice turn (user trigger on a live call): end_call added. */
 export const BACKEND_VOICE_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
-  "create_space", "end_call", "forget_secret", "list_files", "list_secrets",
-  "message_bot", "message_user", "publish_run_plan", "publish_run_step",
-  "publish_run_todo", "read_file", "remember", "render_plot", "request_secret",
-  "request_takeover", "run_subagent", "runtime_current_time", "schedule_cancel",
-  "schedule_create", "schedule_list", "scratchpad_add", "scratchpad_complete",
-  "scratchpad_list", "scratchpad_remove", "scratchpad_update", "secret_request",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
-  "write_file",
+ "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
+ "create_space", "end_call", "forget_secret", "list_files", "list_secrets",
+ "message_bot", "message_user", "plan_enter", "plan_exit", "plan_write",
+ "publish_run_plan", "publish_run_step", "publish_run_todo", "read_file", "remember",
+ "render_plot", "request_secret", "request_takeover", "run_subagent",
+ "runtime_current_time", "schedule_cancel", "schedule_create", "schedule_list",
+ "scratchpad_add", "scratchpad_complete", "scratchpad_list", "scratchpad_remove",
+ "scratchpad_update", "secret_request", "shell", "skill_create", "skill_delete",
+ "skill_read", "skill_update", "spawn_bot", "task_catalog", "update_bot", "web_fetch",
+ "web_search", "write_file",
 ];
 
 /** call_end trigger (automation → planning off, voice context): end_call offered, no live-call instruction. */
@@ -771,13 +771,11 @@ export const EXPECTED_FROZEN_SETS: Record<string, string[]> = {
  * one skill on the request. Captured fact: load_skill_through_path is only
  * registered when the request carries skills (RuntimeEngine builds the skill
  * repository on demand); a chat run without skills sees no skill loader.
+ * UX-02: plan_enter/plan_write/plan_exit are NO LONGER native-registered —
+ * they ride the backend surface (PLAN_* entries in the BACKEND_* lists) and
+ * the Java runtime maps them to projection facades over the same service.
  */
-export const NATIVE_CHAT_PLANNING = [
-  "load_skill_through_path",
-  "plan_enter",
-  "plan_exit",
-  "plan_write",
-];
+export const NATIVE_CHAT_PLANNING = ["load_skill_through_path"];
 
 /** Chat Run with planning disabled and skills present (created intro with skills, routine, unattended shapes). */
 export const NATIVE_CHAT_NO_PLANNING = ["load_skill_through_path"];

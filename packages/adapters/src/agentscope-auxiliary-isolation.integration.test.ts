@@ -215,16 +215,36 @@ describe("AgentScope auxiliary execution isolation", () => {
     });
   });
 
-  it("keeps authorized backend tools and native Plan/Skill surfaces for normal chat", async () => {
+  it("keeps authorized backend tools and the backend-offered Plan surface for normal chat", async () => {
     const modelId = "chat-capability-control";
     const request = baseRequest("chat-capability-control-run", modelId);
     request.executionScope = "chat";
+    // UX-02: the plan tools ride the authorized backend surface (the runtime
+    // registers them as projection facades); they are no longer native-only.
     request.tools = [
       {
         name: "shell",
         description: "Authorized backend tool.",
         inputSchema: { type: "object", properties: { command: { type: "string" } } },
         readOnly: true,
+      },
+      {
+        name: "plan_enter",
+        description: "Enter PLAN mode.",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: false,
+      },
+      {
+        name: "plan_write",
+        description: "Write the structured plan.",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: false,
+      },
+      {
+        name: "plan_exit",
+        description: "Submit the plan for review.",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: false,
       },
     ];
     request.executeTool = async () => ({
@@ -238,7 +258,13 @@ describe("AgentScope auxiliary execution isolation", () => {
     const events = await consume(request);
     expect(events.at(-1)).toEqual({ type: "done", text: "AUX_FIXTURE_OK" });
     const tools = visibleToolNames(modelId);
-    for (const expected of ["shell", "plan_enter", "plan_write", "load_skill_through_path"]) {
+    for (const expected of [
+      "shell",
+      "plan_enter",
+      "plan_write",
+      "plan_exit",
+      "load_skill_through_path",
+    ]) {
       expect(tools, `chat model-visible tools were ${JSON.stringify(tools)}`).toContain(expected);
     }
   });
