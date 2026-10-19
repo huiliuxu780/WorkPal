@@ -1,6 +1,6 @@
 # UX-01C：Compatibility, Retry and E2E Closure
 
-状态：`delivered, ready-to-merge`（2026-10-18 首发，2026-10-19 审查修复轮 P3 完成并 rebase 到 B 修复后 head `2f2e757`；分支 `codex/ux01c-compatibility-e2e`，stacked PR base=`codex/ux01b-progress-convergence`，证据见 [UX-01C-implementation.md](../ux/UX-01C-implementation.md)；B 合入后改 base=main，未合并，main 合入后才可标 done）
+状态：`done`（PR [#63](https://github.com/huiliuxu780/WorkPal/pull/63) 已于 2026-10-19 以 merge commit `dcc73c5` 合入 main——B 合入后 base 已改 `main` 并确认 diff 仅含 C 的 26 个文件；含审查修复轮 P3（rev 戳记请求状态）与第二轮 settle 所有权修复；20 条验收矩阵见 [UX-01C-implementation.md](../ux/UX-01C-implementation.md)；未部署）
 
 依赖：UX-01B 的实现、定向门禁和接口边界已经完成。开发分支 `codex/ux01c-compatibility-e2e` 必须从 UX-01B 的精确已验证 head 创建；初始 PR base 指向 `codex/ux01b-progress-convergence`。B 合入 main 后再把 C 的 base 改成 `main`，确认 PR diff 只剩 C。
 
