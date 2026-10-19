@@ -34,7 +34,10 @@
                   "type": "string"
                 }
               },
-              "required": ["skillId", "path"],
+              "required": [
+                "skillId",
+                "path"
+              ],
               "type": "object"
             }
           },

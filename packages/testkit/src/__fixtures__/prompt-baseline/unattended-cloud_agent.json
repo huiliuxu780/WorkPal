@@ -102,7 +102,9 @@
                   "type": "string"
                 }
               },
-              "required": ["prompt"],
+              "required": [
+                "prompt"
+              ],
               "type": "object"
             }
           },
@@ -119,7 +121,9 @@
                   "type": "string"
                 }
               },
-              "required": ["name"],
+              "required": [
+                "name"
+              ],
               "type": "object"
             }
           },
@@ -147,7 +151,10 @@
                   "type": "string"
                 }
               },
-              "required": ["question", "options"],
+              "required": [
+                "question",
+                "options"
+              ],
               "type": "object"
             }
           },
@@ -169,7 +176,9 @@
                   "type": "string"
                 }
               },
-              "required": ["path"],
+              "required": [
+                "path"
+              ],
               "type": "object"
             }
           },
@@ -190,7 +199,9 @@
                   "type": "string"
                 }
               },
-              "required": ["confirm_name"],
+              "required": [
+                "confirm_name"
+              ],
               "type": "object"
             }
           },
@@ -206,7 +217,9 @@
                   "type": "string"
                 }
               },
-              "required": ["itemId"],
+              "required": [
+                "itemId"
+              ],
               "type": "object"
             }
           },
@@ -222,7 +235,9 @@
                   "type": "string"
                 }
               },
-              "required": ["path"],
+              "required": [
+                "path"
+              ],
               "type": "object"
             }
           },
@@ -243,7 +258,10 @@
                   "type": "string"
                 }
               },
-              "required": ["skillId", "path"],
+              "required": [
+                "skillId",
+                "path"
+              ],
               "type": "object"
             }
           },
@@ -303,7 +321,9 @@
                   "type": "string"
                 }
               },
-              "required": ["query"],
+              "required": [
+                "query"
+              ],
               "type": "object"
             }
           },
@@ -320,7 +340,9 @@
                   "type": "string"
                 }
               },
-              "required": ["id"],
+              "required": [
+                "id"
+              ],
               "type": "object"
             }
           },
@@ -339,7 +361,9 @@
                   "type": "string"
                 }
               },
-              "required": ["name"],
+              "required": [
+                "name"
+              ],
               "type": "object"
             }
           },
@@ -358,7 +382,9 @@
                   "type": "string"
                 }
               },
-              "required": ["content"],
+              "required": [
+                "content"
+              ],
               "type": "object"
             }
           },
@@ -376,7 +402,9 @@
                   "type": "string"
                 }
               },
-              "required": ["message"],
+              "required": [
+                "message"
+              ],
               "type": "object"
             }
           },
@@ -392,7 +420,9 @@
                   "type": "string"
                 }
               },
-              "required": ["itemId"],
+              "required": [
+                "itemId"
+              ],
               "type": "object"
             }
           },
@@ -456,7 +486,12 @@
                   "type": "string"
                 },
                 "status": {
-                  "enum": ["pending", "active", "resolved", "deferred"],
+                  "enum": [
+                    "pending",
+                    "active",
+                    "resolved",
+                    "deferred"
+                  ],
                   "type": "string"
                 },
                 "title": {
@@ -468,7 +503,13 @@
                   "type": "string"
                 }
               },
-              "required": ["todoId", "expectedRevision", "order", "title", "status"],
+              "required": [
+                "todoId",
+                "expectedRevision",
+                "order",
+                "title",
+                "status"
+              ],
               "type": "object"
             }
           },
@@ -508,7 +549,13 @@
                 },
                 "intent": {
                   "description": "What the recipient should do with this message. Defaults to request.",
-                  "enum": ["request", "result", "question", "status", "fyi"],
+                  "enum": [
+                    "request",
+                    "result",
+                    "question",
+                    "status",
+                    "fyi"
+                  ],
                   "type": "string"
                 },
                 "message": {
@@ -516,7 +563,9 @@
                   "type": "string"
                 }
               },
-              "required": ["message"],
+              "required": [
+                "message"
+              ],
               "type": "object"
             }
           },
@@ -535,14 +584,20 @@
                   "type": "string"
                 },
                 "status": {
-                  "enum": ["open", "parked", "done"],
+                  "enum": [
+                    "open",
+                    "parked",
+                    "done"
+                  ],
                   "type": "string"
                 },
                 "title": {
                   "type": "string"
                 }
               },
-              "required": ["itemId"],
+              "required": [
+                "itemId"
+              ],
               "type": "object"
             }
           },
@@ -560,7 +615,11 @@
                 },
                 "status": {
                   "description": "Defaults to open.",
-                  "enum": ["open", "parked", "done"],
+                  "enum": [
+                    "open",
+                    "parked",
+                    "done"
+                  ],
                   "type": "string"
                 },
                 "title": {
@@ -568,7 +627,9 @@
                   "type": "string"
                 }
               },
-              "required": ["title"],
+              "required": [
+                "title"
+              ],
               "type": "object"
             }
           },
@@ -589,11 +650,18 @@
                         "type": "string"
                       },
                       "kind": {
-                        "enum": ["tool_event", "external_effect", "artifact"],
+                        "enum": [
+                          "tool_event",
+                          "external_effect",
+                          "artifact"
+                        ],
                         "type": "string"
                       }
                     },
-                    "required": ["kind", "id"],
+                    "required": [
+                      "kind",
+                      "id"
+                    ],
                     "type": "object"
                   },
                   "maxItems": 10,
@@ -643,7 +711,13 @@
                   "type": "string"
                 }
               },
-              "required": ["stepId", "expectedRevision", "order", "title", "status"],
+              "required": [
+                "stepId",
+                "expectedRevision",
+                "order",
+                "title",
+                "status"
+              ],
               "type": "object"
             }
           },
@@ -671,7 +745,10 @@
                   "type": "string"
                 }
               },
-              "required": ["id", "prompt"],
+              "required": [
+                "id",
+                "prompt"
+              ],
               "type": "object"
             }
           },
@@ -761,7 +838,9 @@
                   "type": "string"
                 }
               },
-              "required": ["command"],
+              "required": [
+                "command"
+              ],
               "type": "object"
             }
           },
@@ -780,12 +859,23 @@
                 },
                 "contentType": {
                   "default": "application/json",
-                  "enum": ["application/json", "application/x-www-form-urlencoded", "text/plain"],
+                  "enum": [
+                    "application/json",
+                    "application/x-www-form-urlencoded",
+                    "text/plain"
+                  ],
                   "type": "string"
                 },
                 "method": {
                   "default": "GET",
-                  "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+                  "enum": [
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE",
+                    "HEAD"
+                  ],
                   "type": "string"
                 },
                 "name": {
@@ -797,7 +887,10 @@
                   "type": "string"
                 }
               },
-              "required": ["name", "url"],
+              "required": [
+                "name",
+                "url"
+              ],
               "type": "object"
             }
           },
@@ -895,7 +988,11 @@
                       ]
                     }
                   },
-                  "required": ["name", "prompt", "cron"],
+                  "required": [
+                    "name",
+                    "prompt",
+                    "cron"
+                  ],
                   "type": "object"
                 },
                 {
@@ -963,11 +1060,20 @@
                     },
                     "unit": {
                       "description": "Unit for every (minimum 1 minute).",
-                      "enum": ["minutes", "hours", "days"],
+                      "enum": [
+                        "minutes",
+                        "hours",
+                        "days"
+                      ],
                       "type": "string"
                     }
                   },
-                  "required": ["name", "prompt", "every", "unit"],
+                  "required": [
+                    "name",
+                    "prompt",
+                    "every",
+                    "unit"
+                  ],
                   "type": "object"
                 },
                 {
@@ -1045,7 +1151,11 @@
                       ]
                     }
                   },
-                  "required": ["name", "prompt", "runAt"],
+                  "required": [
+                    "name",
+                    "prompt",
+                    "runAt"
+                  ],
                   "type": "object"
                 },
                 {
@@ -1123,7 +1233,11 @@
                       ]
                     }
                   },
-                  "required": ["name", "prompt", "delayMinutes"],
+                  "required": [
+                    "name",
+                    "prompt",
+                    "delayMinutes"
+                  ],
                   "type": "object"
                 },
                 {
@@ -1201,7 +1315,11 @@
                       ]
                     }
                   },
-                  "required": ["name", "prompt", "delaySeconds"],
+                  "required": [
+                    "name",
+                    "prompt",
+                    "delaySeconds"
+                  ],
                   "type": "object"
                 }
               ]
@@ -1224,7 +1342,9 @@
                   "type": "string"
                 }
               },
-              "required": ["url"],
+              "required": [
+                "url"
+              ],
               "type": "object"
             }
           },
@@ -1273,11 +1393,18 @@
                 },
                 "transport": {
                   "description": "streamable_http for modern HTTP servers, sse for legacy HTTP servers, stdio for local commands.",
-                  "enum": ["streamable_http", "sse", "stdio"],
+                  "enum": [
+                    "streamable_http",
+                    "sse",
+                    "stdio"
+                  ],
                   "type": "string"
                 }
               },
-              "required": ["name", "transport"],
+              "required": [
+                "name",
+                "transport"
+              ],
               "type": "object"
             }
           },
@@ -1291,7 +1418,10 @@
               "properties": {
                 "computer_mode": {
                   "description": "Optional. team shares one screen with other Team bots; dedicated (Private) gets its own. Defaults to team.",
-                  "enum": ["team", "dedicated"],
+                  "enum": [
+                    "team",
+                    "dedicated"
+                  ],
                   "type": "string"
                 },
                 "instructions": {
@@ -1308,7 +1438,9 @@
                   "type": "string"
                 }
               },
-              "required": ["name"],
+              "required": [
+                "name"
+              ],
               "type": "object"
             }
           },
@@ -1327,7 +1459,10 @@
                   "type": "string"
                 }
               },
-              "required": ["path", "content"],
+              "required": [
+                "path",
+                "content"
+              ],
               "type": "object"
             }
           },
@@ -1343,7 +1478,9 @@
                   "type": "string"
                 }
               },
-              "required": ["reason"],
+              "required": [
+                "reason"
+              ],
               "type": "object"
             }
           },
@@ -1375,7 +1512,9 @@
                   "type": "string"
                 }
               },
-              "required": ["id"],
+              "required": [
+                "id"
+              ],
               "type": "object"
             }
           },
@@ -1404,7 +1543,9 @@
                                   "type": "string"
                                 }
                               },
-                              "required": ["type"],
+                              "required": [
+                                "type"
+                              ],
                               "type": "object"
                             },
                             {
@@ -1419,7 +1560,10 @@
                                   "type": "string"
                                 }
                               },
-                              "required": ["type", "name"],
+                              "required": [
+                                "type",
+                                "name"
+                              ],
                               "type": "object"
                             },
                             {
@@ -1436,7 +1580,10 @@
                                   "type": "string"
                                 }
                               },
-                              "required": ["type", "username"],
+                              "required": [
+                                "type",
+                                "username"
+                              ],
                               "type": "object"
                             },
                             {
@@ -1447,7 +1594,9 @@
                                   "type": "string"
                                 }
                               },
-                              "required": ["type"],
+                              "required": [
+                                "type"
+                              ],
                               "type": "object"
                             }
                           ]
@@ -1461,14 +1610,22 @@
                           "type": "string"
                         }
                       },
-                      "required": ["name", "origin", "auth"],
+                      "required": [
+                        "name",
+                        "origin",
+                        "auth"
+                      ],
                       "type": "object"
                     },
                     "label": {
                       "type": "string"
                     },
                     "purpose": {
-                      "enum": ["otp", "password", "api_key"],
+                      "enum": [
+                        "otp",
+                        "password",
+                        "api_key"
+                      ],
                       "type": "string"
                     },
                     "replace": {
@@ -1476,7 +1633,11 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["label", "purpose", "credential"],
+                  "required": [
+                    "label",
+                    "purpose",
+                    "credential"
+                  ],
                   "type": "object"
                 },
                 {
@@ -1489,11 +1650,19 @@
                       "type": "string"
                     },
                     "purpose": {
-                      "enum": ["otp", "password", "api_key"],
+                      "enum": [
+                        "otp",
+                        "password",
+                        "api_key"
+                      ],
                       "type": "string"
                     }
                   },
-                  "required": ["label", "purpose", "connectionId"],
+                  "required": [
+                    "label",
+                    "purpose",
+                    "connectionId"
+                  ],
                   "type": "object"
                 }
               ]
@@ -1514,7 +1683,9 @@
                   "type": "string"
                 }
               },
-              "required": ["name"],
+              "required": [
+                "name"
+              ],
               "type": "object"
             }
           },
