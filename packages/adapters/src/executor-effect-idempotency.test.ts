@@ -62,6 +62,7 @@ function fixture(runId = "run-1") {
     status: "queued",
     trigger: "user",
     leaseFence: 0,
+    planPhase: null as string | null,
   };
   const memoryCommit = vi.fn(async () => ({ revision: "rev-1" }));
   const externalEffect = {
@@ -105,9 +106,9 @@ function fixture(runId = "run-1") {
     ),
   };
   const prisma = {
-    runPlan: { findUnique: vi.fn(async () => null) },
+    runPlan: { findUnique: vi.fn(async (): Promise<unknown> => null) },
     runPlanReview: {
-      findFirst: vi.fn(async () => null),
+      findFirst: vi.fn(async (): Promise<unknown> => null),
       count: vi.fn(async () => 0),
     },
     deliveryRecord: { findMany: vi.fn(async () => []) },
@@ -634,8 +635,11 @@ describe("unified plan review execution gate (UX-02)", () => {
         }),
       }),
     );
-    const ask = f.pauseRunForInput.mock.calls[0]![0].blocks[0];
-    expect(ask.planReview).toMatchObject({
+    const pauseCall = f.pauseRunForInput.mock.calls[0] as unknown as [
+      { blocks: Array<{ planReview?: unknown }> },
+    ];
+    const ask = pauseCall[0].blocks[0] as { planReview?: Record<string, unknown> };
+    expect(ask.planReview ?? {}).toMatchObject({
       planId: plan.planId,
       contentVersion: 1,
       goal: plan.goal,
