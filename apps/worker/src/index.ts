@@ -529,7 +529,7 @@ async function main() {
         void jobs
           .enqueue(memoryOutboxJob())
           .catch((error) => logger.error("memory.outbox scheduling", error));
-      }, 30_000)
+      }, memoryConfig.outboxSweepMs)
     : null;
   memoryOutboxSweep?.unref?.();
   if (memoryOutboxSweep) {
@@ -542,7 +542,7 @@ async function main() {
         void enqueueLaggingMemoryExtractions(prisma, jobs).catch((error) =>
           logger.error("memory.extract scan scheduling", error),
         );
-      }, 5 * 60_000)
+      }, memoryConfig.scanSweepMs)
     : null;
   memoryScanSweep?.unref?.();
   const reconciler = createJobReconciler({

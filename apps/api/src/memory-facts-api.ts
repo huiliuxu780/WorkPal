@@ -17,6 +17,7 @@ import {
   promoteFactAsActor,
   recordMemoryFromEdit,
   rejectFactAsActor,
+  SecretLikeContentError,
   evidenceToDto,
   loadFactViews,
   type FactServiceDeps,
@@ -88,7 +89,7 @@ async function runFactMutation(
     if (error instanceof FactForbiddenError) {
       throw new ORPCError("FORBIDDEN", { message: error.message });
     }
-    if (error instanceof EmptyImportError) {
+    if (error instanceof EmptyImportError || error instanceof SecretLikeContentError) {
       throw new ORPCError("BAD_REQUEST", { message: error.message });
     }
     throw error;

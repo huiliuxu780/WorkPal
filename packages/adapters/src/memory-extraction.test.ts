@@ -6,7 +6,7 @@ vi.mock("@rakazo/db", async (importOriginal) => {
     ...actual,
     getSpaceMemoryPolicy: vi.fn(async () => ({ autoExtraction: "on" as const })),
     listAuthorizedFacts: vi.fn(async () => []),
-    createFact: vi.fn(async () => ({ status: "created" as const, fact: { id: "fact-new" } })),
+    createFactInTransaction: vi.fn(async () => ({ status: "created" as const, fact: { id: "fact-new" } })),
     advanceExtractionCursor: vi.fn(async () => true),
     getMemoryModelUsage: vi.fn(async () => []),
     incrementMemoryModelUsage: vi.fn(async () => undefined),
@@ -23,7 +23,7 @@ vi.mock("@rakazo/memory", async (importOriginal) => {
 
 import {
   advanceExtractionCursor,
-  createFact,
+  createFactInTransaction,
   getMemoryModelUsage,
   getSpaceMemoryPolicy,
   type PrismaClient,
@@ -53,6 +53,7 @@ interface HarnessOptions {
   modelFails?: boolean;
   usage?: Array<{ purpose: string; calls: number; promptTokens: number; completionTokens: number }>;
   blocked?: boolean;
+  clearedDuringModel?: boolean;
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -92,7 +93,19 @@ function harness(options: HarnessOptions = {}) {
         })),
       ),
     },
-    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => callback({})),
+    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        thread: {
+          // Commit-time generation re-check: a Clear during the model call
+          // bumps this and the whole batch must be discarded.
+          findUnique: vi.fn(async () => ({
+            historyCompactionGeneration: options.clearedDuringModel
+              ? (options.threadGeneration ?? 0) + 1
+              : options.threadGeneration ?? 0,
+          })),
+        },
+      }),
+    ),
   } as unknown as PrismaClient;
   const runCalls: Array<Record<string, unknown>> = [];
   const runtime = {
@@ -133,7 +146,7 @@ function harness(options: HarnessOptions = {}) {
   vi.mocked(getMemoryModelUsage).mockResolvedValue(options.usage ?? []);
   vi.mocked(isBlockedResurrection).mockResolvedValue(options.blocked ?? false);
   vi.mocked(advanceExtractionCursor).mockResolvedValue(true);
-  vi.mocked(createFact).mockResolvedValue({
+  vi.mocked(createFactInTransaction).mockResolvedValue({
     status: "created",
     fact: { id: "fact-new" },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -214,7 +227,7 @@ describe("runMemoryExtraction", () => {
     const result = await runMemoryExtraction(h.deps, { threadId: "thread-1" });
     expect(result.status).toBe("processed");
     expect(h.runtime.run).not.toHaveBeenCalled();
-    expect(createFact).not.toHaveBeenCalled();
+    expect(createFactInTransaction).not.toHaveBeenCalled();
     // The watermark still advances past untrusted messages.
     expect(advanceExtractionCursor).toHaveBeenCalled();
   });
@@ -223,7 +236,7 @@ describe("runMemoryExtraction", () => {
     const h = harness();
     const result = await runMemoryExtraction(h.deps, { threadId: "thread-1" });
     expect(result).toEqual({ status: "processed", scanned: 1, candidates: 1, merged: 0, rejected: 0 });
-    const [call] = vi.mocked(createFact).mock.calls;
+    const [call] = vi.mocked(createFactInTransaction).mock.calls;
     const input = call![1];
     expect(input.origin).toBe("model_candidate");
     expect(input.state).toBe("candidate");
@@ -279,7 +292,7 @@ describe("runMemoryExtraction", () => {
     });
     result = await runMemoryExtraction(verbatim.deps, { threadId: "thread-1" });
     expect(result).toMatchObject({ rejected: 1, candidates: 0 });
-    expect(createFact).not.toHaveBeenCalled();
+    expect(createFactInTransaction).not.toHaveBeenCalled();
   });
 
   it("rejects candidates citing messages the model never saw", async () => {
@@ -292,7 +305,7 @@ describe("runMemoryExtraction", () => {
     });
     const result = await runMemoryExtraction(h.deps, { threadId: "thread-1" });
     expect(result).toMatchObject({ rejected: 1, candidates: 0 });
-    expect(createFact).not.toHaveBeenCalled();
+    expect(createFactInTransaction).not.toHaveBeenCalled();
   });
 
   it("never re-recommends sources behind a deleted or rejected fact", async () => {
@@ -300,7 +313,7 @@ describe("runMemoryExtraction", () => {
     const result = await runMemoryExtraction(h.deps, { threadId: "thread-1" });
     expect(result).toMatchObject({ rejected: 1, candidates: 0 });
     expect(isBlockedResurrection).toHaveBeenCalled();
-    expect(createFact).not.toHaveBeenCalled();
+    expect(createFactInTransaction).not.toHaveBeenCalled();
   });
 
   it("stops at daily quotas without calling the model", async () => {
@@ -335,6 +348,15 @@ describe("runMemoryExtraction", () => {
     // The scan restarted from -1 under the current generation.
     const txArg = vi.mocked(advanceExtractionCursor).mock.calls[0]![1];
     expect(txArg).toMatchObject({ expectedGeneration: 0, expectedWatermark: -1 });
+  });
+
+  it("discards the whole batch when the thread was cleared during the model call", async () => {
+    const h = harness({ clearedDuringModel: true });
+    const result = await runMemoryExtraction(h.deps, { threadId: "thread-1" });
+    expect(result).toEqual({ status: "processed", scanned: 1, candidates: 0, merged: 0, rejected: 1 });
+    // Neither the candidate nor the cursor may be written back by a late job.
+    expect(createFactInTransaction).not.toHaveBeenCalled();
+    expect(advanceExtractionCursor).not.toHaveBeenCalled();
   });
 
   it("treats unparsable model output as processed-zero and still advances", async () => {

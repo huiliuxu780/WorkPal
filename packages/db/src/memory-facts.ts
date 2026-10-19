@@ -343,6 +343,18 @@ export async function createFact(
   prisma: PrismaClient,
   input: CreateFactInput,
 ): Promise<CreateFactResult> {
+  return prisma.$transaction((tx) => createFactInTransaction(tx, input));
+}
+
+/**
+ * Transaction-scoped variant so a caller can commit the fact together with
+ * its own guards (extraction re-checks the thread generation and advances
+ * the cursor in the SAME transaction — a late job never commits partially).
+ */
+export async function createFactInTransaction(
+  tx: Prisma.TransactionClient,
+  input: CreateFactInput,
+): Promise<CreateFactResult> {
   const text = validateFactText(input.text);
   const literalValues = sanitizeLiteralValues(input.literalValues);
   const canonicalKey = canonicalKeyFor(input.kind, text);
@@ -354,7 +366,7 @@ export async function createFact(
     throw new Error("Model-inferred facts must stay candidates until the user confirms");
   }
 
-  return prisma.$transaction(async (tx) => {
+  {
     const existing = await tx.memoryFact.findFirst({
       where: { spaceId, scopeKind, scopeKey, canonicalKey, state: { in: ["active", "candidate"] } },
       orderBy: { updatedAt: "desc" },
@@ -467,7 +479,7 @@ export async function createFact(
       });
     }
     return { status: "created" as const, fact };
-  });
+  }
 }
 
 async function mutateFact(

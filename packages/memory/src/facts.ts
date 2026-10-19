@@ -27,7 +27,7 @@ import {
   type FactScope,
   type MemoryScopeKind,
 } from "@rakazo/db";
-import { blocksToAgentHistoryText } from "@rakazo/core";
+import { blocksToAgentHistoryText, containsOneTimeCode, containsSecretLikeContent } from "@rakazo/core";
 import type { MessageBlock } from "@rakazo/contracts";
 
 /**
@@ -299,13 +299,16 @@ export interface MemoryInjectionReadModel {
 /**
  * Cross-scope conflict resolution for one canonical identity (ME-01): the
  * same proposition can legitimately exist in several scopes (a promotion
- * keeps the original). The read path injects it once — an explicit bot-scope
- * fact wins over the generic space/user copies, newest confirmation breaks
- * remaining ties. User corrections always travel with their own fact row and
- * are never overridden by model-origin copies (those cannot be active
- * without confirmation in the first place).
+ * keeps the original). The read path injects it once. Precedence follows the
+ * card exactly: the user's explicit corrections/direct edits apply FIRST
+ * (origin tier), and only among equally-sourced copies does the explicit
+ * bot scope override the generic space/user defaults; newest confirmation
+ * breaks remaining ties. Model inference can never win here — it cannot be
+ * active without user confirmation in the first place.
  */
 export function dedupeFactsByCanonicalKey(facts: MemoryFact[]): MemoryFact[] {
+  const originTier = (origin: string): number =>
+    origin === "user_direct" || origin === "user_confirmed" ? 2 : 1; // legacy_import ranks below explicit user entries
   const scopePriority: Record<string, number> = { bot: 3, space: 2, user: 1 };
   const byKey = new Map<string, MemoryFact>();
   for (const fact of facts) {
@@ -314,13 +317,18 @@ export function dedupeFactsByCanonicalKey(facts: MemoryFact[]): MemoryFact[] {
       byKey.set(fact.canonicalKey, fact);
       continue;
     }
-    const existingPriority = scopePriority[existing.scopeKind] ?? 0;
-    const candidatePriority = scopePriority[fact.scopeKind] ?? 0;
+    const existingRank = originTier(existing.origin);
+    const candidateRank = originTier(fact.origin);
+    const existingScope = scopePriority[existing.scopeKind] ?? 0;
+    const candidateScope = scopePriority[fact.scopeKind] ?? 0;
     const existingConfirmed = existing.lastConfirmedAt?.getTime() ?? 0;
     const candidateConfirmed = fact.lastConfirmedAt?.getTime() ?? 0;
     if (
-      candidatePriority > existingPriority ||
-      (candidatePriority === existingPriority && candidateConfirmed > existingConfirmed)
+      candidateRank > existingRank ||
+      (candidateRank === existingRank && candidateScope > existingScope) ||
+      (candidateRank === existingRank &&
+        candidateScope === existingScope &&
+        candidateConfirmed > existingConfirmed)
     ) {
       byKey.set(fact.canonicalKey, fact);
     }
@@ -419,6 +427,13 @@ export async function recordMemoryFromRun(
 ): Promise<RunMemoryResult> {
   const text = input.text.trim();
   if (!text) return { status: "invalid", reason: "empty_content" };
+  try {
+    assertNotSecretLike(text, input.literalValues);
+  } catch {
+    // M-A03: secrets never become memories, even on an explicit ask; the
+    // tool result points at the credential mechanisms instead.
+    return { status: "invalid", reason: "secret_like_content" };
+  }
   const run = await deps.prisma.run.findUnique({
     where: { id: input.runId },
     select: {
@@ -542,6 +557,7 @@ export async function recordMemoryFromEdit(
   },
 ): Promise<CreateFactResult> {
   assertScopeAuthority(input.actor, input.scopeKind, input.scopeId);
+  assertNotSecretLike(input.text, input.literalValues);
   return createFact(deps.prisma, {
     scope: { spaceId: input.actor.spaceId, scopeKind: input.scopeKind, scopeId: input.scopeId },
     ownerUserId: input.actor.userId,
@@ -631,6 +647,36 @@ export class EmptyImportError extends Error {
   }
 }
 
+export class SecretLikeContentError extends Error {
+  constructor() {
+    super(
+      "This looks like a secret or one-time code. Memories are not a credential store — save it through the credential/secret mechanisms instead.",
+    );
+    this.name = "SecretLikeContentError";
+  }
+}
+
+/**
+ * M-A03 gate on EVERY first-party write path (tools, UI create/correct,
+ * extraction): credential-shaped content and one-time codes never become
+ * injectable memories, no matter how explicit the request. Legacy document
+ * imports are excepted deliberately — the document body already reaches the
+ * model through the legacy injection budget, so blocking the import would
+ * not reduce exposure (documented in the delivery record).
+ */
+function assertNotSecretLike(text: string, literalValues: unknown): void {
+  const literalText =
+    literalValues && typeof literalValues === "object" && !Array.isArray(literalValues)
+      ? Object.entries(literalValues as Record<string, unknown>)
+          .map(([key, value]) => `${key} ${String(value)}`)
+          .join(" ")
+      : "";
+  const combined = `${text} ${literalText}`;
+  if (containsSecretLikeContent(combined) || containsOneTimeCode(combined)) {
+    throw new SecretLikeContentError();
+  }
+}
+
 export async function confirmFactAsActor(
   deps: FactServiceDeps,
   actor: FactActor,
@@ -661,6 +707,9 @@ export async function correctFactAsActor(
 ): Promise<MemoryFactMutationResult> {
   const fact = await requireVisibleFact(deps, actor, input.factId);
   if (!fact) throw new FactNotFoundError();
+  if (input.text !== undefined || input.literalValues !== undefined) {
+    assertNotSecretLike(input.text ?? fact.text, input.literalValues ?? fact.literalValues);
+  }
   const result = await correctFact(deps.prisma, {
     spaceId: actor.spaceId,
     actorUserId: actor.userId,

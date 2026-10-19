@@ -336,27 +336,21 @@ export const CONTEXT_OVERFLOW_MESSAGE =
   "This conversation no longer fits the model's context window even after compaction. Shorten the input, switch this bot to a model with a larger window, or start a new thread — the original messages are preserved and nothing was deleted.";
 
 /**
- * Post-compaction overflow guard (ME-02 M4): when the estimated request size
- * exceeds what the known window can hold after proportional reserves, the run
- * fails with an actionable message instead of silently dropping originals or
- * letting the provider reject mid-stream. Unknown windows never fabricate a
- * failure. Reserves are capped proportionally so small-window models are not
- * failed by absolute margin defaults.
+ * Post-compaction overflow guard (ME-02 M4): a hard, honest failure only
+ * when the estimated request cannot fit the RAW known window at all. The
+ * estimator is deliberately conservative (CJK counts ~1 token/char and can
+ * overestimate real tokenizer counts), so margins are NOT subtracted here —
+ * they belong to the trigger decisions, and subtracting them would kill
+ * runnable long CJK conversations. Unknown windows never fabricate a
+ * failure; the provider remains the final authority for borderline sizes.
  */
 export function detectContextOverflow(input: {
   contextWindowTokens: number | undefined | null;
   estimatedRequestTokens: number;
-  margins: Pick<CompactionMargins, "persistMarginTokens" | "persistMarginRatio" | "outputReserveTokens">;
 }): string | null {
   const window = input.contextWindowTokens;
   if (!window || window <= 0) return null;
-  const outputReserve = Math.min(input.margins.outputReserveTokens, Math.floor(window * 0.25));
-  const margin = Math.min(
-    Math.max(input.margins.persistMarginTokens, Math.floor(window * input.margins.persistMarginRatio)),
-    Math.floor(window * 0.1),
-  );
-  const available = window - outputReserve - margin;
-  if (input.estimatedRequestTokens > Math.max(0, available)) {
+  if (input.estimatedRequestTokens > window) {
     return CONTEXT_OVERFLOW_MESSAGE;
   }
   return null;

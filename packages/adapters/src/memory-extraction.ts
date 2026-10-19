@@ -1,24 +1,30 @@
 import { createHash } from "node:crypto";
 import type { AgentRuntime } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
-import { blocksToAgentHistoryText, estimatePromptTokens, promptSegment } from "@rakazo/core";
+import {
+  blocksToAgentHistoryText,
+  containsOneTimeCode,
+  containsSecretLikeContent,
+  estimatePromptTokens,
+  promptSegment,
+  sharesVerbatimRun,
+} from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import {
   advanceExtractionCursor,
-  createFact,
+  createFactInTransaction,
   getMemoryModelUsage,
   getSpaceMemoryPolicy,
   incrementMemoryModelUsage,
   listAuthorizedFacts,
   memoryEvidenceDigest,
+  sanitizeLiteralValues,
+  type CreateFactInput,
+  type CreateFactResult,
 } from "@rakazo/db";
 import { isBlockedResurrection, TRUSTED_HUMAN_ORIGIN_KINDS } from "@rakazo/memory";
 import { getLogger } from "@rakazo/logging";
-import {
-  containsOneTimeCode,
-  containsSecretLikeContent,
-  sharesVerbatimRun,
-} from "./memory-content-safety.js";
+
 import { resolveMemoryAuxModel, type MemoryJobsConfig } from "./memory-jobs-config.js";
 
 /**
@@ -314,16 +320,59 @@ export async function runMemoryExtraction(
   let committed = 0;
   let merged = 0;
   let rejected = 0;
+  const validated: CreateFactInput[] = [];
   for (const candidate of parsed.slice(0, deps.config.extractMaxCandidatesPerCall)) {
-    const verdict = await validateAndCommitCandidate(deps, thread, generation, byId, candidate, analyzed);
-    if (verdict === "created") committed += 1;
-    else if (verdict === "merged") merged += 1;
+    const prepared = await validateCandidate(deps, thread, generation, byId, candidate, analyzed);
+    if (prepared) validated.push(prepared);
     else rejected += 1;
   }
   // Extra candidates beyond the cap are rejected without model re-ask.
   rejected += Math.max(0, parsed.length - deps.config.extractMaxCandidatesPerCall);
 
-  await advanceCursor(deps, thread, generation, watermark, newWatermark);
+  // M-A05/M-A10: the whole commit — live generation re-check, cursor CAS and
+  // every candidate — is ONE transaction. A Clear that committed while the
+  // model was thinking invalidates the batch; nothing is written back.
+  const outcome = await deps.prisma.$transaction(async (tx) => {
+    const current = await tx.thread.findUnique({
+      where: { id: thread.id },
+      select: { historyCompactionGeneration: true },
+    });
+    if (!current || current.historyCompactionGeneration !== generation) return "stale" as const;
+    const advanced = await advanceExtractionCursor(tx, {
+      spaceId: thread.spaceId,
+      userId: thread.userId,
+      botId: thread.botId,
+      threadId: thread.id,
+      expectedGeneration: generation,
+      expectedWatermark: watermark,
+      newWatermark,
+    });
+    if (!advanced) return "stale" as const;
+    const results: CreateFactResult[] = [];
+    for (const factInput of validated) {
+      results.push(await createFactInTransaction(tx, factInput));
+    }
+    return results;
+  });
+  if (outcome === "stale") {
+    getLogger().info("memory.extract batch discarded: generation or cursor moved", {
+      "memory.extract.reason": "commit_stale",
+      "memory.extract.discarded": validated.length,
+      "thread.id": thread.id,
+    });
+    return {
+      status: "processed",
+      scanned: scanned.length,
+      candidates: 0,
+      merged: 0,
+      rejected: rejected + validated.length,
+    };
+  }
+  for (const result of outcome) {
+    if (result.status === "created") committed += 1;
+    else if (result.status === "merged") merged += 1;
+    else rejected += 1;
+  }
   getLogger().info("memory.extract processed", {
     "memory.extract.scanned": scanned.length,
     "memory.extract.trusted": trusted.length,
@@ -366,32 +415,32 @@ async function advanceCursor(
   }
 }
 
-async function validateAndCommitCandidate(
+async function validateCandidate(
   deps: MemoryExtractionDeps,
   thread: { id: string; spaceId: string; userId: string; botId: string | null },
   generation: number,
   byId: Map<string, TrustedMessage>,
   candidate: unknown,
   analyzedMessageIds: Set<string>,
-): Promise<"created" | "merged" | "rejected"> {
-  if (!candidate || typeof candidate !== "object") return "rejected";
+): Promise<CreateFactInput | null> {
+  if (!candidate || typeof candidate !== "object") return null;
   const proposal = candidate as Record<string, unknown>;
   const text = typeof proposal.text === "string" ? proposal.text.trim() : "";
   const kind = typeof proposal.kind === "string" && CANDIDATE_KINDS.has(proposal.kind) ? proposal.kind : "";
   const scope = proposal.scope === "user" ? "user" : "bot";
-  if (!text || !kind) return "rejected";
-  if (text.length > 500) return "rejected";
+  if (!text || !kind) return null;
+  if (text.length > 500) return null;
 
   // Evidence must cite messages this call actually analyzed, and every cited
   // message must be a trusted human message of this thread.
   const citedIds = Array.isArray(proposal.evidenceMessageIds)
     ? proposal.evidenceMessageIds.filter((id): id is string => typeof id === "string")
     : [];
-  if (citedIds.length === 0) return "rejected";
+  if (citedIds.length === 0) return null;
   const evidenceMessages: TrustedMessage[] = [];
   for (const id of citedIds) {
     const message = byId.get(id);
-    if (!message || !analyzedMessageIds.has(id)) return "rejected";
+    if (!message || !analyzedMessageIds.has(id)) return null;
     evidenceMessages.push(message);
   }
 
@@ -407,9 +456,16 @@ async function validateAndCommitCandidate(
         .map(([key, value]) => `${key} ${String(value)}`)
         .join(" ")
     : "";
-  if (containsSecretLikeContent(`${text} ${literalText}`)) return "rejected";
-  if (containsOneTimeCode(`${text} ${literalText}`)) return "rejected";
-  if (sharesVerbatimRun(text, evidenceMessages.map((message) => message.content))) return "rejected";
+  if (containsSecretLikeContent(`${text} ${literalText}`)) return null;
+  if (containsOneTimeCode(`${text} ${literalText}`)) return null;
+  if (sharesVerbatimRun(text, evidenceMessages.map((message) => message.content))) return null;
+  // Reject malformed restricted literals during validation so the commit
+  // transaction cannot throw mid-batch.
+  try {
+    sanitizeLiteralValues(literalValues);
+  } catch {
+    return null;
+  }
 
   const scopeKind = scope;
   const scopeId = scope === "user" ? thread.userId : thread.botId!;
@@ -427,38 +483,28 @@ async function validateAndCommitCandidate(
     })
   ) {
     // A deleted/rejected fact already covers these sources: never re-recommend.
-    return "rejected";
+    return null;
   }
 
-  try {
-    const result = await createFact(deps.prisma, {
-      scope: { spaceId: thread.spaceId, scopeKind, scopeId },
-      ownerUserId: thread.userId,
-      botId: thread.botId,
-      kind,
-      text,
-      ...(literalValues ? { literalValues } : {}),
-      origin: "model_candidate",
-      state: "candidate",
-      actorUserId: EXTRACTION_SERVICE_ACTOR,
-      evidence: evidenceMessages.map((message) => ({
-        threadId: thread.id,
-        threadGeneration: generation,
-        messageId: message.id,
-        messageSeq: message.seq,
-        authorUserId: message.authorUserId,
-        originKind: message.originKind,
-        evidenceType: "user_message",
-        sourceDigest: memoryEvidenceDigest(deps.digestKey, message.content),
-      })),
-    });
-    if (result.status === "created") return "created";
-    if (result.status === "merged") return "merged";
-    return "rejected"; // duplicate of an active fact or blocked by a user fact
-  } catch (error) {
-    getLogger().error("memory.extract candidate commit failed", error, {
-      "thread.id": thread.id,
-    });
-    return "rejected";
-  }
+  return {
+    scope: { spaceId: thread.spaceId, scopeKind, scopeId },
+    ownerUserId: thread.userId,
+    botId: thread.botId,
+    kind,
+    text,
+    ...(literalValues ? { literalValues } : {}),
+    origin: "model_candidate",
+    state: "candidate",
+    actorUserId: EXTRACTION_SERVICE_ACTOR,
+    evidence: evidenceMessages.map((message) => ({
+      threadId: thread.id,
+      threadGeneration: generation,
+      messageId: message.id,
+      messageSeq: message.seq,
+      authorUserId: message.authorUserId,
+      originKind: message.originKind,
+      evidenceType: "user_message",
+      sourceDigest: memoryEvidenceDigest(deps.digestKey, message.content),
+    })),
+  };
 }

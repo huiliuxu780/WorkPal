@@ -262,27 +262,32 @@ describe("detectContextOverflow", () => {
       detectContextOverflow({
         contextWindowTokens: undefined,
         estimatedRequestTokens: 10_000_000,
-        margins: DEFAULT_COMPACTION_MARGINS,
       }),
     ).toBeNull();
   });
 
-  it("fails with actionable guidance when the request exceeds the proportional reserve", () => {
+  it("fails with actionable guidance only when the estimate exceeds the raw window", () => {
     const message = detectContextOverflow({
       contextWindowTokens: 8_192,
-      estimatedRequestTokens: 7_500,
-      margins: DEFAULT_COMPACTION_MARGINS,
+      estimatedRequestTokens: 9_000,
     });
     expect(message).toBe(CONTEXT_OVERFLOW_MESSAGE);
     expect(message).toContain("new thread");
   });
 
-  it("keeps normal small-window requests running", () => {
+  it("keeps borderline requests running: margins belong to triggers, not the hard failure", () => {
+    // A conservative CJK estimate between the margined budget and the raw
+    // window must NOT kill a conversation the provider can still serve.
+    expect(
+      detectContextOverflow({
+        contextWindowTokens: 8_192,
+        estimatedRequestTokens: 7_500,
+      }),
+    ).toBeNull();
     expect(
       detectContextOverflow({
         contextWindowTokens: 8_192,
         estimatedRequestTokens: 3_000,
-        margins: DEFAULT_COMPACTION_MARGINS,
       }),
     ).toBeNull();
   });

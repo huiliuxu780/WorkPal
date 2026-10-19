@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | M-A01 | 通过 | E2E `apps/web/e2e/memory-facts.spec.ts`：Web 记住（可信 human_web 回合 → `user_direct` 单次激活）→ Clear 后同 Thread 新 generation 继续可用 → UI 查看来源（evidence 行含 `explicit_instruction`/accessible）→ 纠正（revision 2，同一身份）→ 删除（列表消失、`memory/facts/get` 非 200）→ UI 添加“已记下”回执仅在事务成功后出现。`WORKPAL_E2E_DATABASE_URL=…workpal_e2e_memory pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=memory-facts.spec.ts` → 1 passed (6.9s)。注入一致性由装配单测 + 黄金样本零漂移共同钉住（见 M-A07）。 |
 | M-A02 | 通过 | PG：`packages/db/src/memory-facts.postgres.test.ts`（模型候选禁止自激活、四 Thread 门槛以下候选不展示由 `listFactsForActor` 过滤、确认前无注入——候选不进 `listAuthorizedFacts` 读路径、拒绝后同证据不重复推荐 `findBlockingTombstone`）。提取 fixture：`packages/adapters/src/memory-extraction.test.ts`（10 项：policy 门、可信来源过滤、秘密/一次性码/逐字复制拒绝、幽灵证据引用拒绝、tombstone 拦截、配额、cursor CAS）。UI：`apps/web/src/pages/memory-facts.test.tsx`（候选确认 + “来自 4 个会话”门槛展示 + 冲突重载）。单次激活与推断门槛分离：`recordMemoryFromRun`（trusted && !ambiguous → active）vs `runMemoryExtraction`（永远 candidate）。 |
-| M-A03 | 通过 | 提取测试“never counts webhook, bot, system or foreign-author messages as user evidence”（webhook/bot/system/unknown/他人 authorUserId 全部不计数且不调模型）；秘密不进入候选（`containsSecretLikeContent`）也不进入汇总（secret_like_content 拒绝发布）；最终请求注入体经 `escapePromptData` + `<durable_memory>` 数据围栏 + AG-06 typed provenance（untrusted-content 集成 6/6 保持，trust-rules 字节断言未动）。 |
+| M-A03 | 通过 | 提取测试“never counts webhook, bot, system or foreign-author messages as user evidence”（webhook/bot/system/unknown/他人 authorUserId 全部不计数且不调模型）；秘密闸门覆盖**全部第一方写路径**——自动提取、汇总发布、remember/save_memory 工具与 UI 直接创建/纠正（`assertNotSecretLike`：凭据形状 + 一次性码中英文；工具返回可操作的“用凭据机制”指引，UI 返回 BAD_REQUEST；`facts.test.ts` 证明闸门先于任何数据库写入）。唯一例外是 legacy 文档逐条导入：文档正文本就经旧注入预算到达模型，拦截导入不减少暴露（代码注释与本文档如实记录）。最终请求注入体经 `escapePromptData` + `<durable_memory>` 数据围栏 + AG-06 typed provenance（untrusted-content 集成 6/6 保持，trust-rules 字节断言未动）。 |
 | M-A04 | 通过 | PG 旅程：个人事实对另一用户不可见（list/get 双路径）、逐条 promote 后 Space 成员可见、promote 幂等 replay；权限改变后旧汇总不可读：`loadValidContextSummary` 对 sourceVersions 缺失分片（权限收缩）判 stale（测试 “a permission-scope change (missing shard) also refuses the summary”）。 |
 | M-A05 | 通过 | CAS/Worker 集成：expectedRevision 冲突返回 `{status:"conflict",currentRevision}`（两页面并发纠正不静默覆盖）；分片行 `FOR UPDATE` 串行化同 scope 写入；提取 cursor 以 (generation, watermark) CAS，晚到/重复作业 `advanced=false` 丢弃；候选按 canonicalKey 部分唯一索引合并证据不重复建行（P2002 由部分唯一索引在 DB 层兜底，测试直接验证 active 重复插入被拒）。 |
 | M-A06 | 通过 | 汇总仅当每个输入分片版本完全匹配才可注入（`publishContextSummary` 按 sourceVersionDigest 唯一 + `loadValidContextSummary` 全量核对）；任一分片版本变化→stale→不注入并惰性入队重建；provider 故障不阻断第一方读取（外部 recall 失败仅记日志，事实注入独立；outbox 投影失败可见重试）。 |
@@ -46,6 +46,7 @@
 - **Expand-only 迁移**：`20261020100000_memory_facts_three_layer` 只建新表/索引，不重写旧行、不调用模型、可在空库与带旧文档库执行。active/candidate 去重用 partial unique index（superseded/deleted/rejected 保留 canonicalKey 作复活栅栏）；evidence 唯一索引 `NULLS NOT DISTINCT` 覆盖无消息证据。
 - **旧 Markdown 单向规则**：`MemoryDocument` 仍是旧格式兼容写入口（`memory.update` 不变）；新事实是新结构入口（facts API + 工具）；**禁止双向自动同步**。逐条用户确认 → `legacy_import` 事实并记录 `sourceDocumentId`，装配器对已导入文档跳过（不双重注入）；撤销 = 删除该事实（文档恢复注入）；拒绝 = 不导入（文档照旧）。旧文档不自动伪装成原子事实。
 - **ME-00 保留**：原生摘要失效仍按指纹 + 可信历史**重建**（非 drop-only），resume 跳过、sidecar 后写；新装配内容改变指纹 → 每 session 一次性保守重建（预期行为，非缺陷）。应用侧摘要派生依赖用 `ContextSummary.sourceVersions` 版本机制表达：任何分片版本/权限失配即拒读。
+- **P07 压缩指令有意扩展（M4 摘要内容要求）**：`prompts/auxiliary/history-compaction.md` 从“facts/decisions/unresolved work/preferences”扩展为显式要求**当前目标、已完成动作（点名已执行的外部操作以防重发）、决策、未完成事项与开放问题、续跑所需资源（标识符/路径/链接原样保留）、下一步**——对应用户结果 #4“知道哪些外部操作已完成，不重复发送”。首句（P07 registry marker）逐字保留；黄金样本**定向**再生成，diff 审查确认仅 `aux-history-compaction.json` 的指令文本变化，其余 24 个 fixture 字节不变（非整体刷新）。修订记录的 `promptVersion`（段文本 sha256 前 12 位）随内容自动更新。
 - **压缩兼容**：`Thread.historyCompactedUpToSeq/Summary/Generation` 指针原样保留（前端与 Worker 兼容）；`ThreadCompactionRevision` 是新增审计链（`includesToolResults=false` 如实记录产品消息不覆盖完整工具结果）。`history.compact` 旧 payload（无固定身份）仍可执行（回落 resolveModel 链），新入队一律携带固定身份。
 - **回退开关**：`WORKPAL_MEMORY_FACTS_ENABLED=false` → 注入回到旧 32KiB 文档路径（字节不变）、执行器不再入队 memory.extract；worker 两个 memory sweep 不启动。新表保留供修复，不覆盖旧文档。`WORKPAL_MEMORY_LEGACY_INJECTION_RETIRED=true` → 总预算收至 2000、legacy 层退出自动注入。`WORKPAL_HISTORY_COMPACTION_MODE=disabled` → 应用压缩整体关闭（实验/回滚）。
 - **离线备份边界**：用户删除会清空事实行与全部修订正文（保留 id/actor/revision/动作），但**不宣称离线备份即时擦除**；按现有备份保留策略，恢复流程必须重放删除记录（`memory_fact_revisions` 的 deleted 行即删除日志）以防复活。DEP-01 主机备份改造不在本批。
@@ -66,7 +67,7 @@
 
 **压缩余量（估算 token / 比例，env 可配）**：start=8,000 tokens 或 window×0.10 取大；persist=4,000 或 window×0.05 取大；输出预留 4,000；校验 persist 余量 ≤ start 余量（persist 不得早于 start 触发）。原生层：reserved 20,000；trigger=window−reserved（放不下时 window/2 兜底）；keep=clamp((window−reserved)×0.25, 2,000..8,000)；消息数 30/10 仅为粗粒度兜底。
 
-**作业配额（服务端配置，env 覆盖，单位）**：提取扫描 200 条/作业；单次模型调用 ≤50 条可信消息、≤20,000 字符输入、≤5 个候选；汇总 ≤200 条事实、≤12,000 字符输入、输出 ≤1,200 估算 token；提取 50 calls/用户/UTC 日；汇总 100 calls/用户/UTC 日；记忆辅助合计 200,000 估算 token/用户/UTC 日（无计费数据，成本以 token+调用数记账，如实标注）；outbox 20 行/批、失败指数退避封顶 1h、10 次后 parked 24h（可见可重试）；汇总 fan-out ≤20 接收者/分片；辅助调用超时 120s；周期提取扫描每 5 分钟 ≤20 个滞后 Thread；outbox drain 每 30s。
+**作业配额（服务端配置，env 覆盖，单位）**：提取扫描 200 条/作业；单次模型调用 ≤50 条可信消息、≤20,000 字符输入、≤5 个候选；汇总 ≤200 条事实、≤12,000 字符输入、输出 ≤1,200 估算 token；提取 50 calls/用户/UTC 日；汇总 100 calls/用户/UTC 日；记忆辅助合计 200,000 估算 token/用户/UTC 日（无计费数据，成本以 token+调用数记账，如实标注）；outbox 20 行/批、失败指数退避封顶 1h、10 次后 parked 24h（可见可重试）；汇总 fan-out ≤20 接收者/分片；辅助调用超时 120s；周期提取扫描间隔 `WORKPAL_MEMORY_SCAN_SWEEP_MS` 默认 300,000ms、每轮 ≤20 个滞后 Thread；outbox drain 间隔 `WORKPAL_MEMORY_OUTBOX_SWEEP_MS` 默认 30,000ms（频率同为服务端配置）。
 
 **模型身份**：提取/汇总模型独立配置 `WORKPAL_MEMORY_EXTRACTION_MODEL`/`WORKPAL_MEMORY_SUMMARY_MODEL`（`provider/modelId`，复用该 provider 的部署密钥，不新增密钥材料）；未配置 → 部署默认模型；不可解析 → 作业显式跳过/失败，**绝不回落主聊天模型**。压缩摘要模型 = 入队时固定的会话 Run 身份（三者不混用）。每次调用记录实际 provider/model、prompt 版本（段文本 sha256 前 12 位）、实际 usage token（无 usage 事件时记估算）。
 
@@ -79,10 +80,12 @@ node scripts/generate-prompt-texts.mjs && git diff --exit-code packages/core/src
 
 # 单元（vitest，仓库根）
 pnpm exec vitest run packages/adapters/src --exclude "**/*.integration.test.ts" --exclude "**/*.postgres.test.ts"
-# → 158 files / 2447 passed | 1 skipped（含新 memory-injection 12、memory-extraction 10、
-#   memory-summary 8、memory-outbox 6、memory-recall 4、compaction-mode 17）
+# → 含新 memory-injection 12、memory-extraction 11（含模型调用期间 Clear 的整批丢弃用例）、
+#   memory-summary 8、memory-outbox 6、memory-recall 4、compaction-mode 17、
+#   memory/facts.test 9（去重优先级 + 秘密闸门先于数据库）、core/memory-content-safety 12
 pnpm exec vitest run packages/db/src packages/core/src packages/memory/src packages/contracts/src apps/api/src --exclude "**/*.postgres.test.ts"
-# → 1587 passed | 14 skipped（execution-rpc 1 项为基线既有失败，见 §5）
+# → 合并全仓单测扫尾（adapters+db+core+memory+contracts+adapter-kit+api）：
+#   288 files / 3,945 passed | 13 skipped；唯一失败 execution-rpc 1 项为基线既有（见 §5）
 pnpm exec vitest run apps/web/src    # → 87 files / 677 passed
 
 # PostgreSQL 集成（VERIFY_DATABASE=1 DATABASE_URL=…）
@@ -125,6 +128,10 @@ pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=knowledge-panel.s
 6. **群聊 Thread 不参与提取**（`thread.botId=null` → skipped）：群聊记忆需另行设计归属，本批不扩大范围。
 7. **成本记账无计费数据**：以调用数+token（实际 usage 优先、估算兜底并标注）为成本代理，不虚构美元数字。
 8. **多副本部署前提不变**：AgentScope 本地 JSON state 的跨实例问题（P4 §9）不因本批改变。
+9. **溢出防护语义**：`detectContextOverflow` 只在估算请求超过**原始窗口**时硬性失败——估算器对 CJK 偏保守（1 字符≈1 token），若再扣除余量会误杀可运行请求；余量只用于压缩触发决策。边缘尺寸由 provider 作最终裁决。
+10. **语义工具面保持既有 gating**：`recall_memory/forget_memory` 仍仅在配置外部 provider 时暴露（AG-03 冻结工具面不动）；无 provider 的 Bot 由自动注入承担召回、由 Knowledge UI 承担逐条删除，`remember` 始终可用。这是有意的兼容决定，非能力关闭。
+11. **save_memory 的作用域**：一律写 bot-scope 事实；外部 provider 的 isolated/shared 语义只影响索引投影命名空间。space-scope 事实只能经人工 promote 或 UI 产生（模型不能把记忆直接写入共享范围）。
+12. **压缩修订的“策略”字段**：以 `promptVersion`（指令段 sha256）+ `includesToolResults` + 固定模型身份共同表达；调度模式（四模式）是执行期属性，不入修订行。
 
 ## 6. 与 UX-02 的协调
 

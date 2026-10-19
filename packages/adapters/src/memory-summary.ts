@@ -1,6 +1,6 @@
 import type { AgentRuntime } from "@rakazo/adapter-kit";
 import { createHash } from "node:crypto";
-import { estimatePromptTokens, promptSegment } from "@rakazo/core";
+import { containsSecretLikeContent, estimatePromptTokens, promptSegment } from "@rakazo/core";
 import type { MemoryFact, PrismaClient } from "@rakazo/db";
 import {
   incrementMemoryModelUsage,
@@ -9,7 +9,7 @@ import {
 } from "@rakazo/db";
 import { loadMemoryInjectionReadModel } from "@rakazo/memory";
 import { getLogger } from "@rakazo/logging";
-import { containsSecretLikeContent } from "./memory-content-safety.js";
+
 import { truncateToEstimatedTokens } from "./memory-injection.js";
 import { resolveMemoryAuxModel, type MemoryJobsConfig } from "./memory-jobs-config.js";
 

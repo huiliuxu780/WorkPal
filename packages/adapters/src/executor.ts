@@ -3281,7 +3281,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
               scopeKind: "bot",
             });
             if (result.status === "invalid") {
-              return finish({ ok: false, error: `Could not remember: ${result.reason}` });
+              return finish({
+                ok: false,
+                error:
+                  result.reason === "secret_like_content"
+                    ? "Refused: that looks like a secret or one-time code. Memories are not a credential store — use the credential/secret mechanisms instead."
+                    : `Could not remember: ${result.reason}`,
+              });
             }
             return finish({
               ok: true,
@@ -3756,7 +3762,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
               scopeKind: "bot",
             });
             if (result.status === "invalid") {
-              return finish({ ok: false, error: `Could not save memory: ${result.reason}` });
+              return finish({
+                ok: false,
+                error:
+                  result.reason === "secret_like_content"
+                    ? "Refused: that looks like a secret or one-time code. Memories are not a credential store — use the credential/secret mechanisms instead."
+                    : `Could not save memory: ${result.reason}`,
+              });
             }
             return finish({
               ok: true,
@@ -4897,7 +4909,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ...runtimeHistory.map((message) => message.content),
               JSON.stringify(toolsForRetryRun(tools, run.retryOfRunId)),
             ]),
-            margins: deps.historyCompaction?.margins ?? DEFAULT_COMPACTION_MARGINS,
           });
           if (contextOverflow) {
             getLogger().error("run exceeds model context after compaction", {

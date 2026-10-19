@@ -19,9 +19,16 @@ export function containsSecretLikeContent(text: string): boolean {
   return SECRET_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-/** One-time codes and OTP-shaped values must never become memories. */
+/**
+ * One-time codes and OTP-shaped values must never become memories.
+ * CJK keywords cannot use \b word boundaries (CJK characters are non-word
+ * characters in JS regex), so they are matched bare; the latin keywords keep
+ * their boundaries to avoid false hits like "zipcode 12345".
+ */
 export function containsOneTimeCode(text: string): boolean {
-  return /\b(?:code|otp|验证码|认证码)\b[^0-9]{0,12}\d{4,8}\b/i.test(text);
+  return /(?:\b(?:code|otp)\b|验证码|认证码|校验码|一次性密码)[^0-9]{0,12}\d{4,8}(?!\d)/i.test(
+    text,
+  );
 }
 
 /**

@@ -33,6 +33,10 @@ export interface MemoryJobsConfig {
   summaryMaxInputChars: number;
   /** Outbox rows claimed per drain job (count). */
   outboxBatchSize: number;
+  /** Outbox drain sweep interval (milliseconds). */
+  outboxSweepMs: number;
+  /** Periodic extraction gap-scan interval (milliseconds). */
+  scanSweepMs: number;
   /** Recipients fanned out per changed shard (count). */
   summaryFanoutLimit: number;
   /** Auxiliary model timeout (milliseconds). */
@@ -51,6 +55,8 @@ export const DEFAULT_MEMORY_JOBS_CONFIG: MemoryJobsConfig = {
   summaryMaxFacts: 200,
   summaryMaxInputChars: 12_000,
   outboxBatchSize: 20,
+  outboxSweepMs: 30_000,
+  scanSweepMs: 300_000,
   summaryFanoutLimit: 20,
   auxCallTimeoutMs: 120_000,
 };
@@ -80,6 +86,8 @@ export function memoryJobsConfigFromEnv(
     summaryMaxFacts: positiveInt(source, "WORKPAL_MEMORY_SUMMARY_MAX_FACTS", defaults.summaryMaxFacts),
     summaryMaxInputChars: positiveInt(source, "WORKPAL_MEMORY_SUMMARY_MAX_INPUT_CHARS", defaults.summaryMaxInputChars),
     outboxBatchSize: positiveInt(source, "WORKPAL_MEMORY_OUTBOX_BATCH", defaults.outboxBatchSize),
+    outboxSweepMs: positiveInt(source, "WORKPAL_MEMORY_OUTBOX_SWEEP_MS", defaults.outboxSweepMs),
+    scanSweepMs: positiveInt(source, "WORKPAL_MEMORY_SCAN_SWEEP_MS", defaults.scanSweepMs),
     summaryFanoutLimit: positiveInt(source, "WORKPAL_MEMORY_SUMMARY_FANOUT", defaults.summaryFanoutLimit),
     auxCallTimeoutMs: positiveInt(source, "WORKPAL_MEMORY_AUX_TIMEOUT_MS", defaults.auxCallTimeoutMs),
   };
