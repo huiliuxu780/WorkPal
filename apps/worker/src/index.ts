@@ -71,6 +71,7 @@ import { createRootLogger } from "@rakazo/logging/axiom";
 import { MarkdownMemoryStore } from "@rakazo/memory";
 
 const logger = createRootLogger(SERVICE_NAMES.worker);
+// CI-01 worker-chain selection proof
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
