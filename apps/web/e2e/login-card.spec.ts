@@ -88,11 +88,14 @@ test("saves a website login from a username and password card without echoing ei
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   const region = page.getByRole("region", { name: "需要你处理" });
-  const reloadedCard = region.getByTestId("secret-ask-card");
+  // UX-01 returns a settled plain Run's receipt to its message bubble.
+  // It remains Saved and input-free, outside the attention region.
+  await expect(region).toHaveCount(0);
+  const reloadedCard = page.getByTestId("secret-ask-card");
   await expect(reloadedCard).toBeVisible({ timeout: 15_000 });
   await expect(reloadedCard.getByText("Saved", { exact: true })).toBeVisible();
   await expect(reloadedCard.locator("input")).toHaveCount(0);
-  // Exactly one card in the transcript: the bubble renders no second AskCard.
+  // Exactly one settled receipt; the attention region renders no duplicate.
   await expect(page.getByTestId("secret-ask-card")).toHaveCount(1);
   await expect(page.getByText(username)).toHaveCount(0);
   await expect(page.getByText(password)).toHaveCount(0);

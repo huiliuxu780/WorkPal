@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { AvatarBodyColorSchema } from "./bot-avatar.js";
 import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { InterventionEventPayloadSchema } from "./intervention.js";
@@ -328,8 +329,10 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     changeId: z.string(),
     beforeMode: z.enum(["legacy", "character", "upload"]),
     beforeCharacter: z.enum(["dot", "treble", "wave", "bounce"]).nullable(),
+    beforeBodyColor: AvatarBodyColorSchema.optional(),
     afterMode: z.enum(["character", "upload"]),
     afterCharacter: z.enum(["dot", "treble", "wave", "bounce"]).nullable(),
+    afterBodyColor: AvatarBodyColorSchema.optional(),
   }),
   z.object({
     /** Compact card for a remote cloud coding agent (not the bot computer). */

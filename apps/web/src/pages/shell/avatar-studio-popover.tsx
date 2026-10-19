@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { Trans } from "@lingui/react/macro";
-import type { AvatarCharacter } from "@rakazo/contracts";
+import { AVATAR_BODY_COLORS, type AvatarBodyColor, type AvatarCharacter } from "@rakazo/contracts";
 import {
   AgentAvatar,
   Dialog,
@@ -13,7 +13,7 @@ import { Check, Pencil, Upload, X } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useRef, useState } from "react";
 
 export type AvatarSelection =
-  | { avatarMode: "character"; avatarCharacter: AvatarCharacter }
+  | { avatarMode: "character"; avatarCharacter: AvatarCharacter; avatarBodyColor?: AvatarBodyColor }
   | { avatarMode: "upload"; color: string };
 
 const characters: readonly AvatarCharacter[] = ["dot", "treble", "wave", "bounce"];
@@ -36,6 +36,7 @@ function Preview({
       <AgentAvatar
         botId={identity}
         character={selection.avatarCharacter}
+        bodyColor={selection.avatarBodyColor ?? "ink"}
         name={name}
         size={size}
         activity="idle"
@@ -225,33 +226,69 @@ export function AvatarStudioPopover({
               </div>
               <div className="rk-scroll min-h-[210px] flex-1 space-y-4 overflow-y-auto p-5">
                 {tab === "character" ? (
-                  <div className="grid grid-cols-4 gap-2" role="tabpanel">
-                    {characters.map((character) => (
-                      <button
-                        key={character}
-                        type="button"
-                        aria-label={character}
-                        aria-pressed={
-                          draft.avatarMode === "character" && draft.avatarCharacter === character
-                        }
-                        onClick={() =>
-                          setDraft({ avatarMode: "character", avatarCharacter: character })
-                        }
-                        className="relative flex h-20 items-center justify-center rounded-xl border border-border bg-background focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-primary"
-                      >
-                        <AgentAvatar
-                          botId={`${identity}-${character}`}
-                          character={character}
-                          name={character}
-                          size={64}
-                          activity="idle"
-                          ariaHidden
+                  <div role="tabpanel" className="space-y-4">
+                    <div role="group" className="flex gap-2" aria-label={t`Body color`}>
+                      {AVATAR_BODY_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          aria-label={color}
+                          aria-pressed={
+                            draft.avatarMode === "character" &&
+                            (draft.avatarBodyColor ?? "ink") === color
+                          }
+                          onClick={() =>
+                            setDraft({
+                              avatarMode: "character",
+                              avatarCharacter:
+                                draft.avatarMode === "character" ? draft.avatarCharacter : "dot",
+                              avatarBodyColor: color,
+                            })
+                          }
+                          className="h-7 w-7 rounded-full border-2 border-transparent aria-pressed:border-primary"
+                          style={{ backgroundColor: `var(--wp-avatar-${color})` }}
                         />
-                        {draft.avatarMode === "character" && draft.avatarCharacter === character ? (
-                          <Check className="absolute right-1 top-1" size={14} />
-                        ) : null}
-                      </button>
-                    ))}
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {characters.map((character) => (
+                        <button
+                          key={character}
+                          type="button"
+                          aria-label={character}
+                          aria-pressed={
+                            draft.avatarMode === "character" && draft.avatarCharacter === character
+                          }
+                          onClick={() =>
+                            setDraft({
+                              avatarMode: "character",
+                              avatarCharacter: character,
+                              avatarBodyColor:
+                                draft.avatarMode === "character"
+                                  ? (draft.avatarBodyColor ?? "ink")
+                                  : "ink",
+                            })
+                          }
+                          className="relative flex h-20 items-center justify-center rounded-xl border border-border bg-background focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-primary"
+                        >
+                          <AgentAvatar
+                            botId={`${identity}-${character}`}
+                            character={character}
+                            bodyColor={
+                              draft.avatarMode === "character" ? draft.avatarBodyColor : "ink"
+                            }
+                            name={character}
+                            size={64}
+                            activity="idle"
+                            ariaHidden
+                          />
+                          {draft.avatarMode === "character" &&
+                          draft.avatarCharacter === character ? (
+                            <Check className="absolute right-1 top-1" size={14} />
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div role="tabpanel" className="space-y-3">

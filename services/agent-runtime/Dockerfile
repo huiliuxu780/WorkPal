@@ -3,7 +3,11 @@ WORKDIR /app
 COPY services/agent-runtime/pom.xml ./pom.xml
 RUN mvn -B -q dependency:go-offline
 COPY services/agent-runtime/src ./src
-RUN mvn -B -q package -DskipTests
+# AG-04: fixed prompt texts live in the repository-root prompts/ tree and are
+# packaged as jar classpath resources; the image build copies them explicitly
+# and points the resource property at the copy.
+COPY prompts/ ./prompts/
+RUN mvn -B -q package -DskipTests -Dprompts.source.dir=/app/prompts
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

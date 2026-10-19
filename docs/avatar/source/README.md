@@ -1,7 +1,7 @@
 # Pinned avatar source assets
 
-`final/` contains byte-for-byte copies of the supplied implementation SVGs: four full characters, four original compact 16px characters, the prop SVGs, and the eye-bound reference. It is preserved as the source baseline. `compact-v0.7/` contains the approved replacement 16px set. Verify both sets with SHA256SUMS. AV-02 may copy the `compact-v0.7/` SVG bytes into production; 24px and larger use the unchanged full SVGs in `final/`.
+`final/` is the supplied v0.7 FINAL release: 96 character SVGs (four characters × six colors × four tiers), 63 prop SVGs, 96 static poses, geometry/palette metadata, two normative specs and the reference demo. Production copies of all 255 SVGs are verified byte-for-byte. The manifest paths are relative to this directory; run `shasum -a 256 -c SHA256SUMS` here.
 
-The compiled avatar spec and MOTION-SPEC v0.6 FINAL are pinned by SHA-256 in [AV-00-decision.md](../AV-00-decision.md) and checked in as sanitized copies under `spec/` (2026-10-18): MOTION-SPEC is byte-identical to its pinned original; the compiled spec has one local home path redacted in its source-list heading — the exact redaction is recorded in the decision's Source pin section. Do not edit the originals or silently alter the SVG paths.
+Current normative snapshots: [MOTION-SPEC](./spec/MOTION-SPEC-v0.7-final.md) and [visual spec](./spec/SPEC-v0.7-final.md). Source files remain unchanged.
 
-The supplied compact dot and treble SVGs are identical. The user delegated the 16px revision to Codex on 2026-10-17. The versioned [compact-v0.7 acceptance note](../review/compact-v0.7-acceptance.md) records the one changed silhouette, actual-size visual evidence, and limitations. The original `final/*-16.svg` files remain unchanged for comparison.
+`compact-16px-hook/` is the historical 2026-10-17 compact silhouette revision, formerly named `compact-v0.7/`; it is unrelated to this release and no longer used at runtime. The old motion spec is retained in `spec/history/` so historical AV-00 pins remain reproducible. The old compiled product task is historical; current v0.7 visual inputs take precedence for this update.

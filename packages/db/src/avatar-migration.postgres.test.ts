@@ -70,4 +70,32 @@ describePostgres("legacy avatar conversion (PostgreSQL)", () => {
       avatarCharacter: first.avatarCharacter,
     });
   });
+  it("backfills populated pre-v0.7 rows as ink and preserves later colors on replay", async () => {
+    const db = isolated.db.prisma;
+    await db.$executeRawUnsafe('ALTER TABLE "bots" DROP COLUMN "avatarBodyColor"');
+    await db.$executeRawUnsafe(
+      'ALTER TABLE "bot_avatar_changes" DROP COLUMN "beforeBodyColor", DROP COLUMN "afterBodyColor"',
+    );
+    const sql = readFileSync(
+      new URL(
+        "../prisma/migrations/20261019120000_avatar_body_color/migration.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const apply = async () => {
+      for (const statement of sql
+        .split(";")
+        .map((s) => s.trim())
+        .filter(Boolean))
+        await db.$executeRawUnsafe(statement);
+    };
+    await apply();
+    expect((await db.bot.findUniqueOrThrow({ where: { id: ids[0] } })).avatarBodyColor).toBe("ink");
+    await db.bot.update({ where: { id: ids[0] }, data: { avatarBodyColor: "pink" } });
+    await apply();
+    expect((await db.bot.findUniqueOrThrow({ where: { id: ids[0] } })).avatarBodyColor).toBe(
+      "pink",
+    );
+  });
 });

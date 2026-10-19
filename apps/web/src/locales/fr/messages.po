@@ -864,6 +864,10 @@ msgstr "Jeton porteur"
 msgid "Blocked"
 msgstr ""
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Body color"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Démarrage du bureau en direct…"

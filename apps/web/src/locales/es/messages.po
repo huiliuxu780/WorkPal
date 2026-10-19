@@ -864,6 +864,10 @@ msgstr "Token Bearer"
 msgid "Blocked"
 msgstr ""
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Body color"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Iniciando escritorio en vivo…"

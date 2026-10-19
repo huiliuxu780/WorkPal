@@ -3,6 +3,9 @@ import {
   type Actor,
   AvatarCharacterSchema,
   type AvatarCharacter,
+  type AvatarBodyColor,
+  AvatarBodyColorSchema,
+  pickAvatarBodyColor,
   type AvatarMode,
   type Bot,
   type BotSection,
@@ -49,6 +52,7 @@ function mapBot(
     color: string;
     avatarMode?: string;
     avatarCharacter?: string | null;
+    avatarBodyColor?: string;
     notifyOnFinish: boolean;
     pinned: boolean;
     sectionId: string | null;
@@ -84,6 +88,7 @@ function mapBot(
     instructions: bot.instructions,
     color: bot.color,
     ...resolveAvatarIdentity(bot.avatarMode, bot.avatarCharacter, bot.color),
+    avatarBodyColor: AvatarBodyColorSchema.parse(bot.avatarBodyColor ?? "ink"),
     notifyOnFinish: bot.notifyOnFinish,
     pinned: bot.pinned,
     sectionId: bot.sectionId,
@@ -145,6 +150,7 @@ export function createRepos(prisma: PrismaClient) {
         color: true,
         avatarMode: true,
         avatarCharacter: true,
+        avatarBodyColor: true,
         notifyOnFinish: true,
         pinned: true,
         sectionId: true,
@@ -173,6 +179,7 @@ export function createRepos(prisma: PrismaClient) {
         title: bot.title,
         color: bot.color,
         ...resolveAvatarIdentity(bot.avatarMode, bot.avatarCharacter, bot.color),
+    avatarBodyColor: AvatarBodyColorSchema.parse(bot.avatarBodyColor ?? "ink"),
         notifyOnFinish: bot.notifyOnFinish,
         pinned: bot.pinned,
         sectionId: bot.sectionId,
@@ -398,6 +405,7 @@ export function createRepos(prisma: PrismaClient) {
         color?: string;
         avatarMode?: AvatarMode;
         avatarCharacter?: AvatarCharacter | null;
+        avatarBodyColor?: AvatarBodyColor;
         parentBotId?: string | null;
         computerMode?: ComputerMode;
         spawnKey?: string;
@@ -485,6 +493,12 @@ export function createRepos(prisma: PrismaClient) {
             avatarMode = "character";
             avatarCharacter = pickAvatarCharacter(existing, botId);
           }
+          let avatarBodyColor = input.avatarBodyColor ?? "ink";
+          if (avatarMode === "character" && input.avatarBodyColor === undefined) {
+            await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${actor.userId}, 2))::text AS "lock"`);
+            const existing = await tx.bot.findMany({ where: { userId: actor.userId, avatarMode: "character" }, select: { avatarMode: true, avatarBodyColor: true } });
+            avatarBodyColor = pickAvatarBodyColor(existing, botId);
+          }
           const created = await tx.bot.create({
             data: {
               id: botId,
@@ -498,6 +512,7 @@ export function createRepos(prisma: PrismaClient) {
               color,
               avatarMode,
               avatarCharacter,
+              avatarBodyColor,
               position: (positions._max.position ?? -1) + 1,
               parentBotId: input.parentBotId ?? null,
               computerId: teamComputer.id,

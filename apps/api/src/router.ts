@@ -1,3 +1,4 @@
+import { AvatarBodyColorSchema } from "@rakazo/contracts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { implement, ORPCError } from "@orpc/server";
 import type {
@@ -139,6 +140,7 @@ import {
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
+  promptSegment,
   turnExecutionForSource,
   userTurnCollaboration,
 } from "@rakazo/core";
@@ -662,8 +664,8 @@ export function callMarkerClientNonce(callId: string): string {
   return `${CALL_CLIENT_NONCE_PREFIX}${callId}:marker`;
 }
 
-const HANG_UP_PROMPT =
-  "The voice call just ended because the user hung up. First call end_call with a short title for the call (leave farewell empty). Then, if anything the user asked for during the call is still unfinished, complete it now as a normal chat reply with full formatting. If nothing is pending, reply with one short sentence.";
+/** P04 fixed hang-up task text (call_end trigger): prompts/chat/hang-up.md. */
+export const HANG_UP_PROMPT = promptSegment("chat/hang-up");
 
 function manualRetryMessage(reason: string): string {
   switch (reason) {
@@ -701,8 +703,8 @@ function mapSpaceLifecycleError(error: unknown): unknown {
   return error;
 }
 
-const BOT_INTRO_PROMPT =
-  "You were just created. In one reply, say what you understood your role to be from your title, description and instructions, and ask for anything you need to get started.";
+/** P01/P04 fixed creation-intro task text (created trigger): prompts/chat/bot-intro.md. */
+export const BOT_INTRO_PROMPT = promptSegment("chat/bot-intro");
 
 /**
  * A freshly created bot otherwise sits silent until someone hands it real work,
@@ -1525,6 +1527,7 @@ export function createRouter(deps: RouterDeps) {
             notifyOnFinish: source.notifyOnFinish,
             color: source.color,
             ...resolveAvatarIdentity(source.avatarMode, source.avatarCharacter, source.color),
+            avatarBodyColor: AvatarBodyColorSchema.parse(source.avatarBodyColor),
             computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
             modelProvider: source.modelProvider,
             modelId: source.modelId,
@@ -1667,7 +1670,7 @@ export function createRouter(deps: RouterDeps) {
         }
         let avatarChoice =
           input.avatarMode === "character"
-            ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter! }
+            ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter!, avatarBodyColor: input.avatarBodyColor }
             : input.avatarMode !== undefined || input.color !== undefined
               ? {
                   avatarMode: (input.avatarMode ??
@@ -6094,6 +6097,7 @@ async function spaceNavigationDto(
           color: bot.color,
           avatarMode: bot.avatarMode,
           avatarCharacter: bot.avatarCharacter,
+          avatarBodyColor: bot.avatarBodyColor,
           notifyOnFinish: bot.notifyOnFinish,
           pinned: bot.pinned,
           sectionId: bot.sectionId,

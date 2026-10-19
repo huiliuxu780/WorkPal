@@ -864,6 +864,10 @@ msgstr "Token portador"
 msgid "Blocked"
 msgstr ""
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Body color"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Iniciando a área de trabalho ao vivo..."
