@@ -10,7 +10,7 @@ This document describes implemented paths and recorded findings; it does not aut
 - **Model-visible tools** are captured at the real TS adapter → Java runtime → local model fixture request boundary, or asserted against frozen literals derived from `selectBuiltinToolsForRun` plus the Java native surface. "Empty" always means empty **including Java natives**.
 - Captured fact: `run_subagent` remains in the TS selection for chat runs but is never registered or exposed by the Java runtime (AG-02 suspension), so it never appears in a model-visible set.
 - Captured fact: the chat-scope native `load_skill_through_path` is registered only when the request carries skills; production chat requests carry the default skill set, so it is visible on ordinary chat runs and on the created intro, but not on delivery runs (`skills: []`).
-- Prompt family IDs (P01–P14) come from the [inventory](./agent-prompt-inventory.md); family markers are pinned in the registry and asserted against production composers. AG-04 will attach stable segment IDs.
+- Prompt family IDs (P01–P14) come from the [inventory](./agent-prompt-inventory.md); family markers are pinned in the registry and asserted against production composers. Since AG-04, fixed bodies live in [`prompts/`](../prompts/README.md) and the registry maps every family to its stable segment IDs (`PROMPT_FAMILY_SEGMENTS`).
 - Evidence layers: `unit` (offline composers/registry), `integration` (real jar + model fixture), `postgres` (full app + production executor + PG), `java`, `e2e`.
 
 ## Scenarios

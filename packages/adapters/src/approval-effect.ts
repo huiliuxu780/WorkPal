@@ -1,4 +1,5 @@
 import type { AgentToolExecutionResult } from "@rakazo/adapter-kit";
+import { renderPromptSegment } from "@rakazo/core";
 
 export type ApprovalPausedToolResult = AgentToolExecutionResult & { terminate: true };
 
@@ -232,19 +233,21 @@ export function approvalReplayResourceError(
   if (catalog) {
     if (!liveRoute) return undefined;
     if (!catalogApprovalMatchesLiveRoute(catalog, liveRoute)) {
-      return `Approved request ${toolName} was for a different connector resource.`;
+      // Fixed text: prompts/feedback/replay-different-resource.md (P14).
+      return renderPromptSegment("feedback/replay-different-resource", { tool: toolName });
     }
     return undefined;
   }
   const bound = boundDirectApprovalDetails(approvedRequest, marker);
   if (!bound) {
     if (catalogRemapped) {
-      return `Approved direct request ${toolName} must be replayed as a direct tool call.`;
+      // Fixed text: prompts/feedback/replay-direct-required.md (P14).
+      return renderPromptSegment("feedback/replay-direct-required", { tool: toolName });
     }
     return undefined;
   }
   if (!approvalRoutesMatch(bound.route, liveRoute)) {
-    return `Approved request ${toolName} was for a different connector resource.`;
+    return renderPromptSegment("feedback/replay-different-resource", { tool: toolName });
   }
   return undefined;
 }

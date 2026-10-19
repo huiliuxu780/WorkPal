@@ -139,6 +139,7 @@ import {
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
+  promptSegment,
   turnExecutionForSource,
   userTurnCollaboration,
 } from "@rakazo/core";
@@ -660,9 +661,8 @@ export function callMarkerClientNonce(callId: string): string {
   return `${CALL_CLIENT_NONCE_PREFIX}${callId}:marker`;
 }
 
-/** P04 fixed hang-up task text (call_end trigger). Exported for scenario-contract evidence. */
-export const HANG_UP_PROMPT =
-  "The voice call just ended because the user hung up. First call end_call with a short title for the call (leave farewell empty). Then, if anything the user asked for during the call is still unfinished, complete it now as a normal chat reply with full formatting. If nothing is pending, reply with one short sentence.";
+/** P04 fixed hang-up task text (call_end trigger): prompts/chat/hang-up.md. */
+export const HANG_UP_PROMPT = promptSegment("chat/hang-up");
 
 function spaceTeardownTimeoutMs(): number {
   const override = Number(process.env.SPACE_TEARDOWN_TIMEOUT_MS ?? "");
@@ -680,9 +680,8 @@ function mapSpaceLifecycleError(error: unknown): unknown {
   return error;
 }
 
-/** P01/P04 fixed creation-intro task text (created trigger). Exported for scenario-contract evidence. */
-export const BOT_INTRO_PROMPT =
-  "You were just created. In one reply, say what you understood your role to be from your title, description and instructions, and ask for anything you need to get started.";
+/** P01/P04 fixed creation-intro task text (created trigger): prompts/chat/bot-intro.md. */
+export const BOT_INTRO_PROMPT = promptSegment("chat/bot-intro");
 
 /**
  * A freshly created bot otherwise sits silent until someone hands it real work,
