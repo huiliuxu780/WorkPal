@@ -185,7 +185,6 @@ describe("AgentScope per-call tool visibility", () => {
   });
 
   it("refreshes connector tools on every model call of the same run", async () => {
-    let surfaceRound = 0;
     const request: AgentRunRequest = {
       botId: "bot-1",
       threadId: "vis-same-run",
@@ -195,9 +194,11 @@ describe("AgentScope per-call tool visibility", () => {
       history: [],
       tools: [keepTool, flipV1],
       currentTools: async () => {
-        surfaceRound += 1;
-        if (surfaceRound === 1) return [keepTool, flipV1];
-        if (surfaceRound === 2) return [keepTool];
+        // Key off completed model HTTP, not currentTools invocations: execute-time
+        // revalidation also calls this, and must not skip a visibility round.
+        const round = modelRequests.filter((entry) => entry.model === "vis-same-run").length;
+        if (round === 0) return [keepTool, flipV1];
+        if (round === 1) return [keepTool];
         return [keepTool, flipV2];
       },
       executeTool: async (name, args) => {
