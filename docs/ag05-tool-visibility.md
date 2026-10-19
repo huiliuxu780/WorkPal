@@ -24,19 +24,19 @@ A backend denial, or a refresh that only takes effect on the next Run / `session
 | Backend → runtime | Sibling POST `/v1/tool-surface` `{ runId }` → `{ tools: [{ name, description, inputSchema, readOnly }] }`. Zero new `RunRequest` fields. URL derived from `/v1/tool-executions`. |
 | Ownership | Per-Run `ActiveBridgeRun` + per-Run `currentTools`. Two Bots/Threads/users never share a live surface. |
 | Visibility | `ModelCallInput.tools` = native policy-gated harness tools ∪ current backend allow-list. Name **and** schema come from the live surface. |
-| Execution | Revoked `BackendSchemaTool`s stay registered so a hallucinated call reaches WorkPal's refusal instead of crashing inside AgentScope. `ToolBridgeClient.allows(name)` and the adapter's `/v1/tool-executions` 403 both refuse names missing from the live set. Executor `applyTool` also refuses connector names missing from the refreshed `connectorTools` map. |
+| Execution | Revoked `BackendSchemaTool`s stay registered so a hallucinated call reaches WorkPal's refusal instead of crashing inside AgentScope. `ToolBridgeClient.allows(name)` filters model-visible tools. Missing-name `/v1/tool-executions` calls still POST (AG-08) and return HTTP 200 `{ status: "error", executed: false }`. Executor `applyTool` refuses connector names missing from the refreshed `connectorTools` map. |
 | Fail-closed | Malformed, missing, or HTTP-failed surface fetch keeps the previous allow-list. The adapter `currentTools` catch and executor `loadLiveRunTools` catch do the same. A transport blip cannot enlarge or shrink authorization. |
 | Native tools | Plan / skill stay TurnPolicy-gated. Auxiliary scopes stay empty. `run_subagent` is never re-registered. Helper remains production-suspended. |
 | Prompt | AG-04 files and the composed system message are **unchanged**. Live capability is the tool schema list on the final model request; AG-04 segments do not enumerate connector tool names. |
 
-AG-08 owns pending-call consumption after a revoked-tool refusal, effect/`permission_revoked` lifecycle, and the next-Run session deadlock (AG-03 findings A/B). Those pins stay red until the AG-08 commit group.
+AG-08 owns pending-call consumption after a revoked-tool refusal, effect/`permission_revoked` lifecycle, and the next-Run session deadlock (AG-03 findings A/B). Delivery: [ag08-permission-revoked-recovery.md](./ag08-permission-revoked-recovery.md).
 
 ## Production changes
 
 Java:
 
 - `ToolSurfaceRefresh.java` (new) — per-call surface refresh, re-register live backend tools, keep revoked backend tools, filter `ModelCallInput.tools`.
-- `ToolBridgeClient.java` — `liveTools` starts as the request snapshot; `refreshSurface()` POSTs the sibling URL; `allows()` uses the live set; `execute()` still throws `Tool is not allowed for this run` (AG-08 will convert this throw into a typed tool-error result).
+- `ToolBridgeClient.java` — `liveTools` starts as the request snapshot; `refreshSurface()` POSTs the sibling URL; `allows()` uses the live set for visibility. `execute()` always POSTs; AG-08 converted the former allow-list throw into a typed tool-error result from WorkPal.
 - `RuntimeEngine.java` — install the middleware before `enablePlanMode`.
 
 TypeScript:
@@ -55,10 +55,10 @@ CI:
 | Layer | File | Proves |
 | --- | --- | --- |
 | Java + real jar + fixture | `ToolVisibilityRefreshIntegrationTest.java` (4) | Same-Run 3-call available→revoke→reauth with schema change; hallucinated revoked tool refused, provider HTTP=0; two concurrent runs isolated; 500 keep-previous fail-closed |
-| TS adapter unit | `agentscope-runtime.test.ts` (+1) | `/v1/tool-surface` alpha→beta; stale alpha 403; live beta 200; two runs do not mix |
+| TS adapter unit | `agentscope-runtime.test.ts` (+1) | `/v1/tool-surface` alpha→beta; stale alpha HTTP 200 `{ status: "error", executed: false }` (AG-08); live beta 200; two runs do not mix |
 | TS adapter → jar → fixture | `agentscope-tool-visibility.integration.test.ts` (3) | Same-Run 3 rounds with `currentTools`; hallucinated revoke with zero `flip_tool` provider execution; `team-chat-judge` tools strictly `[]` |
 | Production PG chain | `scenario-contract.postgres.test.ts` (+1) | Same Run, Gmail connected → revoke mid-run → restore; three captured model requests; keep-tool `runtime_current_time` still executes; zero Gmail provider executions |
-| AG-03/AG-04 regression | scenario-contract unit + jar integration + prompt-files baseline + aux/untrusted/provenance/judge | Start-of-run tool sets, prompt bytes, auxiliary emptiness, helper suspension unchanged. Intentional difference vs AG-03: later model calls in the **same** Run now see the live surface. S09-C3 A/B remain pinned for AG-08. |
+| AG-03/AG-04 regression | scenario-contract unit + jar integration + prompt-files baseline + aux/untrusted/provenance/judge | Start-of-run tool sets, prompt bytes, auxiliary emptiness, helper suspension unchanged. Intentional difference vs AG-03: later model calls in the **same** Run now see the live surface. S09-C3 recovery is AG-08. |
 
 Captured same-Run journey (Java and TS fixture, identical shape):
 
@@ -66,7 +66,7 @@ Captured same-Run journey (Java and TS fixture, identical shape):
 2. Surface drops `flip_tool`. Request 2 tools = `keep_tool` only.
 3. Surface restores `flip_tool` with v2 schema (`mode`). Request 3 includes `flip_tool` and the new schema. The restored call executes once with `{ mode: "restored" }`.
 
-Hallucinated `flip_tool` after revoke: next model request omits it; `/v1/tool-executions` is never called for that name; the refusal is observable (`not allowed` in the tool-error path). No fake success.
+Hallucinated `flip_tool` after revoke: next model request omits it; the bridge POST (AG-08) returns a typed error and is not a provider execution; the refusal is observable. No fake success.
 
 ## Verification log (local, 2026-10-19, macOS arm64, JDK 21 Homebrew 21.0.12.1, pnpm 9)
 
@@ -84,11 +84,11 @@ Local `pnpm test:integration --spec=scenario-contract.postgres.test.ts` could no
 
 - AG-03 recorded per-Run assembly as fact. AG-05 changes the **second and later** model requests of a Run when the live surface changes. First-request frozen literals in the AG-03 registry stay the start-of-run contract.
 - AG-04 golden final-request bytes are unchanged (no prompt-file edit). Capability announcement is the live `tools` array on the wire.
-- S09-C3 findings A/B (revoked pending-call fails the Run with effect still `approved`; next same-thread Run deadlocks in `resumeTools`) stay pinned. AG-08 converts those pins to the frozen recovery outcomes.
+- S09-C3 findings A/B are closed by AG-08 ([ag08-permission-revoked-recovery.md](./ag08-permission-revoked-recovery.md)).
 
 ## Remaining / boundaries
 
-- AG-08 on this same branch: consume the pending tool call, typed `permission_revoked` effect/Run outcomes, usable next Run, keep PostgreSQL history and the legitimate working context.
+- AG-08 on this same branch: consume the pending tool call, typed `permission_revoked` effect/Run outcomes, usable next Run, keep PostgreSQL history and the legitimate working context. See [ag08-permission-revoked-recovery.md](./ag08-permission-revoked-recovery.md).
 - MR-01 intersection: executor `currentTools` / live allow-list only. Do not operate the MR-01 worktree.
 - Helper re-enable remains hard-gated on an upstream AgentScope fix (AG-02).
 - Real-model quality/injection resistance: **未评估**.
