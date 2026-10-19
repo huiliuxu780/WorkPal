@@ -92,7 +92,7 @@
 ## 6. 验证命令与原始计数（收口时点）
 
 - Java：`JAVA_HOME=openjdk@21 mvn -f services/agent-runtime/pom.xml test` → **90/90**（新增 3 个统一计划测试 + 1 个策略测试；原 nativePlanLifecycle 被 bridge 化重写；含 facade 活状态投影修复后的复跑）。
-- 仓库单测：`pnpm exec vitest run`（含 JAVA_HOME 时 jar-lane 全绿）→ **5646 例中除 1 个既有基线失败外全绿**：
+- 仓库单测（最终收口跑）：`pnpm exec vitest run`（JAVA_HOME=openjdk@21）→ **5301 passed / 1 failed / 363 skipped（5665）**，唯一失败为既有基线项：
   - `apps/api/src/execution-rpc.test.ts` 1 例为 **ee8db3c 基线固有失败**（已用干净树验证，与本批无关，未掩盖）；
   - `agentscope-provenance` 在满负荷并行下偶发（单独跑绿）；
   - 顺手修复 `packages/db/src/repos.test.ts` 基线期望（avatar body color 合并后未跟进的一行）。
@@ -103,6 +103,7 @@
 - E2E（worker-chain，CI 选中）：**5/5 passed (8.6m)**，含 5.3 分钟 no-seam mid-run kill 恢复——attempt-start 计划审阅 repair 在真实 lease-loss 重试路径上零回归。
 - AG-04 baseline：`AG04_WRITE_BASELINE=1` 再生成 25 个 fixture；`<content-trust-rules>` 段落经脚本逐字节对比 **25/25 不变**。
 - 类型检查：contracts/db/adapters/core/api/worker/web `tsc --noEmit` 全绿；`mvn compile` 绿。
+- **PR #80 CI（head `4055776`）：8/8 checks 绿**（select-checks 8s、docs 10s、runtime-jar 34s、agent-runtime-image 55s、backend 52s、agentscope 6m18s、web 7m0s、worker-chain 10m24s）。收口过程中修掉的两个本批自身问题：CI 生成物字节校验（`prompt-texts.generated.ts` 被格式化重排→豁免+还原）与直聊消息发言人标签回归（roster 回退泄漏到 speakerName→拆为独立 `botNameOf`，onboarding 严格定位恢复，web 685/685 + onboarding/plan-review e2e 7/7 复验）。
 - 格式：biome 仅对本分支触碰的文件执行；两处**字节级比对产物**已从 formatter 豁免并写入 `biome.json`（AG-04 baseline fixture 与 `prompt-texts.generated.ts`——CI 以"生成器输出==提交内容"校验，任何重排都会漂移，本批踩过一次并修复）。
 
 ## 7. 与记忆线（ME-01/02）的共享接口协调
