@@ -78,7 +78,7 @@
 | U-A03 | e2e `plan-review.spec.ts` 测试 1：恰好一张卡、region 内/`.exc-details` 外、Bot 名抬头、目标+v1+条目、无 always-allow；组件测试 `PlanReviewCard.test.tsx`（>8 折叠/展开、三动作、feedback 必填） |
 | U-A04 | e2e 测试 1：批准后同一 runId 恢复至 completed（真实 Worker `run.continue`）；审批前无副作用（暂停即无模型调用）；批准后工具审批不变（`executor-readonly-approval` 41 例）；HTTP fixture=真实 RPC |
 | U-A05 | e2e 测试 2 + PG `intervention.postgres.test.ts`（request_changes→旧卡 Changes requested→同 Run v2→重审）；`run-plans.postgres.test.ts`（changes_requested 循环、旧批准不覆盖新版本） |
-| U-A06 | e2e 测试 3（拒绝原因可选、cancelled、无 result 气泡、无 pending、头像 idle）；PG 断言 `run.cancelled{plan_rejected}`、轮次 rejected+decidedBy、无 `approval.resolved` |
+| U-A06 | e2e 测试 3（拒绝原因可选、cancelled、无 result 气泡、无 pending、头像 idle）；PG 断言 `run.cancelled{plan_rejected}`、轮次 rejected+decidedBy、无 `approval.resolved`；副作用计数=零新增：决定事务返回 `resume:false`+`cancelledRunId`，router 对 cancelledRunId 走 `revokeNativeCancellation` 而非 `run.continue` 入队，取消后无任何工具再被执行（e2e 断言无后续 result/工具产物） |
 | U-A07 | PG：进度修订不开轮次、内容变化开 v2、幂等重放不重复发卡（`unchanged`/`replayed`）；e2e paced 场景 v1→批准→v2 自动重审（`execution-card.spec.ts`） |
 | U-A08 | e2e 测试 4：同 submissionId 重放 accepted、异 client already_handled、竞态 reject 不生效；PG：过期版本 CAS conflict、owner-only |
 | U-A09 | 执行边界 gate：pending/PLAN 阶段 mutating 工具零外发（executor gate + 阶段工具面过滤，`filterToolsForPlanPhase`；executor 单测：PLAN 阶段拦截 `remember` 零 effect 零 commit，attempt-start repair 在任何模型调用/工具执行前以同一版本绑定重开审阅卡）；已发未知结果沿用既有 uncertain 语义（未触碰）；AG-05 撤权路径不变（`agentscope-tool-visibility` 4 例绿） |
