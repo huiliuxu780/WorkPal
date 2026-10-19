@@ -514,7 +514,11 @@ describe("AG-03 scenario contracts at the real model boundary", () => {
 
   // --- S05-C7 call_end shape ---------------------------------------------------------------
   it("S05-C7 call_end shape", async () => {
-    const { HANG_UP_PROMPT } = await import("../../../apps/api/src/router.js");
+    // Load the app-owned prompt at runtime without importing the app's entire
+    // TypeScript program into the adapters package's compilation root.
+    const { HANG_UP_PROMPT }: { HANG_UP_PROMPT: string } = await import(
+      new URL("../../../apps/api/src/router.js", import.meta.url).href
+    );
     const { system, allText, tools } = await runAndCapture(
       baseRequest("s05-c7", {
         prompt: HANG_UP_PROMPT,
