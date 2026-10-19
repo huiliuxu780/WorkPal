@@ -731,9 +731,10 @@ test("a paced Plan revision moves the single a/b and flashes the update hint", a
   });
   await expect(card.locator('[role="progressbar"]')).toHaveAttribute("aria-valuenow", "3");
   await expect(card.locator('[role="progressbar"]')).toHaveAttribute("aria-valuemax", "4");
-  // The current-item line names the active Plan item.
-  await expect(card.locator('.exc-line[data-kind="current"]')).toContainText(
-    "Current: Final check",
+  // Waiting on the review: the aux line yields to the pending Intervention
+  // (frozen UX-01B priority — intervention over the Plan current item).
+  await expect(card.locator('.exc-line[data-kind="intervention"]')).toContainText(
+    "ready for your review",
   );
   // Waiting with a Plan: collapsed by default (acceptance 4).
   await expect(card).toHaveAttribute("data-open", "0");
