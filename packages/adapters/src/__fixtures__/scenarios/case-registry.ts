@@ -643,7 +643,27 @@ export const BACKEND_CLOUD_AGENT_TRIGGER = [
 /** created/delivery Runs: the executor overrides the request tool list to empty. */
 export const BACKEND_NONE: string[] = [];
 
-/** Java native tools visible for a chat Run with planning allowed. */
+/** All frozen backend selection literals, keyed for hygiene assertions. */
+export const EXPECTED_FROZEN_SETS: Record<string, string[]> = {
+  BACKEND_MINIMAL_USER,
+  BACKEND_FULL_GRAPHICAL_USER,
+  BACKEND_GROUP_USER,
+  BACKEND_ROUTINE,
+  BACKEND_MESSAGING_CHANNEL,
+  BACKEND_MESSAGING_DM,
+  BACKEND_VOICE_USER,
+  BACKEND_CALL_END,
+  BACKEND_AUTOMATION_PLANNING_OFF,
+  BACKEND_CLOUD_AGENT_TRIGGER,
+  BACKEND_NONE,
+};
+
+/**
+ * Java native tools visible for a chat Run with planning allowed AND at least
+ * one skill on the request. Captured fact: load_skill_through_path is only
+ * registered when the request carries skills (RuntimeEngine builds the skill
+ * repository on demand); a chat run without skills sees no skill loader.
+ */
 export const NATIVE_CHAT_PLANNING = [
   "load_skill_through_path",
   "plan_enter",
@@ -651,8 +671,11 @@ export const NATIVE_CHAT_PLANNING = [
   "plan_write",
 ];
 
-/** Java native tools visible for a chat Run with planning disabled (created intro). */
+/** Chat Run with planning disabled and skills present (created intro with skills, routine, unattended shapes). */
 export const NATIVE_CHAT_NO_PLANNING = ["load_skill_through_path"];
+
+/** Chat Run without skills on the request (e.g. delivery, which always sends skills: []). */
+export const NATIVE_NONE: string[] = [];
 
 /** Native subagent tools: never model-visible through the production entrypoint (AG-02). */
 export const NATIVE_SUBAGENT_TOOLS = [
@@ -746,7 +769,7 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     expectedResult: "threads/react appends a user message + event and creates no Run; 'reaction' stays declared-only in the union.",
     evidence: [
       { layer: "postgres", test: POSTGRES, name: "S01-C5 reaction creates a message and no Run" },
-      { layer: "unit", test: UNIT, name: "declared-only triggers" },
+      { layer: "unit", test: UNIT, name: "declared-only values have no production entry" },
     ],
   },
   {
@@ -993,7 +1016,7 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "n/a",
     expectedResult:
       "All 14 RunTrigger values map to cases; reaction/resume proven declared-only by source scan (no creation site in apps/api, apps/worker, packages/* outside tests); no unclassified trigger remains.",
-    evidence: [{ layer: "unit", test: UNIT, name: "trigger union completeness" }],
+    evidence: [{ layer: "unit", test: UNIT, name: "classifies every RunTrigger union value exactly once, with real cases" }],
   },
 
   // --- S06 bot collaboration --------------------------------------------------
@@ -1110,7 +1133,7 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "delivery",
     scope: "chat",
     promptFamilies: { included: ["P02", "P03", "P10"], excluded: ["P05", "P09", "P12"] },
-    toolSurface: "backend empty; delegation disabled by turnPolicyFromRun; suppressNativeTaskReminders on",
+    toolSurface: "zero model-visible tools: backend empty, skills empty (so no skill loader), planning disabled, delegation disabled by turnPolicyFromRun; suppressNativeTaskReminders on",
     expectedResult: "Worker-path delivery Run summarizes claimed outbox results and nothing else.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S08-C1 delivery shape" }],
   },
@@ -1140,7 +1163,7 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     promptFamilies: { included: ["P04", "P14"], excluded: [] },
     toolSurface: "unchanged shape; approved replay bound to the persisted effect",
     expectedResult: "Run id and trigger unchanged across the pause (resume is not a new trigger); sandbox effect executes exactly once; effect completed.",
-    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C1 approval allow resumes same run" }],
+    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C1/C2 approval allow resumes the same run with the persisted effect" }],
   },
   {
     id: "S09-C2",
@@ -1151,7 +1174,7 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     promptFamilies: { included: ["P14"], excluded: [] },
     toolSurface: "n/a",
     expectedResult: "Zero sandbox effects; effect denied; Run completes with the denial fed back.",
-    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C2 approval deny" }],
+    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C1/C2 approval deny resumes the same run with the persisted effect" }],
   },
   {
     id: "S09-C3",
@@ -1161,7 +1184,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P04", "P14"], excluded: [] },
     toolSurface: "revoked connector tool absent from the resumed surface",
-    expectedResult: "Approved effect recorded while connected; connector revoked before the answer; replay refused with zero provider calls.",
+    expectedResult:
+      "Approved effect recorded while connected; connector revoked before the answer. Pinned current behavior (AG-03 findings A/B): the resume replay is refused by the runtime bridge allow-list, the Run FAILS with zero provider executions and the effect left 'approved' (denial never surfaces as a model-visible tool error); the dangling session tool call also fails the next same-thread Run without a model call. Both recorded as product-gap candidates in docs/ag03-scenario-contracts.md.",
     evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C3 permission change before resume" }],
   },
   {
@@ -1174,8 +1198,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "n/a",
     expectedResult: "Source scan finds no trigger:'resume' creation; S09-C1 asserts the resumed Run still carries its original trigger.",
     evidence: [
-      { layer: "unit", test: UNIT, name: "declared-only triggers" },
-      { layer: "postgres", test: POSTGRES, name: "S09-C1 approval allow resumes same run" },
+      { layer: "unit", test: UNIT, name: "declared-only values have no production entry" },
+      { layer: "postgres", test: POSTGRES, name: "S09-C1/C2 approval allow resumes the same run with the persisted effect" },
     ],
   },
   {
@@ -1322,9 +1346,13 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "user",
     scope: "chat",
     promptFamilies: { included: ["P14"], excluded: [] },
-    toolSurface: "connector tool visible while connected; absent from the next Run after revoke",
-    expectedResult: "Proven-available → revoked → replay refused with zero emulator calls; later Runs no longer see the tool.",
-    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C3 permission change before resume" }],
+    toolSurface: "connector tool visible while connected; absent from the next clean Run after revoke",
+    expectedResult:
+      "Proven-available → revoked → zero provider executions (refusal chain pinned in S09-C3); a clean next Run on a fresh session no longer sees any GMAIL_* tool and completes normally.",
+    evidence: [
+      { layer: "postgres", test: POSTGRES, name: "S13-C2 revoked connector tool disappears from the next clean run" },
+      { layer: "postgres", test: POSTGRES, name: "S09-C3 permission change before resume" },
+    ],
   },
   {
     id: "S13-C3",
@@ -1352,7 +1380,7 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "empty including Java natives (AG-01 scope enforcement)",
     expectedResult: "Judge sees channel messages as untrusted data, standing rules and silence-by-default instructions; history empty.",
     evidence: [
-      { layer: "integration", test: INTEGRATION, name: "auxiliary scope captures" },
+      { layer: "integration", test: "apps/api/src/team-chat-judge.integration.test.ts", name: "delivers the P13 engagement-judge family with channel privacy framing and no conversation history" },
       { layer: "integration", test: "packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts", name: "AG-01 zero-tool enforcement (existing coverage)" },
     ],
   },

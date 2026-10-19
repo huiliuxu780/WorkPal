@@ -394,6 +394,15 @@ const READ_ONLY_AGENT_TOOLS = new Set([
 /** Added to the turn prompt when the user spoke this message on a live voice call. */
 export const VOICE_CALL_INSTRUCTION =
   "You are on a live voice call. Reply in one to three short spoken sentences. No markdown, lists, links, or option cards; do not use ask_user unless you truly cannot proceed. Answer directly from what you already know when you can; use tools or subagents only when the answer requires them. If the user asks to end the call or hang up, or the conversation is finished, call end_call with a short title and a one-sentence farewell instead of saying goodbye in text, then do any remaining work as a normal chat reply.";
+
+/**
+ * A hang-up turn (call_end) is read, not heard: no spoken-reply constraint.
+ * Extracted verbatim from the prompt assembly so scenario contracts (AG-03)
+ * can assert the rule directly; behavior is unchanged.
+ */
+export function voiceTurnInstruction(voiceCall: boolean, callEndRun: boolean): string | undefined {
+  return voiceCall && !callEndRun ? VOICE_CALL_INSTRUCTION : undefined;
+}
 const MAX_MODEL_FILE_BYTES = 250_000;
 const TURN_ATTACHMENT_UNAVAILABLE =
   "An attachment in this message could not be loaded. Tell the user the attachment was unavailable and do not guess its contents.";
@@ -4253,8 +4262,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           basePrompt,
           takeoverResume?.promptNote,
           approvalContinuation,
-          // A hang-up turn is read, not heard: no spoken-reply constraint.
-          voiceCall && !callEndRun ? VOICE_CALL_INSTRUCTION : undefined,
+          voiceTurnInstruction(voiceCall, callEndRun),
           // Per-turn, not in the system prompt: the timestamp changes every call and would break the cacheable prefix.
           formatCurrentTimeInstruction(),
         ]
