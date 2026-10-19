@@ -5,7 +5,11 @@ import {
   MANUAL_RETRY_EFFECT_CONFIRMED,
 } from "@rakazo/contracts";
 import { stableJsonValue } from "../approval-effect-key.js";
-import type { ManualRetryChainEffect, ManualRetryEffectDecision } from "../manual-retry.js";
+import {
+  type ManualRetryChainEffect,
+  type ManualRetryEffectDecision,
+  RETRY_OPERATION_ID_KEY,
+} from "../manual-retry.js";
 
 /** Same marker adapters persist on catalog / bound-direct `ExternalEffect.request`. */
 const RETRY_REQUEST_MARKER = "__rakazoCatalogTool";
@@ -127,33 +131,45 @@ function recoverableResult(result: unknown): boolean {
   return true;
 }
 
-function occurrenceIndex(
-  effects: readonly ManualRetryChainEffect[],
-  tool: string,
-  digest: string,
-  occurrence: number,
+function logicalOperationId(effect: ManualRetryChainEffect): string {
+  return effect.operationId || effect.id;
+}
+
+function sameIdentity(effect: ManualRetryChainEffect, tool: string, request: unknown): boolean {
+  if (effect.kind !== tool) return false;
+  try {
+    return manualRetryIdentityDigest(effect.request) === manualRetryIdentityDigest(request);
+  } catch {
+    return false;
+  }
+}
+
+function byCreatedThenId(left: ManualRetryChainEffect, right: ManualRetryChainEffect): number {
+  const leftAt = new Date(left.createdAt).getTime();
+  const rightAt = new Date(right.createdAt).getTime();
+  if (leftAt !== rightAt) return leftAt - rightAt;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+function findByOperationId(
+  predecessors: ReadonlyArray<{ effects: readonly ManualRetryChainEffect[] }>,
+  operationId: string,
 ): ManualRetryChainEffect | undefined {
-  const matches = effects
-    .filter((effect) => {
-      if (effect.kind !== tool) return false;
-      try {
-        return manualRetryIdentityDigest(effect.request) === digest;
-      } catch {
-        return false;
-      }
-    })
-    .sort((left, right) => {
-      const leftAt = new Date(left.createdAt).getTime();
-      const rightAt = new Date(right.createdAt).getTime();
-      if (leftAt !== rightAt) return leftAt - rightAt;
-      return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
-    });
-  return matches[occurrence];
+  for (const predecessor of predecessors) {
+    const matches = predecessor.effects.filter(
+      (effect) => logicalOperationId(effect) === operationId,
+    );
+    if (matches.length === 0) continue;
+    return [...matches].sort(byCreatedThenId)[matches.length - 1];
+  }
+  return undefined;
 }
 
 function decideOne(effect: ManualRetryChainEffect): ManualRetryEffectDecision {
   const decision = effect.reviewDecision;
-  if (decision === MANUAL_RETRY_EFFECT_AUTHORIZED) return { kind: "execute" };
+  if (decision === MANUAL_RETRY_EFFECT_AUTHORIZED) {
+    return { kind: "execute", operationId: logicalOperationId(effect) };
+  }
   if (decision === MANUAL_RETRY_EFFECT_CANCELLED) {
     return { kind: "skip", reason: "cancelled" };
   }
@@ -172,7 +188,7 @@ function decideOne(effect: ManualRetryChainEffect): ManualRetryEffectDecision {
     effect.status === "cancelled" ||
     effect.status === "approved"
   ) {
-    return { kind: "execute" };
+    return { kind: "execute", operationId: logicalOperationId(effect) };
   }
   return { kind: "pause", effect };
 }
@@ -180,43 +196,53 @@ function decideOne(effect: ManualRetryChainEffect): ManualRetryEffectDecision {
 export function decideManualRetryEffect(input: {
   tool: string;
   request: unknown;
-  occurrence: number;
+  operationId?: string | null;
   predecessors: ReadonlyArray<{ effects: readonly ManualRetryChainEffect[] }>;
 }): ManualRetryEffectDecision {
-  let digest: string;
-  try {
-    digest = manualRetryIdentityDigest(input.request);
-  } catch {
-    return { kind: "execute" };
+  const operationId = input.operationId?.trim();
+  if (!operationId) return { kind: "execute" };
+  const match = findByOperationId(input.predecessors, operationId);
+  if (!match) return { kind: "reject", reason: "unknown_operation" };
+  if (!sameIdentity(match, input.tool, input.request)) {
+    return { kind: "reject", reason: "bind_mismatch" };
   }
-  for (const predecessor of input.predecessors) {
-    const match = occurrenceIndex(predecessor.effects, input.tool, digest, input.occurrence);
-    if (!match) continue;
-    return decideOne(match);
-  }
-  return { kind: "execute" };
+  return decideOne(match);
 }
 
-export function completedOpsForRetryPrompt(
+export type ManualRetryPromptOp = {
+  operationId: string;
+  tool: string;
+  status: string;
+  summary: string;
+};
+
+export function operationsForRetryPrompt(
   predecessors: ReadonlyArray<{ effects: readonly ManualRetryChainEffect[] }>,
-): Array<{ tool: string; summary: string }> {
-  const ops: Array<{ tool: string; summary: string }> = [];
-  const seen = new Set<string>();
+): ManualRetryPromptOp[] {
+  const nearest = new Map<string, ManualRetryChainEffect>();
   for (const predecessor of predecessors) {
-    for (const effect of predecessor.effects) {
-      if (effect.status !== "completed" || !recoverableResult(effect.result)) continue;
-      if (effect.reviewDecision === MANUAL_RETRY_EFFECT_AUTHORIZED) continue;
-      if (effect.reviewDecision === MANUAL_RETRY_EFFECT_CANCELLED) continue;
-      const key = `${effect.kind}:${effect.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+    for (const effect of [...predecessor.effects].sort(byCreatedThenId)) {
+      const operationId = logicalOperationId(effect);
+      if (!nearest.has(operationId)) nearest.set(operationId, effect);
+    }
+  }
+  const ops: ManualRetryPromptOp[] = [];
+  const seen = new Set<string>();
+  for (const predecessor of [...predecessors].reverse()) {
+    for (const effect of [...predecessor.effects].sort(byCreatedThenId)) {
+      const operationId = logicalOperationId(effect);
+      if (seen.has(operationId)) continue;
+      seen.add(operationId);
+      const row = nearest.get(operationId)!;
       ops.push({
-        tool: effect.kind,
-        summary: summarizeEffectResult(effect.result),
+        operationId,
+        tool: row.kind,
+        status: row.status,
+        summary: summarizeEffectResult(row.result),
       });
     }
   }
-  return ops.slice(0, 20);
+  return ops.slice(0, 40);
 }
 
 function summarizeEffectResult(result: unknown): string {
@@ -229,4 +255,33 @@ function summarizeEffectResult(result: unknown): string {
     }
   }
   return "completed";
+}
+
+function readOperationId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const id = value.trim();
+  if (!id || id.length > 128) return undefined;
+  return id;
+}
+
+/**
+ * Pull the reserved retry operation id off live tool args (and catalog inner
+ * arguments). Mutates `args` so the field never reaches persist/send/hash.
+ */
+export function takeRetryOperationId(args: Record<string, unknown>): string | undefined {
+  const direct = readOperationId(args[RETRY_OPERATION_ID_KEY]);
+  if (direct) {
+    delete args[RETRY_OPERATION_ID_KEY];
+    return direct;
+  }
+  const inner = args.arguments;
+  if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+    const nested = inner as Record<string, unknown>;
+    const fromInner = readOperationId(nested[RETRY_OPERATION_ID_KEY]);
+    if (fromInner) {
+      delete nested[RETRY_OPERATION_ID_KEY];
+      return fromInner;
+    }
+  }
+  return undefined;
 }

@@ -62,12 +62,18 @@ export type ManualRetryChainEffect = {
   result: unknown;
   reviewDecision: string | null;
   createdAt: Date | string;
+  /** Backend-assigned logical id. Falls back to `id` for unsaved fixtures. */
+  operationId?: string | null;
 };
 
 export type ManualRetryEffectDecision =
   | { kind: "reuse"; effect: ManualRetryChainEffect }
-  | { kind: "execute" }
+  | { kind: "execute"; operationId?: string }
   | { kind: "skip"; reason: "cancelled" | "confirmed_without_result" }
-  | { kind: "pause"; effect: ManualRetryChainEffect };
+  | { kind: "pause"; effect: ManualRetryChainEffect }
+  | { kind: "reject"; reason: "unknown_operation" | "bind_mismatch" };
+
+/** Reserved tool-argument key. Stripped before persist/send. */
+export const RETRY_OPERATION_ID_KEY = "retryOperationId";
 
 export type { ManualRetryDenyReason, ManualRetryProjection };

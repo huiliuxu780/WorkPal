@@ -1,14 +1,12 @@
 import {
-  MANUAL_RETRY_PROMPT_FILE,
   type ManualRetryChainEffect,
   type ManualRetryEffectDecision,
   renderManualRetryPrompt,
 } from "@rakazo/core";
 import {
-  completedOpsForRetryPrompt,
   decideManualRetryEffect,
+  operationsForRetryPrompt,
 } from "@rakazo/core/node/manual-retry-match";
-import { loadPromptFile } from "@rakazo/core/node/prompt-file";
 import { loadManualRetryPredecessorIds, type PrismaClient } from "@rakazo/db";
 
 export type ManualRetryChain = Array<{ effects: ManualRetryChainEffect[] }>;
@@ -30,6 +28,7 @@ export async function loadManualRetryChain(
       result: true,
       reviewDecision: true,
       createdAt: true,
+      operationId: true,
     },
   });
   const byRun = new Map<string, ManualRetryChainEffect[]>();
@@ -45,19 +44,16 @@ export function matchManualRetryEffect(
   chain: ManualRetryChain,
   tool: string,
   request: unknown,
-  occurrence: number,
+  operationId?: string | null,
 ): ManualRetryEffectDecision {
   if (chain.length === 0) return { kind: "execute" };
-  return decideManualRetryEffect({ tool, request, occurrence, predecessors: chain });
+  return decideManualRetryEffect({ tool, request, operationId, predecessors: chain });
 }
 
-let cachedRetryTemplate: string | undefined;
-
 export function manualRetryPromptPrefix(originalTask: string, chain: ManualRetryChain): string {
-  cachedRetryTemplate ??= loadPromptFile(MANUAL_RETRY_PROMPT_FILE);
-  return renderManualRetryPrompt(cachedRetryTemplate, {
+  return renderManualRetryPrompt({
     originalTask,
-    completedOps: completedOpsForRetryPrompt(chain),
+    operations: operationsForRetryPrompt(chain),
   });
 }
 

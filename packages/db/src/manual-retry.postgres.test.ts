@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { buildRunOrchestration, supportCollaboration, userTurnCollaboration } from "@rakazo/core";
+import {
+  buildRunOrchestration,
+  INTERACTIVE_RUN_BUDGET,
+  parseRunOrchestration,
+  projectManualRetryEligibility,
+  supportCollaboration,
+  userTurnCollaboration,
+} from "@rakazo/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "./client.js";
 import { answerRunInput, appendEvent, clearThread, pauseRunForInput } from "./events.js";
@@ -126,6 +133,8 @@ describePostgres("manual retry (PostgreSQL)", () => {
       prompt?: string;
       orchestration?: unknown;
       routineId?: string;
+      error?: string;
+      budgetOverride?: object;
       event?: "failed" | "cancelled" | "started" | "completed";
     } = {},
   ) {
@@ -153,6 +162,8 @@ describePostgres("manual retry (PostgreSQL)", () => {
           ? { orchestration: opts.orchestration as object }
           : {}),
         ...(opts.routineId ? { routineId: opts.routineId } : {}),
+        ...(opts.error ? { error: opts.error } : {}),
+        ...(opts.budgetOverride ? { budgetOverride: opts.budgetOverride } : {}),
       },
     });
     const eventType =
@@ -419,111 +430,122 @@ describePostgres("manual retry (PostgreSQL)", () => {
     expect(await prisma.routine.count({ where: { spaceId: ctx.spaceId } })).toBe(1);
   });
 
-  it.each(["authorize_retry", "confirm_completed", "cancel"] as const)("preserves the group task prompt when resolving %s", async (choice) => {
-    const ctx = await newActor();
-    const groupId = (
-      await prisma.chatGroup.create({
-        data: { spaceId: ctx.spaceId, userId: ctx.userId, name: "Ops" },
-      })
-    ).id;
-    const memberBot = (
-      await prisma.bot.create({
-        data: { spaceId: ctx.spaceId, userId: ctx.userId, name: "Member", color: "test" },
-      })
-    ).id;
-    await prisma.chatGroupMember.create({ data: { groupId, botId: ctx.botId } });
-    await prisma.chatGroupMember.create({ data: { groupId, botId: memberBot } });
-    const groupThread = (
-      await prisma.thread.create({ data: { spaceId: ctx.spaceId, userId: ctx.userId, groupId } })
-    ).id;
-    const groupCtx = { ...ctx, threadId: groupThread };
-    const { run } = await makeRun(groupCtx, {
-      orchestration: buildRunOrchestration({
-        kind: "direct",
-        ownerBotId: ctx.botId,
-        responseMode: "single",
-        collaboration: userTurnCollaboration(),
-      }),
-    });
-    const retried = await createManualRetryRun(prisma, {
-      spaceId: ctx.spaceId,
-      userId: ctx.userId,
-      runId: run.id,
-      clientNonce: `group-${run.id}`,
-    });
-    expect(retried.target).toEqual({ kind: "group", groupId });
-    expect(retried.threadId).toBe(groupThread);
-
-    const originalTask = await prisma.task.findUniqueOrThrow({ where: { id: retried.taskId } });
-    const waiting = await prisma.run.update({
-      where: { id: retried.runId },
-      data: {
-        status: "running",
-        leaseOwner: "worker-1",
-        leaseFence: 1,
-        leaseExpiresAt: new Date(Date.now() + 60_000),
-      },
-    });
-    const attempt = await prisma.attempt.create({
-      data: { runId: waiting.id, fence: 1, status: "running" },
-    });
-    const effect = await prisma.externalEffect.create({
-      data: {
+  it.each(["authorize_retry", "confirm_completed", "cancel"] as const)(
+    "preserves the group task prompt when resolving %s",
+    async (choice) => {
+      const ctx = await newActor();
+      const groupId = (
+        await prisma.chatGroup.create({
+          data: { spaceId: ctx.spaceId, userId: ctx.userId, name: "Ops" },
+        })
+      ).id;
+      const memberBot = (
+        await prisma.bot.create({
+          data: { spaceId: ctx.spaceId, userId: ctx.userId, name: "Member", color: "test" },
+        })
+      ).id;
+      await prisma.chatGroupMember.create({ data: { groupId, botId: ctx.botId } });
+      await prisma.chatGroupMember.create({ data: { groupId, botId: memberBot } });
+      const groupThread = (
+        await prisma.thread.create({ data: { spaceId: ctx.spaceId, userId: ctx.userId, groupId } })
+      ).id;
+      const groupCtx = { ...ctx, threadId: groupThread };
+      const { run } = await makeRun(groupCtx, {
+        orchestration: buildRunOrchestration({
+          kind: "direct",
+          ownerBotId: ctx.botId,
+          responseMode: "single",
+          collaboration: userTurnCollaboration(),
+        }),
+      });
+      const retried = await createManualRetryRun(prisma, {
         spaceId: ctx.spaceId,
+        userId: ctx.userId,
         runId: run.id,
-        kind: "send_email",
-        idempotencyKey: `uncertain-${run.id}`,
-        status: "uncertain",
-        request: { to: "ada@example.test" },
-      },
-    });
-    const paused = await pauseRunForInput(prisma, {
-      spaceId: ctx.spaceId,
-      threadId: groupThread,
-      botId: ctx.botId,
-      runId: waiting.id,
-      attemptId: attempt.id,
-      leaseOwner: "worker-1",
-      leaseFence: 1,
-      blocks: [
-        {
-          kind: "ask",
-          text: "The previous attempt of send_email did not record a confirmed result.",
-          status: "pending",
-          actions: [
-            { id: "confirm_completed", label: "It already completed" },
-            { id: "authorize_retry", label: "Try this operation again" },
-            { id: "cancel", label: "Skip this operation" },
-          ],
+        clientNonce: `group-${run.id}`,
+      });
+      expect(retried.target).toEqual({ kind: "group", groupId });
+      expect(retried.threadId).toBe(groupThread);
+
+      const originalTask = await prisma.task.findUniqueOrThrow({ where: { id: retried.taskId } });
+      const waiting = await prisma.run.update({
+        where: { id: retried.runId },
+        data: {
+          status: "running",
+          leaseOwner: "worker-1",
+          leaseFence: 1,
+          leaseExpiresAt: new Date(Date.now() + 60_000),
         },
-      ],
-      offeredActions: [
-        { id: "confirm_completed", label: "It already completed" },
-        { id: "authorize_retry", label: "Try this operation again" },
-        { id: "cancel", label: "Skip this operation" },
-      ],
-      manualRetryEffectId: effect.id,
-    });
-    expect(paused).toBe(true);
-    const message = await prisma.message.findFirstOrThrow({
-      where: { runId: waiting.id, role: "bot" },
-      orderBy: { seq: "desc" },
-    });
-    expect(
-      await answerRunInput(prisma, {
+      });
+      const attempt = await prisma.attempt.create({
+        data: { runId: waiting.id, fence: 1, status: "running" },
+      });
+      const effect = await prisma.externalEffect.create({
+        data: {
+          spaceId: ctx.spaceId,
+          runId: run.id,
+          kind: "send_email",
+          idempotencyKey: `uncertain-${run.id}`,
+          status: "uncertain",
+          request: { to: "ada@example.test" },
+        },
+      });
+      const paused = await pauseRunForInput(prisma, {
         spaceId: ctx.spaceId,
         threadId: groupThread,
+        botId: ctx.botId,
         runId: waiting.id,
-        messageId: message.id,
-        answeredByUserId: ctx.userId,
-        answer: choice,
-      }),
-    ).toBe(true);
-    const updated = await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } });
-    expect(updated.reviewDecision).toBe({ authorize_retry: "manual_retry_authorized", confirm_completed: "manual_retry_confirmed", cancel: "manual_retry_cancelled" }[choice]);
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: retried.taskId } })).prompt).toBe(originalTask.prompt);
-    expect(updated.runId).toBe(run.id);
-  });
+        attemptId: attempt.id,
+        leaseOwner: "worker-1",
+        leaseFence: 1,
+        blocks: [
+          {
+            kind: "ask",
+            text: "The previous attempt of send_email did not record a confirmed result.",
+            status: "pending",
+            actions: [
+              { id: "confirm_completed", label: "It already completed" },
+              { id: "authorize_retry", label: "Try this operation again" },
+              { id: "cancel", label: "Skip this operation" },
+            ],
+          },
+        ],
+        offeredActions: [
+          { id: "confirm_completed", label: "It already completed" },
+          { id: "authorize_retry", label: "Try this operation again" },
+          { id: "cancel", label: "Skip this operation" },
+        ],
+        manualRetryEffectId: effect.id,
+      });
+      expect(paused).toBe(true);
+      const message = await prisma.message.findFirstOrThrow({
+        where: { runId: waiting.id, role: "bot" },
+        orderBy: { seq: "desc" },
+      });
+      expect(
+        await answerRunInput(prisma, {
+          spaceId: ctx.spaceId,
+          threadId: groupThread,
+          runId: waiting.id,
+          messageId: message.id,
+          answeredByUserId: ctx.userId,
+          answer: choice,
+        }),
+      ).toBe(true);
+      const updated = await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } });
+      expect(updated.reviewDecision).toBe(
+        {
+          authorize_retry: "manual_retry_authorized",
+          confirm_completed: "manual_retry_confirmed",
+          cancel: "manual_retry_cancelled",
+        }[choice],
+      );
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: retried.taskId } })).prompt).toBe(
+        originalTask.prompt,
+      );
+      expect(updated.runId).toBe(run.id);
+    },
+  );
 
   it("refuses a nonce already used by another task of the same user", async () => {
     const ctx = await newActor();
@@ -633,5 +655,119 @@ describePostgres("manual retry (PostgreSQL)", () => {
     expect(replay.taskId).toBe(ownerRun.task.id);
     expect(replay.threadId).toBe(owner.threadId);
     expect(replay.botId).toBe(owner.botId);
+  });
+
+  it("retries a run-budget failure with a rebuilt default budget and no inherited usage", async () => {
+    const ctx = await newActor();
+    const { run, task } = await makeRun(ctx, {
+      error: "budget_exceeded:tokens",
+      budgetOverride: { maxTokens: 400_000 },
+    });
+    await prisma.usageRecord.create({
+      data: {
+        spaceId: ctx.spaceId,
+        userId: ctx.userId,
+        botId: ctx.botId,
+        runId: run.id,
+        provider: "scripted",
+        model: "scripted",
+        inputTokens: 300_000,
+        outputTokens: 50_000,
+      },
+    });
+    const result = await createManualRetryRun(prisma, {
+      spaceId: ctx.spaceId,
+      userId: ctx.userId,
+      runId: run.id,
+      clientNonce: `budget-${run.id}`,
+    });
+    const successor = await prisma.run.findUniqueOrThrow({ where: { id: result.runId } });
+    expect(successor).toMatchObject({
+      status: "queued",
+      taskId: task.id,
+      retryOfRunId: run.id,
+      budgetOverride: null,
+      error: null,
+    });
+    const execution = parseRunOrchestration(successor.orchestration)?.execution;
+    expect(execution && "budget" in execution ? execution.budget.maxTokens : undefined).toBe(
+      INTERACTIVE_RUN_BUDGET.maxTokens,
+    );
+    expect(await prisma.usageRecord.count({ where: { runId: successor.id } })).toBe(0);
+    expect(await prisma.usageRecord.count({ where: { runId: run.id } })).toBe(1);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "failed",
+      error: "budget_exceeded:tokens",
+      budgetOverride: { maxTokens: 400_000 },
+    });
+  });
+
+  it("keeps retry hidden while a budget card is waiting and allows it after cancel", async () => {
+    const ctx = await newActor();
+    const waiting = await makeRun(ctx, { status: "waiting_input", event: "started" });
+    expect(
+      projectManualRetryEligibility({
+        status: waiting.run.status,
+        trigger: waiting.run.trigger,
+        orchestration: waiting.run.orchestration,
+      }).reason,
+    ).toBe("not_terminal");
+    const live = await createManualRetryRun(prisma, {
+      spaceId: ctx.spaceId,
+      userId: ctx.userId,
+      runId: waiting.run.id,
+      clientNonce: `wait-${waiting.run.id}`,
+    });
+    expect(live).toMatchObject({ replayed: true, runId: waiting.run.id });
+    await prisma.run.update({
+      where: { id: waiting.run.id },
+      data: { status: "cancelled", error: "budget_cancelled" },
+    });
+    await appendEvent(prisma, {
+      spaceId: ctx.spaceId,
+      threadId: ctx.threadId,
+      botId: ctx.botId,
+      runId: waiting.run.id,
+      type: "run.cancelled",
+      payload: { reason: "budget_cancelled" },
+    });
+    const result = await createManualRetryRun(prisma, {
+      spaceId: ctx.spaceId,
+      userId: ctx.userId,
+      runId: waiting.run.id,
+      clientNonce: `cancel-budget-${waiting.run.id}`,
+    });
+    expect(result.replayed).toBe(false);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: result.runId } })).toMatchObject({
+      status: "queued",
+      retryOfRunId: waiting.run.id,
+      budgetOverride: null,
+    });
+  });
+
+  it("queues a retry when the space already has observational usage", async () => {
+    const ctx = await newActor();
+    const { run } = await makeRun(ctx);
+    await prisma.usageRecord.create({
+      data: {
+        spaceId: ctx.spaceId,
+        userId: ctx.userId,
+        botId: ctx.botId,
+        provider: "scripted",
+        model: "scripted",
+        inputTokens: 5_000_000,
+        outputTokens: 5_000_000,
+      },
+    });
+    const result = await createManualRetryRun(prisma, {
+      spaceId: ctx.spaceId,
+      userId: ctx.userId,
+      runId: run.id,
+      clientNonce: `space-usage-${run.id}`,
+    });
+    const successor = await prisma.run.findUniqueOrThrow({ where: { id: result.runId } });
+    expect(successor.status).toBe("queued");
+    expect(await prisma.usageRecord.count({ where: { runId: successor.id } })).toBe(0);
+    expect(await prisma.usageRecord.count({ where: { spaceId: ctx.spaceId } })).toBe(1);
   });
 });

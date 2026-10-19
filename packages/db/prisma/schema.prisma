@@ -949,6 +949,10 @@ model ExternalEffect {
   run            Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
   kind           String
   idempotencyKey String
+  /// Backend-assigned logical operation id. Stable across a manual-retry chain.
+  /// Distinct from Run/Attempt/toolCallId/transport nonce. Several effect rows
+  /// (one hop each) may share one operationId. New independent ops get a new id.
+  operationId    String   @default(cuid())
   status         String
   request        Json
   result         Json?
@@ -960,6 +964,7 @@ model ExternalEffect {
 
   @@unique([idempotencyKey])
   @@index([runId, status])
+  @@index([operationId])
   @@map("external_effects")
 }
 

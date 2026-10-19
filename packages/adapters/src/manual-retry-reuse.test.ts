@@ -54,6 +54,7 @@ type Effect = {
   runId?: string;
   kind: string;
   idempotencyKey: string;
+  operationId?: string;
   status: string;
   request: unknown;
   result?: unknown;
@@ -87,12 +88,14 @@ function fixture(
   runId = "run-retry",
   opts: {
     tools?: ConnectorTool[];
+    hops?: string[];
     resolveCall?: (
       call: ConnectorCall,
     ) => Promise<{ call: ConnectorCall; tool: ConnectorTool } | undefined>;
   } = {},
 ) {
-  const predecessorId = "run-old";
+  const hops = opts.hops ?? ["run-old"];
+  const predecessorId = hops[0]!;
   const effects: Effect[] = [];
   const results: unknown[] = [];
   const prompts: string[] = [];
@@ -138,7 +141,13 @@ function fixture(
         ) ?? null,
     ),
     create: vi.fn(async ({ data }: { data: Omit<Effect, "id"> }) => {
-      const effect = { ...data, id: `effect-${effects.length + 1}`, createdAt: new Date() };
+      const id = `effect-${effects.length + 1}`;
+      const effect = {
+        ...data,
+        id,
+        createdAt: new Date(),
+        operationId: data.operationId ?? id,
+      };
       effects.push(effect);
       return { ...effect };
     }),
@@ -165,9 +174,14 @@ function fixture(
   const prisma = {
     deliveryRecord: { findMany: vi.fn(async () => []) },
     run: {
-      findUnique: vi.fn(async ({ where }: { where: { id?: string } }) =>
-        where.id === predecessorId ? { id: predecessorId, retryOfRunId: null } : run,
-      ),
+      findUnique: vi.fn(async ({ where }: { where: { id?: string } }) => {
+        if (!where.id || where.id === run.id) return run;
+        const index = hops.indexOf(where.id);
+        if (index >= 0) {
+          return { id: hops[index], retryOfRunId: hops[index + 1] ?? null };
+        }
+        return run;
+      }),
       findUniqueOrThrow: vi.fn(async () => run),
       updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         Object.assign(run, data);
@@ -293,8 +307,12 @@ function fixture(
     pauseRunForInput,
     execute,
     predecessorId,
-    seed(effect: Omit<Effect, "createdAt">) {
-      effects.push({ createdAt: new Date("2026-10-19T00:00:00.000Z"), ...effect });
+    seed(effect: Omit<Effect, "createdAt"> & { createdAt?: Date }) {
+      effects.push({
+        createdAt: new Date("2026-10-19T00:00:00.000Z"),
+        operationId: effect.operationId ?? effect.id,
+        ...effect,
+      });
     },
     setCalls(next: ToolCall[]) {
       calls = next;
@@ -330,6 +348,7 @@ describe("manual retry effect reuse (production executor)", () => {
       const args = { url: `${http.url}/items`, body: "hello" };
       f.seed({
         id: "e-old",
+        operationId: "op-bound",
         runId: f.predecessorId,
         kind: "hook_write",
         idempotencyKey: "old-hook",
@@ -340,7 +359,7 @@ describe("manual retry effect reuse (production executor)", () => {
       f.setCalls([
         {
           name: "hook_write",
-          args,
+          args: { ...args, retryOperationId: "op-bound" },
           executionId: "call-1",
         },
       ]);
@@ -361,6 +380,7 @@ describe("manual retry effect reuse (production executor)", () => {
       expect(f.effects.filter((effect) => effect.runId === "run-retry")).toHaveLength(0);
       expect(f.prompts[0]).toContain("manual retry");
       expect(f.prompts[0]).toContain("Send the weekly report to Ada");
+      expect(f.prompts[0]).toContain("retryOperationId=op-bound");
       expect(f.prompts[0]).toContain("hook_write");
     } finally {
       http.server.close();
@@ -378,6 +398,7 @@ describe("manual retry effect reuse (production executor)", () => {
       const catalogArgs = { id: catalogIdForRoute(hookRoute), arguments: args };
       f.seed({
         id: "e-catalog",
+        operationId: "op-catalog",
         runId: f.predecessorId,
         kind: "hook_write",
         idempotencyKey: "old-catalog",
@@ -393,7 +414,7 @@ describe("manual retry effect reuse (production executor)", () => {
       f.setCalls([
         {
           name: "fixture_execute_tool",
-          args: catalogArgs,
+          args: { ...catalogArgs, retryOperationId: "op-catalog" },
           executionId: "call-catalog",
         },
       ]);
@@ -442,6 +463,7 @@ describe("manual retry effect reuse (production executor)", () => {
     const f = fixture();
     f.seed({
       id: "e-unknown",
+      operationId: "op-unknown",
       runId: f.predecessorId,
       kind: "scratchpad_add",
       idempotencyKey: "old-scratch",
@@ -452,7 +474,7 @@ describe("manual retry effect reuse (production executor)", () => {
     f.setCalls([
       {
         name: "scratchpad_add",
-        args: { title: "follow up with design" },
+        args: { title: "follow up with design", retryOperationId: "op-unknown" },
         executionId: "call-3",
       },
     ]);
@@ -468,5 +490,211 @@ describe("manual retry effect reuse (production executor)", () => {
       }),
     );
     expect(f.scratchpadRows).toHaveLength(0);
+  });
+
+  it("continues the second same-args operation after skipping the completed first", async () => {
+    const http = await listen();
+    try {
+      const f = fixture();
+      const args = { url: `${http.url}/items`, body: "hello" };
+      const request = boundDirectApprovalRequest(hookRoute, args, CATALOG_MARKER);
+      f.seed({
+        id: "e-first",
+        operationId: "op-first",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-first",
+        status: "completed",
+        request,
+        result: { ok: true, id: "ext-1" },
+      });
+      f.seed({
+        id: "e-second",
+        operationId: "op-second",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-second",
+        status: "uncertain",
+        request,
+        result: null,
+        createdAt: new Date("2026-10-19T00:00:01.000Z"),
+      });
+      f.setCalls([
+        {
+          name: "hook_write",
+          args: { ...args, retryOperationId: "op-second" },
+          executionId: "call-second",
+        },
+      ]);
+      await f.run();
+      expect(http.hits).toHaveLength(0);
+      expect(f.execute).not.toHaveBeenCalled();
+      expect(f.pauseRunForInput).toHaveBeenCalledWith(
+        expect.objectContaining({ manualRetryEffectId: "e-second" }),
+      );
+    } finally {
+      http.server.close();
+    }
+  });
+
+  it("reuses reversed different operations by id and treats omit as a new send", async () => {
+    const http = await listen();
+    try {
+      const f = fixture();
+      const firstArgs = { url: `${http.url}/items`, body: "first" };
+      const secondArgs = { url: `${http.url}/items`, body: "second" };
+      f.seed({
+        id: "e-a",
+        operationId: "op-a",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-a",
+        status: "completed",
+        request: boundDirectApprovalRequest(hookRoute, firstArgs, CATALOG_MARKER),
+        result: { ok: true, id: "ext-a" },
+      });
+      f.seed({
+        id: "e-b",
+        operationId: "op-b",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-b",
+        status: "completed",
+        request: boundDirectApprovalRequest(hookRoute, secondArgs, CATALOG_MARKER),
+        result: { ok: true, id: "ext-b" },
+        createdAt: new Date("2026-10-19T00:00:01.000Z"),
+      });
+      f.setCalls([
+        {
+          name: "hook_write",
+          args: { ...secondArgs, retryOperationId: "op-b" },
+          executionId: "call-b",
+        },
+        {
+          name: "hook_write",
+          args: { ...firstArgs, retryOperationId: "op-a" },
+          executionId: "call-a",
+        },
+        {
+          name: "hook_write",
+          args: firstArgs,
+          executionId: "call-new",
+        },
+      ]);
+      await f.run();
+      expect(f.results[0]).toEqual({ ok: true, id: "ext-b" });
+      expect(f.results[1]).toEqual({ ok: true, id: "ext-a" });
+      expect(http.hits).toHaveLength(1);
+      expect(f.execute).toHaveBeenCalledTimes(1);
+    } finally {
+      http.server.close();
+    }
+  });
+
+  it("walks a three-hop chain to the nearest row of the same operation", async () => {
+    const http = await listen();
+    try {
+      const f = fixture("run-retry", { hops: ["run-mid", "run-old"] });
+      const args = { url: `${http.url}/items`, body: "hello" };
+      const request = boundDirectApprovalRequest(hookRoute, args, CATALOG_MARKER);
+      f.seed({
+        id: "e-old",
+        operationId: "op-1",
+        runId: "run-old",
+        kind: "hook_write",
+        idempotencyKey: "old-1",
+        status: "uncertain",
+        request,
+        result: null,
+      });
+      f.seed({
+        id: "e-mid",
+        operationId: "op-1",
+        runId: "run-mid",
+        kind: "hook_write",
+        idempotencyKey: "mid-1",
+        status: "completed",
+        request,
+        result: { ok: true, id: "ext-mid" },
+      });
+      f.setCalls([
+        {
+          name: "hook_write",
+          args: { ...args, retryOperationId: "op-1" },
+          executionId: "call-3",
+        },
+      ]);
+      await f.run();
+      expect(http.hits).toHaveLength(0);
+      expect(f.results[0]).toEqual({ ok: true, id: "ext-mid" });
+    } finally {
+      http.server.close();
+    }
+  });
+
+  it("rejects a foreign operation id without leaking its result", async () => {
+    const http = await listen();
+    try {
+      const f = fixture();
+      const args = { url: `${http.url}/items`, body: "hello" };
+      f.seed({
+        id: "e-old",
+        operationId: "op-bound",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-hook",
+        status: "completed",
+        request: boundDirectApprovalRequest(hookRoute, args, CATALOG_MARKER),
+        result: { ok: true, id: "secret-ext" },
+      });
+      f.setCalls([
+        {
+          name: "hook_write",
+          args: { ...args, retryOperationId: "op-other-task" },
+          executionId: "call-foreign",
+        },
+      ]);
+      await f.run();
+      expect(http.hits).toHaveLength(0);
+      expect(f.results[0]).toEqual({
+        error: "This operation is not part of the current retry.",
+      });
+      expect(JSON.stringify(f.results[0])).not.toContain("secret-ext");
+    } finally {
+      http.server.close();
+    }
+  });
+
+  it("rejects binding an existing operation id to different arguments", async () => {
+    const http = await listen();
+    try {
+      const f = fixture();
+      const args = { url: `${http.url}/items`, body: "hello" };
+      f.seed({
+        id: "e-old",
+        operationId: "op-bound",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-hook",
+        status: "completed",
+        request: boundDirectApprovalRequest(hookRoute, args, CATALOG_MARKER),
+        result: { ok: true, id: "ext-1" },
+      });
+      f.setCalls([
+        {
+          name: "hook_write",
+          args: { ...args, body: "goodbye", retryOperationId: "op-bound" },
+          executionId: "call-mismatch",
+        },
+      ]);
+      await f.run();
+      expect(http.hits).toHaveLength(0);
+      expect(f.results[0]).toEqual({
+        error:
+          "retryOperationId does not match this tool, resource, or arguments. Continue the listed operation with the same request, or omit retryOperationId to start a new operation.",
+      });
+    } finally {
+      http.server.close();
+    }
   });
 });

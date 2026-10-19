@@ -100,23 +100,36 @@ describePostgres("manual retry effect chain (PostgreSQL)", () => {
         trigger: "user",
       },
     });
-    await prisma.externalEffect.create({
+    const first = await prisma.externalEffect.create({
       data: {
         spaceId: id,
         runId: oldRun.id,
         kind: "send_email",
-        idempotencyKey: `old-${oldRun.id}`,
+        idempotencyKey: `old-${oldRun.id}-first`,
+        operationId: `op-first-${oldRun.id}`,
         status: "completed",
         request: { to: "ada@example.test", subject: "hi" },
         result: { id: "msg-1" },
       },
     });
-    await prisma.externalEffect.create({
+    const second = await prisma.externalEffect.create({
+      data: {
+        spaceId: id,
+        runId: oldRun.id,
+        kind: "send_email",
+        idempotencyKey: `old-${oldRun.id}-second`,
+        operationId: `op-second-${oldRun.id}`,
+        status: "uncertain",
+        request: { to: "ada@example.test", subject: "hi" },
+      },
+    });
+    const foreign = await prisma.externalEffect.create({
       data: {
         spaceId: id,
         runId: outsider.id,
         kind: "send_email",
         idempotencyKey: `out-${outsider.id}`,
+        operationId: `op-out-${outsider.id}`,
         status: "completed",
         request: { to: "ada@example.test", subject: "hi" },
         result: { id: "should-not-reuse" },
@@ -124,20 +137,43 @@ describePostgres("manual retry effect chain (PostgreSQL)", () => {
     });
     const chain = await loadManualRetryChain(prisma, retry.id);
     expect(chain).toHaveLength(1);
-    const reuse = matchManualRetryEffect(
-      chain,
-      "send_email",
-      { to: "ada@example.test", subject: "hi" },
-      0,
+    expect(chain[0]?.effects.map((effect) => effect.operationId).sort()).toEqual(
+      [first.operationId, second.operationId].sort(),
     );
-    expect(reuse).toMatchObject({ kind: "reuse", effect: { result: { id: "msg-1" } } });
     expect(
-      matchManualRetryEffect(chain, "send_email", { to: "bob@example.test", subject: "hi" }, 0)
-        .kind,
+      matchManualRetryEffect(
+        chain,
+        "send_email",
+        { to: "ada@example.test", subject: "hi" },
+        first.operationId,
+      ),
+    ).toMatchObject({ kind: "reuse", effect: { id: first.id, result: { id: "msg-1" } } });
+    expect(
+      matchManualRetryEffect(
+        chain,
+        "send_email",
+        { to: "ada@example.test", subject: "hi" },
+        second.operationId,
+      ),
+    ).toMatchObject({ kind: "pause", effect: { id: second.id } });
+    expect(
+      matchManualRetryEffect(chain, "send_email", { to: "ada@example.test", subject: "hi" }).kind,
     ).toBe("execute");
     expect(
-      matchManualRetryEffect(chain, "send_email", { to: "ada@example.test", subject: "hi" }, 1)
-        .kind,
-    ).toBe("execute");
+      matchManualRetryEffect(
+        chain,
+        "send_email",
+        { to: "bob@example.test", subject: "hi" },
+        first.operationId,
+      ),
+    ).toEqual({ kind: "reject", reason: "bind_mismatch" });
+    expect(
+      matchManualRetryEffect(
+        chain,
+        "send_email",
+        { to: "ada@example.test", subject: "hi" },
+        foreign.operationId,
+      ),
+    ).toEqual({ kind: "reject", reason: "unknown_operation" });
   });
 });

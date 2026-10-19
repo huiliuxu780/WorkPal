@@ -106,6 +106,7 @@ import {
   stableJsonValue,
   toolEffectIdempotencyKey,
 } from "@rakazo/core/node/approval-effect-key";
+import { takeRetryOperationId } from "@rakazo/core/node/manual-retry-match";
 import {
   loadManualRetryChain,
   matchManualRetryEffect,
@@ -2028,6 +2029,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           executionId: string,
         ) => {
           context.signal.throwIfAborted();
+          const retryOperationId = takeRetryOperationId(args);
           if (handedOff) {
             return { error: "This stage was handed off. End the turn without more tool calls." };
           }
@@ -2311,13 +2313,25 @@ export function createRunExecutor(deps: ExecutorDeps) {
               : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence);
           // Connector read-only hints must not bypass approval or review. Retry
           // reuse skips declared reads so they re-read current state.
+          let continueOperationId: string | undefined;
           if (run.retryOfRunId && !READ_ONLY_AGENT_TOOLS.has(name) && declaredReadOnly !== true) {
             const retryDecision = matchManualRetryEffect(
               retryChain,
               replayEffectToolName,
               effectRequest,
-              occurrence,
+              retryOperationId,
             );
+            if (retryDecision.kind === "reject") {
+              return {
+                error:
+                  retryDecision.reason === "bind_mismatch"
+                    ? "retryOperationId does not match this tool, resource, or arguments. Continue the listed operation with the same request, or omit retryOperationId to start a new operation."
+                    : "This operation is not part of the current retry.",
+              };
+            }
+            if (retryDecision.kind === "execute") {
+              continueOperationId = retryDecision.operationId;
+            }
             if (retryDecision.kind === "reuse") {
               await deps.events.append({
                 spaceId: run.spaceId,
@@ -2393,6 +2407,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 effectRequest,
                 executionId,
                 consumedEffectIds,
+                continueOperationId,
               );
 
           const runAutoReview = async () => {
@@ -6267,6 +6282,7 @@ async function recordEffect(
   request: unknown,
   legacyIdempotencyKey?: string,
   consumedIds?: Set<string>,
+  operationId?: string,
 ) {
   const existing = await deps.prisma.externalEffect.findUnique({
     where: { idempotencyKey },
@@ -6369,6 +6385,7 @@ async function recordEffect(
       idempotencyKey,
       status: "intended",
       request: request as never,
+      ...(operationId ? { operationId } : {}),
     },
   });
   consumedIds?.add(effect.id);
