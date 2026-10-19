@@ -25,6 +25,7 @@ export type AvatarRegistration = {
   instanceKey: string;
   botId: string;
   character: AvatarCharacter;
+  size?: number;
   state: AvatarActivity;
   current: boolean;
   render(presentation: MotionPresentation): void;
@@ -57,7 +58,7 @@ const loopPeriod: Record<AvatarActivity, number> = {
   approval: 1600,
   waiting: 4000,
   working: 600,
-  failed: 1300,
+  failed: 1240,
   idle: 3600,
 };
 
@@ -231,7 +232,7 @@ export class AvatarDirector {
 
   private candidates(now: number): Entry[] {
     return [...this.entries.values()]
-      .filter((entry) => entry.state !== "failed" || now - entry.enteredAt < 1300)
+      .filter((entry) => entry.state !== "failed" || now - entry.enteredAt < 1240)
       .sort(
         (left, right) =>
           motionPriority[right.state] - motionPriority[left.state] ||
@@ -247,7 +248,7 @@ export class AvatarDirector {
     const held: Entry[] = [];
     for (const key of this.active) {
       const entry = this.entries.get(key);
-      if (!entry || (entry.state === "failed" && now - entry.enteredAt >= 1300)) continue;
+      if (!entry || (entry.state === "failed" && now - entry.enteredAt >= 1240)) continue;
       if (!wantedKeys.has(key)) {
         if (entry.releaseAt === null) {
           const period = loopPeriod[entry.state];
@@ -298,6 +299,7 @@ export class AvatarDirector {
       eyes: {
         scale: mix(from.eyes.scale, to.eyes.scale),
         blink: mix(from.eyes.blink, to.eyes.blink),
+        lagX: mix(from.eyes.lagX, to.eyes.lagX),
       },
       pupils: {
         tx: mix(from.pupils.tx, to.pupils.tx),
@@ -313,6 +315,10 @@ export class AvatarDirector {
         scale: mix(from.prop.scale, to.prop.scale),
         ty: mix(from.prop.ty, to.prop.ty),
         rot: mix(from.prop.rot, to.prop.rot),
+      },
+      shadow: {
+        opacity: mix(from.shadow.opacity, to.shadow.opacity),
+        scale: mix(from.shadow.scale, to.shadow.scale),
       },
       xeyes: { opacity: mix(from.xeyes.opacity, to.xeyes.opacity) },
       glow: mix(from.glow, to.glow),
@@ -343,6 +349,7 @@ export class AvatarDirector {
     }
     const frame = sample(entry.state, age, avatarIdHash(entry.instanceKey) / 2 ** 32, {
       character: entry.character,
+      size: entry.size,
       progressAgeMs: now - entry.progressAt,
       ...(entry.pulseAt !== null ? { pulseAgeMs: now - entry.pulseAt } : {}),
       ...(entry.reminderAt !== null ? { reminderAgeMs: now - entry.reminderAt } : {}),

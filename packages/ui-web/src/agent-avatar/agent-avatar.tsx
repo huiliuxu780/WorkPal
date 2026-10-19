@@ -1,12 +1,13 @@
-import type { AvatarCharacter } from "@rakazo/contracts";
+import type { AvatarBodyColor, AvatarCharacter } from "@rakazo/contracts";
 import { createElement, memo, type ReactNode, useEffect, useId, useRef } from "react";
 import type { AvatarActivity } from "./activity-map.js";
-import { avatarAssets, type SvgNode } from "./assets.generated.js";
+import { type AvatarTier, avatarAnchors, avatarAssets, type SvgNode } from "./assets.generated.js";
 import { avatarDirector } from "./director.js";
 import { createAvatarDomRenderer } from "./dom-motion.js";
+import { sample } from "./motion.js";
 import "./agent-avatar.css";
 
-export type AgentAvatarSize = 16 | 24 | 32 | 64;
+export type AgentAvatarSize = 16 | 18 | 24 | 32 | 35 | 58 | 64;
 export type AvatarSurface = "background" | "card" | "sidebar" | "secondary" | "chat-user";
 
 function renderSvg(node: SvgNode, key = "root"): ReactNode {
@@ -41,6 +42,7 @@ export const AVATAR_POINT_SHAPES: Record<Exclude<AvatarActivity, "idle">, Avatar
 export interface AgentAvatarProps {
   botId: string;
   character: AvatarCharacter | null | undefined;
+  bodyColor?: AvatarBodyColor;
   name: string;
   size: AgentAvatarSize;
   activity: AvatarActivity;
@@ -60,6 +62,7 @@ export interface AgentAvatarProps {
 export const AgentAvatar = memo(function AgentAvatar({
   botId,
   character,
+  bodyColor = "ink",
   name,
   size,
   activity,
@@ -70,20 +73,53 @@ export const AgentAvatar = memo(function AgentAvatar({
   current = false,
   progressToken,
 }: AgentAvatarProps) {
-  const resolved: AvatarCharacter = character && character in avatarAssets.full ? character : "dot";
+  const resolved: AvatarCharacter =
+    character && character in avatarAssets.characters ? character : "dot";
   const isCompact = size === 16;
+  const isStill = size <= 18;
+  const tier: AvatarTier = isCompact ? "compact" : size === 18 ? "XS" : size >= 58 ? "L" : "S";
+  const role = ({ dot: "1-dot", treble: "2-treble", wave: "3-wave", bounce: "4-bounce" } as const)[
+    resolved
+  ];
+  const anchor = avatarAnchors.anchors[role][tier === "compact" ? "XS" : tier];
+  const propTier = tier === "L" ? "L" : "S";
+  function positionedProp(kind: "laptop" | "card" | "question" | "question-dark") {
+    const svg =
+      kind === "laptop" ? avatarAssets.laptops[bodyColor][propTier] : avatarAssets.props[kind];
+    const point = kind === "laptop" ? anchor.laptop : anchor.card;
+    const scale = anchor.fit.s * (kind === "laptop" ? 1.35 * anchor.laptop.scale : 1);
+    return (
+      <svg viewBox="0 0 100 100">
+        <g transform={`translate(${point.x} ${point.y}) scale(${scale})`}>
+          {svg.children.map((node, i) => renderSvg(node, String(i)))}
+        </g>
+      </svg>
+    );
+  }
   const label = `${name} · ${avatarStateNames[activity]}`;
   const root = useRef<HTMLSpanElement>(null);
   const instanceKey = useId();
   const priorProgressToken = useRef(progressToken);
   useEffect(() => {
     if (isCompact || !root.current) return;
+    if (isStill) {
+      const renderer = createAvatarDomRenderer(root.current);
+      renderer({
+        frame: sample(activity, 0, 0, { character: resolved, static: true }),
+        state: activity,
+        outgoingState: null,
+        outgoingScale: 0,
+        moving: false,
+      });
+      return () => renderer.restore();
+    }
     const director = avatarDirector();
     const renderer = createAvatarDomRenderer(root.current);
     const unregister = director.register({
       instanceKey,
       botId,
       character: resolved,
+      size,
       state: activity,
       current,
       render: renderer,
@@ -97,29 +133,38 @@ export const AgentAvatar = memo(function AgentAvatar({
     };
     // Registration is tied to the displayed identity and SVG, not every activity update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instanceKey, botId, resolved, isCompact]);
+  }, [instanceKey, botId, resolved, bodyColor, tier, isCompact, isStill]);
   useEffect(() => {
-    if (isCompact) return;
+    if (isStill) return;
     avatarDirector().update(instanceKey, { state: activity });
-  }, [instanceKey, isCompact, activity]);
+  }, [instanceKey, isStill, activity]);
   useEffect(() => {
-    if (isCompact) return;
+    if (isStill) return;
     avatarDirector().update(instanceKey, { current });
-  }, [instanceKey, isCompact, current]);
+  }, [instanceKey, isStill, current]);
   useEffect(() => {
     if (priorProgressToken.current === progressToken) return;
     priorProgressToken.current = progressToken;
-    if (isCompact || progressToken == null || activity !== "working") return;
+    if (isStill || progressToken == null || activity !== "working") return;
     const director = avatarDirector();
     director.progress(instanceKey);
     director.pulse(instanceKey);
-  }, [instanceKey, isCompact, progressToken, activity]);
+  }, [instanceKey, isStill, progressToken, activity]);
   return (
     <span
       ref={root}
       className={`rakazo-agent-avatar${className ? ` ${className}` : ""}`}
       data-bot-id={botId}
       data-character={resolved}
+      data-strong-ring={
+        (activity === "approval" && (bodyColor === "orange" || bodyColor === "brown")) ||
+        (activity === "waiting" && bodyColor === "blue") ||
+        (activity === "failed" && bodyColor === "pink")
+          ? "true"
+          : undefined
+      }
+      data-body-color={bodyColor}
+      data-tier={tier}
       data-state={activity}
       data-size={size}
       data-surface={surface}
@@ -133,10 +178,22 @@ export const AgentAvatar = memo(function AgentAvatar({
       tabIndex={ariaHidden || !focusable ? undefined : 0}
       style={{ width: size, height: size }}
     >
+      {!isStill ? (
+        <span className="rakazo-agent-avatar-prop rakazo-agent-avatar-shadow" aria-hidden="true">
+          <svg viewBox="0 0 100 100">
+            <ellipse
+              cx={anchor.shadow.cx}
+              cy={anchor.shadow.cy}
+              rx={anchor.shadow.rx}
+              ry={anchor.shadow.ry}
+            />
+          </svg>
+        </span>
+      ) : null}
       <span className="rakazo-agent-avatar-art" aria-hidden="true">
-        {renderSvg(isCompact ? avatarAssets.compact[resolved] : avatarAssets.full[resolved])}
+        {renderSvg(avatarAssets.characters[resolved][bodyColor][tier])}
       </span>
-      {!isCompact ? (
+      {!isStill ? (
         <>
           {(["laptop", "card", "question", "question-dark"] as const).map((kind) => (
             <span
@@ -159,7 +216,7 @@ export const AgentAvatar = memo(function AgentAvatar({
                     : 0,
               }}
             >
-              {renderSvg(avatarAssets.props[kind])}
+              {positionedProp(kind)}
             </span>
           ))}
           <span
@@ -168,11 +225,11 @@ export const AgentAvatar = memo(function AgentAvatar({
             aria-hidden="true"
             style={{ opacity: activity === "failed" ? 1 : 0 }}
           >
-            {renderSvg(avatarAssets.xeyes[resolved])}
+            {renderSvg(avatarAssets.xeyes[resolved][bodyColor][propTier])}
           </span>
         </>
       ) : null}
-      {isCompact && activity !== "idle" ? (
+      {(isCompact || surface === "sidebar") && activity !== "idle" ? (
         <span
           className="rakazo-agent-avatar-dot"
           data-point-shape={AVATAR_POINT_SHAPES[activity]}

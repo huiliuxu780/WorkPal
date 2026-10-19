@@ -1,10 +1,18 @@
 import type { AvatarActivity, AvatarCharacter } from "@rakazo/contracts";
-import { easeInOut, easeOut, lerp } from "./easing.js";
+import {
+  easeInOut,
+  easeOut,
+  failedEaseIn,
+  failedEaseInOut,
+  failedEaseOut,
+  lerp,
+} from "./easing.js";
 import { clamp, clampPupil, R } from "./geometry.js";
 
 export type MotionFrame = {
   body: { tx: number; ty: number; sx: number; sy: number; rot: number };
-  eyes: { scale: number; blink: number };
+  eyes: { scale: number; blink: number; lagX: number };
+  shadow: { opacity: number; scale: number };
   pupils: { tx: number; ty: number; opacity: number };
   symbol: { tx: number; ty: number; rot: number };
   prop: { scale: number; ty: number; rot: number };
@@ -16,6 +24,7 @@ export type MotionFrame = {
 export type MotionContext = {
   character: AvatarCharacter;
   static?: boolean;
+  size?: number;
   /** Milliseconds since the last accepted pulse; omitted when no pulse is active. */
   pulseAgeMs?: number;
   /** Milliseconds since a new progress item or entry into working. */
@@ -35,7 +44,8 @@ export const SIGNATURE_DURATION: Record<AvatarCharacter, number> = {
 
 const neutral = (): MotionFrame => ({
   body: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 },
-  eyes: { scale: 1, blink: 1 },
+  eyes: { scale: 1, blink: 1, lagX: 0 },
+  shadow: { opacity: 0, scale: 1 },
   pupils: { tx: 0, ty: 0, opacity: 1 },
   symbol: { tx: 0, ty: 0, rot: 0 },
   prop: { scale: 0, ty: 0, rot: 0 },
@@ -270,44 +280,138 @@ export function sample(
       look(side * 0.05 + glance, -0.08);
     }
   } else {
-    if (t < 180) {
-      const k = easeOut(t / 180);
-      frame.body.ty = -0.14 * R * k;
-      frame.body.sx = 1 - 0.07 * k;
-      frame.body.sy = 1 + 0.08 * k;
-      frame.eyes.scale = 1 + 0.12 * k;
-      frame.symbol.ty = -0.06 * R * k;
-    } else if (t < 330) {
-      const k = easeInOut((t - 180) / 150);
-      frame.body.ty = -0.14 * R * (1 - k);
-      frame.body.sx = lerp(0.93, 1.05, k);
-      frame.body.sy = lerp(1.08, 0.95, k);
-      frame.eyes.scale = lerp(1.12, 1, k);
-    } else if (t < 780) {
-      const pointsX = [0, 0.08, -0.08, 0.05, -0.03, 0];
-      const pointsR = [0, 3, -3, 2, -1, 0];
-      const at = ((t - 330) / 450) * 5;
-      const index = Math.min(4, Math.floor(at));
-      frame.body.tx = lerp(pointsX[index]!, pointsX[index + 1]!, at - index) * R;
-      frame.body.rot = lerp(pointsR[index]!, pointsR[index + 1]!, at - index);
-    }
-    if (t >= 780) {
-      frame.xeyes.opacity = easeOut((t - 780) / 120);
-      frame.pupils.opacity = 1 - frame.xeyes.opacity;
-    }
-    if (t > 900) {
-      const k = easeInOut((t - 900) / 400);
-      frame.body.ty += 0.06 * R * k;
-      frame.body.sx *= 1 + 0.03 * k;
-      frame.body.sy *= 1 - 0.05 * k;
-      frame.symbol.ty += 0.04 * R * k;
-      frame.symbol.rot += 8 * k;
-    }
+    const k = (
+      keys: ReadonlyArray<readonly [number, number, ((t: number) => number)?]>,
+      age = t,
+    ): number => {
+      if (age <= keys[0]![0]) return keys[0]![1];
+      for (let i = 1; i < keys.length; i++) {
+        const [a, va] = keys[i - 1]!;
+        const [b, vb, ease = failedEaseInOut] = keys[i]!;
+        if (age <= b) return lerp(va, vb, ease((age - a) / (b - a)));
+      }
+      return keys[keys.length - 1]![1];
+    };
+    const rotation = [
+      [300, 0],
+      [400, -6, failedEaseOut],
+      [560, 4.5],
+      [720, -2.5],
+      [860, 1],
+      [940, 0],
+    ] as const;
+    const rot = k(rotation);
+    frame.body.ty =
+      k([
+        [0, 0],
+        [150, -0.12, failedEaseOut],
+        [300, 0, failedEaseIn],
+        [940, 0],
+        [1240, 0.06],
+      ]) * R;
+    frame.body.sx = k([
+      [0, 1],
+      [150, 0.93, failedEaseOut],
+      [300, 1],
+      [940, 1],
+      [1240, 1.03],
+    ]);
+    frame.body.sy = k([
+      [0, 1],
+      [150, 1.08, failedEaseOut],
+      [300, 1],
+      [940, 1],
+      [1240, 0.95],
+    ]);
+    frame.body.rot = rot;
+    frame.body.tx = (rot / 6) * 0.06 * R;
+    frame.eyes.scale = k([
+      [0, 1],
+      [150, 1.1, failedEaseOut],
+      [300, 1],
+    ]);
+    frame.eyes.lagX =
+      0.5 *
+      (((k(rotation, t - 40) - rot) / 6) * 0.06 * R +
+        (((k(rotation, t - 40) - rot) * Math.PI) / 180) * 0.9 * R);
+    frame.symbol.ty =
+      k([
+        [0, 0],
+        [150, -0.05, failedEaseOut],
+        [300, 0],
+        [940, 0],
+        [1240, 0.04],
+      ]) * R;
+    frame.symbol.rot =
+      k([
+        [940, 0],
+        [1240, 8],
+      ]) +
+      0.4 * (k(rotation, t - 70) - rot);
+    frame.xeyes.opacity = k([
+      [300, 0],
+      [400, 1, failedEaseOut],
+    ]);
+    frame.pupils.opacity = k([
+      [300, 1],
+      [360, 0, (x) => x],
+    ]);
+    frame.shadow.opacity = k([
+      [0, 0],
+      [60, 1, (x) => x],
+      [300, 1],
+      [400, 0, (x) => x],
+    ]);
   }
 
-  frame.body.sx = clamp(frame.body.sx, 0.9, 1.1);
-  frame.body.sy = clamp(frame.body.sy, 0.9, 1.1);
-  frame.body.rot = clamp(frame.body.rot, -5, 5);
+  if (state !== "failed") {
+    // Shadow fades around airborne segments; ordinary nods and tilts never cast it.
+    const envelope = (age: number) =>
+      age < -80 || age >= 620
+        ? 0
+        : age < 0
+          ? (age + 80) / 80
+          : age <= 420
+            ? 1
+            : 1 - (age - 420) / 200;
+    if (state === "working") {
+      if (t < 1460) frame.shadow.opacity = envelope(t < 1260 ? t % 420 : t - 840);
+      if (ctx.pulseAgeMs !== undefined)
+        frame.shadow.opacity = Math.max(frame.shadow.opacity, envelope(ctx.pulseAgeMs));
+    }
+    if (state === "idle")
+      frame.shadow.opacity = envelope(scheduledAge(t, phase * 0.7, 6000, 14000, 420));
+    if (state === "approval" && ctx.reminderAgeMs !== undefined)
+      frame.shadow.opacity = envelope(ctx.reminderAgeMs - 100);
+    if (ctx.character === "bounce") {
+      const sig =
+        ctx.signatureAgeMs ??
+        scheduledAge(
+          t,
+          phase,
+          state === "idle" ? 9000 : 15000,
+          state === "idle" ? 18000 : 25000,
+          1100,
+        );
+      if ((state === "idle" || state === "working") && sig >= -80 && sig < 1100)
+        frame.shadow.opacity = Math.max(frame.shadow.opacity, envelope(sig), envelope(sig - 460));
+    }
+  }
+  const lift = Math.max(0, -frame.body.ty) / R / 0.1;
+  frame.shadow.scale = Math.max(0.8, 1 - 0.08 * lift);
+  frame.shadow.opacity *= Math.max(0.6, 1 - 0.2 * lift);
+
+  frame.body.sx = clamp(
+    frame.body.sx,
+    state === "failed" ? 0.8 : 0.9,
+    state === "failed" ? 1.2 : 1.1,
+  );
+  frame.body.sy = clamp(
+    frame.body.sy,
+    state === "failed" ? 0.8 : 0.9,
+    state === "failed" ? (ctx.size === 58 ? 1.12 : 1.2) : 1.1,
+  );
+  frame.body.rot = clamp(frame.body.rot, state === "failed" ? -6 : -5, state === "failed" ? 6 : 5);
   frame.symbol.rot = clamp(frame.symbol.rot, -15, 15);
   frame.symbol.tx = clamp(frame.symbol.tx, -0.35 * R, 0.35 * R);
   frame.symbol.ty = clamp(frame.symbol.ty, -0.35 * R, 0.35 * R);

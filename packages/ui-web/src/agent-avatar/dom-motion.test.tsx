@@ -7,15 +7,14 @@ import { createAvatarDomRenderer } from "./dom-motion.js";
 import { sample } from "./motion.js";
 
 describe("frozen SVG layer motion", () => {
-  it("keeps feet and paths untouched while moving the body, eyes and correct prop", () => {
+  it("keeps frozen paths untouched while moving the body, eyes and correct prop", () => {
     const host = document.createElement("div");
     host.innerHTML = renderToStaticMarkup(
       <AgentAvatar botId="bot" character="treble" name="Maya" size={24} activity="working" />,
     );
     const root = host.firstElementChild as HTMLElement;
-    const foot = root.querySelector<SVGGElement>(".rakazo-agent-avatar-art #feet")!;
+    expect(root.querySelector(".rakazo-agent-avatar-art #feet")).toBeNull();
     const body = root.querySelector<SVGGElement>(".rakazo-agent-avatar-art #body")!;
-    const footTransform = foot.getAttribute("transform");
     const originalBody = body.getAttribute("transform");
     const originalPaths = [...root.querySelectorAll("path")].map((path) => path.getAttribute("d"));
     const render = createAvatarDomRenderer(root);
@@ -26,7 +25,6 @@ describe("frozen SVG layer motion", () => {
       outgoingScale: 0,
       moving: true,
     });
-    expect(foot.getAttribute("transform")).toBe(footTransform);
     expect(body.getAttribute("transform")).not.toBe(originalBody);
     expect([...root.querySelectorAll("path")].map((path) => path.getAttribute("d"))).toEqual(
       originalPaths,

@@ -2,7 +2,7 @@ import type { AvatarCharacter } from "@rakazo/contracts";
 
 export const R = 31.25;
 export const BODY_CENTER = { x: 50, y: 57.8125 } as const;
-export const BODY_FOOT = { x: 50, y: BODY_CENTER.y + R } as const;
+export const BODY_PIVOT = { x: 50, y: BODY_CENTER.y + R } as const;
 
 /** Safe R-unit pupil travel with the MOTION-SPEC's 64px one-pixel margin. */
 export const PUPIL_TRAVEL: Record<

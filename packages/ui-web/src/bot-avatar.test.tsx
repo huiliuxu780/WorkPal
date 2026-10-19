@@ -102,7 +102,7 @@ describe("BotAvatar compatibility entrypoint", () => {
     [16, 16],
     [20, 24],
     [28, 32],
-    [36, 32],
+    [36, 35],
     [148, 64],
   ])("normalizes %ipx to %ipx", (input, expected) => {
     expect(renderToString(<BotAvatar color="#fff" identity="bot" size={input} />)).toContain(

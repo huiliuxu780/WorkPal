@@ -9,7 +9,7 @@ test("avatar studio changes a Bot character and offers one-step undo", async ({
   await completeOnboarding(page);
   await page.goto("/app");
   await page.waitForURL(/\/app\/[^/]+$/);
-  const initial = await rpc<{ avatarCharacter: string | null }>(page, "bots/get", {
+  const initial = await rpc<{ avatarCharacter: string | null; avatarBodyColor: string }>(page, "bots/get", {
     botId: activeBotId(page),
   });
   const selected = initial.avatarCharacter === "wave" ? "bounce" : "wave";
@@ -34,17 +34,21 @@ test("avatar studio changes a Bot character and offers one-step undo", async ({
   await expect(studio.getByRole("button", { name: selected })).toBeVisible();
   await captureScreenshot(page, testInfo, "avatar-studio-light");
   await studio.getByRole("button", { name: selected }).click();
+  const bodyColor = initial.avatarBodyColor === "blue" ? "pink" : "blue";
+  await studio.getByRole("button", { name: bodyColor, exact: true }).click();
   await studio.getByRole("button", { name: "Save", exact: true }).click();
   await expect(settings.getByRole("status")).toContainText("Avatar updated");
   await expect(
     settings.getByTestId("avatar-studio-trigger").locator(`[data-character="${selected}"]`),
   ).toBeVisible();
   await expect(otherTabAvatar).toHaveAttribute("data-character", selected);
+  await expect(otherTabAvatar).toHaveAttribute("data-body-color", bodyColor);
   const [latestChange] = await rpc<Array<{ id: string }>>(page, "bots/avatarChanges", {
     botId: activeBotId(page),
   });
   await rpc(page, "bots/undoAvatarChange", { changeId: latestChange!.id });
   await expect(otherTabAvatar).toHaveAttribute("data-character", initial.avatarCharacter ?? "dot");
+  await expect(otherTabAvatar).toHaveAttribute("data-body-color", initial.avatarBodyColor);
   await settings.getByTestId("avatar-studio-trigger").click();
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "dark";

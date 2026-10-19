@@ -1,0 +1,98 @@
+{
+ "body": {
+  "orange": "#e8983a",
+  "blue": "#4184f4",
+  "purple": "#885cf1",
+  "brown": "#996e42",
+  "pink": "#e54896",
+  "ink": "#343946"
+ },
+ "dark": {
+  "L": {
+   "orange": "#92550e",
+   "blue": "#0641a4",
+   "purple": "#3a0bad",
+   "brown": "#553d23",
+   "pink": "#941152",
+   "ink": "#191b22"
+  },
+  "S": {
+   "orange": "#77460b",
+   "blue": "#053587",
+   "purple": "#30098d",
+   "brown": "#46321d",
+   "pink": "#790e43",
+   "ink": "#14161b"
+  },
+  "XS": {
+   "orange": "#6f410a",
+   "blue": "#04327e",
+   "purple": "#2d0884",
+   "brown": "#412e1b",
+   "pink": "#710d3f",
+   "ink": "#121419"
+  }
+ },
+ "eyewhite": "#fff",
+ "props": {
+  "card": "#F5C84B",
+  "question_light": "#3F8FDF",
+  "question_dark": "#7CB8F2",
+  "laptop_glow": "#4ADE80",
+  "prop_outline": "#fff"
+ },
+ "shadow": {
+  "light": "#000 @0.10",
+  "dark": "#000 @0.25"
+ },
+ "status": {
+  "_note": "2026-10-19 徐哥确认（UX §16）；16px 状态点和侧边栏徽标共用",
+  "light": {
+   "run": "#22a356",
+   "approval": "#d97706",
+   "answer": "#3F8FDF",
+   "fail": "#e5484d",
+   "done": "#22a356"
+  },
+  "dark": {
+   "run": "#4ADE80",
+   "approval": "#F5C84B",
+   "answer": "#7CB8F2",
+   "fail": "#e5484d",
+   "done": "#4ADE80"
+  },
+  "glyph": {
+   "fail": "!",
+   "done": "✓"
+  },
+  "glyph_color": {
+   "light": "#fff",
+   "dark": "#1a1a1a",
+   "fail_any_theme": "#fff"
+  },
+  "ring": {
+   "color": "当前背景色",
+   "dot16": "1.5px",
+   "badge": "2px",
+   "dot16_same_hue": "2px",
+   "badge_same_hue": "2.5px",
+   "same_hue_rule": "徽标 / 点颜色和身体 ΔE(CIE76) < 25，或色相角差 < 30°（ink 饱和度低，不算）",
+   "same_hue_pairs": {
+    "approval": [
+     "orange",
+     "brown"
+    ],
+    "answer": [
+     "blue"
+    ],
+    "fail": [
+     "pink"
+    ]
+   }
+  },
+  "backgrounds": {
+   "light": "#ffffff",
+   "dark": "#1a1a1a"
+  }
+ }
+}

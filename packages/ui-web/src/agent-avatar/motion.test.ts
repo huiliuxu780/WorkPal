@@ -8,6 +8,30 @@ const characters: AvatarCharacter[] = ["dot", "treble", "wave", "bounce"];
 const states: AvatarActivity[] = ["idle", "working", "approval", "waiting", "failed"];
 
 describe("MOTION-SPEC sampling", () => {
+  it("follows the v0.7 failed shake, eye/symbol lags and airborne shadow", () => {
+    for (const [time, degrees] of [
+      [300, 0],
+      [400, -6],
+      [560, 4.5],
+      [720, -2.5],
+      [860, 1],
+      [940, 0],
+    ]) {
+      const frame = sample("failed", time!, 0, { character: "dot", size: 58 });
+      expect(frame.body.rot).toBeCloseTo(degrees!, 5);
+      expect(frame.body.tx).toBeCloseTo((degrees! / 6) * 0.06 * R, 5);
+      expect(frame.body.sy).toBeLessThanOrEqual(1.12);
+    }
+    const shake = sample("failed", 400, 0, { character: "dot" });
+    expect(shake.xeyes.opacity).toBe(1);
+    expect(shake.pupils.opacity).toBe(0);
+    expect(shake.eyes.lagX).not.toBe(0);
+    expect(shake.symbol.rot).not.toBe(0);
+    expect(shake.shadow.opacity).toBe(0);
+    expect(sample("failed", 150, 0, { character: "dot" }).shadow.opacity).toBeGreaterThan(0);
+    expect(sample("working", 1500, 0, { character: "dot", static: true }).shadow.opacity).toBe(0);
+  });
+
   it("hits the frozen working entry keyframe and stops after the failed one-shot", () => {
     const working = sample("working", 60, 0.4, { character: "dot" });
     expect(working.body.sx).toBeCloseTo(1.08, 2);
@@ -49,13 +73,14 @@ describe("MOTION-SPEC sampling", () => {
           expect(frame.body.sx).toBeLessThanOrEqual(1.1);
           expect(frame.body.sy).toBeGreaterThanOrEqual(0.9);
           expect(frame.body.sy).toBeLessThanOrEqual(1.1);
-          expect(Math.abs(frame.body.rot)).toBeLessThanOrEqual(5);
+          expect(Math.abs(frame.body.rot)).toBeLessThanOrEqual(state === "failed" ? 6 : 5);
           expect(Math.abs(frame.symbol.rot)).toBeLessThanOrEqual(15);
           expect(Math.abs(frame.symbol.tx)).toBeLessThanOrEqual(0.35 * R);
           expect(Math.abs(frame.symbol.ty)).toBeLessThanOrEqual(0.35 * R);
           expect(frame.prop.scale).toBeGreaterThanOrEqual(0);
           expect(frame.prop.scale).toBeLessThanOrEqual(1.12);
-          expect("feet" in frame).toBe(false);
+          expect(frame.shadow.opacity).toBeGreaterThanOrEqual(0);
+          expect(frame.shadow.opacity).toBeLessThanOrEqual(1);
         }
         const still = sample(state, 0, 0.1, { character, static: true });
         expect(sample(state, 50_000, 0.9, { character, static: true })).toEqual(still);
