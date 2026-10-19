@@ -43,6 +43,8 @@ export * from "./messaging-prompts.js";
 export * from "./model-oauth.js";
 export * from "./model-probe.js";
 export * from "./model-providers.js";
+export * from "./prompt-segments.js";
+export * from "./prompt-texts.generated.js";
 export * from "./product-harness/activity/grouping.js";
 export * from "./product-harness/activity/labels.js";
 export * from "./product-harness/activity/projector.js";
