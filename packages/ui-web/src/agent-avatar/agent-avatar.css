@@ -172,7 +172,7 @@
 .rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot { background: var(--wp-status-fail); }
 .rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] { background: transparent; border-color: var(--wp-status-wait); }
 .rakazo-agent-avatar-dot::after { color: var(--wp-status-glyph) !important; }
-.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot::after { color: #fff !important; }
+.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot::after { content: "!"; color: #fff !important; }
 .rakazo-agent-avatar[data-strong-ring="true"] .rakazo-agent-avatar-dot { border-width: var(--wp-status-dot-ring-strong); }
 .rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot { width: 13px; height: 13px; right: -2px; bottom: -2px; border-width: var(--wp-badge-ring); }
 .rakazo-agent-avatar[data-surface="sidebar"][data-size="58"] .rakazo-agent-avatar-dot { width: 15px; height: 15px; }
