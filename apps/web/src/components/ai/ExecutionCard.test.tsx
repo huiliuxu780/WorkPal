@@ -89,7 +89,9 @@ describe("ExecutionCard", () => {
     expect(html).toContain('data-testid="execution-card"');
     expect(html).toContain("Analyze this year&#x27;s tickets");
     expect(html).toContain("Found 3 anomalous tickets");
-    expect(html).toContain("3 steps · 12 actions · 46m 05s");
+    // UX-01B acceptance 5: the step count is no longer card metadata.
+    expect(html).toContain("12 actions · 46m 05s");
+    expect(html).not.toContain("3 steps");
     expect(html).toContain("View result");
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("hidden");
@@ -153,9 +155,14 @@ describe("ExecutionCard", () => {
     expect(html).toContain("Needs your attention");
     expect(html).toContain("Send the report now?");
     expect(html).toContain('data-attention="1"');
-    // A waiting Run is always expanded — the detail is reachable, never inert.
-    expect(html).toContain('aria-expanded="true"');
-    expect(html).not.toContain(" inert=");
+    // UX-01B acceptance 4/7: a waiting Run no longer auto-expands; the
+    // Intervention controls live outside the collapsible body, so they stay
+    // visible and operable while the detail is shut.
+    expect(html).toContain('aria-expanded="false"');
+    const interventionsAt = html.indexOf('data-testid="execution-interventions"');
+    const hiddenAt = html.indexOf('hidden=""');
+    expect(interventionsAt).toBeGreaterThan(-1);
+    expect(hiddenAt).toBeGreaterThan(interventionsAt);
   });
 
   it("prefers the approval question over an older input question on the card line", () => {
@@ -197,7 +204,8 @@ describe("ExecutionCard", () => {
     expect(html).toContain("The billing service timed out");
     expect(html).not.toMatch(/retry/i);
     expect(html).not.toMatch(/重试/);
-    expect(html).toContain("View execution");
+    // UX-01B acceptance 8: the failed card's primary action is the reason path.
+    expect(html).toContain("View reason");
     // The visible status sentence appears once (the card aria-label repeats it
     // for screen readers by design, which is not a second status header).
     expect(occurrences(html, ">Execution failed<")).toBe(1);
@@ -241,38 +249,83 @@ describe("ExecutionCard", () => {
     expect(html).not.toContain("--");
   });
 
-  it("stays conservative when the step list is truncated", () => {
+  it("renders the Plan-only progress head: one count, one accessible bar, one current line", () => {
+    const plan = {
+      planId: "plan-1",
+      runId: "run-id-1",
+      sourceMessageId: null,
+      revisionId: "plan-1-r1",
+      revision: 1,
+      goal: "Deliver the report",
+      items: [
+        { id: "p1", title: "Collect data", status: "completed" },
+        { id: "p2", title: "Deliver result", status: "active" },
+      ],
+      changeReason: null,
+      createdAt: "2026-10-12T00:00:00.000Z",
+    } as import("@rakazo/contracts").RunPlanRevision;
+    const steps = [
+      {
+        stepId: "s1",
+        runId: "run-id-1",
+        order: 0,
+        title: "Deliver result",
+        status: "running",
+        planItemId: "p2",
+        startedAt: "2026-10-12T10:00:00.000Z",
+        completedAt: null,
+        evidence: [],
+      },
+    ] as never;
+    const html = renderToStaticMarkup(
+      <ExecutionShell
+        run={run("running")}
+        activity={[]}
+        expansion={{ open: false, toggle: () => undefined }}
+        canExpand
+        plan={plan}
+        steps={steps}
+        now={Date.parse("2026-10-12T10:06:30.000Z")}
+      >
+        <div>detail body</div>
+      </ExecutionShell>,
+    );
+    // Exactly one a/b, sourced from the Plan's effective items.
+    expect(occurrences(html, "1/2")).toBe(1);
+    expect(html).toContain('data-testid="execution-plan-count"');
+    // One accessible progress bar bound to the same pure result.
+    expect(occurrences(html, 'role="progressbar"')).toBe(1);
+    expect(html).toContain('aria-valuenow="1"');
+    expect(html).toContain('aria-valuemax="2"');
+    // The trusted current-item line carries the planItemId-matched elapsed.
+    expect(html).toContain('data-kind="current"');
+    expect(html).toContain("Current: Deliver result · 6 min elapsed");
+    // Steps-only rails are gone: the rail renders only with Plan progress.
+    expect(html).toContain("exc-rail");
+    expect(html).toContain('style="height:50%"');
+  });
+
+  it("renders no rail DOM at all when loaded steps exist without a Plan (acceptance 6)", () => {
     const steps = [
       { order: 0, title: "Collect", status: "completed" },
       { order: 1, title: "Analyze", status: "running" },
     ] as never;
-    const truncated = renderToStaticMarkup(
+    const html = renderToStaticMarkup(
       <ExecutionShell
         run={run("running")}
         activity={[]}
         expansion={{ open: false, toggle: () => undefined }}
         canExpand
-        summary={summary({ status: "running" })}
-        steps={steps}
-        stepsTruncated
-      >
-        <div>detail body</div>
-      </ExecutionShell>,
-    );
-    expect(truncated).not.toContain(`style="height:`);
-    const honest = renderToStaticMarkup(
-      <ExecutionShell
-        run={run("running")}
-        activity={[]}
-        expansion={{ open: false, toggle: () => undefined }}
-        canExpand
-        summary={summary({ status: "running" })}
         steps={steps}
       >
         <div>detail body</div>
       </ExecutionShell>,
     );
-    expect(honest).toContain(`style="height:50%"`);
+    expect(html).not.toContain("exc-rail");
+    expect(html).not.toContain("progressbar");
+    expect(html).not.toContain("execution-plan-count");
+    expect(html).not.toContain(">0<");
+    expect(html).not.toContain("--");
   });
 
   it("keeps raw Run/Thread/Bot identifiers out of the shell and card DOM", () => {

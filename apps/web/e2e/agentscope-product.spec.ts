@@ -125,64 +125,105 @@ test("Java Run reaches a duration budget and Web cancels its waiting card", asyn
     await signup(page, `java-budget-${Date.now()}@rakazo.test`, "password12", "Java Budget");
     await page.waitForURL(/\/(onboarding|app)/);
     await rpc(page, "models/connect", {
-      provider: intro.model.provider, modelId: intro.model.id,
-      baseUrl: intro.baseUrl, apiKey: "web-budget-fixture-key",
+      provider: intro.model.provider,
+      modelId: intro.model.id,
+      baseUrl: intro.baseUrl,
+      apiKey: "web-budget-fixture-key",
     });
     await page.reload();
     await completeOnboarding(page);
     const botId = activeBotId(page);
-    await expect.poll(async () => {
-      const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", { botId });
-      return thread.run?.status ?? "completed";
-    }, { timeout: 30_000 }).toBe("completed");
+    await expect
+      .poll(
+        async () => {
+          const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", {
+            botId,
+          });
+          return thread.run?.status ?? "completed";
+        },
+        { timeout: 30_000 },
+      )
+      .toBe("completed");
 
     task = await startModelEmulator({
       apiKey: "web-budget-fixture-key",
-      steps: [{
-        expect(request) {
-          expect(JSON.stringify(request.messages)).toContain("Hold this budget fixture open.");
+      steps: [
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain("Hold this budget fixture open.");
+          },
+          response: { type: "hold" },
         },
-        response: { type: "hold" },
-      }],
+      ],
     });
     await rpc(page, "models/connect", {
-      provider: task.model.provider, modelId: task.model.id,
-      baseUrl: task.baseUrl, apiKey: "web-budget-fixture-key",
+      provider: task.model.provider,
+      modelId: task.model.id,
+      baseUrl: task.baseUrl,
+      apiKey: "web-budget-fixture-key",
     });
     await rpc(page, "bots/update", {
-      botId, modelProvider: task.model.provider, modelId: task.model.id,
+      botId,
+      modelProvider: task.model.provider,
+      modelId: task.model.id,
     });
     await page.getByPlaceholder(/Message/).fill("Hold this budget fixture open.");
     await page.keyboard.press("Enter");
 
     let runId = "";
-    await expect.poll(async () => {
-      const thread = await rpc<{ run?: { id: string; status: string } | null }>(
-        page, "threads/get", { botId },
-      );
-      if (thread.run?.status === "running") runId = thread.run.id;
-      return thread.run?.status;
-    }, { timeout: 40_000 }).toBe("running");
-    await expect.poll(async () => db.prisma.attempt.findFirst({
-      where: { runId, status: "running" }, select: { id: true },
-    }), { timeout: 20_000 }).not.toBeNull();
+    await expect
+      .poll(
+        async () => {
+          const thread = await rpc<{ run?: { id: string; status: string } | null }>(
+            page,
+            "threads/get",
+            { botId },
+          );
+          if (thread.run?.status === "running") runId = thread.run.id;
+          return thread.run?.status;
+        },
+        { timeout: 40_000 },
+      )
+      .toBe("running");
+    await expect
+      .poll(
+        async () =>
+          db.prisma.attempt.findFirst({
+            where: { runId, status: "running" },
+            select: { id: true },
+          }),
+        { timeout: 20_000 },
+      )
+      .not.toBeNull();
     // Advance only the measured attempt clock; the Run, Java request and Worker path are real.
     const activeAttempt = await db.prisma.attempt.findFirstOrThrow({
-      where: { runId, status: "running" }, select: { id: true },
+      where: { runId, status: "running" },
+      select: { id: true },
     });
     await db.prisma.attempt.update({
       where: { id: activeAttempt.id },
       data: { startedAt: new Date(Date.now() - 901_000) },
     });
 
-    await expect(page.getByText(/reached its duration sec budget/i)).toBeVisible({ timeout: 40_000 });
-    await expect.poll(() => db.prisma.event.count({
-      where: { runId, type: "budget.exceeded" },
-    })).toBe(1);
+    await expect(page.getByText(/reached its duration sec budget/i)).toBeVisible({
+      timeout: 40_000,
+    });
+    await expect
+      .poll(() =>
+        db.prisma.event.count({
+          where: { runId, type: "budget.exceeded" },
+        }),
+      )
+      .toBe(1);
     await page.getByRole("button", { name: "Cancel this run" }).click();
-    await expect.poll(async () => db.prisma.run.findUnique({
-      where: { id: runId }, select: { status: true, error: true },
-    })).toMatchObject({ status: "cancelled", error: "budget_cancelled" });
+    await expect
+      .poll(async () =>
+        db.prisma.run.findUnique({
+          where: { id: runId },
+          select: { status: true, error: true },
+        }),
+      )
+      .toMatchObject({ status: "cancelled", error: "budget_cancelled" });
     task.assertComplete();
   } finally {
     await task?.close();
@@ -367,7 +408,12 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
   });
   let task: Awaited<ReturnType<typeof startModelEmulator>> | undefined;
   try {
-    await signup(page, `java-structured-${Date.now()}@rakazo.test`, "password12", "Java Structured");
+    await signup(
+      page,
+      `java-structured-${Date.now()}@rakazo.test`,
+      "password12",
+      "Java Structured",
+    );
     await page.waitForURL(/\/(onboarding|app)/);
     await rpc(page, "models/connect", {
       provider: intro.model.provider,
@@ -378,20 +424,31 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     await page.reload();
     await completeOnboarding(page);
     const botId = activeBotId(page);
-    await expect.poll(async () => {
-      const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", { botId });
-      return thread.run?.status ?? "completed";
-    }, { timeout: 30_000 }).toBe("completed");
+    await expect
+      .poll(
+        async () => {
+          const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", {
+            botId,
+          });
+          return thread.run?.status ?? "completed";
+        },
+        { timeout: 30_000 },
+      )
+      .toBe("completed");
 
     task = await startModelEmulator({
       apiKey: "web-structured-fixture-key",
       steps: [
         {
           expect(request) {
-            expect(request.tools?.some((tool) => tool.function.name === "publish_run_plan")).toBe(true);
+            expect(request.tools?.some((tool) => tool.function.name === "publish_run_plan")).toBe(
+              true,
+            );
           },
           response: {
-            type: "tool", id: "plan-create", name: "publish_run_plan",
+            type: "tool",
+            id: "plan-create",
+            name: "publish_run_plan",
             arguments: {
               expectedRevision: 0,
               goal: "Complete the structured fixture",
@@ -404,10 +461,16 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
             expect(JSON.stringify(request.messages)).toContain("plan-create");
           },
           response: {
-            type: "tool", id: "step-create", name: "publish_run_step",
+            type: "tool",
+            id: "step-create",
+            name: "publish_run_step",
             arguments: {
-              stepId: "inspect-step", expectedRevision: 0, order: 0,
-              title: "Inspect fixture", status: "running", planItemId: "inspect",
+              stepId: "inspect-step",
+              expectedRevision: 0,
+              order: 0,
+              title: "Inspect fixture",
+              status: "running",
+              planItemId: "inspect",
             },
           },
         },
@@ -416,10 +479,16 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
             expect(JSON.stringify(request.messages)).toContain("step-create");
           },
           response: {
-            type: "tool", id: "step-complete", name: "publish_run_step",
+            type: "tool",
+            id: "step-complete",
+            name: "publish_run_step",
             arguments: {
-              stepId: "inspect-step", expectedRevision: 1, order: 0,
-              title: "Inspect fixture", status: "completed", planItemId: "inspect",
+              stepId: "inspect-step",
+              expectedRevision: 1,
+              order: 0,
+              title: "Inspect fixture",
+              status: "completed",
+              planItemId: "inspect",
               resultSummary: "Fixture inspected",
             },
           },
@@ -429,7 +498,9 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
             expect(JSON.stringify(request.messages)).toContain("step-complete");
           },
           response: {
-            type: "tool", id: "plan-complete", name: "publish_run_plan",
+            type: "tool",
+            id: "plan-complete",
+            name: "publish_run_plan",
             arguments: {
               expectedRevision: 1,
               goal: "Complete the structured fixture",
@@ -459,7 +530,9 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     });
     await page.getByPlaceholder(/Message/).fill("Complete the structured fixture.");
     await page.keyboard.press("Enter");
-    await expect(page.getByTestId("transcript").getByText("Structured fixture completed.")).toBeVisible({ timeout: 40_000 });
+    await expect(
+      page.getByTestId("transcript").getByText("Structured fixture completed."),
+    ).toBeVisible({ timeout: 40_000 });
     const snapshot = await rpc<{
       plans?: Array<{ runId: string; revision: number; items: Array<{ status: string }> }>;
       steps?: Array<{ runId: string; stepId: string; status: string }>;
@@ -467,12 +540,18 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     }>(page, "threads/get", { botId });
     const plan = snapshot.plans?.find((row) => row.revision === 2);
     expect(plan?.items[0]?.status).toBe("completed");
-    expect(snapshot.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ runId: plan?.runId, stepId: "inspect-step", status: "completed" }),
-    ]));
-    expect(snapshot.recentRuns).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: plan?.runId, status: "completed" }),
-    ]));
+    expect(snapshot.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: plan?.runId,
+          stepId: "inspect-step",
+          status: "completed",
+        }),
+      ]),
+    );
+    expect(snapshot.recentRuns).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: plan?.runId, status: "completed" })]),
+    );
     // Located by card title: the transcript DOM carries no Run ids.
     const shell = page
       .locator('[data-testid="execution-shell"]')
@@ -481,7 +560,14 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     const shellToggle = shell.locator("button[aria-expanded]").first();
     await shellToggle.click();
     await expect(shell.locator('[data-slot="plan"]')).toBeVisible();
-    await expect(shell.locator('[data-slot="steps"]')).toBeVisible();
+    // UX-01B §3: with a Plan present, a Step whose planItemId matches a Plan
+    // item lives in level 2 UNDER that item — not as a second flat steps list.
+    // Opening the item's Details reveals the semantic Step and its result.
+    const inspectItem = shell.locator('[data-plan-item-id="inspect"]');
+    await expect(shell.locator('[data-slot="steps"]')).toHaveCount(0);
+    await inspectItem.getByRole("button", { name: "Details", exact: true }).click();
+    await expect(shell.locator('[data-step-id="inspect-step"]')).toBeVisible();
+    await expect(shell.getByText("Fixture inspected")).toBeVisible();
     await shellToggle.focus();
     await page.keyboard.press("Enter");
     await expect(shellToggle).toHaveAttribute("aria-expanded", "false");
@@ -489,9 +575,11 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
     await expect(shellToggle).toHaveAttribute("aria-expanded", "true");
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(shell.locator('[data-slot="plan"]')).toBeVisible();
-    expect(await page.evaluate(() =>
-      document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-    )).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
     task.assertComplete();
   } finally {
     await task?.close();
@@ -505,7 +593,9 @@ test("Java publishes a structured Plan and Step into one Web execution", async (
 // run follows, and the run completes in-turn. Delivery of an ALREADY-started
 // background task stays covered in-JVM (DelegationSuspensionTest /
 // RuntimeIntegrationTest through the delegation seam).
-test("Web chat refuses background helper spawns while delegation is suspended", async ({ page }) => {
+test("Web chat refuses background helper spawns while delegation is suspended", async ({
+  page,
+}) => {
   test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
   test.setTimeout(150_000);
   const db = createDb(process.env.DATABASE_URL!);
@@ -515,7 +605,12 @@ test("Web chat refuses background helper spawns while delegation is suspended", 
   });
   let task: Awaited<ReturnType<typeof startModelEmulator>> | undefined;
   try {
-    await signup(page, `java-background-${Date.now()}@rakazo.test`, "password12", "Java Background");
+    await signup(
+      page,
+      `java-background-${Date.now()}@rakazo.test`,
+      "password12",
+      "Java Background",
+    );
     await page.waitForURL(/\/(onboarding|app)/);
     await rpc(page, "models/connect", {
       provider: intro.model.provider,
@@ -526,10 +621,17 @@ test("Web chat refuses background helper spawns while delegation is suspended", 
     await page.reload();
     await completeOnboarding(page);
     const botId = activeBotId(page);
-    await expect.poll(async () => {
-      const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", { botId });
-      return thread.run?.status ?? "completed";
-    }, { timeout: 30_000 }).toBe("completed");
+    await expect
+      .poll(
+        async () => {
+          const thread = await rpc<{ run?: { status?: string } | null }>(page, "threads/get", {
+            botId,
+          });
+          return thread.run?.status ?? "completed";
+        },
+        { timeout: 30_000 },
+      )
+      .toBe("completed");
 
     task = await startModelEmulator({
       apiKey: "web-background-fixture-key",
@@ -537,12 +639,20 @@ test("Web chat refuses background helper spawns while delegation is suspended", 
         {
           expect(request) {
             expect(request.tools?.some((tool) => tool.function.name === "agent_spawn")).toBe(false);
-            for (const native of ["agent_send", "agent_list", "task_output", "task_cancel", "task_list"]) {
+            for (const native of [
+              "agent_send",
+              "agent_list",
+              "task_output",
+              "task_cancel",
+              "task_list",
+            ]) {
               expect(request.tools?.some((tool) => tool.function.name === native)).toBe(false);
             }
           },
           response: {
-            type: "tool", id: "background-spawn", name: "agent_spawn",
+            type: "tool",
+            id: "background-spawn",
+            name: "agent_spawn",
             arguments: { agent_id: "helper", task: "BACKGROUND_CASE", timeout_seconds: 0 },
           },
         },
@@ -569,11 +679,15 @@ test("Web chat refuses background helper spawns while delegation is suspended", 
       modelProvider: task.model.provider,
       modelId: task.model.id,
     });
-    await page.getByPlaceholder(/Message/).fill("Start a background helper and tell me when it starts.");
+    await page
+      .getByPlaceholder(/Message/)
+      .fill("Start a background helper and tell me when it starts.");
     await page.keyboard.press("Enter");
-    await expect(page.getByTestId("transcript").getByText(
-      "Background delegation is unavailable; nothing was started.",
-    )).toBeVisible({ timeout: 40_000 });
+    await expect(
+      page
+        .getByTestId("transcript")
+        .getByText("Background delegation is unavailable; nothing was started."),
+    ).toBeVisible({ timeout: 40_000 });
 
     // The refused spawn left no background task behind and no delivery run followed.
     const runs = await db.prisma.run.findMany({ where: { botId }, select: { id: true } });

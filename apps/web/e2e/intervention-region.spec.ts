@@ -73,7 +73,7 @@ async function repaintRegionIfCardsLate(page: Page) {
   }
 }
 
-test("approval decision and effect status stay separate and survive a refresh", async ({
+test("a denied plain Run leaves no surface, stale card or operable ask after refresh", async ({
   page,
 }) => {
   const stamp = Date.now();
@@ -90,21 +90,19 @@ test("approval decision and effect status stay separate and survive a refresh", 
   await expect(deny).toBeVisible({ timeout: 15_000 });
   await deny.click();
 
-  const card = region.locator("[data-intervention-id]").first();
-  await expect(card.getByText("Denied", { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(card.getByTestId("intervention-effect")).toHaveText("Effect denied", { timeout: 30_000 });
-  await expect(page.getByTestId("intervention-region")).toHaveCount(1);
-
+  // UX-01B: the settled receipt renders only while the Run still owns an
+  // execution surface; a denied plain Run then loses the surface entirely.
+  // Decision/effect separation while the region lives is covered by
+  // InterventionRegion.test.tsx.
   await waitForRunIdle(page, botId);
+  await expect(page.getByTestId("intervention-region")).toHaveCount(0, { timeout: 30_000 });
+
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
-  const reloadedRegion = page.getByRole("region", { name: REGION });
-  const reloadedCard = reloadedRegion.locator("[data-intervention-id]").first();
-  await expect(reloadedCard).toBeVisible({ timeout: 15_000 });
-  await expect(reloadedCard.getByText("Denied", { exact: true })).toBeVisible();
-  await expect(reloadedCard.getByTestId("intervention-effect")).toHaveText("Effect denied");
-  // One card only: the message bubble renders no second AskCard.
-  await expect(page.locator("[data-intervention-id]")).toHaveCount(1);
+  // Acceptance 1 after refresh: no surface, no stale card, and the
+  // never-settled bubble ask stays suppressed — nothing operable remains.
+  await expect(page.getByTestId("intervention-region")).toHaveCount(0);
+  await expect(page.locator("[data-intervention-id]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Deny", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Allow once", exact: true })).toHaveCount(0);
 });
@@ -130,7 +128,9 @@ test("pending cards off the latest page keep question, safe preview, and submit"
         }),
       submit: async (region: ReturnType<Page["getByRole"]>) => {
         await region.getByRole("button", { name: "Deny", exact: true }).click();
-        await expect(region.getByTestId("intervention-effect")).toHaveText("Effect denied", {
+        // UX-01B: the settled receipt is transient for a plain Run; the
+        // deterministic end state is no operable control anywhere.
+        await expect(page.getByRole("button", { name: "Deny", exact: true })).toHaveCount(0, {
           timeout: 30_000,
         });
       },
@@ -147,7 +147,9 @@ test("pending cards off the latest page keep question, safe preview, and submit"
       },
       submit: async (region: ReturnType<Page["getByRole"]>) => {
         await region.getByRole("button", { name: "Seoul", exact: true }).click();
-        await expect(region.getByText("Answered: Seoul", { exact: true })).toBeVisible({
+        // The answered plain Run loses its surface; with the ask message
+        // off-page no echo remains — the choice buttons must all be gone.
+        await expect(page.getByRole("button", { name: "Seoul", exact: true })).toHaveCount(0, {
           timeout: 30_000,
         });
       },
@@ -164,8 +166,12 @@ test("pending cards off the latest page keep question, safe preview, and submit"
         const secretValue = `sk-long-history-${stamp}`;
         await region.getByLabel("API key").fill(secretValue);
         await region.getByRole("button", { name: "Save", exact: true }).click();
-        await expect(region.getByText("Saved", { exact: true })).toBeVisible({ timeout: 30_000 });
+        // The saved secret never renders, and the settled receipt survives
+        // the surface hand-off: region while the Run owns one, then the
+        // bubble's own answered card (UX-01B). No operable Save remains.
         await expect(page.getByText(secretValue)).toHaveCount(0);
+        await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
       },
     },
   ];
@@ -262,10 +268,12 @@ test("already_handled focuses the authoritative status and refresh keeps it term
   await page.unroute("**/rpc/threads/subscribe");
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
-  const reloadedRegion = page.getByRole("region", { name: REGION });
-  await expect(
-    reloadedRegion.locator(`[data-intervention-id="${interventionId}"]`),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(reloadedRegion.getByText("Answered: Paris", { exact: true })).toBeVisible();
-  await expect(reloadedRegion.getByRole("button", { name: "Send it" })).toHaveCount(0);
+  // UX-01B: the answered plain Run keeps no surface. Its ask message is on
+  // the latest page, so the settled echo lives in the bubble — exactly one
+  // presentation, nothing operable.
+  await expect(page.getByTestId("intervention-region")).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByRole("button", { name: "Send it" })).toHaveCount(0);
 });

@@ -1,5 +1,12 @@
 import { i18n } from "@lingui/core";
-import type { ActivityItem, ExecutionSummary, InterventionView, Run } from "@rakazo/contracts";
+import type {
+  ActivityItem,
+  ExecutionSummary,
+  InterventionView,
+  Run,
+  RunPlanRevision,
+  RunStepSnapshot,
+} from "@rakazo/contracts";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@lingui/core/macro", () => ({
@@ -7,7 +14,14 @@ vi.mock("@lingui/core/macro", () => ({
     strings.reduce((acc, part, index) => acc + part + String(values[index] ?? ""), ""),
 }));
 
-import { buildExecutionCardModel, lifecycleRailFill, resultHasText } from "./execution-card";
+import {
+  buildExecutionCardModel,
+  currentItemElapsedMinutes,
+  currentPlanItem,
+  effectivePlanItems,
+  planProgress,
+  resultHasText,
+} from "./execution-card";
 import { deriveExecutionStatus } from "./execution-status";
 
 beforeAll(() => {
@@ -64,6 +78,48 @@ const activity = (title: string, status: ActivityItem["status"] = "running"): Ac
     title,
   }) as ActivityItem;
 
+function plan(overrides: Partial<RunPlanRevision> = {}): RunPlanRevision {
+  return {
+    planId: "plan-id-1",
+    runId: "run-id-1",
+    sourceMessageId: null,
+    revisionId: "plan-rev-1",
+    revision: 1,
+    goal: "Deliver the quarterly report",
+    items: [
+      { id: "p1", title: "Collect data", status: "completed" },
+      { id: "p2", title: "Deliver result", status: "active" },
+    ],
+    changeReason: null,
+    createdAt: "2026-10-12T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function planStep(overrides: Partial<RunStepSnapshot> = {}): RunStepSnapshot {
+  return {
+    stepId: "step-1",
+    runId: "run-id-1",
+    sourceMessageId: null,
+    revision: 1,
+    order: 0,
+    title: "Deliver result",
+    status: "running",
+    resultSummary: null,
+    planItemId: "p2",
+    parentStepId: null,
+    attemptId: null,
+    attemptNumber: null,
+    startedAt: "2026-10-12T10:00:00.000Z",
+    completedAt: null,
+    evidence: [],
+    batch: null,
+    createdAt: "2026-10-12T10:00:00.000Z",
+    updatedAt: "2026-10-12T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function model(
   runState: Run | null,
   items: readonly ActivityItem[] = [],
@@ -88,15 +144,15 @@ describe("buildExecutionCardModel status coverage", () => {
     expect(card.title).toBeNull();
     expect(card.aux).toBeNull();
     expect(card.metaParts).toEqual([]);
-    expect(card.railFill).toBeNull();
-    expect(card.action).toEqual({ verb: "View execution", act: "toggle" });
+    expect(card.planProgress).toBeNull();
+    expect(card.action).toEqual({ verb: "View progress", act: "toggle" });
   });
 
   it("maps leased to the starting activity line", () => {
     const card = model(run("leased"));
     expect(card.status).toBe("working");
     expect(card.aux).toEqual({ kind: "activity", text: "Starting" });
-    expect(card.action?.verb).toBe("View execution");
+    expect(card.action?.verb).toBe("View progress");
   });
 
   it("maps running to the latest safe activity line", () => {
@@ -122,6 +178,44 @@ describe("buildExecutionCardModel status coverage", () => {
       text: "Send the report to billing@example.com?",
     });
     expect(card.action).toEqual({ verb: "Needs your attention", act: "attention" });
+    // Review round P1: the attention card keeps an INDEPENDENT disclosure
+    // entry so Plan/Steps/evidence stay reachable while waiting.
+    expect(card.secondaryAction).toEqual({ verb: "View progress", act: "toggle" });
+  });
+
+  it("flips the secondary disclosure entry to Collapse while expanded", () => {
+    const card = model(
+      run("waiting_input", "approval"),
+      [],
+      { pendingInterventionKinds: ["approval"] },
+      {
+        summary: summary({ status: "waiting_input", waitKind: "approval" }),
+        pendingInterventions: [intervention()],
+        expanded: true,
+      },
+    );
+    expect(card.action).toEqual({ verb: "Needs your attention", act: "attention" });
+    expect(card.secondaryAction).toEqual({ verb: "Collapse", act: "toggle" });
+  });
+
+  it("omits the secondary entry without a detail body or under an action override", () => {
+    const waiting = model(
+      run("waiting_input", "approval"),
+      [],
+      { pendingInterventionKinds: ["approval"] },
+      { pendingInterventions: [intervention()], canExpand: false },
+    );
+    expect(waiting.action).toEqual({ verb: "Needs your attention", act: "attention" });
+    expect(waiting.secondaryAction).toBeNull();
+    const overridden = buildExecutionCardModel({
+      expanded: false,
+      canExpand: false,
+      status: deriveExecutionStatus(run("waiting_input", "approval"), []),
+      actionOverride: { verb: "Handle now", act: "navigate" },
+    });
+    expect(overridden.secondaryAction).toBeNull();
+    const plain = model(run("running"), [], {}, { summary: summary({ status: "running" }) });
+    expect(plain.secondaryAction).toBeNull();
   });
 
   it("orders an approval ahead of an older input question", () => {
@@ -172,7 +266,7 @@ describe("buildExecutionCardModel status coverage", () => {
     expect(card.action).toEqual({ verb: "Needs your attention", act: "attention" });
   });
 
-  it("maps completed with outcome, real metadata and the result verb", () => {
+  it("maps completed with outcome, real non-step metadata and the result verb", () => {
     const card = model(
       run("completed"),
       [],
@@ -190,13 +284,8 @@ describe("buildExecutionCardModel status coverage", () => {
     expect(card.status).toBe("done");
     expect(card.aux).toEqual({ kind: "outcome", text: "Found 3 anomalous tickets" });
     expect(card.title).toBe("Analyze this year's tickets");
-    expect(card.metaParts).toEqual([
-      "3 steps",
-      "12 actions",
-      "2 collaborators",
-      "1 artifact",
-      "46m 05s",
-    ]);
+    // UX-01B acceptance 5: the step count never renders as card metadata.
+    expect(card.metaParts).toEqual(["12 actions", "2 collaborators", "1 artifact", "46m 05s"]);
     expect(card.artifactsLine).toBe("Generated report.md");
     expect(card.when).not.toBeNull();
     expect(card.action).toEqual({ verb: "View result", act: "toggle" });
@@ -234,7 +323,7 @@ describe("buildExecutionCardModel status coverage", () => {
     expect(offPage.aux).toEqual({ kind: "outcome", text: "Found 3 anomalous tickets" });
   });
 
-  it("maps failed with the safe failure projection and no retry action", () => {
+  it("maps failed with the safe failure projection, the reason verb and no retry", () => {
     const card = model(
       run("failed"),
       [],
@@ -253,7 +342,8 @@ describe("buildExecutionCardModel status coverage", () => {
       kind: "failure",
       text: "Step 2 · Deploy · The billing service timed out",
     });
-    expect(card.action).toEqual({ verb: "View execution", act: "toggle" });
+    // UX-01B acceptance 8: the failed Run's primary action is the reason path.
+    expect(card.action).toEqual({ verb: "View reason", act: "toggle" });
     expect(JSON.stringify(card)).not.toMatch(/retry/i);
   });
 
@@ -267,7 +357,7 @@ describe("buildExecutionCardModel status coverage", () => {
     expect(card.status).toBe("cancelled");
     expect(card.aux).toBeNull();
     expect(card.live).toBe(false);
-    expect(card.action?.verb).toBe("View execution");
+    expect(card.action?.verb).toBe("View progress");
   });
 
   it("maps a confirmed background Run without a live tint", () => {
@@ -287,7 +377,7 @@ describe("buildExecutionCardModel status coverage", () => {
     expect(card.aux).toBeNull();
     expect(card.metaParts).toEqual([]);
     expect(card.when).toBeNull();
-    expect(card.railFill).toBeNull();
+    expect(card.planProgress).toBeNull();
     expect(card.action).toBeNull();
   });
 
@@ -335,35 +425,268 @@ describe("buildExecutionCardModel status coverage", () => {
   });
 });
 
-describe("lifecycleRailFill", () => {
-  const steps = (statuses: string[]) =>
-    statuses.map((status, order) => ({ order, title: `s${order}`, status })) as never;
-
-  it("fills to the failed step", () => {
-    expect(lifecycleRailFill("failed", steps(["completed", "failed", "pending"]), false)).toBe(
-      2 / 3,
-    );
+describe("effectivePlanItems / planProgress (UX-01B acceptance 5)", () => {
+  it("excludes skipped and superseded items and keeps unresolved in the denominator", () => {
+    const revised = plan({
+      items: [
+        { id: "p1", title: "Collect", status: "completed" },
+        { id: "p2", title: "Old approach", status: "superseded" },
+        { id: "p3", title: "Optional extra", status: "skipped" },
+        { id: "p4", title: "Deliver", status: "unresolved" },
+        { id: "p5", title: "Review", status: "pending" },
+      ],
+    });
+    expect(effectivePlanItems(revised).map((item) => item.id)).toEqual(["p1", "p4", "p5"]);
+    // unresolved counts toward the denominator, never the numerator.
+    expect(planProgress(revised)).toMatchObject({ completed: 1, total: 3, fraction: 1 / 3 });
   });
-  it("stays base-only when a failed Run has no failed step", () => {
+
+  it("is the single progress source: completed over effective total", () => {
+    const progress = planProgress(
+      plan({
+        items: [
+          { id: "a", title: "a", status: "completed" },
+          { id: "b", title: "b", status: "completed" },
+          { id: "c", title: "c", status: "completed" },
+          { id: "d", title: "d", status: "active" },
+          { id: "e", title: "e", status: "pending" },
+        ],
+      }),
+    );
+    expect(progress).toMatchObject({ completed: 3, total: 5, fraction: 3 / 5 });
+    expect(progress?.label).toBe("Plan progress");
+  });
+
+  it("allows regression when a revision grows the denominator (3/4 → 3/6)", () => {
+    const before = planProgress(
+      plan({
+        items: [
+          { id: "a", title: "a", status: "completed" },
+          { id: "b", title: "b", status: "completed" },
+          { id: "c", title: "c", status: "completed" },
+          { id: "d", title: "d", status: "active" },
+        ],
+      }),
+    );
+    const after = planProgress(
+      plan({
+        revision: 2,
+        items: [
+          { id: "a", title: "a", status: "completed" },
+          { id: "b", title: "b", status: "completed" },
+          { id: "c", title: "c", status: "completed" },
+          { id: "d", title: "d", status: "active" },
+          { id: "e", title: "e", status: "pending" },
+          { id: "f", title: "f", status: "pending" },
+        ],
+      }),
+    );
+    expect(before).toMatchObject({ completed: 3, total: 4 });
+    expect(after).toMatchObject({ completed: 3, total: 6 });
+    expect(after!.fraction).toBeLessThan(before!.fraction);
+  });
+
+  it("is null without a Plan or without effective items — never 0 or a guess", () => {
+    expect(planProgress(null)).toBeNull();
+    expect(planProgress(undefined)).toBeNull();
     expect(
-      lifecycleRailFill("failed", steps(["completed", "running", "pending"]), false),
+      planProgress(
+        plan({
+          items: [
+            { id: "a", title: "a", status: "skipped" },
+            { id: "b", title: "b", status: "superseded" },
+          ],
+        }),
+      ),
     ).toBeNull();
   });
-  it("is full when done even if stale steps lag behind", () => {
-    expect(lifecycleRailFill("done", steps(["completed", "pending"]), false)).toBe(1);
+});
+
+describe("currentPlanItem / currentItemElapsedMinutes (UX-01B boundary ruling)", () => {
+  it("prefers the active item, then the first unresolved one", () => {
+    expect(currentPlanItem(plan())?.id).toBe("p2");
+    expect(
+      currentPlanItem(
+        plan({
+          items: [
+            { id: "p1", title: "Collect", status: "completed" },
+            { id: "p2", title: "Deliver", status: "unresolved" },
+            { id: "p3", title: "Review", status: "pending" },
+          ],
+        }),
+      )?.id,
+    ).toBe("p2");
+    expect(
+      currentPlanItem(plan({ items: [{ id: "p1", title: "Collect", status: "completed" }] })),
+    ).toBeNull();
+    expect(currentPlanItem(null)).toBeNull();
   });
-  it("is full when done", () => {
-    expect(lifecycleRailFill("done", steps(["completed", "completed"]), false)).toBe(1);
+
+  it("derives elapsed only from a planItemId-matched Step with a valid startedAt", () => {
+    const now = Date.parse("2026-10-12T10:06:30.000Z");
+    const current = currentPlanItem(plan());
+    // Running matched Step: now - startedAt.
+    expect(currentItemElapsedMinutes({ item: current, steps: [planStep()], now })).toBe(6);
+    // Completed matched Step: completedAt - startedAt.
+    expect(
+      currentItemElapsedMinutes({
+        item: current,
+        steps: [planStep({ status: "completed", completedAt: "2026-10-12T10:04:00.000Z" })],
+        now,
+      }),
+    ).toBe(4);
+    // A fraction under one minute is honestly 0 ("under 1 min"), never a fake 1.
+    expect(
+      currentItemElapsedMinutes({
+        item: current,
+        steps: [planStep({ startedAt: "2026-10-12T10:06:00.000Z" })],
+        now,
+      }),
+    ).toBe(0);
   });
-  it("counts completed steps while running", () => {
-    expect(lifecycleRailFill("working", steps(["completed", "running", "pending"]), false)).toBe(
-      1 / 3,
+
+  it("is null without a matched Step, without startedAt, or with invalid times", () => {
+    const now = Date.parse("2026-10-12T10:06:30.000Z");
+    const current = currentPlanItem(plan());
+    expect(currentItemElapsedMinutes({ item: current, steps: [], now })).toBeNull();
+    // A Step of another Plan item never lends its time.
+    expect(
+      currentItemElapsedMinutes({ item: current, steps: [planStep({ planItemId: "p1" })], now }),
+    ).toBeNull();
+    // An unlinked Step (planItemId null) never lends its time.
+    expect(
+      currentItemElapsedMinutes({ item: current, steps: [planStep({ planItemId: null })], now }),
+    ).toBeNull();
+    expect(
+      currentItemElapsedMinutes({ item: current, steps: [planStep({ startedAt: null })], now }),
+    ).toBeNull();
+    expect(
+      currentItemElapsedMinutes({
+        item: current,
+        steps: [planStep({ startedAt: "not-a-date" as never })],
+        now,
+      }),
+    ).toBeNull();
+    expect(currentItemElapsedMinutes({ item: null, steps: [planStep()], now })).toBeNull();
+  });
+
+  it("picks the latest matched Step when several exist", () => {
+    const now = Date.parse("2026-10-12T10:30:00.000Z");
+    const minutes = currentItemElapsedMinutes({
+      item: currentPlanItem(plan()),
+      steps: [
+        planStep({
+          stepId: "old",
+          startedAt: "2026-10-12T10:00:00.000Z",
+          completedAt: "2026-10-12T10:10:00.000Z",
+          status: "completed",
+        }),
+        planStep({ stepId: "new", startedAt: "2026-10-12T10:20:00.000Z" }),
+      ],
+      now,
+    });
+    expect(minutes).toBe(10);
+  });
+});
+
+describe("buildExecutionCardModel Plan integration (UX-01B acceptance 4/5/6)", () => {
+  it("carries the single Plan progress and never a Steps-derived one", () => {
+    const card = model(run("running"), [], {}, { plan: plan() });
+    expect(card.planProgress).toMatchObject({ completed: 1, total: 2, fraction: 1 / 2 });
+    const serialized = JSON.stringify(card);
+    expect(serialized).not.toContain("%");
+    expect(serialized).not.toContain("--");
+  });
+
+  it("has no progress at all without a Plan, even with loaded steps", () => {
+    const card = model(run("running"), [], {}, { steps: [planStep()] });
+    expect(card.planProgress).toBeNull();
+  });
+
+  it("shows the current Plan item line with trusted elapsed minutes", () => {
+    const card = model(
+      run("running"),
+      [activity("Checking ticket")],
+      {},
+      {
+        plan: plan(),
+        steps: [planStep()],
+        now: Date.parse("2026-10-12T10:06:30.000Z"),
+      },
     );
+    // The Plan current-item line replaces the raw activity line at level 0.
+    expect(card.aux).toEqual({ kind: "current", text: "Current: Deliver result · 6 min elapsed" });
   });
-  it("is null without steps or with a truncated list", () => {
-    expect(lifecycleRailFill("working", [], false)).toBeNull();
-    expect(lifecycleRailFill("working", undefined, false)).toBeNull();
-    expect(lifecycleRailFill("working", steps(["completed", "running"]), true)).toBeNull();
+
+  it("shows the current item without elapsed when no trusted Step time exists", () => {
+    const card = model(run("running"), [], {}, { plan: plan() });
+    expect(card.aux).toEqual({ kind: "current", text: "Current: Deliver result" });
+  });
+
+  it("shows under-1-min elapsed honestly", () => {
+    const card = model(
+      run("running"),
+      [],
+      {},
+      {
+        plan: plan(),
+        steps: [planStep({ startedAt: "2026-10-12T10:06:00.000Z" })],
+        now: Date.parse("2026-10-12T10:06:30.000Z"),
+      },
+    );
+    expect(card.aux).toEqual({
+      kind: "current",
+      text: "Current: Deliver result · under 1 min elapsed",
+    });
+  });
+
+  it("keeps the pending Intervention line ahead of the current item line", () => {
+    const card = model(
+      run("waiting_input", "approval"),
+      [],
+      { pendingInterventionKinds: ["approval"] },
+      {
+        plan: plan(),
+        pendingInterventions: [intervention()],
+        summary: summary({ status: "waiting_input", waitKind: "approval" }),
+      },
+    );
+    expect(card.aux).toEqual({
+      kind: "intervention",
+      text: "Send the report to billing@example.com?",
+    });
+  });
+
+  it("keeps the failure line ahead of the current item line on a failed Run", () => {
+    const card = model(
+      run("failed"),
+      [],
+      {},
+      {
+        plan: plan(),
+        summary: summary({ status: "failed", failure: "The billing service timed out" }),
+      },
+    );
+    expect(card.aux?.kind).toBe("failure");
+    expect(card.aux?.text).toContain("The billing service timed out");
+  });
+
+  it("omits the current item line on terminal Runs", () => {
+    const card = model(
+      run("completed"),
+      [],
+      {},
+      {
+        plan: plan(),
+        summary: summary({ outcome: "All done" }),
+      },
+    );
+    expect(card.aux).toEqual({ kind: "outcome", text: "All done" });
+  });
+
+  it("carries the localized revision-flash label for the shell timer", () => {
+    const card = model(run("running"), [], {}, { plan: plan() });
+    expect(card.planUpdatedLabel).toBe("Plan updated");
   });
 });
 
@@ -423,6 +746,6 @@ describe("actionOverride (Task Center navigation verbs)", () => {
       status: deriveExecutionStatus(run("running"), []),
       summary: summary({ status: "running" }),
     });
-    expect(model.action).toEqual({ verb: "View execution", act: "toggle" });
+    expect(model.action).toEqual({ verb: "View progress", act: "toggle" });
   });
 });

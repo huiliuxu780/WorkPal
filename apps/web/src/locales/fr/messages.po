@@ -222,15 +222,15 @@ msgstr "Connexion {0}"
 msgid "{0} default"
 msgstr "Défaut de {0}"
 
+#. placeholder {0}: step.evidence.length
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "{0} evidence references"
+msgstr ""
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} handling"
 msgstr "Gestion de {0}"
-
-#. placeholder {0}: current.length
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{0} items in progress"
-msgstr ""
 
 #. placeholder {0}: format(size / 1024)
 #: src/components/ArtifactFileCard.tsx
@@ -286,14 +286,6 @@ msgstr "Ordinateur de {botName}"
 msgid "{days}d ago"
 msgstr "il y a {days} j"
 
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{done} done · some statuses unconfirmed"
-msgstr ""
-
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "{done}/{eligible} done"
-msgstr ""
-
 #: src/components/ToolActivityDisclosure.tsx
 msgid "{hidden, plural, one {+# earlier step} other {+# earlier steps}}"
 msgstr ""
@@ -322,10 +314,6 @@ msgstr ""
 
 #: src/lib/execution-card.ts
 msgid "{n} collaborators"
-msgstr ""
-
-#: src/lib/execution-card.ts
-msgid "{n} steps"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -388,8 +376,8 @@ msgstr ""
 msgid "1 collaborator"
 msgstr ""
 
-#: src/lib/execution-card.ts
-msgid "1 step"
+#: src/components/ai/RunStepsDisclosure.tsx
+msgid "1 evidence reference"
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -1847,6 +1835,21 @@ msgstr "Expression Cron"
 msgid "Current password"
 msgstr "Mot de passe actuel"
 
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0}"
+msgstr ""
+
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0} · {minutes} min elapsed"
+msgstr ""
+
+#. placeholder {0}: item.title
+#: src/lib/execution-card.ts
+msgid "Current: {0} · under 1 min elapsed"
+msgstr ""
+
 #: src/pages/shell/dialogs.tsx
 msgid "Customer support"
 msgstr "Support client"
@@ -1973,6 +1976,7 @@ msgstr "Application de bureau"
 msgid "Desktop update"
 msgstr "Mise à jour du bureau"
 
+#: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Details"
 msgstr ""
@@ -2021,10 +2025,6 @@ msgstr "Docker limite l'accès à votre ordinateur pour une sécurité renforcé
 #: src/pages/Auth.tsx
 msgid "Don’t have an account?"
 msgstr "Vous n'avez pas de compte ?"
-
-#: src/components/ai/RunPlanDisclosure.tsx
-msgid "done"
-msgstr ""
 
 #: src/components/activity/ActivityRows.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
@@ -2192,10 +2192,6 @@ msgstr "Chaque mois"
 #: src/pages/RoutineSchedule.tsx
 msgid "Every week"
 msgstr "Chaque semaine"
-
-#: src/components/ai/RunStepsDisclosure.tsx
-msgid "evidence references"
-msgstr ""
 
 #. placeholder {0}: history.length
 #: src/components/RunDetailsPanel.tsx
@@ -2629,7 +2625,7 @@ msgstr "Écouter"
 msgid "Listening"
 msgstr "Écoute"
 
-#: src/pages/Shell.tsx
+#: src/pages/shell/use-execution-transcript.tsx
 msgid "Load earlier activity"
 msgstr ""
 
@@ -3280,6 +3276,10 @@ msgstr "Ou collez une clé API"
 msgid "Organization API key"
 msgstr "Clé API de l'organisation"
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Other execution records"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
 msgid "Other model…"
@@ -3355,7 +3355,12 @@ msgstr "Épingler"
 msgid "Plan"
 msgstr ""
 
+#: src/lib/execution-card.ts
+msgid "Plan progress"
+msgstr ""
+
 #: src/components/ai/RunPlanDisclosure.tsx
+#: src/lib/execution-card.ts
 msgid "Plan updated"
 msgstr ""
 
@@ -4518,12 +4523,16 @@ msgstr "Vérification en cours…"
 msgid "Version"
 msgstr "Version"
 
-#: src/lib/execution-card.ts
 #: src/lib/task-center.ts
 msgid "View execution"
 msgstr ""
 
+#: src/lib/execution-card.ts
+msgid "View progress"
+msgstr ""
+
 #: src/components/ai/RunPlanDisclosure.tsx
+#: src/lib/execution-card.ts
 msgid "View reason"
 msgstr ""
 

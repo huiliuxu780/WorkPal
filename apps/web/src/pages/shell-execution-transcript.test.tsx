@@ -35,6 +35,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTaskCenterNavIntent,
+  EXECUTION_NAV_INTENT_EVENT,
   peekTaskCenterNavIntent,
   setTaskCenterNavIntent,
 } from "../lib/task-center";
@@ -312,6 +313,27 @@ function approvalAskBlock(text: string, interventionId: string, effectId: string
   };
 }
 
+/** The same ask block after the runtime rewrote it to its answered state. */
+function answeredAskBlock(
+  text: string,
+  interventionId: string,
+  effectId: string,
+  answer: string,
+): MessageBlock {
+  return {
+    kind: "ask",
+    text,
+    interventionId,
+    approvalEffectId: effectId,
+    status: "answered",
+    answer,
+    actions: [
+      { id: "allow", label: "Allow" },
+      { id: "deny", label: "Deny" },
+    ],
+  };
+}
+
 function transcriptOf(host: HTMLElement): Element {
   const transcript = host.querySelector('[data-testid="transcript"]');
   if (!transcript) throw new Error("transcript container missing");
@@ -352,7 +374,7 @@ afterEach(() => {
 });
 
 describe("Shell execution region smoke (UX-01A baseline)", () => {
-  it("merges Plan, semantic Steps, unlinked Todos and Activity into one shell at the anchor", () => {
+  it("merges Plan, semantic Steps and Activity into one shell at the anchor, without Todos", () => {
     const host = renderTranscript({
       messages: [
         message("m1", "user", [{ kind: "text", text: "USER-QUESTION-1" }]),
@@ -375,16 +397,17 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     const shells = host.querySelectorAll('[data-testid="execution-shell"]');
     expect(shells).toHaveLength(1);
     const shell = shells[0]!;
-    // One shell owns the whole Run: plan, steps, unlinked todos and activity.
+    // One shell owns the whole Run: plan, steps and activity.
     expect(shell.querySelector('[data-slot="plan"]')).not.toBeNull();
     expect(shell.querySelector('[data-slot="steps"]')).not.toBeNull();
-    expect(shell.querySelector('[data-slot="todos"]')).not.toBeNull();
     expect(shell.querySelector('[data-slot="activity"]')).not.toBeNull();
     expect(shell.textContent).toContain("PLAN-GOAL-1");
     expect(shell.textContent).toContain("STEP-TITLE-1");
     expect(shell.textContent).toContain("STEP-TITLE-2");
-    expect(shell.textContent).toContain("UNLINKED-TODO-1");
-    // Linked Todos stay deduped out of the legacy snapshot path.
+    // UX-01B: Todos no longer render in the transcript at all (the legacy
+    // "事项清单" fallback is UX-01C scope, and only inside a legal surface).
+    expect(shell.querySelector('[data-slot="todos"]')).toBeNull();
+    expect(shell.textContent).not.toContain("UNLINKED-TODO-1");
     expect(shell.textContent).not.toContain("LINKED-TODO-HIDDEN");
     // Anchor position: the completed Run's shell sits immediately BEFORE its
     // final bot answer bubble (before:m2), as a direct transcript child
@@ -399,7 +422,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(shell.textContent).toContain("MERGED-RUN-TITLE");
   });
 
-  it("gives every server summary exactly one shell and tails a message-less failed Run", () => {
+  it("gives eligible server summaries exactly one shell and tails a message-less failed Run", () => {
     const host = renderTranscript({
       messages: [message("m1", "user", [{ kind: "text", text: "USER-QUESTION-2" }])],
       runs: [],
@@ -411,28 +434,145 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
           title: "FAILED-RUN-TITLE",
           anchorMessageId: undefined,
         }),
+        // A plain completed Run (no Plan, no semantic Steps, no pending
+        // Intervention, not failed) gets NO execution surface — UX-01B
+        // acceptance 1. Its result bubble is the whole presentation.
         summary({
           runId: "run-3",
           rev: 4,
           status: "completed",
           title: "SUMMARY-ONLY-RUN",
           anchorMessageId: "m1",
+          counts: { actions: 3 },
+        }),
+        // A summary whose trusted counts report semantic Steps DOES earn a
+        // shell even before its detail loads.
+        summary({
+          runId: "run-4",
+          rev: 1,
+          status: "completed",
+          title: "COUNTED-STEPS-RUN",
+          anchorMessageId: "m1",
+          counts: { steps: 2 },
         }),
       ],
     });
 
     const shells = host.querySelectorAll('[data-testid="execution-shell"]');
-    // Every server summary produces exactly one shell (HISTORY-001): the
-    // summary-only completed Run AND the message-less failed Run each get one.
+    // The failed Run and the counted-steps Run each get exactly one shell;
+    // the plain summary-only Run gets none.
     expect(shells).toHaveLength(2);
-    // Document order: the completed Run anchors at its server anchor message
-    // (m1), so its shell comes first; the failed Run has no anchor and falls
-    // to __tail, rendering last — as the transcript's final element.
-    expect(shells[0]!.textContent).toContain("SUMMARY-ONLY-RUN");
-    const failedShell = shells[1]!;
-    expect(failedShell.textContent).toContain("FAILED-RUN-TITLE");
+    const texts = [...shells].map((shell) => shell.textContent ?? "");
+    expect(texts.some((text) => text.includes("SUMMARY-ONLY-RUN"))).toBe(false);
+    expect(texts.some((text) => text.includes("COUNTED-STEPS-RUN"))).toBe(true);
+    const failedShell = [...shells].find((shell) =>
+      shell.textContent?.includes("FAILED-RUN-TITLE"),
+    )!;
     expect(failedShell.getAttribute("data-status")).toBe("failed");
+    // The failed Run has no anchor and falls to __tail, rendering last — as
+    // the transcript's final element.
     expect(transcriptOf(host).lastElementChild).toBe(failedShell);
+  });
+
+  it("creates no execution surface for Todo-only, Activity-only or plain active Runs", () => {
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-6" }]),
+        message("m2", "bot", [{ kind: "text", text: "BOT-ANSWER-6" }], "run-todo"),
+        message("m3", "bot", [{ kind: "text", text: "BOT-ANSWER-7" }], "run-activity"),
+      ],
+      todos: [todo("run-todo", "todo-1", "TODO-ONLY-ITEM", null)],
+      activity: [activity("act-1", "run-activity", "ACTIVITY-ONLY-ITEM")],
+      runs: [
+        run("run-todo", "completed"),
+        run("run-activity", "completed"),
+        run("run-plain", "running"),
+      ],
+      activeRunIds: ["run-plain"],
+      executions: [
+        summary({ runId: "run-todo", title: "TODO-ONLY-RUN", anchorMessageId: "m2" }),
+        summary({
+          runId: "run-activity",
+          title: "ACTIVITY-ONLY-RUN",
+          anchorMessageId: "m3",
+          counts: { actions: 4 },
+        }),
+        summary({ runId: "run-plain", rev: 1, status: "running", title: "PLAIN-ACTIVE-RUN" }),
+      ],
+    });
+    // UX-01B acceptance 1/3: Todos and tool Activity never create a surface,
+    // and a plain running Run stays with its lightweight status only.
+    expect(host.querySelectorAll('[data-testid="execution-shell"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-slot="plan"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-slot="steps"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-slot="todos"]')).toHaveLength(0);
+    expect(host.textContent).not.toContain("TODO-ONLY-ITEM");
+  });
+
+  it("creates a surface for a single semantic Step without any progress numbers", () => {
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-8" }]),
+        message("m2", "bot", [{ kind: "text", text: "BOT-ANSWER-8" }], "run-one-step"),
+      ],
+      steps: [step("run-one-step", "step-1", "SINGLE-STEP-TITLE", 0)],
+      runs: [run("run-one-step", "completed")],
+      executions: [
+        summary({ runId: "run-one-step", title: "ONE-STEP-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    // Acceptance 3: even ONE semantic Step earns the execution surface...
+    const shells = host.querySelectorAll('[data-testid="execution-shell"]');
+    expect(shells).toHaveLength(1);
+    expect(shells[0]!.textContent).toContain("SINGLE-STEP-TITLE");
+    // ...acceptance 6: without a Plan there is no count, no bar, no rail.
+    expect(host.querySelector('[data-testid="execution-plan-count"]')).toBeNull();
+    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    expect(host.querySelector(".exc-rail")).toBeNull();
+  });
+
+  it("returns a settled ask bubble when its plain Run has no surface", () => {
+    const answeredAsk = answeredAskBlock("HISTORICAL-ASK-TEXT", "iv-9", "eff-9", "allow");
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-9" }]),
+        message("m2", "bot", [{ kind: "text", text: "DONE-TEXT-9" }, answeredAsk], "run-9"),
+      ],
+      runs: [run("run-9", "completed")],
+      interventions: [
+        approvalIntervention({ id: "iv-9", runId: "run-9", messageId: "m2", status: "answered" }),
+      ],
+      executions: [summary({ runId: "run-9", title: "SETTLED-ASK-RUN", anchorMessageId: "m2" })],
+    });
+    // No Plan/Steps/pending/failed → no surface; the bubble's own answered
+    // AskCard is the honest history echo instead of a vanished region card.
+    expect(host.querySelectorAll('[data-testid="execution-shell"]')).toHaveLength(0);
+    const bubble = host.querySelector('[data-message-id="m2"]');
+    expect(bubble).not.toBeNull();
+    expect(bubble!.textContent).toContain("HISTORICAL-ASK-TEXT");
+  });
+
+  it("keeps a settled ask suppressed while its Run keeps a surface", () => {
+    const answeredAsk = answeredAskBlock("COVERED-ASK-TEXT", "iv-8", "eff-8", "allow");
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-10" }]),
+        message("m2", "bot", [{ kind: "text", text: "DONE-TEXT-10" }, answeredAsk], "run-8"),
+      ],
+      steps: [step("run-8", "step-1", "ELIGIBLE-STEP", 0)],
+      runs: [run("run-8", "completed")],
+      interventions: [
+        approvalIntervention({ id: "iv-8", runId: "run-8", messageId: "m2", status: "answered" }),
+      ],
+      executions: [summary({ runId: "run-8", title: "ELIGIBLE-ASK-RUN", anchorMessageId: "m2" })],
+    });
+    // The Run is eligible (semantic Step), so its region owns the settled
+    // card and the bubble ask stays suppressed — exactly one presentation.
+    const shells = host.querySelectorAll('[data-testid="execution-shell"]');
+    expect(shells).toHaveLength(1);
+    expect(countOccurrences(host.textContent, "COVERED-ASK-TEXT")).toBe(1);
+    const bubble = host.querySelector('[data-message-id="m2"]');
+    expect(bubble!.textContent).not.toContain("COVERED-ASK-TEXT");
   });
 
   it("keeps a pending Intervention outside the collapsed detail and suppresses the covered bubble Ask", () => {
@@ -488,9 +628,11 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     );
     expect(allow).toBeTruthy();
     expect(allow!.hasAttribute("disabled")).toBe(false);
-    // Waiting Runs open by the current default-expansion rule.
+    // UX-01B acceptance 4/7: a waiting Run's card is collapsed by default —
+    // the Intervention controls stay operable OUTSIDE the collapsed detail.
     const card = region.closest('article[data-testid="execution-card"]');
-    expect(card?.getAttribute("data-open")).toBe("1");
+    expect(card?.getAttribute("data-open")).toBe("0");
+    expect(region.closest(".exc-details")).toBeNull();
   });
 
   it("consumes the Task Center attention intent once: opens the Run and focuses its Intervention control", async () => {
@@ -566,6 +708,8 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
         message("m1", "user", [{ kind: "text", text: "USER-QUESTION-5" }]),
         message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-6" }], "run-6"),
       ],
+      // A semantic Step keeps this completed Run eligible for a surface.
+      steps: [step("run-6", "step-1", "RESTORED-STEP", 0)],
       runs: [run("run-6", "completed", { completedAt: ISO })],
       executions: [
         summary({
@@ -605,5 +749,154 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     const active = document.activeElement;
     expect(active).not.toBeNull();
     expect(active!.classList.contains("exc-status")).toBe(true);
+  });
+
+  it("leaves a plain active Run with only the lightweight progress bubble (acceptance 2)", () => {
+    const progressMessage: ThreadMessage = {
+      id: "progress:run-p",
+      threadId: THREAD,
+      seq: 0,
+      role: "bot",
+      botId: BOT,
+      runId: "run-p",
+      blocks: [{ kind: "progress", text: "READING-NOW" } as MessageBlock],
+      createdAt: ISO,
+    };
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-12" }]),
+        progressMessage,
+      ],
+      runs: [run("run-p", "running")],
+      activeRunIds: ["run-p"],
+      executions: [
+        summary({ runId: "run-p", rev: 1, status: "running", title: "PLAIN-RUN-TITLE" }),
+      ],
+    });
+    // No execution surface, no plan/steps/todos slots, no numbers — only the
+    // existing single-line lightweight status of the progress message.
+    expect(host.querySelectorAll('[data-testid="execution-shell"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-slot="plan"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-slot="steps"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-slot="todos"]')).toHaveLength(0);
+    expect(host.textContent).toContain("READING-NOW");
+    expect(host.textContent).not.toContain("PLAIN-RUN-TITLE");
+  });
+
+  it("keeps a live card open when its own detail load lands on a fresher rev", async () => {
+    // Review-round regression: opening a live Run's card triggers the detail
+    // fetch; for an actively-eventing Run the response carries a NEWER rev
+    // than the thread summary the toggle stored. That arrival is the same
+    // projection the user just opened — it must re-key the stored decision,
+    // never self-close the card.
+    rpcMocks.executionSnapshot.mockResolvedValue({
+      summary: summary({
+        runId: "run-live",
+        rev: 9,
+        status: "running",
+        title: "LIVE-RUN-TITLE",
+        anchorMessageId: "m2",
+      }),
+      steps: { items: [step("run-live", "s1", "LIVE-STEP", 0)], truncated: false },
+      todos: { items: [], truncated: false },
+      timeline: [],
+      activityPage: { items: [], olderCursor: null, truncated: false },
+      interventions: [],
+    } as never);
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-17" }]),
+        message("m2", "bot", [{ kind: "text", text: "PARTIAL-ANSWER-17" }], "run-live"),
+      ],
+      steps: [step("run-live", "s1", "LIVE-STEP", 0)],
+      runs: [run("run-live", "running")],
+      activeRunIds: ["run-live"],
+      executions: [
+        summary({
+          runId: "run-live",
+          rev: 5,
+          status: "running",
+          title: "LIVE-RUN-TITLE",
+          anchorMessageId: "m2",
+        }),
+      ],
+    });
+    const collapsed = host.querySelector('article[data-testid="execution-card"]');
+    expect(collapsed!.getAttribute("data-open")).toBe("0");
+    const toggle = collapsed!.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(80);
+    });
+    const opened = host.querySelector('article[data-testid="execution-card"]');
+    expect(opened!.getAttribute("data-open")).toBe("1");
+    expect(host.textContent).toContain("LIVE-STEP");
+  });
+
+  it("re-checks a sidebar-set intent on the ping event without a remount (acceptance 12)", async () => {
+    // The transcript is ALREADY mounted on the target thread — the sidebar
+    // click on the same conversation cannot rely on a threadId change, so it
+    // announces the intent through the shared window event.
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-11" }]),
+        message(
+          "m2",
+          "bot",
+          [
+            { kind: "text", text: "WAITING-TEXT-11" },
+            approvalAskBlock("BUBBLE-ASK-11", "iv-11", "eff-11"),
+          ],
+          "run-11",
+        ),
+      ],
+      runs: [run("run-11", "waiting_input", { waitKind: "approval" })],
+      activeRunIds: ["run-11"],
+      interventions: [
+        approvalIntervention({
+          id: "iv-11",
+          runId: "run-11",
+          messageId: "m2",
+          approval: {
+            effectId: "eff-11",
+            effectStatus: "intended",
+            actions: [
+              { id: "allow", label: "Allow" },
+              { id: "deny", label: "Deny" },
+            ],
+          },
+          presentation: { text: "REGION-APPROVAL-11" },
+        }),
+      ],
+      executions: [
+        summary({
+          runId: "run-11",
+          rev: 2,
+          status: "waiting_input",
+          waitKind: "approval",
+          title: "SIDEBAR-RETURN-RUN",
+          anchorMessageId: "m2",
+        }),
+      ],
+    });
+    expect(peekTaskCenterNavIntent()).toBeNull();
+
+    setTaskCenterNavIntent({ threadId: THREAD, runId: "run-11", rev: 2, attention: true });
+    act(() => {
+      window.dispatchEvent(new Event(EXECUTION_NAV_INTENT_EVENT));
+    });
+    await act(async () => {
+      await sleep(60);
+    });
+
+    expect(peekTaskCenterNavIntent()).toBeNull();
+    const card = host.querySelector('article[data-testid="execution-card"][data-open="1"]');
+    expect(card).not.toBeNull();
+    const active = document.activeElement;
+    expect(active).not.toBeNull();
+    expect(active!.closest('[data-testid="execution-interventions"]')).not.toBeNull();
+    expect(active!.textContent).toContain("Allow");
   });
 });

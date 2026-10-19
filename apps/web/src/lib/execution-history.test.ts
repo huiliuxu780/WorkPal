@@ -18,6 +18,7 @@ import {
   mergeActivityPages,
   planExpansionDefaults,
   readExecutionExpansions,
+  rekeyExpansionRev,
   resolveExecutionAnchor,
   selectCachedDetailEntry,
   summariesByRun,
@@ -402,37 +403,27 @@ describe("expansion sessionStorage", () => {
 describe("planExpansionDefaults", () => {
   const run = (runId: string, status: string, rev = 1) => ({ runId, rev, status });
 
-  it("opens at most one detail for two concurrent waiting Runs", () => {
+  // UX-01B acceptance 4: running/failed Runs no longer auto-expand. Every
+  // default is closed; only rev-matching stored user decisions open a detail.
+
+  it("keeps two concurrent waiting Runs collapsed by default", () => {
     const plan = planExpansionDefaults({
       entries: {},
       threadId: "t",
       runs: [run("w1", "waiting_input"), run("w2", "waiting_takeover")],
     });
-    const opens = [...plan.values()].filter(Boolean);
-    expect(opens).toHaveLength(1);
-    expect(plan.get("w1")).toBe(true);
+    expect([...plan.values()].filter(Boolean)).toHaveLength(0);
+    expect(plan.get("w1")).toBe(false);
     expect(plan.get("w2")).toBe(false);
   });
 
-  it("opens at most one detail for two active Runs and keeps failed behind them", () => {
+  it("keeps active and failed Runs collapsed by default", () => {
     const plan = planExpansionDefaults({
       entries: {},
       threadId: "t",
       runs: [run("f1", "failed"), run("a1", "running"), run("a2", "running")],
     });
-    expect(plan.get("a1")).toBe(true);
-    expect(plan.get("a2")).toBe(false);
-    expect(plan.get("f1")).toBe(false);
-  });
-
-  it("lets a failed Run take the slot when nothing else is open", () => {
-    const plan = planExpansionDefaults({
-      entries: {},
-      threadId: "t",
-      runs: [run("c1", "completed"), run("f1", "failed")],
-    });
-    expect(plan.get("f1")).toBe(true);
-    expect(plan.get("c1")).toBe(false);
+    expect([...plan.values()].filter(Boolean)).toHaveLength(0);
   });
 
   it("keeps terminal Runs collapsed", () => {
@@ -453,10 +444,10 @@ describe("planExpansionDefaults", () => {
       runs: [run("w1", "waiting_input"), run("a1", "running")],
     });
     expect(plan.get("w1")).toBe(false);
-    expect(plan.get("a1")).toBe(true);
+    expect(plan.get("a1")).toBe(false);
   });
 
-  it("honors a stored open and denies the default to a new active Run", () => {
+  it("honors a stored open and keeps every other Run closed", () => {
     const plan = planExpansionDefaults({
       entries: {
         "t:c1": { threadId: "t", runId: "c1", rev: 3, open: true },
@@ -468,15 +459,15 @@ describe("planExpansionDefaults", () => {
     expect(plan.get("a1")).toBe(false);
   });
 
-  it("discards stored decisions whose rev moved and re-applies defaults", () => {
+  it("discards stored decisions whose rev moved and falls back to closed", () => {
     const plan = planExpansionDefaults({
       entries: {
-        "t:c1": { threadId: "t", runId: "c1", rev: 1, open: false },
+        "t:c1": { threadId: "t", runId: "c1", rev: 1, open: true },
       },
       threadId: "t",
       runs: [run("c1", "failed", 2)],
     });
-    expect(plan.get("c1")).toBe(true);
+    expect(plan.get("c1")).toBe(false);
   });
   it("normalizes duplicate stored open entries to exactly one open detail", () => {
     const plan = planExpansionDefaults({
@@ -506,6 +497,57 @@ describe("planExpansionDefaults", () => {
     expect(plan.get("a1")).toBe(true);
     expect(plan.get("c1")).toBe(false);
     expect([...plan.values()].filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("rekeyExpansionRev (live-Run detail arrival must not self-close)", () => {
+  it("moves a stored entry to the freshly loaded detail rev, keeping its open state", () => {
+    const entries = toggleExpansion({
+      entries: {},
+      threadId: "t",
+      runId: "live",
+      rev: 5,
+      currentlyOpen: false,
+    });
+    expect(entries["t:live"]).toEqual({ threadId: "t", runId: "live", rev: 5, open: true });
+    // The detail response carries a fresher rev of the SAME projection the
+    // user just opened — re-key instead of letting the entry go stale.
+    const rekeyed = rekeyExpansionRev({ entries, threadId: "t", runId: "live", rev: 8 });
+    expect(rekeyed["t:live"]).toEqual({ threadId: "t", runId: "live", rev: 8, open: true });
+    // The plan authority now agrees with the detail-derived rev.
+    const plan = planExpansionDefaults({
+      entries: rekeyed,
+      threadId: "t",
+      runs: [{ runId: "live", rev: 8, status: "running" }],
+    });
+    expect(plan.get("live")).toBe(true);
+  });
+
+  it("never downgrades a newer stored rev and ignores unknown Runs", () => {
+    const entries = toggleExpansion({
+      entries: {},
+      threadId: "t",
+      runId: "live",
+      rev: 9,
+      currentlyOpen: false,
+    });
+    expect(rekeyExpansionRev({ entries, threadId: "t", runId: "live", rev: 6 })).toBe(entries);
+    expect(rekeyExpansionRev({ entries, threadId: "t", runId: "other", rev: 12 })).toBe(entries);
+    expect(rekeyExpansionRev({ entries, threadId: "t2", runId: "live", rev: 12 })).toBe(entries);
+  });
+
+  it("keeps a stored collapse collapsed (only the rev moves)", () => {
+    let entries = toggleExpansion({
+      entries: {},
+      threadId: "t",
+      runId: "w",
+      rev: 3,
+      currentlyOpen: false,
+    });
+    entries = toggleExpansion({ entries, threadId: "t", runId: "w", rev: 3, currentlyOpen: true });
+    expect(entries["t:w"]!.open).toBe(false);
+    const rekeyed = rekeyExpansionRev({ entries, threadId: "t", runId: "w", rev: 7 });
+    expect(rekeyed["t:w"]).toEqual({ threadId: "t", runId: "w", rev: 7, open: false });
   });
 });
 

@@ -3,10 +3,14 @@ import type { ExecutionCardModel } from "../../lib/execution-card";
 import "./execution-card.css";
 
 /**
- * The Execution Card presentation (Task 15.1 v2 design). Pure rendering of an
- * `ExecutionCardModel` built in lib/execution-card.ts — no status derivation,
- * no data fetching, and no identifiers (Run/Thread/Bot/Attempt ids, fences,
- * tool payloads and raw errors never reach this tree).
+ * The Execution Card presentation (Task 15.1 v2 design + UX-01B convergence).
+ * Pure rendering of an `ExecutionCardModel` built in lib/execution-card.ts —
+ * no status derivation, no data fetching, and no identifiers (Run/Thread/Bot
+ * /Attempt ids, fences, tool payloads and raw errors never reach this tree).
+ *
+ * UX-01B: the progress rail renders ONLY when the model carries a structured
+ * Plan progress — one accessible bar, one a/b count, both from the same pure
+ * result. Without a Plan there is no rail base, no fill and no placeholder.
  */
 
 const marks = {
@@ -42,6 +46,7 @@ export function ExecutionCard({
   open,
   hasDetail,
   detailsId,
+  planUpdated,
   onToggle,
   onAttention,
   onNavigate,
@@ -53,6 +58,8 @@ export function ExecutionCard({
   open: boolean;
   hasDetail: boolean;
   detailsId: string;
+  /** Shell-owned 3s revision flash (UX-01B acceptance 9). */
+  planUpdated?: boolean;
   onToggle: () => void;
   onAttention: () => void;
   /** Task Center second entry: the primary action returns to the conversation. */
@@ -63,6 +70,7 @@ export function ExecutionCard({
 }) {
   const breathing =
     !open && !card.background && (card.status === "working" || card.status === "planning");
+  const progress = card.planProgress;
   return (
     <article
       data-testid="execution-card"
@@ -74,13 +82,18 @@ export function ExecutionCard({
       aria-label={card.title ? `${card.statusLabel} ${card.title}` : card.statusLabel}
       className="exc-card"
     >
-      <span className="exc-rail" aria-hidden="true">
-        <i
-          style={
-            card.railFill != null ? { height: `${Math.round(card.railFill * 100)}%` } : undefined
-          }
-        />
-      </span>
+      {progress ? (
+        <span
+          className="exc-rail"
+          role="progressbar"
+          aria-label={progress.label}
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.completed}
+        >
+          <i style={{ height: `${Math.round(progress.fraction * 100)}%` }} />
+        </span>
+      ) : null}
       <div className="exc-head">
         <span
           className="exc-glyph"
@@ -95,10 +108,19 @@ export function ExecutionCard({
         </p>
         {card.when ? <time className="exc-when">{card.when}</time> : null}
       </div>
-      {card.title ? (
-        <h3 className="exc-title" dir="auto">
-          {card.title}
-        </h3>
+      {card.title || progress ? (
+        <div className="exc-title-row">
+          {card.title ? (
+            <h3 className="exc-title" dir="auto">
+              {card.title}
+            </h3>
+          ) : null}
+          {progress ? (
+            <span className="exc-count" data-testid="execution-plan-count">
+              {progress.completed}/{progress.total}
+            </span>
+          ) : null}
+        </div>
       ) : null}
       {card.aux ? (
         <p className="exc-line" data-kind={card.aux.kind} dir="auto">
@@ -111,21 +133,44 @@ export function ExecutionCard({
         </p>
       ) : null}
       {card.metaParts.length > 0 ? <p className="exc-meta">{card.metaParts.join(" · ")}</p> : null}
-      {card.action ? (
+      {planUpdated ? (
+        <p
+          className="exc-flash"
+          role="status"
+          aria-live="polite"
+          data-testid="execution-plan-updated"
+        >
+          {card.planUpdatedLabel}
+        </p>
+      ) : null}
+      {card.action || card.secondaryAction ? (
         <div className="exc-actions">
-          <button
-            type="button"
-            className="exc-entry"
-            aria-expanded={hasDetail ? open : undefined}
-            aria-controls={hasDetail ? detailsId : undefined}
-            onClick={() => {
-              if (card.action?.act === "attention") onAttention();
-              else if (card.action?.act === "navigate") onNavigate?.();
-              else onToggle();
-            }}
-          >
-            {card.action.verb}
-          </button>
+          {card.action ? (
+            <button
+              type="button"
+              className="exc-entry"
+              aria-expanded={card.action.act === "toggle" && hasDetail ? open : undefined}
+              aria-controls={card.action.act === "toggle" && hasDetail ? detailsId : undefined}
+              onClick={() => {
+                if (card.action?.act === "attention") onAttention();
+                else if (card.action?.act === "navigate") onNavigate?.();
+                else onToggle();
+              }}
+            >
+              {card.action.verb}
+            </button>
+          ) : null}
+          {card.secondaryAction ? (
+            <button
+              type="button"
+              className="exc-entry"
+              aria-expanded={hasDetail ? open : undefined}
+              aria-controls={hasDetail ? detailsId : undefined}
+              onClick={onToggle}
+            >
+              {card.secondaryAction.verb}
+            </button>
+          ) : null}
         </div>
       ) : null}
       {interventions ? (

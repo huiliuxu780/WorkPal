@@ -10,7 +10,11 @@ export {
   type AgentAvatarSize,
   type AvatarSurface,
 } from "./agent-avatar/agent-avatar.js";
-export { type AvatarCatalogBot, AvatarCatalogProvider } from "./agent-avatar/catalog.js";
+export {
+  type AvatarCatalogBot,
+  AvatarCatalogProvider,
+  useAvatarCatalog,
+} from "./agent-avatar/catalog.js";
 export {
   BotAvatar,
   DEFAULT_GROK_BOT_COLOR,

@@ -318,6 +318,26 @@ export function toggleExpansion(input: {
   return writeExpansions(next);
 }
 
+/**
+ * Re-key a stored expansion decision to the rev of the detail that just
+ * loaded (review round). The toggle stores the thread-summary rev; an
+ * actively eventing Run's own detail arrives at a FRESHER rev of the same
+ * projection the user just opened — without re-keying, the open-triggered
+ * load would immediately invalidate the stored decision and self-close the
+ * card. Never downgrades a newer stored rev; unknown Run/Thread untouched.
+ */
+export function rekeyExpansionRev(input: {
+  entries: ExpansionMap;
+  threadId: string;
+  runId: string;
+  rev: number;
+}): ExpansionMap {
+  const key = expansionId(input.threadId, input.runId);
+  const entry = input.entries[key];
+  if (!entry || entry.rev >= input.rev) return input.entries;
+  return writeExpansions({ ...input.entries, [key]: { ...entry, rev: input.rev } });
+}
+
 /** Only ever the four expansion fields — snapshots, answers, and secrets never enter storage. */
 export function expansionLogShape(entries: ExpansionMap): ExpansionEntry[] {
   return Object.values(entries);
@@ -372,11 +392,15 @@ export type ExpansionPlanRun = {
 
 /**
  * Resolve the effective open state of every server-driven Run of one Thread
- * with AT MOST ONE detail open at any time — initial render, refresh, rev
- * moves and waiting states included. A stored entry whose rev matches is
- * authoritative (so a collapsed waiting Run stays collapsed); without one,
- * active and failed Runs default open in priority order (waiting/active
- * first, then failed) and only while no other Run of the Thread is open.
+ * with AT MOST ONE detail open at any time.
+ *
+ * UX-01B: running and failed Runs no longer auto-expand — every default is
+ * closed, and the level-0 card ("View progress" / "View reason") is the way
+ * in. A stored entry whose rev matches remains authoritative (the user's
+ * explicit decision, including an explicit collapse), and the single-open
+ * contract holds unconditionally: when several well-formed entries claim
+ * open (hand-edited storage or a legacy writer), only the first in priority
+ * order (waiting/active, then failed, then the rest) keeps the slot.
  * Pending Interventions stay actionable regardless: their region renders
  * outside the collapsible detail, and the card's attention action focuses
  * the authoritative control without needing the detail open.
@@ -397,25 +421,9 @@ export function planExpansionDefaults(input: {
   const plan = new Map<string, boolean>();
   let anyOpen = false;
   const ordered = [...active, ...failed, ...rest];
-  // Pass 1: stored decisions whose rev matches are authoritative and count
-  // toward the single-open budget before any default is granted. Stored
-  // collapses are kept as-is; when several well-formed entries claim open
-  // (hand-edited storage or a legacy writer), only the first in priority
-  // order keeps the slot and the rest normalize to closed — the contract is
-  // at most one open detail per Thread, unconditionally.
   for (const run of ordered) {
     const entry = input.entries[expansionId(input.threadId, run.runId)];
-    if (!entry || entry.rev !== run.rev) continue;
-    const open = entry.open && !anyOpen;
-    if (open) anyOpen = true;
-    plan.set(run.runId, open);
-  }
-  // Pass 2: without a stored decision, active and failed Runs default open in
-  // priority order — but only while nothing else in the Thread is open.
-  for (const run of ordered) {
-    if (plan.has(run.runId)) continue;
-    const candidate = ACTIVE_PLAN_STATUSES.includes(run.status) || run.status === "failed";
-    const open = candidate && !anyOpen;
+    const open = Boolean(entry && entry.rev === run.rev && entry.open && !anyOpen);
     if (open) anyOpen = true;
     plan.set(run.runId, open);
   }
