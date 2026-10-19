@@ -102,6 +102,7 @@ export const AgentAvatar = memo(function AgentAvatar({
   const priorProgressToken = useRef(progressToken);
   const priorActivity = useRef(activity);
   useEffect(() => {
+    priorActivity.current = activity;
     if (isCompact || !root.current) return;
     if (isStill) {
       const renderer = createAvatarDomRenderer(root.current);

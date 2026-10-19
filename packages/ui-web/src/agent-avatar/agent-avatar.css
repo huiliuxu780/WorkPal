@@ -189,3 +189,18 @@
 .rakazo-agent-avatar[data-surface="sidebar"][data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] { background: var(--wp-status-wait); border-color: var(--avatar-surface); box-shadow: none; }
 
 .rakazo-agent-avatar[data-surface="sidebar"][data-state="approval"] .rakazo-agent-avatar-dot::after { transform: rotate(-45deg); }
+
+/* v0.7 rings sit outside the fill; same-hue rings grow without shrinking it. */
+.rakazo-agent-avatar[data-size="16"] .rakazo-agent-avatar-dot {
+  border: 0;
+  right: -2px;
+  bottom: -1px;
+  box-shadow: 0 0 0 var(--wp-status-dot-ring) var(--avatar-surface);
+}
+.rakazo-agent-avatar[data-size="16"][data-strong-ring="true"] .rakazo-agent-avatar-dot {
+  box-shadow: 0 0 0 var(--wp-status-dot-ring-strong) var(--avatar-surface);
+}
+.rakazo-agent-avatar[data-size="16"][data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] {
+  border: 1.5px solid var(--wp-status-wait);
+}
+.rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot { box-sizing: content-box; }

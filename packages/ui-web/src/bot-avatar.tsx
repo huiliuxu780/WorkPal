@@ -88,7 +88,7 @@ export const BotAvatar = memo(function BotAvatar({
           width={slot}
           height={slot}
           alt=""
-          className="h-full w-full object-cover"
+          className="h-full w-full rounded-full object-cover"
         />
         {activity !== "idle" ? (
           <span
