@@ -187,4 +187,31 @@ describe("RunPlanDisclosure (level 1 + grouped level 2)", () => {
     expect(host.querySelector('[data-slot="steps"]')).toBeNull();
     expect(host.textContent).not.toContain("Other execution records");
   });
+
+  it("shows the content version and review chip for reviewed plans (UX-02)", () => {
+    const container = mount(
+      <RunPlanDisclosure
+        plan={plan}
+        steps={[]}
+        review={{
+          planId: "plan:run-1",
+          contentVersion: 1,
+          reviewStatus: "changes_requested",
+          approvedContentVersion: null,
+          revision: 2,
+          feedback: "Rework the delivery stage",
+        }}
+      />,
+    );
+    expect(container.querySelector('[data-testid="plan-content-version"]')!.textContent).toBe(
+      "v1",
+    );
+    expect(container.querySelector('[data-testid="plan-review-state"]')!.textContent).toBe(
+      "Changes requested",
+    );
+    // Legacy plans keep the historical raw-revision display, no review chip.
+    const legacy = mount(<RunPlanDisclosure plan={plan} steps={[]} />);
+    expect(legacy.querySelector('[data-testid="plan-content-version"]')).toBeNull();
+    expect(legacy.textContent).toContain("v2");
+  });
 });

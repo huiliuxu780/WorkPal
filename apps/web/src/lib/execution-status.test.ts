@@ -67,4 +67,23 @@ describe("execution display status", () => {
       "working",
     );
   });
+
+  it("labels a pending plan review as its own decision wait (UX-02)", () => {
+    const view = deriveExecutionStatus(run("waiting_input", "approval"), [], {
+      pendingInterventionKinds: ["plan_review"],
+    });
+    expect(view.status).toBe("approval");
+    expect(view.label).toBe("Waiting for plan review");
+    expect(view.needsAttention).toBe(true);
+    // A plan review outranks a tool approval label when both project.
+    expect(
+      deriveExecutionStatus(run("waiting_input", "approval"), [], {
+        pendingInterventionKinds: ["approval", "plan_review"],
+      }).label,
+    ).toBe("Waiting for plan review");
+    // Summary-only fallback (no kinds): waitKind keeps the honest generic copy.
+    expect(deriveExecutionStatus(run("waiting_input", "approval"), []).label).toBe(
+      "Waiting for approval",
+    );
+  });
 });
