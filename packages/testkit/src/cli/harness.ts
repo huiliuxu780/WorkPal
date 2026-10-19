@@ -111,6 +111,7 @@ async function main() {
     if (integration) {
       const suites = [
         "packages/testkit/src/agentscope-offline.postgres.test.ts",
+        "packages/testkit/src/scenario-contract.postgres.test.ts",
         "packages/testkit/src/history-compaction-agentscope.test.ts",
         "packages/testkit/src/computer-approval.postgres.test.ts",
         "packages/testkit/src/eval-history.postgres.test.ts",
