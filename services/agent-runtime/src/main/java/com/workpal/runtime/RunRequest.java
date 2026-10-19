@@ -241,14 +241,23 @@ public record RunRequest(
             throw new IllegalArgumentException("Authorized tools require a trusted bridge");
         }
         if (tools != null) {
+            // UX-02: plan_enter/plan_write/plan_exit are no longer reserved —
+            // they are backend-owned tools of the unified plan service and only
+            // arrive when TurnPolicy planning allows. Every other native
+            // harness name stays reserved so a backend surface can never
+            // collide with library-internal delegation or skill machinery.
             Set<String> reserved = Set.of("agent_spawn", "agent_send", "agent_list", "task",
                     "task_output", "task_cancel", "task_list", "wait_async_results",
-                    "plan_enter", "plan_write", "plan_exit", "load_skill_through_path");
+                    "load_skill_through_path");
             Set<String> seen = new HashSet<>();
             for (ToolDefinition tool : tools) {
                 if (tool == null || blank(tool.name()) || reserved.contains(tool.name())
                         || !seen.add(tool.name())) {
                     throw new IllegalArgumentException("Invalid or conflicting authorized tool name");
+                }
+                if (PlanBridgeTool.PLAN_TOOL_NAMES.contains(tool.name()) && !planningAllowed()) {
+                    throw new IllegalArgumentException(
+                            "Plan tools require an interactive planning-enabled policy");
                 }
             }
         }

@@ -313,7 +313,9 @@ public final class RuntimeEngine {
         if (request.tools() != null) {
             for (RunRequest.ToolDefinition tool : request.tools()) {
                 if ("run_subagent".equals(tool.name())) continue;
-                toolkit.registerAgentTool(new BackendSchemaTool(tool, bridge, json, sessionSlot, pausedToolCalls));
+                toolkit.registerAgentTool(PlanBridgeTool.PLAN_TOOL_NAMES.contains(tool.name())
+                        ? new PlanBridgeTool(tool, bridge, json, sessionSlot, pausedToolCalls, workspace)
+                        : new BackendSchemaTool(tool, bridge, json, sessionSlot, pausedToolCalls));
                 backendToolNames.add(tool.name());
                 if (Boolean.TRUE.equals(tool.readOnly())) childToolNames.add(tool.name());
                 permissions.addAllowRule(tool.name(), new PermissionRule(
@@ -321,9 +323,13 @@ public final class RuntimeEngine {
             }
         }
         List<String> harnessTools = new ArrayList<>();
-        // TurnPolicy: a disabled planning mode hides the whole native plan
-        // surface, so non-interactive runs cannot stall on plan approval.
-        if (request.planningAllowed()) harnessTools.addAll(List.of("plan_enter", "plan_write"));
+        // UX-02: the native plan surface is no longer Java-owned. plan_enter /
+        // plan_write / plan_exit arrive as backend tools when (and only when)
+        // TurnPolicy planning allows, register as PlanBridgeTool facades over
+        // the unified PostgreSQL plan service, and their visibility follows the
+        // per-request live surface like every other backend tool. A disabled
+        // planning mode therefore still hides the whole plan surface, so
+        // non-interactive runs cannot stall on plan approval.
         // AG-01: native skill loading is a chat capability. Auxiliary scopes
         // (auto-review, history-compaction, turn-routing, team-chat-judge) must
         // never offer a skill surface to the model, and RunRequest.validate
@@ -333,13 +339,11 @@ public final class RuntimeEngine {
                 "task_output", "task_cancel", "task_list"));
         for (String name : harnessTools) permissions.addAllowRule(name,
                 new PermissionRule(name, null, PermissionBehavior.ALLOW, "workpal-harness"));
-        if (request.planningAllowed()) {
-            permissions.addAskRule("plan_exit", new PermissionRule(
-                    "plan_exit", null, PermissionBehavior.ASK, "workpal-plan-approval"));
-        }
+        // UX-02: the workpal-plan-approval ASK rule is gone. plan_exit pauses
+        // through the backend's typed plan_review Intervention instead, so the
+        // submission never produces a second, plan-less generic approval card.
         ToolsConfig toolFilter = new ToolsConfig();
         List<String> nativeVisible = new ArrayList<>(harnessTools);
-        if (request.planningAllowed()) nativeVisible.add("plan_exit");
         List<String> visibleTools = new ArrayList<>(backendToolNames);
         visibleTools.addAll(nativeVisible);
         toolFilter.setAllow(visibleTools);
@@ -371,8 +375,15 @@ public final class RuntimeEngine {
                 .disableToolResultEviction()
                 .disableDefaultWorkspaceSkills()
                 .middleware(new ToolSurfaceRefresh(bridge, json, sessionSlot, pausedToolCalls,
-                        nativeVisible, request.planningAllowed(), userSlot, sessionSlot));
-        if (request.planningAllowed()) builder.enablePlanMode();
+                        nativeVisible, userSlot, sessionSlot, workspace));
+        // UX-02: native plan mode (the read-only PLAN middleware, PLAN.md
+        // projection state, and the library plan tools the facades override)
+        // is enabled exactly when the backend offered the unified plan surface
+        // for this run. The facades drive enter/exit from backend decisions.
+        if (request.planningAllowed()
+                && backendToolNames.stream().anyMatch(PlanBridgeTool.PLAN_TOOL_NAMES::contains)) {
+            builder.enablePlanMode();
+        }
         if (allowSubagents) {
             builder.taskRepository(new InterruptibleTaskRepository(
                     new WorkspaceManager(workspace), hash(request.botId()),
@@ -409,10 +420,15 @@ public final class RuntimeEngine {
                         .stream().filter(delivery -> !outboxTaskIds.contains(delivery.taskId())).toList();
         // Harness registers its own Web tools after the caller's toolkit. Restore backend-owned
         // tools with colliding names so model calls still cross WorkPal authorization and audit.
+        // For the plan names this also replaces the native PlanModeTools the
+        // enablePlanMode() build step registered, so plan calls always execute
+        // through the unified backend service (UX-02), never library-locally.
         if (request.tools() != null) for (RunRequest.ToolDefinition tool : request.tools()) {
             if (!"run_subagent".equals(tool.name())) {
                 agent.getDelegate().getToolkit().registerAgentTool(
-                        new BackendSchemaTool(tool, bridge, json, sessionSlot, pausedToolCalls));
+                        PlanBridgeTool.PLAN_TOOL_NAMES.contains(tool.name())
+                                ? new PlanBridgeTool(tool, bridge, json, sessionSlot, pausedToolCalls, workspace)
+                                : new BackendSchemaTool(tool, bridge, json, sessionSlot, pausedToolCalls));
             }
         }
         // AgentScope restores the previous session's permission context from durable state.

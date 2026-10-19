@@ -35,21 +35,21 @@ final class ToolSurfaceRefresh implements MiddlewareBase {
     private final String parentSession;
     private final Set<String> pausedCalls;
     private final List<String> nativeVisible;
-    private final boolean planningAllowed;
     private final String userSlot;
     private final String sessionSlot;
+    private final java.nio.file.Path workspace;
 
     ToolSurfaceRefresh(ToolBridgeClient bridge, ObjectMapper json, String parentSession,
-            Set<String> pausedCalls, List<String> nativeVisible, boolean planningAllowed,
-            String userSlot, String sessionSlot) {
+            Set<String> pausedCalls, List<String> nativeVisible,
+            String userSlot, String sessionSlot, java.nio.file.Path workspace) {
         this.bridge = bridge;
         this.json = json;
         this.parentSession = parentSession;
         this.pausedCalls = pausedCalls;
         this.nativeVisible = List.copyOf(nativeVisible);
-        this.planningAllowed = planningAllowed;
         this.userSlot = userSlot;
         this.sessionSlot = sessionSlot;
+        this.workspace = workspace;
     }
 
     @Override public int order() {
@@ -72,8 +72,12 @@ final class ToolSurfaceRefresh implements MiddlewareBase {
             if ("run_subagent".equals(tool.name())) continue;
             AgentTool existing = toolkit.getTool(tool.name());
             if (existing != null) toolkit.removeTool(tool.name());
-            toolkit.registerAgentTool(new BackendSchemaTool(
-                    tool, bridge, json, parentSession, pausedCalls));
+            // UX-02: plan tools re-register as projection facades on every
+            // refresh, and their presence in the live surface is how the
+            // backend expresses the planning/build phase per model call.
+            toolkit.registerAgentTool(PlanBridgeTool.PLAN_TOOL_NAMES.contains(tool.name())
+                    ? new PlanBridgeTool(tool, bridge, json, parentSession, pausedCalls, workspace)
+                    : new BackendSchemaTool(tool, bridge, json, parentSession, pausedCalls));
             liveBackend.add(tool.name());
         }
         replacePermissions(agent, toolkit, liveBackend);
@@ -100,10 +104,9 @@ final class ToolSurfaceRefresh implements MiddlewareBase {
             permissions.addAllowRule(name, new PermissionRule(
                     name, null, PermissionBehavior.ALLOW, "workpal-harness"));
         }
-        if (planningAllowed) {
-            permissions.addAskRule("plan_exit", new PermissionRule(
-                    "plan_exit", null, PermissionBehavior.ASK, "workpal-plan-approval"));
-        }
+        // UX-02: no workpal-plan-approval ASK rule. A plan submission pauses
+        // through the backend's typed plan_review Intervention on the bridge,
+        // so plan_exit is an ALLOW-listed backend tool like every other.
         ReActAgent react = reactAgent(agent);
         if (react != null) react.replacePermissionContext(userSlot, sessionSlot, permissions.build());
     }

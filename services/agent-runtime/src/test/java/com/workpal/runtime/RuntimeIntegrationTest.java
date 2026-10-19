@@ -3,13 +3,22 @@ package com.workpal.runtime;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.MsgRole;
+import io.agentscope.core.message.ToolCallState;
+import io.agentscope.core.message.ToolUseBlock;
+import io.agentscope.core.state.AgentState;
+import io.agentscope.core.state.JsonFileAgentStateStore;
+import io.agentscope.core.state.PlanModeContextState;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -279,30 +288,196 @@ class RuntimeIntegrationTest {
         } finally { model.stop(0); }
     }
 
-    @Test void nativePlanLifecyclePausesForApprovalAndResumes() throws Exception {
+    /**
+     * UX-02: the native plan lifecycle runs on the unified backend plan
+     * service. plan_enter/plan_write/plan_exit are bridged backend tools; the
+     * submission pauses through the bridge's paused status — no ask event and
+     * no workpal-plan-approval card — the workspace PLAN.md is rewritten from
+     * backend content, and the resume re-executes the identical suspended
+     * plan_exit call to collect the durable decision.
+     */
+    @Test void unifiedPlanLifecyclePausesForBackendReviewAndResumes() throws Exception {
         List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
         HttpServer model = scriptedModel(modelRequests, List.of(
                 new ToolStep("plan_enter", "{}"),
-                new ToolStep("plan_write", "{\"content\":\"# Plan\\n1. Inspect\\n2. Execute\"}"),
+                new ToolStep("plan_write", "{\"expectedRevision\":0,\"goal\":\"Inspect then execute\",\"items\":[{\"id\":\"inspect\",\"title\":\"Inspect the source\",\"status\":\"pending\"}]}"),
                 new ToolStep("plan_exit", "{\"summary\":\"Execute the plan\"}")));
+        List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();
+        AtomicReference<String> planExitResult = new AtomicReference<>("paused");
+        HttpServer bridge = planBridge(toolCalls, planExitResult);
+        bridge.start();
         try {
             RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
             List<Map<String, Object>> first = new ArrayList<>();
-            engine.execute(request(model.getAddress().getPort(), "plan-1", "user-1", "space-1", List.of(), null), first::add);
-            assertTrue(first.stream().anyMatch(event -> "tool".equals(event.get("type")) && "plan_enter".equals(event.get("name"))));
-            assertTrue(first.stream().anyMatch(event -> "tool".equals(event.get("type")) && "plan_write".equals(event.get("name"))));
-            assertTrue(first.stream().anyMatch(event -> "ask".equals(event.get("type"))));
+            engine.execute(planRequest(model, bridge, "plan-1", null), first::add);
+            assertTrue(first.stream().anyMatch(event -> "tool".equals(event.get("type"))
+                    && "plan_enter".equals(event.get("name"))));
+            assertTrue(first.stream().anyMatch(event -> "tool".equals(event.get("type"))
+                    && "plan_write".equals(event.get("name"))));
+            assertTrue(first.stream().noneMatch(event -> "ask".equals(event.get("type"))),
+                    "a plan submission must not emit a generic approval ask card");
             assertEquals("paused", first.getLast().get("type"));
-            RunRequest base = request(model.getAddress().getPort(), "plan-2", "user-1", "space-1", List.of(), null);
-            RunRequest resume = new RunRequest(base.botId(), base.threadId(), base.runId(), base.executionScope(),
-                    base.sourceMessageId(), base.identity(), "Original task with approval context", base.productName(), base.instructions(),
-                    base.history(), base.currentTurnImages(), base.skills(), base.tools(), base.toolBridge(),
-                    base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration(), "approve");
+            assertEquals("approval-or-secret", first.getLast().get("reason"));
+            String projection = readPlanProjection(temp.resolve("workspace"));
+            assertTrue(projection.contains("Inspect then execute"), projection);
+            assertTrue(projection.contains("Inspect the source"), projection);
+
+            planExitResult.set("{\"status\":\"approved\",\"planId\":\"plan:plan-1\",\"contentVersion\":1,\"revision\":1}");
             List<Map<String, Object>> second = new ArrayList<>();
-            engine.execute(resume, second::add);
+            engine.execute(planRequest(model, bridge, "plan-2", null), second::add);
             assertEquals("done", second.getLast().get("type"));
-            assertTrue(modelRequests.size() >= 4);
-        } finally { model.stop(0); }
+            List<JsonNode> exits = toolCalls.stream()
+                    .filter(call -> "plan_exit".equals(call.path("name").asText())).toList();
+            assertEquals(2, exits.size());
+            assertEquals(exits.getFirst().path("executionId").asText(),
+                    exits.getLast().path("executionId").asText(),
+                    "the resume re-executes the identical suspended call");
+        } finally { bridge.stop(0); model.stop(0); }
+    }
+
+    @Test void planReviewChangesRequestedFeedsBackToTheModel() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = scriptedModel(modelRequests, List.of(
+                new ToolStep("plan_enter", "{}"),
+                new ToolStep("plan_write", "{\"expectedRevision\":0,\"goal\":\"Inspect then execute\",\"items\":[{\"id\":\"inspect\",\"title\":\"Inspect the source\",\"status\":\"pending\"}]}"),
+                new ToolStep("plan_exit", "{\"summary\":\"Execute the plan\"}")));
+        List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();
+        AtomicReference<String> planExitResult = new AtomicReference<>("paused");
+        HttpServer bridge = planBridge(toolCalls, planExitResult);
+        bridge.start();
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            List<Map<String, Object>> first = new ArrayList<>();
+            engine.execute(planRequest(model, bridge, "plan-c1", null), first::add);
+            assertEquals("paused", first.getLast().get("type"));
+            planExitResult.set("{\"status\":\"changes_requested\",\"contentVersion\":1,"
+                    + "\"feedback\":\"Split the inspection step per table\"}");
+            List<Map<String, Object>> second = new ArrayList<>();
+            engine.execute(planRequest(model, bridge, "plan-c2", null), second::add);
+            assertEquals("done", second.getLast().get("type"));
+            assertTrue(modelRequests.getLast().path("messages").toString()
+                    .contains("Split the inspection step per table"),
+                    "the reviewer's feedback reaches the model as the plan_exit result");
+        } finally { bridge.stop(0); model.stop(0); }
+    }
+
+    /**
+     * One-time compatibility (U-A10): a session persisted by the pre-UX-02
+     * runtime carries an ASKING plan_exit block from the old
+     * workpal-plan-approval rule. Answering the legacy card still resumes the
+     * original run exactly once — through the bridge, with the original
+     * execution id — and never raises a second approval card.
+     */
+    @Test void legacyAskingPlanExitResumesThroughTheBridgeOnce() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = scriptedModel(modelRequests, List.of());
+        List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();
+        AtomicReference<String> planExitResult = new AtomicReference<>(
+                "{\"status\":\"approved\",\"legacy\":true,\"contentVersion\":1}");
+        HttpServer bridge = planBridge(toolCalls, planExitResult);
+        bridge.start();
+        try {
+            String tenant = sha256Hex("user-1\u0000space-1");
+            String session = sha256Hex("bot-1\u0000thread-1\u00000");
+            JsonFileAgentStateStore store =
+                    new JsonFileAgentStateStore(temp.resolve("state").resolve(sha256Hex("bot-1")));
+            AgentState legacy = AgentState.builder()
+                    .userId(tenant)
+                    .sessionId(session)
+                    .replyId("reply-legacy")
+                    .curIter(2)
+                    .addMessage(Msg.builder().role(MsgRole.ASSISTANT).name("assistant")
+                            .content(List.of(new ToolUseBlock("call-legacy", "plan_exit",
+                                    Map.of("summary", "old native plan"),
+                                    "{\"summary\":\"old native plan\"}", Map.of(),
+                                    ToolCallState.ASKING)))
+                            .build())
+                    .planModeContext(new PlanModeContextState(true, "plans/PLAN.md"))
+                    .build();
+            store.save(tenant, session, "agent_state", legacy);
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            List<Map<String, Object>> events = new ArrayList<>();
+            engine.execute(planRequest(model, bridge, "plan-legacy", "approve"), events::add);
+            assertEquals("done", events.getLast().get("type"));
+            assertTrue(events.stream().noneMatch(event -> "ask".equals(event.get("type"))),
+                    "the legacy resume must not raise another approval card");
+            assertTrue(toolCalls.stream().anyMatch(call ->
+                            "plan_exit".equals(call.path("name").asText())
+                                    && "call-legacy".equals(call.path("executionId").asText())),
+                    "the original suspended call is executed exactly once through the bridge");
+            assertEquals(1, toolCalls.stream()
+                    .filter(call -> "plan_exit".equals(call.path("name").asText())).count());
+        } finally { bridge.stop(0); model.stop(0); }
+    }
+
+    private static HttpServer planBridge(List<JsonNode> toolCalls,
+            AtomicReference<String> planExitResult) throws Exception {
+        HttpServer bridge = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        bridge.createContext("/v1/tool-executions", exchange -> {
+            JsonNode body = JSON.readTree(exchange.getRequestBody());
+            toolCalls.add(body);
+            String name = body.path("name").asText();
+            String response;
+            if ("plan_exit".equals(name)) {
+                String decision = planExitResult.get();
+                response = "paused".equals(decision)
+                        ? "{\"status\":\"paused\"}"
+                        : "{\"status\":\"ok\",\"result\":" + decision + "}";
+            } else if ("plan_write".equals(name)) {
+                response = "{\"status\":\"ok\",\"result\":{\"status\":\"draft_saved\","
+                        + "\"planId\":\"plan:bridge\",\"revision\":1,\"contentVersion\":1,"
+                        + "\"plan\":{\"goal\":\"Inspect then execute\",\"revision\":1,\"contentVersion\":1,"
+                        + "\"items\":[{\"id\":\"inspect\",\"title\":\"Inspect the source\",\"status\":\"pending\"}]}}}";
+            } else {
+                response = "{\"status\":\"ok\",\"result\":{\"status\":\"entered\",\"planPhase\":\"planning\"}}";
+            }
+            byte[] payload = response.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, payload.length);
+            try (var output = exchange.getResponseBody()) { output.write(payload); }
+        });
+        return bridge;
+    }
+
+    private static RunRequest planRequest(HttpServer model, HttpServer bridge, String runId,
+            String resumeAnswer) {
+        RunRequest base = request(model.getAddress().getPort(), runId, "user-1", "space-1",
+                List.of(), null);
+        RunRequest.ToolBridge endpoint = new RunRequest.ToolBridge(
+                "http://127.0.0.1:" + bridge.getAddress().getPort() + "/v1/tool-executions",
+                null, null, "bridge-secret", base.identity());
+        List<RunRequest.ToolDefinition> planTools = List.of(
+                new RunRequest.ToolDefinition("plan_enter", "Enter PLAN mode",
+                        Map.of("type", "object", "properties",
+                                Map.of("reason", Map.of("type", "string"))), false),
+                new RunRequest.ToolDefinition("plan_write", "Write the structured plan",
+                        Map.of("type", "object", "properties",
+                                Map.of("expectedRevision", Map.of("type", "integer"),
+                                        "goal", Map.of("type", "string"),
+                                        "items", Map.of("type", "array")),
+                                "required", List.of("expectedRevision", "goal", "items")), false),
+                new RunRequest.ToolDefinition("plan_exit", "Submit the plan for review",
+                        Map.of("type", "object", "properties",
+                                Map.of("summary", Map.of("type", "string"))), false));
+        return new RunRequest(base.botId(), base.threadId(), base.runId(), base.executionScope(),
+                base.sourceMessageId(), base.identity(), base.prompt(), base.productName(),
+                base.instructions(), base.history(), base.currentTurnImages(), base.skills(),
+                planTools, endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(),
+                base.sessionGeneration(), resumeAnswer);
+    }
+
+    private static String readPlanProjection(Path workspaceRoot) throws Exception {
+        try (var paths = Files.walk(workspaceRoot)) {
+            Path file = paths.filter(path -> path.getFileName().toString().equals("PLAN.md"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("PLAN.md projection was not written"));
+            return Files.readString(file);
+        }
+    }
+
+    private static String sha256Hex(String input) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(input.getBytes(StandardCharsets.UTF_8));
+        return java.util.HexFormat.of().formatHex(digest);
     }
 
     @Test void nativeSubagentReturnsItsResultToParent() throws Exception {
