@@ -1747,6 +1747,10 @@ msgstr "Couldn't load background tasks."
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
 
+#: src/pages/shell/use-execution-transcript.tsx
+msgid "Couldn't load the execution detail."
+msgstr "Couldn't load the execution detail."
+
 #: src/components/ai/TaskCenterView.tsx
 msgid "Couldn't open this task. Try again."
 msgstr "Couldn't open this task. Try again."
@@ -3689,6 +3693,10 @@ msgstr "Result"
 msgid "Result preview truncated"
 msgstr "Result preview truncated"
 
+#: src/pages/shell/use-execution-transcript.tsx
+msgid "Retry"
+msgstr "Retry"
+
 #: src/App.tsx
 #: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
@@ -4288,6 +4296,10 @@ msgstr "This permanently removes every message and stops current work. The chat 
 msgid "This reset link is invalid or expired"
 msgstr "This reset link is invalid or expired"
 
+#: src/components/ai/RunTodoList.tsx
+msgid "This run has no plan. These were the working items at the time."
+msgstr "This run has no plan. These were the working items at the time."
+
 #: src/pages/shell/message-cards.tsx
 msgid "This server cannot be assigned without a bot."
 msgstr "This server cannot be assigned without a bot."
@@ -4319,10 +4331,6 @@ msgstr "Time of day"
 #: src/pages/shell/bot-panel.tsx
 msgid "Title"
 msgstr "Title"
-
-#: src/components/ai/RunTodoList.tsx
-msgid "To do"
-msgstr "To do"
 
 #: src/pages/shell/bot-picker.tsx
 msgid "To:"
@@ -4617,6 +4625,10 @@ msgstr "When to use"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
+
+#: src/components/ai/RunTodoList.tsx
+msgid "Work items"
+msgstr "Work items"
 
 #: src/components/activity/ActivityRows.tsx
 #: src/pages/Shell.tsx

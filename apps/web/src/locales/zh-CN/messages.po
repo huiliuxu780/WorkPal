@@ -1747,6 +1747,10 @@ msgstr "无法加载后台任务。"
 msgid "Couldn't load messaging settings"
 msgstr "无法加载消息设置"
 
+#: src/pages/shell/use-execution-transcript.tsx
+msgid "Couldn't load the execution detail."
+msgstr "无法加载执行详情。"
+
 #: src/components/ai/TaskCenterView.tsx
 msgid "Couldn't open this task. Try again."
 msgstr "无法打开这个任务。请重试。"
@@ -3689,6 +3693,10 @@ msgstr "结果"
 msgid "Result preview truncated"
 msgstr "结果预览已截断"
 
+#: src/pages/shell/use-execution-transcript.tsx
+msgid "Retry"
+msgstr "重试"
+
 #: src/App.tsx
 #: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
@@ -4288,6 +4296,10 @@ msgstr "将永久删除全部消息并停止当前工作。聊天仍可使用。
 msgid "This reset link is invalid or expired"
 msgstr "此重置链接无效或已过期"
 
+#: src/components/ai/RunTodoList.tsx
+msgid "This run has no plan. These were the working items at the time."
+msgstr "这次运行没有计划，以下是当时的事项清单"
+
 #: src/pages/shell/message-cards.tsx
 msgid "This server cannot be assigned without a bot."
 msgstr "没有 Bot 就无法分配此服务器。"
@@ -4319,10 +4331,6 @@ msgstr "时间"
 #: src/pages/shell/bot-panel.tsx
 msgid "Title"
 msgstr "标题"
-
-#: src/components/ai/RunTodoList.tsx
-msgid "To do"
-msgstr ""
 
 #: src/pages/shell/bot-picker.tsx
 msgid "To:"
@@ -4617,6 +4625,10 @@ msgstr "何时使用"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Bot 应在哪里运行？"
+
+#: src/components/ai/RunTodoList.tsx
+msgid "Work items"
+msgstr "事项清单"
 
 #: src/components/activity/ActivityRows.tsx
 #: src/pages/Shell.tsx

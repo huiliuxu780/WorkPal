@@ -207,6 +207,11 @@ describe("TaskCenterView", () => {
     expect(html).not.toContain("%");
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(html).not.toMatch(/\bprocessed\b|\btotal\b/);
+    // UX-01C acceptance 15: summary-only cards carry no rail, no a/b count
+    // and no placeholder — the Task Center never derives Plan progress.
+    expect(container.querySelector(".exc-rail")).toBeNull();
+    expect(container.querySelector('[data-testid="execution-plan-count"]')).toBeNull();
+    expect(html).not.toContain("--");
   });
 
   it("keeps raw ids out of the DOM while React keys may use them in memory", async () => {

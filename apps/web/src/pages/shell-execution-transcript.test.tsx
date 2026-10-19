@@ -249,53 +249,69 @@ function unmountTranscript(): void {
   container?.remove();
 }
 
+let currentOverrides: Partial<ComponentProps<typeof Transcript>> = {};
+
+function Harness() {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  return (
+    <Transcript
+      scrollRef={scrollRef}
+      scrollRequest={null}
+      onScrollRequestHandled={() => undefined}
+      artifactTarget={{ botId: BOT }}
+      messages={[]}
+      runs={[]}
+      activeRunIds={[]}
+      showToolActivity={false}
+      olderCursor={null}
+      loadingOlder={false}
+      threadId={THREAD}
+      running={false}
+      onLoadOlder={() => undefined}
+      onOpenBot={() => undefined}
+      onAnswer={async () => undefined}
+      onReply={() => undefined}
+      onQuote={() => undefined}
+      onReact={async () => undefined}
+      onJumpToMessage={() => undefined}
+      onOpenPeerMessages={() => undefined}
+      peerBot={() => undefined}
+      onRefresh={async () => undefined}
+      onBotChanged={async () => undefined}
+      onAddRoutine={() => undefined}
+      voiceReady={false}
+      speakingMessageId={null}
+      onSpeak={() => undefined}
+      onOpenComputer={() => undefined}
+      {...currentOverrides}
+    />
+  );
+}
+
 function renderTranscript(
   overrides: Partial<ComponentProps<typeof Transcript>> = {},
 ): HTMLDivElement {
   unmountTranscript();
+  currentOverrides = overrides;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  function Harness() {
-    const scrollRef = useRef<HTMLDivElement | null>(null);
-    return (
-      <Transcript
-        scrollRef={scrollRef}
-        scrollRequest={null}
-        onScrollRequestHandled={() => undefined}
-        artifactTarget={{ botId: BOT }}
-        messages={[]}
-        runs={[]}
-        activeRunIds={[]}
-        showToolActivity={false}
-        olderCursor={null}
-        loadingOlder={false}
-        threadId={THREAD}
-        running={false}
-        onLoadOlder={() => undefined}
-        onOpenBot={() => undefined}
-        onAnswer={async () => undefined}
-        onReply={() => undefined}
-        onQuote={() => undefined}
-        onReact={async () => undefined}
-        onJumpToMessage={() => undefined}
-        onOpenPeerMessages={() => undefined}
-        peerBot={() => undefined}
-        onRefresh={async () => undefined}
-        onBotChanged={async () => undefined}
-        onAddRoutine={() => undefined}
-        voiceReady={false}
-        speakingMessageId={null}
-        onSpeak={() => undefined}
-        onOpenComputer={() => undefined}
-        {...overrides}
-      />
-    );
-  }
   act(() => {
-    root.render(<Harness />);
+    root!.render(<Harness />);
   });
   return container;
+}
+
+/**
+ * Re-render the SAME mounted Transcript with merged props (a thread refresh
+ * landing a newer summary, an event updating an array) — the hook instance
+ * and all of its state persist, unlike renderTranscript's fresh mount.
+ */
+function rerenderTranscript(overrides: Partial<ComponentProps<typeof Transcript>>): void {
+  currentOverrides = { ...currentOverrides, ...overrides };
+  act(() => {
+    root!.render(<Harness />);
+  });
 }
 
 /** A pending approval Ask block, shaped the way the runtime persists it. */
@@ -898,5 +914,440 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(active).not.toBeNull();
     expect(active!.closest('[data-testid="execution-interventions"]')).not.toBeNull();
     expect(active!.textContent).toContain("Allow");
+  });
+
+  it("shows a safe retry when the detail load fails and recovers on retry (UX-01C acceptance 14)", async () => {
+    const detailSnapshot = {
+      summary: summary({ runId: "run-e", rev: 5, title: "ERROR-PATH-RUN", anchorMessageId: "m2" }),
+      plan: plan("run-e"),
+      steps: {
+        items: [step("run-e", "step-e", "DETAIL-STEP-TITLE", 0)],
+        truncated: false,
+      },
+      todos: { items: [], truncated: false },
+      timeline: [],
+      activityPage: { items: [], olderCursor: null, truncated: false },
+      interventions: [],
+    };
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-13" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-13" }], "run-e"),
+      ],
+      plans: [plan("run-e")],
+      runs: [run("run-e", "completed", { completedAt: ISO })],
+      executions: [
+        summary({ runId: "run-e", rev: 5, title: "ERROR-PATH-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    const card = host.querySelector('article[data-testid="execution-card"]');
+    expect(card).not.toBeNull();
+    // The level-0 Plan count exists before any detail load (legacy array).
+    expect(card!.textContent).toContain("1/1");
+
+    // Opening requests the detail; the default mock rejects — the failure
+    // becomes a stable safe state with a retry, never a silent swallow.
+    const toggle = card!.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(60);
+    });
+    const error = host.querySelector('[data-testid="execution-detail-error"]');
+    expect(error).not.toBeNull();
+    // The raw transport error never reaches the DOM.
+    expect(error!.textContent).not.toContain("detail unavailable in smoke test");
+    expect(host.querySelector('[data-testid="execution-detail-retry"]')).not.toBeNull();
+    // Level-0 numbers keep their value — never 0 or "--".
+    expect(card!.textContent).toContain("1/1");
+    expect(card!.textContent).not.toContain("--");
+
+    // Retry against the current target succeeds and clears the error.
+    rpcMocks.executionSnapshot.mockResolvedValue(detailSnapshot as never);
+    const retry = host.querySelector<HTMLElement>('[data-testid="execution-detail-retry"]');
+    act(() => {
+      retry!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(60);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+    expect(host.textContent).toContain("DETAIL-STEP-TITLE");
+    expect(card!.textContent).toContain("1/1");
+    const calls = rpcMocks.executionSnapshot.mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    expect(calls[calls.length - 1]![0]).toEqual({ botId: BOT, runId: "run-e" });
+  });
+
+  it("keeps a failed detail request from clearing an already-cached detail", async () => {
+    const detailSnapshot = {
+      summary: summary({ runId: "run-c", rev: 7, title: "CACHED-RUN", anchorMessageId: "m2" }),
+      steps: { items: [step("run-c", "step-c", "CACHED-STEP-TITLE", 0)], truncated: false },
+      todos: { items: [], truncated: false },
+      timeline: [],
+      activityPage: { items: [], olderCursor: null, truncated: false },
+      interventions: [],
+    };
+    rpcMocks.executionSnapshot.mockResolvedValueOnce(detailSnapshot as never);
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-14" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-14" }], "run-c"),
+      ],
+      steps: [step("run-c", "step-c", "CACHED-STEP-TITLE", 0)],
+      runs: [run("run-c", "completed", { completedAt: ISO })],
+      executions: [summary({ runId: "run-c", rev: 7, title: "CACHED-RUN", anchorMessageId: "m2" })],
+    });
+    const card = host.querySelector('article[data-testid="execution-card"]');
+    const toggle = card!.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(60);
+    });
+    expect(host.textContent).toContain("CACHED-STEP-TITLE");
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+
+    // A later failed refresh (rev move) must not blank the level-0 card and
+    // surfaces the retry again; subsequent default mock rejects.
+    rpcMocks.executionSnapshot.mockRejectedValue(new Error("transient"));
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(30);
+    });
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(60);
+    });
+    // The cached detail (rev 7 == summary rev) is still authoritative: the
+    // card keeps its content and no raw error leaks.
+    expect(host.textContent).toContain("CACHED-STEP-TITLE");
+    expect(host.textContent).not.toContain("transient");
+  });
+
+  it("renders the legacy 事项清单 fallback only inside an expanded legal surface (UX-01C acceptance 16)", async () => {
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-15" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-15" }], "run-t"),
+      ],
+      todos: [todo("run-t", "todo-f1", "FALLBACK-ITEM-1", null)],
+      runs: [run("run-t", "failed")],
+      executions: [
+        summary({
+          runId: "run-t",
+          rev: 2,
+          status: "failed",
+          failure: "Scripted run failure",
+          title: "TODO-FALLBACK-RUN",
+          anchorMessageId: "m2",
+        }),
+      ],
+    });
+    // The failure makes the surface legal; collapsed, the fallback is not in
+    // the DOM at all (not merely hidden).
+    expect(host.querySelector('[data-testid="execution-shell"]')).not.toBeNull();
+    expect(host.querySelector('[data-slot="todos"]')).toBeNull();
+
+    const card = host.querySelector('article[data-testid="execution-card"]');
+    const toggle = card!.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(30);
+    });
+    const todosSlot = host.querySelector('[data-slot="todos"]');
+    expect(todosSlot).not.toBeNull();
+    expect(todosSlot!.textContent).toContain("FALLBACK-ITEM-1");
+    expect(todosSlot!.textContent).toContain("This run has no plan");
+    expect((todosSlot!.textContent ?? "").toLowerCase()).not.toContain("todo");
+    expect(todosSlot!.textContent).not.toContain("待办");
+    expect(todosSlot!.textContent).not.toMatch(/\d+\s*\/\s*\d+/);
+    // The Run-level failure reason shares the detail (no failed Step).
+    expect(host.querySelector('[data-testid="execution-failure-reason"]')).not.toBeNull();
+  });
+
+  it("hides Todos behind Steps/Plan in the fixed degradation order (UX-01C acceptance 16)", async () => {
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-16" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-16" }], "run-s"),
+      ],
+      steps: [step("run-s", "step-s", "STEP-OF-RUN-S", 0)],
+      todos: [todo("run-s", "todo-s1", "HIDDEN-TODO-OF-STEPS-RUN", null)],
+      runs: [run("run-s", "completed", { completedAt: ISO })],
+      executions: [
+        summary({ runId: "run-s", rev: 3, title: "STEPS-WIN-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    const card = host.querySelector('article[data-testid="execution-card"]');
+    const toggle = card!.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(30);
+    });
+    // Steps exist → level 1 is the Steps list; the Todo fallback never shows.
+    expect(host.querySelector('[data-slot="steps"]')).not.toBeNull();
+    expect(host.querySelector('[data-slot="todos"]')).toBeNull();
+    expect(host.textContent).not.toContain("HIDDEN-TODO-OF-STEPS-RUN");
+  });
+
+  it("never synthesizes a Plan from Activity, Markdown or message steps blocks (acceptance 19)", () => {
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "plan_write please" }]),
+        message(
+          "m2",
+          "bot",
+          [
+            { kind: "text", text: "1. First\n2. Second" },
+            { kind: "steps", steps: [{ label: "plan_write", count: 2 }] },
+          ],
+          "run-n",
+        ),
+      ],
+      activity: [
+        {
+          id: "act-plan",
+          runId: "run-n",
+          botId: BOT,
+          threadId: THREAD,
+          kind: "planning",
+          status: "completed",
+          title: "plan_write",
+        } as ActivityItem,
+      ],
+      runs: [run("run-n", "completed", { completedAt: ISO })],
+      executions: [
+        summary({
+          runId: "run-n",
+          rev: 1,
+          title: "NATIVE-PLAN-RUN",
+          anchorMessageId: "m2",
+          counts: { actions: 2 },
+        }),
+      ],
+    });
+    // No RunPlanRevision → no surface, no Plan slot, no progress anywhere —
+    // native plan tooling, Markdown lists and steps blocks never fake one.
+    expect(host.querySelectorAll('[data-testid="execution-shell"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-slot="plan"]')).toHaveLength(0);
+    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    expect(host.querySelector('[data-testid="execution-plan-count"]')).toBeNull();
+  });
+
+  it("invalidates a stale detail error when the summary revision advances (review round P3)", async () => {
+    rpcMocks.executionSnapshot.mockRejectedValueOnce(new Error("transient"));
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-18" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-18" }], "run-r"),
+      ],
+      steps: [step("run-r", "s-r", "STEP-R", 0)],
+      runs: [run("run-r", "completed", { completedAt: ISO })],
+      executions: [summary({ runId: "run-r", rev: 5, title: "REV-RUN", anchorMessageId: "m2" })],
+    });
+    const toggle = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(50);
+    });
+    // The rev-5 request failed: the safe retry state is visible.
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).not.toBeNull();
+
+    // The projection moves to rev 6 (thread refresh): the rev-5 error
+    // describes a request against a projection that no longer exists and
+    // must not survive the move.
+    rerenderTranscript({
+      executions: [summary({ runId: "run-r", rev: 6, title: "REV-RUN", anchorMessageId: "m2" })],
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+  });
+
+  it("a stale success never clears the newer revision's error or retry (review round 2)", async () => {
+    let resolveFirst: ((snapshot: unknown) => void) | null = null;
+    let rejectSecond: ((error: unknown) => void) | null = null;
+    rpcMocks.executionSnapshot
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSecond = reject;
+          }),
+      );
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-20" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-20" }], "run-s"),
+      ],
+      steps: [step("run-s", "s-cur", "STEP-CURRENT", 0)],
+      runs: [run("run-s", "completed", { completedAt: ISO })],
+      executions: [
+        summary({ runId: "run-s", rev: 5, title: "STALE-SUCCESS-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    // Request A goes out at rev 5 and stays in flight.
+    const toggleA = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleA!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    // The projection moves to rev 6; the user reopens → request B at rev 6.
+    rerenderTranscript({
+      executions: [
+        summary({ runId: "run-s", rev: 6, title: "STALE-SUCCESS-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    const toggleB = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleB!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    // B fails: the safe error and its retry entry are visible at rev 6.
+    act(() => {
+      rejectSecond!(new Error("fresh transport failure"));
+    });
+    await act(async () => {
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="execution-detail-retry"]')).not.toBeNull();
+
+    // A's stale rev-5 success lands late: the rev guard drops the snapshot,
+    // and the settle must NOT delete the rev-6 error it does not own.
+    await act(async () => {
+      resolveFirst!({
+        summary: summary({
+          runId: "run-s",
+          rev: 5,
+          title: "STALE-SUCCESS-RUN",
+          anchorMessageId: "m2",
+        }),
+        steps: { items: [step("run-s", "s-stale", "STALE-STEP", 0)], truncated: false },
+        todos: { items: [], truncated: false },
+        timeline: [],
+        activityPage: { items: [], olderCursor: null, truncated: false },
+        interventions: [],
+      });
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="execution-detail-retry"]')).not.toBeNull();
+    // The stale snapshot never rendered either (rev-versioned cache guard).
+    expect(host.textContent).not.toContain("STALE-STEP");
+  });
+
+  it("a late failure from a superseded request never surfaces at the newer revision (review round P3)", async () => {
+    let rejectFirst: ((error: unknown) => void) | null = null;
+    let resolveSecond: ((snapshot: unknown) => void) | null = null;
+    rpcMocks.executionSnapshot
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-QUESTION-19" }]),
+        message("m2", "bot", [{ kind: "text", text: "RESULT-TEXT-19" }], "run-r2"),
+      ],
+      steps: [step("run-r2", "s-old", "STEP-OLD", 0)],
+      runs: [run("run-r2", "completed", { completedAt: ISO })],
+      executions: [
+        summary({ runId: "run-r2", rev: 5, title: "LATE-FAIL-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    // Request A goes out at rev 5 and stays in flight.
+    const toggleA = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleA!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+
+    // The projection moves to rev 6 and the card is reopened → request B at
+    // rev 6 (the in-flight dedupe must not block the newer revision).
+    rerenderTranscript({
+      executions: [
+        summary({ runId: "run-r2", rev: 6, title: "LATE-FAIL-RUN", anchorMessageId: "m2" }),
+      ],
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+    const toggleB = host.querySelector<HTMLElement>(".exc-entry");
+    act(() => {
+      toggleB!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    // A fails late: the rev-6 request state must not be rewritten.
+    act(() => {
+      rejectFirst!(new Error("stale transport failure"));
+    });
+    await act(async () => {
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+    expect(host.textContent).not.toContain("stale transport failure");
+
+    // B succeeds: its detail renders and no error state appears.
+    await act(async () => {
+      resolveSecond!({
+        summary: summary({
+          runId: "run-r2",
+          rev: 6,
+          title: "LATE-FAIL-RUN",
+          anchorMessageId: "m2",
+        }),
+        steps: { items: [step("run-r2", "s-fresh", "FRESH-STEP", 0)], truncated: false },
+        todos: { items: [], truncated: false },
+        timeline: [],
+        activityPage: { items: [], olderCursor: null, truncated: false },
+        interventions: [],
+      });
+      await sleep(30);
+    });
+    expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
+    expect(host.textContent).toContain("FRESH-STEP");
   });
 });

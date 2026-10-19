@@ -141,8 +141,9 @@ test("refresh restores a completed execution with the same rev and content", asy
   await signup(page, `exec-refresh-${stamp}@rakazo.test`, "password12", "Exec Refresh");
   await completeOnboarding(page);
   const botId = activeBotId(page);
-  await send(page, `write a file named quarter-${stamp}.txt saying quarter numbers`);
-  const summary = await settledSummary(page, botId, "write a file named");
+  // UX-01C: tracked fixtures keep a legal surface (plain tool Runs have none).
+  await send(page, `write a tracked file named quarter-${stamp}.txt saying quarter numbers`);
+  const summary = await settledSummary(page, botId, "write a tracked file named");
   const titlePart = `quarter-${stamp}.txt`;
   expect(summary.entry).toBe("execution");
   expect(summary.rev).toBeGreaterThan(0);
@@ -194,7 +195,7 @@ test("executions restore when their messages are pushed off the page", async ({ 
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, "ask me which city to use");
+  await send(page, "run 2 tracked steps then ask");
   await expect
     .poll(
       async () => {
@@ -206,7 +207,7 @@ test("executions restore when their messages are pushed off the page", async ({ 
       { timeout: 60_000 },
     )
     .toBe("waiting_input");
-  const pending = await summaryByTitle(page, botId, "ask me which city");
+  const pending = await summaryByTitle(page, botId, "run 2 tracked steps then ask");
   expect(pending.status).toBe("waiting_input");
   await answerTextAsk(page, "Paris");
   const summary = await settledSummaryById(page, botId, pending.runId);
@@ -254,16 +255,16 @@ test("long Activity paginates without repeats or gaps", async ({ page }) => {
   await signup(page, `exec-activity-${stamp}@rakazo.test`, "password12", "Exec Activity");
   await completeOnboarding(page);
   const botId = activeBotId(page);
-  await send(page, "run 120 shell steps");
-  const summary = await settledSummary(page, botId, "run 120 shell steps");
-  const titlePart = "run 120 shell steps";
+  await send(page, "run 120 tracked steps");
+  const summary = await settledSummary(page, botId, "run 120 tracked steps");
+  const titlePart = "run 120 tracked steps";
 
   const detail = await rpc<{ activityPage: { olderCursor: string | null } }>(
     page,
     "runs/executionSnapshot",
     { botId, runId: summary.runId },
   );
-  expect(detail.activityPage.olderCursor, "120 steps must paginate").toBeTruthy();
+  expect(detail.activityPage.olderCursor, "120 tracked steps must paginate").toBeTruthy();
 
   // Walk every page at the API: distinct tool ids never repeat, and together
   // they cover the whole timeline (no gap). The seeded run status line repeats
@@ -336,12 +337,15 @@ test("multiple terminal Runs restore independently and only one detail is open",
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, `write a file named alpha-${stamp}.txt saying alpha marker`);
-  const alpha = await settledSummary(page, botId, "write a file named alpha");
-  await send(page, "run the shell command echo beta-marker");
+  await send(page, `write a tracked file named alpha-${stamp}.txt saying alpha marker`);
+  const alpha = await settledSummary(page, botId, "write a tracked file named alpha");
+  await send(page, "run 1 tracked steps echo beta-marker");
   const beta = await settledSummary(page, botId, "echo beta-marker");
-  await send(page, `attach to the thread with path notes/gamma-${stamp}.txt says gamma marker`);
-  const gamma = await settledSummary(page, botId, "attach to the thread");
+  await send(
+    page,
+    `attach a tracked file to the thread with path notes/gamma-${stamp}.txt says gamma marker`,
+  );
+  const gamma = await settledSummary(page, botId, "attach a tracked file");
   const alphaTitle = `alpha-${stamp}.txt`;
   const betaTitle = "echo beta-marker";
   const gammaTitle = `gamma-${stamp}.txt`;
@@ -394,7 +398,7 @@ test("secrets stay out of snapshots, storage, and the DOM after history reload",
   await signup(page, `exec-secret-${stamp}@rakazo.test`, "password12", "Exec Secret");
   await completeOnboarding(page);
   const botId = activeBotId(page);
-  await send(page, "show a secret card for a masked api key");
+  await send(page, "show a tracked secret card for a masked api key");
   await expect
     .poll(
       async () => {
@@ -411,17 +415,17 @@ test("secrets stay out of snapshots, storage, and the DOM after history reload",
   await card.getByLabel("API key").fill(secretValue);
   await card.getByRole("button", { name: "Save", exact: true }).click();
   await expect(card.getByText("Saved", { exact: true })).toBeVisible({ timeout: 30_000 });
-  const summary = await settledSummary(page, botId, "show a secret card");
-  const titlePart = "show a secret card";
+  const summary = await settledSummary(page, botId, "tracked secret card");
+  const titlePart = "tracked secret card";
 
   await floodHistory(page, botId, stamp);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   await revealShell(page, titlePart);
   await expandShell(page, titlePart);
-  await expect(
-    shellOf(page, titlePart).getByText("Saved", { exact: true }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(shellOf(page, titlePart).getByText("Saved", { exact: true }).first()).toBeVisible({
+    timeout: 15_000,
+  });
 
   // Secret absent from every surface.
   await expect(page.getByText(secretValue)).toHaveCount(0);
@@ -497,7 +501,7 @@ test("a late stale detail response never mixes into the newer version's paging",
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, "run 60 shell steps then ask");
+  await send(page, "run 60 tracked steps then ask");
   await expect
     .poll(
       async () => {
@@ -509,9 +513,9 @@ test("a late stale detail response never mixes into the newer version's paging",
       { timeout: 90_000 },
     )
     .toBe("waiting_input");
-  const pending = await summaryByTitle(page, botId, "run 60 shell steps then ask");
+  const pending = await summaryByTitle(page, botId, "run 60 tracked steps then ask");
   const rev1 = pending.rev;
-  const pendingTitle = "run 60 shell steps then ask";
+  const pendingTitle = "run 60 tracked steps then ask";
 
   // Hold the first detail response until the SECOND one has been delivered:
   // the stale response then lands out of order, exactly the race the single
@@ -535,17 +539,16 @@ test("a late stale detail response never mixes into the newer version's paging",
   });
 
   await revealShell(page, pendingTitle);
-  await expandShell(page, pendingTitle); // fetch #1 (rev1) — held in the gate
-
-  // Answering appends real events: rev moves and the Run completes. The rev
-  // bump drops the stored expansion decision, collapsing the shell.
+  // UX-01B/C: a waiting card is collapsed and its primary action is the
+  // attention focus (never a toggle), so the detail expansion happens after
+  // the answer, on the settled Run. The route gate above is pre-existing.
   await answerTextAsk(page, "Paris");
   const settled = await settledSummaryById(page, botId, pending.runId);
   const settledTitle = settled.title;
   expect(settled.rev).toBeGreaterThan(rev1);
 
-  await collapseShell(page, settledTitle); // no-op when the rev bump already collapsed it
-  await expandShell(page, settledTitle); // fetch #2 (rev2) — lands, releases #1
+  await revealShell(page, settledTitle);
+  await expandShell(page, settledTitle); // detail fetch on the settled rev
   const loadMore = shellOf(page, settledTitle).getByTestId("execution-activity-more");
   await expect(loadMore).toBeVisible({ timeout: 30_000 });
 
@@ -589,4 +592,114 @@ test("a late stale detail response never mixes into the newer version's paging",
     expect(new Set(idsMore).size).toBe(idsMore.length);
     expect(await hiddenCount()).toBeGreaterThanOrEqual(h1);
   }
+});
+
+test("a failed detail load shows a safe retry and recovers (UX-01C acceptance 14)", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  await signup(page, `exec-retry-${stamp}@rakazo.test`, "password12", "Exec Retry");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+  const titlePart = "run 3 tracked steps retry";
+
+  await send(page, titlePart);
+  await settledSummary(page, botId, titlePart);
+  await revealShell(page, titlePart);
+  const shell = shellOf(page, titlePart);
+  const card = shell.locator('article[data-testid="execution-card"]');
+
+  // The first executionSnapshot call fails at the transport: the open card
+  // must say so safely — never silently, never with the raw error.
+  let blocked = 0;
+  await page.route("**/rpc/runs/executionSnapshot", (route) => {
+    blocked += 1;
+    return route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: "INTERNAL", message: "boom-secret-detail" } }),
+    });
+  });
+  await expandShell(page, titlePart);
+  const errorBlock = shell.getByTestId("execution-detail-error");
+  await expect(errorBlock).toBeVisible({ timeout: 15_000 });
+  await expect(errorBlock).not.toContainText("boom-secret-detail");
+  await expect(errorBlock.getByTestId("execution-detail-retry")).toBeVisible();
+  expect(blocked).toBeGreaterThan(0);
+  // Level-0 facts keep their values: the card never degrades to 0 or "--".
+  const cardText = await card.innerText();
+  expect(cardText).not.toContain("--");
+  expect(cardText).toContain(titlePart);
+
+  // Retry against the live server succeeds and clears the error state.
+  await page.unroute("**/rpc/runs/executionSnapshot");
+  await errorBlock.getByTestId("execution-detail-retry").click();
+  await expect(shell.getByTestId("execution-detail-error")).toHaveCount(0, { timeout: 15_000 });
+  await expect(shell.getByText("Tracked step 0", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+});
+
+test("a Todo-only Run never triggers an execution surface (UX-01C acceptance 16)", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  await signup(page, `exec-todoonly-${stamp}@rakazo.test`, "password12", "Exec TodoOnly");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+
+  await send(page, `publish tracked todos ${stamp}`);
+  await settledSummary(page, botId, "publish tracked todos");
+  await expect(
+    page.getByTestId("transcript").getByText("done. i handled:", { exact: false }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // Todos alone are Agent-internal working data: no shell, no slots, no copy.
+  await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.locator('[data-slot="todos"]')).toHaveCount(0);
+  await expect(page.getByText("First working item")).toHaveCount(0);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0);
+  await expect(page.locator('[data-slot="todos"]')).toHaveCount(0);
+});
+
+test("the legacy 事项清单 fallback shows only in an expanded legal surface (UX-01C acceptance 16)", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  await signup(page, `exec-fallback-${stamp}@rakazo.test`, "password12", "Exec Fallback");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+
+  // A FAILED Run with only Todos: the failure makes the surface legal, and
+  // with no Plan/Steps the expanded detail falls back to the 事项清单.
+  await send(page, `fail this todo run ${stamp}`);
+  await settledSummary(page, botId, "fail this todo run");
+  if ((await shellOf(page, "fail this todo run").count()) === 0) {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  }
+  const shell = shellOf(page, "fail this todo run");
+  await expect(shell).toBeVisible({ timeout: 15_000 });
+
+  // Collapsed: the fallback is not in the DOM at all (not merely hidden).
+  await expect(shell.locator('[data-slot="todos"]')).toHaveCount(0);
+  await expect(shell.getByText("Unfinished working item")).toHaveCount(0);
+
+  await expandShell(page, "fail this todo run");
+  const todos = shell.locator('[data-slot="todos"]');
+  await expect(todos).toBeVisible({ timeout: 15_000 });
+  await expect(todos.getByText("Unfinished working item")).toBeVisible();
+  // Approved copy; user-visible text never says Todo/待办 and carries no number.
+  await expect(todos).toContainText("This run has no plan");
+  const todosText = await todos.innerText();
+  expect(todosText.toLowerCase()).not.toContain("todo");
+  expect(todosText).not.toContain("待办");
+  expect(todosText).not.toMatch(/\d/);
+  // The Run-level failure reason shares the detail (no failed Step exists).
+  await expect(shell.getByTestId("execution-failure-reason")).toBeVisible();
 });
