@@ -1,3 +1,4 @@
+import { AvatarBodyColorSchema } from "@rakazo/contracts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { implement, ORPCError } from "@orpc/server";
 import type {
@@ -1503,6 +1504,7 @@ export function createRouter(deps: RouterDeps) {
             notifyOnFinish: source.notifyOnFinish,
             color: source.color,
             ...resolveAvatarIdentity(source.avatarMode, source.avatarCharacter, source.color),
+            avatarBodyColor: AvatarBodyColorSchema.parse(source.avatarBodyColor),
             computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
             modelProvider: source.modelProvider,
             modelId: source.modelId,
@@ -1645,7 +1647,7 @@ export function createRouter(deps: RouterDeps) {
         }
         let avatarChoice =
           input.avatarMode === "character"
-            ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter! }
+            ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter!, avatarBodyColor: input.avatarBodyColor }
             : input.avatarMode !== undefined || input.color !== undefined
               ? {
                   avatarMode: (input.avatarMode ??
@@ -6024,6 +6026,7 @@ async function spaceNavigationDto(
           color: bot.color,
           avatarMode: bot.avatarMode,
           avatarCharacter: bot.avatarCharacter,
+          avatarBodyColor: bot.avatarBodyColor,
           notifyOnFinish: bot.notifyOnFinish,
           pinned: bot.pinned,
           sectionId: bot.sectionId,

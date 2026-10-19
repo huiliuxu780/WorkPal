@@ -41,6 +41,7 @@ import type {
 import {
   ATTACHMENT_MAX_BYTES,
   AvatarCharacterSchema,
+  type AvatarBodyColor,
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
@@ -185,7 +186,7 @@ import {
   resolveAutoReviewProviderKind,
 } from "./auto-review.js";
 import { createAutoReviewProvider } from "./auto-review-factory.js";
-import { authorizedAvatarRequest } from "./avatar-change-request.js";
+import { authorizedAvatarRequest, requestedAvatarBodyColor } from "./avatar-change-request.js";
 import { attachedImageArtifactIds, resolveUpdateBotAvatar } from "./bot-avatar.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
 import {
@@ -3912,6 +3913,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({ error: "Ask the user to state the avatar change directly." });
             const sourceBlocks = source!.blocks as MessageBlock[];
             const chosen = AvatarCharacterSchema.safeParse(args.character);
+            const requestedBodyColor = requestedAvatarBodyColor(sourceBlocks.filter(block => block.kind === "text").map(block => block.text).join(""));
+            if (args.body_color !== undefined && args.body_color !== requestedBodyColor) return finish({ error: "Avatar color does not match the user's request." });
             const imageRequested = args.use_attached_image === true;
             if (
               requested === "attached-image"
@@ -3921,7 +3924,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({ error: "Avatar choice does not match the user's request." });
             }
             let choice:
-              | { avatarMode: "character"; avatarCharacter: AvatarCharacter }
+              | { avatarMode: "character"; avatarCharacter: AvatarCharacter; avatarBodyColor?: AvatarBodyColor }
               | { avatarMode: "upload"; color: string };
             if (requested === "attached-image") {
               const sourceImageArtifactIds = attachedImageArtifactIds(sourceBlocks);
@@ -3941,7 +3944,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               if (!("color" in avatar)) return finish({ error: avatar.error });
               choice = { avatarMode: "upload", color: avatar.color };
             } else {
-              choice = { avatarMode: "character", avatarCharacter: requested };
+              choice = { avatarMode: "character", avatarCharacter: requested, avatarBodyColor: requestedBodyColor };
             }
             const committed = await deps.prisma.$transaction(async (tx) => {
               const owned = await tx.$queryRaw<Array<{ id: string }>>`
@@ -3977,8 +3980,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     changeId: change.id,
                     beforeMode: change.beforeMode as "legacy" | "character" | "upload",
                     beforeCharacter: AvatarCharacterSchema.nullable().parse(change.beforeCharacter),
+                    beforeBodyColor: change.beforeBodyColor as AvatarBodyColor,
                     afterMode: change.afterMode as "character" | "upload",
                     afterCharacter: AvatarCharacterSchema.nullable().parse(change.afterCharacter),
+                    afterBodyColor: change.afterBodyColor as AvatarBodyColor,
                   },
                 ],
                 false,

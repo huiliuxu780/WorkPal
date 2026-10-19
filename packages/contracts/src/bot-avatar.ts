@@ -4,10 +4,30 @@ import type { ActivityKind, ActivityStatus } from "./activity.js";
 export const AVATAR_CHARACTERS = ["dot", "treble", "wave", "bounce"] as const;
 export const AvatarCharacterSchema = z.enum(AVATAR_CHARACTERS);
 export type AvatarCharacter = z.infer<typeof AvatarCharacterSchema>;
+export const AVATAR_BODY_COLORS = ["orange", "blue", "purple", "brown", "pink", "ink"] as const;
+export const AvatarBodyColorSchema = z.enum(AVATAR_BODY_COLORS);
+export type AvatarBodyColor = z.infer<typeof AvatarBodyColorSchema>;
+export function pickAvatarBodyColor(
+  existing: readonly { avatarMode: string; avatarBodyColor?: string | null }[],
+  botId: string,
+): AvatarBodyColor {
+  const counts = AVATAR_BODY_COLORS.map(
+    (color) =>
+      existing.filter((bot) => bot.avatarMode === "character" && bot.avatarBodyColor === color)
+        .length,
+  );
+  const min = Math.min(...counts);
+  const tied = AVATAR_BODY_COLORS.filter((_, index) => counts[index] === min);
+  return tied[avatarIdHash(botId) % tied.length]!;
+}
 export const AvatarModeSchema = z.enum(["legacy", "character", "upload"]);
 export type AvatarMode = z.infer<typeof AvatarModeSchema>;
 export const AvatarChoiceSchema = z.discriminatedUnion("avatarMode", [
-  z.object({ avatarMode: z.literal("character"), avatarCharacter: AvatarCharacterSchema }),
+  z.object({
+    avatarMode: z.literal("character"),
+    avatarCharacter: AvatarCharacterSchema,
+    avatarBodyColor: AvatarBodyColorSchema.optional(),
+  }),
   z.object({
     avatarMode: z.literal("upload"),
     color: z
@@ -23,8 +43,10 @@ export const BotAvatarChangeViewSchema = z.object({
   runId: z.string().nullable(),
   beforeMode: AvatarModeSchema,
   beforeCharacter: AvatarCharacterSchema.nullable(),
+  beforeBodyColor: AvatarBodyColorSchema.optional(),
   afterMode: AvatarModeSchema,
   afterCharacter: AvatarCharacterSchema.nullable(),
+  afterBodyColor: AvatarBodyColorSchema.optional(),
   createdAt: z.string(),
   undoneAt: z.string().nullable(),
 });

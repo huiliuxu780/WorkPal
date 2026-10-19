@@ -1,8 +1,13 @@
 import * as z from "zod";
 import { ActivityItemSchema } from "./activity.js";
-import { AvatarCharacterSchema, AvatarModeSchema, BotAvatarValueSchema } from "./bot-avatar.js";
-import { ExecutionSummarySchema } from "./execution-snapshot.js";
+import {
+  AvatarBodyColorSchema,
+  AvatarCharacterSchema,
+  AvatarModeSchema,
+  BotAvatarValueSchema,
+} from "./bot-avatar.js";
 import { ThreadMessageSchema } from "./events.js";
+import { ExecutionSummarySchema } from "./execution-snapshot.js";
 import { Id, MemoryScope, RunStatus, RunTrigger, SandboxKind, WaitKind } from "./ids.js";
 import { InterventionViewSchema } from "./intervention.js";
 import { McpHeadersSchema, McpRemoteEndpointSchema, McpTransportSchema } from "./mcp.js";
@@ -56,6 +61,7 @@ export const BotSchema = z.object({
   color: z.string(),
   avatarMode: AvatarModeSchema,
   avatarCharacter: AvatarCharacterSchema.nullable(),
+  avatarBodyColor: AvatarBodyColorSchema.optional(),
   notifyOnFinish: z.boolean(),
   pinned: z.boolean(),
   sectionId: Id.nullable(),
@@ -175,6 +181,7 @@ export const SpaceBotSchema = BotSchema.pick({
   color: true,
   avatarMode: true,
   avatarCharacter: true,
+  avatarBodyColor: true,
   notifyOnFinish: true,
   pinned: true,
   sectionId: true,
@@ -308,6 +315,7 @@ export const CreateBotInput = z
     color: BotAvatarValueSchema.optional(),
     avatarMode: AvatarModeSchema.optional(),
     avatarCharacter: AvatarCharacterSchema.optional(),
+    avatarBodyColor: AvatarBodyColorSchema.optional(),
     computerMode: ComputerModeSchema.default("team"),
     /** Idempotency key within a space (unique with spaceId). */
     spawnKey: z.string().trim().min(1).max(120).optional(),
@@ -359,6 +367,7 @@ export const UpdateBotInput = z
     color: BotAvatarValueSchema.optional(),
     avatarMode: AvatarModeSchema.optional(),
     avatarCharacter: AvatarCharacterSchema.optional(),
+    avatarBodyColor: AvatarBodyColorSchema.optional(),
     pinned: z.boolean().optional(),
     memoryScope: MemoryScopeSchema.nullable().optional(),
     sectionId: Id.nullable().optional(),
@@ -958,10 +967,10 @@ export const ThreadMessagePageSchema = z.object({
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
 
-export type { ActivityKind, ActivityStatus, ActivityItem } from "./activity.js";
+export type { ActivityItem, ActivityKind, ActivityStatus } from "./activity.js";
 // The Activity projection lives in its own module so the ExecutionSnapshot
 // schemas can reuse it without importing this file (no runtime import cycle).
-export { ActivityKindSchema, ActivityStatusSchema, ActivityItemSchema } from "./activity.js";
+export { ActivityItemSchema, ActivityKindSchema, ActivityStatusSchema } from "./activity.js";
 
 export const ThreadSnapshotSchema = z.object({
   threadId: Id,
