@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AgentAvatar } from "./agent-avatar.js";
@@ -7,15 +9,54 @@ import { createAvatarDomRenderer } from "./dom-motion.js";
 import { sample } from "./motion.js";
 
 describe("frozen SVG layer motion", () => {
-  it("keeps feet and paths untouched while moving the body, eyes and correct prop", () => {
+  it("resamples the XS failed expression on mounted state changes", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () =>
+      root.render(
+        <AgentAvatar
+          botId="xs"
+          character="wave"
+          bodyColor="blue"
+          name="XS"
+          size={18}
+          activity="failed"
+        />,
+      ),
+    );
+    const overlay = () => host.querySelector<HTMLElement>('[data-avatar-prop="xeyes"]')!;
+    const pupils = () => host.querySelector<SVGGElement>(".rakazo-agent-avatar-art #pupilL")!;
+    expect(overlay().style.opacity).toBe("1");
+    expect(pupils().getAttribute("opacity")).toBe("0");
+    expect(overlay().querySelector("path")?.getAttribute("stroke")).toBe("#04327e");
+    await act(async () =>
+      root.render(
+        <AgentAvatar
+          botId="xs"
+          character="wave"
+          bodyColor="blue"
+          name="XS"
+          size={18}
+          activity="working"
+        />,
+      ),
+    );
+    expect(overlay().style.opacity).toBe("0");
+    expect(pupils().getAttribute("opacity")).toBe("1");
+    expect(host.querySelector('[data-avatar-prop="laptop"]')).toBeNull();
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("keeps frozen paths untouched while moving the body, eyes and correct prop", () => {
     const host = document.createElement("div");
     host.innerHTML = renderToStaticMarkup(
       <AgentAvatar botId="bot" character="treble" name="Maya" size={24} activity="working" />,
     );
     const root = host.firstElementChild as HTMLElement;
-    const foot = root.querySelector<SVGGElement>(".rakazo-agent-avatar-art #feet")!;
+    expect(root.querySelector(".rakazo-agent-avatar-art #feet")).toBeNull();
     const body = root.querySelector<SVGGElement>(".rakazo-agent-avatar-art #body")!;
-    const footTransform = foot.getAttribute("transform");
     const originalBody = body.getAttribute("transform");
     const originalPaths = [...root.querySelectorAll("path")].map((path) => path.getAttribute("d"));
     const render = createAvatarDomRenderer(root);
@@ -26,13 +67,22 @@ describe("frozen SVG layer motion", () => {
       outgoingScale: 0,
       moving: true,
     });
-    expect(foot.getAttribute("transform")).toBe(footTransform);
     expect(body.getAttribute("transform")).not.toBe(originalBody);
     expect([...root.querySelectorAll("path")].map((path) => path.getAttribute("d"))).toEqual(
       originalPaths,
     );
     expect(root.querySelector<HTMLElement>('[data-avatar-prop="laptop"]')?.style.opacity).toBe("1");
     expect(root.querySelector<HTMLElement>('[data-avatar-prop="card"]')?.style.opacity).toBe("0");
+    render({
+      frame: sample("failed", 350, 0.4, { character: "treble" }),
+      state: "failed",
+      outgoingState: null,
+      outgoingScale: 0,
+      moving: true,
+    });
+    const cross = root.querySelector<SVGGElement>('[data-avatar-prop="xeyes"] #xL')!;
+    expect(cross.getAttribute("transform")).toContain("scale(");
+    expect(cross.getAttribute("transform")).not.toContain("scale(1)");
     render({
       frame: sample("failed", 1300, 0.4, { character: "treble" }),
       state: "failed",

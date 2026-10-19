@@ -93,6 +93,7 @@ export function CreateBotForm({
     color?: string;
     avatarMode?: AvatarMode;
     avatarCharacter?: AvatarCharacter;
+    avatarBodyColor?: import("@rakazo/contracts").AvatarBodyColor;
     modelProvider?: string;
     modelId?: string;
   }) => Promise<void>;
@@ -257,6 +258,7 @@ export function BotSettings({
     color?: string;
     avatarMode?: AvatarMode;
     avatarCharacter?: AvatarCharacter;
+    avatarBodyColor?: import("@rakazo/contracts").AvatarBodyColor;
     notifyOnFinish?: boolean;
     computerMode: ComputerMode;
     memoryScope?: "isolated" | "shared" | null;
@@ -279,15 +281,15 @@ export function BotSettings({
   const [avatarSelection, setAvatarSelection] = useState<AvatarSelection>(() =>
     bot.avatarMode === "upload" && bot.color.startsWith("data:image/")
       ? { avatarMode: "upload", color: bot.color }
-      : { avatarMode: "character", avatarCharacter: bot.avatarCharacter ?? "dot" },
+      : { avatarMode: "character", avatarCharacter: bot.avatarCharacter ?? "dot", avatarBodyColor: bot.avatarBodyColor ?? "ink" },
   );
   useEffect(() => {
     setAvatarSelection(
       bot.avatarMode === "upload" && bot.color.startsWith("data:image/")
         ? { avatarMode: "upload", color: bot.color }
-        : { avatarMode: "character", avatarCharacter: bot.avatarCharacter ?? "dot" },
+        : { avatarMode: "character", avatarCharacter: bot.avatarCharacter ?? "dot", avatarBodyColor: bot.avatarBodyColor ?? "ink" },
     );
-  }, [bot.id, bot.color, bot.avatarMode, bot.avatarCharacter]);
+  }, [bot.id, bot.color, bot.avatarMode, bot.avatarCharacter, bot.avatarBodyColor]);
   const [notifyOnFinish, setNotifyOnFinish] = useState(bot.notifyOnFinish ?? true);
   const [computerMode, setComputerMode] = useState(bot.computerMode);
   const [memoryScope, setMemoryScope] = useState(bot.memoryScope);
@@ -314,7 +316,7 @@ export function BotSettings({
     return () => {
       active = false;
     };
-  }, [bot.id, bot.avatarMode, bot.avatarCharacter, bot.color]);
+  }, [bot.id, bot.avatarMode, bot.avatarCharacter, bot.avatarBodyColor, bot.color]);
   const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   useEffect(() => {
     if (!avatarUndo) return;
@@ -475,7 +477,7 @@ export function BotSettings({
                       ? { avatarMode: "upload", color: restored.color }
                       : {
                           avatarMode: "character",
-                          avatarCharacter: restored.avatarCharacter ?? "dot",
+                          avatarCharacter: restored.avatarCharacter ?? "dot", avatarBodyColor: restored.avatarBodyColor ?? "ink",
                         },
                   );
                   setAvatarUndo(null);
@@ -507,7 +509,9 @@ export function BotSettings({
               <li key={change.id}>
                 {change.source === "bot" ? <Trans>Bot</Trans> : <Trans>You</Trans>}
                 {" · "}
-                {change.afterCharacter ?? t`Uploaded image`}
+                {change.beforeCharacter ? `${change.beforeCharacter} · ${change.beforeBodyColor ?? "ink"}` : change.beforeMode === "upload" ? t`Uploaded image` : t`Previous avatar`}
+                {" → "}
+                {change.afterCharacter ? `${change.afterCharacter} · ${change.afterBodyColor ?? "ink"}` : t`Uploaded image`}
                 {change.undoneAt ? ` · ${t`Undone`}` : ""}
                 {" · "}
                 {new Date(change.createdAt).toLocaleString()}

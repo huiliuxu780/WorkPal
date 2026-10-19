@@ -25,3 +25,5 @@ request from the production composers and compares byte-for-byte.
   regeneration diff outside an intentional, reviewed prompt change is a
   contract breach. These goldens are the independent pre-move record — never
   regenerate them from the moved sources to "make green".
+
+2026-10-19 avatar v0.7: the `change_avatar` character variant intentionally adds an optional `body_color` enum. Golden updates are restricted to that property; all prompt/message bytes and all other tools remain unchanged. The real final-request suite verifies the integrated contract.

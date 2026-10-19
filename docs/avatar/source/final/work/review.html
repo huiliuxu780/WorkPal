@@ -1,0 +1,11 @@
+<!doctype html><!-- review 图生成页；compare 视图引用 ../../final/ 里的 v0.6 文件，替换后改成 ../../final-v0.6-archive/ --><meta charset=utf-8><body style="margin:0;padding:14px 20px;background:#fff;font:12px 'Noto Sans CJK SC',sans-serif;color:#555">
+<style>.r{display:flex;align-items:flex-end;gap:22px;margin:6px 0 16px}.c{display:flex;flex-direction:column;align-items:center;gap:4px}.b{position:relative}.b img{position:absolute;left:-12.5%;top:-12.5%;width:125%;height:125%}h3{font-size:12px;margin:8px 0 2px;color:#333}</style>
+<div id=x></div><script>
+const q=new URLSearchParams(location.search).get('v');const N=['1-dot','2-treble','3-wave','4-bounce'],C={'1-dot':'pink','2-treble':'orange','3-wave':'blue','4-bounce':'purple'};
+const box=(src,s,raw)=>raw?`<div class=c><img src="${src}" style="width:${s}px;height:${s}px"><span>${s}</span></div>`:`<div class=c><div class=b style="width:${s}px;height:${s}px"><img src="${src}"></div><span>${s}</span></div>`;
+let h='';
+if(q=='compare'){h+='<h3>v0.6 FINAL（黑色、有脚）</h3><div class=r>'+N.map(n=>box(`../../final/${n}.svg`,96,1)).join('')+'</div><h3>v0.7 FINAL（无脚、C 配色，按 1.25 倍绘制）</h3><div class=r>'+N.map(n=>box(`../${n}-${C[n]}.svg`,96)).join('')+box('../1-dot-ink.svg',96)+'</div>'}
+if(q=='sizes'){for(const n of N){h+=`<h3>${n}</h3><div class=r>`+box(`../${n}-${C[n]}-16.svg`,16,1)+box(`../${n}-${C[n]}-xs.svg`,18)+box(`../${n}-${C[n]}-s.svg`,24)+box(`../${n}-${C[n]}-s.svg`,35)+box(`../${n}-${C[n]}.svg`,58)+box(`../${n}-${C[n]}.svg`,64)+'</div>'}}
+if(q=='palette'){for(const n of N){h+='<div class=r>'+['orange','blue','purple','brown','pink','ink'].map(c=>box(`../${n}-${c}.svg`,48)).join('')+'</div>'}}
+document.getElementById('x').innerHTML=h;
+</script>

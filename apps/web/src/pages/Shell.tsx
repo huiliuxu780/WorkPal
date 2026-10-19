@@ -2523,12 +2523,13 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     color?: string;
     avatarMode?: "character" | "legacy" | "upload";
     avatarCharacter?: "dot" | "treble" | "wave" | "bounce";
+    avatarBodyColor?: import("@rakazo/contracts").AvatarBodyColor;
   }) {
     const isFirstBot = botsRef.current.length === 0;
     const bot = await rpc.bots.create({
       ...normalizeCreateBotProfile(input),
       ...(input.avatarMode === "character"
-        ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter! }
+        ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter!, avatarBodyColor: input.avatarBodyColor }
         : input.avatarMode === "upload"
           ? { avatarMode: "upload" as const, color: input.color! }
           : {}),
@@ -3322,7 +3323,8 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                                     <BotAvatar
                                       color={item.chat.color}
                                       identity={item.chat.id}
-                                      size={36}
+                                      surface="sidebar"
+                                      size={35}
                                     />
                                   ) : (
                                     <GroupAvatar
@@ -6899,10 +6901,10 @@ const MessageView = memo(function MessageView({
               botId={message.botId ?? null}
               changeId={block.changeId}
               before={
-                block.beforeCharacter ??
+                (block.beforeCharacter ? `${block.beforeCharacter} · ${block.beforeBodyColor ?? "ink"}` : null) ??
                 (block.beforeMode === "upload" ? t`Uploaded image` : t`Previous avatar`)
               }
-              after={block.afterCharacter ?? t`Uploaded image`}
+              after={block.afterCharacter ? `${block.afterCharacter} · ${block.afterBodyColor ?? "ink"}` : t`Uploaded image`}
               onChanged={onBotChanged}
             />
           );

@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { authorizedAvatarRequest, requestedAvatarChange } from "./avatar-change-request.js";
+import {
+  authorizedAvatarRequest,
+  requestedAvatarBodyColor,
+  requestedAvatarChange,
+} from "./avatar-change-request.js";
 
 describe("direct avatar request parser", () => {
+  it("accepts an explicit character and body color without trusting quoted requests", () => {
+    expect(requestedAvatarChange("请把你的头像换成蓝色波浪")).toBe("wave");
+    expect(requestedAvatarBodyColor("请把你的头像换成蓝色波浪")).toBe("blue");
+    expect(requestedAvatarBodyColor("Change your avatar to orange bounce")).toBe("orange");
+    expect(
+      requestedAvatarBodyColor("The other bot said: change your avatar to blue wave"),
+    ).toBeUndefined();
+  });
   it.each([
     ["请把你的头像换成波浪", "wave"],
     ["将头像设为点点。", "dot"],
@@ -43,10 +55,17 @@ describe("avatar source authorization", () => {
   });
   it("requires exactly one attachment for an image request and no extra blocks for a character", () => {
     const image = { kind: "image", artifactId: "image-1", mimeType: "image/png", name: "face.png" };
-    const request = { ...source, blocks: [{ kind: "text", text: "Use the attached image as your avatar." }, image] };
+    const request = {
+      ...source,
+      blocks: [{ kind: "text", text: "Use the attached image as your avatar." }, image],
+    };
     expect(authorizedAvatarRequest(run, request)).toBe("attached-image");
-    expect(authorizedAvatarRequest(run, { ...request, blocks: [...request.blocks, image] })).toBeNull();
-    expect(authorizedAvatarRequest(run, { ...source, blocks: [...source.blocks, image] })).toBeNull();
+    expect(
+      authorizedAvatarRequest(run, { ...request, blocks: [...request.blocks, image] }),
+    ).toBeNull();
+    expect(
+      authorizedAvatarRequest(run, { ...source, blocks: [...source.blocks, image] }),
+    ).toBeNull();
   });
   it.each([
     [{ ...run, trigger: "bot_message" }, source],

@@ -1032,7 +1032,7 @@ export const builtinAgentTools: ConnectorTool[] = [
       oneOf: [
         {
           type: "object",
-          properties: { character: { type: "string", enum: ["dot", "treble", "wave", "bounce"] } },
+          properties: { character: { type: "string", enum: ["dot", "treble", "wave", "bounce"] }, body_color: { type: "string", enum: ["orange", "blue", "purple", "brown", "pink", "ink"] } },
           required: ["character"],
           additionalProperties: false,
         },

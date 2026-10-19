@@ -68,9 +68,11 @@ model BotAvatarChange {
   /// waits, so all ordering goes through seq.
   seq             BigInt    @default(autoincrement())
   beforeMode      String
+  beforeBodyColor String @default("ink")
   beforeCharacter String?
   beforeColor     String
   afterMode       String
+  afterBodyColor String @default("ink")
   afterCharacter  String?
   afterColor      String
   createdAt       DateTime  @default(now())
@@ -380,6 +382,7 @@ model Bot {
   capabilityRules    Json?
   color             String
   avatarMode        String            @default("legacy")
+  avatarBodyColor   String @default("ink")
   avatarCharacter   String?
   notifyOnFinish    Boolean           @default(true)
   pinned            Boolean           @default(false)

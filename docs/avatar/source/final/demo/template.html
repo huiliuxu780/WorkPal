@@ -1,0 +1,103 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><title>WorkPal 头像动作演示 v0.7 FINAL</title>
+<style>
+:root{--q:#3F8FDF;--bg:#fff;--fg:#111;--mut:#888;--line:#eee;--st-run:#22a356;--st-approval:#d97706;--st-wait:#3F8FDF;--st-fail:#e5484d;--st-glyph:#fff}
+body.dark{--q:#7CB8F2;--bg:#1a1a1a;--fg:#eee;--mut:#999;--line:#333;--st-run:#4ADE80;--st-approval:#F5C84B;--st-wait:#7CB8F2;--st-fail:#e5484d;--st-glyph:#1a1a1a}
+body{margin:0;font:14px/1.5 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;gap:10px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:16px;margin:0 12px 0 0}
+button,label{font:inherit;color:var(--fg)}button{background:transparent;border:1px solid var(--line);border-radius:8px;padding:4px 10px;cursor:pointer}
+table{border-collapse:collapse;margin:12px 20px}td,th{padding:10px 14px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}
+th{font-weight:500;color:var(--mut);font-size:12px}td.s{text-align:left;white-space:nowrap}
+.av{position:relative;display:inline-block}
+.av svg{position:absolute;left:-12.5%;top:-12.5%;width:125%;height:125%;overflow:visible}
+body.dark .char{filter:drop-shadow(1.5px 0 0 #fff) drop-shadow(-1.5px 0 0 #fff) drop-shadow(0 1.5px 0 #fff) drop-shadow(0 -1.5px 0 #fff)}
+.dot16{position:absolute;right:-2px;bottom:-1px;width:6px;height:6px;border-radius:50%;box-shadow:0 0 0 1.5px var(--bg);font:bold 5px/6px sans-serif;color:var(--st-glyph);text-align:center}
+.dot16.fail,.bdg.fail{color:#fff}
+.dot16.hue{box-shadow:0 0 0 2px var(--bg)}.bdg.hue{border-width:2.5px}
+.bdg{position:absolute;right:-3px;bottom:-1px;width:12px;height:12px;border-radius:50%;border:2px solid var(--bg);font:800 9px/12px sans-serif;color:var(--st-glyph);text-align:center}
+.bdg.n{width:auto;min-width:10px;padding:0 3px;border-radius:9px}
+.badges td{padding:6px 10px}
+.i16{width:16px;height:16px;display:block}
+.note{color:var(--mut);font-size:12px;margin:0 20px 16px}
+.pal{display:block;margin:6px 20px 4px}.pal figure{margin:0;text-align:center;font-size:11px;color:var(--mut)}
+.pal img{width:46px;height:46px;margin:-5.75px;display:block}.pal .row{display:flex;gap:16px;padding:6px 4px}
+</style>
+<body>
+<header><h1>WorkPal 头像 · 5 套动作演示 v0.7 FINAL</h1>
+<button id="replay">全部重播</button><button id="pulse">工作中：触发新进展</button><button id="sig">招牌动作</button><button id="nudge">审批提醒</button><button id="reenter">重复进入（审批 / 出错）</button>
+<label><input type="checkbox" id="dark"> 深色模式</label><label><input type="checkbox" id="rm"> 减少动态效果（显示静态帧）</label></header>
+<table id="t"></table>
+<p class="note">按 MOTION-SPEC.md v0.7 FINAL 制作：无脚、C 配色（同色系深色，无纯黑），出错为摇头版，笔记本 / 叉眼为同色系深色，波浪笔记本 0.85×。64 / 24px 为动画（SVG 按头像框 1.25 倍绘制、不裁切），16px 为只有身体和眼的文件加状态点；表下方是侧边栏徽标。状态色为浅色 / 深色两套语义色；和身体同色相时描边加粗。地址后加 ?t=3000 冻结在第 3 秒（固定随机种子，可复现），&dark=1 深色，&rm=1 静态帧。此页不限制同屏 3 个名额。</p>
+<div class="pal" id="pal"></div>
+<script>
+const LAYERS=/*LAYERS*/;
+/*FRAMEJS*/
+const N=[['1-dot','pink'],['2-treble','orange'],['3-wave','blue'],['4-bounce','purple'],['1-dot','ink']];
+const NAMES={'1-dot':'圆点','2-treble':'谱号','3-wave':'波浪','4-bounce':'弹跳'};
+const ST=[['idle','待机'],['working','工作中'],['approval','等审批'],['waiting','等你回答'],['failed','出错（摇头）']];
+// 状态语义色（SPEC.md §4，2026-10-19 确认）：16px 点和侧边栏徽标共用，浅色 / 深色主题由 CSS 变量切换
+// 同色相（ΔE<25 或色相角差<30°）时描边加粗：点 1.5→2px，徽标 2→2.5px（SPEC §4.2）
+const HUE={approval:['orange','brown'],waiting:['blue'],failed:['pink']};
+const hue=(s,c)=>(HUE[s]||[]).includes(c)?' hue':'';
+const DOT={working:'var(--st-run)',approval:'var(--st-approval)',waiting:'var(--st-wait)',failed:'var(--st-fail)'};
+const all=[];let RM=false;
+const tierOf=sz=>sz>=58?'L':sz>=24?'S':'XS';
+function make(n,col,size,state){
+  const T=tierOf(size),L=LAYERS.layers[n][T],A=LAYERS.anchors[n][T],body=LAYERS.body[col],dark=LAYERS.dark[T][col];
+  const c=x=>x.split('{BODY}').join(body).split('{DARK}').join(dark);
+  const d=document.createElement('div');d.className='av';d.style.width=d.style.height=size+'px';
+  d.setAttribute('role','img');d.setAttribute('aria-label',NAMES[n]+'，'+ST.find(s=>s[0]==state)[1]);
+  const f=A.fit, tilt=A.tilt?`<g transform="rotate(${A.tilt} 50 86.25)">`:'<g>';
+  d.innerHTML=`<svg class="shL" viewBox="0 0 100 100"><ellipse class="sh" cx="${A.shadow.cx}" cy="${A.shadow.cy}" rx="${A.shadow.rx}" ry="${A.shadow.ry}" fill="#000" opacity="0"/></svg>`+
+   `<svg class="char" viewBox="0 0 100 100"><g transform="translate(50 50) scale(${f.s}) translate(${-f.cx} ${-f.cy})">${tilt}<g class="grp">${c(L.body)}<g class="eyes"><g class="ew">${c(L.eyewhite)}</g><g class="pup"><g class="pl">${c(L.pupilL)}</g><g class="pr">${c(L.pupilR)}</g></g><g class="xe"></g></g><g class="symw">${c(L.symbol)}</g></g></g></g></svg>`+
+   `<svg class="propL" viewBox="0 0 100 100"><g class="prop">`+
+   `<g class="lap"><rect x="${-.25*R}" y="${-.34*R}" width="${.5*R}" height="${.4*R}" rx="${.05*R}" fill="#fff" stroke="${dark}" stroke-width="${.07*R}"/><rect class="glow" x="${-.18*R}" y="${-.27*R}" width="${.36*R}" height="${.26*R}" rx="${.03*R}" fill="#4ADE80" opacity="0"/><rect class="cur" x="${-.10*R}" y="${-.20*R}" width="${.05*R}" height="${.12*R}" fill="${dark}"/><path d="M ${-.33*R} ${.08*R} H ${.33*R} L ${.28*R} ${.17*R} H ${-.28*R} Z" fill="${dark}" stroke="${dark}" stroke-width="${.03*R}" stroke-linejoin="round"/></g>`+
+   `<g class="card"><rect x="${-.23*R}" y="${-.30*R}" width="${.46*R}" height="${.60*R}" rx="${.08*R}" fill="#F5C84B" stroke="#fff" stroke-width="${.05*R}" paint-order="stroke" transform="rotate(-6)"/></g>`+
+   `<g class="q"><text x="0" y="${.31*R}" text-anchor="middle" font-size="${.86*R}" font-weight="900" font-family="Arial Black,Arial,sans-serif" stroke="#fff" stroke-width="4.3" stroke-linejoin="round" fill="#fff">?</text><text x="0" y="${.31*R}" text-anchor="middle" font-size="${.86*R}" font-weight="900" font-family="Arial Black,Arial,sans-serif" stroke-width="1.2" style="fill:var(--q);stroke:var(--q)">?</text></g></g></svg>`;
+  return {n,col,size,T,A,dark,state,el:d,t0:0,prev:null,tc:-1e9,pulses:[],blinkAt:0,dbl:false};
+}
+function init(a){
+  const g=s=>a.el.querySelector(s).getBBox();
+  const sb=g('.symw'),ew=g('.ew'),pl=g('.pl'),pr=g('.pr');
+  a.piv=a.n=='2-treble'?[50-.38*R,CY0-.78*R]:a.n=='3-wave'?[sb.x+sb.width/2,sb.y+sb.height]:[sb.x+sb.width/2,sb.y+sb.height/2];
+  a.ph=Math.random()*6.28;a.ec={x:ew.x+ew.width/2,y:ew.y+ew.height/2};
+  const h=ew.width/2*0.55/2, sw=0.07*R*(a.T=='L'?1:2.2);
+  a.el.querySelector('.xe').innerHTML=[pl,pr].map(p=>`<g transform="translate(${p.x+p.width/2} ${p.y+p.height/2})"><g class="xs"><path d="M${-h} ${-h}L${h} ${h}M${h} ${-h}L${-h} ${h}" stroke="${a.dark}" stroke-width="${sw}" stroke-linecap="round" fill="none"/></g></g>`).join('');
+  a.ps=Math.max(1,6/(0.006*a.A.Rp*a.size*1.25));
+  a.blinkAt=(a.start??performance.now())+1000+Math.random()*3000;
+}
+const T=document.getElementById('t');
+T.innerHTML='<tr><th>状态</th>'+N.map(([n,c])=>`<th>${c=='ink'?'Buzz（墨）':NAMES[n]} 64px</th>`).join('')+'<th>24px</th><th>16px</th></tr>';
+for(const [s,lab] of ST){
+  const tr=document.createElement('tr');tr.innerHTML=`<td class="s">${lab}<br><small style="color:var(--mut)">${s}</small></td>`;
+  for(const [n,c] of N){const td=document.createElement('td');const a=make(n,c,64,s);td.appendChild(a.el);tr.appendChild(td);all.push(a)}
+  let td=document.createElement('td');td.style.whiteSpace='nowrap';for(const [n,c] of N){const a=make(n,c,24,s);a.el.style.margin='0 5px';td.appendChild(a.el);all.push(a)}tr.appendChild(td);
+  td=document.createElement('td');td.style.whiteSpace='nowrap';
+  for(const [n,c] of N){const w=document.createElement('span');w.className='av';w.style.cssText='width:16px;height:16px;margin:0 4px';w.innerHTML=`<img class="i16" src="../${n}-${c}-16.svg" alt="${NAMES[n]}">`+(DOT[s]?`<span class="dot16${s=='failed'?' fail':''}${hue(s,c)}" style="background:${DOT[s]}">${s=='failed'?'!':''}</span>`:'');td.appendChild(w)}
+  tr.appendChild(td);T.appendChild(tr);
+}
+// 侧边栏状态徽标（35px 小档 + 12px 徽标，2px 底色描边；同色相 2.5px）
+{const B=[['运行中','var(--st-run)','','working'],['等审批','var(--st-approval)','2','approval'],['等你回答','var(--st-wait)','','waiting'],['失败','var(--st-fail)','!','failed'],['完成','var(--st-run)','✓','done']];
+ const CH={orange:'2-treble',blue:'3-wave',purple:'4-bounce',brown:'3-wave',pink:'1-dot',ink:'1-dot'};
+ const tb=document.createElement('table');tb.className='badges';
+ tb.innerHTML='<tr><th>侧边栏徽标</th>'+Object.keys(CH).map(c=>`<th>${c}</th>`).join('')+'</tr>'+B.map(([l,col,g,sk])=>`<tr><td class="s">${l}</td>`+Object.keys(CH).map(c=>`<td><span class="av" style="width:35px;height:35px"><img src="../${CH[c]}-${c}-s.svg" style="position:absolute;left:-12.5%;top:-12.5%;width:125%;height:125%"><span class="bdg${g=='2'?' n':''}${g=='!'?' fail':''}${hue(sk,c)}" style="background:${col}">${g}</span></span></td>`).join('')+'</tr>').join('');
+ T.after(tb);}
+// 配色总表（直接引用根目录静态 SVG，检查资源）
+document.getElementById('pal').innerHTML='<div style="font-size:12px;color:var(--mut);width:100%">静态资源总表（根目录 *-&lt;颜色&gt;.svg，大档，按 1.25 倍绘制）</div>'+['1-dot','2-treble','3-wave','4-bounce'].map(n=>'<div class="row">'+Object.keys(LAYERS.body).map(c=>`<figure><img src="../${n}-${c}.svg" alt=""><br>${c}</figure>`).join('')+'</div>').join('');
+const q0=new URLSearchParams(location.search), CAP=q0.has('t');
+// ?t=毫秒：截图模式。用固定种子的随机数，从 0 开始按 20ms 步进模拟到 t，结果可复现（导出 GIF / 关键帧用）
+if(CAP){let s0=+(q0.get('seed')||7);Math.random=()=>{s0|=0;s0=s0+0x6D2B79F5|0;let t=Math.imul(s0^s0>>>15,1|s0);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+requestAnimationFrame(()=>{
+  if(CAP){const off=+q0.get('t');all.forEach(a=>{a.start=0;init(a);a.t0=0;a.pp=[0,0]});for(let n=0;n<off;n+=20)all.forEach(a=>frame(a,n,RM));all.forEach(a=>frame(a,off,RM));document.body.dataset.ready=1;const tb=document.getElementById('t').getBoundingClientRect();document.body.dataset.rects=JSON.stringify([...document.querySelectorAll('#t tr')].map(r=>[...r.children].map(c=>{const b=c.getBoundingClientRect();return[Math.round(b.left),Math.round(b.top),Math.round(b.right),Math.round(b.bottom)]})));return}
+  all.forEach(init);const n=performance.now();all.forEach(a=>{a.t0=n;a.pp=[0,0]});
+  (function loop(now){all.forEach(a=>frame(a,now,RM));requestAnimationFrame(loop)})(performance.now())});
+document.getElementById('replay').onclick=()=>{const n=performance.now();all.forEach(a=>{a.prev=null;a.t0=n;a.reAt=0})};
+document.getElementById('pulse').onclick=()=>{const n=performance.now();all.filter(a=>a.state=='working'&&n-a.t0>=1260).forEach(a=>{if(!a.lastPulse||n-a.lastPulse>=2000){a.lastPulse=n;a.pulses.push(n)}})};
+document.getElementById('reenter').onclick=()=>{const n=performance.now();all.filter(a=>a.state=='approval'||a.state=='failed').forEach(a=>{if(!a.reAt||n-a.reAt>450)a.reAt=n})};
+document.getElementById('sig').onclick=()=>{const n=performance.now();all.filter(a=>a.state=='idle'||a.state=='working').forEach(a=>a.sigAt=n)};
+document.getElementById('nudge').onclick=()=>{const n=performance.now();all.filter(a=>a.state=='approval').forEach(a=>a.nudgeAt=n)};
+document.getElementById('dark').onchange=e=>document.body.classList.toggle('dark',e.target.checked);
+document.getElementById('rm').onchange=e=>{RM=e.target.checked};
+if(q0.get('dark')){document.body.classList.add('dark');document.getElementById('dark').checked=true}
+if(q0.get('rm')||matchMedia('(prefers-reduced-motion: reduce)').matches){RM=true;document.getElementById('rm').checked=true}
+</script></body></html>

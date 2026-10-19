@@ -41,9 +41,15 @@ describePostgres("avatar change authorization and undo (PostgreSQL)", () => {
       ...actor,
       botId,
       source: "user",
-      choice: { avatarMode: "character", avatarCharacter: "wave" },
+      choice: { avatarMode: "character", avatarCharacter: "wave", avatarBodyColor: "blue" },
     });
-    expect(change).toMatchObject({ source: "user", beforeMode: "upload", afterCharacter: "wave" });
+    expect(change).toMatchObject({
+      source: "user",
+      beforeMode: "upload",
+      afterCharacter: "wave",
+      beforeBodyColor: "ink",
+      afterBodyColor: "blue",
+    });
     await expect(
       undoBotAvatarChange(db, { userId: outsiderId, spaceId }, change!.id),
     ).rejects.toThrow();
@@ -56,6 +62,7 @@ describePostgres("avatar change authorization and undo (PostgreSQL)", () => {
     expect(await db.bot.findUniqueOrThrow({ where: { id: botId } })).toMatchObject({
       avatarMode: "upload",
       color: upload,
+      avatarBodyColor: "ink",
     });
     await expect(undoBotAvatarChange(db, actor, change!.id)).rejects.toThrow();
   });
@@ -123,7 +130,9 @@ describePostgres("avatar change authorization and undo (PostgreSQL)", () => {
         choice: { avatarMode: "character", avatarCharacter: index % 2 ? "wave" : "treble" },
       });
     }
-    expect(await db.botAvatarChange.count({ where: { botId, operationKey: null } })).toBeLessThanOrEqual(50);
+    expect(
+      await db.botAvatarChange.count({ where: { botId, operationKey: null } }),
+    ).toBeLessThanOrEqual(50);
     expect(await listBotAvatarChanges(db, actor, botId)).toHaveLength(50);
   });
 

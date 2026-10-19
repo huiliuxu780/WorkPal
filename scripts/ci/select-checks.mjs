@@ -7,7 +7,7 @@
  *   node scripts/ci/select-checks.mjs --github
  */
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -195,7 +195,10 @@ export function classifyPath(file) {
     };
   }
 
-  if (p === "apps/web/e2e/worker-chain.spec.ts" || p === "packages/testkit/src/cli/worker-chain.ts") {
+  if (
+    p === "apps/web/e2e/worker-chain.spec.ts" ||
+    p === "packages/testkit/src/cli/worker-chain.ts"
+  ) {
     return {
       jobs: ["backend", "worker-chain"],
       reason: "Worker production-chain harness",
@@ -238,7 +241,11 @@ export function classifyPath(file) {
     };
   }
 
-  if (isUnder(p, "apps/worker") || anyStem(p, WORKER_ADAPTER_STEMS) || anyStem(p, WORKER_DB_STEMS)) {
+  if (
+    isUnder(p, "apps/worker") ||
+    anyStem(p, WORKER_ADAPTER_STEMS) ||
+    anyStem(p, WORKER_DB_STEMS)
+  ) {
     return {
       jobs: ["backend", "worker-chain"],
       reason: "Worker process, lease, outbox, or Graphile handoff",
@@ -270,8 +277,12 @@ export function classifyPath(file) {
     };
   }
 
-  if (isUnder(p, "apps/web") || isUnder(p, "packages/ui-web") || isUnder(p, "packages/ui-tokens") ||
-    isUnder(p, "packages/chat-ui")) {
+  if (
+    isUnder(p, "apps/web") ||
+    isUnder(p, "packages/ui-web") ||
+    isUnder(p, "packages/ui-tokens") ||
+    isUnder(p, "packages/chat-ui")
+  ) {
     return {
       jobs: ["web"],
       reason: "pure UI surface (web / ui-web / ui-tokens / chat-ui)",
@@ -287,8 +298,11 @@ export function classifyPath(file) {
     };
   }
 
-  if (anyStem(p, CORE_RUNTIME_STEMS) || isUnder(p, "packages/core/src/product-harness") ||
-    isUnder(p, "packages/core/src/node")) {
+  if (
+    anyStem(p, CORE_RUNTIME_STEMS) ||
+    isUnder(p, "packages/core/src/product-harness") ||
+    isUnder(p, "packages/core/src/node")
+  ) {
     return {
       jobs: ["backend", "agentscope"],
       reason: "core runtime/execution helper",
@@ -547,7 +561,11 @@ export function formatSummary(result) {
     lines.push(`- **${key}**: ${reason}`);
   }
   if (result.fileReasons?.length) {
-    lines.push(``, `<details><summary>Per-file mapping (${result.fileReasons.length})</summary>`, ``);
+    lines.push(
+      ``,
+      `<details><summary>Per-file mapping (${result.fileReasons.length})</summary>`,
+      ``,
+    );
     for (const row of result.fileReasons.slice(0, 80)) {
       lines.push(`- \`${row.file}\` → ${row.jobs.join(", ")} — ${row.reason}`);
     }
@@ -605,12 +623,19 @@ function runGit(args) {
  * Resolve what to compare from GitHub Actions env.
  * Fail closed: unknown events and unreadable SHAs become full or throw.
  */
-export function resolveGitHubSelection(env, git = { nameStatus: gitNameStatus, threeDot: gitNameStatusThreeDot }) {
+export function resolveGitHubSelection(
+  env,
+  git = { nameStatus: gitNameStatus, threeDot: gitNameStatusThreeDot },
+) {
   const event = env.GITHUB_EVENT_NAME ?? env.EVENT_NAME ?? "";
   const modeInput = env.MODE_INPUT || "";
   const sha = env.GITHUB_SHA ?? env.EVENT_AFTER ?? "";
 
-  if (event === "schedule" || modeInput === "full" || (event === "workflow_dispatch" && modeInput !== "selective")) {
+  if (
+    event === "schedule" ||
+    modeInput === "full" ||
+    (event === "workflow_dispatch" && modeInput !== "selective")
+  ) {
     const reason =
       event === "schedule"
         ? "daily scheduled full verification"
@@ -666,13 +691,11 @@ export function writeGitHubOutput(result, env = process.env) {
     `mode=${result.mode}`,
     `web_e2e_spec=${result.webE2eSpec}`,
     `result<<__CI01_RESULT__`,
-    JSON.stringify(result),
+    JSON.stringify({ mode: result.mode, selected: result.selected, flags: result.flags }),
     `__CI01_RESULT__`,
-    `summary<<__CI01_SUMMARY__`,
-    result.summary,
-    `__CI01_SUMMARY__`,
     "",
   ].join("\n");
+  if (env.SELECT_RESULT_PATH) writeFileSync(env.SELECT_RESULT_PATH, JSON.stringify(result));
   if (outputPath) appendFileSync(outputPath, block);
   if (summaryPath) appendFileSync(summaryPath, result.summary);
   return block;
@@ -712,7 +735,10 @@ function main(argv = process.argv.slice(2), env = process.env, stdout = console)
 }
 
 function isMainModule() {
-  return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+  return (
+    Boolean(process.argv[1]) &&
+    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+  );
 }
 
 if (isMainModule()) {

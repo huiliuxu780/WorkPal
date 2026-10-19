@@ -1,10 +1,17 @@
-import type { AvatarCharacter, MessageBlock } from "@rakazo/contracts";
+import type { AvatarBodyColor, AvatarCharacter, MessageBlock } from "@rakazo/contracts";
 
 /** Deliberately narrow: only a direct, single-purpose human command can authorize a Bot avatar write. */
 export function requestedAvatarChange(text: string): AvatarCharacter | "attached-image" | null {
   const line = text.trim();
   if (line.length > 100 || /[\r\n<>`]/.test(line)) return null;
-  const normalized = line.replace(/[。.!！?？]$/, "").trim();
+  const normalized = line
+    .replace(/[。.!！?？]$/, "")
+    .trim()
+    .replace(/(?:橙色|蓝色|紫色|棕色|粉色|墨色)(?=点点|音符|波浪|弹跳)/u, "")
+    .replace(
+      /(avatar (?:to|as) )(?:orange|blue|purple|brown|pink|ink) (?=dot|treble|wave|bounce)/i,
+      "$1",
+    );
   const chinese =
     /^(?:请)?(?:把|将)?(?:你(?:的)?|自己(?:的)?)?头像(?:换成|改成|设为|设置为)(点点|音符|波浪|弹跳)$/u.exec(
       normalized,
@@ -63,4 +70,26 @@ export function authorizedAvatarRequest(
       : null;
   }
   return blocks.length === 1 ? requested : null;
+}
+
+/** Read color only after the same complete direct request has been authorized. */
+export function requestedAvatarBodyColor(text: string): AvatarBodyColor | undefined {
+  if (!requestedAvatarChange(text) || requestedAvatarChange(text) === "attached-image")
+    return undefined;
+  const english =
+    /avatar (?:to|as) (orange|blue|purple|brown|pink|ink) (?:dot|treble|wave|bounce)/i.exec(text);
+  if (english) return english[1]!.toLowerCase() as AvatarBodyColor;
+  const chinese = /(橙色|蓝色|紫色|棕色|粉色|墨色)(?:点点|音符|波浪|弹跳)/u.exec(text);
+  return chinese
+    ? (
+        {
+          橙色: "orange",
+          蓝色: "blue",
+          紫色: "purple",
+          棕色: "brown",
+          粉色: "pink",
+          墨色: "ink",
+        } as const
+      )[chinese[1] as "橙色"]
+    : undefined;
 }

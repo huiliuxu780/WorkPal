@@ -118,3 +118,15 @@ describe("character avatar assignment", () => {
     ).toBe(true);
   });
 });
+
+it("rejects a standalone body-color patch rather than silently ignoring it", () => {
+  expect(UpdateBotInput.safeParse({ botId: "bot", avatarBodyColor: "pink" }).success).toBe(false);
+  expect(
+    UpdateBotInput.safeParse({
+      botId: "bot",
+      avatarMode: "character",
+      avatarCharacter: "wave",
+      avatarBodyColor: "pink",
+    }).success,
+  ).toBe(true);
+});

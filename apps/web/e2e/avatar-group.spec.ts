@@ -33,7 +33,7 @@ test("group sidebar uses two live character avatars with visible names", async (
     .locator("xpath=ancestor::button[1]");
   await expect(row).toBeVisible();
   await expect(row.locator(".rakazo-group-avatar .rakazo-agent-avatar")).toHaveCount(2);
-  await expect(row.locator(".rakazo-agent-avatar").first()).toHaveAttribute("data-size", "24");
+  await expect(row.locator(".rakazo-agent-avatar").first()).toHaveAttribute("data-size", "18");
   await captureScreenshot(page, testInfo, "avatar-group-light");
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "dark";
