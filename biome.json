@@ -14,6 +14,7 @@
       "!**/coverage",
       "!**/design",
       "!**/packages/db/src/generated",
+      "!**/packages/core/src/prompt-texts.generated.ts",
       "!**/packages/testkit/src/__fixtures__/prompt-baseline",
       "!**/packages/ui-web/src/agent-avatar/assets.generated.ts",
       "!**/packages/ui-web/src/bloub",
