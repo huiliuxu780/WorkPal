@@ -1,6 +1,6 @@
 # MR-01 Manual retry — delivery note
 
-Status: `in-progress`, **ready-to-merge**. Branch `codex/mr01-manual-retry`. Base `main` = `c2dfea4` (PR #65; task-card baseline `dcc73c5` is an ancestor). Task docs brought from `origin/codex/ag03-ag04-mr01-task-cards` @ `ad4ef00` (merge-base with main = `c2dfea4`). Automatic same-Run Attempt retry (`packages/db/src/retry-runs.ts` `scheduleAutomaticRunRetry`, event `run.retried`) is a different operation and is not reused here. Not merged, not deployed.
+Status: `in-progress`, **ready-to-merge**. PR [#73](https://github.com/huiliuxu780/WorkPal/pull/73). Branch `codex/mr01-manual-retry`. Base `main` = `c2dfea4` (PR #65; task-card baseline `dcc73c5` is an ancestor). Task docs brought from `origin/codex/ag03-ag04-mr01-task-cards` @ `ad4ef00` (merge-base with main = `c2dfea4`). Automatic same-Run Attempt retry (`packages/db/src/retry-runs.ts` `scheduleAutomaticRunRetry`, event `run.retried`) is a different operation and is not reused here. Not merged, not deployed.
 
 This note is the implementation map and the 14-row evidence matrix. It is not a wait-for-approval spec.
 
