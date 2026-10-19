@@ -44,6 +44,7 @@ Daily `17 3 * * *` and `workflow_dispatch` `mode=full` run the same job graph as
 | `apps/api/**`, `packages/adapters/**` (default), `packages/adapter-kit/**`, `packages/auth/**`, `packages/memory/**`, `packages/logging/**`, `packages/testkit/**` | API / AgentScope request path | `backend`, `agentscope`, `runtime-jar` |
 | `prompts/**`, `services/agent-runtime/**` (prompt/resources) | runtime source | `agentscope`, `agent-runtime-image`, `runtime-jar` |
 | `RuntimeEngine.java`, `RuntimeServer.java`, `pom.xml`, `Dockerfile`, lease/outbox TS, `apps/worker/**` | Worker execution / recovery | `backend`, `worker-chain`, `runtime-jar` (Java also `agentscope` + image) |
+| `packages/core/src/run-budget.*`, `packages/adapters/src/run-budget-enforcement.*` | executor and standalone Worker budget sweep | `backend`, `agentscope`, `worker-chain`, `runtime-jar` |
 | `packages/contracts/**`, `pnpm-lock.yaml`, `package.json`, `turbo.json`, `tsconfig.base.json`, `biome.json`, `vitest.config.ts`, `.github/workflows/**`, `scripts/ci/**` | global | **full** |
 | `packages/db/prisma/**` | every process | **full** |
 | unclassified source | unknown consumer | **full** (add a rule; do not default to zero tests) |
@@ -141,4 +142,6 @@ Changed executable web specs are included alongside the product-path mapping; ex
 
 Markdown rename/delete checks validate surviving files and scan remaining docs for references to removed paths, instead of rejecting the removed file itself.
 
-Local verification after both fixes: selector/result/docs tests 46/46; full markdown link check 89 files; `git diff --check` passed. New-head GitHub validation is recorded separately by its check runs.
+The Worker budget review finding was also reproduced with a failing selector regression. Budget calculation and enforcement paths now select both AgentScope and worker-chain checks, matching the executor and standalone Worker consumers.
+
+Local verification after the review fixes: selector/result/docs tests 47/47; full markdown link check 89 files; `git diff --check` passed. New-head GitHub validation is recorded separately by its check runs.

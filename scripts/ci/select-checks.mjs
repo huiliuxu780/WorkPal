@@ -227,6 +227,17 @@ export function classifyPath(file) {
     };
   }
 
+  if (
+    stemMatch(p, "packages/core/src/run-budget") ||
+    stemMatch(p, "packages/adapters/src/run-budget-enforcement")
+  ) {
+    return {
+      jobs: ["backend", "agentscope", "worker-chain"],
+      reason: "budget enforcement is consumed by both executor and standalone Worker",
+      webE2e: [],
+    };
+  }
+
   if (isUnder(p, "apps/worker") || anyStem(p, WORKER_ADAPTER_STEMS) || anyStem(p, WORKER_DB_STEMS)) {
     return {
       jobs: ["backend", "worker-chain"],

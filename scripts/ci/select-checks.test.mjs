@@ -125,6 +125,20 @@ describe("classifyPath", () => {
     assert.equal(result.jobs.includes("docs"), false);
   });
 
+  it("runs both runtime and Worker checks for shared budget enforcement", () => {
+    for (const file of [
+      "packages/core/src/run-budget.ts",
+      "packages/core/src/run-budget.test.ts",
+      "packages/adapters/src/run-budget-enforcement.ts",
+      "packages/adapters/src/run-budget-enforcement.postgres.test.ts",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("backend"), file);
+      assert.ok(result.jobs.includes("agentscope"), file);
+      assert.ok(result.jobs.includes("worker-chain"), file);
+    }
+  });
+
   it("maps Java execution/recovery sources to worker-chain as well", () => {
     const result = classifyPath(
       "services/agent-runtime/src/main/java/com/workpal/runtime/RuntimeEngine.java",
