@@ -22,7 +22,7 @@
 | `plan_enter`（进入 PLAN 模式，只读阶段） | 后端工具（bridge 执行）：`runs.planPhase='planning'`；Java facade 成功后调 `HarnessAgent.enterPlanMode(ctx)`；原生 `PlanModeMiddleware` 只读拦截保留 | PG `runs.planPhase` |
 | `plan_write`（原自由 Markdown 全量覆写） | 后端工具，**输入 schema 改为结构化**（goal/items/expectedRevision/changeReason，与 `publish_run_plan` 同一 `PublishRunPlanInputSchema`）→ `applyPlanSubmission(submit:false)` 落 PG 草稿；facade 用结果里的 plan 投影重写 `plans/PLAN.md` | PG `run_plans.current`（修订） |
 | `plan_exit`（原 ASK `workpal-plan-approval` 泛审批卡） | 后端工具 → `submitDraftForReview` 开审阅轮次 → typed `plan_review` Intervention + `waiting_input` 暂停（bridge `paused` 协议，`ToolSuspendException`）；决定后**同一 executionId** 的桥接重放拿到 `approved` / `changes_requested(+feedback)` 结果；facade 据此 `exitPlanMode` / 重进 PLAN 模式 | PG `run_plan_reviews` + `interventions` |
-| `PlanModeContextState`（planActive/currentPlanFile，随 AgentState 持久化） | 保留为**可恢复投影**：由后端决定驱动 enter/exit；重启后从磁盘恢复 | 投影 |
+| `PlanModeContextState`（planActive/currentPlanFile，随 AgentState 持久化） | 保留为**可恢复投影**：facade 用与原生工具完全相同的活状态通道（`RuntimeContext.resolveAgentState` + `PlanModeManager.enter/exit/writePlan`）由后端决定驱动；随 AgentState 持久化，暂停/重启后仍然存在（Java 测试断言 resume 流携带 PLAN MODE 横幅）。注意：库的系统提示横幅按**流**渲染一次，流中途 enter 的横幅从下一条流才可见；流中途的只读强制由 `PlanModeMiddleware.onActing`（每次工具调用）+ 后端 planPhase/审阅 gate 双层承担 | 投影 |
 | `plans/PLAN.md` 工作区文件 | 保留为投影：每次携带 plan 的工具结果都从后端内容重写；文件尾部声明"以 plan_write/publish_run_plan 修改，勿直接写文件" | 投影 |
 | `workpal-plan-approval` ASK 规则 | **删除**（RuntimeEngine + ToolSurfaceRefresh 两处）；不再出泛审批卡 | — |
 | 结构化 `publish_run_plan` | 同一服务 `applyPlanSubmission(submit:true)`：首次发布即提交审阅；状态-only 重发布=进度修订；内容变化=新内容版本+暂停 | PG |
@@ -97,6 +97,7 @@
   - `agentscope-provenance` 在满负荷并行下偶发（单独跑绿）；
   - 顺手修复 `packages/db/src/repos.test.ts` 基线期望（avatar body color 合并后未跟进的一行）。
 - PG 契约测试：`VERIFY_DATABASE=1 DATABASE_URL=…/workpal_plans_src pnpm exec vitest run packages/db/src/run-plans.postgres.test.ts packages/db/src/intervention.postgres.test.ts` → run-plans **7/7**、intervention **27/27**（含新增 6 个 plan review 旅程）；execution-history/wait-timeouts/task-center PG 全绿。
+- 生产链集成（真实 Java runtime + PG + createApp）：`scenario-contract.postgres.test.ts` **10/10**、`agentscope-offline.postgres.test.ts` **3/3**（CI 的两个 integration spec）。
 - E2E（scripted，真实 API+Worker+PG+Web）：`pnpm test:e2e --spec=plan-review` → **4/4 passed (14.6s)**。
 - E2E（agentscope 真实 Java）：见 §7 收口记录。
 - AG-04 baseline：`AG04_WRITE_BASELINE=1` 再生成 25 个 fixture；`<content-trust-rules>` 段落经脚本逐字节对比 **25/25 不变**。
@@ -115,7 +116,7 @@
 
 1. **fixture 证明协议，不证明规划质量**：scripted/emulated 模型验证的是暂停-决定-恢复-版本语义；真实模型的规划质量与"何时主动规划"校准留待线上观察（任务书本批不新增 Router）。
 2. `execution-rpc.test.ts` 基线失败未在本批修复（范围外，已验证为 ee8db3c 固有）。
-3. PLAN.md 投影是尽力而为：写入失败仅记日志（PG 权威不受影响）；投影在每次携带 plan 的结果后重写，两次写入之间文件可能短暂落后于 PG。
+3. PLAN.md 投影是尽力而为：写入失败仅记日志（PG 权威不受影响）；投影在每次携带 plan 的结果后重写，两次写入之间文件可能短暂落后于 PG。原生 PLAN MODE 系统提示横幅按流渲染（库行为），同一条流中途进入 PLAN 模式时横幅自下一条流可见；只读强制不受此影响（onActing 每次工具调用检查 + 后端 gate）。
 4. 旧版纯 native（无 PG 计划行）挂起审批的兼容决定以 `plan:{runId}` cv0 轮次审计，无内容版本可绑定。
 5. 群聊线程中计划审阅与其它 Intervention 同享"每 Run 至多一个 pending"约束；跨 Run 的多卡排序为 plan_review → approval → input。
 6. `threads.answer`（deprecated RPC）不支持 feedback：经它对 plan_review 选择 request_changes 会得到 conflict；Web 使用 `threads.resolveIntervention`。
