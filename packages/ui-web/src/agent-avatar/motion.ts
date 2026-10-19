@@ -380,12 +380,15 @@ export function sample(
             ? 1
             : 1 - (age - 420) / 200;
     if (state === "working") {
-      if (t < 1460) frame.shadow.opacity = envelope(t < 1260 ? t % 420 : t - 840);
+      if (t < 1460) frame.shadow.opacity = envelope(t < 1260 ? t % 420 : t - 840) * Math.min(1, t / 80);
       if (ctx.pulseAgeMs !== undefined)
-        frame.shadow.opacity = Math.max(frame.shadow.opacity, envelope(ctx.pulseAgeMs));
+        frame.shadow.opacity = Math.max(frame.shadow.opacity, envelope(ctx.pulseAgeMs) * clamp(ctx.pulseAgeMs / 80, 0, 1));
     }
-    if (state === "idle")
-      frame.shadow.opacity = envelope(scheduledAge(t, phase * 0.7, 6000, 14000, 420));
+    if (state === "idle") {
+      const period = 6000 + phase * .7 * 8000 + 420;
+      const age = scheduledAge(t, phase * 0.7, 6000, 14000, 420);
+      frame.shadow.opacity = Math.max(envelope(age), t >= period ? envelope(age + period) : 0);
+    }
     if (state === "approval" && ctx.reminderAgeMs !== undefined)
       frame.shadow.opacity = envelope(ctx.reminderAgeMs - 100);
     if (ctx.character === "bounce") {

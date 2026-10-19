@@ -8,6 +8,14 @@ const characters: AvatarCharacter[] = ["dot", "treble", "wave", "bounce"];
 const states: AvatarActivity[] = ["idle", "working", "approval", "waiting", "failed"];
 
 describe("MOTION-SPEC sampling", () => {
+  it("fades the ground shadow into work and out after a scheduled idle landing", () => {
+    expect(sample("working", 0, 0.37, {character: "dot"}).shadow.opacity).toBe(0);
+    expect(sample("working", 60, 0.37, {character: "dot"}).shadow.opacity).toBeGreaterThan(0);
+    const firstIdleHop = 6000 + .37 * .7 * 8000;
+    expect(sample("idle", firstIdleHop + 470, .37, {character: "dot"}).shadow.opacity).toBeGreaterThan(0);
+    expect(sample("idle", firstIdleHop + 620, .37, {character: "dot"}).shadow.opacity).toBe(0);
+  });
+
   it("follows the v0.7 failed shake, eye/symbol lags and airborne shadow", () => {
     for (const [time, degrees] of [
       [300, 0],
