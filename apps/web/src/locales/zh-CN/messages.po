@@ -14,11 +14,6 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. js-lingui-explicit-id
-#: src/lib/execution-status.ts
-msgid "Waiting for plan review"
-msgstr "等待计划审阅"
-
-#. js-lingui-explicit-id
 #: src/lib/effect-view.ts
 msgid "Awaiting execution"
 msgstr ""
@@ -112,6 +107,11 @@ msgstr ""
 #: src/lib/execution-status.ts
 msgid "Stopped"
 msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Waiting for plan review"
+msgstr "等待计划审阅"
 
 #. js-lingui-explicit-id
 #: src/lib/execution-status.ts
