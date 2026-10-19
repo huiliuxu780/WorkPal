@@ -438,6 +438,49 @@ export async function claimIntendedEffect(
   return claimed.count === 1;
 }
 
+export const PERMISSION_REVOKED_REASON = "permission_revoked" as const;
+
+export type PermissionRevokedEffectResult = {
+  executed: false;
+  reason: typeof PERMISSION_REVOKED_REASON;
+  source: "policy";
+};
+
+export function permissionRevokedToolError(toolName: string): {
+  error: string;
+  reason: typeof PERMISSION_REVOKED_REASON;
+  executed: false;
+} {
+  return {
+    error: `${PERMISSION_REVOKED_REASON}: Tool ${toolName} is not authorized for this run`,
+    reason: PERMISSION_REVOKED_REASON,
+    executed: false,
+  };
+}
+
+/** Settle approved/intended effects that can no longer execute after a live permission change. */
+export async function denyRevokedPermissionEffects(
+  store: {
+    externalEffect: {
+      updateMany: (args: {
+        where: { runId: string; kind: string; status: { in: string[] } };
+        data: { status: string; result: PermissionRevokedEffectResult };
+      }) => Promise<{ count: number }>;
+    };
+  },
+  runId: string,
+  kind: string,
+): Promise<number> {
+  const denied = await store.externalEffect.updateMany({
+    where: { runId, kind, status: { in: ["approved", "intended"] } },
+    data: {
+      status: "denied",
+      result: { executed: false, reason: PERMISSION_REVOKED_REASON, source: "policy" },
+    },
+  });
+  return denied.count;
+}
+
 export async function completeExternalEffect(
   store: {
     externalEffect: {

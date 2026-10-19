@@ -471,19 +471,12 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
   it(
     "S09-C3 permission change before resume",
     async () => {
-      // Recorded current behavior (AG-03 findings, pinned not masked):
-      // Finding A — when the connector is revoked between the approval record
-      //   and the resume, the Java runtime replays the pending tool call from
-      //   session state, its bridge allow-list check ("Tool is not allowed for
-      //   this run") rejects it, and the Run FAILS with the effect left
-      //   "approved". The security contract holds: zero provider executions.
-      //   The denial does not surface to the model as a tool-error result.
-      // Finding B — the failed resume leaves the dangling tool call in the
-      //   persisted Java session; the NEXT chat run on the same thread reuses
-      //   that session, hits the same bridge refusal in resumeTools and fails
-      //   without ever consulting the model (thread wedged until a generation
-      //   change). Both are product-gap candidates recorded in
-      //   docs/ag03-scenario-contracts.md; a fix should flip these expectations.
+      // AG-08 target (replaces AG-03 findings A/B, does not delete them):
+      // approve → revoke → resume consumes the pending tool call with a typed
+      // refusal the model can see; effect=denied/executed=false/permission_revoked;
+      // the original approval.resolved stays approved; the Run fails with
+      // permission_revoked after a user-visible explanation; the next ordinary
+      // Run on the same Thread/generation reaches the model and completes.
       const model = await startModelEmulator({
         apiKey: fixtureKey,
         steps: [
@@ -502,14 +495,53 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
               },
             },
           },
-          // Step for the poisoned follow-up run: provided so that a future fix
-          // (session cleanup) makes the run COMPLETE and this test fail loudly
-          // instead of passing for the wrong reason.
+          {
+            expect(request) {
+              const result = request.messages.findLast((message) => message.role === "tool");
+              expect(result?.tool_call_id).toBe("scenario-mail");
+              expect(JSON.stringify(result?.content)).toMatch(/permission_revoked|not authorized|not allowed/i);
+              expect(toolNamesOf(request)).not.toContain("GMAIL_SEND_EMAIL");
+            },
+            response: {
+              type: "text",
+              text: "Gmail access was revoked, so the approved send was not executed.",
+            },
+          },
           {
             expect(request) {
               expect(toolNamesOf(request)).not.toContain("GMAIL_SEND_EMAIL");
             },
             response: { type: "text", text: "No mail tools are available now." },
+          },
+          {
+            expect(request) {
+              expect(toolNamesOf(request)).not.toContain("GMAIL_SEND_EMAIL");
+            },
+            response: { type: "text", text: "Still no mail tools." },
+          },
+          {
+            expect(request) {
+              expect(toolNamesOf(request)).toContain("GMAIL_SEND_EMAIL");
+            },
+            response: {
+              type: "tool",
+              id: "scenario-mail-reauth",
+              name: "GMAIL_SEND_EMAIL",
+              arguments: {
+                recipient_email: "peer@example.test",
+                subject: "Scenario greeting",
+                body: "Hello from the scenario contract.",
+              },
+            },
+          },
+          {
+            expect(request) {
+              const result = request.messages.findLast((message) => message.role === "tool");
+              expect(result?.tool_call_id).toBe("scenario-mail-reauth");
+              expect(JSON.stringify(result?.content)).toMatch(/successful|messageId|SENT/i);
+              expect(JSON.stringify(result?.content)).not.toMatch(/permission_revoked/i);
+            },
+            response: { type: "text", text: "Sent after re-authorization." },
           },
         ],
       });
@@ -538,7 +570,6 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
           text: "Send a greeting email to peer@example.test with subject Scenario greeting.",
         });
         await waitForRun(sent.runId, "waiting_input");
-        // The tool was genuinely available before the change (S13: prove usable first).
         expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toEqual([]);
         const effects = await handles.prisma.externalEffect.findMany({ where: { runId: sent.runId } });
         expect(effects).toHaveLength(1);
@@ -547,7 +578,6 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
           where: { runId: sent.runId, role: "bot" },
           orderBy: { seq: "desc" },
         });
-        // Permission/connection change BEFORE the resume decision.
         await rpc(cookie, "connections/revoke", { connectionId: connection.connectionId });
         await rpc(cookie, "threads/answer", {
           botId: bot.id,
@@ -555,22 +585,94 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
           messageId: card.id,
           answer: "allow",
         });
-        // Finding A: the revoked replay fails the Run at the runtime boundary.
         await waitForRun(sent.runId, "failed");
+        const failed = await handles.prisma.run.findUniqueOrThrow({ where: { id: sent.runId } });
+        expect(failed.error).toBe("permission_revoked");
+        expect(failed.taskId).toBeTruthy();
         expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toEqual([]);
         const settled = await handles.prisma.externalEffect.findMany({ where: { runId: sent.runId } });
         expect(settled).toHaveLength(1);
-        expect(settled[0]!.status).not.toBe("completed");
-        expect(settled[0]!.status).toBe("approved");
-        expect(model.requests).toHaveLength(1);
-        // Finding B: the same thread's next run fails without a model call.
-        const poisoned = await rpc<{ runId: string }>(cookie, "threads/send", {
+        expect(settled[0]).toMatchObject({
+          id: effects[0]!.id,
+          status: "denied",
+          result: expect.objectContaining({ executed: false, reason: "permission_revoked" }),
+        });
+        const resolved = await handles.prisma.event.findMany({
+          where: { runId: sent.runId, type: "approval.resolved" },
+        });
+        expect(resolved).toHaveLength(1);
+        expect(resolved[0]!.payload).toMatchObject({ decision: "approved" });
+        const explanation = await handles.prisma.message.findFirst({
+          where: { runId: sent.runId, role: "bot" },
+          orderBy: { seq: "desc" },
+        });
+        expect(JSON.stringify(explanation?.blocks)).toMatch(/revoked|not executed/i);
+        expect(model.requests.length).toBeGreaterThanOrEqual(2);
+        const followUp = await rpc<{ runId: string }>(cookie, "threads/send", {
           botId: bot.id,
           text: "Do you still have mail tools?",
         });
-        await waitForRun(poisoned.runId, "failed");
-        expect(model.requests).toHaveLength(1);
+        await waitForRun(followUp.runId, "completed");
+        expect(followUp.runId).not.toBe(sent.runId);
+        const next = await handles.prisma.run.findUniqueOrThrow({ where: { id: followUp.runId } });
+        expect(next.threadId).toBe(failed.threadId);
+        expect(model.requests.length).toBeGreaterThanOrEqual(3);
         expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toEqual([]);
+        const third = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "Confirm mail tools are still gone.",
+        });
+        await waitForRun(third.runId, "completed");
+        expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toEqual([]);
+        const history = await handles.prisma.message.count({ where: { threadId: failed.threadId } });
+        expect(history).toBeGreaterThan(2);
+        const restored = await rpc<{ connectionId: string }>(cookie, "connections/begin", {
+          connectorId: "composio",
+          provider: "GMAIL",
+          displayName: "Scenario Gmail restored",
+        });
+        expect(restored.connectionId).toBeTruthy();
+        const reauth = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "Send a greeting email to peer@example.test with subject Scenario greeting.",
+        });
+        await waitForRun(reauth.runId, "waiting_input");
+        expect(reauth.runId).not.toBe(sent.runId);
+        const reauthEffects = await handles.prisma.externalEffect.findMany({
+          where: { runId: reauth.runId },
+        });
+        expect(reauthEffects).toHaveLength(1);
+        expect(reauthEffects[0]).toMatchObject({ kind: "GMAIL_SEND_EMAIL", status: "intended" });
+        const reauthCard = await handles.prisma.message.findFirstOrThrow({
+          where: { runId: reauth.runId, role: "bot" },
+          orderBy: { seq: "desc" },
+        });
+        await rpc(cookie, "threads/answer", {
+          botId: bot.id,
+          runId: reauth.runId,
+          messageId: reauthCard.id,
+          answer: "allow",
+        });
+        await waitForRun(reauth.runId, "completed");
+        expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toHaveLength(1);
+        const oldEffect = await handles.prisma.externalEffect.findUniqueOrThrow({
+          where: { id: effects[0]!.id },
+        });
+        expect(oldEffect).toMatchObject({
+          status: "denied",
+          result: expect.objectContaining({ executed: false, reason: "permission_revoked" }),
+        });
+        const newEffect = await handles.prisma.externalEffect.findMany({
+          where: { runId: reauth.runId },
+        });
+        expect(newEffect).toHaveLength(1);
+        expect(newEffect[0]!.id).not.toBe(effects[0]!.id);
+        expect(newEffect[0]).toMatchObject({ kind: "GMAIL_SEND_EMAIL", status: "completed" });
+        const oldResolved = await handles.prisma.event.findMany({
+          where: { runId: sent.runId, type: "approval.resolved" },
+        });
+        expect(oldResolved).toHaveLength(1);
+        expect(oldResolved[0]!.payload).toMatchObject({ decision: "approved" });
       } finally {
         await model.close();
       }
@@ -625,6 +727,81 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
         await waitForRun(second.runId, "completed");
         model.assertComplete();
         expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toEqual([]);
+      } finally {
+        await model.close();
+      }
+    },
+    180_000,
+  );
+
+  // --- AG-05: same Run live tool surface across three model requests ---------------
+  it(
+    "AG-05 same-run connector revoke and restore refresh every model call",
+    async () => {
+      let cookie = "";
+      let connectionId = "";
+      const model = await startModelEmulator({
+        apiKey: fixtureKey,
+        steps: [
+          {
+            async expect(request) {
+              expect(toolNamesOf(request)).toContain("GMAIL_SEND_EMAIL");
+              expect(toolNamesOf(request)).toContain("runtime_current_time");
+              await rpc(cookie, "connections/revoke", { connectionId });
+            },
+            response: {
+              type: "tool",
+              id: "ag05-keep-1",
+              name: "runtime_current_time",
+              arguments: {},
+            },
+          },
+          {
+            async expect(request) {
+              expect(toolNamesOf(request)).not.toContain("GMAIL_SEND_EMAIL");
+              expect(toolNamesOf(request)).toContain("runtime_current_time");
+              const restored = await rpc<{ connectionId: string }>(cookie, "connections/begin", {
+                connectorId: "composio",
+                provider: "GMAIL",
+                displayName: "Scenario Gmail restored",
+              });
+              connectionId = restored.connectionId;
+            },
+            response: {
+              type: "tool",
+              id: "ag05-keep-2",
+              name: "runtime_current_time",
+              arguments: {},
+            },
+          },
+          {
+            expect(request) {
+              expect(toolNamesOf(request)).toContain("GMAIL_SEND_EMAIL");
+              expect(toolNamesOf(request)).toContain("runtime_current_time");
+            },
+            response: { type: "text", text: "Mail tools are available again." },
+          },
+        ],
+      });
+      try {
+        cookie = await signup("ag05surface");
+        await connectModel(cookie, model);
+        const bot = await createBot(cookie, model, "Live surface fixture");
+        const connection = await rpc<{ connectionId: string }>(cookie, "connections/begin", {
+          connectorId: "composio",
+          provider: "GMAIL",
+          displayName: "Scenario Gmail",
+        });
+        connectionId = connection.connectionId;
+        const actor = await rpc<{ userId: string }>(cookie, "me");
+        const sent = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "Check the clock, then tell me whether mail tools are available.",
+        });
+        await waitForRun(sent.runId, "completed");
+        model.assertComplete();
+        expect(composio.executions.filter((entry) => entry.userId === actor.userId)).toEqual([]);
+        expect(model.requests).toHaveLength(3);
       } finally {
         await model.close();
       }

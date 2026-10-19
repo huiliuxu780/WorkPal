@@ -123,13 +123,24 @@ function fixture({
       Object.assign(effects.find((effect) => effect.id === where.id)!, data);
     }),
     updateMany: vi.fn(
-      async ({ where, data }: { where: { id: string; status: string }; data: Partial<Effect> }) => {
-        const effect = effects.find(
-          (effect) => effect.id === where.id && effect.status === where.status,
-        );
-        if (!effect) return { count: 0 };
-        Object.assign(effect, data);
-        return { count: 1 };
+      async ({
+        where,
+        data,
+      }: {
+        where: { id?: string; runId?: string; kind?: string; status?: string | { in: string[] } };
+        data: Partial<Effect>;
+      }) => {
+        const allowedStatuses =
+          typeof where.status === "string" ? [where.status] : where.status?.in;
+        const matched = effects.filter((effect) => {
+          if (where.id && effect.id !== where.id) return false;
+          if (where.runId && effect.runId && effect.runId !== where.runId) return false;
+          if (where.kind && effect.kind !== where.kind) return false;
+          if (allowedStatuses && !allowedStatuses.includes(effect.status)) return false;
+          return true;
+        });
+        for (const effect of matched) Object.assign(effect, data);
+        return { count: matched.length };
       },
     ),
   };
@@ -202,6 +213,17 @@ function fixture({
     yield { type: "result" as const, data: { item: call.args.id } };
   });
   let calls = [{ args: { id: "item-1" }, executionId: "call-1" }];
+  let discoverTools: () => Promise<ConnectorTool[]> = async () =>
+    catalog
+      ? [
+          {
+            name: "demo_execute_tool",
+            description: "Execute a catalog tool",
+            inputSchema: { type: "object" },
+            route: { connectorId: "demo", toolName: "__catalog_execute" },
+          },
+        ]
+      : [tool];
   const runtimeRun = vi.fn(async function* (request: AgentRunRequest) {
     for (const call of calls) {
       const result = await request.executeTool!(
@@ -218,17 +240,7 @@ function fixture({
     prisma,
     runtime: { describe: () => ({ capabilities: { scripted: false } }), run: runtimeRun },
     connector: {
-      discoverTools: async () =>
-        catalog
-          ? [
-              {
-                name: "demo_execute_tool",
-                description: "Execute a catalog tool",
-                inputSchema: { type: "object" },
-                route: { connectorId: "demo", toolName: "__catalog_execute" },
-              },
-            ]
-          : [tool],
+      discoverTools: async () => discoverTools(),
       resolveCall: async (call: ConnectorCall) =>
         catalog ? resolveCatalogCall(call, catalogEntries([tool])) : undefined,
       execute,
@@ -247,11 +259,15 @@ function fixture({
     results,
     execute,
     pauseRunForInput,
+    finalizeRun,
     setCapabilityRules(value: unknown) {
       capabilityRules = value;
     },
     setCalls(next: typeof calls) {
       calls = next;
+    },
+    setDiscoverTools(next: typeof discoverTools) {
+      discoverTools = next;
     },
     async run() {
       run.status = "queued";
@@ -259,6 +275,10 @@ function fixture({
       expect(runtimeRun).toHaveBeenCalled();
       expect(prisma.attempt.update).not.toHaveBeenCalled();
       expect(finalizeRun).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));
+    },
+    async continueRun() {
+      run.status = "queued";
+      await executor.continueRun(run.id, "worker-1");
     },
   };
 }
@@ -289,6 +309,41 @@ describe("connector read-only metadata and approval enforcement", () => {
     await f.run();
     expect(f.pauseRunForInput).toHaveBeenCalledOnce();
     expect(f.execute).not.toHaveBeenCalled();
+  });
+
+  it("denies an approved bound tool after its connector resource is revoked", async () => {
+    const f = fixture({
+      rules: [{ effect: "require_approval", matchKind: "tool", matchValue: "demo_get_item" }],
+    });
+    await f.run();
+    expect(f.effects).toHaveLength(1);
+    expect(f.effects[0]!.request).toMatchObject([
+      "__rakazoCatalogTool",
+      "direct",
+      {
+        route: { connectorId: "demo", resourceId: "resource-1", toolName: "demo_get_item" },
+        args: { id: "item-1" },
+      },
+    ]);
+    f.effects[0]!.status = "approved";
+    f.setDiscoverTools(async () => []);
+    f.setCalls([{ args: { id: "item-1" }, executionId: "call-2" }]);
+    await f.continueRun();
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.results.at(-1)).toEqual({
+      error: "permission_revoked: Tool demo_get_item is not authorized for this run",
+      reason: "permission_revoked",
+      executed: false,
+    });
+    expect(f.effects[0]!.status).toBe("denied");
+    expect(f.effects[0]!.result).toEqual({
+      executed: false,
+      reason: "permission_revoked",
+      source: "policy",
+    });
+    expect(f.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "failed", error: "permission_revoked" }),
+    );
   });
 
   it.each(["shell", "write_file"])(

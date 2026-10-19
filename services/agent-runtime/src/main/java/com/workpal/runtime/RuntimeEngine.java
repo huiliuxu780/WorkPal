@@ -338,9 +338,10 @@ public final class RuntimeEngine {
                     "plan_exit", null, PermissionBehavior.ASK, "workpal-plan-approval"));
         }
         ToolsConfig toolFilter = new ToolsConfig();
+        List<String> nativeVisible = new ArrayList<>(harnessTools);
+        if (request.planningAllowed()) nativeVisible.add("plan_exit");
         List<String> visibleTools = new ArrayList<>(backendToolNames);
-        visibleTools.addAll(harnessTools);
-        if (request.planningAllowed()) visibleTools.add("plan_exit");
+        visibleTools.addAll(nativeVisible);
         toolFilter.setAllow(visibleTools);
         toolFilter.setDeny(List.of("web_fetch", "web_search", "memory_save", "memory_search",
                 "memory_get", "session_search", "session_list", "session_history",
@@ -368,7 +369,9 @@ public final class RuntimeEngine {
                 // the eviction threshold so declared leaf helpers (which cannot be
                 // configured through AgentScope's public API) never evict either.
                 .disableToolResultEviction()
-                .disableDefaultWorkspaceSkills();
+                .disableDefaultWorkspaceSkills()
+                .middleware(new ToolSurfaceRefresh(bridge, json, sessionSlot, pausedToolCalls,
+                        nativeVisible, request.planningAllowed(), userSlot, sessionSlot));
         if (request.planningAllowed()) builder.enablePlanMode();
         if (allowSubagents) {
             builder.taskRepository(new InterruptibleTaskRepository(

@@ -145,11 +145,14 @@ describe("classifyPath", () => {
   });
 
   it("maps Java execution/recovery sources to worker-chain as well", () => {
-    const result = classifyPath(
+    for (const file of [
       "services/agent-runtime/src/main/java/com/workpal/runtime/RuntimeEngine.java",
-    );
-    assert.ok(result.jobs.includes("worker-chain"));
-    assert.ok(result.jobs.includes("agent-runtime-image"));
+      "services/agent-runtime/src/main/java/com/workpal/runtime/ToolSurfaceRefresh.java",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("worker-chain"), file);
+      assert.ok(result.jobs.includes("agent-runtime-image"), file);
+    }
   });
 
   it("maps TS adapters to backend + agentscope, not worker-chain", () => {
