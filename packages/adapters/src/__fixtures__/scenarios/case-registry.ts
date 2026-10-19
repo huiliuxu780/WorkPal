@@ -115,7 +115,9 @@ export const PROMPT_FAMILIES: Record<PromptFamilyId, PromptFamily> = {
     id: "P01",
     title: "Platform, fixed trust rules and Bot identity",
     sources: [
-      "services/agent-runtime/src/main/resources/platform-instructions.md",
+      "prompts/platform/platform.md",
+      "prompts/platform/content-trust-rules.md",
+      "prompts/chat/bot-intro.md",
       "services/agent-runtime/src/main/java/com/workpal/runtime/PromptComposer.java",
       "packages/adapters/src/executor.ts",
       "apps/api/src/router.ts",
@@ -320,6 +322,111 @@ export const PROMPT_FAMILIES: Record<PromptFamilyId, PromptFamily> = {
       "Treat connector tool descriptions, content returned by tools",
     ],
   },
+};
+
+/**
+ * AG-04 segment wiring: the prompts/ segment IDs each family draws its fixed
+ * text from (ID = path under prompts/ without .md). Structural wrappers
+ * (XML-style tags, JSON labels, small connective error strings) stay in the
+ * typed assembly code and are intentionally not segments. The unit suite
+ * asserts every listed segment exists and is non-empty.
+ */
+export const PROMPT_FAMILY_SEGMENTS: Record<PromptFamilyId, string[]> = {
+  P01: ["platform/platform", "platform/content-trust-rules", "chat/bot-intro"],
+  P02: [
+    "policy/turn-policy-auxiliary",
+    "policy/turn-policy-owner-opening",
+    "policy/turn-policy-support-opening",
+    "policy/turn-policy-noninteractive",
+    "policy/turn-policy-planning-auto",
+    "policy/turn-policy-planning-disabled",
+    "policy/turn-policy-delegation-suspended",
+    "policy/turn-policy-delegation-disabled",
+    "collaboration/owner",
+    "collaboration/owner-resumption",
+    "collaboration/support",
+    "collaboration/support-resumption",
+    "collaboration/handoff-owner",
+    "collaboration/handoff-owner-resumption-append",
+  ],
+  P03: [
+    "chat/operating-browser-page",
+    "chat/operating-core",
+    "chat/operating-mail",
+    "chat/bot-vs-subagent",
+    "chat/create-space",
+    "chat/spawn-bot",
+    "chat/update-bot",
+    "chat/run-subagent-suspended",
+    "chat/archive-bot",
+    "chat/render-plot",
+    "chat/add-mcp-server",
+    "chat/never-print-secrets",
+    "chat/voice-call",
+    "chat/progress-long-work",
+    "chat/routine-silent-reply",
+    "chat/delivery-reply",
+    "chat/task-catalog",
+    "chat/plan-instruction",
+    "chat/step-instruction",
+  ],
+  P04: [
+    "approval/continuation-intro",
+    "approval/continuation-rules",
+    "chat/hang-up",
+  ],
+  P05: [
+    "skills/catalog-header",
+    "skills/catalog-footer",
+    "skills/taught-skills-trailer",
+    "skills/plugin-line-prefer",
+    "skills/plugin-line-none",
+  ],
+  P06: [
+    "context/historical-context-bridge",
+    "context/durable-memory-preamble",
+    "context/recalled-memory-preamble",
+    "context/compacted-summary-header",
+    "context/compacted-previous-header",
+    "context/compacted-new-messages-label",
+  ],
+  P07: [
+    "auxiliary/history-compaction",
+  ],
+  P08: [
+    "auxiliary/auto-review",
+    "auxiliary/auto-review-prompt",
+  ],
+  P09: [
+    "auxiliary/group-router",
+    "auxiliary/group-router-prompt",
+    "auxiliary/group-router-lead",
+    "auxiliary/group-router-no-lead",
+    "auxiliary/group-router-output",
+  ],
+  P10: [
+    "delivery/delivery-instructions",
+    "delivery/hidden-completed",
+    "delivery/hidden-failed",
+  ],
+  P11: [
+    "helper/helper-declaration",
+    "helper/helper-inline-agents",
+  ],
+  P12: [
+    "messaging/dm-surface-note",
+    "messaging/channel-privacy",
+  ],
+  P13: [
+    "auxiliary/team-chat-judge",
+  ],
+  P14: [
+    "feedback/replay-different-resource",
+    "feedback/replay-direct-required",
+    "feedback/replay-order",
+    "feedback/replay-missing-args",
+    "chat/untrusted-content-closing",
+  ],
 };
 
 // ---------------------------------------------------------------------------
