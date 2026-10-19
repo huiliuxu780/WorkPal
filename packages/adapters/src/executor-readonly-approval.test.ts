@@ -145,6 +145,11 @@ function fixture({
     ),
   };
   const prisma = {
+    runPlan: { findUnique: vi.fn(async () => null) },
+    runPlanReview: {
+      findFirst: vi.fn(async () => null),
+      count: vi.fn(async () => 0),
+    },
     deliveryRecord: { findMany: vi.fn(async () => []) },
     run: {
       findUnique: vi.fn(async () => run),
