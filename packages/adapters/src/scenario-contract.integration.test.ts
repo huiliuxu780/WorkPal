@@ -514,13 +514,16 @@ describe("AG-03 scenario contracts at the real model boundary", () => {
 
   // --- S05-C7 call_end shape ---------------------------------------------------------------
   it("S05-C7 call_end shape", async () => {
-    const { system, tools } = await runAndCapture(
+    const { HANG_UP_PROMPT } = await import("../../../apps/api/src/router.js");
+    const { system, allText, tools } = await runAndCapture(
       baseRequest("s05-c7", {
+        prompt: HANG_UP_PROMPT,
         tools: backendSelection({ trigger: "call_end", voiceCall: true, planningEnabled: false }),
         turnPolicy: turnPolicyFromRun({ trigger: "call_end", ownerBotId: "bot-contract", orchestration: null }),
         collaborationContext: { role: "owner" },
       }),
     );
+    expect(allText).toContain(HANG_UP_PROMPT);
     expect(tools).toEqual(expectedModelVisibleTools(BACKEND_CALL_END, NATIVE_CHAT_NO_PLANNING));
     expect(tools).toContain("end_call");
     expectFamily(system, "P02", ["This turn runs without a waiting user"]);

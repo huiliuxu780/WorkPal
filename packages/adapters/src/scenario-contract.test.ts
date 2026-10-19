@@ -222,6 +222,7 @@ describe("AG-03 trigger union: declared-only values have no production entry", (
     ];
     const allowedReactionReadPath = join("apps", "api", "src", "thread-target.ts");
     const hits: string[] = [];
+    let allowedReactionHits = 0;
     for (const root of roots) {
       for (const file of sourceFiles(join(repoRoot, root))) {
         // Contract data (this registry) names triggers as fields, not creations.
@@ -230,11 +231,16 @@ describe("AG-03 trigger union: declared-only values have no production entry", (
         const matches = text.matchAll(/trigger:\s*"(resume|reaction|handoff)"/g);
         for (const match of matches) {
           const rel = relative(repoRoot, file);
-          if (match[1] === "reaction" && rel === allowedReactionReadPath) continue;
+          if (match[1] === "reaction" && rel === allowedReactionReadPath) {
+            const allowedFilter = 'OR: [{ trigger: "user", sourceMessage: { role: "user" } }, { trigger: "reaction" }],';
+            const line = text.slice(text.lastIndexOf("\n", match.index) + 1, text.indexOf("\n", match.index)).trim();
+            if (line === allowedFilter) { allowedReactionHits++; continue; }
+          }
           hits.push(`${rel}: trigger: "${match[1]}"`);
         }
       }
     }
+    expect(allowedReactionHits).toBe(1);
     expect(hits, `unexpected trigger creation sites: ${hits.join(", ")}`).toEqual([]);
   });
 
