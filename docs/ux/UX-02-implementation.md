@@ -91,15 +91,16 @@
 
 ## 6. 验证命令与原始计数（收口时点）
 
-- Java：`JAVA_HOME=openjdk@21 mvn -f services/agent-runtime/pom.xml test` → **90/90**（新增 3 个统一计划测试；原 nativePlanLifecycle 被 bridge 化重写）。
+- Java：`JAVA_HOME=openjdk@21 mvn -f services/agent-runtime/pom.xml test` → **90/90**（新增 3 个统一计划测试 + 1 个策略测试；原 nativePlanLifecycle 被 bridge 化重写；含 facade 活状态投影修复后的复跑）。
 - 仓库单测：`pnpm exec vitest run`（含 JAVA_HOME 时 jar-lane 全绿）→ **5646 例中除 1 个既有基线失败外全绿**：
   - `apps/api/src/execution-rpc.test.ts` 1 例为 **ee8db3c 基线固有失败**（已用干净树验证，与本批无关，未掩盖）；
   - `agentscope-provenance` 在满负荷并行下偶发（单独跑绿）；
   - 顺手修复 `packages/db/src/repos.test.ts` 基线期望（avatar body color 合并后未跟进的一行）。
 - PG 契约测试：`VERIFY_DATABASE=1 DATABASE_URL=…/workpal_plans_src pnpm exec vitest run packages/db/src/run-plans.postgres.test.ts packages/db/src/intervention.postgres.test.ts` → run-plans **7/7**、intervention **27/27**（含新增 6 个 plan review 旅程）；execution-history/wait-timeouts/task-center PG 全绿。
 - 生产链集成（真实 Java runtime + PG + createApp）：`scenario-contract.postgres.test.ts` **10/10**、`agentscope-offline.postgres.test.ts` **3/3**（CI 的两个 integration spec）。
-- E2E（scripted，真实 API+Worker+PG+Web）：`pnpm test:e2e --spec=plan-review` → **4/4 passed (14.6s)**。
-- E2E（agentscope 真实 Java）：见 §7 收口记录。
+- E2E（scripted，真实 API+Worker+PG+Web）：`pnpm test:e2e --spec=plan-review` → **4/4 passed (14.6s)**；受影响回归批 `execution-card|intervention-region|task-center|execution-history|manual-retry` → 修正 paced 断言后 `execution-card.spec` **16/16**，其余全绿（合计 43 例）。
+- E2E（`--runtime=agentscope` 真实 Java）：`agentscope-product.spec` **6/6**（含重写后的 native Harness plan 统一旅程：结构化 plan_write → plan_review 卡 → UI 批准 → 桥接同 executionId 重放 → BUILD 完成，并断言旧泛审批卡与 "Allow plan_exit to continue?" 绝迹）；CI 三件套合计 **11/11**（budget-acceptance 3/3、capability-rules 2/2）。
+- E2E（worker-chain，CI 选中）：**5/5 passed (8.6m)**，含 5.3 分钟 no-seam mid-run kill 恢复——attempt-start 计划审阅 repair 在真实 lease-loss 重试路径上零回归。
 - AG-04 baseline：`AG04_WRITE_BASELINE=1` 再生成 25 个 fixture；`<content-trust-rules>` 段落经脚本逐字节对比 **25/25 不变**。
 - 类型检查：contracts/db/adapters/core/api/worker/web `tsc --noEmit` 全绿；`mvn compile` 绿。
 
@@ -111,6 +112,7 @@
 - **prompt registry**：只改 planning 相关四个文件并重生成镜像；`content-trust-rules.md`、memory/durable 段落零触碰（字节断言保留）。
 - **schema/rpc**：`resolveIntervention` 仅新增可选 `feedback`；`ThreadSnapshot` 未变形（planReview 走 InterventionView 与 ExecutionSnapshot 可选字段）——记忆线新增字段不会冲突。
 - 截至本批收口，记忆线分支 `codex/memory-context-upgrade` 尚无提交；先合入的一方携带公共文档提交，另一方按任务书合最新 main 并核对自身 diff。
+- **端口冲突事故记录（2026-10-20）**：`test:worker-chain` 使用固定端口（API 3120），与记忆线 worktree 同时段的一次运行冲突；本线在清场时误杀了记忆线占用 3120 的 API 进程，其当次运行受损。本线等待对方进程退出后完整重跑 worker-chain 5/5。**协调规则：两线不得并发运行 worker-chain（或任何固定端口 harness）；并发前先核对 3120/3121/3122 占用。**
 
 ## 8. 剩余限制（诚实清单）
 
