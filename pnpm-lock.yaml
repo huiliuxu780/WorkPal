@@ -573,6 +573,12 @@ importers:
       '@rakazo/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
+      '@rakazo/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@rakazo/core':
+        specifier: workspace:*
+        version: link:../core
       '@rakazo/db':
         specifier: workspace:*
         version: link:../db

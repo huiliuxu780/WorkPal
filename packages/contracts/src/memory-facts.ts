@@ -113,6 +113,17 @@ export const MemoryFactGetOutputSchema = z.strictObject({
 });
 export type MemoryFactGetOutput = z.infer<typeof MemoryFactGetOutputSchema>;
 
+export const MemoryFactCreateInputSchema = z.strictObject({
+  /** Direct creation is limited to the actor's personal scopes; space-scope
+   * facts only exist through per-item promotion. */
+  scopeKind: z.enum(["bot", "user"]),
+  botId: Id.optional(),
+  text: z.string().min(1).max(MEMORY_FACT_MAX_TEXT_CHARS),
+  kind: z.string().min(1).max(40).optional(),
+  literalValues: MemoryFactLiteralValuesSchema.optional(),
+});
+export type MemoryFactCreateInput = z.infer<typeof MemoryFactCreateInputSchema>;
+
 export const MemoryFactConfirmInputSchema = z.strictObject({
   factId: Id,
   expectedRevision: z.number().int().nonnegative(),

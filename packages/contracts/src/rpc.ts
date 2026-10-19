@@ -103,6 +103,7 @@ import { ManualRetryInputSchema, ManualRetryOutputSchema } from "./manual-retry.
 import {
   MemoryFactConfirmInputSchema,
   MemoryFactCorrectInputSchema,
+  MemoryFactCreateInputSchema,
   MemoryFactDeleteInputSchema,
   MemoryFactEvidenceListInputSchema,
   MemoryFactEvidenceSchema,
@@ -507,6 +508,7 @@ export const appContract = {
     facts: {
       list: oc.input(MemoryFactListInputSchema).output(MemoryFactListOutputSchema),
       get: oc.input(MemoryFactGetInputSchema).output(MemoryFactGetOutputSchema),
+      create: oc.input(MemoryFactCreateInputSchema).output(MemoryFactMutationResultSchema),
       confirm: oc.input(MemoryFactConfirmInputSchema).output(MemoryFactMutationResultSchema),
       correct: oc.input(MemoryFactCorrectInputSchema).output(MemoryFactMutationResultSchema),
       reject: oc.input(MemoryFactRejectInputSchema).output(MemoryFactMutationResultSchema),
