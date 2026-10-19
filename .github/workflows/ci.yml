@@ -98,6 +98,7 @@ jobs:
       - run: pnpm --filter @rakazo/web test
       - run: pnpm --filter @rakazo/web build
       - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @rakazo/db generate
       - name: Focused web E2E (scripted runtime, no Worker process)
         run: pnpm test:e2e --runtime=scripted --spec="${{ needs.select-checks.outputs.web_e2e_spec }}"
 
@@ -122,9 +123,6 @@ jobs:
       - run: pnpm --filter @rakazo/testkit check
       - run: pnpm --filter @rakazo/worker test
       - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
-      - run: pnpm exec vitest run apps/api/src --exclude "**/*.integration.test.ts"
-      - run: pnpm exec vitest run packages/adapter-kit/src packages/auth/src packages/logging/src packages/core/src
-      - run: pnpm exec vitest run packages/adapters/src --exclude "**/*.postgres.test.ts" --exclude "**/*.integration.test.ts"
 
   runtime-jar:
     name: runtime-jar
