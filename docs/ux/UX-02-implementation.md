@@ -1,6 +1,6 @@
 # UX-02 实施记录：计划与审批完整统一
 
-状态：已交付，等待验收。分支 `codex/planning-review-unification`（基线：共同任务文档提交 `ee8db3c`，其父即 `main @ 12fea0e`，已含 MR-01 #73 与 AG-05/08 #78）。一个功能 PR，整批一次收口；未部署。任务书：[UX-02.md](../tasks/UX-02.md)；保留的 UX-01 规则：[UX-01-decision.md](./UX-01-decision.md)。
+状态：已交付，等待验收。分支 `codex/planning-review-unification`，PR [#80](https://github.com/huiliuxu780/WorkPal/pull/80)（基线：共同任务文档提交 `ee8db3c`，其父即 `main @ 12fea0e`，已含 MR-01 #73 与 AG-05/08 #78）。一个功能 PR，整批一次收口；未部署。任务书：[UX-02.md](../tasks/UX-02.md)；保留的 UX-01 规则：[UX-01-decision.md](./UX-01-decision.md)。
 
 ## 1. 交付概览
 
