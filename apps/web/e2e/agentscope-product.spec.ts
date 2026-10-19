@@ -301,9 +301,16 @@ test("Web chat resumes a native Harness plan after approval", async ({ page }) =
             // Resume after the user's approval: the SAME plan_exit call
             // re-executed through the bridge and returned the decision, and
             // the persisted native PLAN-mode projection rides the new stream.
-            expect(JSON.stringify(request.messages)).toContain("plan-exit");
-            expect(JSON.stringify(request.messages)).toContain('"status":"approved"');
-            expect(JSON.stringify(request.messages)).toContain("PLAN MODE is active");
+            const raw = JSON.stringify(request.messages);
+            expect(raw).toContain("plan-exit");
+            expect(raw).toContain("PLAN MODE is active");
+            const toolResults = request.messages
+              .filter((message) => message.role === "tool")
+              .map((message) => String(message.content ?? ""));
+            expect(
+              toolResults.some((content) => content.includes('"status":"approved"')),
+              `approved plan_exit result missing from ${JSON.stringify(toolResults)}`,
+            ).toBe(true);
           },
           response: { type: "text", text: "Plan approved and completed." },
         },
