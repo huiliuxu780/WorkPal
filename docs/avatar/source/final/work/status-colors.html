@@ -1,0 +1,37 @@
+<!doctype html><!-- 状态色样张：review-status-colors.png 由此生成（work/render-status.sh） -->
+<meta charset=utf-8><body style="margin:0;font:12px/1.4 'Noto Sans CJK SC',sans-serif">
+<style>
+.p{padding:14px 18px 10px;display:inline-block;vertical-align:top}
+.p.l{background:#fff;color:#444;--ring:#fff}.p.d{background:#1a1a1a;color:#bbb;--ring:#1a1a1a}
+h3{margin:0 0 8px;font-size:13px}
+table{border-collapse:collapse}td,th{padding:5px 7px;text-align:center}th{font-weight:500;font-size:11px;opacity:.75}td.s{text-align:left;white-space:nowrap;font-size:11.5px}
+.a{position:relative;display:inline-block;vertical-align:middle}
+.a img{position:absolute;left:-12.5%;top:-12.5%;width:125%;height:125%}
+.a16 img{position:static;width:16px;height:16px;display:block}
+.dot{position:absolute;border-radius:50%;box-sizing:content-box;display:flex;align-items:center;justify-content:center;font-weight:800;line-height:1}
+.a16 .dot{right:-2px;bottom:-1px;width:6px;height:6px;box-shadow:0 0 0 1.5px var(--ring);font-size:5px}
+.a35 .dot{right:-3px;bottom:-1px;width:12px;height:12px;border:2px solid var(--ring);font-size:9px}
+.a16 .dot.hue{box-shadow:0 0 0 2px var(--ring)}.a35 .dot.hue{border-width:2.5px}
+.a35 .dot.n{width:auto;min-width:10px;padding:0 3px;border-radius:9px;font-size:9.5px}
+.cell{display:flex;gap:12px;align-items:center;justify-content:center}
+.note{font-size:11px;opacity:.8;margin-top:6px;max-width:640px}
+</style>
+<div id=x></div>
+<script>
+// 状态色：SPEC v2 §4（2026-10-19 徐哥确认）。同色相加粗描边见 SPEC §4.2。glyph 颜色：浅色主题白；深色主题除失败外用 #1a1a1a（白字在浅色点上对比太低）
+const S=[['运行中','run','#22a356','#4ADE80',''],['等审批','approval','#d97706','#F5C84B','2'],['等你回答','answer','#3F8FDF','#7CB8F2',''],['失败','fail','#e5484d','#e5484d','!'],['完成','done','#22a356','#4ADE80','✓']];
+const HUE={approval:['orange','brown'],answer:['blue'],fail:['pink']};
+const C=['orange','blue','purple','brown','pink','ink'],CH={orange:'2-treble',blue:'3-wave',purple:'4-bounce',brown:'3-wave',pink:'1-dot',ink:'1-dot'};
+function panel(dark){
+  let h=`<div class="p ${dark?'d':'l'}"><h3>${dark?'深色主题（底 #1a1a1a）':'浅色主题（底 #fff）'}</h3><table><tr><th></th>`+C.map(c=>`<th>${c}</th>`).join('')+'</tr>';
+  for(const [lab,k,l,d,g] of S){const col=dark?d:l, gc=(dark&&k!='fail')?'#1a1a1a':'#fff';
+    h+=`<tr><td class=s>${lab}<br><code>${col}</code></td>`+C.map(c=>{
+      const hc=(HUE[k]||[]).includes(c)?' hue':'';
+      const g16=k=='fail'?'!':k=='done'?'✓':'', g35=k=='approval'?'2':g;
+      return `<td data-k="${dark?'d':'l'}-${k}-${c}"><div class=cell><span class="a a16"><img src="../${CH[c]}-${c}-16.svg"><i class="dot${hc}" style="background:${col};color:${gc}">${g16}</i></span>`+
+        `<span class="a a35" style="width:35px;height:35px"><img src="../${CH[c]}-${c}-s.svg"><i class="dot${k=='approval'?' n':''}${hc}" style="background:${col};color:${gc}">${g35}</i></span></div></td>`}).join('')+'</tr>'}
+  return h+'</table><div class=note>每格：左 16px 头像 + 6px 状态点（1.5px 底色描边），右 35px 头像 + 12px 徽标（2px 底色描边；等审批带数字）。和身体同色相的组合（等审批在橙 / 棕、等你回答在蓝、失败在粉）描边加粗：点 2px，徽标 2.5px。</div></div>';
+}
+document.getElementById('x').innerHTML=panel(false)+panel(true);
+document.body.dataset.rects=JSON.stringify(Object.fromEntries([...document.querySelectorAll('td[data-k]')].map(t=>{const b=t.getBoundingClientRect();return[t.dataset.k,[b.left,b.top,b.right,b.bottom].map(Math.round)]})));
+</script>

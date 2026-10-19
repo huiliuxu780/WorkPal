@@ -6,6 +6,7 @@ export type AvatarCatalogBot = {
   name: string;
   avatarMode: AvatarMode;
   avatarCharacter: AvatarCharacter | null;
+  avatarBodyColor?: import("@rakazo/contracts").AvatarBodyColor;
 };
 
 type AvatarCatalog = {

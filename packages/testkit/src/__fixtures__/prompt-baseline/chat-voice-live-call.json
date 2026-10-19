@@ -1414,6 +1414,17 @@
                 {
                   "additionalProperties": false,
                   "properties": {
+                    "body_color": {
+                      "enum": [
+                        "orange",
+                        "blue",
+                        "purple",
+                        "brown",
+                        "pink",
+                        "ink"
+                      ],
+                      "type": "string"
+                    },
                     "character": {
                       "enum": [
                         "dot",

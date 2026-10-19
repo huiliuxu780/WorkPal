@@ -63,7 +63,7 @@ export const GroupAvatar = memo(function GroupAvatar({
   }
 
   const pair = members.length === 2;
-  const miniSize = size >= 56 ? 32 : size >= 36 ? 24 : 16;
+  const miniSize = 18;
   const positions: CSSProperties[] = pair
     ? [
         { top: 0, left: 0 },

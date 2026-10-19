@@ -860,6 +860,10 @@ msgstr "Bearer-Token"
 msgid "Blocked"
 msgstr ""
 
+#: src/pages/shell/avatar-studio-popover.tsx
+msgid "Body color"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Booting live desktop…"
 msgstr "Live-Desktop wird gestartet…"

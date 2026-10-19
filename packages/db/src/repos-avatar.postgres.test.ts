@@ -79,6 +79,15 @@ describePostgres("Bot character assignment (PostgreSQL)", () => {
       repos.createBot(actor(userId, spaceA), profile("Third")),
       repos.createBot(actor(userId, spaceB), profile("Fourth")),
     ]);
+    await isolated.db.prisma.bot.update({
+      where: { id: first.id },
+      data: { archivedAt: new Date() },
+    });
+    const fifth = await repos.createBot(actor(userId, spaceA), profile("Fifth"));
+    const sixth = await repos.createBot(actor(userId, spaceB), profile("Sixth"));
+    expect(
+      new Set([first, second, third, fourth, fifth, sixth].map((bot) => bot.avatarBodyColor)).size,
+    ).toBe(6);
     const bots = [first, second, third, fourth];
     expect(new Set(bots.map((bot) => bot.avatarCharacter)).size).toBe(4);
     expect(bots.every((bot) => bot.avatarMode === "character")).toBe(true);

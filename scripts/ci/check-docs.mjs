@@ -3,7 +3,7 @@
  * Lightweight docs check: no pnpm install, no database, no image build.
  * Verifies relative markdown links exist. Used by the docs CI job.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,7 +63,14 @@ export function listMarkdown(repoRoot, roots = ["docs"]) {
     if (existsSync(abs) && statSync(abs).isDirectory()) walk(abs);
     else if (existsSync(abs)) files.push(root);
   }
-  for (const name of ["README.md", "CHANGELOG.md", "CONTRIBUTING.md", "AGENTS.md", "SECURITY.md", "VISION.md"]) {
+  for (const name of [
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "AGENTS.md",
+    "SECURITY.md",
+    "VISION.md",
+  ]) {
     if (existsSync(path.join(repoRoot, name))) files.push(name);
   }
   return [...new Set(files)];
@@ -118,8 +125,11 @@ export function checkDocs(repoRoot, files) {
 }
 
 export function filesFromSelectResult(env, repoRoot) {
-  if (!env.SELECT_RESULT) return listMarkdown(repoRoot);
-  const parsed = JSON.parse(env.SELECT_RESULT);
+  const selection = env.SELECT_RESULT_PATH
+    ? readFileSync(env.SELECT_RESULT_PATH, "utf8")
+    : env.SELECT_RESULT;
+  if (!selection) return listMarkdown(repoRoot);
+  const parsed = JSON.parse(selection);
   const files = (parsed.files ?? []).filter((file) => /\.(md|markdown)$/i.test(file));
   if (parsed.mode === "full" || files.length === 0) return listMarkdown(repoRoot);
   // Keep rename/delete paths. checkDocs partitions existing vs deleted and
@@ -139,7 +149,9 @@ function parseFiles(argv, repoRoot, env = process.env) {
 }
 
 function isMainModule() {
-  return Boolean(process.argv[1]) && process.argv[1].replaceAll("\\", "/").endsWith("check-docs.mjs");
+  return (
+    Boolean(process.argv[1]) && process.argv[1].replaceAll("\\", "/").endsWith("check-docs.mjs")
+  );
 }
 
 if (isMainModule()) {

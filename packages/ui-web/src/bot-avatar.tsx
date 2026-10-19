@@ -5,13 +5,14 @@ import {
   GROK_COLOR_LIST,
   resolvePersonaColorDef,
 } from "@rakazo/core";
-import { memo } from "react";
+import { memo, useRef } from "react";
 import {
   AgentAvatar,
   type AgentAvatarSize,
   AVATAR_POINT_SHAPES,
   avatarStateNames,
 } from "./agent-avatar/agent-avatar.js";
+import { useAvatarBadgeMotion } from "./agent-avatar/badge-motion.js";
 import { useAvatarCatalog } from "./agent-avatar/catalog.js";
 import { cn } from "./lib/utils.js";
 
@@ -33,14 +34,18 @@ export interface BotAvatarProps {
   status?: string;
   identity?: string;
   className?: string;
+  surface?: import("./agent-avatar/agent-avatar.js").AvatarSurface;
   /** Kept for compatibility with callers that still pass an old style override. */
   variant?: string;
 }
 
 function displaySize(size: number): AgentAvatarSize {
   if (size <= 16) return 16;
+  if (size <= 18) return 18;
   if (size <= 26) return 24;
-  if (size <= 48) return 32;
+  if (size <= 32) return 32;
+  if (size <= 48) return 35;
+  if (size <= 58) return 58;
   return 64;
 }
 
@@ -50,21 +55,31 @@ export const BotAvatar = memo(function BotAvatar({
   size = 32,
   identity = "",
   className,
+  surface,
 }: BotAvatarProps) {
   const catalog = useAvatarCatalog(identity);
   const parsed = parseBotAvatar(color, identity);
   const botId = identity || "bot";
   const activity = catalog.state?.state ?? "idle";
+  const uploadRoot = useRef<HTMLSpanElement>(null);
+  useAvatarBadgeMotion(
+    uploadRoot,
+    catalog.bot?.avatarMode !== "character" && parsed.isImage && activity === "working",
+    botId,
+    catalog.current,
+  );
   const label = `${catalog.bot?.name ?? "Bot"} · ${avatarStateNames[activity]}`;
   if (catalog.bot?.avatarMode !== "character" && parsed.isImage && parsed.imageUrl) {
     const slot = displaySize(size);
     return (
       <span
+        ref={uploadRoot}
         className={cn(
           "rakazo-agent-avatar rakazo-upload-avatar shrink-0 rounded-full border border-border bg-secondary",
           className,
         )}
         role="img"
+        data-surface={surface}
         data-bot-id={botId}
         data-state={activity}
         data-size={slot}
@@ -82,7 +97,7 @@ export const BotAvatar = memo(function BotAvatar({
           width={slot}
           height={slot}
           alt=""
-          className="h-full w-full object-cover"
+          className="h-full w-full rounded-full object-cover"
         />
         {activity !== "idle" ? (
           <span
@@ -102,6 +117,8 @@ export const BotAvatar = memo(function BotAvatar({
     <AgentAvatar
       botId={botId}
       character={character}
+      bodyColor={catalog.bot?.avatarBodyColor ?? "ink"}
+      surface={surface}
       name={catalog.bot?.name ?? "Bot"}
       size={displaySize(size)}
       activity={activity}

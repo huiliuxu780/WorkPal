@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   ALL_JOBS,
   CHECK_JOBS,
-  ZERO_SHA,
   classifyPath,
   gitNameStatus,
   parseNameStatus,
   resolveGitHubSelection,
   selectChecks,
+  writeGitHubOutput,
+  ZERO_SHA,
 } from "./select-checks.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +29,10 @@ function hasExactly(files, jobs) {
   if (expected.includes("agentscope") || expected.includes("worker-chain")) {
     if (!expected.includes("runtime-jar")) expected.push("runtime-jar");
   }
-  assert.deepEqual(got, ALL_JOBS.filter((job) => expected.includes(job)));
+  assert.deepEqual(
+    got,
+    ALL_JOBS.filter((job) => expected.includes(job)),
+  );
 }
 
 describe("classifyPath", () => {
@@ -396,5 +401,23 @@ describe("workflow contract", () => {
       yaml,
       /push: \$\{\{\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\s*\}\}/,
     );
+  });
+});
+
+describe("large selection transport", () => {
+  it("keeps job env bounded while preserving every path in the artifact", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "ci-selection-"));
+    try {
+      const files = Array.from({ length: 3000 }, (_, i) => `docs/${"long-path-".repeat(8)}${i}.md`);
+      const result = selectChecks({ files, mode: "selective" });
+      const file = path.join(dir, "selection.json");
+      const block = writeGitHubOutput(result, { SELECT_RESULT_PATH: file });
+      const payload = block.split("result<<__CI01_RESULT__\n")[1].split("\n__CI01_RESULT__")[0];
+      assert.ok(Buffer.byteLength(payload) < 2048);
+      assert.deepEqual(JSON.parse(payload).selected, result.selected);
+      assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).files, files);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

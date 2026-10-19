@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -89,4 +89,14 @@ describe("check-docs", () => {
     assert.deepEqual(files, ["docs/old.md", "docs/new.md"]);
     assert.deepEqual(checkDocs(root, files), []);
   });
+});
+
+it("reads the full selection artifact without placing its paths in env", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "ci-docs-artifact-"));
+  const file = path.join(root, "selection.json");
+  writeFileSync(file, JSON.stringify({ mode: "selective", files: ["docs/old.md", "docs/new.md"] }));
+  assert.deepEqual(filesFromSelectResult({ SELECT_RESULT_PATH: file }, root), [
+    "docs/old.md",
+    "docs/new.md",
+  ]);
 });

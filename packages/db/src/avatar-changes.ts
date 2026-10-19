@@ -1,4 +1,6 @@
 import {
+  type AvatarBodyColor,
+  AvatarBodyColorSchema,
   type AvatarCharacter,
   AvatarCharacterSchema,
   AvatarModeSchema,
@@ -8,7 +10,7 @@ import type { Prisma, PrismaClient } from "./generated/prisma/client.js";
 
 type Actor = { userId: string; spaceId: string };
 export type AvatarChoice =
-  | { avatarMode: "character"; avatarCharacter: AvatarCharacter }
+  | { avatarMode: "character"; avatarCharacter: AvatarCharacter; avatarBodyColor?: AvatarBodyColor }
   | { avatarMode: "upload"; color: string }
   | { avatarMode: "legacy"; color: string };
 
@@ -16,7 +18,11 @@ export class AvatarChangeDenied extends Error {}
 
 function validateChoice(choice: AvatarChoice) {
   if (choice.avatarMode === "character") {
-    if (!AvatarCharacterSchema.safeParse(choice.avatarCharacter).success)
+    if (
+      !AvatarCharacterSchema.safeParse(choice.avatarCharacter).success ||
+      (choice.avatarBodyColor !== undefined &&
+        !AvatarBodyColorSchema.safeParse(choice.avatarBodyColor).success)
+    )
       throw new AvatarChangeDenied("Invalid character");
   } else if (
     !isBotAvatarValue(choice.color) ||
@@ -43,8 +49,10 @@ export function avatarChangeView(change: {
   runId: string | null;
   beforeMode: string;
   beforeCharacter: string | null;
+  beforeBodyColor: string;
   afterMode: string;
   afterCharacter: string | null;
+  afterBodyColor: string;
   createdAt: Date;
   undoneAt: Date | null;
 }) {
@@ -53,6 +61,8 @@ export function avatarChangeView(change: {
     botId: change.botId,
     source: change.source as "user" | "bot",
     runId: change.runId,
+    beforeBodyColor: AvatarBodyColorSchema.parse(change.beforeBodyColor),
+    afterBodyColor: AvatarBodyColorSchema.parse(change.afterBodyColor),
     beforeMode: AvatarModeSchema.parse(change.beforeMode),
     beforeCharacter: AvatarCharacterSchema.nullable().parse(change.beforeCharacter),
     afterMode: AvatarModeSchema.parse(change.afterMode),
@@ -92,12 +102,17 @@ export async function changeBotAvatarInTransaction(
       return prior.noop ? null : prior;
     }
   }
+  const nextBodyColor =
+    input.choice.avatarMode === "character"
+      ? (input.choice.avatarBodyColor ?? bot.avatarBodyColor)
+      : bot.avatarBodyColor;
   const nextColor = input.choice.avatarMode === "character" ? bot.color : input.choice.color;
   const nextCharacter =
     input.choice.avatarMode === "character" ? input.choice.avatarCharacter : null;
   if (
     bot.avatarMode === input.choice.avatarMode &&
     bot.avatarCharacter === nextCharacter &&
+    bot.avatarBodyColor === nextBodyColor &&
     bot.color === nextColor
   ) {
     if (input.operationKey) {
@@ -112,6 +127,8 @@ export async function changeBotAvatarInTransaction(
           runId: input.runId ?? null,
           operationKey: input.operationKey,
           noop: true,
+          beforeBodyColor: bot.avatarBodyColor,
+          afterBodyColor: bot.avatarBodyColor,
           beforeMode: bot.avatarMode,
           beforeCharacter: bot.avatarCharacter,
           beforeColor: "",
@@ -125,7 +142,12 @@ export async function changeBotAvatarInTransaction(
   }
   await tx.bot.update({
     where: { id: bot.id },
-    data: { avatarMode: input.choice.avatarMode, avatarCharacter: nextCharacter, color: nextColor },
+    data: {
+      avatarMode: input.choice.avatarMode,
+      avatarCharacter: nextCharacter,
+      avatarBodyColor: nextBodyColor,
+      color: nextColor,
+    },
   });
   const change = await tx.botAvatarChange.create({
     data: {
@@ -135,6 +157,8 @@ export async function changeBotAvatarInTransaction(
       source: input.source,
       runId: input.runId ?? null,
       operationKey: input.operationKey ?? null,
+      beforeBodyColor: bot.avatarBodyColor,
+      afterBodyColor: nextBodyColor,
       beforeMode: bot.avatarMode,
       beforeCharacter: bot.avatarCharacter,
       beforeColor: bot.color,
@@ -188,8 +212,10 @@ export async function listBotAvatarChanges(prisma: PrismaClient, actor: Actor, b
       runId: true,
       beforeMode: true,
       beforeCharacter: true,
+      beforeBodyColor: true,
       afterMode: true,
       afterCharacter: true,
+      afterBodyColor: true,
       createdAt: true,
       undoneAt: true,
     },
@@ -216,6 +242,7 @@ export async function undoBotAvatarChangeInTransaction(
   if (
     bot.avatarMode !== change.afterMode ||
     bot.avatarCharacter !== change.afterCharacter ||
+    bot.avatarBodyColor !== change.afterBodyColor ||
     bot.color !== change.afterColor
   ) {
     throw new AvatarChangeDenied("Avatar changed again; refresh before undoing");
@@ -225,6 +252,7 @@ export async function undoBotAvatarChangeInTransaction(
     data: {
       avatarMode: change.beforeMode,
       avatarCharacter: change.beforeCharacter,
+      avatarBodyColor: change.beforeBodyColor,
       color: change.beforeColor,
     },
   });

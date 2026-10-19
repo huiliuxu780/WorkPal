@@ -1,6 +1,6 @@
 import type { AvatarActivity } from "./activity-map.js";
+import { avatarAnchors } from "./assets.generated.js";
 import type { MotionPresentation } from "./director.js";
-import { BODY_FOOT } from "./geometry.js";
 
 const propForState: Partial<Record<AvatarActivity, string>> = {
   working: "laptop",
@@ -8,7 +8,7 @@ const propForState: Partial<Record<AvatarActivity, string>> = {
   waiting: "question",
 };
 
-/** Mutate only wrapper transforms; frozen path data and the feet never change. */
+/** Mutate only wrapper transforms; frozen path data never changes. */
 export type AvatarDomRenderer = ((presentation: MotionPresentation) => void) & {
   /**
    * Put every mutated attribute and inline style back to its captured base.
@@ -37,6 +37,7 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
       });
   }
   const props = [...root.querySelectorAll<HTMLElement>("[data-avatar-prop]")];
+  const crosses = [...root.querySelectorAll<SVGElement>('[data-avatar-prop="xeyes"] #xL, [data-avatar-prop="xeyes"] #xR')].map(node => ({node, original: node.getAttribute("transform") ?? ""}));
   const character = root.dataset.character ?? "dot";
   const symbolPivot: Record<string, [number, number]> = {
     dot: [86.13, 33.58],
@@ -44,6 +45,19 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
     wave: [53.3, 28.63],
     bounce: [84.94, 19.44],
   };
+  const role =
+    ({ dot: "1-dot", treble: "2-treble", wave: "3-wave", bounce: "4-bounce" } as const)[
+      character as "dot"
+    ] ?? "1-dot";
+  const tier = root.dataset.tier === "L" ? "L" : root.dataset.tier === "XS" ? "XS" : "S";
+  const anchor = avatarAnchors.anchors[role][tier];
+  const pivot = {
+    x: (anchor.pivot[0] - 50) / anchor.fit.s + anchor.fit.cx,
+    y: (anchor.pivot[1] - 50) / anchor.fit.s + anchor.fit.cy,
+  };
+  const shadow = root.querySelector<SVGElement>(".rakazo-agent-avatar-shadow ellipse");
+  // Centers from the frozen eye-bounds.md, in pre-fit coordinates.
+  const [eyeX, eyeY] = ({ dot: [46.85, 57.35], treble: [46.85, 57.35], wave: [45.9, 54.05], bounce: [46.6, 53.5] } as const)[character as "dot"] ?? [46.85, 57.35];
   const [pivotX, pivotY] = symbolPivot[character] ?? symbolPivot.dot!;
   const apply = (name: string, prefix: string, opacity?: number) => {
     const layer = layers.get(name);
@@ -54,28 +68,38 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
   const render = (presentation: MotionPresentation) => {
     const { frame, state, outgoingState, outgoingScale } = presentation;
     const { tx, ty, sx, sy, rot } = frame.body;
-    const foot = BODY_FOOT;
+    const foot = pivot;
     const body = `translate(${tx} ${ty}) translate(${foot.x} ${foot.y}) rotate(${rot}) scale(${sx} ${sy}) translate(${-foot.x} ${-foot.y})`;
-    const blink = `translate(50 54) scale(${frame.eyes.scale} ${frame.eyes.scale * frame.eyes.blink}) translate(-50 -54)`;
+    const blink = `translate(${eyeX} ${eyeY}) scale(${frame.eyes.scale} ${frame.eyes.scale * frame.eyes.blink}) translate(${-eyeX} ${-eyeY})`;
     const symbol = `translate(${frame.symbol.tx} ${frame.symbol.ty}) translate(${pivotX} ${pivotY}) rotate(${frame.symbol.rot}) translate(${-pivotX} ${-pivotY})`;
     apply("body", body);
     apply("eyewhite", `${body} ${blink}`);
     for (const pupil of ["pupilL", "pupilR"]) {
       apply(
         pupil,
-        `${body} ${blink} translate(${frame.pupils.tx} ${frame.pupils.ty})`,
+        `${body} ${blink} translate(${frame.pupils.tx + frame.eyes.lagX} ${frame.pupils.ty})`,
         frame.pupils.opacity,
       );
     }
     apply("symbol", `${body} ${symbol}`);
 
-    const activeProp = propForState[state];
+    if (shadow) {
+      shadow.style.opacity = String(frame.shadow.opacity);
+      shadow.setAttribute(
+        "transform",
+        `translate(${anchor.shadow.cx} ${anchor.shadow.cy}) scale(${frame.shadow.scale}) translate(${-anchor.shadow.cx} ${-anchor.shadow.cy})`,
+      );
+    }
+    const activeProp = root.dataset.surface === "sidebar" ? undefined : propForState[state];
     const outgoingProp = outgoingState ? propForState[outgoingState] : undefined;
     for (const node of props) {
       const kind = node.dataset.avatarProp;
       if (kind === "xeyes") {
-        node.style.opacity = String(frame.xeyes.opacity);
-        node.style.transform = `translate(${(tx / 100) * root.clientWidth}px, ${(ty / 100) * root.clientHeight}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
+        node.style.opacity = frame.xeyes.opacity > 0 ? "1" : "0";
+        for (const cross of crosses) cross.node.setAttribute("transform", `${cross.original} scale(${Math.max(0.0001, frame.xeyes.opacity)})`);
+        const group = node.querySelector<SVGElement>("#xeyes");
+        if (group) group.setAttribute("transform", `${body} translate(${frame.eyes.lagX} 0)`);
+        node.style.transform = "";
         continue;
       }
       const selected =
@@ -84,7 +108,9 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
         kind === outgoingProp || (kind === "question-dark" && outgoingProp === "question");
       const scale = selected ? frame.prop.scale : leaving ? outgoingScale : 0;
       node.style.opacity = String(scale > 0 ? 1 : 0);
-      node.style.transform = `translateY(${(frame.prop.ty / 100) * root.clientHeight}px) rotate(${frame.prop.rot}deg) scale(${scale})`;
+      const point = kind === "laptop" ? anchor.laptop : anchor.card;
+      node.style.transformOrigin = `${point.x}% ${point.y}%`;
+      node.style.transform = `translateY(${((frame.prop.ty * anchor.fit.s) / 100) * root.clientHeight * 1.25}px) rotate(${frame.prop.rot}deg) scale(${scale})`;
       if (kind === "laptop") {
         const glow = node.querySelector<SVGElement>("#glow");
         const cursor = node.querySelector<SVGElement>("#cursor");
@@ -93,6 +119,7 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
       }
     }
     root.dataset.motionReady = "true";
+    root.dataset.motion = presentation.moving ? "moving" : "still";
   };
   return Object.assign(render, {
     restore() {
@@ -104,12 +131,22 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
       for (const node of props) {
         node.style.opacity = "";
         node.style.transform = "";
+        node.style.transformOrigin = "";
         const glow = node.querySelector<SVGElement>("#glow");
         const cursor = node.querySelector<SVGElement>("#cursor");
         if (glow) glow.style.opacity = "";
         if (cursor) cursor.style.opacity = "";
       }
+      if (shadow) {
+        shadow.style.opacity = "";
+        shadow.removeAttribute("transform");
+      }
+      root
+        .querySelector<SVGElement>('[data-avatar-prop="xeyes"] #xeyes')
+        ?.removeAttribute("transform");
+      for (const cross of crosses) cross.node.setAttribute("transform", cross.original);
       delete root.dataset.motionReady;
+      delete root.dataset.motion;
     },
   });
 }

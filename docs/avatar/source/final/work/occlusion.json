@@ -1,0 +1,22 @@
+{
+ "1-dot@1.0": {
+  "occl_box": 0.065,
+  "occl_px": 0.048
+ },
+ "2-treble@1.0": {
+  "occl_box": 0.095,
+  "occl_px": 0.076
+ },
+ "3-wave@1.0": {
+  "occl_box": 0.119,
+  "occl_px": 0.099
+ },
+ "3-wave@0.85": {
+  "occl_box": 0.068,
+  "occl_px": 0.054
+ },
+ "4-bounce@1.0": {
+  "occl_box": 0.037,
+  "occl_px": 0.02
+ }
+}

@@ -1,6 +1,6 @@
 # Compact avatar v0.7 — 16px design acceptance
 
-Accepted on 2026-10-17 by Codex, acting on the user's explicit delegation to revise the 16px design using oil-ui-pro. This freezes only the four compact SVGs in [compact-v0.7/](../source/compact-v0.7/). The original `source/final/` SVGs and MOTION-SPEC v0.6 remain unchanged.
+Accepted on 2026-10-17 by Codex, acting on the user's explicit delegation to revise the 16px design using oil-ui-pro. This freezes only the four compact SVGs in [compact-16px-hook/](../source/compact-16px-hook/). The original `source/final/` SVGs and MOTION-SPEC v0.6 remain unchanged.
 
 ## Design change
 
@@ -41,3 +41,5 @@ The 6px state point gains a per-state **shape** alongside its color:
 The four shapes are distinguishable without hue (round/angular × filled/hollow, plus the failed glyph). Constraints kept unchanged: every point color token (dark set and light-theme contrast set), and the 1.5px background-colored separation — the waiting ring moves that separation to an equivalent 1.5px outer halo so the gap is preserved.
 
 Implementation contract: the component marks the dot with `data-point-shape="circle|diamond|ring|alert"`, and the shape CSS keys only off that attribute, so the mapping is pinned by DOM-level unit tests (jsdom cannot evaluate the stylesheet). Both 16px point surfaces — the compact character avatar (AV-02) and the uploaded-image badge (AV-04) — carry the attribute. Accessible state text and names remain required where the design provides them; this note still does not certify recognition by every user.
+
+Historical record: superseded by the supplied v0.7 FINAL release on 2026-10-19; this note is not the current production asset selection.
