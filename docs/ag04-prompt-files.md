@@ -1,6 +1,6 @@
 # AG-04 delivery note: independent prompt files and unified assembly
 
-Branch `codex/ag04-prompt-files`, created from the exact pushed AG-03 head `b5d3d51` (PR #74); initial PR base = `codex/ag03-scenario-contracts`, retarget `main` after AG-03 merges. Status: **delivered, ready-to-merge** ([PR #75](https://github.com/huiliuxu780/WorkPal/pull/75), base=`codex/ag03-scenario-contracts`) — not merged, not deployed. Task card: [AG-04](./tasks/AG-04.md); segment index: [prompts/README.md](../prompts/README.md).
+Branch `codex/ag04-prompt-files`, created from the exact pushed AG-03 head `b5d3d51` (PR #74); initial PR base = `codex/ag03-scenario-contracts`, retarget `main` after AG-03 merges. Status: **done, merged** ([PR #75](https://github.com/huiliuxu780/WorkPal/pull/75), base=`codex/ag03-scenario-contracts`) — merged, not deployed. Task card: [AG-04](./tasks/AG-04.md); segment index: [prompts/README.md](../prompts/README.md).
 
 ## What was delivered
 
@@ -53,3 +53,7 @@ Rewired callers (fixed text removed from code): Java `PromptComposer` (platform,
 - Runtime image build evidence comes from the CI `agent-runtime-image` job on this PR (local Docker Hub blocked).
 - AG-03 findings A/B (revoked-replay run failure + session poisoning) remain open product decisions; AG-04 changed nothing about them.
 - Real-model quality: **not evaluated** (unchanged from AG-03; offline contract evidence only).
+
+## Merge closure (2026-10-19)
+
+PR #75 merged normally as `b3ae7dc`; integrated main `b3ae7dc` passed all nine selected CI checks. AG-03 review fixes capture the actual hang-up prompt and constrain the reaction exception to its one read-path filter. AG-04 retained the selective CI graph and final-request baseline. Runtime-import loading of the app-owned prompt respects the adapters TypeScript compilation root. No deployment.
