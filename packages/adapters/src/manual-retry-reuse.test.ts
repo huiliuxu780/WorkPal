@@ -89,6 +89,8 @@ function fixture(
   opts: {
     tools?: ConnectorTool[];
     hops?: string[];
+    retryOfRunId?: string | null;
+    failLiveRefresh?: boolean;
     resolveCall?: (
       call: ConnectorCall,
     ) => Promise<{ call: ConnectorCall; tool: ConnectorTool } | undefined>;
@@ -101,6 +103,7 @@ function fixture(
   const prompts: string[] = [];
   const toolSchemas: Record<string, unknown> = {};
   const scratchpadRows: Array<{ title: string }> = [];
+  let discoverCount = 0;
   const run = {
     id: runId,
     botId: "bot-1",
@@ -111,7 +114,7 @@ function fixture(
     status: "queued",
     trigger: "user",
     leaseFence: 0,
-    retryOfRunId: predecessorId,
+    retryOfRunId: opts.retryOfRunId === undefined ? predecessorId : opts.retryOfRunId,
   };
   const externalEffect = {
     findMany: vi.fn(
@@ -272,7 +275,8 @@ function fixture(
   });
   const runtimeRun = vi.fn(async function* (request: AgentRunRequest) {
     prompts.push(request.prompt);
-    for (const tool of request.tools) {
+    const liveTools = request.currentTools ? await request.currentTools() : request.tools;
+    for (const tool of liveTools) {
       toolSchemas[tool.name] = tool.inputSchema;
     }
     for (const call of calls) {
@@ -284,7 +288,13 @@ function fixture(
     prisma,
     runtime: { describe: () => ({ capabilities: { scripted: false } }), run: runtimeRun },
     connector: {
-      discoverTools: async () => opts.tools ?? [hookTool],
+      discoverTools: async () => {
+        discoverCount += 1;
+        if (opts.failLiveRefresh && discoverCount > 1) {
+          throw new Error("live refresh failed");
+        }
+        return opts.tools ?? [hookTool];
+      },
       resolveCall: opts.resolveCall ?? (async () => undefined),
       execute,
     },
@@ -740,50 +750,80 @@ describe("manual retry effect reuse (production executor)", () => {
 
   it("declares retryOperationId on closed direct and catalog model-visible schemas", async () => {
     const f = fixture("run-schema", {
-      tools: [
-        {
-          ...hookTool,
-          inputSchema: {
-            type: "object",
-            properties: { url: { type: "string" }, body: { type: "string" } },
-            required: ["url", "body"],
-            additionalProperties: false,
-          },
-        },
-        {
-          ...catalogExecuteTool,
-          inputSchema: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              arguments: { type: "object" },
-            },
-            required: ["id", "arguments"],
-            additionalProperties: false,
-          },
-        },
-      ],
+      tools: [closedDirectTool, closedCatalogTool],
     });
     await f.run();
-    expect(f.toolSchemas.hook_write).toEqual(
-      expect.objectContaining({
-        additionalProperties: false,
-        properties: expect.objectContaining({
-          url: { type: "string" },
-          body: { type: "string" },
-          retryOperationId: expect.objectContaining({ type: "string" }),
-        }),
-      }),
-    );
-    expect(f.toolSchemas.fixture_execute_tool).toEqual(
-      expect.objectContaining({
-        additionalProperties: false,
-        properties: expect.objectContaining({
-          id: { type: "string" },
-          arguments: { type: "object" },
-          retryOperationId: expect.objectContaining({ type: "string" }),
-        }),
-      }),
-    );
+    expectRetryIdentity(f.toolSchemas.hook_write, ["url", "body"]);
+    expectRetryIdentity(f.toolSchemas.fixture_execute_tool, ["id", "arguments"]);
+  });
+
+  it("keeps retryOperationId on currentTools after a live-refresh failure", async () => {
+    const f = fixture("run-schema-fallback", {
+      tools: [closedDirectTool, closedCatalogTool],
+      failLiveRefresh: true,
+    });
+    await f.run();
+    expectRetryIdentity(f.toolSchemas.hook_write, ["url", "body"]);
+    expectRetryIdentity(f.toolSchemas.fixture_execute_tool, ["id", "arguments"]);
+  });
+
+  it("does not declare retryOperationId on an ordinary run", async () => {
+    const f = fixture("run-ordinary", {
+      tools: [closedDirectTool, closedCatalogTool],
+      retryOfRunId: null,
+    });
+    await f.run();
+    expectOrdinarySchema(f.toolSchemas.hook_write, ["url", "body"]);
+    expectOrdinarySchema(f.toolSchemas.fixture_execute_tool, ["id", "arguments"]);
   });
 });
+
+const closedDirectTool: ConnectorTool = {
+  ...hookTool,
+  inputSchema: {
+    type: "object",
+    properties: { url: { type: "string" }, body: { type: "string" } },
+    required: ["url", "body"],
+    additionalProperties: false,
+  },
+};
+
+const closedCatalogTool: ConnectorTool = {
+  ...catalogExecuteTool,
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      arguments: { type: "object" },
+    },
+    required: ["id", "arguments"],
+    additionalProperties: false,
+  },
+};
+
+function expectRetryIdentity(schema: unknown, keys: string[]) {
+  const properties = (schema as { properties: Record<string, unknown> }).properties;
+  expect(schema).toEqual(
+    expect.objectContaining({
+      additionalProperties: false,
+      properties: expect.objectContaining({
+        ...Object.fromEntries(keys.map((key) => [key, expect.anything()])),
+        retryOperationId: expect.objectContaining({ type: "string" }),
+      }),
+    }),
+  );
+  expect(properties.retryOperationId).toEqual(expect.objectContaining({ type: "string" }));
+}
+
+function expectOrdinarySchema(schema: unknown, keys: string[]) {
+  const properties = (schema as { properties: Record<string, unknown> }).properties;
+  expect(schema).toEqual(
+    expect.objectContaining({
+      additionalProperties: false,
+      properties: expect.objectContaining(
+        Object.fromEntries(keys.map((key) => [key, expect.anything()])),
+      ),
+    }),
+  );
+  expect(properties.retryOperationId).toBeUndefined();
+}

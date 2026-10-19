@@ -406,6 +406,215 @@ describe("AgentScopeAgentRuntime", () => {
     });
   });
 
+  it("refreshes the live tool surface for the same run without mixing another run", async () => {
+    const fixture = await listen((_request, response) => {
+      void (async () => {
+        const outbound = fixture.requests[0] as {
+          runId: string;
+          toolBridge: { url: string; token: string };
+        };
+        const surfaceUrl = outbound.toolBridge.url.replace("/v1/tool-executions", "/v1/tool-surface");
+        const first = await fetch(surfaceUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ runId: outbound.runId }),
+        });
+        expect(first.status).toBe(200);
+        expect(await first.json()).toEqual({
+          tools: [
+            {
+              name: "alpha_tool",
+              description: "Alpha",
+              inputSchema: { type: "object", properties: {} },
+              readOnly: true,
+            },
+          ],
+        });
+        const second = await fetch(surfaceUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ runId: outbound.runId }),
+        });
+        expect(await second.json()).toEqual({
+          tools: [
+            {
+              name: "beta_tool",
+              description: "Beta",
+              inputSchema: { type: "object", properties: { mode: { type: "string" } } },
+              readOnly: true,
+            },
+          ],
+        });
+        const execute = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "alpha_tool",
+            executionId: "call-stale",
+            args: {},
+          }),
+        });
+        expect(execute.status).toBe(200);
+        expect(await execute.json()).toMatchObject({
+          status: "error",
+          error: expect.stringMatching(/permission_revoked|not authorized/i),
+          code: "permission_revoked",
+          executed: false,
+        });
+        const live = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "beta_tool",
+            executionId: "call-live",
+            args: { mode: "restored" },
+          }),
+        });
+        expect(live.status).toBe(200);
+        expect(await live.json()).toEqual({ status: "ok", result: { ok: true } });
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
+      })();
+    });
+    let round = 0;
+    const executeTool = vi.fn(async () => ({ ok: true }));
+    const request = runRequest("run-surface");
+    request.tools = [
+      {
+        name: "alpha_tool",
+        description: "Alpha",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: true,
+      },
+    ];
+    request.currentTools = async () => {
+      round += 1;
+      if (round === 1) return request.tools;
+      return [
+        {
+          name: "beta_tool",
+          description: "Beta",
+          inputSchema: { type: "object", properties: { mode: { type: "string" } } },
+          readOnly: true,
+        },
+      ];
+    };
+    request.executeTool = executeTool;
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    for await (const _event of runtime.run(request, runContext("run-surface"))) {
+      // drain
+    }
+    expect(executeTool).toHaveBeenCalledWith("alpha_tool", {}, "call-stale");
+    expect(executeTool).toHaveBeenCalledWith("beta_tool", { mode: "restored" }, "call-live");
+  });
+
+  it("revalidates live tools at execute without waiting for another surface fetch", async () => {
+    const alpha = {
+      name: "alpha_tool",
+      description: "Alpha",
+      inputSchema: { type: "object", properties: {} },
+      readOnly: true,
+    };
+    const beta = {
+      name: "beta_tool",
+      description: "Beta",
+      inputSchema: { type: "object", properties: { mode: { type: "string" } } },
+      readOnly: true,
+    };
+    let live = [alpha];
+    const fixture = await listen((_request, response) => {
+      void (async () => {
+        const outbound = fixture.requests[0] as {
+          runId: string;
+          toolBridge: { url: string; token: string };
+        };
+        const surfaceUrl = outbound.toolBridge.url.replace("/v1/tool-executions", "/v1/tool-surface");
+        const surface = await fetch(surfaceUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ runId: outbound.runId }),
+        });
+        expect(surface.status).toBe(200);
+        expect(await surface.json()).toEqual({
+          tools: [
+            {
+              name: "alpha_tool",
+              description: "Alpha",
+              inputSchema: { type: "object", properties: {} },
+              readOnly: true,
+            },
+          ],
+        });
+        live = [beta];
+        const stale = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "alpha_tool",
+            executionId: "call-stale-execute",
+            args: {},
+          }),
+        });
+        expect(stale.status).toBe(200);
+        expect(await stale.json()).toMatchObject({
+          status: "error",
+          error: expect.stringMatching(/permission_revoked|not authorized/i),
+          code: "permission_revoked",
+          executed: false,
+        });
+        const restored = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "beta_tool",
+            executionId: "call-live-execute",
+            args: { mode: "restored" },
+          }),
+        });
+        expect(restored.status).toBe(200);
+        expect(await restored.json()).toEqual({ status: "ok", result: { ok: true } });
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
+      })();
+    });
+    const executeTool = vi.fn(async () => ({ ok: true }));
+    const request = runRequest("run-execute-refresh");
+    request.tools = [alpha];
+    request.currentTools = async () => live;
+    request.executeTool = executeTool;
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    for await (const _event of runtime.run(request, runContext("run-execute-refresh"))) {
+      // drain
+    }
+    expect(executeTool).toHaveBeenCalledWith("alpha_tool", {}, "call-stale-execute");
+    expect(executeTool).toHaveBeenCalledWith("beta_tool", { mode: "restored" }, "call-live-execute");
+  });
+
   it("keeps only a task-scoped bridge after the parent stream ends", async () => {
     let registration:
       | Promise<{ bridge: { url: string; taskEventUrl: string; token: string }; taskToken: string }>
@@ -590,6 +799,122 @@ describe("AgentScopeAgentRuntime", () => {
         error: expect.stringContaining("restarted"),
       }),
     );
+  });
+
+  it("does not execute an unauthorized missing tool on a background credential", async () => {
+    let registration:
+      | Promise<{ bridge: { url: string; taskEventUrl: string; token: string }; taskToken: string }>
+      | undefined;
+    const fixture = await listen((_request, response) => {
+      registration = (async () => {
+        const outbound = fixture.requests[0] as {
+          runId: string;
+          toolBridge: {
+            url: string;
+            taskUrl: string;
+            taskEventUrl: string;
+            token: string;
+          };
+        };
+        const started = await fetch(outbound.toolBridge.taskUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            taskId: "task_12345678",
+            agentId: "helper",
+            sessionId: "sub-1",
+          }),
+        });
+        expect(started.status).toBe(200);
+        const { token } = (await started.json()) as { token: string };
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({ type: "done", text: "parent finished" })}\n`);
+        return { bridge: outbound.toolBridge, taskToken: token };
+      })();
+    });
+    const executeTool = vi.fn(async () => ({ value: "read result" }));
+    const registerBackgroundTask = vi.fn(async () => {});
+    const authorizeBackgroundTool = vi.fn(async () => true);
+    const onBackgroundTaskEvent = vi.fn(async () => {});
+    const request = runRequest("run-background");
+    request.tools = [
+      {
+        name: "read_clock",
+        description: "Read clock",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: true,
+      },
+      {
+        name: "write_data",
+        description: "Write",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: false,
+      },
+    ];
+    request.executeTool = executeTool;
+    request.registerBackgroundTask = registerBackgroundTask;
+    request.authorizeBackgroundTool = authorizeBackgroundTool;
+    request.onBackgroundTaskEvent = onBackgroundTaskEvent;
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const events: AgentRuntimeEvent[] = [];
+    for await (const event of runtime.run(request, runContext("run-background"))) {
+      events.push(event);
+    }
+    expect(events.at(-1)).toEqual({ type: "done", text: "parent finished" });
+    const { bridge, taskToken } = await registration!;
+    expect(registerBackgroundTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task_12345678",
+        toolNames: ["read_clock"],
+        parentRunId: "run-background",
+      }),
+    );
+    const call = (name: string, token: string) =>
+      fetch(bridge.url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          runId: "run-background",
+          taskId: "task_12345678",
+          agentId: "helper",
+          sessionId: "sub-1",
+          name,
+          executionId: "subagent:sub-1:call-1",
+          args: {},
+        }),
+      });
+    expect((await call("read_clock", bridge.token)).status).toBe(401);
+    expect((await call("write_data", taskToken)).status).toBe(403);
+    const beforeMissing = executeTool.mock.calls.length;
+    const missing = await call("absent_write_tool", taskToken);
+    expect(missing.status).toBe(403);
+    expect(executeTool.mock.calls.length).toBe(beforeMissing);
+    expect((await call("read_clock", taskToken)).status).toBe(200);
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    authorizeBackgroundTool.mockResolvedValue(false);
+    expect((await call("read_clock", taskToken)).status).toBe(403);
+    const completed = await fetch(bridge.taskEventUrl, {
+      method: "POST",
+      headers: { authorization: `Bearer ${taskToken}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        runId: "run-background",
+        taskId: "task_12345678",
+        status: "completed",
+        result: "done",
+      }),
+    });
+    expect(completed.status).toBe(200);
+    expect(onBackgroundTaskEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "completed",
+        result: "done",
+      }),
+    );
+    expect((await call("read_clock", taskToken)).status).toBe(401);
   });
 
   it("encodes image bytes instead of leaking Uint8Array object keys onto the wire", async () => {

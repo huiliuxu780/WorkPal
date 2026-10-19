@@ -101,4 +101,16 @@ export function withRetryOperationIdSchema(schema: unknown): Record<string, unkn
   };
 }
 
+/** Runtime-facing tool list. Wrap schemas on retry Runs; pass through otherwise. */
+export function toolsForRetryRun<T extends { inputSchema?: unknown }>(
+  tools: T[],
+  retryOfRunId: string | null | undefined,
+): T[] {
+  if (!retryOfRunId) return tools;
+  return tools.map((tool) => ({
+    ...tool,
+    inputSchema: withRetryOperationIdSchema(tool.inputSchema),
+  }));
+}
+
 export type { ManualRetryDenyReason, ManualRetryProjection };

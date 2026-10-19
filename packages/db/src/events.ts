@@ -156,6 +156,9 @@ export type FinalizeRunInput = FinalizeRunBase &
         outcome: "failed";
         error: string;
         budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number };
+        /** User-visible explanation for a typed failure such as permission_revoked. */
+        blocks?: MessageBlock[];
+        markUnread?: boolean;
       }
   );
 
@@ -1557,27 +1560,31 @@ async function finalizeRunOnce(
     });
     if (task.count !== 1) throw new Error("Run task was not available to finalize");
 
-    if (input.outcome === "completed") {
-      const completedBlocks = completedRunBlocks(input.blocks, writableRun?.startedAt ?? null, now);
-      if (completedBlocks.length > 0) {
-        const message = await createThreadMessageInTransaction(tx, {
-          threadId: input.threadId,
-          role: "bot",
-          originKind: "bot",
-          blocks: completedBlocks,
-          botId: input.botId,
-          runId: input.runId,
-          markUnread: input.markUnread,
-        });
-        await appendEventInTransaction(tx, {
-          spaceId: input.spaceId,
-          threadId: input.threadId,
-          botId: input.botId,
-          type: "thread.message.created",
-          runId: input.runId,
-          payload: { messageId: message.id, role: "bot", blocks: completedBlocks },
-        });
-      }
+    const persistBlocks =
+      input.outcome === "completed"
+        ? input.blocks
+        : input.outcome === "failed"
+          ? input.blocks
+          : undefined;
+    if (persistBlocks && persistBlocks.length > 0) {
+      const completedBlocks = completedRunBlocks(persistBlocks, writableRun?.startedAt ?? null, now);
+      const message = await createThreadMessageInTransaction(tx, {
+        threadId: input.threadId,
+        role: "bot",
+        originKind: "bot",
+        blocks: completedBlocks,
+        botId: input.botId,
+        runId: input.runId,
+        markUnread: input.markUnread,
+      });
+      await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        type: "thread.message.created",
+        runId: input.runId,
+        payload: { messageId: message.id, role: "bot", blocks: completedBlocks },
+      });
     }
     if (input.outcome === "failed" && input.budgetExceeded) {
       await appendEventInTransaction(tx, {

@@ -8,6 +8,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -24,12 +27,19 @@ public final class ToolBridgeClient {
     private final ConcurrentHashMap<String, CompletableFuture<TaskCredential>> taskCredentials = new ConcurrentHashMap<>();
     private final AtomicInteger pendingBackgroundSpawns = new AtomicInteger();
     private volatile boolean foregroundOpen = true;
+    /**
+     * Live backend allow-list for this Run. Starts as the request snapshot and is
+     * replaced only by a well-formed {@code /v1/tool-surface} response. Fetch
+     * failures keep the previous set (fail closed).
+     */
+    private volatile List<RunRequest.ToolDefinition> liveTools;
 
     private record TaskCredential(String taskId, String agentId, String sessionId, String token) {}
 
     public ToolBridgeClient(ObjectMapper json, RunRequest request) {
         this.json = json;
         this.request = request;
+        this.liveTools = request.tools() == null ? List.of() : List.copyOf(request.tools());
     }
 
     public static void validateUrl(String raw) {
@@ -52,8 +62,9 @@ public final class ToolBridgeClient {
     public ToolOutcome execute(String name, String executionId, Map<String, Object> args,
             String childSession) throws IOException, InterruptedException {
         if (request.toolBridge() == null) throw new IllegalStateException("Tool bridge unavailable");
-        boolean allowed = request.tools() != null && request.tools().stream().anyMatch(tool -> tool.name().equals(name));
-        if (!allowed) throw new IllegalArgumentException("Tool is not allowed for this run");
+        // liveTools is the model-visible set. WorkPal's authenticated bridge is the
+        // execution authority, including permission_revoked refusals that consume a
+        // pending tool call after the name has left the allow-list.
         JsonNode response;
         if (childSession != null && !taskCredentials.containsKey(childSession)
                 && pendingBackgroundSpawns.get() > 0) {
@@ -87,6 +98,76 @@ public final class ToolBridgeClient {
     public void expectBackgroundSpawn() { pendingBackgroundSpawns.incrementAndGet(); }
     public void finishBackgroundSpawn() { pendingBackgroundSpawns.updateAndGet(value -> Math.max(0, value - 1)); }
     public void closeForeground() { foregroundOpen = false; }
+
+    public boolean allows(String name) {
+        for (RunRequest.ToolDefinition tool : liveTools) {
+            if (tool.name().equals(name)) return true;
+        }
+        return false;
+    }
+
+    public List<RunRequest.ToolDefinition> liveTools() {
+        return liveTools;
+    }
+
+    /**
+     * Pull the current backend tool surface from the sibling bridge URL. A
+     * missing, malformed, or failed fetch keeps the previous allow-list so a
+     * transport blip cannot enlarge or shrink authorization by accident.
+     */
+    public List<RunRequest.ToolDefinition> refreshSurface() {
+        if (request.toolBridge() == null) return liveTools;
+        String url = sibling(request.toolBridge().url(), "/v1/tool-surface");
+        if (url == null) return liveTools;
+        try {
+            JsonNode response = post(url, Map.of("runId", request.runId()), request.toolBridge().token());
+            List<RunRequest.ToolDefinition> parsed = parseSurface(response);
+            liveTools = List.copyOf(parsed);
+            return liveTools;
+        } catch (Exception error) {
+            return liveTools;
+        }
+    }
+
+    static String sibling(String executionsUrl, String path) {
+        try {
+            URI uri = URI.create(executionsUrl);
+            String current = uri.getPath() == null ? "" : uri.getPath();
+            int at = current.lastIndexOf("/v1/tool-executions");
+            if (at < 0) return null;
+            String next = current.substring(0, at) + path;
+            URI resolved = new URI(uri.getScheme(), uri.getRawAuthority(), next, null, null);
+            validateUrl(resolved.toString());
+            return resolved.toString();
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    private List<RunRequest.ToolDefinition> parseSurface(JsonNode response) {
+        JsonNode tools = response.path("tools");
+        if (!tools.isArray()) throw new IllegalArgumentException("Tool surface must list tools");
+        List<RunRequest.ToolDefinition> parsed = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        Set<String> reserved = Set.of("agent_spawn", "agent_send", "agent_list", "task",
+                "task_output", "task_cancel", "task_list", "wait_async_results",
+                "plan_enter", "plan_write", "plan_exit", "load_skill_through_path");
+        for (JsonNode item : tools) {
+            if (item == null || !item.isObject()) throw new IllegalArgumentException("Invalid tool surface entry");
+            String name = item.path("name").asText(null);
+            if (name == null || name.isBlank() || reserved.contains(name) || !seen.add(name)) {
+                throw new IllegalArgumentException("Invalid or conflicting authorized tool name");
+            }
+            String description = item.path("description").asText("");
+            Map<String, Object> schema = item.has("inputSchema") && item.get("inputSchema").isObject()
+                    ? json.convertValue(item.get("inputSchema"), Map.class)
+                    : Map.of("type", "object", "properties", Map.of());
+            Boolean readOnly = item.has("readOnly") && !item.get("readOnly").isNull()
+                    ? item.path("readOnly").asBoolean() : null;
+            parsed.add(new RunRequest.ToolDefinition(name, description, schema, readOnly));
+        }
+        return parsed;
+    }
 
     public JsonNode claimSteering(Set<String> seenIds) throws IOException, InterruptedException {
         if (request.toolBridge() == null || request.toolBridge().steeringUrl() == null) return null;

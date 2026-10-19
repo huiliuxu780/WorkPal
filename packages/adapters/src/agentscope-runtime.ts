@@ -122,6 +122,23 @@ function endpoint(base: URL, path: string): URL {
   return normalized;
 }
 
+function toolRefusalMessage(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const error = (result as { error?: unknown }).error;
+  return typeof error === "string" && error.trim() ? error : undefined;
+}
+
+async function refreshLiveTools(run: ActiveBridgeRun): Promise<void> {
+  if (!run.request.currentTools) return;
+  try {
+    const tools = await run.request.currentTools();
+    run.tools = new Map(tools.map((tool) => [tool.name, tool]));
+  } catch {
+    // Fail closed: keep the last known surface rather than executing against
+    // an unverified live set, or shrinking the allow-list on a transport blip.
+  }
+}
+
 function isPausedToolResult(result: unknown): boolean {
   if (!result || typeof result !== "object") return false;
   const value = result as { kind?: unknown; details?: unknown; terminate?: unknown };
@@ -226,7 +243,7 @@ class AgentScopeToolBridge {
     token: string;
     identity: ActiveBridgeRun["identity"];
   }> {
-    if (request.tools.length > 0 && !request.executeTool) {
+    if ((request.tools.length > 0 || request.currentTools) && !request.executeTool) {
       throw new Error("AgentScope tools require the backend executor");
     }
     if (!context?.userId || !context.spaceId) {
@@ -338,6 +355,7 @@ class AgentScopeToolBridge {
       request.method !== "POST" ||
       ![
         "/v1/tool-executions",
+        "/v1/tool-surface",
         "/v1/steering",
         "/v1/model-resolutions",
         "/v1/background-tasks",
@@ -483,14 +501,30 @@ class AgentScopeToolBridge {
         });
         return;
       }
-      const call = parseToolCall(body);
-      const tool = run.tools.get(call.name);
-      if (!tool) {
-        writeJson(response, 403, { error: `Tool ${call.name} is not authorized for this run` });
+      if (request.url === "/v1/tool-surface") {
+        await refreshLiveTools(run);
+        writeJson(response, 200, {
+          tools: [...run.tools.values()].map(({ name, description, inputSchema, readOnly }) => ({
+            name,
+            description,
+            inputSchema,
+            readOnly,
+          })),
+        });
         return;
       }
+      const call = parseToolCall(body);
+      // Foreground executions re-read live permissions so a revoke between
+      // /v1/tool-surface and this POST cannot run against a stale snapshot.
+      // Background tasks keep the registration-time read-only set; authorizeBackgroundTool
+      // is their execution check and must run before any executeTool call.
+      if (!background) {
+        await refreshLiveTools(run);
+      }
+      const tool = run.tools.get(call.name);
       if (background) {
         if (
+          !tool ||
           call.agentId !== background.task.agentId ||
           call.sessionId !== background.task.sessionId ||
           !background.task.toolNames.includes(call.name) ||
@@ -501,6 +535,42 @@ class AgentScopeToolBridge {
           writeJson(response, 403, { error: "background task or tool is no longer authorized" });
           return;
         }
+      } else if (!tool) {
+        // Settle revoked pending effects without treating this as a live execute.
+        // executeTool here only denies approved/intended rows and returns executed:false.
+        const startedAt = Date.now();
+        let settled: unknown;
+        let failure: unknown;
+        try {
+          settled = await run.request.executeTool?.(call.name, call.args, call.executionId);
+        } catch (error) {
+          failure = error;
+          settled = {
+            error: error instanceof Error ? error.message : "Tool is not authorized for this run",
+          };
+        }
+        const message =
+          toolRefusalMessage(settled) ??
+          (failure instanceof Error ? failure.message : undefined) ??
+          `permission_revoked: Tool ${call.name} is not authorized for this run`;
+        writeJson(response, 200, {
+          status: "error",
+          error: message,
+          code: "permission_revoked",
+          executed: false,
+        });
+        const completion: AgentToolCompletion = {
+          name: call.name,
+          executionId: call.executionId,
+          durationMs: Math.max(0, Date.now() - startedAt),
+          error: message,
+        };
+        try {
+          void Promise.resolve(run.request.onToolCompleted?.(completion)).catch(() => undefined);
+        } catch {
+          // Audit callbacks are best effort and must not alter tool behavior.
+        }
+        return;
       }
       const startedAt = Date.now();
       let result: unknown;
@@ -799,7 +869,12 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       if (!identity) {
         throw new Error("AgentScope runs require trusted user and space context");
       }
-      if (request.tools.length > 0 || request.claimSteering || request.resolveModel) {
+      if (
+        request.tools.length > 0 ||
+        request.currentTools ||
+        request.claimSteering ||
+        request.resolveModel
+      ) {
         bridgeRegistration = await this.toolBridge.register(request, context);
       }
       let response: Response;

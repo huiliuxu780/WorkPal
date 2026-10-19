@@ -94,11 +94,11 @@ import {
   type ToolCallStreak,
   toolRequiresApproval,
   toolRequiresExplicitApproval,
+  toolsForRetryRun,
   truncatedPlainText,
   turnPolicyFromRun,
   unattendedTriggerToolRequiresApproval,
   userTurnMessageForRun,
-  withRetryOperationIdSchema,
 } from "@rakazo/core";
 import {
   approvalEffectKey,
@@ -182,8 +182,10 @@ import {
   claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
+  denyRevokedPermissionEffects,
   isToolPauseResult,
   parseCatalogApprovalTarget,
+  permissionRevokedToolError,
   replaceCompletedExternalEffectResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
@@ -1869,6 +1871,61 @@ export function createRunExecutor(deps: ExecutorDeps) {
           run.trigger === "created" || run.trigger === "delivery"
             ? []
             : [...builtins, ...exposedConnectorTools];
+        const loadLiveRunTools = async (): Promise<ConnectorTool[]> => {
+          if (run.trigger === "created" || run.trigger === "delivery") return [];
+          const stored = await deps.prisma.connection.findMany({
+            where: { userId: run.userId, spaceId: run.spaceId },
+            select: {
+              id: true,
+              connectorId: true,
+              provider: true,
+              providerRef: true,
+              displayName: true,
+              status: true,
+            },
+          });
+          const liveComposioRows = stored.filter((connection) => connection.connectorId === "composio");
+          let refreshSlugs: string[] = [];
+          if (needsLivePluginSync(liveComposioRows)) {
+            const listing = await loadLivePluginSlugs(deps.listConnectedPluginSlugs, run.userId);
+            if (listing.ok) refreshSlugs = listing.slugs;
+          }
+          const liveComposio = mergeConnectedPlugins(liveComposioRows, refreshSlugs);
+          const livePlugins = selectRunConnections(
+            stored,
+            liveComposio.map((row) => row.provider),
+          );
+          context.connectedConnections = livePlugins.map((row) => ({
+            id: row.id,
+            connectorId: row.connectorId,
+            externalId: row.provider,
+            displayName: row.displayName,
+            providerRef: row.providerRef ?? undefined,
+          }));
+          context.connectedProviders = liveComposio.map((row) => row.provider);
+          const discoveredNow = deps.connector ? await deps.connector.discoverTools(context) : [];
+          const exposedNow = discoveredNow.filter(
+            (tool) => !builtinAgentTools.some((builtin) => builtin.name === tool.name),
+          );
+          connectorTools.clear();
+          for (const tool of exposedNow) connectorTools.set(tool.name, tool);
+          const liveBuiltins = [
+            ...selectBuiltinToolsForRun({
+              graphicalToolsAllowed,
+              pageBrowserAllowed,
+              groupId: thread.groupId,
+              trigger: run.trigger,
+              semanticMemoryEnabled,
+              cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
+              messagingChannelRun,
+              voiceCall,
+              mailEnabled: Boolean(deps.mail),
+              planningEnabled: turnPolicy.planning.mode === "auto",
+            }),
+            ...(hasMessagingIdentity ? agentConnectionTools : []),
+          ];
+          return [...liveBuiltins, ...exposedNow];
+        };
         const taskCatalogInstruction = tools.some((tool) => tool.name === "task_catalog")
           ? TASK_CATALOG_GUIDANCE
           : undefined;
@@ -1895,6 +1952,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             : "This entire computer workspace is your private home. Relative file paths and shell working directories start at its root.";
 
         let assembled = "";
+        let permissionRevoked = false;
         let currentTextSegment = "";
         let messageSegments: MessageBlock[] = [];
         // Terminal subagent rows are published as their own messages (not appended to
@@ -2172,10 +2230,29 @@ export function createRunExecutor(deps: ExecutorDeps) {
             nextApprovedTool,
             sameBoundResource || sameCatalogTarget,
           );
-          if (
+          const matchingApprovedReplay = Boolean(
             nextApprovedTool &&
-            (nextApprovedTool === name || sameBoundResource || sameCatalogTarget)
-          ) {
+              (nextApprovedTool === name || sameBoundResource || sameCatalogTarget),
+          );
+          const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
+          // Bound installed/MCP/Pipedream approvals carry a resourceId. When that
+          // connector leaves connectorTools, liveRoute is undefined and
+          // approvalReplayResourceError would report a different-resource mismatch
+          // while leaving the effect approved. Settle permission_revoked first.
+          if (viaConnector && !resolvedTool && !connectorTools.has(name)) {
+            if (matchingApprovedReplay && nextApprovedTool) {
+              approvedEffectReplays.take(nextApprovedTool);
+            }
+            const kinds = new Set([name]);
+            if (replayEffectToolName) kinds.add(replayEffectToolName);
+            let denied = 0;
+            for (const kind of kinds) {
+              denied += await denyRevokedPermissionEffects(deps.prisma, runId, kind);
+            }
+            if (denied > 0) permissionRevoked = true;
+            return permissionRevokedToolError(name);
+          }
+          if (matchingApprovedReplay && nextApprovedTool) {
             const pathError = approvalReplayPathError(
               name,
               catalogRemapped,
@@ -2224,7 +2301,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
               }
             }
           }
-          const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
           // Declared effect of the operation this call dispatches (installed API method and
           // flag). Install config is immutable per route resource, so it cannot drift before
           // execute; a catalog call uses the tool it was just resolved to.
@@ -4633,12 +4709,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 description: skill.description,
                 content: skill.content,
               })),
-              tools: run.retryOfRunId
-                ? tools.map((tool) => ({
-                    ...tool,
-                    inputSchema: withRetryOperationIdSchema(tool.inputSchema),
-                  }))
-                : tools,
+              tools: toolsForRetryRun(tools, run.retryOfRunId),
+              currentTools: scripted ? undefined : async () => {
+                try {
+                  return toolsForRetryRun(await loadLiveRunTools(), run.retryOfRunId);
+                } catch {
+                  return toolsForRetryRun(
+                    [...builtins, ...connectorTools.values()],
+                    run.retryOfRunId,
+                  );
+                }
+              },
               model: {
                 provider: runModelProvider,
                 id: runModelId,
@@ -5450,23 +5531,38 @@ export function createRunExecutor(deps: ExecutorDeps) {
             run.trigger === "bot_message"
               ? botMessageOutcomeFromMidTurn(text, midTurnUserTexts)
               : null;
-          const completed = await deps.events.finalizeRun({
-            spaceId: run.spaceId,
-            threadId: thread.id,
-            botId: bot.id,
-            runId,
-            taskId: run.taskId,
-            attemptId: attempt.id,
-            leaseOwner: workerId,
-            leaseFence: fence,
-            outcome: "completed",
-            blocks,
-            markUnread: completionMarksUnread(run.trigger, text),
-          });
-          if (!completed) return;
-          if (completed.continuationRunId) {
+          const finalized = permissionRevoked
+            ? await deps.events.finalizeRun({
+                spaceId: run.spaceId,
+                threadId: thread.id,
+                botId: bot.id,
+                runId,
+                taskId: run.taskId,
+                attemptId: attempt.id,
+                leaseOwner: workerId,
+                leaseFence: fence,
+                outcome: "failed",
+                error: "permission_revoked",
+                blocks,
+                markUnread: completionMarksUnread(run.trigger, text),
+              })
+            : await deps.events.finalizeRun({
+                spaceId: run.spaceId,
+                threadId: thread.id,
+                botId: bot.id,
+                runId,
+                taskId: run.taskId,
+                attemptId: attempt.id,
+                leaseOwner: workerId,
+                leaseFence: fence,
+                outcome: "completed",
+                blocks,
+                markUnread: completionMarksUnread(run.trigger, text),
+              });
+          if (!finalized) return;
+          if (finalized.continuationRunId) {
             await deps.jobs
-              .enqueue(runContinueJob(completed.continuationRunId))
+              .enqueue(runContinueJob(finalized.continuationRunId))
               .catch((error) => getLogger().error("steering continuation enqueue", error));
           }
           if (botMessageOutcome) {
@@ -5478,19 +5574,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
               deps,
               { ...run, sourceMessageId: run.sourceMessageId },
               { id: bot.id, name: bot.name },
-              botMessageOutcome.text,
-              botMessageOutcome.intent,
+              permissionRevoked
+                ? text || "Could not complete the delegated request: permission_revoked"
+                : botMessageOutcome.text,
+              permissionRevoked ? "status" : botMessageOutcome.intent,
             ).catch((error) => getLogger().error("bot message result return", error));
           }
           const notifyBody = completionNotificationPreview(text);
           if (
             runSendsFinishNotification(run.trigger) &&
             notifyBody &&
-            !completed.continuationRunId
+            !finalized.continuationRunId
           ) {
             await notifyRun(deps, run, {
-              kind: "completion",
-              title: `${bot.name} finished`,
+              kind: permissionRevoked ? "failure" : "completion",
+              title: permissionRevoked ? `${bot.name} failed` : `${bot.name} finished`,
               body: notifyBody,
               botId: bot.id,
               threadId: thread.id,

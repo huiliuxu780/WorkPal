@@ -43,7 +43,7 @@ Daily `17 3 * * *` and `workflow_dispatch` `mode=full` run the same job graph as
 | `packages/core/src/avatar-*`, `bot-avatar-*`, composer/markdown helpers | Web UI | `web` |
 | `apps/api/**`, `packages/adapters/**` (default), `packages/adapter-kit/**`, `packages/auth/**`, `packages/memory/**`, `packages/logging/**`, `packages/testkit/**` | API / AgentScope request path | `backend`, `agentscope`, `runtime-jar` |
 | `prompts/**`, `services/agent-runtime/**` (prompt/resources) | runtime source | `agentscope`, `agent-runtime-image`, `runtime-jar` |
-| `RuntimeEngine.java`, `RuntimeServer.java`, `pom.xml`, `Dockerfile`, lease/outbox TS, `apps/worker/**` | Worker execution / recovery | `backend`, `worker-chain`, `runtime-jar` (Java also `agentscope` + image) |
+| `RuntimeEngine.java`, `RuntimeServer.java`, `ToolBridgeClient.java`, `ToolSurfaceRefresh.java`, `pom.xml`, `Dockerfile`, lease/outbox TS, `apps/worker/**` | Worker execution / recovery | `backend`, `worker-chain`, `runtime-jar` (Java also `agentscope` + image) |
 | `packages/core/src/run-budget.*`, `packages/adapters/src/run-budget-enforcement.*` | executor and standalone Worker budget sweep | `backend`, `agentscope`, `worker-chain`, `runtime-jar` |
 | `packages/contracts/**`, `pnpm-lock.yaml`, `package.json`, `turbo.json`, `tsconfig.base.json`, `biome.json`, `vitest.config.ts`, `.github/workflows/**`, `scripts/ci/**` | global | **full** |
 | `packages/db/prisma/**` | every process | **full** |

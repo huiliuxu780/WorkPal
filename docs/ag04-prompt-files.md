@@ -51,7 +51,7 @@ Rewired callers (fixed text removed from code): Java `PromptComposer` (platform,
 
 - After AG-03 (PR #74) merges: retarget this PR to `main` and confirm the diff is AG-04-only.
 - Runtime image build evidence comes from the CI `agent-runtime-image` job on this PR (local Docker Hub blocked).
-- AG-03 findings A/B (revoked-replay run failure + session poisoning) remain open product decisions; AG-04 changed nothing about them.
+- AG-03 findings A/B (revoked-replay run failure + session poisoning) were open product decisions at AG-04 merge; AG-08 closes them without changing AG-04 prompt files.
 - Real-model quality: **not evaluated** (unchanged from AG-03; offline contract evidence only).
 
 ## Merge closure (2026-10-19)

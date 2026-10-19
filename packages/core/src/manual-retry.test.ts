@@ -4,6 +4,7 @@ import {
   isRootRunOrchestration,
   type ManualRetryChainEffect,
   projectManualRetryEligibility,
+  toolsForRetryRun,
   withRetryOperationIdSchema,
 } from "./manual-retry.js";
 import {
@@ -645,6 +646,30 @@ describe("decideManualRetryEffect", () => {
       required: ["url", "body"],
       additionalProperties: false,
     });
+  });
+
+  it("wraps runtime-facing tools only when the run is a retry", () => {
+    const tools = [
+      {
+        name: "hook_write",
+        inputSchema: {
+          type: "object",
+          properties: { url: { type: "string" } },
+          additionalProperties: false,
+        },
+      },
+    ];
+    expect(toolsForRetryRun(tools, null)).toBe(tools);
+    expect(toolsForRetryRun(tools, undefined)).toBe(tools);
+    expect(toolsForRetryRun(tools, "run-old")[0]!.inputSchema).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          url: { type: "string" },
+          retryOperationId: expect.objectContaining({ type: "string" }),
+        }),
+      }),
+    );
   });
 
   it("strips retryOperationId from live args and catalog inner arguments", () => {
