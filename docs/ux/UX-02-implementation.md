@@ -92,9 +92,10 @@
 ## 6. 验证命令与原始计数（收口时点）
 
 - Java：`JAVA_HOME=openjdk@21 mvn -f services/agent-runtime/pom.xml test` → **90/90**（新增 3 个统一计划测试 + 1 个策略测试；原 nativePlanLifecycle 被 bridge 化重写；含 facade 活状态投影修复后的复跑）。
+- **收口期修复的基线 flake（非本批引入）**：`RuntimeIntegrationTest` 两个后台任务测试间歇性 "Failed to save state: agent_state"（CI runtime-jar 因此红过一次；本机基线 `ee8db3c` 干净树复现 3/6，本批分支 1/5——先于且独立于本批改动）。根因：库 `JsonFileAgentStateStore` 对同一 slot 的并发保存共用固定名 tmp 文件做 rename，AG-05 的每模型调用 `replacePermissionContext` 持久化与 ReAct 循环/后台任务的保存相撞。修复：`SerializedAgentStateStore` 包装器串行化该引擎实例的全部 store 操作（库内版本 CAS 语义不变，方法逐一显式委托）。修复后目标测试 8/8 连跑零失败、全套 90/90。此修复同时消除同类并行负载抖动（此前 `agentscope-provenance` 在满仓并行下偶发一次，属同一 save 竞争类）。
 - 仓库单测（最终收口跑）：`pnpm exec vitest run`（JAVA_HOME=openjdk@21）→ **5301 passed / 1 failed / 363 skipped（5665）**，唯一失败为既有基线项：
   - `apps/api/src/execution-rpc.test.ts` 1 例为 **ee8db3c 基线固有失败**（已用干净树验证，与本批无关，未掩盖）；
-  - `agentscope-provenance` 在满负荷并行下偶发（单独跑绿）；
+  - `agentscope-provenance` 曾在满负荷并行下偶发一次（单独跑绿；机理同上述状态保存竞争，已随 `SerializedAgentStateStore` 修复，终轮并行跑未再现）；
   - 顺手修复 `packages/db/src/repos.test.ts` 基线期望（avatar body color 合并后未跟进的一行）。
 - PG 契约测试：`VERIFY_DATABASE=1 DATABASE_URL=…/workpal_plans_src pnpm exec vitest run packages/db/src/run-plans.postgres.test.ts packages/db/src/intervention.postgres.test.ts` → run-plans **7/7**、intervention **27/27**（含新增 6 个 plan review 旅程）；execution-history/wait-timeouts/task-center PG 全绿。
 - 生产链集成（真实 Java runtime + PG + createApp）：`scenario-contract.postgres.test.ts` **10/10**、`agentscope-offline.postgres.test.ts` **3/3**（CI 的两个 integration spec）。

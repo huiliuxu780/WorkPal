@@ -34,6 +34,7 @@ import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
 import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.state.AgentState;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.state.JsonFileAgentStateStore;
 import io.agentscope.core.state.State;
 import io.agentscope.core.tool.Toolkit;
@@ -245,7 +246,13 @@ public final class RuntimeEngine {
                 + (request.isChat() ? "" : "\u0000" + request.scope() + "\u0000" + request.runId()));
         Path workspace = workspaceRoot.resolve(tenant).resolve(hash(request.botId())).resolve(session);
         Files.createDirectories(workspace);
-        JsonFileAgentStateStore store = new JsonFileAgentStateStore(stateRoot.resolve(hash(request.botId())));
+        // UX-02 closure: serialize same-slot state persistence. The library
+        // store's fixed tmp-file rename races when the ReAct loop and the
+        // per-model-call permission replacement (or a slot-sharing background
+        // helper) save concurrently — an intermittent "Failed to save state:
+        // agent_state" that predates this batch (reproduced on ee8db3c).
+        AgentStateStore store = new SerializedAgentStateStore(
+                new JsonFileAgentStateStore(stateRoot.resolve(hash(request.botId()))));
         String userSlot = tenant;
         String sessionSlot = session;
         AtomicInteger spawnBudget = spawnBudgets.computeIfAbsent(sessionSlot, key -> new AtomicInteger());
@@ -544,7 +551,7 @@ public final class RuntimeEngine {
     }
 
     private static void refreshApplicationContext(AgentState loaded, RunRequest request,
-            JsonFileAgentStateStore store, String userSlot, String sessionSlot,
+            AgentStateStore store, String userSlot, String sessionSlot,
             String memoryFingerprint, String applicationFingerprint) {
         if (request.history() == null) return;
         List<RunRequest.HistoryMessage> current = request.history().stream()
