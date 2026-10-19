@@ -470,7 +470,7 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
       prisma,
       { spaceId: id, threadId, botId, runId: runId2 },
       "approve",
-      { decidedByUserId: id },
+      { toolExecutionId: "legacy-x0", decidedByUserId: id },
     );
     expect(legacyFirst.plan).toBeNull();
     await applyPlanSubmission(
@@ -487,18 +487,19 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
       prisma,
       { spaceId: id, threadId, botId, runId: runId2 },
       "approve",
-      { interventionId: "legacy-intervention", decidedByUserId: id },
+      { toolExecutionId: "legacy-x1", interventionId: "legacy-intervention", decidedByUserId: id },
     );
     expect(decided.contentVersion).toBe(1);
-    await recordLegacyNativePlanDecision(
+    const replayedLegacy = await recordLegacyNativePlanDecision(
       prisma,
       { spaceId: id, threadId, botId, runId: runId2 },
       "approve",
-      { decidedByUserId: id },
+      { toolExecutionId: "legacy-x1", decidedByUserId: id },
     );
+    expect(replayedLegacy.replayed).toBe(true);
     expect(
       await prisma.runPlanReview.count({ where: { runId: runId2, source: "legacy_native" } }),
-    ).toBe(1);
+    ).toBe(2);
     expect(await planRow(runId2)).toMatchObject({
       reviewStatus: "approved",
       approvedContentVersion: 1,

@@ -2550,6 +2550,7 @@ export function createRouter(deps: RouterDeps) {
             answeredByUserId: context.actor.userId,
             answer: input.answer,
             username: input.username,
+            feedback: input.feedback,
           });
           if (result.outcome === "rejected") {
             if (result.reason === "forbidden") {
@@ -2561,7 +2562,9 @@ export function createRouter(deps: RouterDeps) {
               throw new ORPCError("NOT_FOUND", { message: "Intervention was not found" });
             }
             if (result.reason === "invalid_submission") {
-              throw new ORPCError("BAD_REQUEST", { message: "Submission id is not valid" });
+              throw new ORPCError("BAD_REQUEST", {
+                message: "Submission id or plan review feedback is not valid",
+              });
             }
             throw new ORPCError("CONFLICT", {
               message: "This prompt is no longer awaiting an answer",

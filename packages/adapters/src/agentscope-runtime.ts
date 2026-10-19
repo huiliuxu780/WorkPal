@@ -145,8 +145,17 @@ function isPausedToolResult(result: unknown): boolean {
   if (value.kind !== "agent_tool_result" || !value.details || typeof value.details !== "object") {
     return false;
   }
-  const details = value.details as { approval?: unknown; secret?: unknown };
-  return value.terminate === true && (details.approval === "paused" || details.secret === "paused");
+  const details = value.details as {
+    approval?: unknown;
+    secret?: unknown;
+    plan_review?: unknown;
+  };
+  return (
+    value.terminate === true &&
+    (details.approval === "paused" ||
+      details.secret === "paused" ||
+      details.plan_review === "paused")
+  );
 }
 
 function secureTokenEquals(expected: string, presented: string): boolean {

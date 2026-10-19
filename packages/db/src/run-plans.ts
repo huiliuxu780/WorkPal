@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  MessageBlock as MessageBlockSchema,
   type PlanItem,
   type PlanReviewContent,
   type PlanReviewSource,
@@ -103,7 +104,10 @@ function reviewContentOf(
   };
 }
 
-async function lockRunForPlan(tx: Prisma.TransactionClient, scope: PlanSubmissionScope) {
+async function lockRunForPlan(
+  tx: Prisma.TransactionClient,
+  scope: Omit<PlanSubmissionScope, "toolExecutionId">,
+) {
   // The Run row serializes concurrent revisions and makes the expectedRevision check atomic.
   await tx.$queryRaw`SELECT id FROM runs WHERE id = ${scope.runId} FOR UPDATE`;
   const run = await tx.run.findUnique({
@@ -435,42 +439,49 @@ export async function planReviewRoundForToolExecution(
 /**
  * One-time compatibility for a native plan approval that was already pending
  * before unified review existed: the answered legacy ask ("Allow plan_exit to
- * continue?") decides the original review exactly once. Returns the decision
- * to hand back to the runtime, and records an audit round when a product Plan
- * exists. Never creates a second card and never re-executes anything.
+ * continue?") decides the original review exactly once. The audit round is
+ * keyed by the resumed bridge executionId and created at most once per run
+ * (source legacy_native), so a later fresh plan_exit in the same run can never
+ * be mistaken for the legacy resume. Never creates a second card and never
+ * re-executes anything.
  */
 export async function recordLegacyNativePlanDecision(
   prisma: PrismaClient,
   scope: { spaceId: string; threadId: string; botId: string; runId: string },
   decision: "approve" | "reject",
-  context: { interventionId?: string | null; decidedByUserId?: string | null },
-): Promise<{ plan: RunPlanRevision | null; contentVersion: number | null }> {
+  context: {
+    toolExecutionId: string;
+    interventionId?: string | null;
+    decidedByUserId?: string | null;
+  },
+): Promise<{ plan: RunPlanRevision | null; contentVersion: number | null; replayed: boolean }> {
   return prisma.$transaction(async (tx) => {
-    const run = await lockRunForPlan(tx, { ...scope, toolExecutionId: "legacy" });
+    const run = await lockRunForPlan(tx, scope);
     const current = await tx.runPlan.findUnique({ where: { runId: run.id } });
     const plan = current ? RunPlanRevisionSchema.parse(current.current) : null;
-    if (current) {
-      const existing = await tx.runPlanReview.findFirst({
-        where: { runId: run.id, source: "legacy_native", contentVersion: current.contentVersion },
-        select: { id: true },
+    const existing = await tx.runPlanReview.findFirst({
+      where: { runId: run.id, toolExecutionId: context.toolExecutionId },
+      select: { id: true },
+    });
+    if (!existing) {
+      await tx.runPlanReview.create({
+        data: {
+          id: randomUUID(),
+          runId: run.id,
+          planId: current?.planId ?? `plan:${run.id}`,
+          contentVersion: current?.contentVersion ?? 0,
+          revision: current?.revision ?? 0,
+          status: decision === "approve" ? "approved" : "rejected",
+          source: "legacy_native",
+          toolExecutionId: context.toolExecutionId,
+          submittedAt: new Date(),
+          decidedAt: new Date(),
+          ...(context.decidedByUserId ? { decidedByUserId: context.decidedByUserId } : {}),
+          ...(context.interventionId ? { interventionId: context.interventionId } : {}),
+        },
       });
-      if (!existing) {
-        await tx.runPlanReview.create({
-          data: {
-            id: randomUUID(),
-            runId: run.id,
-            planId: current.planId,
-            contentVersion: current.contentVersion,
-            revision: current.revision,
-            status: decision === "approve" ? "approved" : "rejected",
-            source: "legacy_native",
-            submittedAt: new Date(),
-            decidedAt: new Date(),
-            ...(context.decidedByUserId ? { decidedByUserId: context.decidedByUserId } : {}),
-            ...(context.interventionId ? { interventionId: context.interventionId } : {}),
-          },
-        });
-      }
+    }
+    if (current) {
       await tx.runPlan.update({
         where: { runId: run.id },
         data:
@@ -490,8 +501,95 @@ export async function recordLegacyNativePlanDecision(
         data: { planPhase: "build" },
       });
     }
-    return { plan, contentVersion: current?.contentVersion ?? null };
+    return {
+      plan,
+      contentVersion: current?.contentVersion ?? null,
+      replayed: Boolean(existing),
+    };
   });
+}
+
+/**
+ * The answered pre-UX-02 native plan approval ask of this run, when its resume
+ * is what woke the current attempt: an ask block without a planReview binding,
+ * offered exactly approve/reject, and answered with one of them.
+ */
+export async function latestAnsweredNativePlanAsk(
+  prisma: PrismaClient,
+  runId: string,
+): Promise<{ answer: "approve" | "reject"; interventionId: string | null; resolvedByUserId: string | null } | null> {
+  const messages = await prisma.message.findMany({
+    where: { runId, role: "bot" },
+    orderBy: { seq: "desc" },
+    take: 8,
+    select: { blocks: true },
+  });
+  for (const message of messages) {
+    const parsed = MessageBlockSchema.array().safeParse(message.blocks);
+    if (!parsed.success) continue;
+    for (const block of [...parsed.data].reverse()) {
+      if (block.kind !== "ask") continue;
+      const actionIds = (block.actions ?? []).map((action) => action.id);
+      const isLegacyPlanAsk =
+        !block.planReview &&
+        block.status === "answered" &&
+        actionIds.length === 2 &&
+        actionIds.includes("approve") &&
+        actionIds.includes("reject");
+      if (!isLegacyPlanAsk) return null;
+      if (block.answer !== "approve" && block.answer !== "reject") return null;
+      const intervention = block.interventionId
+        ? await prisma.intervention.findUnique({
+            where: { id: block.interventionId },
+            select: { resolvedByUserId: true },
+          })
+        : null;
+      return {
+        answer: block.answer,
+        interventionId: block.interventionId ?? null,
+        resolvedByUserId: intervention?.resolvedByUserId ?? null,
+      };
+    }
+  }
+  return null;
+}
+
+/** Execute-time plan gate: the error text when a tool must not be sent, else null. */
+export async function planExecutionGate(
+  prisma: PrismaClient,
+  runId: string,
+): Promise<string | null> {
+  const [plan, run] = await Promise.all([
+    prisma.runPlan.findUnique({ where: { runId }, select: { reviewStatus: true } }),
+    prisma.run.findUnique({ where: { id: runId }, select: { planPhase: true } }),
+  ]);
+  if (plan?.reviewStatus === "pending") {
+    return "A plan review is pending for this run. The user must decide the submitted plan version before this tool can be sent.";
+  }
+  if (run?.planPhase === "planning") {
+    return "Blocked: you are in PLAN mode (read-only). Record the plan with plan_write and submit it with plan_exit; execution resumes after the user approves.";
+  }
+  return null;
+}
+
+/** Current plan projection for tool results and the native PLAN.md mirror. */
+export async function loadCurrentPlanProjection(
+  prisma: PrismaClient,
+  runId: string,
+): Promise<{ goal: string; items: PlanItem[]; revision: number; contentVersion: number } | null> {
+  const row = await prisma.runPlan.findUnique({
+    where: { runId },
+    select: { current: true, revision: true, contentVersion: true },
+  });
+  if (!row) return null;
+  const parsed = RunPlanRevisionSchema.safeParse(row.current);
+  if (!parsed.success) return null;
+  return {
+    goal: parsed.data.goal,
+    items: parsed.data.items,
+    revision: row.revision,
+    contentVersion: row.contentVersion,
+  };
 }
 
 /**

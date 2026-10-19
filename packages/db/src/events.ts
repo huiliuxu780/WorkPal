@@ -8,6 +8,7 @@ import {
   type MessageBlock,
   type MessageOriginKind,
   MessageBlock as MessageBlockSchema,
+  type PlanReviewSource,
   type ProductEvent,
 } from "@rakazo/contracts";
 import {
@@ -190,7 +191,7 @@ export interface PauseRunForInput {
     planId: string;
     contentVersion: number;
     revision: number;
-    source: "plan_exit" | "plan_write" | "publish_run_plan";
+    source: PlanReviewSource;
   };
 }
 

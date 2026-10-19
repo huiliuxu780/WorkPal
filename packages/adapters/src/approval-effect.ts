@@ -325,14 +325,33 @@ export function approvalPausedToolResult(): ApprovalPausedToolResult {
   };
 }
 
+/**
+ * UX-02: a plan submission suspended the Run for its typed plan_review
+ * Intervention. Distinct from a tool approval — a plan decision authorizes a
+ * plan version's direction, never an external effect — but it rides the same
+ * suspend/resume protocol: the paused ToolUseBlock re-executes through the
+ * bridge after the decision, and the plan service answers from the persisted
+ * review round.
+ */
+export function planReviewPausedToolResult(): ApprovalPausedToolResult {
+  return {
+    kind: "agent_tool_result",
+    content: [{ type: "text", text: "Waiting for the plan review decision." }],
+    details: { plan_review: "paused" },
+    terminate: true,
+  };
+}
+
 export function isToolPauseResult(result: unknown): result is ApprovalPausedToolResult {
   if (!result || typeof result !== "object") return false;
   const record = result as ApprovalPausedToolResult;
   if (record.kind !== "agent_tool_result") return false;
   const details = record.details;
   if (!details || typeof details !== "object") return false;
-  const pause = details as { approval?: unknown; secret?: unknown };
-  return pause.approval === "paused" || pause.secret === "paused";
+  const pause = details as { approval?: unknown; secret?: unknown; plan_review?: unknown };
+  return (
+    pause.approval === "paused" || pause.secret === "paused" || pause.plan_review === "paused"
+  );
 }
 
 export function isApprovalPausedResult(result: unknown): result is ApprovalPausedToolResult {
