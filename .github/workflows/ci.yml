@@ -18,6 +18,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @rakazo/db generate
+      # AG-04: prompts/ is the only editing surface; the generated TS constants
+      # must match the tree (regeneration is a no-op).
+      - run: node scripts/generate-prompt-texts.mjs && git diff --exit-code packages/core/src/prompt-texts.generated.ts
       - run: pnpm --filter @rakazo/adapters check
       - run: pnpm --filter @rakazo/api check
       - run: pnpm --filter @rakazo/worker check
