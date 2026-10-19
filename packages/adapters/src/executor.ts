@@ -172,8 +172,10 @@ import {
   claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
+  denyRevokedPermissionEffects,
   isToolPauseResult,
   parseCatalogApprovalTarget,
+  permissionRevokedToolError,
   replaceCompletedExternalEffectResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
@@ -1937,6 +1939,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             : "This entire computer workspace is your private home. Relative file paths and shell working directories start at its root.";
 
         let assembled = "";
+        let permissionRevoked = false;
         let currentTextSegment = "";
         let messageSegments: MessageBlock[] = [];
         // Terminal subagent rows are published as their own messages (not appended to
@@ -2267,7 +2270,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
           if (viaConnector && !resolvedTool && !connectorTools.has(name)) {
-            return { error: `Tool ${name} is not authorized for this run` };
+            const kinds = new Set([name]);
+            if (replayEffectToolName) kinds.add(replayEffectToolName);
+            let denied = 0;
+            for (const kind of kinds) {
+              denied += await denyRevokedPermissionEffects(deps.prisma, runId, kind);
+            }
+            if (denied > 0) permissionRevoked = true;
+            return permissionRevokedToolError(name);
           }
           // Declared effect of the operation this call dispatches (installed API method and
           // flag). Install config is immutable per route resource, so it cannot drift before
@@ -5396,23 +5406,38 @@ export function createRunExecutor(deps: ExecutorDeps) {
             run.trigger === "bot_message"
               ? botMessageOutcomeFromMidTurn(text, midTurnUserTexts)
               : null;
-          const completed = await deps.events.finalizeRun({
-            spaceId: run.spaceId,
-            threadId: thread.id,
-            botId: bot.id,
-            runId,
-            taskId: run.taskId,
-            attemptId: attempt.id,
-            leaseOwner: workerId,
-            leaseFence: fence,
-            outcome: "completed",
-            blocks,
-            markUnread: completionMarksUnread(run.trigger, text),
-          });
-          if (!completed) return;
-          if (completed.continuationRunId) {
+          const finalized = permissionRevoked
+            ? await deps.events.finalizeRun({
+                spaceId: run.spaceId,
+                threadId: thread.id,
+                botId: bot.id,
+                runId,
+                taskId: run.taskId,
+                attemptId: attempt.id,
+                leaseOwner: workerId,
+                leaseFence: fence,
+                outcome: "failed",
+                error: "permission_revoked",
+                blocks,
+                markUnread: completionMarksUnread(run.trigger, text),
+              })
+            : await deps.events.finalizeRun({
+                spaceId: run.spaceId,
+                threadId: thread.id,
+                botId: bot.id,
+                runId,
+                taskId: run.taskId,
+                attemptId: attempt.id,
+                leaseOwner: workerId,
+                leaseFence: fence,
+                outcome: "completed",
+                blocks,
+                markUnread: completionMarksUnread(run.trigger, text),
+              });
+          if (!finalized) return;
+          if (finalized.continuationRunId) {
             await deps.jobs
-              .enqueue(runContinueJob(completed.continuationRunId))
+              .enqueue(runContinueJob(finalized.continuationRunId))
               .catch((error) => getLogger().error("steering continuation enqueue", error));
           }
           if (botMessageOutcome) {
@@ -5424,19 +5449,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
               deps,
               { ...run, sourceMessageId: run.sourceMessageId },
               { id: bot.id, name: bot.name },
-              botMessageOutcome.text,
-              botMessageOutcome.intent,
+              permissionRevoked
+                ? text || "Could not complete the delegated request: permission_revoked"
+                : botMessageOutcome.text,
+              permissionRevoked ? "status" : botMessageOutcome.intent,
             ).catch((error) => getLogger().error("bot message result return", error));
           }
           const notifyBody = completionNotificationPreview(text);
           if (
             runSendsFinishNotification(run.trigger) &&
             notifyBody &&
-            !completed.continuationRunId
+            !finalized.continuationRunId
           ) {
             await notifyRun(deps, run, {
-              kind: "completion",
-              title: `${bot.name} finished`,
+              kind: permissionRevoked ? "failure" : "completion",
+              title: permissionRevoked ? `${bot.name} failed` : `${bot.name} finished`,
               body: notifyBody,
               botId: bot.id,
               threadId: thread.id,

@@ -1292,7 +1292,7 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     promptFamilies: { included: ["P04", "P14"], excluded: [] },
     toolSurface: "revoked connector tool absent from the resumed surface",
     expectedResult:
-      "Approved effect recorded while connected; connector revoked before the answer. Pinned current behavior (AG-03 findings A/B): the resume replay is refused by the runtime bridge allow-list, the Run FAILS with zero provider executions and the effect left 'approved' (denial never surfaces as a model-visible tool error); the dangling session tool call also fails the next same-thread Run without a model call. Both recorded as product-gap candidates in docs/ag03-scenario-contracts.md.",
+      "Approved effect recorded while connected; connector revoked before the answer. AG-08: resume consumes the pending tool_call with a model-visible permission_revoked refusal (provider executions stay zero); effect=denied/executed=false; approval.resolved stays approved; the Run fails with error=permission_revoked after a user-visible explanation; the next ordinary Run on the same Thread/generation reaches the model and completes without replaying the refused call; re-authorization executes a new attempt exactly once and leaves the old denied effect unchanged.",
     evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C3 permission change before resume" }],
   },
   {

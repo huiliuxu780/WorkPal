@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
@@ -88,6 +89,7 @@ class ToolVisibilityRefreshIntegrationTest {
         List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
         List<JsonNode> toolCalls = new CopyOnWriteArrayList<>();
         AtomicInteger surfaceRound = new AtomicInteger();
+        AtomicReference<List<String>> liveNames = new AtomicReference<>(List.of("keep_tool", "flip_tool"));
         HttpServer model = scriptedModel(modelRequests, List.of(
                 new ToolStep("keep_tool", "{}"),
                 new ToolStep("flip_tool", "{}")));
@@ -97,11 +99,20 @@ class ToolVisibilityRefreshIntegrationTest {
             int round = surfaceRound.getAndIncrement();
             List<RunRequest.ToolDefinition> tools = round == 0
                     ? List.of(keepTool(), flipTool("v1")) : List.of(keepTool());
+            liveNames.set(tools.stream().map(RunRequest.ToolDefinition::name).toList());
             writeJson(exchange, Map.of("tools", tools.stream().map(this::wireTool).toList()));
         });
         bridge.createContext("/v1/tool-executions", exchange -> {
             JsonNode body = JSON.readTree(exchange.getRequestBody());
             toolCalls.add(body);
+            String name = body.path("name").asText();
+            if (!liveNames.get().contains(name)) {
+                writeJson(exchange, Map.of(
+                        "status", "error",
+                        "error", "permission_revoked: Tool is not allowed for this run",
+                        "executed", false));
+                return;
+            }
             writeJson(exchange, Map.of("status", "ok", "result", Map.of(
                     "kind", "agent_tool_result",
                     "content", List.of(Map.of("type", "text", "text", "keep ok")))));
@@ -126,13 +137,16 @@ class ToolVisibilityRefreshIntegrationTest {
             assertTrue(modelRequests.size() >= 2, modelRequests.toString());
             assertFalse(toolNames(modelRequests.get(1)).contains("flip_tool"),
                     "revoked tool must leave the next model request: " + toolNames(modelRequests.get(1)));
-            assertEquals(List.of("keep_tool"),
+            assertEquals(List.of("keep_tool", "flip_tool"),
                     toolCalls.stream().map(call -> call.path("name").asText()).toList());
             boolean observed = (failure != null && String.valueOf(failure.getMessage()).contains("not allowed"))
                     || events.stream().anyMatch(event ->
-                            String.valueOf(event).toLowerCase().contains("not allowed"))
-                    || modelRequests.stream().skip(1).anyMatch(body ->
-                            body.path("messages").toString().contains("not allowed"));
+                            String.valueOf(event).toLowerCase().contains("not allowed")
+                                    || String.valueOf(event).toLowerCase().contains("permission_revoked"))
+                    || modelRequests.stream().skip(1).anyMatch(body -> {
+                            String messages = body.path("messages").toString();
+                            return messages.contains("not allowed") || messages.contains("permission_revoked");
+                        });
             assertTrue(observed, "revoked-tool refusal must be observable without a provider call: events="
                     + events + " failure=" + failure);
         } finally {

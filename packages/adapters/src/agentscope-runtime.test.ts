@@ -464,7 +464,13 @@ describe("AgentScopeAgentRuntime", () => {
             args: {},
           }),
         });
-        expect(execute.status).toBe(403);
+        expect(execute.status).toBe(200);
+        expect(await execute.json()).toMatchObject({
+          status: "error",
+          error: expect.stringMatching(/permission_revoked|not authorized/i),
+          code: "permission_revoked",
+          executed: false,
+        });
         const live = await fetch(outbound.toolBridge.url, {
           method: "POST",
           headers: {
@@ -512,8 +518,8 @@ describe("AgentScopeAgentRuntime", () => {
     for await (const _event of runtime.run(request, runContext("run-surface"))) {
       // drain
     }
+    expect(executeTool).toHaveBeenCalledWith("alpha_tool", {}, "call-stale");
     expect(executeTool).toHaveBeenCalledWith("beta_tool", { mode: "restored" }, "call-live");
-    expect(executeTool).not.toHaveBeenCalledWith("alpha_tool", expect.anything(), expect.anything());
   });
 
   it("keeps only a task-scoped bridge after the parent stream ends", async () => {

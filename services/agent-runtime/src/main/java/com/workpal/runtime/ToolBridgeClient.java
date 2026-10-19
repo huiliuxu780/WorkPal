@@ -62,7 +62,9 @@ public final class ToolBridgeClient {
     public ToolOutcome execute(String name, String executionId, Map<String, Object> args,
             String childSession) throws IOException, InterruptedException {
         if (request.toolBridge() == null) throw new IllegalStateException("Tool bridge unavailable");
-        if (!allows(name)) throw new IllegalArgumentException("Tool is not allowed for this run");
+        // liveTools is the model-visible set. WorkPal's authenticated bridge is the
+        // execution authority, including permission_revoked refusals that consume a
+        // pending tool call after the name has left the allow-list.
         JsonNode response;
         if (childSession != null && !taskCredentials.containsKey(childSession)
                 && pendingBackgroundSpawns.get() > 0) {

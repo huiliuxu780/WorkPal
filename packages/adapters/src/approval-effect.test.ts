@@ -17,6 +17,8 @@ import {
   claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
+  denyRevokedPermissionEffects,
+  permissionRevokedToolError,
   isApprovalPausedResult,
   isToolPauseResult,
   replaceCompletedExternalEffectResult,
@@ -362,6 +364,29 @@ describe("replaceCompletedExternalEffectResult", () => {
     expect(store.externalEffect.updateMany).toHaveBeenCalledWith({
       where: { id: "effect-1", status: "completed" },
       data: { result },
+    });
+  });
+});
+
+describe("denyRevokedPermissionEffects", () => {
+  it("denies approved and intended effects with a typed policy result", async () => {
+    const store = {
+      externalEffect: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    await expect(denyRevokedPermissionEffects(store, "run-1", "GMAIL_SEND_EMAIL")).resolves.toBe(1);
+    expect(store.externalEffect.updateMany).toHaveBeenCalledWith({
+      where: { runId: "run-1", kind: "GMAIL_SEND_EMAIL", status: { in: ["approved", "intended"] } },
+      data: {
+        status: "denied",
+        result: { executed: false, reason: "permission_revoked", source: "policy" },
+      },
+    });
+    expect(permissionRevokedToolError("GMAIL_SEND_EMAIL")).toEqual({
+      error: "permission_revoked: Tool GMAIL_SEND_EMAIL is not authorized for this run",
+      reason: "permission_revoked",
+      executed: false,
     });
   });
 });

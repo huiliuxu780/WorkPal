@@ -245,6 +245,13 @@ describe("AgentScope per-call tool visibility", () => {
         return round === 0 ? [keepTool, flipV1] : [keepTool];
       },
       executeTool: async (name) => {
+        if (name === "flip_tool") {
+          return {
+            error: "permission_revoked: Tool flip_tool is not authorized for this run",
+            reason: "permission_revoked",
+            executed: false,
+          };
+        }
         executions.push(name);
         return {
           kind: "agent_tool_result",

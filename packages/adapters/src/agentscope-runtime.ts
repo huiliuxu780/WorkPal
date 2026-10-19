@@ -122,6 +122,12 @@ function endpoint(base: URL, path: string): URL {
   return normalized;
 }
 
+function toolRefusalMessage(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const error = (result as { error?: unknown }).error;
+  return typeof error === "string" && error.trim() ? error : undefined;
+}
+
 function isPausedToolResult(result: unknown): boolean {
   if (!result || typeof result !== "object") return false;
   const value = result as { kind?: unknown; details?: unknown; terminate?: unknown };
@@ -507,7 +513,38 @@ class AgentScopeToolBridge {
       const call = parseToolCall(body);
       const tool = run.tools.get(call.name);
       if (!tool) {
-        writeJson(response, 403, { error: `Tool ${call.name} is not authorized for this run` });
+        const startedAt = Date.now();
+        let settled: unknown;
+        let failure: unknown;
+        try {
+          settled = await run.request.executeTool?.(call.name, call.args, call.executionId);
+        } catch (error) {
+          failure = error;
+          settled = {
+            error: error instanceof Error ? error.message : "Tool is not authorized for this run",
+          };
+        }
+        const message =
+          toolRefusalMessage(settled) ??
+          (failure instanceof Error ? failure.message : undefined) ??
+          `permission_revoked: Tool ${call.name} is not authorized for this run`;
+        writeJson(response, 200, {
+          status: "error",
+          error: message,
+          code: "permission_revoked",
+          executed: false,
+        });
+        const completion: AgentToolCompletion = {
+          name: call.name,
+          executionId: call.executionId,
+          durationMs: Math.max(0, Date.now() - startedAt),
+          error: message,
+        };
+        try {
+          void Promise.resolve(run.request.onToolCompleted?.(completion)).catch(() => undefined);
+        } catch {
+          // Audit callbacks are best effort and must not alter tool behavior.
+        }
         return;
       }
       if (background) {
