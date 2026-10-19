@@ -208,6 +208,7 @@ function fixture(
       create: vi.fn(async () => ({ id: "attempt-1" })),
       update: vi.fn(),
       updateMany: vi.fn(async () => ({ count: 1 })),
+      count: vi.fn(async () => 0),
     },
     thread: { findUniqueOrThrow: vi.fn(async () => ({ id: run.threadId, groupId: null })) },
     message: { findMany: vi.fn(async () => []) },
@@ -229,6 +230,9 @@ function fixture(
     taughtSkill: { findMany: vi.fn(async () => []) },
     agentSecret: { findMany: vi.fn(async () => []) },
     agentSkill: { findMany: vi.fn(async () => []) },
+    memoryFact: { findMany: vi.fn(async () => []) },
+    memoryShard: { findMany: vi.fn(async () => []) },
+    contextSummary: { findFirst: vi.fn(async () => null) },
     scratchpadItem: {
       findMany: vi.fn(async () => scratchpadRows),
       create: vi.fn(async ({ data }: { data: { title: string } }) => {

@@ -130,8 +130,12 @@ function fixture(runId = "run-1") {
       create: vi.fn(async () => ({ id: "attempt-1" })),
       update: vi.fn(),
       updateMany: vi.fn(async () => ({ count: 1 })),
+      count: vi.fn(async () => 0),
     },
-    thread: { findUniqueOrThrow: vi.fn(async () => ({ id: run.threadId, groupId: null })) },
+    thread: {
+      findUnique: vi.fn(async () => ({ id: run.threadId, historyCompactionGeneration: 0 })),
+      findUniqueOrThrow: vi.fn(async () => ({ id: run.threadId, groupId: null })),
+    },
     message: { findMany: vi.fn(async () => []) },
     task: {
       findUniqueOrThrow: vi.fn(async () => ({ id: run.taskId, prompt: "Update shared state" })),
@@ -148,6 +152,9 @@ function fixture(runId = "run-1") {
     taughtSkill: { findMany: vi.fn(async () => []) },
     agentSecret: { findMany: vi.fn(async () => []) },
     agentSkill: { findMany: vi.fn(async () => []) },
+    memoryFact: { findMany: vi.fn(async () => []) },
+    memoryShard: { findMany: vi.fn(async () => []) },
+    contextSummary: { findFirst: vi.fn(async () => null) },
     scratchpadItem: {
       findMany: vi.fn(async () => scratchpadRows),
       create: vi.fn(
@@ -179,6 +186,7 @@ function fixture(runId = "run-1") {
     actionAutoReviewPreference: { findUnique: vi.fn(async () => ({ enabled: false })) },
     externalEffect,
   };
+  let factCreates = 0;
   Object.assign(prisma, { $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
     callback({
       $queryRaw: vi.fn(async () => [{ id: run.id }]),
@@ -190,6 +198,22 @@ function fixture(runId = "run-1") {
         }),
       },
       attempt: prisma.attempt,
+      // ME-01: remember now writes first-party facts through this transaction.
+      memoryFact: {
+        findFirst: vi.fn(async () => null),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          factCreates += 1;
+          return { id: `fact-${factCreates}`, revision: 1, ...data };
+        }),
+      },
+      memoryFactRevision: { create: vi.fn(async () => ({})) },
+      memoryEvidence: { create: vi.fn(async () => ({})) },
+      memoryShard: {
+        upsert: vi.fn(async () => ({ id: "shard-1", version: 0 })),
+        findUniqueOrThrow: vi.fn(async () => ({ id: "shard-1", version: 0 })),
+        update: vi.fn(async () => ({ id: "shard-1", version: 1 })),
+      },
+      memoryJobOutbox: { upsert: vi.fn(async () => ({})) },
     }),
   ) });
   const pauseRunForInput = vi.fn(async () => {
@@ -232,6 +256,9 @@ function fixture(runId = "run-1") {
     results,
     scratchpadRows,
     memoryCommit,
+    get factCreates() {
+      return factCreates;
+    },
     setCalls(next: ToolCall[]) {
       calls = next;
     },
@@ -263,7 +290,10 @@ describe("mutating tool effect idempotency keys", () => {
 
     await f.run();
 
-    expect(f.memoryCommit).toHaveBeenCalledOnce();
+    // ME-01: the hidden legacy document write path is gone; the fact store
+    // records the memory exactly once.
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(1);
     expect(f.scratchpadRows).toHaveLength(1);
     expect(f.effects.map((effect) => effect.idempotencyKey)).toEqual([
       toolEffectIdempotencyKey("run-a", "remember", {
@@ -275,7 +305,7 @@ describe("mutating tool effect idempotency keys", () => {
       }),
     ]);
     expect(f.effects.every((effect) => effect.status === "completed")).toBe(true);
-    expect(f.results[0]).toEqual({ ok: true });
+    expect(f.results[0]).toEqual(expect.objectContaining({ ok: true }));
     expect(f.results[1]).toEqual(
       expect.objectContaining({
         item: expect.objectContaining({ title: "follow up with design" }),
@@ -306,7 +336,8 @@ describe("mutating tool effect idempotency keys", () => {
     ]);
     await second.run();
 
-    expect(second.memoryCommit).toHaveBeenCalledOnce();
+    expect(second.memoryCommit).not.toHaveBeenCalled();
+    expect(second.factCreates).toBe(1);
     expect(second.effects.map((effect) => effect.idempotencyKey)).toEqual([
       toolEffectIdempotencyKey("run-1", "remember", {
         path: "MEMORY.md",
@@ -317,7 +348,7 @@ describe("mutating tool effect idempotency keys", () => {
         content: "second bot note",
       }),
     ]);
-    expect(second.results[0]).toEqual({ ok: true });
+    expect(second.results[0]).toEqual(expect.objectContaining({ ok: true }));
   });
 
   it("replays a true retry of the same effect without re-executing", async () => {
@@ -330,7 +361,10 @@ describe("mutating tool effect idempotency keys", () => {
       },
     ]);
     await f.run();
-    expect(f.memoryCommit).toHaveBeenCalledOnce();
+    // ME-01: the hidden legacy document write path is gone; the fact store
+    // records the memory exactly once.
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(1);
     expect(f.effects).toHaveLength(1);
 
     f.setCalls([
@@ -342,7 +376,10 @@ describe("mutating tool effect idempotency keys", () => {
     ]);
     await f.run();
 
-    expect(f.memoryCommit).toHaveBeenCalledOnce();
+    // ME-01: the hidden legacy document write path is gone; the fact store
+    // records the memory exactly once.
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(1);
     expect(f.effects).toHaveLength(1);
     expect(f.effects[0]?.idempotencyKey).toBe(
       toolEffectIdempotencyKey("run-retry", "remember", {
@@ -350,7 +387,7 @@ describe("mutating tool effect idempotency keys", () => {
         content: "durable fact",
       }),
     );
-    expect(f.results[1]).toEqual({ ok: true });
+    expect(f.results[1]).toEqual(expect.objectContaining({ ok: true }));
   });
 
   it("replays the same logical effect when restart assigns a new tool-call id", async () => {
@@ -363,7 +400,10 @@ describe("mutating tool effect idempotency keys", () => {
       },
     ]);
     await f.run();
-    expect(f.memoryCommit).toHaveBeenCalledOnce();
+    // ME-01: the hidden legacy document write path is gone; the fact store
+    // records the memory exactly once.
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(1);
     expect(f.effects).toHaveLength(1);
 
     f.setCalls([
@@ -375,7 +415,10 @@ describe("mutating tool effect idempotency keys", () => {
     ]);
     await f.run();
 
-    expect(f.memoryCommit).toHaveBeenCalledOnce();
+    // ME-01: the hidden legacy document write path is gone; the fact store
+    // records the memory exactly once.
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(1);
     expect(f.effects).toHaveLength(1);
     expect(f.effects[0]?.idempotencyKey).toBe(
       toolEffectIdempotencyKey("run-replay-id", "remember", {
@@ -383,7 +426,7 @@ describe("mutating tool effect idempotency keys", () => {
         content: "durable fact",
       }),
     );
-    expect(f.results[1]).toEqual({ ok: true });
+    expect(f.results[1]).toEqual(expect.objectContaining({ ok: true }));
   });
 
   it("executes the same tool twice in one run when args differ but the provider id is reused", async () => {
@@ -403,10 +446,11 @@ describe("mutating tool effect idempotency keys", () => {
 
     await f.run();
 
-    expect(f.memoryCommit).toHaveBeenCalledTimes(2);
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(2);
     expect(f.effects).toHaveLength(2);
     expect(f.effects[0]?.idempotencyKey).not.toBe(f.effects[1]?.idempotencyKey);
-    expect(f.results).toEqual([{ ok: true }, { ok: true }]);
+    expect(f.results).toEqual([expect.objectContaining({ ok: true }), expect.objectContaining({ ok: true })]);
   });
 
   it("replays a legacy bare provider idempotency key for the same run and tool", async () => {
@@ -487,7 +531,10 @@ describe("mutating tool effect idempotency keys", () => {
 
     await f.run();
 
-    expect(f.memoryCommit).toHaveBeenCalledOnce();
+    // ME-01: the hidden legacy document write path is gone; the fact store
+    // records the memory exactly once.
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(1);
     expect(f.effects).toHaveLength(2);
     expect(f.effects[1]?.idempotencyKey).toBe(
       toolEffectIdempotencyKey("run-legacy-mismatch", "remember", {
@@ -495,7 +542,7 @@ describe("mutating tool effect idempotency keys", () => {
         content: "new fact",
       }),
     );
-    expect(f.results[0]).toEqual({ ok: true });
+    expect(f.results[0]).toEqual(expect.objectContaining({ ok: true }));
   });
 
   it("executes two identical-args mutating calls in one live run", async () => {
@@ -508,7 +555,8 @@ describe("mutating tool effect idempotency keys", () => {
 
     await f.run();
 
-    expect(f.memoryCommit).toHaveBeenCalledTimes(2);
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.factCreates).toBe(2);
     expect(f.effects).toHaveLength(2);
     expect(f.effects[0]?.idempotencyKey).toBe(
       toolEffectIdempotencyKey("run-live-repeat", "remember", args),
@@ -516,7 +564,7 @@ describe("mutating tool effect idempotency keys", () => {
     expect(f.effects[1]?.idempotencyKey).toBe(
       toolEffectIdempotencyKey("run-live-repeat", "remember", args, 1),
     );
-    expect(f.results).toEqual([{ ok: true }, { ok: true }]);
+    expect(f.results).toEqual([expect.objectContaining({ ok: true }), expect.objectContaining({ ok: true })]);
   });
 
   it("replays a legacy scoped key when restart assigns a new tool-call id", async () => {
