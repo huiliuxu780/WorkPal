@@ -18,3 +18,23 @@ test("agent avatar pose stays still when reduced motion is enabled", async ({ pa
 
   expect(second).toEqual(first);
 });
+
+test("compact work badge animates within the director while its SVG stays still", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/e2e/fixtures/avatar-motion.html?size=16");
+  const avatar = page.locator(".rakazo-agent-avatar");
+  await expect(avatar).toHaveAttribute("data-motion", "moving");
+  const body = avatar.locator('g[id="body"]');
+  const before = await body.getAttribute("transform");
+  await page.waitForTimeout(300);
+  expect(await body.getAttribute("transform")).toBe(before);
+  await expect(avatar.locator(".rakazo-agent-avatar-dot")).toHaveCSS(
+    "animation-name",
+    "wp-status-breathe",
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(avatar).toHaveAttribute("data-motion", "still");
+  await expect(avatar.locator(".rakazo-agent-avatar-dot")).toHaveCSS("animation-name", "none");
+});

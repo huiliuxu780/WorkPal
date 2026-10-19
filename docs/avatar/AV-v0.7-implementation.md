@@ -14,9 +14,9 @@ Status: implementation and local verification complete; not deployed. Supplied v
 ## Verification
 
 - Contracts/DB/adapters/API/Web/ui-web type checks passed; production Web build passed.
-- UI/avatar/parser/contracts targeted run: 8 files, 74 tests passed. Motion tests assert failed keyframes, lag, stopped final frame, static shadow absence and director allocation. Asset test compares all 255 source/runtime SVG bytes.
+- UI/avatar/parser/contracts plus shared token run: 9 files, 85 tests passed. Motion tests assert failed keyframes, lag, stopped final frame, static shadow absence and director allocation. Asset test compares all 255 source/runtime SVG bytes.
 - PostgreSQL: assignment + history/Undo + migration suites, 13 tests passed. First six colors distinct across Spaces including archived Bots; existing image preserved; color history/Undo exact. Full migration set applied to a fresh E2E DB. Populated pre-v0.7 columns reconstructed and migration applied twice; existing rows become ink and later pink survives replay.
-- Avatar E2E: 5 tests passed in one 41.8s run, covering Studio color persistence and cross-tab Undo, invalid upload/crop, Bot-requested avatar change, 18px group cluster, reduced motion. Disposable test DB only.
+- Initial Avatar E2E: 5 tests passed in one 41.8s run, covering Studio color persistence and cross-tab Undo, invalid upload/crop, Bot-requested avatar change, 18px group cluster, reduced motion. Disposable test DB only.
 - Frozen-frame review: [light matrix](./review/v0.7/matrix-light.png), [dark matrix](./review/v0.7/matrix-dark.png), [reference light](./review/v0.7/reference-light.png). Matrices cover 4 characters ×5 states ×64/24px at t=1500. Reproduce via `/e2e/fixtures/avatar-v07-matrix.html?t=1500` and `&dark=1`; compare the vendored source demo with the same query. Demo easing is illustrative; normative failure curves are sampled as specified.
 
 ## Limits and decisions
@@ -29,6 +29,8 @@ Status: implementation and local verification complete; not deployed. Supplied v
 ## Integration follow-up
 
 - CI's 651-path selector output exceeded Linux's per-environment-value limit, preventing the docs shell from starting. The full selection now travels as an Actions artifact; the aggregator receives only its bounded mode/selected/flags JSON. A 3000-long-path regression and artifact reader are tested (49 CI tests passed).
-- CI also exercised the old login-card persistence expectation. On unchanged `08e9d45`, the exact same test fails at line 92: UX-01 intentionally removes the settled receipt of a plain Run without a legal execution surface. The login fixture now publishes a real semantic Step via the production tool path; all existing credential, persistence and no-echo assertions remain, with an added legal-shell assertion. Product behavior is unchanged.
+- CI also exercised the old login-card persistence expectation. On unchanged `08e9d45`, the exact same test fails at line 92: UX-01 intentionally returns a settled plain Run receipt to its message bubble, outside the attention region. The plain login fixture stays unchanged. Its post-reload assertions now locate the one Saved, input-free receipt in the message bubble and require no attention region, matching UX-01; error/retry, required fields, single-card and every no-echo assertion remain. Product behavior is unchanged.
 - Repeated failed entry holds cross-eyes throughout the replay; first entry retains its surprise eyes. Compact 16/18px views keep their regular static pupils. Dark outline uses the specified 1.5px.
 - Additional local scope: all Web source tests plus API Bot-update/executor suites, 87 files / 756 tests passed before the final repeated-entry regression. Shared token-generation checks also passed. [Reference dark](./review/v0.7/reference-dark.png) accompanies the two matrix snapshots.
+
+Final local closure: six Avatar E2E plus login-card passed together (7/7, 41.3s). Compact working points and uploaded-avatar badges now allocate their breathing through the same page-wide three-slot director; their SVG/image stays still. The additional browser case verifies compact-body stability and reduced-motion stopping of the point.

@@ -9,7 +9,7 @@ test("saves a website login from a username and password card without echoing ei
   await completeOnboarding(page);
 
   const botId = activeBotId(page);
-  await page.getByPlaceholder(/Message/).fill("show a tracked login card");
+  await page.getByPlaceholder(/Message/).fill("show a login card");
   await page.keyboard.press("Enter");
 
   await expect
@@ -87,15 +87,15 @@ test("saves a website login from a username and password card without echoing ei
   expect(history).not.toContain(password);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
-  // UX-01 keeps settled receipts only on a legal execution surface. This
-  // login fixture publishes a real semantic Step; plain settled Runs have none.
-  await expect(page.getByTestId("execution-shell")).toBeVisible();
   const region = page.getByRole("region", { name: "需要你处理" });
-  const reloadedCard = region.getByTestId("secret-ask-card");
+  // UX-01 returns a settled plain Run's receipt to its message bubble.
+  // It remains Saved and input-free, outside the attention region.
+  await expect(region).toHaveCount(0);
+  const reloadedCard = page.getByTestId("secret-ask-card");
   await expect(reloadedCard).toBeVisible({ timeout: 15_000 });
   await expect(reloadedCard.getByText("Saved", { exact: true })).toBeVisible();
   await expect(reloadedCard.locator("input")).toHaveCount(0);
-  // Exactly one card in the transcript: the bubble renders no second AskCard.
+  // Exactly one settled receipt; the attention region renders no duplicate.
   await expect(page.getByTestId("secret-ask-card")).toHaveCount(1);
   await expect(page.getByText(username)).toHaveCount(0);
   await expect(page.getByText(password)).toHaveCount(0);

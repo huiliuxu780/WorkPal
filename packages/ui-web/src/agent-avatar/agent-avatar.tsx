@@ -2,6 +2,7 @@ import type { AvatarBodyColor, AvatarCharacter } from "@rakazo/contracts";
 import { createElement, memo, type ReactNode, useEffect, useId, useRef } from "react";
 import type { AvatarActivity } from "./activity-map.js";
 import { type AvatarTier, avatarAnchors, avatarAssets, type SvgNode } from "./assets.generated.js";
+import { useAvatarBadgeMotion } from "./badge-motion.js";
 import { avatarDirector } from "./director.js";
 import { createAvatarDomRenderer } from "./dom-motion.js";
 import { sample } from "./motion.js";
@@ -99,6 +100,7 @@ export const AgentAvatar = memo(function AgentAvatar({
   const label = `${name} · ${avatarStateNames[activity]}`;
   const root = useRef<HTMLSpanElement>(null);
   const instanceKey = useId();
+  useAvatarBadgeMotion(root, isCompact && activity === "working", botId, current);
   const priorProgressToken = useRef(progressToken);
   const priorActivity = useRef(activity);
   useEffect(() => {

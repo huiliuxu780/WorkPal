@@ -5,13 +5,14 @@ import {
   GROK_COLOR_LIST,
   resolvePersonaColorDef,
 } from "@rakazo/core";
-import { memo } from "react";
+import { memo, useRef } from "react";
 import {
   AgentAvatar,
   type AgentAvatarSize,
   AVATAR_POINT_SHAPES,
   avatarStateNames,
 } from "./agent-avatar/agent-avatar.js";
+import { useAvatarBadgeMotion } from "./agent-avatar/badge-motion.js";
 import { useAvatarCatalog } from "./agent-avatar/catalog.js";
 import { cn } from "./lib/utils.js";
 
@@ -60,11 +61,19 @@ export const BotAvatar = memo(function BotAvatar({
   const parsed = parseBotAvatar(color, identity);
   const botId = identity || "bot";
   const activity = catalog.state?.state ?? "idle";
+  const uploadRoot = useRef<HTMLSpanElement>(null);
+  useAvatarBadgeMotion(
+    uploadRoot,
+    catalog.bot?.avatarMode !== "character" && parsed.isImage && activity === "working",
+    botId,
+    catalog.current,
+  );
   const label = `${catalog.bot?.name ?? "Bot"} · ${avatarStateNames[activity]}`;
   if (catalog.bot?.avatarMode !== "character" && parsed.isImage && parsed.imageUrl) {
     const slot = displaySize(size);
     return (
       <span
+        ref={uploadRoot}
         className={cn(
           "rakazo-agent-avatar rakazo-upload-avatar shrink-0 rounded-full border border-border bg-secondary",
           className,
