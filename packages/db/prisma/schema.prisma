@@ -233,6 +233,11 @@ model Space {
   actionApprovalRules         ActionApprovalRule[]
   actionAutoReviewPreferences ActionAutoReviewPreference[]
   memoryConfig                SpaceMemoryConfig?
+  memoryFacts                 MemoryFact[]
+  memoryShards                MemoryShard[]
+  contextSummaries            ContextSummary[]
+  memoryModelUsages           MemoryModelUsage[]
+  memoryPolicy                SpaceMemoryPolicy?
   secrets                     Secret[]
   chatGroups                  ChatGroup[]
   botSecrets BotSecret[]
@@ -413,6 +418,7 @@ model Bot {
   scratchpadItems   ScratchpadItem[]
   taughtSkills      TaughtSkill[]
   memoryDocuments   MemoryDocument[]
+  memoryFacts       MemoryFact[]
   agentHome         AgentHome?
   browserProfile    BrowserProfile?
   artifacts         Artifact[]
@@ -528,6 +534,8 @@ model Thread {
   tasks                       Task[]
   runs                        Run[]
   routines                    Routine[]
+  compactionRevisions         ThreadCompactionRevision[]
+  extractionCursor            MemoryExtractionCursor?
 
   @@index([spaceId])
   @@map("threads")
@@ -1180,6 +1188,249 @@ model MemoryRevision {
 
   @@unique([documentId, revision])
   @@map("memory_revisions")
+}
+
+/// One independently revocable proposition or preference (ME-01). Dedupe for
+/// active and candidate rows lives in partial unique indexes in the SQL
+/// migration (Prisma cannot express `WHERE state = ...` uniques).
+model MemoryFact {
+  id                    String    @id @default(cuid())
+  spaceId               String
+  space                 Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  /// Personal facts belong to one user inside the Space; shared facts keep the original creator.
+  ownerUserId           String
+  botId                 String?
+  bot                   Bot?      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  /// bot | user | space. scopeKey is built only from backend-validated entity ids.
+  scopeKind             String
+  scopeKey              String
+  /// Server-computed identity of the proposition within its scope; not a plain body hash.
+  canonicalKey          String
+  /// explicit_preference | correction | workflow | stable_fact | legacy_document
+  kind                  String
+  /// Summarized wording; never a verbatim transcript of user messages.
+  text                  String
+  language              String?
+  /// Restricted structured literals (commands, paths, names). Injected as escaped data.
+  literalValues         Json?
+  /// user_direct | user_confirmed | model_candidate | legacy_import
+  origin                String
+  /// candidate | active | superseded | deleted | rejected
+  state                 String
+  revision              Int       @default(1)
+  supersedesFactId      String?
+  /// Set when this fact was promoted from another fact; keeps the source link.
+  promotionSourceFactId String?
+  /// Legacy MemoryDocument this fact was imported from (one-way, per-item confirmation).
+  sourceDocumentId      String?
+  learnedAt             DateTime  @default(now())
+  validFrom             DateTime?
+  expiresAt             DateTime?
+  lastConfirmedAt       DateTime?
+  createdBy             String
+  lastChangedBy         String
+  sourceRunId           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  revisions             MemoryFactRevision[]
+  evidence              MemoryEvidence[]
+
+  @@index([spaceId, scopeKind, scopeKey, state])
+  @@index([spaceId, scopeKind, scopeKey, canonicalKey])
+  @@index([spaceId, ownerUserId, state])
+  @@index([sourceDocumentId])
+  @@index([state, expiresAt])
+  @@map("memory_facts")
+}
+
+/// Per-revision audit. `text` is nullable so a user delete can purge bodies
+/// from every revision while keeping ids, actor, revision and action.
+model MemoryFactRevision {
+  id            String     @id @default(cuid())
+  factId        String
+  fact          MemoryFact @relation(fields: [factId], references: [id], onDelete: Cascade)
+  revision      Int
+  state         String
+  text          String?
+  kind          String
+  literalValues Json?
+  changedBy     String
+  reason        String?
+  createdAt     DateTime   @default(now())
+
+  @@unique([factId, revision])
+  @@map("memory_fact_revisions")
+}
+
+/// Trusted-source evidence for a fact. sourceDigest is a server-keyed HMAC,
+/// never a plain hash of guessable content. messageId has no FK: thread clear
+/// deletes messages and must explicitly invalidate evidence in the same
+/// transaction instead of relying on SET NULL.
+model MemoryEvidence {
+  id               String     @id @default(cuid())
+  factId           String
+  fact             MemoryFact @relation(fields: [factId], references: [id], onDelete: Cascade)
+  threadId         String
+  threadGeneration Int
+  messageId        String?
+  messageSeq       Int
+  authorUserId     String
+  /// human_web | human_messaging | user_edit | user_correction | legacy_document
+  originKind       String
+  /// user_message | user_edit | explicit_instruction | legacy_document
+  evidenceType     String
+  sourceDigest     String
+  accessible       Boolean    @default(true)
+  capturedAt       DateTime   @default(now())
+
+  @@index([factId])
+  @@index([threadId, threadGeneration])
+  @@map("memory_evidence")
+}
+
+/// One shard per (space, scope); version is monotonic and profileMarkdown is a
+/// rebuildable projection readable only when profileVersion == version.
+model MemoryShard {
+  id              String    @id @default(cuid())
+  spaceId         String
+  space           Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  scopeKind       String
+  scopeKey        String
+  version         Int       @default(0)
+  profileMarkdown String?
+  profileVersion  Int       @default(-1)
+  lastRebuiltAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([spaceId, scopeKind, scopeKey])
+  @@map("memory_shards")
+}
+
+/// Per-recipient projection of the visible shards. Readable only when every
+/// sourceVersions entry matches the current shard version.
+model ContextSummary {
+  id                  String   @id @default(cuid())
+  spaceId             String
+  space               Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  recipientUserId     String
+  recipientBotId      String
+  /// { shardId: version } covering every input shard.
+  sourceVersions      Json
+  sourceVersionDigest String
+  content             String
+  summaryModel        String
+  promptVersion       String
+  tokenEstimate       Int
+  /// ready | failed
+  status              String    @default("ready")
+  generatedAt         DateTime  @default(now())
+  createdAt           DateTime  @default(now())
+
+  @@unique([spaceId, recipientUserId, recipientBotId, sourceVersionDigest])
+  @@index([spaceId, recipientUserId, recipientBotId])
+  @@map("context_summaries")
+}
+
+/// Durable outbox for memory jobs (summary rebuild, index cleanup/projection).
+/// No FKs by design (ExecutionRevocation pattern); presence of a row means
+/// pending, success deletes it.
+model MemoryJobOutbox {
+  id                  String    @id @default(cuid())
+  /// summary_rebuild | index_projection | index_cleanup
+  kind                String
+  spaceId             String
+  targetId            String
+  payload             Json
+  sourceVersionDigest String    @default("")
+  attempts            Int       @default(0)
+  nextAttemptAt       DateTime  @default(now())
+  lastError           String?
+  claimedBy           String?
+  claimedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([kind, targetId, sourceVersionDigest])
+  @@index([nextAttemptAt])
+  @@map("memory_job_outbox")
+}
+
+/// Per-thread extraction high-watermark. generation guards against late jobs
+/// writing back after a thread clear.
+model MemoryExtractionCursor {
+  id               String    @id @default(cuid())
+  spaceId          String
+  userId           String
+  botId            String?
+  threadId         String    @unique
+  thread           Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadGeneration Int       @default(0)
+  highWatermarkSeq Int       @default(-1)
+  lastRunAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([spaceId, userId])
+  @@map("memory_extraction_cursors")
+}
+
+/// Daily auxiliary model usage per user and purpose, for quota enforcement and
+/// honest cost accounting (tokens and calls; no billing data exists).
+model MemoryModelUsage {
+  id               String   @id @default(cuid())
+  spaceId          String
+  space            Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId           String
+  /// UTC day, time-truncated.
+  day              DateTime
+  /// extraction | summary | compaction
+  purpose          String
+  calls            Int      @default(0)
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([spaceId, userId, day, purpose])
+  @@map("memory_model_usage")
+}
+
+/// Per-space automatic inference policy: off (default) | on | paused.
+model SpaceMemoryPolicy {
+  spaceId        String   @id
+  space          Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  autoExtraction String   @default("off")
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("space_memory_policies")
+}
+
+/// Auditable application-layer compaction revisions (ME-02 M4). Thread keeps
+/// the current pointer for compatibility; this chain records coverage and the
+/// pinned model identity per revision.
+model ThreadCompactionRevision {
+  id                  String   @id @default(cuid())
+  threadId            String
+  thread              Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  generation          Int
+  fromSeqExclusive    Int
+  toSeqInclusive      Int
+  previousRevisionId  String?
+  summary             String
+  inputDigest         String
+  sourceRunId         String?
+  modelProvider       String
+  modelId             String
+  promptVersion       String
+  includesToolResults Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  @@unique([threadId, generation, toSeqInclusive])
+  @@index([threadId])
+  @@map("thread_compaction_revisions")
 }
 
 model AgentHome {
