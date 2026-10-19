@@ -801,6 +801,122 @@ describe("AgentScopeAgentRuntime", () => {
     );
   });
 
+  it("does not execute an unauthorized missing tool on a background credential", async () => {
+    let registration:
+      | Promise<{ bridge: { url: string; taskEventUrl: string; token: string }; taskToken: string }>
+      | undefined;
+    const fixture = await listen((_request, response) => {
+      registration = (async () => {
+        const outbound = fixture.requests[0] as {
+          runId: string;
+          toolBridge: {
+            url: string;
+            taskUrl: string;
+            taskEventUrl: string;
+            token: string;
+          };
+        };
+        const started = await fetch(outbound.toolBridge.taskUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            taskId: "task_12345678",
+            agentId: "helper",
+            sessionId: "sub-1",
+          }),
+        });
+        expect(started.status).toBe(200);
+        const { token } = (await started.json()) as { token: string };
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({ type: "done", text: "parent finished" })}\n`);
+        return { bridge: outbound.toolBridge, taskToken: token };
+      })();
+    });
+    const executeTool = vi.fn(async () => ({ value: "read result" }));
+    const registerBackgroundTask = vi.fn(async () => {});
+    const authorizeBackgroundTool = vi.fn(async () => true);
+    const onBackgroundTaskEvent = vi.fn(async () => {});
+    const request = runRequest("run-background");
+    request.tools = [
+      {
+        name: "read_clock",
+        description: "Read clock",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: true,
+      },
+      {
+        name: "write_data",
+        description: "Write",
+        inputSchema: { type: "object", properties: {} },
+        readOnly: false,
+      },
+    ];
+    request.executeTool = executeTool;
+    request.registerBackgroundTask = registerBackgroundTask;
+    request.authorizeBackgroundTool = authorizeBackgroundTool;
+    request.onBackgroundTaskEvent = onBackgroundTaskEvent;
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const events: AgentRuntimeEvent[] = [];
+    for await (const event of runtime.run(request, runContext("run-background"))) {
+      events.push(event);
+    }
+    expect(events.at(-1)).toEqual({ type: "done", text: "parent finished" });
+    const { bridge, taskToken } = await registration!;
+    expect(registerBackgroundTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task_12345678",
+        toolNames: ["read_clock"],
+        parentRunId: "run-background",
+      }),
+    );
+    const call = (name: string, token: string) =>
+      fetch(bridge.url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          runId: "run-background",
+          taskId: "task_12345678",
+          agentId: "helper",
+          sessionId: "sub-1",
+          name,
+          executionId: "subagent:sub-1:call-1",
+          args: {},
+        }),
+      });
+    expect((await call("read_clock", bridge.token)).status).toBe(401);
+    expect((await call("write_data", taskToken)).status).toBe(403);
+    const beforeMissing = executeTool.mock.calls.length;
+    const missing = await call("absent_write_tool", taskToken);
+    expect(missing.status).toBe(403);
+    expect(executeTool.mock.calls.length).toBe(beforeMissing);
+    expect((await call("read_clock", taskToken)).status).toBe(200);
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    authorizeBackgroundTool.mockResolvedValue(false);
+    expect((await call("read_clock", taskToken)).status).toBe(403);
+    const completed = await fetch(bridge.taskEventUrl, {
+      method: "POST",
+      headers: { authorization: `Bearer ${taskToken}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        runId: "run-background",
+        taskId: "task_12345678",
+        status: "completed",
+        result: "done",
+      }),
+    });
+    expect(completed.status).toBe(200);
+    expect(onBackgroundTaskEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "completed",
+        result: "done",
+      }),
+    );
+    expect((await call("read_clock", taskToken)).status).toBe(401);
+  });
+
   it("encodes image bytes instead of leaking Uint8Array object keys onto the wire", async () => {
     const fixture = await listen((_request, response) => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });

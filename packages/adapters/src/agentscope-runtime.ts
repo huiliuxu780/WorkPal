@@ -517,12 +517,27 @@ class AgentScopeToolBridge {
       // Foreground executions re-read live permissions so a revoke between
       // /v1/tool-surface and this POST cannot run against a stale snapshot.
       // Background tasks keep the registration-time read-only set; authorizeBackgroundTool
-      // is their execution check.
+      // is their execution check and must run before any executeTool call.
       if (!background) {
         await refreshLiveTools(run);
       }
       const tool = run.tools.get(call.name);
-      if (!tool) {
+      if (background) {
+        if (
+          !tool ||
+          call.agentId !== background.task.agentId ||
+          call.sessionId !== background.task.sessionId ||
+          !background.task.toolNames.includes(call.name) ||
+          !call.executionId.startsWith(`subagent:${call.sessionId}:`) ||
+          !run.request.authorizeBackgroundTool ||
+          !(await run.request.authorizeBackgroundTool(background.task, call.name))
+        ) {
+          writeJson(response, 403, { error: "background task or tool is no longer authorized" });
+          return;
+        }
+      } else if (!tool) {
+        // Settle revoked pending effects without treating this as a live execute.
+        // executeTool here only denies approved/intended rows and returns executed:false.
         const startedAt = Date.now();
         let settled: unknown;
         let failure: unknown;
@@ -556,19 +571,6 @@ class AgentScopeToolBridge {
           // Audit callbacks are best effort and must not alter tool behavior.
         }
         return;
-      }
-      if (background) {
-        if (
-          call.agentId !== background.task.agentId ||
-          call.sessionId !== background.task.sessionId ||
-          !background.task.toolNames.includes(call.name) ||
-          !call.executionId.startsWith(`subagent:${call.sessionId}:`) ||
-          !run.request.authorizeBackgroundTool ||
-          !(await run.request.authorizeBackgroundTool(background.task, call.name))
-        ) {
-          writeJson(response, 403, { error: "background task or tool is no longer authorized" });
-          return;
-        }
       }
       const startedAt = Date.now();
       let result: unknown;
