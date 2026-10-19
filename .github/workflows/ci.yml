@@ -1,31 +1,133 @@
+# Selective CI. Path → job mapping lives in scripts/ci/select-checks.mjs.
+# How to read results / add paths: docs/ci01-selective-checks.md
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: full runs every current CI check; selective uses this commit's diff against main
+        type: choice
+        options: [full, selective]
+        default: full
+  schedule:
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
-  web-and-backend:
+  select-checks:
+    name: select-checks
     runs-on: ubuntu-latest
+    outputs:
+      docs: ${{ steps.select.outputs.docs }}
+      web: ${{ steps.select.outputs.web }}
+      backend: ${{ steps.select.outputs.backend }}
+      runtime_jar: ${{ steps.select.outputs.runtime_jar }}
+      agentscope: ${{ steps.select.outputs.agentscope }}
+      worker_chain: ${{ steps.select.outputs.worker_chain }}
+      agent_runtime_image: ${{ steps.select.outputs.agent_runtime_image }}
+      result: ${{ steps.select.outputs.result }}
+      web_e2e_spec: ${{ steps.select.outputs.web_e2e_spec }}
+      mode: ${{ steps.select.outputs.mode }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Classifier unit tests
+        run: node --test scripts/ci/select-checks.test.mjs scripts/ci/verify-result.test.mjs scripts/ci/check-docs.test.mjs
+      - name: Resolve origin/main
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git fetch --no-tags origin main --depth=1
+          echo "MAIN_SHA=$(git rev-parse origin/main)" >> "$GITHUB_ENV"
+      - name: Select checks
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_AFTER: ${{ github.event.after || github.sha }}
+          GITHUB_SHA: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          MODE_INPUT: ${{ github.event.inputs.mode }}
+        run: node scripts/ci/select-checks.mjs --github --format summary
+
+  docs:
+    name: docs
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.docs == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check markdown relative links
+        env:
+          SELECT_RESULT: ${{ needs.select-checks.outputs.result }}
+        run: node scripts/ci/check-docs.mjs --from-select
+
+  web:
+    name: web
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/ui-tokens check
+      - run: pnpm --filter @rakazo/ui-web check
+      - run: pnpm --filter @rakazo/chat-ui check
+      - run: pnpm --filter @rakazo/web check
+      - run: pnpm --filter @rakazo/ui-web test
+      - run: pnpm --filter @rakazo/chat-ui test
+      - run: pnpm --filter @rakazo/web test
+      - run: pnpm --filter @rakazo/web build
+      - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
       - run: pnpm --filter @rakazo/db generate
+      - name: Focused web E2E (scripted runtime, no Worker process)
+        run: pnpm test:e2e --runtime=scripted --spec="${{ needs.select-checks.outputs.web_e2e_spec }}"
+
+  backend:
+    name: backend
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm --filter @rakazo/adapter-kit check
       - run: pnpm --filter @rakazo/adapters check
       - run: pnpm --filter @rakazo/api check
       - run: pnpm --filter @rakazo/worker check
-      - run: pnpm --filter @rakazo/web check
-      - run: pnpm --filter @rakazo/web build
+      - run: pnpm --filter @rakazo/auth check
+      - run: pnpm --filter @rakazo/logging check
+      - run: pnpm --filter @rakazo/memory check
+      - run: pnpm --filter @rakazo/core check
+      - run: pnpm --filter @rakazo/db check
+      - run: pnpm --filter @rakazo/testkit check
+      - run: pnpm --filter @rakazo/worker test
       - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
 
-  agentscope:
+  runtime-jar:
+    name: runtime-jar
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.runtime_jar == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,27 +138,70 @@ jobs:
           cache: maven
           cache-dependency-path: services/agent-runtime/pom.xml
       - run: mvn -B -f services/agent-runtime/pom.xml package
-      - uses: pnpm/action-setup@v4
+      - uses: actions/upload-artifact@v4
         with:
-          version: 9.15.0
-      - uses: actions/setup-node@v4
+          name: agent-runtime-jar-${{ github.sha }}
+          path: services/agent-runtime/target/agent-runtime-0.1.0.jar
+          if-no-files-found: error
+          retention-days: 1
+
+  agentscope:
+    name: agentscope
+    needs: [select-checks, runtime-jar]
+    if: ${{ needs.select-checks.outputs.agentscope == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/download-artifact@v4
+        with:
+          name: agent-runtime-jar-${{ github.sha }}
+          path: services/agent-runtime/target
+      - run: test -f services/agent-runtime/target/agent-runtime-0.1.0.jar
+      - uses: ./.github/actions/setup-pnpm
       - run: pnpm --filter @rakazo/db generate
       - run: pnpm --filter @rakazo/testkit check
       - run: pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts packages/adapters/src/turnpolicy-v2-agentscope.integration.test.ts packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts packages/adapters/src/agentscope-untrusted-content.integration.test.ts packages/adapters/src/agentscope-provenance.integration.test.ts apps/api/src/team-chat-judge.integration.test.ts
+        env:
+          AGENT_RUNTIME_SKIP_BUILD: "1"
       - run: pnpm test:integration --spec=agentscope-offline.postgres.test.ts
+        env:
+          AGENT_RUNTIME_SKIP_BUILD: "1"
       - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e --runtime=agentscope --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts|capability-rules.spec.ts"
-      # Standalone-Worker production chain: real apps/worker process, Graphile
-      # handoff, outbox delivery and crash recovery. Reuses the jar built above.
+        env:
+          AGENT_RUNTIME_SKIP_BUILD: "1"
+
+  worker-chain:
+    name: worker-chain
+    needs: [select-checks, runtime-jar]
+    if: ${{ needs.select-checks.outputs.worker_chain == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/download-artifact@v4
+        with:
+          name: agent-runtime-jar-${{ github.sha }}
+          path: services/agent-runtime/target
+      - run: test -f services/agent-runtime/target/agent-runtime-0.1.0.jar
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
       - run: pnpm test:worker-chain
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
 
   agent-runtime-image:
+    name: agent-runtime-image
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.agent_runtime_image == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -78,3 +223,34 @@ jobs:
           file: services/agent-runtime/Dockerfile
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ghcr.io/${{ github.repository_owner }}/workpal-agent-runtime:edge
+
+  ci-result:
+    name: CI result
+    if: ${{ always() }}
+    needs:
+      - select-checks
+      - docs
+      - web
+      - backend
+      - runtime-jar
+      - agentscope
+      - worker-chain
+      - agent-runtime-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify selected jobs
+        env:
+          SELECT_RESULT: ${{ needs.select-checks.outputs.result }}
+          RESULT_SELECT_CHECKS: ${{ needs.select-checks.result }}
+          RESULT_DOCS: ${{ needs.docs.result }}
+          RESULT_WEB: ${{ needs.web.result }}
+          RESULT_BACKEND: ${{ needs.backend.result }}
+          RESULT_RUNTIME_JAR: ${{ needs.runtime-jar.result }}
+          RESULT_AGENTSCOPE: ${{ needs.agentscope.result }}
+          RESULT_WORKER_CHAIN: ${{ needs.worker-chain.result }}
+          RESULT_AGENT_RUNTIME_IMAGE: ${{ needs.agent-runtime-image.result }}
+        run: node scripts/ci/verify-result.mjs
