@@ -1,6 +1,6 @@
 # Avatar v0.7 FINAL integration
 
-Status: implementation and local verification complete; not deployed. Supplied v0.7 FINAL specs and assets supersede the old monochrome visual inputs. The historical compact hook set is retained under `compact-16px-hook/`.
+Status: `done`, merged through PR [#76](https://github.com/huiliuxu780/WorkPal/pull/76) as `627cc9e` on 2026-10-19. Exact head `968181d` passed nine CI checks ([run](https://github.com/huiliuxu780/WorkPal/actions/runs/39230100711)); not deployed. Supplied v0.7 FINAL specs and assets supersede the old monochrome visual inputs. The historical compact hook set is retained under `compact-16px-hook/`.
 
 ## Delivered behavior
 
@@ -14,7 +14,7 @@ Status: implementation and local verification complete; not deployed. Supplied v
 ## Verification
 
 - Contracts/DB/adapters/API/Web/ui-web type checks passed; production Web build passed.
-- UI/avatar/parser/contracts plus shared token run: 9 files, 85 tests passed. Motion tests assert failed keyframes, lag, stopped final frame, static shadow absence and director allocation. Asset test compares all 255 source/runtime SVG bytes.
+- UI/avatar/parser/contracts plus shared token final run: 9 files, 88 tests passed. Motion tests assert failed keyframes, lag, stopped final frame, static shadow absence and director allocation. Asset test compares all 255 source/runtime SVG bytes.
 - PostgreSQL: assignment + history/Undo + migration suites, 13 tests passed. First six colors distinct across Spaces including archived Bots; existing image preserved; color history/Undo exact. Full migration set applied to a fresh E2E DB. Populated pre-v0.7 columns reconstructed and migration applied twice; existing rows become ink and later pink survives replay.
 - Initial Avatar E2E: 5 tests passed in one 41.8s run, covering Studio color persistence and cross-tab Undo, invalid upload/crop, Bot-requested avatar change, 18px group cluster, reduced motion. Disposable test DB only.
 - Frozen-frame review: [light matrix](./review/v0.7/matrix-light.png), [dark matrix](./review/v0.7/matrix-dark.png), [reference light](./review/v0.7/reference-light.png). Matrices cover 4 characters ×5 states ×64/24px at t=1500. Reproduce via `/e2e/fixtures/avatar-v07-matrix.html?t=1500` and `&dark=1`; compare the vendored source demo with the same query. Demo easing is illustrative; normative failure curves are sampled as specified.
@@ -30,9 +30,11 @@ Status: implementation and local verification complete; not deployed. Supplied v
 
 - CI's 651-path selector output exceeded Linux's per-environment-value limit, preventing the docs shell from starting. The full selection now travels as an Actions artifact; the aggregator receives only its bounded mode/selected/flags JSON. A 3000-long-path regression and artifact reader are tested (49 CI tests passed).
 - CI also exercised the old login-card persistence expectation. On unchanged `08e9d45`, the exact same test fails at line 92: UX-01 intentionally returns a settled plain Run receipt to its message bubble, outside the attention region. The plain login fixture stays unchanged. Its post-reload assertions now locate the one Saved, input-free receipt in the message bubble and require no attention region, matching UX-01; error/retry, required fields, single-card and every no-echo assertion remain. Product behavior is unchanged.
-- Repeated failed entry holds cross-eyes throughout the replay; first entry retains its surprise eyes. Compact 16/18px views keep their regular static pupils. Dark outline uses the specified 1.5px.
+- Repeated failed entry holds cross-eyes throughout the replay; first entry retains its surprise eyes. Compact 16px views keep their regular pupils; 18px static views refresh the state expression, including failed cross-eyes. Dark outline uses the specified 1.5px.
 - Additional local scope: all Web source tests plus API Bot-update/executor suites, 87 files / 756 tests passed before the final repeated-entry regression. Shared token-generation checks also passed. [Reference dark](./review/v0.7/reference-dark.png) accompanies the two matrix snapshots.
 
 Final local closure: six Avatar E2E plus login-card passed together (7/7, 41.3s). Compact working points and uploaded-avatar badges now allocate their breathing through the same page-wide three-slot director; their SVG/image stays still. The additional browser case verifies compact-body stability and reduced-motion stopping of the point.
 
 Review closure: 18px avatars resample their static state on activity changes and retain the failed X expression. The XS overlay reuses the frozen S X paths with the supplied XS fit and dark palette; no path is redrawn and the 255 copied SVG bytes remain unchanged. A mounted failed→working regression verifies pupils/overlay and XS blue. Standalone body-color patches are explicitly rejected by the input contract; Studio sends a complete character/color choice. Settings history and Bot change cards display both before/after colors; the Studio browser test verifies that visible record and Undo.
+
+Final closure: all Web source tests passed (85 files / 666 tests); the final Studio history browser run passed 2/2 after the combined Avatar/login 7/7 run. Source-manifest verification covered 303 files. The final badge cascade correction was checked in Chromium: both native and uploaded failed badges show a white exclamation mark. Public review threads were left unresolved; the reported code findings are covered by the regressions above. No deployment was performed.
