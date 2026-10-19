@@ -73,18 +73,24 @@
 ## 4. 测试命令与结果（最终收口）
 
 ```
-# 类型检查（全部 0 错误）
-pnpm exec tsc --noEmit -p packages/{contracts,db,memory,adapters,testkit} && (cd apps/api && pnpm exec tsc --noEmit) && (cd apps/worker && pnpm exec tsc --noEmit) && (cd apps/web && pnpm exec tsc --noEmit)
+# 类型检查：全工作区
+pnpm check        # turbo check 18 tasks 全绿
+node scripts/generate-prompt-texts.mjs && git diff --exit-code packages/core/src/prompt-texts.generated.ts   # 再生成 no-op（CI 门槛）
 
 # 单元（vitest，仓库根）
-pnpm exec vitest run packages/adapters/src/{memory-injection,memory-extraction,memory-summary,history-compaction,scenario-contract,executor,background-job-handlers,memory-context,memory-tools,wakeup,wakeup-graphile-host}.test.ts packages/adapter-kit/src/background-jobs.test.ts apps/api/src/router.test.ts apps/web/src/pages/{KnowledgeSection,memory-facts}.test.tsx
-# → 322+ passed（含新 30 项记忆单测）
+pnpm exec vitest run packages/adapters/src --exclude "**/*.integration.test.ts" --exclude "**/*.postgres.test.ts"
+# → 158 files / 2447 passed | 1 skipped（含新 memory-injection 12、memory-extraction 10、
+#   memory-summary 8、memory-outbox 6、memory-recall 4、compaction-mode 17）
+pnpm exec vitest run packages/db/src packages/core/src packages/memory/src packages/contracts/src apps/api/src --exclude "**/*.postgres.test.ts"
+# → 1587 passed | 14 skipped（execution-rpc 1 项为基线既有失败，见 §5）
+pnpm exec vitest run apps/web/src    # → 87 files / 677 passed
 
 # PostgreSQL 集成（VERIFY_DATABASE=1 DATABASE_URL=…）
-pnpm exec vitest run packages/db/src/memory-facts.postgres.test.ts   # 15/15
-pnpm exec vitest run packages/testkit/src/authorization.test.ts      # 17/17（含新 RPC 穷举）
-pnpm exec vitest run packages/testkit/src/journeys.test.ts           # 40/41（#54 group-chats 为基线既有失败，见 §5）
-pnpm exec vitest run packages/adapters/src/execution-contract.postgres.test.ts packages/db/src/run-plans.postgres.test.ts  # 全绿
+packages/db/src/memory-facts.postgres.test.ts          # 15/15
+packages/testkit/src/authorization.test.ts             # 17/17（含新 RPC 穷举）
+packages/testkit/src/journeys.test.ts                  # 40/41（#54 group-chats 为基线既有失败，见 §5）
+packages/testkit/src/scenario-contract.postgres.test.ts（AGENTSCOPE_URL 指向已启动 jar）  # 10/10
+packages/adapters/src/execution-contract.postgres.test.ts、packages/db/src/run-plans.postgres.test.ts 等  # 全绿
 
 # Java（JDK 21）
 mvn -B -f services/agent-runtime/pom.xml test    # 92/92（88 既有 + 4 新 CompactionTokenBudgetTest）
@@ -92,18 +98,27 @@ mvn -B -f services/agent-runtime/pom.xml test    # 92/92（88 既有 + 4 新 Com
 # jar 集成（AGENT_RUNTIME_SKIP_BUILD=1）
 pnpm exec vitest run packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts packages/adapters/src/agentscope-untrusted-content.integration.test.ts packages/testkit/src/prompt-files-baseline.integration.test.ts packages/adapters/src/scenario-contract.integration.test.ts
 # → 46/46；黄金样本零漂移（未重新生成任何 fixture）
+packages/testkit/src/history-compaction-agentscope.test.ts   # 1/1（真实链空摘要契约，见该文件注释：
+# AgentScope 2.0.3 对纯空白响应会再推理一轮，空白场景由 61 项受控单测钉住）
+
+# Worker 链（真实 worker 进程 + graphile + Java runtime + 模型 emulator）
+WORKPAL_E2E_DATABASE_URL=postgres://…:5433/workpal_e2e_worker_chain pnpm test:worker-chain
+# → 4/4 通过（queued-claim、cancel-retry、Routine over-budget outbox、crash-recovery exactly-once；
+#   本地 teardown 阶段进程组收到 SIGTERM 使 pnpm 退出码为 143，四个用例结果均为 ✓）
 
 # E2E
 WORKPAL_E2E_DATABASE_URL=postgres://…:5433/workpal_e2e_memory pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=memory-facts.spec.ts   # 1/1 (6.9s)
-pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=knowledge-panel.spec.ts   # legacy 面板回归
+pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=knowledge-panel.spec.ts   # 1/1 (8.1s) legacy 面板回归
 ```
+
+**顺手修复的上游测试缺口**：`packages/db/src/repos.test.ts` 的紧凑侧栏字段期望缺少 `avatarBodyColor`（main 上 b5bb870 更新映射时漏改测试，CI 的定向单测清单不跑该文件故一直潜伏）；本批补齐期望并注明原因。
 
 **真实请求与 provider 次数**：本地全部验证使用 scripted runtime、loopback HTTP fixture 模型（Java 集成/E2E）与 PG 事务断言——**零付费真实模型调用**。fixture 模型的请求次数被测试逐一计数（如两次压缩 = 2 次 SUMMARY + N 次 NORMAL，flush 计数恒 0）。线上真实模型下的提取/汇总质量未测（见 §5）。
 
 ## 5. 已知限制（如实注明）
 
 1. **真实模型质量未评估**：候选提取与汇总的线上真实质量（误记/漏记/重复/召回相关性）未测；本批全部“模型输出”证据来自固定 fixture，只证明协议、校验与状态机，不代表记忆质量。扩大自动推断范围前需按任务书先测质量。
-2. **journeys #54（group-chats）为基线既有失败**：在基线 commit `626142c`（不含本批任何改动）+ 全新数据库上同样失败，属本地环境既有问题，与本批无关；其余 40 项 journeys 全绿。
+2. **本地环境的基线既有失败（均已在基线代码上复现，与本批无关）**：journeys #54 group-chats（基线 commit `626142c` + 全新数据库复现；其余 40 项 journeys 全绿）；`apps/api/src/execution-rpc.test.ts` 1 项（基线复现，与既往记录一致）；`packages/testkit/src/executor-lifecycle.test.ts` 4 项（lease 回收/uncertain effect/approval pause/group member，基线同一组复现）；`packages/testkit/src/bot-secrets.test.ts`（基线复现，run 停留 running 超时）。CI 的定向清单不覆盖这些文件，属上游潜伏问题；本批未掩盖也未修复它们（repos.test.ts 的一行期望缺失除外，见 §4）。
 3. **外部索引清理的 provider 差异**：Serenity 支持按 id forget（投影时以 `[wp-fact:<id>]` 标记关联）；Supermemory 无 forget → 清理行 parked（attempts/lastError 可见、24h 重试），召回 tombstone 过滤保证已删事实不回流模型。外部索引始终是可重建投影，非唯一副本。
 4. **语义冲突的非哈希边界**：canonicalKey 只解决“同一命题”的精确去重；不同措辞的矛盾命题（不同 canonicalKey）不会自动互相取代——由用户纠正/删除、提取候选的冲突呈现与注入端确定性排序（bot>space>user、最近确认优先）兜底。模型推断永远不能覆盖用户确认。
 5. **ME-00 指纹一次性重建**：durable_memory 装配格式变化 → 部署后每个既有 session 首次运行时发生一次保守重建（预期内、幂等、无数据丢失）。
