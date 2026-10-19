@@ -842,12 +842,23 @@ export async function listAuthorizedFacts(
 
 export async function getFactForActor(
   prisma: PrismaClient,
-  query: { spaceId: string; userId: string; botId?: string | null; factId: string },
+  query: {
+    spaceId: string;
+    userId: string;
+    botId?: string | null;
+    factId: string;
+    /**
+     * Deleted facts are excluded from every read surface by default; only the
+     * delete/forget paths may see the tombstone so repeats stay idempotent.
+     */
+    includeDeleted?: boolean;
+  },
 ): Promise<MemoryFact | null> {
   const fact = await prisma.memoryFact.findFirst({
     where: { id: query.factId, spaceId: query.spaceId },
   });
   if (!fact) return null;
+  if (fact.state === "deleted" && !query.includeDeleted) return null;
   // Space-scope facts are shared with every member (they only exist through
   // per-item promotion); user and bot scopes stay private to their owner.
   if (fact.scopeKind !== "space" && fact.ownerUserId !== query.userId) return null;

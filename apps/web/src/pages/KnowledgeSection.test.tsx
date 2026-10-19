@@ -7,7 +7,14 @@ import { expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), get: vi.fn() }));
 vi.mock("../lib/rpc", () => ({
-  rpc: { agentSkills: api, memory: { list: async () => [] } },
+  rpc: {
+    agentSkills: api,
+    memory: {
+      list: async () => [],
+      facts: { list: async () => ({ facts: [] }) },
+      factEvidence: { list: async () => [] },
+    },
+  },
 }));
 vi.mock("../lib/artifact-open", () => ({ downloadArtifactBytes: vi.fn() }));
 vi.mock("@lingui/react/macro", () => {
@@ -70,7 +77,10 @@ it("disables skill rows while a completed save is refreshing the catalog", async
     await act(async () => finishRefresh([skill]));
     expect(button("greeting").disabled).toBe(false);
     await act(async () => button("greeting").click());
-    expect(container.querySelector("textarea")?.value).toBe("Hello");
+    expect(
+      container.querySelector<HTMLTextAreaElement>('[data-testid="bot-knowledge-skills"] textarea')
+        ?.value,
+    ).toBe("Hello");
   } finally {
     await act(async () => {
       finishRefresh([skill]);

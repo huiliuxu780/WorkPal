@@ -9,9 +9,10 @@ import {
   TabsTrigger,
   Textarea,
 } from "@rakazo/ui-web";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { downloadArtifactBytes } from "../lib/artifact-open";
 import { rpc } from "../lib/rpc";
+import { MemoryFactList } from "./memory-facts";
 
 const fieldClass = "mt-2 w-full font-mono text-[13px] leading-relaxed";
 
@@ -31,6 +32,9 @@ export function KnowledgeSection({
   onSkillsChange: (skills: AgentSkillCatalogEntry[]) => void;
 }) {
   const { t } = useLingui();
+  // Remounts the fact list after a legacy import so the migrated item shows up.
+  const [factsKey, setFactsKey] = useState(0);
+  const bumpFacts = useCallback(() => setFactsKey((key) => key + 1), []);
   return (
     <section className="mt-6" data-testid="bot-knowledge">
       <Tabs defaultValue="memory">
@@ -43,11 +47,17 @@ export function KnowledgeSection({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="memory">
+          <MemoryFactList key={`${botId}:${factsKey}`} botId={botId} testId="bot-knowledge-facts" />
+          <div className="mb-1 mt-4 px-2.5 text-[12.5px] uppercase tracking-[0.08em] text-muted-foreground">
+            <Trans>Legacy documents</Trans>
+          </div>
           <MemoryDocumentList
             key={botId}
             load={() => rpc.memory.list({ botId, scope: "bot" })}
             exportFilename="memory.md"
             testId="bot-knowledge-memory"
+            enableLegacyImport
+            onImported={bumpFacts}
           />
         </TabsContent>
         <TabsContent value="skills">
@@ -60,15 +70,20 @@ export function KnowledgeSection({
 
 /** The space's shared memory documents, mounted in the Memory settings overlay. */
 export function SpaceMemorySection() {
+  const [factsKey, setFactsKey] = useState(0);
+  const bumpFacts = useCallback(() => setFactsKey((key) => key + 1), []);
   return (
     <div className="mt-6" data-testid="space-memory-documents">
-      <div className="mb-2 text-[12.5px] uppercase tracking-[0.08em] text-muted-foreground">
+      <MemoryFactList key={factsKey} testId="space-memory-facts" />
+      <div className="mb-2 mt-4 text-[12.5px] uppercase tracking-[0.08em] text-muted-foreground">
         <Trans>Shared documents</Trans>
       </div>
       <MemoryDocumentList
         load={() => rpc.memory.list({ scope: "user" })}
         exportFilename="space-memory.md"
         testId="space-memory-list"
+        enableLegacyImport
+        onImported={bumpFacts}
       />
     </div>
   );
@@ -78,10 +93,15 @@ function MemoryDocumentList({
   load,
   exportFilename,
   testId,
+  enableLegacyImport,
+  onImported,
 }: {
   load: () => Promise<MemoryDocument[]>;
   exportFilename: string;
   testId: string;
+  /** ME-01: per-item confirmation migrates a legacy document to a fact. */
+  enableLegacyImport?: boolean;
+  onImported?: () => void;
 }) {
   const { t } = useLingui();
   const [loading, setLoading] = useState(true);
@@ -90,6 +110,7 @@ function MemoryDocumentList({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [migratedIds, setMigratedIds] = useState<Set<string>>(new Set());
   const generation = useRef(0);
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -113,6 +134,53 @@ function MemoryDocumentList({
       generation.current += 1;
     };
   }, [t]);
+
+  useEffect(() => {
+    if (!enableLegacyImport) return;
+    let cancelled = false;
+    void rpc.memory.facts
+      .list({ states: ["active", "candidate", "superseded"], includeExpired: true })
+      .then((result) => {
+        if (cancelled) return;
+        setMigratedIds(
+          new Set(
+            result.facts
+              .map((fact) => fact.sourceDocumentId)
+              .filter((id): id is string => typeof id === "string"),
+          ),
+        );
+      })
+      .catch(() => {
+        // Import controls stay hidden on failure; documents remain usable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enableLegacyImport]);
+
+  async function importDocument(doc: MemoryDocument) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await rpc.memory.facts.importLegacy({ documentId: doc.id });
+      if (result.status === "updated" || result.status === "replayed") {
+        const fact = result.fact;
+        if (fact.sourceDocumentId) {
+          setMigratedIds((current) => new Set([...current, fact.sourceDocumentId!]));
+        }
+        onImported?.();
+      } else if (result.status === "conflict") {
+        setError(t`This memory changed elsewhere; showing the latest version.`);
+      } else {
+        setError(t`Could not save`);
+      }
+    } catch {
+      setError(t`Could not save`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function openDoc(doc: MemoryDocument) {
     setOpenId(doc.id);
@@ -211,6 +279,27 @@ function MemoryDocumentList({
                 >
                   <Trans>Cancel</Trans>
                 </Button>
+                {enableLegacyImport ? (
+                  migratedIds.has(doc.id) ? (
+                    <span
+                      className="ms-auto self-center text-[12px] text-muted-foreground"
+                      data-testid={`${testId}-imported`}
+                    >
+                      <Trans>Imported</Trans>
+                    </span>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void importDocument(doc)}
+                      className="ms-auto rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground"
+                      data-testid={`${testId}-import`}
+                    >
+                      <Trans>Import as memory</Trans>
+                    </Button>
+                  )
+                ) : null}
               </div>
             </div>
           ) : null}

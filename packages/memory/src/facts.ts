@@ -542,12 +542,14 @@ async function requireVisibleFact(
   actor: FactActor,
   factId: string,
   botId?: string | null,
+  includeDeleted?: boolean,
 ): Promise<MemoryFact | null> {
   return getFactForActor(deps.prisma, {
     spaceId: actor.spaceId,
     userId: actor.userId,
     ...(botId ? { botId } : {}),
     factId,
+    ...(includeDeleted ? { includeDeleted: true } : {}),
   });
 }
 
@@ -661,7 +663,9 @@ export async function deleteFactAsActor(
   actor: FactActor,
   input: { factId: string; expectedRevision: number },
 ): Promise<MemoryFactMutationResult> {
-  const fact = await requireVisibleFact(deps, actor, input.factId);
+  // The tombstone stays reachable for delete/forget only, so a repeated
+  // delete replays idempotently instead of turning into NOT_FOUND.
+  const fact = await requireVisibleFact(deps, actor, input.factId, null, true);
   if (!fact) throw new FactNotFoundError();
   const result = await deleteFact(deps.prisma, {
     spaceId: actor.spaceId,

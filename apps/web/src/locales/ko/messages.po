@@ -450,6 +450,10 @@ msgstr "활동"
 msgid "Add"
 msgstr "추가"
 
+#: src/pages/memory-facts.tsx
+msgid "Add a memory"
+msgstr ""
+
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Add a model in Settings to use this."
 msgstr "이 기능을 사용하려면 설정에서 모델을 추가하세요."
@@ -1066,6 +1070,10 @@ msgstr ""
 msgid "Choose which connected model {productName} uses."
 msgstr "{productName}에서 기본으로 사용할 연결된 모델을 선택하세요."
 
+#: src/pages/memory-facts.tsx
+msgid "Cleaning up indexes…"
+msgstr ""
+
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
 msgstr "비우기"
@@ -1232,8 +1240,13 @@ msgstr "서버에서 설정됨"
 msgid "Configured servers"
 msgstr "연결된 서버"
 
+#: src/pages/memory-facts.tsx
+msgid "Confirm"
+msgstr ""
+
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 msgid "Confirm delete"
 msgstr "삭제 확인"
 
@@ -1241,6 +1254,10 @@ msgstr "삭제 확인"
 #: src/pages/Auth.tsx
 msgid "Confirm password"
 msgstr "비밀번호 확인"
+
+#: src/pages/memory-facts.tsx
+msgid "Confirm share"
+msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
@@ -1341,6 +1358,10 @@ msgstr "이메일로 계속하기"
 #: src/pages/Shell.tsx
 msgid "Copy"
 msgstr "복사"
+
+#: src/pages/memory-facts.tsx
+msgid "Correction saved"
+msgstr ""
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Could not add"
@@ -1507,6 +1528,7 @@ msgid "Could not list files"
 msgstr ""
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Could not load"
 msgstr "불러올 수 없음"
 
@@ -1639,6 +1661,7 @@ msgstr "루틴을 실행할 수 없습니다"
 
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Could not save"
 msgstr "저장하지 못했습니다."
@@ -1916,6 +1939,7 @@ msgstr ""
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/dialogs.tsx
@@ -2232,6 +2256,14 @@ msgstr "펼치기"
 msgid "Expand {0}"
 msgstr "{0} 펼치기"
 
+#: src/pages/memory-facts.tsx
+msgid "expired"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Expired"
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Export"
 msgstr "내보내기"
@@ -2342,6 +2374,11 @@ msgstr "비밀번호를 잊으셨나요?"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Free"
 msgstr "무료"
+
+#. placeholder {0}: fact.evidenceThreadCount
+#: src/pages/memory-facts.tsx
+msgid "from {0} conversations"
+msgstr ""
 
 #: src/pages/WindowChrome.tsx
 msgid "Fullscreen"
@@ -2485,9 +2522,17 @@ msgstr ""
 msgid "Image must be smaller than 5 MB"
 msgstr ""
 
+#: src/pages/KnowledgeSection.tsx
+msgid "Import as memory"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "OpenAPI JSON 가져오기"
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Imported"
+msgstr ""
 
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
@@ -2616,6 +2661,10 @@ msgstr ""
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Leave"
 msgstr "나가기"
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Legacy documents"
+msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
@@ -2809,6 +2858,10 @@ msgstr "기억"
 #: src/pages/shell/bot-panel.tsx
 msgid "Memory scope"
 msgstr "기억 사용 범위"
+
+#: src/pages/memory-facts.tsx
+msgid "Memory text"
+msgstr ""
 
 #: src/pages/Shell.tsx
 msgid "Mentions"
@@ -3115,6 +3168,10 @@ msgstr "아직 실행 기록이 없습니다"
 msgid "No skills yet"
 msgstr "아직 스킬이 없습니다"
 
+#: src/pages/memory-facts.tsx
+msgid "No sources recorded"
+msgstr ""
+
 #: src/components/ai/TaskCenterView.tsx
 msgid "No tasks running in background"
 msgstr ""
@@ -3160,6 +3217,7 @@ msgid "Nothing is still running"
 msgstr "실행 중인 작업 없음"
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Nothing remembered yet"
 msgstr "아직 기억한 내용이 없습니다"
 
@@ -3359,6 +3417,10 @@ msgstr "일시 중지됨"
 msgid "Pending"
 msgstr ""
 
+#: src/pages/memory-facts.tsx
+msgid "Pending confirmation"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "내 인증 정보"
@@ -3398,6 +3460,7 @@ msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Previous avatar"
 msgstr ""
 
@@ -3541,6 +3604,10 @@ msgstr "화면 새로고침"
 msgid "Refreshing…"
 msgstr "새로고침 중…"
 
+#: src/pages/memory-facts.tsx
+msgid "Reject"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Release"
 msgstr "제어권 돌려주기"
@@ -3551,6 +3618,14 @@ msgstr ""
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Release interrupted computer?"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Remember"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Remembered"
 msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
@@ -3809,6 +3884,10 @@ msgstr ""
 msgid "Save"
 msgstr "저장"
 
+#: src/pages/memory-facts.tsx
+msgid "Save correction"
+msgstr ""
+
 #: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
@@ -3848,6 +3927,11 @@ msgstr "저장 중…"
 #: src/lib/call-session.ts
 msgid "Say yes or no, or answer in a sentence."
 msgstr "예 또는 아니요로 답하거나 문장으로 답해 주세요."
+
+#. placeholder {0}: scopeLabel(fact.scopeKind, t)
+#: src/pages/memory-facts.tsx
+msgid "scope: {0}"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -3968,6 +4052,10 @@ msgstr "설정: 사용량"
 msgid "Setup help"
 msgstr "설정 도움말"
 
+#: src/pages/memory-facts.tsx
+msgid "Share with space"
+msgstr ""
+
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Shared"
@@ -3980,6 +4068,10 @@ msgstr ""
 #: src/pages/KnowledgeSection.tsx
 msgid "Shared documents"
 msgstr "공유 문서"
+
+#: src/pages/memory-facts.tsx
+msgid "Shared with the space"
+msgstr ""
 
 #: src/components/computer/TerminalApp.tsx
 msgid "Shell"
@@ -4084,6 +4176,18 @@ msgstr ""
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Software update"
 msgstr "소프트웨어 업데이트"
+
+#: src/pages/memory-facts.tsx
+msgid "Something worth remembering…"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "source no longer accessible"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Sources"
+msgstr ""
 
 #: src/components/ModelTreePicker.tsx
 msgid "Space default"
@@ -4304,6 +4408,15 @@ msgstr ""
 #: src/pages/HostComputerPrompt.tsx
 msgid "this Mac"
 msgstr "이 Mac"
+
+#: src/pages/memory-facts.tsx
+msgid "This memory can no longer be changed that way."
+msgstr ""
+
+#: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
+msgid "This memory changed elsewhere; showing the latest version."
+msgstr ""
 
 #: src/pages/Artifacts.tsx
 msgid "This month"

@@ -24,6 +24,10 @@ const AUXILIARY_SCOPES = [
   "history-compaction",
   "turn-routing",
   "team-chat-judge",
+  // ME-01/ME-02: memory extraction and summary run the same zero-tool
+  // auxiliary contract as every other backend-selected execution.
+  "memory-extraction",
+  "memory-summary",
 ] as const;
 
 type FixtureModelRequest = {

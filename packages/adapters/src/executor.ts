@@ -3775,6 +3775,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               userId: run.userId,
               botId: bot.id,
               factId: memoryId,
+              // Forgetting an already-forgotten fact replays instead of
+              // falling through to the external provider path.
+              includeDeleted: true,
             });
             if (existing) {
               try {
