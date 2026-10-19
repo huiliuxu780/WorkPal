@@ -129,7 +129,7 @@ pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=knowledge-panel.s
 7. **成本记账无计费数据**：以调用数+token（实际 usage 优先、估算兜底并标注）为成本代理，不虚构美元数字。
 8. **多副本部署前提不变**：AgentScope 本地 JSON state 的跨实例问题（P4 §9）不因本批改变。
 9. **溢出防护语义**：`detectContextOverflow` 只在估算请求超过**原始窗口**时硬性失败——估算器对 CJK 偏保守（1 字符≈1 token），若再扣除余量会误杀可运行请求；余量只用于压缩触发决策。边缘尺寸由 provider 作最终裁决。
-10. **语义工具面保持既有 gating**：`recall_memory/forget_memory` 仍仅在配置外部 provider 时暴露（AG-03 冻结工具面不动）；无 provider 的 Bot 由自动注入承担召回、由 Knowledge UI 承担逐条删除，`remember` 始终可用。这是有意的兼容决定，非能力关闭。
+10. **语义工具面保持既有 gating**：`recall_memory/forget_memory` 仍仅在配置外部 provider 时暴露（AG-03 冻结工具面不动）；无 provider 的 Bot 由自动注入承担召回、由 Knowledge UI 承担逐条删除，`remember` 始终可用。messaging-channel Run 按既有冻结面继续不暴露四个记忆工具（BACKEND_MESSAGING_CHANNEL 集合原样）；messaging 入口的记忆形成走提取候选（human_messaging 属可信来源）与 Web UI 管理，入口一旦可达事实服务，行为与 actor 记录和普通对话完全一致。这是有意的兼容决定，非能力关闭。
 11. **save_memory 的作用域**：一律写 bot-scope 事实；外部 provider 的 isolated/shared 语义只影响索引投影命名空间。space-scope 事实只能经人工 promote 或 UI 产生（模型不能把记忆直接写入共享范围）。
 12. **压缩修订的“策略”字段**：以 `promptVersion`（指令段 sha256）+ `includesToolResults` + 固定模型身份共同表达；调度模式（四模式）是执行期属性，不入修订行。
 
