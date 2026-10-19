@@ -32,6 +32,7 @@ import type { PrismaClient } from "./client.js";
 import { Prisma } from "./client.js";
 import { currentThreadGeneration } from "./events.js";
 import { loadInterventionViews } from "./interventions.js";
+import { loadPlanReviewState } from "./run-plans.js";
 
 /**
  * ExecutionSnapshot read model (HISTORY-001). Pure composed reads over the
@@ -718,6 +719,12 @@ export async function loadExecutionSnapshot(
       ? RunPlanRevisionSchema.safeParse(planRow.current)
       : null;
   const plan = planParsed?.success ? planParsed.data : undefined;
+  // UX-02: review state rides next to the current revision. Legacy plans
+  // (reviewStatus NULL) project nothing and keep their historical display.
+  const planReview =
+    plan && planRow && planRow.reviewStatus !== null
+      ? await loadPlanReviewState(db as Prisma.TransactionClient, run.id)
+      : undefined;
 
   const timelineRows = await db.event.findMany({
     where: activityEventWhere(run.id),
@@ -773,6 +780,7 @@ export async function loadExecutionSnapshot(
         : {}),
     },
     ...(plan ? { plan } : {}),
+    ...(planReview ? { planReview } : {}),
     steps,
     todos,
     timeline,

@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  type InterventionPlanReview,
   type InterventionPresentation,
   InterventionPresentationSchema,
+  InterventionPlanReviewSchema,
   type InterventionView,
   legacyInterventionId,
   type MessageBlock,
@@ -46,6 +48,7 @@ export type InterventionRecord = {
   inputPurpose: string | null;
   inputActions: unknown;
   presentation: unknown;
+  planReview?: unknown;
   effectId: string | null;
   decision: string | null;
   createdAt: Date;
@@ -128,6 +131,9 @@ export function interventionView(
 ): InterventionView {
   const parsedPresentation = InterventionPresentationSchema.safeParse(row.presentation);
   const presentation = parsedPresentation.success ? parsedPresentation.data : undefined;
+  const parsedPlanReview = InterventionPlanReviewSchema.safeParse(row.planReview);
+  const planReview: InterventionPlanReview | undefined =
+    row.kind === "plan_review" && parsedPlanReview.success ? parsedPlanReview.data : undefined;
   const actions = actionList(row.inputActions);
   const decision = row.decision === "approved" || row.decision === "denied" ? row.decision : undefined;
   const mode =
@@ -156,7 +162,8 @@ export function interventionView(
   return {
     id: row.id,
     revision: row.revision,
-    kind: row.kind === "approval" ? "approval" : "input",
+    kind:
+      row.kind === "approval" ? "approval" : row.kind === "plan_review" ? "plan_review" : "input",
     status:
       row.status === "answered" ||
       row.status === "expired" ||
@@ -182,6 +189,7 @@ export function interventionView(
     },
     ...(input ? { input } : {}),
     ...(approval ? { approval } : {}),
+    ...(planReview ? { planReview } : {}),
     ...(presentation ? { presentation } : {}),
   };
 }
@@ -203,6 +211,7 @@ function eventPayload(view: InterventionView): Record<string, unknown> {
     actor: view.requestingActor,
     ...(view.input ? { input: view.input } : {}),
     ...(view.approval ? { approval: view.approval } : {}),
+    ...(view.planReview ? { planReview: view.planReview } : {}),
     ...(view.presentation ? { presentation: view.presentation } : {}),
   };
 }
@@ -291,11 +300,17 @@ export async function insertPausedIntervention(
   const actions = whitelistedActions(ask.actions);
   const presentation = presentationFromAskBlock(ask);
   const createdAt = input.waitStartedAt;
+  // A plan review carries its version binding instead of an external effect:
+  // it authorizes a plan version's direction, never a tool call.
+  const planReview: InterventionPlanReview | null = ask.planReview
+    ? InterventionPlanReviewSchema.parse({ content: ask.planReview })
+    : null;
+  if (planReview && effectId) throw new Error("A plan review is not a tool approval");
   await store.create({
     data: {
       id,
       revision: 1,
-      kind: effectId ? "approval" : "input",
+      kind: planReview ? "plan_review" : effectId ? "approval" : "input",
       status: "pending",
       spaceId: input.spaceId,
       threadId: input.threadId,
@@ -309,6 +324,7 @@ export async function insertPausedIntervention(
       inputPurpose: mode === "secret" ? (ask.purpose ?? null) : null,
       ...(actions ? { inputActions: actions } : {}),
       presentation,
+      ...(planReview ? { planReview: planReview as object } : {}),
       effectId,
       createdAt,
     },
@@ -414,6 +430,13 @@ async function transitionPending(
   });
   const next = changed[0];
   if (!next) return null;
+  if (next.kind === "plan_review" && status !== "answered") {
+    // The round cannot outlive its card: a Stop/Clear cancel or a wait timeout
+    // settles the pending review round and the plan's review state with it.
+    // (The answered path decides the round before settling, in the answer tx.)
+    const { settleOrphanedPlanReview } = await import("./run-plans.js");
+    await settleOrphanedPlanReview(tx, next.runId, status === "expired" ? "expired" : "cancelled");
+  }
   if (options?.emitEvent !== false) await emitInterventionResolved(tx, next);
   return next;
 }
