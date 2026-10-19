@@ -2660,6 +2660,8 @@ describe("clearThread", () => {
       computerExecutionLease: { updateMany: vi.fn() },
       computer: { updateMany: vi.fn() },
       message: { deleteMany: vi.fn() },
+      memoryEvidence: { updateMany: vi.fn() },
+      memoryFact: { findMany: vi.fn().mockResolvedValue([]), delete: vi.fn() },
       event: {
         deleteMany: vi.fn(),
         create: vi.fn().mockResolvedValue({
@@ -2678,6 +2680,11 @@ describe("clearThread", () => {
     ).resolves.toMatchObject({
       event: { type: "thread.cleared" },
       cancelledRunIds: ["run-1"],
+    });
+    // ME-01 M5: the clear transaction invalidates evidence explicitly.
+    expect(tx.memoryEvidence.updateMany).toHaveBeenCalledWith({
+      where: { threadId: "thread-1", accessible: true },
+      data: { accessible: false },
     });
     expect(tx.computerExecutionLease.updateMany).toHaveBeenCalledWith({
       where: { runId: { in: ["run-1"] } },
@@ -2739,6 +2746,8 @@ describe("clearThread", () => {
       computerExecutionLease: { updateMany: vi.fn() },
       computer: { updateMany: vi.fn() },
       message: { deleteMany: vi.fn() },
+      memoryEvidence: { updateMany: vi.fn() },
+      memoryFact: { findMany: vi.fn().mockResolvedValue([]), delete: vi.fn() },
       event: {
         deleteMany: vi.fn(),
         create: vi.fn().mockResolvedValue({

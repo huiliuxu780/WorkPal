@@ -13,6 +13,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import {
   computerControlExpireJobKey,
+  memoryExtractJobKey,
   messagingDeliverJob,
   routineJobKey,
   routineWakeupJob,
@@ -2200,11 +2201,14 @@ export function createRouter(deps: RouterDeps) {
                 return null;
               })
             : Promise.resolve(null),
-          Promise.all(
-            cancelledRunIds.map((runId) =>
+          Promise.all([
+            ...cancelledRunIds.map((runId) =>
               deps.jobs.cancel(runJobKey(runId)).catch(() => undefined),
             ),
-          ),
+            // ME-01 M5: cancel pending memory extraction; late results are
+            // additionally refused by the cursor's generation fence.
+            deps.jobs.cancel(memoryExtractJobKey(target.threadId)).catch(() => undefined),
+          ]),
         ]);
         // Durable memories remain in their Space-private containers. Clear only removes
         // conversation-derived summaries from the previous generation; including the new

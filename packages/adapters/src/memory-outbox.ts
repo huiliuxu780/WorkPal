@@ -142,23 +142,27 @@ async function processOutboxJob(deps: MemoryOutboxDeps, job: MemoryJobOutbox): P
     }
     case "index_cleanup": {
       const fact = await deps.prisma.memoryFact.findUnique({ where: { id: job.targetId } });
-      if (!fact) return; // row gone with its space/bot cascade: nothing left to clean
-      const configured = await deps.memoryProviders.resolve(fact.spaceId);
-      if (!configured) return;
+      // Bot/Space deletion cascades can remove the fact row before the drain
+      // runs; the queued payload carries the identity needed to clean anyway.
+      const payload = job.payload as { factId?: string; botId?: string; userId?: string };
+      const spaceId = fact?.spaceId ?? job.spaceId;
+      const configured = await deps.memoryProviders.resolve(spaceId);
+      if (!configured) return; // provider config gone with the space: nothing reachable to clean
       if (!configured.provider.forget) {
         // Honest visibility: the provider cannot delete per item. The row
         // stays parked (attempts + lastError) instead of pretending success;
         // the recall tombstone filter keeps the entry out of the model.
         throw new Error("provider_lacks_forget");
       }
-      const botId = fact.botId ?? botIdFromScope(fact.scopeKind, fact.scopeKey);
+      const botId =
+        fact?.botId ?? payload.botId ?? (fact ? botIdFromScope(fact.scopeKind, fact.scopeKey) : null);
       const result = await configured.provider.forget(
-        { id: fact.id, reason: "fact_deleted" },
+        { id: job.targetId, reason: payload.botId ? "bot_deleted" : "fact_deleted" },
         {
-          operationId: `memory-index-cleanup:${fact.id}`,
-          traceId: `memory-index-cleanup:${fact.id}`,
-          spaceId: fact.spaceId,
-          userId: fact.ownerUserId,
+          operationId: `memory-index-cleanup:${job.targetId}`,
+          traceId: `memory-index-cleanup:${job.targetId}`,
+          spaceId,
+          userId: fact?.ownerUserId ?? payload.userId ?? "",
           ...(botId ? { botId } : {}),
           signal: new AbortController().signal,
         },

@@ -42,6 +42,7 @@ import {
 } from "./interventions.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { enqueueDeliveryInTransaction } from "./delivery-records.js";
+import { invalidateThreadMemoryEvidence } from "./memory-facts.js";
 import {
   assertRunCanWriteHistory,
   assertRunIsCancelled,
@@ -372,6 +373,14 @@ export async function clearThread(
     });
     await tx.message.deleteMany({ where: { threadId: input.threadId } });
     await tx.event.deleteMany({ where: { threadId: input.threadId } });
+    // ME-01 M5: clearing a thread does not delete confirmed memories, but it
+    // must invalidate their source references explicitly (never rely on FK
+    // SET NULL), drop unconfirmed candidates whose entire evidence base just
+    // disappeared, and fence late extraction jobs by generation.
+    await invalidateThreadMemoryEvidence(tx, {
+      threadId: input.threadId,
+      newGeneration: thread.historyCompactionGeneration + 1,
+    });
     if (thread.nextMessageSeq > 0) {
       // nextMessageSeq is not reset, so mark every deleted message as already compacted.
       // Leaving the cursor behind would let compaction re-summarize deleted history (or, reset
