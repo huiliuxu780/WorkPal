@@ -9,6 +9,7 @@ export const PlanItemStatusSchema = z.enum([
   "superseded",
   "unresolved",
 ]);
+export type PlanItemStatus = z.infer<typeof PlanItemStatusSchema>;
 
 export const PlanItemSchema = z.strictObject({
   id: z.string().min(1).max(64),

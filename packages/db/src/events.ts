@@ -918,7 +918,7 @@ export async function commitAnswerRunInput(
         {
           error: "plan_rejected",
           clearCheckpoint: true,
-          match: { status: "waiting_input", waitKind: "input" },
+          match: { status: "waiting_input", waitKind: "approval" },
         },
       );
       if (cancelledRows.length !== 1) throw new Error("Plan review Run was no longer waiting");
@@ -1319,7 +1319,13 @@ export async function pauseRunForInput(
     const approvalEffectId = input.blocks.find(
       (block) => block.kind === "ask" && Boolean(block.approvalEffectId),
     );
-    const waitKind = approvalEffectId?.kind === "ask" ? "approval" : "input";
+    // A plan review is a decision wait like a tool approval (24h window,
+    // "needs approval" avatar, honest summary-only fallback), even though it
+    // authorizes a plan version rather than an external effect.
+    const planReviewWait = input.blocks.some(
+      (block) => block.kind === "ask" && Boolean(block.planReview),
+    );
+    const waitKind = approvalEffectId?.kind === "ask" || planReviewWait ? "approval" : "input";
     const waitStartedAt = new Date();
     const paused = await tx.run.updateMany({
       where: {

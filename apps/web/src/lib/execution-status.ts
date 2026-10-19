@@ -34,7 +34,7 @@ export function deriveExecutionStatus(
      * Pending Intervention kinds for this Run. When omitted, waitKind stays
      * the header source so older snapshots keep their current labels.
      */
-    pendingInterventionKinds?: readonly ("approval" | "input")[];
+    pendingInterventionKinds?: readonly ("approval" | "input" | "plan_review")[];
   } = {},
 ): ExecutionStatusView {
   if (!run) {
@@ -75,6 +75,15 @@ export function deriveExecutionStatus(
   if (run.status === "waiting_input") {
     const kinds = options.pendingInterventionKinds;
     if (kinds) {
+      // UX-02: a pending plan review is a decision wait with its own label;
+      // it renders on the approval rail (needsAttention, diamond, Handle now).
+      if (kinds.includes("plan_review"))
+        return view(
+          "approval",
+          i18n._("Waiting for plan review"),
+          waiting?.title?.trim() || null,
+          true,
+        );
       if (kinds.includes("approval"))
         return view(
           "approval",

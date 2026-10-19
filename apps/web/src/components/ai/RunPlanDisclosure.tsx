@@ -1,5 +1,5 @@
 import { t } from "@lingui/core/macro";
-import type { RunPlanRevision, RunStepSnapshot } from "@rakazo/contracts";
+import type { PlanReviewState, RunPlanRevision, RunStepSnapshot } from "@rakazo/contracts";
 import { memo, useState } from "react";
 import { StepDetailBody, StepList, stepMarks, stepStatusLabel } from "./RunStepsDisclosure";
 
@@ -114,16 +114,32 @@ const PlanItemSteps = memo(function PlanItemSteps({
   );
 });
 
+/**
+ * UX-02 version chip: a reviewed plan shows its CONTENT version — the
+ * approval basis — instead of the raw progress revision counter. Legacy plans
+ * (no review state) keep the historical `v{revision}` display.
+ */
+function reviewChip(review: PlanReviewState): string | null {
+  if (review.reviewStatus === "pending") return t`Awaiting your review`;
+  if (review.reviewStatus === "changes_requested") return t`Changes requested`;
+  if (review.reviewStatus === "rejected") return t`Rejected`;
+  if (review.reviewStatus === "cancelled") return t`Review cancelled`;
+  return null;
+}
+
 export const RunPlanDisclosure = memo(function RunPlanDisclosure({
   plan,
   steps,
   failed,
+  review,
 }: {
   plan: RunPlanRevision;
   /** The Run's semantic Steps; grouped under items by `planItemId`. */
   steps: readonly RunStepSnapshot[];
   /** The Run failed: the failed Step's level 2 opens as the reason target. */
   failed?: boolean;
+  /** Unified plan review state; absent for legacy plans. */
+  review?: PlanReviewState;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [reasonId, setReasonId] = useState<string | null>(null);
@@ -146,7 +162,23 @@ export const RunPlanDisclosure = memo(function RunPlanDisclosure({
     >
       <h3 className="py-2 text-xs font-medium text-muted-foreground">
         {t`Plan`}
-        {plan.revision > 1 ? <span className="ms-1">v{plan.revision}</span> : null}
+        {review ? (
+          <span className="ms-1" data-testid="plan-content-version">
+            v{review.contentVersion}
+          </span>
+        ) : plan.revision > 1 ? (
+          <span className="ms-1">v{plan.revision}</span>
+        ) : null}
+        {review ? (
+          (() => {
+            const chip = reviewChip(review);
+            return chip ? (
+              <span className="ms-2" data-testid="plan-review-state">
+                {chip}
+              </span>
+            ) : null;
+          })()
+        ) : null}
       </h3>
       <div className="pb-2">
         <p dir="auto" className="mb-2 text-foreground/80">

@@ -14,6 +14,11 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. js-lingui-explicit-id
+#: src/lib/execution-status.ts
+msgid "Waiting for plan review"
+msgstr "等待计划审阅"
+
+#. js-lingui-explicit-id
 #: src/lib/effect-view.ts
 msgid "Awaiting execution"
 msgstr ""
@@ -277,6 +282,10 @@ msgstr ""
 msgid "{actions, plural, one {Working… · # action} other {Working… · # actions}}"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "{botName} submitted a plan for your review"
+msgstr "{botName} 提交了计划，等待你审阅"
+
 #: src/pages/Shell.tsx
 msgid "{botName}’s computer"
 msgstr "{botName} 的电脑"
@@ -383,6 +392,10 @@ msgstr "1 条证据引用"
 #: src/pages/shell/message-cards.tsx
 msgid "A bit of everything"
 msgstr "什么都做一点"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "A plan is waiting for your review"
+msgstr "有一份计划等待你审阅"
 
 #: src/pages/shell/bot-picker.tsx
 msgid "About groups"
@@ -695,6 +708,7 @@ msgid "Approve this server to let your agent use its tools."
 msgstr "批准此服务器后，Agent 才能使用它的工具。"
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 msgid "Approved"
 msgstr ""
 
@@ -832,6 +846,10 @@ msgstr "头像工作室"
 msgid "Avatar updated"
 msgstr ""
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Awaiting your review"
+msgstr "待你审阅"
+
 #: src/components/computer/FilesApp.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
@@ -943,6 +961,7 @@ msgid "Can't reach the server."
 msgstr "无法连接服务器。"
 
 #: src/components/activity/BackgroundTaskActivity.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -969,6 +988,7 @@ msgstr "已取消"
 
 #: src/components/activity/ActivityRows.tsx
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/AskCard.tsx
 #: src/lib/run-status.ts
@@ -983,6 +1003,11 @@ msgstr ""
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Change password"
 msgstr "修改密码"
+
+#: src/components/ai/PlanReviewCard.tsx
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Changes requested"
+msgstr "已提出修改"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Changing…"
@@ -1715,6 +1740,10 @@ msgstr ""
 msgid "Could not submit this answer"
 msgstr "无法提交此回答"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Could not submit this decision"
+msgstr "无法提交这个决定"
+
 #: src/pages/Shell.tsx
 msgid "Could not take control"
 msgstr "无法接管"
@@ -1976,6 +2005,10 @@ msgstr "拒绝"
 msgid "Deployment default"
 msgstr "部署默认"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Describe the concrete changes you want"
+msgstr "描述你希望修改的具体内容"
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Describe what this bot does"
 msgstr "描述这个 Bot 做什么"
@@ -2043,6 +2076,7 @@ msgid "Don’t have an account?"
 msgstr "还没有账户？"
 
 #: src/components/activity/ActivityRows.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
@@ -2372,6 +2406,10 @@ msgstr ""
 msgid "Git event"
 msgstr "Git 事件"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Go with this plan"
+msgstr "按这个方案做"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/Shell.tsx
 msgid "Group"
@@ -2489,6 +2527,7 @@ msgstr ""
 msgid "Import OpenAPI JSON"
 msgstr "导入 OpenAPI JSON"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/ai/RunTodoList.tsx
@@ -3054,6 +3093,7 @@ msgid "No group chats yet."
 msgstr "还没有群聊。"
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "已停用"
@@ -3147,6 +3187,7 @@ msgstr "不在插件目录中"
 msgid "Not now"
 msgstr "暂不"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr ""
@@ -3375,6 +3416,10 @@ msgstr ""
 msgid "Plan progress"
 msgstr "计划进度"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Plan rejected"
+msgstr "已拒绝计划"
+
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/lib/execution-card.ts
 msgid "Plan updated"
@@ -3398,6 +3443,7 @@ msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Previous avatar"
 msgstr ""
 
@@ -3459,6 +3505,10 @@ msgstr "朗读回复"
 #: src/pages/KnowledgeSection.tsx
 msgid "read-only"
 msgstr "只读"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reason (optional)"
+msgstr "原因（可选）"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -3541,6 +3591,18 @@ msgstr ""
 msgid "Refreshing…"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject"
+msgstr "拒绝"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject plan"
+msgstr "拒绝计划"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Rejected"
+msgstr "已拒绝"
+
 #: src/pages/Shell.tsx
 msgid "Release"
 msgstr "释放"
@@ -3620,6 +3682,7 @@ msgstr "替换 API 密钥"
 msgid "Replace key"
 msgstr "替换密钥"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Replaced"
 msgstr ""
@@ -3644,6 +3707,10 @@ msgstr "正在回复 {replyName}"
 #: src/pages/Shell.tsx
 msgid "Replying to {replyName}: “{replyQuote}”"
 msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Request changes"
+msgstr "提出修改"
 
 #: src/pages/shell/message-cards.tsx
 msgid "Research & writing"
@@ -3736,6 +3803,10 @@ msgstr "返回 {productName}"
 #: src/pages/KnowledgeSection.tsx
 msgid "rev {0}"
 msgstr "版本 {0}"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Review cancelled"
+msgstr "审阅已取消"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Revoke"
@@ -3911,6 +3982,10 @@ msgstr "请在 10 分钟内从聊天应用向该线路发送 <0>{linkCode}</0>�
 msgid "Send answer"
 msgstr "发送回答"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Send feedback"
+msgstr "发送修改意见"
+
 #: src/components/AskCard.tsx
 msgid "Send it"
 msgstr "发送"
@@ -3919,6 +3994,7 @@ msgstr "发送"
 msgid "Send reset link"
 msgstr "发送重置链接"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "Sending…"
 msgstr "正在发送…"
@@ -3992,6 +4068,10 @@ msgstr "Shell"
 msgid "Show all ({0} more)"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Show all ({hidden} more)"
+msgstr "显示全部（还有 {hidden} 项）"
+
 #: src/pages/Shell.tsx
 msgid "Show bots"
 msgstr ""
@@ -4000,6 +4080,7 @@ msgstr ""
 msgid "Show computer"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Show less"
@@ -4063,6 +4144,7 @@ msgstr "跳过"
 msgid "Skip or deploy key"
 msgstr "跳过或使用部署密钥"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Skipped"
@@ -4189,6 +4271,10 @@ msgstr "提交"
 #: src/components/AskCard.tsx
 msgid "Submitting your answer…"
 msgstr "正在提交你的回复…"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Submitting your decision…"
+msgstr "正在提交你的决定…"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -4321,6 +4407,10 @@ msgstr "此重置链接无效或已过期"
 msgid "This retry request was already used for a different task."
 msgstr "此重试请求已用于另一个任务。"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "This review was already decided"
+msgstr "这次审阅已被处理"
+
 #: src/lib/manual-retry.ts
 msgid "This run cannot be retried."
 msgstr "此执行无法重试。"
@@ -4431,6 +4521,7 @@ msgstr ""
 msgid "Undone"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Unfinished"
 msgstr ""
@@ -4569,6 +4660,11 @@ msgstr "正在校验…"
 msgid "Version"
 msgstr ""
 
+#. placeholder {0}: content.contentVersion
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Version v{0}"
+msgstr "版本 v{0}"
+
 #: src/lib/task-center.ts
 msgid "View execution"
 msgstr "查看执行"
@@ -4640,6 +4736,10 @@ msgstr "你想让我先做什么？"
 msgid "What result will you demonstrate?"
 msgstr "你要示范什么结果？"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "What should change in this plan?"
+msgstr "这个计划需要修改什么？"
+
 #: src/pages/RoutineEditor.tsx
 msgid "What should this routine do each time it runs?"
 msgstr "每次运行时，这个例行任务应做什么？"
@@ -4667,6 +4767,10 @@ msgstr "何时使用"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Bot 应在哪里运行？"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Why are you rejecting this plan? (optional)"
+msgstr "为什么拒绝这个计划？（可选）"
 
 #: src/components/ai/RunTodoList.tsx
 msgid "Work items"

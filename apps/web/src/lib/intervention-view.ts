@@ -61,7 +61,7 @@ export function coveredAskMessageIds(
 export function pendingInterventionKindsForRun(
   interventions: readonly InterventionView[] | undefined,
   runId: string,
-): Array<"approval" | "input"> | undefined {
+): Array<"approval" | "input" | "plan_review"> | undefined {
   if (!interventions) return undefined;
   return interventions
     .filter((view) => view.runId === runId && view.status === "pending")

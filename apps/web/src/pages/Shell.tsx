@@ -1965,8 +1965,12 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     }
   }
   const resolveTranscriptMemberName = useCallback(
-    (botId: string | undefined) => memberName(transcriptMembers, botId),
-    [transcriptMembers],
+    (botId: string | undefined) =>
+      memberName(transcriptMembers, botId) ??
+      // UX-02: the plan review card names its Bot in direct threads too, where
+      // the member list is empty — fall back to the loaded Bot roster.
+      (botId ? bots.find((candidate) => candidate.id === botId)?.name : undefined),
+    [transcriptMembers, bots],
   );
   const replyTargetName = activeReplyTarget
     ? activeReplyTarget.role === "user"
@@ -4993,6 +4997,7 @@ export const Transcript = memo(function Transcript({
     activity,
     showActivityAvatars,
     activityBotColors,
+    botNameOf: memberName,
     onRefresh,
   });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
