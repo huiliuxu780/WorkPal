@@ -66,12 +66,6 @@
     drop-shadow(0 -0.6px #fff);
 }
 
-[data-size="24"][data-state="approval"] .rakazo-agent-avatar-prop svg,
-[data-size="24"][data-state="waiting"] .rakazo-agent-avatar-prop svg {
-  transform: translate(-1px, -1px) scale(1.34);
-  transform-origin: 85% 73%;
-}
-
 .rakazo-agent-avatar[data-state="failed"]:not([data-motion-ready]) .rakazo-agent-avatar-art [id="pupilL"],
 .rakazo-agent-avatar[data-state="failed"]:not([data-motion-ready]) .rakazo-agent-avatar-art [id="pupilR"] {
   visibility: hidden;
@@ -89,18 +83,10 @@
   background: transparent;
 }
 
-.rakazo-agent-avatar[data-state="working"] .rakazo-agent-avatar-dot {
-  background: #4ade80;
-}
-.rakazo-agent-avatar[data-state="approval"] .rakazo-agent-avatar-dot {
-  background: #f5c84b;
-}
-.rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot {
-  background: #7cb8f2;
-}
-.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot {
-  background: #f28b6b;
-}
+
+
+
+
 .rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot::after {
   content: "!";
   position: absolute;
@@ -124,7 +110,7 @@
 .rakazo-upload-avatar:not([data-size="16"]) .rakazo-agent-avatar-dot::after {
   position: absolute;
   inset: -1px;
-  color: #000;
+  color: var(--wp-status-glyph);
   text-align: center;
   font: 700 8px / 9px sans-serif;
 }
@@ -144,18 +130,10 @@
   color: #fff;
 }
 
-[data-theme="light"] .rakazo-agent-avatar[data-state="working"] .rakazo-agent-avatar-dot {
-  background: #228b3b;
-}
-[data-theme="light"] .rakazo-agent-avatar[data-state="approval"] .rakazo-agent-avatar-dot {
-  background: #9a6700;
-}
-[data-theme="light"] .rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot {
-  background: #2563eb;
-}
-[data-theme="light"] .rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot {
-  background: #c2410c;
-}
+
+
+
+
 
 /* Non-color 16px state cues (AV-00 acceptance addendum, 2026-10-18): the point
    shape distinguishes states when hue is not perceivable. Point colors and the
@@ -167,11 +145,45 @@
 }
 .rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] {
   background: transparent;
-  border-color: #7cb8f2;
+  border-color: var(--wp-status-wait);
   box-shadow: 0 0 0 1.5px var(--avatar-surface);
 }
 [data-theme="light"]
   .rakazo-agent-avatar[data-state="waiting"]
   .rakazo-agent-avatar-dot[data-point-shape="ring"] {
-  border-color: #2563eb;
+  border-color: var(--wp-status-wait);
 }
+
+/* v0.7: the drawing canvas extends beyond the layout frame. */
+.rakazo-agent-avatar { overflow: visible; }
+.rakazo-agent-avatar-art,
+.rakazo-agent-avatar-prop { inset: -12.5%; width: 125%; height: 125%; }
+.rakazo-agent-avatar-art svg,
+.rakazo-agent-avatar-prop svg { overflow: visible; }
+.rakazo-agent-avatar-shadow { opacity: 1; }
+.rakazo-agent-avatar-shadow ellipse { fill: var(--wp-avatar-shadow); opacity: 0; }
+.rakazo-agent-avatar[data-surface="sidebar"] [data-avatar-prop]:not([data-avatar-prop="xeyes"]) { display: none; }
+.rakazo-agent-avatar[data-surface="sidebar"][data-size="58"] { margin-top: 8px; }
+
+.rakazo-agent-avatar-dot { border-width: var(--wp-status-dot-ring); }
+.rakazo-agent-avatar[data-state="working"] .rakazo-agent-avatar-dot { background: var(--wp-status-run); }
+.rakazo-agent-avatar[data-state="approval"] .rakazo-agent-avatar-dot { background: var(--wp-status-approval); }
+.rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot { background: var(--wp-status-wait); }
+.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot { background: var(--wp-status-fail); }
+.rakazo-agent-avatar[data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] { background: transparent; border-color: var(--wp-status-wait); }
+.rakazo-agent-avatar-dot::after { color: var(--wp-status-glyph) !important; }
+.rakazo-agent-avatar[data-state="failed"] .rakazo-agent-avatar-dot::after { color: #fff !important; }
+.rakazo-agent-avatar[data-strong-ring="true"] .rakazo-agent-avatar-dot { border-width: var(--wp-status-dot-ring-strong); }
+.rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot { width: 13px; height: 13px; right: -2px; bottom: -2px; border-width: var(--wp-badge-ring); }
+.rakazo-agent-avatar[data-surface="sidebar"][data-size="58"] .rakazo-agent-avatar-dot { width: 15px; height: 15px; }
+.rakazo-agent-avatar[data-surface="sidebar"][data-size="24"] .rakazo-agent-avatar-dot { width: 12px; height: 12px; }
+.rakazo-agent-avatar[data-surface="sidebar"][data-strong-ring="true"] .rakazo-agent-avatar-dot { border-width: var(--wp-badge-ring-strong); }
+.rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot::after { position: absolute; inset: -1px; text-align: center; font: 700 9px/10px sans-serif; }
+.rakazo-agent-avatar[data-surface="sidebar"][data-state="approval"] .rakazo-agent-avatar-dot::after { content: "1"; }
+.rakazo-agent-avatar[data-surface="sidebar"][data-state="waiting"] .rakazo-agent-avatar-dot::after { content: "?"; }
+.rakazo-agent-avatar[data-state="working"][data-motion="moving"] .rakazo-agent-avatar-dot { animation: wp-status-breathe 1.6s ease-in-out infinite; }
+@keyframes wp-status-breathe { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .rakazo-agent-avatar-dot { animation: none !important; } }
+
+.rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot[data-point-shape="diamond"] { transform: none; border-radius: 50%; }
+.rakazo-agent-avatar[data-surface="sidebar"][data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] { background: var(--wp-status-wait); border-color: var(--avatar-surface); box-shadow: none; }
