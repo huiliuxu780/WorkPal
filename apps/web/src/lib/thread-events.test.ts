@@ -1959,10 +1959,16 @@ describe("activity projection reduction (Phase 4)", () => {
     expect(
       reduceThreadSnapshot(
         resolved,
-        event({ type: "intervention.resolved", seq: 6, payload: { ...payload, revision: 1, status: "cancelled" } }),
+        event({
+          type: "intervention.resolved",
+          seq: 6,
+          payload: { ...payload, revision: 1, status: "cancelled" },
+        }),
       )?.interventions?.[0]?.status,
     ).toBe("answered");
-    expect(reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions).toEqual([]);
+    expect(
+      reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions,
+    ).toEqual([]);
     expect(isThreadSnapshotEvent(event({ type: "intervention.created" }))).toBe(true);
   });
 

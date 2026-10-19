@@ -349,9 +349,7 @@ export function isToolPauseResult(result: unknown): result is ApprovalPausedTool
   const details = record.details;
   if (!details || typeof details !== "object") return false;
   const pause = details as { approval?: unknown; secret?: unknown; plan_review?: unknown };
-  return (
-    pause.approval === "paused" || pause.secret === "paused" || pause.plan_review === "paused"
-  );
+  return pause.approval === "paused" || pause.secret === "paused" || pause.plan_review === "paused";
 }
 
 export function isApprovalPausedResult(result: unknown): result is ApprovalPausedToolResult {

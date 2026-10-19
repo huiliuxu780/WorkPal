@@ -59,7 +59,10 @@ function reviewView(overrides: Partial<InterventionView> = {}): InterventionView
   } as InterventionView;
 }
 
-async function renderCard(view: InterventionView, props: Partial<Parameters<typeof PlanReviewCard>[0]> = {}) {
+async function renderCard(
+  view: InterventionView,
+  props: Partial<Parameters<typeof PlanReviewCard>[0]> = {},
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -88,7 +91,10 @@ function click(container: HTMLElement, testId: string) {
 
 beforeEach(() => {
   resolveIntervention.mockReset();
-  resolveIntervention.mockResolvedValue({ outcome: "accepted", intervention: reviewView({ status: "answered" }) });
+  resolveIntervention.mockResolvedValue({
+    outcome: "accepted",
+    intervention: reviewView({ status: "answered" }),
+  });
 });
 
 describe("PlanReviewCard", () => {
@@ -117,10 +123,10 @@ describe("PlanReviewCard", () => {
     const view = reviewView();
     view.planReview!.content.items = items;
     const { container } = await renderCard(view);
-    expect(container.querySelectorAll('[data-plan-item-id]').length).toBe(8);
+    expect(container.querySelectorAll("[data-plan-item-id]").length).toBe(8);
     expect(container.textContent).toContain("Show all (2 more)");
     await click(container, "plan-review-show-all");
-    expect(container.querySelectorAll('[data-plan-item-id]').length).toBe(10);
+    expect(container.querySelectorAll("[data-plan-item-id]").length).toBe(10);
   });
 
   it("approves with an idempotent submission id", async () => {
@@ -144,10 +150,8 @@ describe("PlanReviewCard", () => {
     expect(send.disabled).toBe(true);
     const textarea = container.querySelector('[data-testid="plan-review-feedback"]');
     await act(async () => {
-      const native = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype,
-        "value",
-      )!.set!;
+      const native = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!
+        .set!;
       native.call(textarea, "Split stage 2 into review and sign-off");
       textarea!.dispatchEvent(new Event("input", { bubbles: true }));
     });
@@ -188,7 +192,11 @@ describe("PlanReviewCard", () => {
 
   it("renders the terminal decision from the server projection without actions", async () => {
     const view = reviewView({ status: "answered" });
-    view.planReview = { ...view.planReview!, decision: "request_changes", feedback: "Add a rollout stage" };
+    view.planReview = {
+      ...view.planReview!,
+      decision: "request_changes",
+      feedback: "Add a rollout stage",
+    };
     const { container } = await renderCard(view);
     expect(container.querySelector('[data-testid="plan-review-approve"]')).toBeNull();
     const authority = container.querySelector('[data-testid="plan-review-authority"]')!;

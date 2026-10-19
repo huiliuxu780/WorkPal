@@ -144,8 +144,7 @@ const TERMINAL_STATUSES: readonly ExecutionDisplayStatus[] = ["done", "failed", 
 function sortedPending(pending: readonly InterventionView[]): InterventionView[] {
   return [...pending].sort((left, right) => {
     if (left.kind !== right.kind) {
-      const rank = (kind: string) =>
-        kind === "approval" || kind === "plan_review" ? 0 : 1;
+      const rank = (kind: string) => (kind === "approval" || kind === "plan_review" ? 0 : 1);
       const delta = rank(left.kind) - rank(right.kind);
       if (delta !== 0) return delta;
     }

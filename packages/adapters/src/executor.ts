@@ -42,8 +42,8 @@ import type {
 } from "@rakazo/contracts";
 import {
   ATTACHMENT_MAX_BYTES,
-  AvatarCharacterSchema,
   type AvatarBodyColor,
+  AvatarCharacterSchema,
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
@@ -114,14 +114,6 @@ import {
   takeRetryOperationId,
 } from "@rakazo/core/node/manual-retry-match";
 import {
-  emptyManualRetryChain,
-  loadManualRetryChain,
-  matchManualRetryEffect,
-  manualRetryPromptPrefix,
-  manualRetryUncertainAsk,
-  rememberCurrentRetryEffect,
-} from "./manual-retry-effects.js";
-import {
   appendEventInTransaction,
   applyPlanSubmission,
   avatarChangeView,
@@ -141,11 +133,11 @@ import {
   loadPendingPlanReviewRepair,
   loadRunHistoryMessages,
   type McpServer,
-  planExecutionGate,
-  planReviewRoundForToolExecution,
   type Prisma,
   type PrismaClient,
   parseComputerMode,
+  planExecutionGate,
+  planReviewRoundForToolExecution,
   promoteLeasedRunWithAttempt,
   publishRunStep,
   publishRunTodo,
@@ -180,7 +172,6 @@ import {
   approvalReplayResourceError,
   approvalRoutesMatch,
   approvedCatalogReplay,
-  planReviewPausedToolResult,
   approvedReplayArgs,
   boundDirectApprovalDetails,
   boundDirectApprovalRequest,
@@ -199,6 +190,7 @@ import {
   isToolPauseResult,
   parseCatalogApprovalTarget,
   permissionRevokedToolError,
+  planReviewPausedToolResult,
   replaceCompletedExternalEffectResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
@@ -286,6 +278,14 @@ import {
   CATALOG_EXECUTE,
   uniquifyInstalledToolName,
 } from "./lazy-tool-catalog.js";
+import {
+  emptyManualRetryChain,
+  loadManualRetryChain,
+  manualRetryPromptPrefix,
+  manualRetryUncertainAsk,
+  matchManualRetryEffect,
+  rememberCurrentRetryEffect,
+} from "./manual-retry-effects.js";
 import {
   buildMcpCredentialBlob,
   needsOAuthProbe,
@@ -457,9 +457,10 @@ const PLAN_PHASE_KEEP_TOOLS = new Set([
  * middleware from the backend authority. The execute-time gate re-checks
  * before any send, so a stale in-flight surface cannot act either.
  */
-export function filterToolsForPlanPhase<
-  T extends { name: string; readOnly?: boolean | undefined },
->(tools: T[], planPhase: string | null | undefined): T[] {
+export function filterToolsForPlanPhase<T extends { name: string; readOnly?: boolean | undefined }>(
+  tools: T[],
+  planPhase: string | null | undefined,
+): T[] {
   if (planPhase !== "planning") return tools;
   return tools.filter((tool) => tool.readOnly === true || PLAN_PHASE_KEEP_TOOLS.has(tool.name));
 }
@@ -1952,10 +1953,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const tools =
           run.trigger === "created" || run.trigger === "delivery"
             ? []
-            : filterToolsForPlanPhase(
-                [...builtins, ...exposedConnectorTools],
-                run.planPhase,
-              );
+            : filterToolsForPlanPhase([...builtins, ...exposedConnectorTools], run.planPhase);
         const loadLiveRunTools = async (): Promise<ConnectorTool[]> => {
           if (run.trigger === "created" || run.trigger === "delivery") return [];
           const stored = await deps.prisma.connection.findMany({
@@ -1969,7 +1967,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               status: true,
             },
           });
-          const liveComposioRows = stored.filter((connection) => connection.connectorId === "composio");
+          const liveComposioRows = stored.filter(
+            (connection) => connection.connectorId === "composio",
+          );
           let refreshSlugs: string[] = [];
           if (needsLivePluginSync(liveComposioRows)) {
             const listing = await loadLivePluginSlugs(deps.listConnectedPluginSlugs, run.userId);
@@ -2427,8 +2427,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
               const innerArgs = catalogApprovalInnerArgs(approvedCatalog);
               if (!innerArgs) {
                 return {
-                error: renderPromptSegment("feedback/replay-missing-args", { tool: name }),
-              };
+                  error: renderPromptSegment("feedback/replay-missing-args", { tool: name }),
+                };
               }
               args = innerArgs;
             } else {
@@ -3471,11 +3471,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             // A resumed bridge re-run of a paused submission answers from the
             // durable review round — the decision never travels through page
             // state, so any Worker/Java restart replays the same outcome.
-            const round = await planReviewRoundForToolExecution(
-              deps.prisma,
-              runId,
-              executionId,
-            );
+            const round = await planReviewRoundForToolExecution(deps.prisma, runId, executionId);
             if (round) {
               const projection = await loadCurrentPlanProjection(deps.prisma, runId);
               if (round.status === "pending") {
@@ -4447,8 +4443,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({ error: "Ask the user to state the avatar change directly." });
             const sourceBlocks = source!.blocks as MessageBlock[];
             const chosen = AvatarCharacterSchema.safeParse(args.character);
-            const requestedBodyColor = requestedAvatarBodyColor(sourceBlocks.filter(block => block.kind === "text").map(block => block.text).join(""));
-            if (args.body_color !== undefined && args.body_color !== requestedBodyColor) return finish({ error: "Avatar color does not match the user's request." });
+            const requestedBodyColor = requestedAvatarBodyColor(
+              sourceBlocks
+                .filter((block) => block.kind === "text")
+                .map((block) => block.text)
+                .join(""),
+            );
+            if (args.body_color !== undefined && args.body_color !== requestedBodyColor)
+              return finish({ error: "Avatar color does not match the user's request." });
             const imageRequested = args.use_attached_image === true;
             if (
               requested === "attached-image"
@@ -4458,7 +4460,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({ error: "Avatar choice does not match the user's request." });
             }
             let choice:
-              | { avatarMode: "character"; avatarCharacter: AvatarCharacter; avatarBodyColor?: AvatarBodyColor }
+              | {
+                  avatarMode: "character";
+                  avatarCharacter: AvatarCharacter;
+                  avatarBodyColor?: AvatarBodyColor;
+                }
               | { avatarMode: "upload"; color: string };
             if (requested === "attached-image") {
               const sourceImageArtifactIds = attachedImageArtifactIds(sourceBlocks);
@@ -4478,7 +4484,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               if (!("color" in avatar)) return finish({ error: avatar.error });
               choice = { avatarMode: "upload", color: avatar.color };
             } else {
-              choice = { avatarMode: "character", avatarCharacter: requested, avatarBodyColor: requestedBodyColor };
+              choice = {
+                avatarMode: "character",
+                avatarCharacter: requested,
+                avatarBodyColor: requestedBodyColor,
+              };
             }
             const committed = await deps.prisma.$transaction(async (tx) => {
               const owned = await tx.$queryRaw<Array<{ id: string }>>`
@@ -5053,16 +5063,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 content: skill.content,
               })),
               tools: toolsForRetryRun(tools, run.retryOfRunId),
-              currentTools: scripted ? undefined : async () => {
-                try {
-                  return toolsForRetryRun(await loadLiveRunTools(), run.retryOfRunId);
-                } catch {
-                  return toolsForRetryRun(
-                    [...builtins, ...connectorTools.values()],
-                    run.retryOfRunId,
-                  );
-                }
-              },
+              currentTools: scripted
+                ? undefined
+                : async () => {
+                    try {
+                      return toolsForRetryRun(await loadLiveRunTools(), run.retryOfRunId);
+                    } catch {
+                      return toolsForRetryRun(
+                        [...builtins, ...connectorTools.values()],
+                        run.retryOfRunId,
+                      );
+                    }
+                  },
               model: {
                 provider: runModelProvider,
                 id: runModelId,

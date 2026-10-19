@@ -184,19 +184,24 @@ function fixture(runId = "run-1") {
     actionAutoReviewPreference: { findUnique: vi.fn(async () => ({ enabled: false })) },
     externalEffect,
   };
-  Object.assign(prisma, { $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
-    callback({
-      $queryRaw: vi.fn(async () => [{ id: run.id }]),
-      run: {
-        findUnique: vi.fn(async () => ({ ...run, leaseExpiresAt: new Date(Date.now() + 60_000) })),
-        updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-          Object.assign(run, data);
-          return { count: 1 };
-        }),
-      },
-      attempt: prisma.attempt,
-    }),
-  ) });
+  Object.assign(prisma, {
+    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        $queryRaw: vi.fn(async () => [{ id: run.id }]),
+        run: {
+          findUnique: vi.fn(async () => ({
+            ...run,
+            leaseExpiresAt: new Date(Date.now() + 60_000),
+          })),
+          updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+            Object.assign(run, data);
+            return { count: 1 };
+          }),
+        },
+        attempt: prisma.attempt,
+      }),
+    ),
+  });
   const pauseRunForInput = vi.fn(async () => {
     run.status = "waiting_input";
     return true;

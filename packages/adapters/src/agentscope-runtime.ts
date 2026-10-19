@@ -663,12 +663,14 @@ function serializableRequest(
             ownerBotId: request.turnPolicy.ownership.ownerBotId,
           },
           routingKind: request.turnPolicy.routing.kind,
-          ...(request.turnPolicy.version === "v2" ? {
-            budget: request.turnPolicy.budget,
-            approval: request.turnPolicy.approval,
-            retry: request.turnPolicy.retry,
-            subagent: request.turnPolicy.subagent,
-          } : {}),
+          ...(request.turnPolicy.version === "v2"
+            ? {
+                budget: request.turnPolicy.budget,
+                approval: request.turnPolicy.approval,
+                retry: request.turnPolicy.retry,
+                subagent: request.turnPolicy.subagent,
+              }
+            : {}),
         }
       : undefined,
     collaborationContext: request.collaborationContext

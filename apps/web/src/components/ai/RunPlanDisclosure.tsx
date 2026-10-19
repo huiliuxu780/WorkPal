@@ -169,16 +169,16 @@ export const RunPlanDisclosure = memo(function RunPlanDisclosure({
         ) : plan.revision > 1 ? (
           <span className="ms-1">v{plan.revision}</span>
         ) : null}
-        {review ? (
-          (() => {
-            const chip = reviewChip(review);
-            return chip ? (
-              <span className="ms-2" data-testid="plan-review-state">
-                {chip}
-              </span>
-            ) : null;
-          })()
-        ) : null}
+        {review
+          ? (() => {
+              const chip = reviewChip(review);
+              return chip ? (
+                <span className="ms-2" data-testid="plan-review-state">
+                  {chip}
+                </span>
+              ) : null;
+            })()
+          : null}
       </h3>
       <div className="pb-2">
         <p dir="auto" className="mb-2 text-foreground/80">

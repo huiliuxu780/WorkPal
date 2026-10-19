@@ -2533,7 +2533,11 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     const bot = await rpc.bots.create({
       ...normalizeCreateBotProfile(input),
       ...(input.avatarMode === "character"
-        ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter!, avatarBodyColor: input.avatarBodyColor }
+        ? {
+            avatarMode: "character" as const,
+            avatarCharacter: input.avatarCharacter!,
+            avatarBodyColor: input.avatarBodyColor,
+          }
         : input.avatarMode === "upload"
           ? { avatarMode: "upload" as const, color: input.color! }
           : {}),
@@ -6906,10 +6910,16 @@ const MessageView = memo(function MessageView({
               botId={message.botId ?? null}
               changeId={block.changeId}
               before={
-                (block.beforeCharacter ? `${block.beforeCharacter} · ${block.beforeBodyColor ?? "ink"}` : null) ??
+                (block.beforeCharacter
+                  ? `${block.beforeCharacter} · ${block.beforeBodyColor ?? "ink"}`
+                  : null) ??
                 (block.beforeMode === "upload" ? t`Uploaded image` : t`Previous avatar`)
               }
-              after={block.afterCharacter ? `${block.afterCharacter} · ${block.afterBodyColor ?? "ink"}` : t`Uploaded image`}
+              after={
+                block.afterCharacter
+                  ? `${block.afterCharacter} · ${block.afterBodyColor ?? "ink"}`
+                  : t`Uploaded image`
+              }
               onChanged={onBotChanged}
             />
           );

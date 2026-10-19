@@ -135,7 +135,11 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
       goal: "Review and deliver",
       source: "publish_run_plan",
     });
-    expect(await planRow(runId)).toMatchObject({ revision: 1, contentVersion: 1, reviewStatus: "pending" });
+    expect(await planRow(runId)).toMatchObject({
+      revision: 1,
+      contentVersion: 1,
+      reviewStatus: "pending",
+    });
     expect(await roundCount(runId)).toBe(1);
 
     // Same bridge execution replays without a second round or event.
@@ -149,12 +153,10 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
 
     // A stale expectedRevision is a business conflict, not an error.
     expect(
-      await applyPlanSubmission(
-        prisma,
-        scopeFor(runId, "call-stale"),
-        input,
-        { source: "publish_run_plan", submit: true },
-      ),
+      await applyPlanSubmission(prisma, scopeFor(runId, "call-stale"), input, {
+        source: "publish_run_plan",
+        submit: true,
+      }),
     ).toEqual({ status: "conflict", currentRevision: 1 });
 
     // While a review is pending the run is paused; a racing publish refuses
@@ -527,7 +529,9 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
       },
       { source: "plan_write", submit: false },
     );
-    expect((await prisma.$transaction((tx) => loadCurrentRunPlans(tx, threadId))).length).toBeGreaterThan(0);
+    expect(
+      (await prisma.$transaction((tx) => loadCurrentRunPlans(tx, threadId))).length,
+    ).toBeGreaterThan(0);
     await appendEvent(prisma, {
       spaceId: id,
       threadId,

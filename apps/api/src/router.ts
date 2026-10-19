@@ -1,4 +1,3 @@
-import { AvatarBodyColorSchema } from "@rakazo/contracts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { implement, ORPCError } from "@orpc/server";
 import type {
@@ -121,6 +120,7 @@ import type {
 } from "@rakazo/contracts";
 import {
   ATTACHMENT_MAX_BYTES,
+  AvatarBodyColorSchema,
   appContract,
   ComputerCommandSchema,
   foldComputerCommands,
@@ -1670,7 +1670,11 @@ export function createRouter(deps: RouterDeps) {
         }
         let avatarChoice =
           input.avatarMode === "character"
-            ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter!, avatarBodyColor: input.avatarBodyColor }
+            ? {
+                avatarMode: "character" as const,
+                avatarCharacter: input.avatarCharacter!,
+                avatarBodyColor: input.avatarBodyColor,
+              }
             : input.avatarMode !== undefined || input.color !== undefined
               ? {
                   avatarMode: (input.avatarMode ??

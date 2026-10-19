@@ -169,9 +169,7 @@ describe("RunPlanDisclosure (level 1 + grouped level 2)", () => {
   it("keeps unmatched Steps under an explicit Other execution records entry", () => {
     const unlinked = step({ stepId: "step-u", planItemId: null, title: "Unlinked work" });
     const orphan = step({ stepId: "step-o", planItemId: "gone", title: "Orphaned work" });
-    const host = mount(
-      <RunPlanDisclosure plan={plan} steps={[unlinked, orphan]} failed={false} />,
-    );
+    const host = mount(<RunPlanDisclosure plan={plan} steps={[unlinked, orphan]} failed={false} />);
     const others = host.querySelector('[data-slot="steps"]');
     expect(others).not.toBeNull();
     expect(others!.textContent).toContain("Other execution records");
@@ -203,9 +201,7 @@ describe("RunPlanDisclosure (level 1 + grouped level 2)", () => {
         }}
       />,
     );
-    expect(container.querySelector('[data-testid="plan-content-version"]')!.textContent).toBe(
-      "v1",
-    );
+    expect(container.querySelector('[data-testid="plan-content-version"]')!.textContent).toBe("v1");
     expect(container.querySelector('[data-testid="plan-review-state"]')!.textContent).toBe(
       "Changes requested",
     );

@@ -96,9 +96,7 @@ test("submitting a plan pauses on one external card and approval resumes the sam
       async () =>
         row
           .locator(".rakazo-agent-avatar, .rakazo-upload-avatar")
-          .evaluateAll((nodes) =>
-            nodes.map((node) => node.getAttribute("data-state")).join(","),
-          ),
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-state")).join(",")),
       { timeout: 30_000, intervals: [500, 1_000] },
     )
     .toBe("approval");
@@ -197,9 +195,7 @@ test("reject cancels the run with plan_rejected, keeps the audit, and frees the 
       async () =>
         row
           .locator(".rakazo-agent-avatar, .rakazo-upload-avatar")
-          .evaluateAll((nodes) =>
-            nodes.map((node) => node.getAttribute("data-state")).join(","),
-          ),
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-state")).join(",")),
       { timeout: 30_000, intervals: [500, 1_000] },
     )
     .toBe("idle");

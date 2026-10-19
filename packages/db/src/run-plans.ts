@@ -403,8 +403,7 @@ export async function submitDraftForReview(
     // draft | changes_requested | NULL (legacy): open the review round on the
     // current content version. A legacy plan gets its fingerprint rebaselined
     // so later progress updates compare against the reviewed content.
-    const fingerprint =
-      current.contentFingerprint ?? planContentFingerprint(plan.goal, plan.items);
+    const fingerprint = current.contentFingerprint ?? planContentFingerprint(plan.goal, plan.items);
     await tx.runPlan.update({
       where: { runId: run.id },
       data: { reviewStatus: "pending", contentFingerprint: fingerprint },
@@ -520,7 +519,11 @@ export async function recordLegacyNativePlanDecision(
 export async function latestAnsweredNativePlanAsk(
   prisma: PrismaClient,
   runId: string,
-): Promise<{ answer: "approve" | "reject"; interventionId: string | null; resolvedByUserId: string | null } | null> {
+): Promise<{
+  answer: "approve" | "reject";
+  interventionId: string | null;
+  resolvedByUserId: string | null;
+} | null> {
   const messages = await prisma.message.findMany({
     where: { runId, role: "bot" },
     orderBy: { seq: "desc" },
@@ -611,7 +614,7 @@ export async function loadPendingPlanReviewRepair(
   });
   if (!round) return null;
   const plan = await prisma.runPlan.findUnique({ where: { runId } });
-  if (!plan || plan.reviewStatus !== "pending") return null;
+  if (plan?.reviewStatus !== "pending") return null;
   const current = RunPlanRevisionSchema.parse(plan.current);
   return {
     roundId: round.id,

@@ -1,9 +1,9 @@
 import { t } from "@lingui/core/macro";
 import type { InterventionView, ThreadMessage } from "@rakazo/contracts";
 import { useEffect, useId, useRef, useState } from "react";
-import { AskCard, type AskBlock } from "../AskCard";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { type AskBlock, AskCard } from "../AskCard";
 import { PlanReviewCard } from "./PlanReviewCard";
 
 function authorityLabel(view: InterventionView): string {
@@ -29,7 +29,11 @@ function effectStatusLabel(status: string): string {
   return t`Effect status unavailable`;
 }
 
-function presentBlock(block: AskBlock, view: InterventionView, localAnswer: string | null): AskBlock {
+function presentBlock(
+  block: AskBlock,
+  view: InterventionView,
+  localAnswer: string | null,
+): AskBlock {
   if (view.status === "pending") return { ...block, interventionId: view.id, status: "pending" };
   if (view.status !== "answered") return { ...block, interventionId: view.id, status: "expired" };
   const messageAnswer = block.status === "answered" ? block.answer : undefined;
@@ -73,15 +77,16 @@ function blockFromView(view: InterventionView): AskBlock {
         }
       : {}),
     interventionId: view.id,
-    ...(view.approval
-      ? { approvalEffectId: view.approval.effectId }
-      : {}),
+    ...(view.approval ? { approvalEffectId: view.approval.effectId } : {}),
     ...(view.input?.mode === "secret" || view.input?.mode === "text"
       ? { input: view.input.mode }
       : {}),
     ...(view.input?.purpose ? { purpose: view.input.purpose } : {}),
-    status: view.status === "answered" ? "answered" : view.status === "pending" ? "pending" : "expired",
-    ...(actions ? { actions: actions.map((action) => ({ id: action.id, label: action.label })) } : {}),
+    status:
+      view.status === "answered" ? "answered" : view.status === "pending" ? "pending" : "expired",
+    ...(actions
+      ? { actions: actions.map((action) => ({ id: action.id, label: action.label })) }
+      : {}),
   };
 }
 
@@ -108,7 +113,6 @@ function InterventionCard({
   const [announce, setAnnounce] = useState(false);
   const shown = presentBlock(block, view, announce ? null : localAnswer);
   const secret = shown.input === "secret";
-  const terminal = view.status !== "pending";
 
   useEffect(() => {
     if (!announce) return;
@@ -133,8 +137,7 @@ function InterventionCard({
   // authoritative line states the outcome. `announce` keeps the existing
   // already_handled focus behavior.
   const showAuthority = announce || (sourceless && view.status !== "pending");
-  const effectTerminal =
-    view.kind === "approval" && view.status !== "pending" && view.approval;
+  const effectTerminal = view.kind === "approval" && view.status !== "pending" && view.approval;
   return (
     <div data-intervention-id={view.id} data-kind={view.kind} data-mount={mountId}>
       <AskCard
@@ -156,7 +159,11 @@ function InterventionCard({
         </p>
       ) : null}
       {effectTerminal ? (
-        <p role="status" data-testid="intervention-effect" className="mt-1 text-[13px] text-muted-foreground">
+        <p
+          role="status"
+          data-testid="intervention-effect"
+          className="mt-1 text-[13px] text-muted-foreground"
+        >
           {effectStatusLabel(view.approval!.effectStatus)}
         </p>
       ) : null}
@@ -210,7 +217,12 @@ export function InterventionRegion({
     );
   };
   return (
-    <section role="region" aria-label="需要你处理" data-testid="intervention-region" className="space-y-2 py-1">
+    <section
+      role="region"
+      aria-label="需要你处理"
+      data-testid="intervention-region"
+      className="space-y-2 py-1"
+    >
       {planReviews.length > 0 ? (
         <div data-testid="intervention-plan-reviews" className="space-y-2">
           {planReviews.map((view) => (

@@ -51,7 +51,11 @@ describe("AgentScope auxiliary execution isolation", () => {
         object: "chat.completion.chunk",
         model: input.model,
         choices: [
-          { index: 0, delta: { role: "assistant", content: "AUX_FIXTURE_OK" }, finish_reason: null },
+          {
+            index: 0,
+            delta: { role: "assistant", content: "AUX_FIXTURE_OK" },
+            finish_reason: null,
+          },
         ],
       },
       {

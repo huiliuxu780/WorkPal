@@ -6,43 +6,43 @@ import {
   encodeLoginSecret,
   LoginSecretValue,
   type MessageBlock,
-  type MessageOriginKind,
   MessageBlock as MessageBlockSchema,
+  type MessageOriginKind,
   type PlanReviewSource,
   type ProductEvent,
 } from "@rakazo/contracts";
 import {
+  BUDGET_ACTIONS,
   blocksToAgentHistoryText,
   budgetAskCheckpoint,
-  BUDGET_ACTIONS,
   callIdFromClientNonce,
   increasedBudgetForViolation,
   isApprovalAskBlock,
   isConversationalRun,
   isSecretAskBlock,
   messagingChannelId,
-  resolveAskChoice,
   parseBudgetAskCheckpoint,
-  turnPolicyFromRun,
+  resolveAskChoice,
   sanitizeJsonValue,
+  turnPolicyFromRun,
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
+import { expireComputerExecutionLeases } from "./computers.js";
+import { enqueueDeliveryInTransaction } from "./delivery-records.js";
 import {
-  type ResolveInterventionOutcome,
   assertSafeClientSubmissionId,
   emitInterventionCreated,
   findOrdinaryTextAsks,
-  insertPausedIntervention,
   InterventionRejected,
+  insertPausedIntervention,
   interventionStore,
   legacyMessageId,
+  type ResolveInterventionOutcome,
   resolveInterventionInTransaction,
   settleAnsweredIntervention,
 } from "./interventions.js";
-import { expireComputerExecutionLeases } from "./computers.js";
-import { enqueueDeliveryInTransaction } from "./delivery-records.js";
 import {
   assertRunCanWriteHistory,
   assertRunIsCancelled,
@@ -156,7 +156,10 @@ export type FinalizeRunInput = FinalizeRunBase &
     | {
         outcome: "failed";
         error: string;
-        budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number };
+        budgetExceeded?: {
+          reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls";
+          limit: number;
+        };
         /** User-visible explanation for a typed failure such as permission_revoked. */
         blocks?: MessageBlock[];
         markUnread?: boolean;
@@ -179,7 +182,11 @@ export interface PauseRunForInput {
   offeredActions?: Array<{ id: string; label: string }>;
   /** Predecessor ExternalEffect id for a manual-retry uncertain-result choice. */
   manualRetryEffectId?: string;
-  budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number; observed: number };
+  budgetExceeded?: {
+    reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls";
+    limit: number;
+    observed: number;
+  };
   /**
    * UX-02: pair the pending plan review round with the plan_review
    * Intervention created by this pause and emit plan.review_submitted. The
@@ -759,7 +766,9 @@ export async function commitAnswerRunInput(
       clientSubmissionId: input.clientSubmissionId,
     });
     if (selectedChoice.id === "narrow_scope") {
-      const guidance = [{ kind: "text" as const, text: "Send a narrower request to start a new run." }];
+      const guidance = [
+        { kind: "text" as const, text: "Send a narrower request to start a new run." },
+      ];
       const note = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "bot",
@@ -859,9 +868,7 @@ export async function commitAnswerRunInput(
       });
     }
     const planBlocks = parsed.data.map((block) =>
-      block === pendingAsk
-        ? { ...block, status: "answered" as const, answer: decision }
-        : block,
+      block === pendingAsk ? { ...block, status: "answered" as const, answer: decision } : block,
     );
     await tx.message.update({ where: { id: message.id }, data: { blocks: planBlocks } });
     const planUpdated = await appendEventInTransaction(tx, {
@@ -1220,25 +1227,22 @@ export async function resolveIntervention(
   try {
     outcome = await prisma.$transaction(
       (tx: Prisma.TransactionClient) =>
-        resolveInterventionInTransaction(
-          tx,
-          { ...input, runId: located.runId },
-          (transaction) =>
-            commitAnswerRunInput(
-              transaction,
-              {
-                spaceId: input.spaceId,
-                threadId: input.threadId,
-                runId: located.runId,
-                messageId: located.messageId,
-                answeredByUserId: input.answeredByUserId,
-                answer: input.answer,
-                username: input.username,
-                clientSubmissionId: input.clientSubmissionId,
-                feedback: input.feedback,
-              },
-              runSecretWriter,
-            ),
+        resolveInterventionInTransaction(tx, { ...input, runId: located.runId }, (transaction) =>
+          commitAnswerRunInput(
+            transaction,
+            {
+              spaceId: input.spaceId,
+              threadId: input.threadId,
+              runId: located.runId,
+              messageId: located.messageId,
+              answeredByUserId: input.answeredByUserId,
+              answer: input.answer,
+              username: input.username,
+              clientSubmissionId: input.clientSubmissionId,
+              feedback: input.feedback,
+            },
+            runSecretWriter,
+          ),
         ),
       INTERVENTION_TRANSACTION,
     );
@@ -1437,14 +1441,14 @@ export async function pauseRunForInput(
     }
     const budgetEvent = input.budgetExceeded
       ? await appendEventInTransaction(tx, {
-        spaceId: input.spaceId,
-        threadId: input.threadId,
-        botId: input.botId,
-        type: "budget.exceeded",
-        runId: input.runId,
-        schemaVersion: 2,
-        causationId: waitingEvent.id,
-        payload: { reason: input.budgetExceeded.reason, limit: input.budgetExceeded.limit },
+          spaceId: input.spaceId,
+          threadId: input.threadId,
+          botId: input.botId,
+          type: "budget.exceeded",
+          runId: input.runId,
+          schemaVersion: 2,
+          causationId: waitingEvent.id,
+          payload: { reason: input.budgetExceeded.reason, limit: input.budgetExceeded.limit },
         })
       : null;
     const approvalEvent =
@@ -1789,7 +1793,11 @@ async function finalizeRunOnce(
           ? input.blocks
           : undefined;
     if (persistBlocks && persistBlocks.length > 0) {
-      const completedBlocks = completedRunBlocks(persistBlocks, writableRun?.startedAt ?? null, now);
+      const completedBlocks = completedRunBlocks(
+        persistBlocks,
+        writableRun?.startedAt ?? null,
+        now,
+      );
       const message = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "bot",
@@ -1825,10 +1833,13 @@ async function finalizeRunOnce(
       botId: input.botId,
       type: input.outcome === "completed" ? "run.completed" : "run.failed",
       runId: input.runId,
-      payload: input.outcome === "completed" ? {} : {
-        error: input.error,
-        ...(input.budgetExceeded ? { reason: "budget_exceeded" } : {}),
-      },
+      payload:
+        input.outcome === "completed"
+          ? {}
+          : {
+              error: input.error,
+              ...(input.budgetExceeded ? { reason: "budget_exceeded" } : {}),
+            },
     });
     let lastSeq = lastEvent.seq;
     if (input.outcome === "failed" && input.budgetExceeded) {

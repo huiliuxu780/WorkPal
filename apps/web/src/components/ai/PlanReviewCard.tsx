@@ -1,7 +1,7 @@
 import { t } from "@lingui/core/macro";
 import type { InterventionView, PlanItemStatus } from "@rakazo/contracts";
-import { useEffect, useRef, useState } from "react";
 import { Button, Textarea } from "@rakazo/ui-web";
+import { useEffect, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
 
@@ -117,24 +117,40 @@ export function PlanReviewCard({
       className="max-w-[74%] rounded-2xl border border-border bg-card px-5 py-4"
     >
       <div className="text-[15.5px] leading-[1.5] text-foreground">
-        {botName ? t`${botName} submitted a plan for your review` : t`A plan is waiting for your review`}
-        <span className="ms-2 align-middle text-xs text-muted-foreground" data-testid="plan-review-version">
+        {botName
+          ? t`${botName} submitted a plan for your review`
+          : t`A plan is waiting for your review`}
+        <span
+          className="ms-2 align-middle text-xs text-muted-foreground"
+          data-testid="plan-review-version"
+        >
           {t`Version v${content.contentVersion}`}
         </span>
       </div>
-      <p dir="auto" data-testid="plan-review-goal" className="mt-2 text-[13.5px] text-foreground/85">
+      <p
+        dir="auto"
+        data-testid="plan-review-goal"
+        className="mt-2 text-[13.5px] text-foreground/85"
+      >
         {content.goal}
       </p>
       <ol data-testid="plan-review-items" className="mt-2 space-y-1 text-[13px] text-foreground/85">
         {items.map((item) => (
-          <li key={item.id} data-plan-item-id={item.id} data-plan-status={item.status} className="flex min-w-0 items-start gap-2">
+          <li
+            key={item.id}
+            data-plan-item-id={item.id}
+            data-plan-status={item.status}
+            className="flex min-w-0 items-start gap-2"
+          >
             <span aria-hidden="true" className="w-3 shrink-0 text-center">
               {statusMark[item.status]}
             </span>
             <span dir="auto" className="min-w-0 flex-1">
               {item.title}
             </span>
-            <span className="shrink-0 text-xs text-muted-foreground">{statusText[item.status]()}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {statusText[item.status]()}
+            </span>
           </li>
         ))}
       </ol>
