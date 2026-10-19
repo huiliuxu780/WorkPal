@@ -9,16 +9,53 @@ import {
 } from "@rakazo/core/node/manual-retry-match";
 import { loadManualRetryPredecessorIds, type PrismaClient } from "@rakazo/db";
 
-export type ManualRetryChain = Array<{ effects: ManualRetryChainEffect[] }>;
+export type ManualRetryChain = {
+  current: ManualRetryChainEffect[];
+  predecessors: Array<{ effects: ManualRetryChainEffect[] }>;
+};
+
+export function emptyManualRetryChain(): ManualRetryChain {
+  return { current: [], predecessors: [] };
+}
+
+export function rememberCurrentRetryEffect(
+  chain: ManualRetryChain,
+  effect: {
+    id: string;
+    runId?: string;
+    kind: string;
+    status: string;
+    request: unknown;
+    result?: unknown;
+    reviewDecision?: string | null;
+    createdAt?: Date;
+    operationId?: string | null;
+  },
+) {
+  const mapped: ManualRetryChainEffect = {
+    id: effect.id,
+    runId: effect.runId ?? "",
+    kind: effect.kind,
+    status: effect.status,
+    request: effect.request,
+    result: effect.result ?? null,
+    reviewDecision: effect.reviewDecision ?? null,
+    createdAt: effect.createdAt ?? new Date(),
+    operationId: effect.operationId ?? effect.id,
+  };
+  const index = chain.current.findIndex((row) => row.id === mapped.id);
+  if (index >= 0) chain.current[index] = { ...chain.current[index]!, ...mapped };
+  else chain.current.push(mapped);
+}
 
 export async function loadManualRetryChain(
   prisma: PrismaClient,
   runId: string,
 ): Promise<ManualRetryChain> {
   const predecessorIds = await loadManualRetryPredecessorIds(prisma, runId);
-  if (predecessorIds.length === 0) return [];
+  const runIds = [runId, ...predecessorIds];
   const rows = await prisma.externalEffect.findMany({
-    where: { runId: { in: predecessorIds } },
+    where: { runId: { in: runIds } },
     select: {
       id: true,
       runId: true,
@@ -37,7 +74,10 @@ export async function loadManualRetryChain(
     list.push(row);
     byRun.set(row.runId, list);
   }
-  return predecessorIds.map((id) => ({ effects: byRun.get(id) ?? [] }));
+  return {
+    current: byRun.get(runId) ?? [],
+    predecessors: predecessorIds.map((id) => ({ effects: byRun.get(id) ?? [] })),
+  };
 }
 
 export function matchManualRetryEffect(
@@ -46,14 +86,19 @@ export function matchManualRetryEffect(
   request: unknown,
   operationId?: string | null,
 ): ManualRetryEffectDecision {
-  if (chain.length === 0) return { kind: "execute" };
-  return decideManualRetryEffect({ tool, request, operationId, predecessors: chain });
+  return decideManualRetryEffect({
+    tool,
+    request,
+    operationId,
+    current: chain.current,
+    predecessors: chain.predecessors,
+  });
 }
 
 export function manualRetryPromptPrefix(originalTask: string, chain: ManualRetryChain): string {
   return renderManualRetryPrompt({
     originalTask,
-    operations: operationsForRetryPrompt(chain),
+    operations: operationsForRetryPrompt(chain.predecessors),
   });
 }
 

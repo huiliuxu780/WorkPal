@@ -4,6 +4,7 @@ import {
   isRootRunOrchestration,
   type ManualRetryChainEffect,
   projectManualRetryEligibility,
+  withRetryOperationIdSchema,
 } from "./manual-retry.js";
 import {
   decideManualRetryEffect,
@@ -152,6 +153,62 @@ describe("decideManualRetryEffect", () => {
       kind: "reuse",
       effect: expect.objectContaining({ id: "e1" }),
     });
+  });
+
+  it("reuses a completed current-run hop of the same operation id", () => {
+    expect(
+      decideManualRetryEffect({
+        tool: "send_email",
+        request: args,
+        operationId: "op-1",
+        current: [
+          effect({
+            id: "e-now",
+            operationId: "op-1",
+            kind: "send_email",
+            status: "completed",
+            result: { id: "from-this-run" },
+            runId: "run-retry",
+          }),
+        ],
+        predecessors: [
+          {
+            effects: [
+              effect({ id: "e-old", operationId: "op-1", kind: "send_email", status: "denied" }),
+            ],
+          },
+        ],
+      }),
+    ).toEqual({
+      kind: "reuse",
+      effect: expect.objectContaining({ id: "e-now", result: { id: "from-this-run" } }),
+    });
+  });
+
+  it("still starts a new independent operation when the current run already completed a same-args op without an id", () => {
+    expect(
+      decideManualRetryEffect({
+        tool: "send_email",
+        request: args,
+        current: [
+          effect({
+            id: "e-now",
+            operationId: "op-1",
+            kind: "send_email",
+            status: "completed",
+            result: { id: "from-this-run" },
+            runId: "run-retry",
+          }),
+        ],
+        predecessors: [
+          {
+            effects: [
+              effect({ id: "e-old", operationId: "op-1", kind: "send_email", status: "denied" }),
+            ],
+          },
+        ],
+      }),
+    ).toEqual({ kind: "execute" });
   });
 
   it("treats a live call without operationId as a new independent operation", () => {
@@ -568,6 +625,26 @@ describe("decideManualRetryEffect", () => {
       }),
       expect.objectContaining({ operationId: "op-auth", status: "uncertain" }),
     ]);
+  });
+
+  it("declares retryOperationId on a closed model-visible schema", () => {
+    expect(
+      withRetryOperationIdSchema({
+        type: "object",
+        properties: { url: { type: "string" }, body: { type: "string" } },
+        required: ["url", "body"],
+        additionalProperties: false,
+      }),
+    ).toEqual({
+      type: "object",
+      properties: {
+        url: { type: "string" },
+        body: { type: "string" },
+        retryOperationId: expect.objectContaining({ type: "string" }),
+      },
+      required: ["url", "body"],
+      additionalProperties: false,
+    });
   });
 
   it("strips retryOperationId from live args and catalog inner arguments", () => {

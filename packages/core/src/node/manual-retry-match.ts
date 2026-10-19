@@ -165,6 +165,33 @@ function findByOperationId(
   return undefined;
 }
 
+/**
+ * Same-run follow-up of a continued operation. Completed or in-flight rows
+ * must not send again. Intended/approved rows still need the live execute
+ * path (approval claim). Returns null to fall through to predecessor hops.
+ */
+function decideCurrentRunOperation(
+  effect: ManualRetryChainEffect,
+): ManualRetryEffectDecision | null {
+  if (effect.status === "completed" && recoverableResult(effect.result)) {
+    return { kind: "reuse", effect };
+  }
+  if (effect.status === "executing") {
+    return recoverableResult(effect.result)
+      ? { kind: "reuse", effect }
+      : { kind: "skip", reason: "confirmed_without_result" };
+  }
+  if (
+    effect.status === "uncertain" ||
+    effect.status === "failed" ||
+    effect.status === "ambiguous" ||
+    (effect.status === "completed" && !recoverableResult(effect.result))
+  ) {
+    return { kind: "pause", effect };
+  }
+  return null;
+}
+
 function decideOne(effect: ManualRetryChainEffect): ManualRetryEffectDecision {
   const decision = effect.reviewDecision;
   if (decision === MANUAL_RETRY_EFFECT_AUTHORIZED) {
@@ -198,9 +225,18 @@ export function decideManualRetryEffect(input: {
   request: unknown;
   operationId?: string | null;
   predecessors: ReadonlyArray<{ effects: readonly ManualRetryChainEffect[] }>;
+  current?: readonly ManualRetryChainEffect[];
 }): ManualRetryEffectDecision {
   const operationId = input.operationId?.trim();
   if (!operationId) return { kind: "execute" };
+  const currentMatch = findByOperationId([{ effects: input.current ?? [] }], operationId);
+  if (currentMatch) {
+    if (!sameIdentity(currentMatch, input.tool, input.request)) {
+      return { kind: "reject", reason: "bind_mismatch" };
+    }
+    const currentDecision = decideCurrentRunOperation(currentMatch);
+    if (currentDecision) return currentDecision;
+  }
   const match = findByOperationId(input.predecessors, operationId);
   if (!match) return { kind: "reject", reason: "unknown_operation" };
   if (!sameIdentity(match, input.tool, input.request)) {

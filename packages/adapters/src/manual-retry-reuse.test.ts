@@ -99,6 +99,7 @@ function fixture(
   const effects: Effect[] = [];
   const results: unknown[] = [];
   const prompts: string[] = [];
+  const toolSchemas: Record<string, unknown> = {};
   const scratchpadRows: Array<{ title: string }> = [];
   const run = {
     id: runId,
@@ -271,6 +272,9 @@ function fixture(
   });
   const runtimeRun = vi.fn(async function* (request: AgentRunRequest) {
     prompts.push(request.prompt);
+    for (const tool of request.tools) {
+      toolSchemas[tool.name] = tool.inputSchema;
+    }
     for (const call of calls) {
       results.push(await request.executeTool!(call.name, call.args, call.executionId));
     }
@@ -302,6 +306,7 @@ function fixture(
     effects,
     results,
     prompts,
+    toolSchemas,
     scratchpadRows,
     append,
     pauseRunForInput,
@@ -696,5 +701,89 @@ describe("manual retry effect reuse (production executor)", () => {
     } finally {
       http.server.close();
     }
+  });
+
+  it("sends a continued operation only once when the same retry Run repeats its id", async () => {
+    const http = await listen();
+    try {
+      const f = fixture();
+      const args = { url: `${http.url}/items`, body: "one logical operation" };
+      f.seed({
+        id: "e-old-denied",
+        operationId: "op-repeat",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-denied",
+        status: "denied",
+        request: boundDirectApprovalRequest(hookRoute, args, CATALOG_MARKER),
+        result: null,
+      });
+      f.setCalls([
+        {
+          name: "hook_write",
+          args: { ...args, retryOperationId: "op-repeat" },
+          executionId: "first",
+        },
+        {
+          name: "hook_write",
+          args: { ...args, retryOperationId: "op-repeat" },
+          executionId: "second",
+        },
+      ]);
+      await f.run();
+      expect(http.hits).toHaveLength(1);
+      expect(f.execute).toHaveBeenCalledTimes(1);
+    } finally {
+      http.server.close();
+    }
+  });
+
+  it("declares retryOperationId on closed direct and catalog model-visible schemas", async () => {
+    const f = fixture("run-schema", {
+      tools: [
+        {
+          ...hookTool,
+          inputSchema: {
+            type: "object",
+            properties: { url: { type: "string" }, body: { type: "string" } },
+            required: ["url", "body"],
+            additionalProperties: false,
+          },
+        },
+        {
+          ...catalogExecuteTool,
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              arguments: { type: "object" },
+            },
+            required: ["id", "arguments"],
+            additionalProperties: false,
+          },
+        },
+      ],
+    });
+    await f.run();
+    expect(f.toolSchemas.hook_write).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          url: { type: "string" },
+          body: { type: "string" },
+          retryOperationId: expect.objectContaining({ type: "string" }),
+        }),
+      }),
+    );
+    expect(f.toolSchemas.fixture_execute_tool).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          id: { type: "string" },
+          arguments: { type: "object" },
+          retryOperationId: expect.objectContaining({ type: "string" }),
+        }),
+      }),
+    );
   });
 });

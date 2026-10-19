@@ -136,8 +136,9 @@ describePostgres("manual retry effect chain (PostgreSQL)", () => {
       },
     });
     const chain = await loadManualRetryChain(prisma, retry.id);
-    expect(chain).toHaveLength(1);
-    expect(chain[0]?.effects.map((effect) => effect.operationId).sort()).toEqual(
+    expect(chain.current).toEqual([]);
+    expect(chain.predecessors).toHaveLength(1);
+    expect(chain.predecessors[0]?.effects.map((effect) => effect.operationId).sort()).toEqual(
       [first.operationId, second.operationId].sort(),
     );
     expect(

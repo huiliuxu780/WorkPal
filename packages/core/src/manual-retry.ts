@@ -76,4 +76,29 @@ export type ManualRetryEffectDecision =
 /** Reserved tool-argument key. Stripped before persist/send. */
 export const RETRY_OPERATION_ID_KEY = "retryOperationId";
 
+/** Declare the reserved retry id on a model-visible JSON Schema object. */
+export function withRetryOperationIdSchema(schema: unknown): Record<string, unknown> {
+  const base: Record<string, unknown> =
+    schema && typeof schema === "object" && !Array.isArray(schema)
+      ? { ...(schema as Record<string, unknown>) }
+      : { type: "object" };
+  const rawProperties = base.properties;
+  const properties: Record<string, unknown> =
+    rawProperties && typeof rawProperties === "object" && !Array.isArray(rawProperties)
+      ? { ...(rawProperties as Record<string, unknown>) }
+      : {};
+  return {
+    ...base,
+    type: typeof base.type === "string" ? base.type : "object",
+    properties: {
+      ...properties,
+      [RETRY_OPERATION_ID_KEY]: {
+        type: "string",
+        description:
+          "Exact backend operation id from the retry context. The server strips this field before persist or send. Omit to start a new independent operation.",
+      },
+    },
+  };
+}
+
 export type { ManualRetryDenyReason, ManualRetryProjection };

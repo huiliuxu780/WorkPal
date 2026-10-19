@@ -98,6 +98,7 @@ import {
   turnPolicyFromRun,
   unattendedTriggerToolRequiresApproval,
   userTurnMessageForRun,
+  withRetryOperationIdSchema,
 } from "@rakazo/core";
 import {
   approvalEffectKey,
@@ -108,10 +109,12 @@ import {
 } from "@rakazo/core/node/approval-effect-key";
 import { takeRetryOperationId } from "@rakazo/core/node/manual-retry-match";
 import {
+  emptyManualRetryChain,
   loadManualRetryChain,
   matchManualRetryEffect,
   manualRetryPromptPrefix,
   manualRetryUncertainAsk,
+  rememberCurrentRetryEffect,
 } from "./manual-retry-effects.js";
 import {
   appendEventInTransaction,
@@ -1463,7 +1466,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             },
           }),
         ]);
-        const retryChain = run.retryOfRunId ? await loadManualRetryChain(deps.prisma, run.id) : [];
+        const retryChain = run.retryOfRunId
+          ? await loadManualRetryChain(deps.prisma, run.id)
+          : emptyManualRetryChain();
         const agentEnvironment = decryptAgentEnvironment(agentSecretRows, deps.secretStore);
         runSecrets.push(...Object.values(agentEnvironment));
         const agentEnvironmentInstruction = formatAgentEnvironmentInstruction(agentEnvironment);
@@ -2409,6 +2414,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 consumedEffectIds,
                 continueOperationId,
               );
+          if (applied) rememberCurrentRetryEffect(retryChain, applied.effect);
 
           const runAutoReview = async () => {
             if (!injectedReview && !checker) return;
@@ -2675,15 +2681,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
             const early = await claimOrReturn("intended");
             if (early !== undefined) return early;
           }
-          const persistEffectResult = (result: unknown) =>
-            applied
-              ? completeEffect(
+          const persistEffectResult = async (result: unknown) => {
+            const ok = applied
+              ? await completeEffect(
                   deps,
                   applied.effect.id,
                   claimedEffect ? "executing" : "intended",
                   result,
                 )
-              : Promise.resolve(true);
+              : true;
+            if (applied) {
+              rememberCurrentRetryEffect(retryChain, {
+                ...applied.effect,
+                status: ok ? "completed" : applied.effect.status,
+                result: ok ? result : applied.effect.result,
+              });
+            }
+            return ok;
+          };
           const finish = async (result: unknown) =>
             (await persistEffectResult(result)) ? result : uncertainEffectResult(name);
           const registerRunSecrets = (values: string[]) => {
@@ -4618,7 +4633,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 description: skill.description,
                 content: skill.content,
               })),
-              tools,
+              tools: run.retryOfRunId
+                ? tools.map((tool) => ({
+                    ...tool,
+                    inputSchema: withRetryOperationIdSchema(tool.inputSchema),
+                  }))
+                : tools,
               model: {
                 provider: runModelProvider,
                 id: runModelId,

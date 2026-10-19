@@ -44,6 +44,18 @@ function shellOf(page: Page, titlePart: string) {
   return page.locator('section[data-testid="execution-shell"]').filter({ hasText: titlePart });
 }
 
+function ancestorShell(page: Page, titlePart: string) {
+  return shellOf(page, titlePart).filter({
+    has: page.getByTestId("execution-already-retried"),
+  });
+}
+
+function successorShell(page: Page, titlePart: string) {
+  return shellOf(page, titlePart).filter({
+    hasNot: page.getByTestId("execution-already-retried"),
+  });
+}
+
 function cardOf(page: Page, titlePart: string) {
   return shellOf(page, titlePart).locator('article[data-testid="execution-card"]');
 }
@@ -69,12 +81,13 @@ test("a failed chat card retries into a new Run on the same Task and keeps the o
   await expect(card.getByTestId("execution-retry")).toBeVisible({ timeout: 15_000 });
   await card.getByTestId("execution-retry").click();
 
+  let successorId: string | undefined;
   await expect
     .poll(
       async () => {
         const rows = await executionsOf(page, botId);
         const ancestor = rows.find((row) => row.runId === failed.runId);
-        const successorId = ancestor?.retrySuccessorRunId;
+        successorId = ancestor?.retrySuccessorRunId;
         return ancestor?.status === "failed" &&
           successorId &&
           rows.some((row) => row.runId === successorId)
@@ -85,9 +98,13 @@ test("a failed chat card retries into a new Run on the same Task and keeps the o
     )
     .toBe(1);
 
-  await expect(card.getByTestId("execution-already-retried")).toHaveText("Already retried");
-  await card.getByTestId("execution-view-retry").click();
-  await expect(card).toBeVisible();
+  const ancestor = ancestorShell(page, "fail this tracked run");
+  await expect(ancestor.getByTestId("execution-already-retried")).toHaveText("Already retried");
+  await ancestor.getByTestId("execution-view-retry").click();
+  await expect(successorShell(page, "fail this tracked run")).toBeVisible();
+  const rows = await executionsOf(page, botId);
+  expect(rows.find((row) => row.runId === failed.runId)?.retrySuccessorRunId).toBe(successorId);
+  expect(rows.some((row) => row.runId === successorId)).toBe(true);
 });
 
 test("Task Center retries a cancelled Run that has no chat Execution shell", async ({ page }) => {

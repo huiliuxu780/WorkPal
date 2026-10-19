@@ -101,10 +101,10 @@ Read-only tools are not matched; they read current state. Matching never inspect
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Core eligibility + operation identity + prompt | `pnpm --filter @rakazo/core exec vitest run --root ../.. packages/core/src/manual-retry.test.ts packages/core/src/manual-retry-prompt.test.ts packages/core/src/execution-snapshot.test.ts` | 33/33 (16 identity/eligibility + 3 prompt + 14 snapshot) |
+| Core eligibility + operation identity + prompt | `pnpm --filter @rakazo/core exec vitest run --root ../.. packages/core/src/manual-retry.test.ts packages/core/src/manual-retry-prompt.test.ts packages/core/src/execution-snapshot.test.ts` | 36/36 (19 identity/eligibility + 3 prompt + 14 snapshot) |
 | Contracts | `pnpm --filter @rakazo/contracts exec vitest run --root ../.. packages/contracts/src/manual-retry.test.ts packages/contracts/src/events.test.ts` | 6/6 |
 | Isolated PG journeys | `VERIFY_DATABASE=1 pnpm --filter @rakazo/db exec vitest run --root ../.. packages/db/src/manual-retry.postgres.test.ts` | 13/13 |
-| Production executor reuse + identity HTTP fixture | `pnpm --filter @rakazo/adapters exec vitest run --root ../.. packages/adapters/src/manual-retry-reuse.test.ts` | 9/9 |
+| Production executor reuse + identity HTTP fixture | `pnpm --filter @rakazo/adapters exec vitest run --root ../.. packages/adapters/src/manual-retry-reuse.test.ts` | 11/11 |
 | Chain load + identity match (PG) | `VERIFY_DATABASE=1 pnpm --filter @rakazo/adapters exec vitest run --root ../.. packages/adapters/src/manual-retry-effects.postgres.test.ts` | 1/1 |
 | Run budget fail → adjust → retry (PG) | `VERIFY_DATABASE=1 pnpm --filter @rakazo/adapters exec vitest run --root ../.. packages/adapters/src/run-budget-enforcement.postgres.test.ts` | 5/5 |
 | AG-04 family ownership + scenario unit | `pnpm --filter @rakazo/adapters exec vitest run --root ../.. packages/adapters/src/scenario-contract.test.ts` | 36/36; 72 segments owned |
@@ -150,4 +150,6 @@ Read-only tools are not matched; they read current state. Matching never inspect
 
 ## MR-01-R3 follow-up — 2026-10-19
 
-Occurrence matching was reproduced first: same-args completed-first + uncertain-second, live occurrence 0 reused the completed first. R3 replaces that ordinal with `ExternalEffect.operationId`. Migration `20261019150000_manual_retry_operation_identity` adds the column, backfills `operationId = id`, and indexes it. Bound/catalog envelopes, nonce ownership, legacy `effect.reconciled`, original `Task.prompt`, two UI entries, and the standalone Worker path are unchanged. No deployment occurred.
+Occurrence matching was reproduced first: same-args completed-first + uncertain-second, live occurrence 0 reused the completed first. R3 replaces that ordinal with `ExternalEffect.operationId`. Migration `20261019150000_manual_retry_operation_identity` adds the column, backfills `operationId = id`, and indexes it. Bound/catalog envelopes, nonce ownership, legacy `effect.reconciled`, original `Task.prompt`, two UI entries, and the standalone Worker path are unchanged.
+
+Review round after `55ca71f`: the same `retryOperationId` repeated inside one retry Run no longer POSTs again — matching consults this Run's completed/executing rows, and omit-id is still a new independent operation. Direct and catalog model-visible schemas declare `retryOperationId` so `additionalProperties: false` connectors can pass it. Chat E2E locates ancestor vs successor by Run identity (`failed.runId` / `retrySuccessorRunId`) plus already-retried vs live shell, without a raw Run id attribute. No deployment occurred.
