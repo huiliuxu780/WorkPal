@@ -6901,10 +6901,10 @@ const MessageView = memo(function MessageView({
               botId={message.botId ?? null}
               changeId={block.changeId}
               before={
-                block.beforeCharacter ??
+                (block.beforeCharacter ? `${block.beforeCharacter} · ${block.beforeBodyColor ?? "ink"}` : null) ??
                 (block.beforeMode === "upload" ? t`Uploaded image` : t`Previous avatar`)
               }
-              after={block.afterCharacter ?? t`Uploaded image`}
+              after={block.afterCharacter ? `${block.afterCharacter} · ${block.afterBodyColor ?? "ink"}` : t`Uploaded image`}
               onChanged={onBotChanged}
             />
           );

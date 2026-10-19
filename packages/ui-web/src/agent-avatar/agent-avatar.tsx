@@ -105,18 +105,7 @@ export const AgentAvatar = memo(function AgentAvatar({
   const priorActivity = useRef(activity);
   useEffect(() => {
     priorActivity.current = activity;
-    if (isCompact || !root.current) return;
-    if (isStill) {
-      const renderer = createAvatarDomRenderer(root.current);
-      renderer({
-        frame: sample("idle", 0, 0, { character: resolved, static: true }),
-        state: activity,
-        outgoingState: null,
-        outgoingScale: 0,
-        moving: false,
-      });
-      return () => renderer.restore();
-    }
+    if (isStill || !root.current) return;
     const director = avatarDirector();
     const renderer = createAvatarDomRenderer(root.current);
     const unregister = director.register({
@@ -138,6 +127,18 @@ export const AgentAvatar = memo(function AgentAvatar({
     // Registration is tied to the displayed identity and SVG, not every activity update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceKey, botId, resolved, bodyColor, tier, isCompact, isStill]);
+  useEffect(() => {
+    if (size !== 18 || !root.current) return;
+    const renderer = createAvatarDomRenderer(root.current);
+    renderer({
+      frame: sample(activity, 0, 0, { character: resolved, static: true }),
+      state: activity,
+      outgoingState: null,
+      outgoingScale: 0,
+      moving: false,
+    });
+    return () => renderer.restore();
+  }, [size, activity, resolved, bodyColor]);
   useEffect(() => {
     if (isStill || priorActivity.current === activity) return;
     priorActivity.current = activity;
@@ -224,15 +225,17 @@ export const AgentAvatar = memo(function AgentAvatar({
               {positionedProp(kind)}
             </span>
           ))}
-          <span
-            className="rakazo-agent-avatar-prop rakazo-agent-avatar-xeyes"
-            data-avatar-prop="xeyes"
-            aria-hidden="true"
-            style={{ opacity: activity === "failed" ? 1 : 0 }}
-          >
-            {renderSvg(avatarAssets.xeyes[resolved][bodyColor][propTier])}
-          </span>
         </>
+      ) : null}
+      {!isCompact ? (
+        <span
+          className="rakazo-agent-avatar-prop rakazo-agent-avatar-xeyes"
+          data-avatar-prop="xeyes"
+          aria-hidden="true"
+          style={{ opacity: activity === "failed" ? 1 : 0 }}
+        >
+          {renderSvg(avatarAssets.xeyes[resolved][bodyColor][tier === "XS" ? "XS" : propTier])}
+        </span>
       ) : null}
       {(isCompact || surface === "sidebar") && activity !== "idle" ? (
         <span

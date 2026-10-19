@@ -43,6 +43,10 @@ test("avatar studio changes a Bot character and offers one-step undo", async ({
   ).toBeVisible();
   await expect(otherTabAvatar).toHaveAttribute("data-character", selected);
   await expect(otherTabAvatar).toHaveAttribute("data-body-color", bodyColor);
+  const history = settings.locator("details").filter({ hasText: "Avatar history" });
+  await history.locator("summary").click();
+  await expect(history).toContainText(`${initial.avatarCharacter} · ${initial.avatarBodyColor}`);
+  await expect(history).toContainText(`${selected} · ${bodyColor}`);
   const [latestChange] = await rpc<Array<{ id: string }>>(page, "bots/avatarChanges", {
     botId: activeBotId(page),
   });

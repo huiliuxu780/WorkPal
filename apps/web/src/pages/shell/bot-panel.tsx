@@ -509,7 +509,9 @@ export function BotSettings({
               <li key={change.id}>
                 {change.source === "bot" ? <Trans>Bot</Trans> : <Trans>You</Trans>}
                 {" · "}
-                {change.afterCharacter ?? t`Uploaded image`}
+                {change.beforeCharacter ? `${change.beforeCharacter} · ${change.beforeBodyColor ?? "ink"}` : change.beforeMode === "upload" ? t`Uploaded image` : t`Previous avatar`}
+                {" → "}
+                {change.afterCharacter ? `${change.afterCharacter} · ${change.afterBodyColor ?? "ink"}` : t`Uploaded image`}
                 {change.undoneAt ? ` · ${t`Undone`}` : ""}
                 {" · "}
                 {new Date(change.createdAt).toLocaleString()}
