@@ -374,10 +374,13 @@ public final class RuntimeEngine {
             builder.taskRepository(new InterruptibleTaskRepository(
                     new WorkspaceManager(workspace), hash(request.botId()),
                     request.backgroundAllowed(), request.maxChildren(), spawnBudget));
+            // P11 fixed texts: prompts/helper/*.md — reachable ONLY through this
+            // seam-gated branch; the production entrypoint suspends delegation
+            // (AG-02), so these segments never enter a production request.
             builder.subagent(SubagentDeclaration.builder()
                     .name("helper")
-                    .description("Complete a focused delegated task using the parent's authorized capabilities.")
-                    .inlineAgentsBody("You are a helper inside the parent WorkPal run. Return a concise result.")
+                    .description(PromptTexts.load("helper/helper-declaration"))
+                    .inlineAgentsBody(PromptTexts.load("helper/helper-inline-agents"))
                     .tools(childToolNames)
                     .build());
         } else {
