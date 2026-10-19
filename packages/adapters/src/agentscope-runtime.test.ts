@@ -522,6 +522,99 @@ describe("AgentScopeAgentRuntime", () => {
     expect(executeTool).toHaveBeenCalledWith("beta_tool", { mode: "restored" }, "call-live");
   });
 
+  it("revalidates live tools at execute without waiting for another surface fetch", async () => {
+    const alpha = {
+      name: "alpha_tool",
+      description: "Alpha",
+      inputSchema: { type: "object", properties: {} },
+      readOnly: true,
+    };
+    const beta = {
+      name: "beta_tool",
+      description: "Beta",
+      inputSchema: { type: "object", properties: { mode: { type: "string" } } },
+      readOnly: true,
+    };
+    let live = [alpha];
+    const fixture = await listen((_request, response) => {
+      void (async () => {
+        const outbound = fixture.requests[0] as {
+          runId: string;
+          toolBridge: { url: string; token: string };
+        };
+        const surfaceUrl = outbound.toolBridge.url.replace("/v1/tool-executions", "/v1/tool-surface");
+        const surface = await fetch(surfaceUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ runId: outbound.runId }),
+        });
+        expect(surface.status).toBe(200);
+        expect(await surface.json()).toEqual({
+          tools: [
+            {
+              name: "alpha_tool",
+              description: "Alpha",
+              inputSchema: { type: "object", properties: {} },
+              readOnly: true,
+            },
+          ],
+        });
+        live = [beta];
+        const stale = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "alpha_tool",
+            executionId: "call-stale-execute",
+            args: {},
+          }),
+        });
+        expect(stale.status).toBe(200);
+        expect(await stale.json()).toMatchObject({
+          status: "error",
+          error: expect.stringMatching(/permission_revoked|not authorized/i),
+          code: "permission_revoked",
+          executed: false,
+        });
+        const restored = await fetch(outbound.toolBridge.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${outbound.toolBridge.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            runId: outbound.runId,
+            name: "beta_tool",
+            executionId: "call-live-execute",
+            args: { mode: "restored" },
+          }),
+        });
+        expect(restored.status).toBe(200);
+        expect(await restored.json()).toEqual({ status: "ok", result: { ok: true } });
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({ type: "done", text: "" })}\n`);
+      })();
+    });
+    const executeTool = vi.fn(async () => ({ ok: true }));
+    const request = runRequest("run-execute-refresh");
+    request.tools = [alpha];
+    request.currentTools = async () => live;
+    request.executeTool = executeTool;
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    for await (const _event of runtime.run(request, runContext("run-execute-refresh"))) {
+      // drain
+    }
+    expect(executeTool).toHaveBeenCalledWith("alpha_tool", {}, "call-stale-execute");
+    expect(executeTool).toHaveBeenCalledWith("beta_tool", { mode: "restored" }, "call-live-execute");
+  });
+
   it("keeps only a task-scoped bridge after the parent stream ends", async () => {
     let registration:
       | Promise<{ bridge: { url: string; taskEventUrl: string; token: string }; taskToken: string }>

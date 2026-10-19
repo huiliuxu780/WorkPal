@@ -25,8 +25,8 @@ Already-sent unknown outcomes stay on the existing uncertain path. This table ap
 Visibility (AG-05 `liveTools` / `ModelCallInput.tools`) is not execution. Execution authority is WorkPal:
 
 1. `ToolBridgeClient.execute` always POSTs the authenticated bridge, including names that have left the live allow-list.
-2. Adapter `/v1/tool-executions` for a missing live tool still calls `executeTool` so `applyTool` can settle, then always returns HTTP 200 `{ status: "error", code: "permission_revoked", executed: false }`. A successful `executeTool` return for a missing tool is ignored.
-3. `applyTool` drains the approved-replay queue, then `denyRevokedPermissionEffects` writes `approved`/`intended` rows for that run+kind to `denied` with the typed result. It does not emit a forged `approval.resolved=denied`.
+2. Adapter `/v1/tool-executions` re-reads `currentTools` on every foreground POST before lookup, then for a missing live tool still calls `executeTool` so `applyTool` can settle, then always returns HTTP 200 `{ status: "error", code: "permission_revoked", executed: false }`. A successful `executeTool` return for a missing tool is ignored.
+3. `applyTool` refuses a connector name missing from live `connectorTools` **before** replay path/resource validation. Bound installed/MCP/Pipedream approvals have a `resourceId`; without a live route, `approvalReplayResourceError` would otherwise report a different-resource mismatch and leave the effect `approved`. Matching FIFO entries are taken, then `denyRevokedPermissionEffects` writes `approved`/`intended` rows for that run+kind to `denied` with the typed result. It does not emit a forged `approval.resolved=denied`. Wrong-tool-first still returns replay-order.
 4. Java `resultBlock` maps `status: "error"` to `ToolResultState.ERROR` paired with the original `tool_call_id`, so `pendingToolCalls` is empty for the next Run on the same session.
 5. When that denial settled at least one effect, Java `done` still carries the model explanation; the executor finalizes `failed` / `permission_revoked` **and** persists those explanation blocks.
 
@@ -71,6 +71,7 @@ Red reproduction on this head, before the implementation: `PermissionRevokedResu
 | `pnpm --filter @rakazo/adapters/@rakazo/db/@rakazo/testkit check` | clean |
 | `pnpm test:ci-select` | **49 passed / 0 failed** |
 | Adapter/db unit: `agentscope-runtime`, `approval-effect`, `executor`, `executor-approval-replay`, `executor-effect-idempotency`, `events` | **158 + 57** passed |
+| PR #78 P1 unit | `agentscope-runtime.test.ts` 21/21, `executor-readonly-approval.test.ts` 41/41, `pnpm --filter @rakazo/adapters check` clean | Foreground execute re-reads live tools without a second surface fetch (stale alpha 200 error, live beta 200 ok). Approved bound `resourceId` tool whose connector left `connectorTools` is `denied` / `permission_revoked`, not different-resource; Run finalizes `failed`. |
 | CI agentscope unit vitest line | **77 passed / 0 failed** (4 files) |
 | CI agentscope integration vitest line (JDK 21) | **53 passed / 0 failed** (9 files), including tool-visibility 3/3, scenario-contract integration 20/20, prompt-files baseline 1/1, aux/untrusted/provenance/judge |
 | `VERIFY_DATABASE=1` scenario-contract postgres (colima PG 5433, jar `:8097`) | **10 passed / 0 failed** (9.2s), including converted S09-C3 with re-auth |

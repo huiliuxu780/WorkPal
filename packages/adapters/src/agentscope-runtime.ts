@@ -128,6 +128,17 @@ function toolRefusalMessage(result: unknown): string | undefined {
   return typeof error === "string" && error.trim() ? error : undefined;
 }
 
+async function refreshLiveTools(run: ActiveBridgeRun): Promise<void> {
+  if (!run.request.currentTools) return;
+  try {
+    const tools = await run.request.currentTools();
+    run.tools = new Map(tools.map((tool) => [tool.name, tool]));
+  } catch {
+    // Fail closed: keep the last known surface rather than executing against
+    // an unverified live set, or shrinking the allow-list on a transport blip.
+  }
+}
+
 function isPausedToolResult(result: unknown): boolean {
   if (!result || typeof result !== "object") return false;
   const value = result as { kind?: unknown; details?: unknown; terminate?: unknown };
@@ -491,17 +502,9 @@ class AgentScopeToolBridge {
         return;
       }
       if (request.url === "/v1/tool-surface") {
-        let tools: ConnectorTool[] = [...run.tools.values()];
-        if (run.request.currentTools) {
-          try {
-            tools = await run.request.currentTools();
-            run.tools = new Map(tools.map((tool) => [tool.name, tool]));
-          } catch {
-            tools = [...run.tools.values()];
-          }
-        }
+        await refreshLiveTools(run);
         writeJson(response, 200, {
-          tools: tools.map(({ name, description, inputSchema, readOnly }) => ({
+          tools: [...run.tools.values()].map(({ name, description, inputSchema, readOnly }) => ({
             name,
             description,
             inputSchema,
@@ -511,6 +514,13 @@ class AgentScopeToolBridge {
         return;
       }
       const call = parseToolCall(body);
+      // Foreground executions re-read live permissions so a revoke between
+      // /v1/tool-surface and this POST cannot run against a stale snapshot.
+      // Background tasks keep the registration-time read-only set; authorizeBackgroundTool
+      // is their execution check.
+      if (!background) {
+        await refreshLiveTools(run);
+      }
       const tool = run.tools.get(call.name);
       if (!tool) {
         const startedAt = Date.now();

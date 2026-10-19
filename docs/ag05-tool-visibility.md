@@ -24,7 +24,7 @@ A backend denial, or a refresh that only takes effect on the next Run / `session
 | Backend → runtime | Sibling POST `/v1/tool-surface` `{ runId }` → `{ tools: [{ name, description, inputSchema, readOnly }] }`. Zero new `RunRequest` fields. URL derived from `/v1/tool-executions`. |
 | Ownership | Per-Run `ActiveBridgeRun` + per-Run `currentTools`. Two Bots/Threads/users never share a live surface. |
 | Visibility | `ModelCallInput.tools` = native policy-gated harness tools ∪ current backend allow-list. Name **and** schema come from the live surface. |
-| Execution | Revoked `BackendSchemaTool`s stay registered so a hallucinated call reaches WorkPal's refusal instead of crashing inside AgentScope. `ToolBridgeClient.allows(name)` filters model-visible tools. Missing-name `/v1/tool-executions` calls still POST (AG-08) and return HTTP 200 `{ status: "error", executed: false }`. Executor `applyTool` refuses connector names missing from the refreshed `connectorTools` map. |
+| Execution | Revoked `BackendSchemaTool`s stay registered so a hallucinated call reaches WorkPal's refusal instead of crashing inside AgentScope. `ToolBridgeClient.allows(name)` filters model-visible tools. Foreground `/v1/tool-executions` re-reads `currentTools` before looking up the call, so a revoke between surface and execute cannot run against a stale snapshot. Missing-name calls still POST (AG-08) and return HTTP 200 `{ status: "error", executed: false }`. Executor `applyTool` refuses connector names missing from the refreshed `connectorTools` map. |
 | Fail-closed | Malformed, missing, or HTTP-failed surface fetch keeps the previous allow-list. The adapter `currentTools` catch and executor `loadLiveRunTools` catch do the same. A transport blip cannot enlarge or shrink authorization. |
 | Native tools | Plan / skill stay TurnPolicy-gated. Auxiliary scopes stay empty. `run_subagent` is never re-registered. Helper remains production-suspended. |
 | Prompt | AG-04 files and the composed system message are **unchanged**. Live capability is the tool schema list on the final model request; AG-04 segments do not enumerate connector tool names. |
@@ -42,7 +42,7 @@ Java:
 TypeScript:
 
 - `adapter-kit` `AgentRunRequest.currentTools?: () => Promise<ConnectorTool[]>`.
-- `agentscope-runtime.ts` — `/v1/tool-surface` handler; register the bridge when `currentTools` is present even if the start-of-run `tools` array is empty.
+- `agentscope-runtime.ts` — `/v1/tool-surface` handler; foreground `/v1/tool-executions` re-reads `currentTools` before lookup (fail-closed keep-previous; background tasks skip); register the bridge when `currentTools` is present even if the start-of-run `tools` array is empty.
 - `executor.ts` — `loadLiveRunTools` re-reads connections, re-discovers connector tools, updates `context.connectedConnections` / `connectorTools`; `currentTools` is wired for non-scripted runs; `applyTool` refuses connector names missing from the live map.
 
 CI:
@@ -55,7 +55,7 @@ CI:
 | Layer | File | Proves |
 | --- | --- | --- |
 | Java + real jar + fixture | `ToolVisibilityRefreshIntegrationTest.java` (4) | Same-Run 3-call available→revoke→reauth with schema change; hallucinated revoked tool refused, provider HTTP=0; two concurrent runs isolated; 500 keep-previous fail-closed |
-| TS adapter unit | `agentscope-runtime.test.ts` (+1) | `/v1/tool-surface` alpha→beta; stale alpha HTTP 200 `{ status: "error", executed: false }` (AG-08); live beta 200; two runs do not mix |
+| TS adapter unit | `agentscope-runtime.test.ts` (+2) | `/v1/tool-surface` alpha→beta; stale alpha HTTP 200 `{ status: "error", executed: false }` (AG-08); live beta 200; two runs do not mix; execute-time refresh after a surface-alpha snapshot refuses alpha and runs beta without a second surface fetch |
 | TS adapter → jar → fixture | `agentscope-tool-visibility.integration.test.ts` (3) | Same-Run 3 rounds with `currentTools`; hallucinated revoke with zero `flip_tool` provider execution; `team-chat-judge` tools strictly `[]` |
 | Production PG chain | `scenario-contract.postgres.test.ts` (+1) | Same Run, Gmail connected → revoke mid-run → restore; three captured model requests; keep-tool `runtime_current_time` still executes; zero Gmail provider executions |
 | AG-03/AG-04 regression | scenario-contract unit + jar integration + prompt-files baseline + aux/untrusted/provenance/judge | Start-of-run tool sets, prompt bytes, auxiliary emptiness, helper suspension unchanged. Intentional difference vs AG-03: later model calls in the **same** Run now see the live surface. S09-C3 recovery is AG-08. |

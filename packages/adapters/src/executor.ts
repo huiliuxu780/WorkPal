@@ -2216,10 +2216,29 @@ export function createRunExecutor(deps: ExecutorDeps) {
             nextApprovedTool,
             sameBoundResource || sameCatalogTarget,
           );
-          if (
+          const matchingApprovedReplay = Boolean(
             nextApprovedTool &&
-            (nextApprovedTool === name || sameBoundResource || sameCatalogTarget)
-          ) {
+              (nextApprovedTool === name || sameBoundResource || sameCatalogTarget),
+          );
+          const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
+          // Bound installed/MCP/Pipedream approvals carry a resourceId. When that
+          // connector leaves connectorTools, liveRoute is undefined and
+          // approvalReplayResourceError would report a different-resource mismatch
+          // while leaving the effect approved. Settle permission_revoked first.
+          if (viaConnector && !resolvedTool && !connectorTools.has(name)) {
+            if (matchingApprovedReplay && nextApprovedTool) {
+              approvedEffectReplays.take(nextApprovedTool);
+            }
+            const kinds = new Set([name]);
+            if (replayEffectToolName) kinds.add(replayEffectToolName);
+            let denied = 0;
+            for (const kind of kinds) {
+              denied += await denyRevokedPermissionEffects(deps.prisma, runId, kind);
+            }
+            if (denied > 0) permissionRevoked = true;
+            return permissionRevokedToolError(name);
+          }
+          if (matchingApprovedReplay && nextApprovedTool) {
             const pathError = approvalReplayPathError(
               name,
               catalogRemapped,
@@ -2267,17 +2286,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 }
               }
             }
-          }
-          const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
-          if (viaConnector && !resolvedTool && !connectorTools.has(name)) {
-            const kinds = new Set([name]);
-            if (replayEffectToolName) kinds.add(replayEffectToolName);
-            let denied = 0;
-            for (const kind of kinds) {
-              denied += await denyRevokedPermissionEffects(deps.prisma, runId, kind);
-            }
-            if (denied > 0) permissionRevoked = true;
-            return permissionRevokedToolError(name);
           }
           // Declared effect of the operation this call dispatches (installed API method and
           // flag). Install config is immutable per route resource, so it cannot drift before
