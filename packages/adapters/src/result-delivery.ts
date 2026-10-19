@@ -17,7 +17,8 @@ type DeliveryDeps = {
   workerId: string;
 };
 
-type DeliveryRow = NonNullable<Awaited<ReturnType<typeof claimDueDeliveryBatch>>>[number];
+/** Exported for scenario-contract typing (AG-03); type-only, no behavior change. */
+export type DeliveryRow = NonNullable<Awaited<ReturnType<typeof claimDueDeliveryBatch>>>[number];
 
 async function lockThread(tx: Prisma.TransactionClient, threadId: string) {
   const rows = await tx.$queryRaw<Array<{ id: string }>>`

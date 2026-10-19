@@ -122,7 +122,7 @@ jobs:
       - run: pnpm --filter @rakazo/db check
       - run: pnpm --filter @rakazo/testkit check
       - run: pnpm --filter @rakazo/worker test
-      - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
+      - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts packages/adapters/src/scenario-contract.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
 
   runtime-jar:
     name: runtime-jar
@@ -164,10 +164,13 @@ jobs:
       - uses: ./.github/actions/setup-pnpm
       - run: pnpm --filter @rakazo/db generate
       - run: pnpm --filter @rakazo/testkit check
-      - run: pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts packages/adapters/src/turnpolicy-v2-agentscope.integration.test.ts packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts packages/adapters/src/agentscope-untrusted-content.integration.test.ts packages/adapters/src/agentscope-provenance.integration.test.ts apps/api/src/team-chat-judge.integration.test.ts
+      - run: pnpm exec vitest run packages/adapters/src/agentscope-consumers.integration.test.ts packages/adapters/src/turnpolicy-v2-agentscope.integration.test.ts packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts packages/adapters/src/agentscope-untrusted-content.integration.test.ts packages/adapters/src/agentscope-provenance.integration.test.ts packages/adapters/src/scenario-contract.integration.test.ts apps/api/src/team-chat-judge.integration.test.ts
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
       - run: pnpm test:integration --spec=agentscope-offline.postgres.test.ts
+        env:
+          AGENT_RUNTIME_SKIP_BUILD: "1"
+      - run: pnpm test:integration --spec=scenario-contract.postgres.test.ts
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
       - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium

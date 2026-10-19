@@ -263,6 +263,14 @@ export function buildAutoReviewPrompt(input: AutoReviewRequest): string {
   ].join("\n");
 }
 
+/**
+ * P08 fixed judge instructions. The per-turn current-time line is prepended at
+ * call time. Extracted verbatim so scenario contracts (AG-03) assert the
+ * production source instead of a copy; behavior is unchanged.
+ */
+export const AUTO_REVIEW_INSTRUCTIONS =
+  "You are a fast safety checker. Output strict JSON only. No tools. No markdown.";
+
 export async function runAutoReviewJudge(input: {
   runtime: AgentRuntime;
   checker: AutoReviewChecker;
@@ -294,10 +302,7 @@ export async function runAutoReviewJudge(input: {
         runId: `${input.runId}:auto-review`,
         executionScope: "auto-review",
         prompt: input.prompt,
-        instructions: [
-          formatCurrentTimeInstruction(),
-          "You are a fast safety checker. Output strict JSON only. No tools. No markdown.",
-        ].join(" "),
+        instructions: [formatCurrentTimeInstruction(), AUTO_REVIEW_INSTRUCTIONS].join(" "),
         history: [],
         tools: [],
         model: {
