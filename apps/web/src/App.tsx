@@ -34,8 +34,8 @@ const ArtifactsPage = lazy(() =>
   import("./pages/Artifacts").then((module) => ({ default: module.ArtifactsPage })),
 );
 
-export function App()
-  // CI-01 web-only selection proof {
+/** CI-01 web-only selection proof. */
+export function App() {
   if (window.location.pathname === LOCAL_SETTINGS_PAGE) return <LocalSettingsPage />;
   return <SessionApp />;
 }
