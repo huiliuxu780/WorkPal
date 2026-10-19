@@ -1,6 +1,6 @@
 # AG-04 delivery note: independent prompt files and unified assembly
 
-Branch `codex/ag04-prompt-files`, created from the exact pushed AG-03 head `b5d3d51` (PR #74); initial PR base = `codex/ag03-scenario-contracts`, retarget `main` after AG-03 merges. Status: **done, merged** ([PR #75](https://github.com/huiliuxu780/WorkPal/pull/75), base=`codex/ag03-scenario-contracts`) — merged, not deployed. Task card: [AG-04](./tasks/AG-04.md); segment index: [prompts/README.md](../prompts/README.md).
+Branch `codex/ag04-prompt-files`, created from the exact pushed AG-03 head `b5d3d51` (PR #74); initial PR base = `codex/ag03-scenario-contracts`, retargeted to `main` after AG-03 merged. Status: **done, merged** ([PR #75](https://github.com/huiliuxu780/WorkPal/pull/75), base=`main`) — merged, not deployed. Task card: [AG-04](./tasks/AG-04.md); segment index: [prompts/README.md](../prompts/README.md).
 
 ## What was delivered
 
