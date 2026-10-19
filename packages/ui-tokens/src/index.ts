@@ -213,6 +213,12 @@ function renderBlock(selector: string, colorScheme: ResolvedAppearance, palette:
 
 /** Frozen WorkPal avatar v0.7 semantic tokens. */
 export const AVATAR_TOKENS_CSS = `:root {
+  --wp-avatar-16: 16px; --wp-avatar-18: 18px; --wp-avatar-24: 24px; --wp-avatar-32: 32px;
+  --wp-avatar-35: 35px; --wp-avatar-58: 58px; --wp-avatar-64: 64px;
+  --wp-avatar-draw-scale: 1.25;
+  --wp-avatar-eye: #fff;
+  --wp-avatar-orange-dark: #92550e; --wp-avatar-blue-dark: #0641a4; --wp-avatar-purple-dark: #3a0bad;
+  --wp-avatar-brown-dark: #553d23; --wp-avatar-pink-dark: #941152; --wp-avatar-ink-dark: #191b22;
   --wp-avatar-orange: #e8983a;
   --wp-avatar-blue: #4184f4;
   --wp-avatar-purple: #885cf1;

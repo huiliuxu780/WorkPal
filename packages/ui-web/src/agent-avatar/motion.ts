@@ -25,6 +25,7 @@ export type MotionContext = {
   character: AvatarCharacter;
   static?: boolean;
   size?: number;
+  failedEyesHeld?: boolean;
   /** Milliseconds since the last accepted pulse; omitted when no pulse is active. */
   pulseAgeMs?: number;
   /** Milliseconds since a new progress item or entry into working. */
@@ -348,14 +349,18 @@ export function sample(
         [1240, 8],
       ]) +
       0.4 * (k(rotation, t - 70) - rot);
-    frame.xeyes.opacity = k([
-      [300, 0],
-      [400, 1, failedEaseOut],
-    ]);
-    frame.pupils.opacity = k([
-      [300, 1],
-      [360, 0, (x) => x],
-    ]);
+    frame.xeyes.opacity = ctx.failedEyesHeld
+      ? 1
+      : k([
+          [300, 0],
+          [400, 1, failedEaseOut],
+        ]);
+    frame.pupils.opacity = ctx.failedEyesHeld
+      ? 0
+      : k([
+          [300, 1],
+          [360, 0, (x) => x],
+        ]);
     frame.shadow.opacity = k([
       [0, 0],
       [60, 1, (x) => x],

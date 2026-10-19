@@ -62,12 +62,12 @@
 
 [data-theme="dark"] .rakazo-agent-avatar-art svg,
 :where(:root:not([data-theme="light"]):not([data-theme="dark"])) .rakazo-agent-avatar-art svg {
-  filter: drop-shadow(0.6px 0 #fff) drop-shadow(-0.6px 0 #fff) drop-shadow(0 0.6px #fff)
-    drop-shadow(0 -0.6px #fff);
+  filter: drop-shadow(1.5px 0 #fff) drop-shadow(-1.5px 0 #fff) drop-shadow(0 1.5px #fff)
+    drop-shadow(0 -1.5px #fff);
 }
 
-.rakazo-agent-avatar[data-state="failed"]:not([data-motion-ready]) .rakazo-agent-avatar-art [id="pupilL"],
-.rakazo-agent-avatar[data-state="failed"]:not([data-motion-ready]) .rakazo-agent-avatar-art [id="pupilR"] {
+.rakazo-agent-avatar[data-state="failed"]:not([data-motion-ready]):not([data-size="16"]):not([data-size="18"]) .rakazo-agent-avatar-art [id="pupilL"],
+.rakazo-agent-avatar[data-state="failed"]:not([data-motion-ready]):not([data-size="16"]):not([data-size="18"]) .rakazo-agent-avatar-art [id="pupilR"] {
   visibility: hidden;
 }
 
@@ -179,11 +179,13 @@
 .rakazo-agent-avatar[data-surface="sidebar"][data-size="24"] .rakazo-agent-avatar-dot { width: 12px; height: 12px; }
 .rakazo-agent-avatar[data-surface="sidebar"][data-strong-ring="true"] .rakazo-agent-avatar-dot { border-width: var(--wp-badge-ring-strong); }
 .rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot::after { position: absolute; inset: -1px; text-align: center; font: 700 9px/10px sans-serif; }
-.rakazo-agent-avatar[data-surface="sidebar"][data-state="approval"] .rakazo-agent-avatar-dot::after { content: "1"; }
+.rakazo-agent-avatar[data-surface="sidebar"][data-state="approval"] .rakazo-agent-avatar-dot::after { content: "!"; }
 .rakazo-agent-avatar[data-surface="sidebar"][data-state="waiting"] .rakazo-agent-avatar-dot::after { content: "?"; }
 .rakazo-agent-avatar[data-state="working"][data-motion="moving"] .rakazo-agent-avatar-dot { animation: wp-status-breathe 1.6s ease-in-out infinite; }
 @keyframes wp-status-breathe { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .rakazo-agent-avatar-dot { animation: none !important; } }
 
-.rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot[data-point-shape="diamond"] { transform: none; border-radius: 50%; }
+.rakazo-agent-avatar[data-surface="sidebar"] .rakazo-agent-avatar-dot[data-point-shape="diamond"] { border-radius: 2px; }
 .rakazo-agent-avatar[data-surface="sidebar"][data-state="waiting"] .rakazo-agent-avatar-dot[data-point-shape="ring"] { background: var(--wp-status-wait); border-color: var(--avatar-surface); box-shadow: none; }
+
+.rakazo-agent-avatar[data-surface="sidebar"][data-state="approval"] .rakazo-agent-avatar-dot::after { transform: rotate(-45deg); }

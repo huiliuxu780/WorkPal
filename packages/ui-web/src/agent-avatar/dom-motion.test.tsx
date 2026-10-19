@@ -31,6 +31,10 @@ describe("frozen SVG layer motion", () => {
     );
     expect(root.querySelector<HTMLElement>('[data-avatar-prop="laptop"]')?.style.opacity).toBe("1");
     expect(root.querySelector<HTMLElement>('[data-avatar-prop="card"]')?.style.opacity).toBe("0");
+    render({frame: sample("failed", 350, 0.4, {character: "treble"}), state: "failed", outgoingState: null, outgoingScale: 0, moving: true});
+    const cross = root.querySelector<SVGGElement>('[data-avatar-prop="xeyes"] #xL')!;
+    expect(cross.getAttribute("transform")).toContain("scale(");
+    expect(cross.getAttribute("transform")).not.toContain("scale(1)");
     render({
       frame: sample("failed", 1300, 0.4, { character: "treble" }),
       state: "failed",

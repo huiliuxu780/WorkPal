@@ -42,6 +42,7 @@ type Entry = AvatarRegistration & {
   transition: { from: MotionFrame; fromState: AvatarActivity; startedAt: number } | null;
   pending: { state: AvatarActivity; until: number } | null;
   skipEntrance: boolean;
+  repeatFailure: boolean;
   releaseAt: number | null;
   lastFrame: MotionFrame;
 };
@@ -140,6 +141,7 @@ export class AvatarDirector {
       transition: null,
       pending: null,
       skipEntrance: false,
+      repeatFailure: false,
       releaseAt: null,
       lastFrame: frame,
     };
@@ -201,6 +203,7 @@ export class AvatarDirector {
   private commitState(entry: Entry, next: AvatarActivity, now: number) {
     entry.pending = null;
     entry.transition = { from: entry.lastFrame, fromState: entry.state, startedAt: now };
+    entry.repeatFailure = next === "failed" && entry.state === "failed";
     entry.state = next;
     entry.enteredAt = now;
     entry.progressAt = now;
@@ -350,6 +353,7 @@ export class AvatarDirector {
     const frame = sample(entry.state, age, avatarIdHash(entry.instanceKey) / 2 ** 32, {
       character: entry.character,
       size: entry.size,
+      failedEyesHeld: entry.repeatFailure,
       progressAgeMs: now - entry.progressAt,
       ...(entry.pulseAt !== null ? { pulseAgeMs: now - entry.pulseAt } : {}),
       ...(entry.reminderAt !== null ? { reminderAgeMs: now - entry.reminderAt } : {}),

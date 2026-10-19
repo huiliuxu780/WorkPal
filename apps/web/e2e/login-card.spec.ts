@@ -9,7 +9,7 @@ test("saves a website login from a username and password card without echoing ei
   await completeOnboarding(page);
 
   const botId = activeBotId(page);
-  await page.getByPlaceholder(/Message/).fill("show a login card");
+  await page.getByPlaceholder(/Message/).fill("show a tracked login card");
   await page.keyboard.press("Enter");
 
   await expect
@@ -87,6 +87,9 @@ test("saves a website login from a username and password card without echoing ei
   expect(history).not.toContain(password);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  // UX-01 keeps settled receipts only on a legal execution surface. This
+  // login fixture publishes a real semantic Step; plain settled Runs have none.
+  await expect(page.getByTestId("execution-shell")).toBeVisible();
   const region = page.getByRole("region", { name: "需要你处理" });
   const reloadedCard = region.getByTestId("secret-ask-card");
   await expect(reloadedCard).toBeVisible({ timeout: 15_000 });

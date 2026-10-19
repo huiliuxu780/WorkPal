@@ -64,7 +64,14 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           MODE_INPUT: ${{ github.event.inputs.mode }}
+          SELECT_RESULT_PATH: ${{ runner.temp }}/ci-selection.json
         run: node scripts/ci/select-checks.mjs --github --format summary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-selection-${{ github.sha }}
+          path: ${{ runner.temp }}/ci-selection.json
+          if-no-files-found: error
+          retention-days: 1
 
   docs:
     name: docs
@@ -76,9 +83,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-selection-${{ github.sha }}
+          path: ${{ runner.temp }}
       - name: Check markdown relative links
         env:
-          SELECT_RESULT: ${{ needs.select-checks.outputs.result }}
+          SELECT_RESULT_PATH: ${{ runner.temp }}/ci-selection.json
         run: node scripts/ci/check-docs.mjs --from-select
 
   web:

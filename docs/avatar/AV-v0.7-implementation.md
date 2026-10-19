@@ -25,3 +25,10 @@ Status: implementation and local verification complete; not deployed. Supplied v
 - Supplied 16px SVGs are used unchanged; the former hook revision is historical. Names and accessible labels remain available.
 - Source static poses are retained and validated; director static poses use the same live layers so identity/state transitions keep their existing cleanup behavior.
 - No working illustration was added. No deployment or production database access occurred.
+
+## Integration follow-up
+
+- CI's 651-path selector output exceeded Linux's per-environment-value limit, preventing the docs shell from starting. The full selection now travels as an Actions artifact; the aggregator receives only its bounded mode/selected/flags JSON. A 3000-long-path regression and artifact reader are tested (49 CI tests passed).
+- CI also exercised the old login-card persistence expectation. On unchanged `08e9d45`, the exact same test fails at line 92: UX-01 intentionally removes the settled receipt of a plain Run without a legal execution surface. The login fixture now publishes a real semantic Step via the production tool path; all existing credential, persistence and no-echo assertions remain, with an added legal-shell assertion. Product behavior is unchanged.
+- Repeated failed entry holds cross-eyes throughout the replay; first entry retains its surprise eyes. Compact 16/18px views keep their regular static pupils. Dark outline uses the specified 1.5px.
+- Additional local scope: all Web source tests plus API Bot-update/executor suites, 87 files / 756 tests passed before the final repeated-entry regression. Shared token-generation checks also passed. [Reference dark](./review/v0.7/reference-dark.png) accompanies the two matrix snapshots.

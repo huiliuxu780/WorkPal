@@ -37,6 +37,7 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
       });
   }
   const props = [...root.querySelectorAll<HTMLElement>("[data-avatar-prop]")];
+  const crosses = [...root.querySelectorAll<SVGElement>('[data-avatar-prop="xeyes"] #xL, [data-avatar-prop="xeyes"] #xR')].map(node => ({node, original: node.getAttribute("transform") ?? ""}));
   const character = root.dataset.character ?? "dot";
   const symbolPivot: Record<string, [number, number]> = {
     dot: [86.13, 33.58],
@@ -55,6 +56,8 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
     y: (anchor.pivot[1] - 50) / anchor.fit.s + anchor.fit.cy,
   };
   const shadow = root.querySelector<SVGElement>(".rakazo-agent-avatar-shadow ellipse");
+  // Centers from the frozen eye-bounds.md, in pre-fit coordinates.
+  const [eyeX, eyeY] = ({ dot: [46.85, 57.35], treble: [46.85, 57.35], wave: [45.9, 54.05], bounce: [46.6, 53.5] } as const)[character as "dot"] ?? [46.85, 57.35];
   const [pivotX, pivotY] = symbolPivot[character] ?? symbolPivot.dot!;
   const apply = (name: string, prefix: string, opacity?: number) => {
     const layer = layers.get(name);
@@ -67,7 +70,7 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
     const { tx, ty, sx, sy, rot } = frame.body;
     const foot = pivot;
     const body = `translate(${tx} ${ty}) translate(${foot.x} ${foot.y}) rotate(${rot}) scale(${sx} ${sy}) translate(${-foot.x} ${-foot.y})`;
-    const blink = `translate(50 54) scale(${frame.eyes.scale} ${frame.eyes.scale * frame.eyes.blink}) translate(-50 -54)`;
+    const blink = `translate(${eyeX} ${eyeY}) scale(${frame.eyes.scale} ${frame.eyes.scale * frame.eyes.blink}) translate(${-eyeX} ${-eyeY})`;
     const symbol = `translate(${frame.symbol.tx} ${frame.symbol.ty}) translate(${pivotX} ${pivotY}) rotate(${frame.symbol.rot}) translate(${-pivotX} ${-pivotY})`;
     apply("body", body);
     apply("eyewhite", `${body} ${blink}`);
@@ -92,7 +95,8 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
     for (const node of props) {
       const kind = node.dataset.avatarProp;
       if (kind === "xeyes") {
-        node.style.opacity = String(frame.xeyes.opacity);
+        node.style.opacity = frame.xeyes.opacity > 0 ? "1" : "0";
+        for (const cross of crosses) cross.node.setAttribute("transform", `${cross.original} scale(${Math.max(0.0001, frame.xeyes.opacity)})`);
         const group = node.querySelector<SVGElement>("#xeyes");
         if (group) group.setAttribute("transform", `${body} translate(${frame.eyes.lagX} 0)`);
         node.style.transform = "";
@@ -140,6 +144,7 @@ export function createAvatarDomRenderer(root: HTMLElement): AvatarDomRenderer {
       root
         .querySelector<SVGElement>('[data-avatar-prop="xeyes"] #xeyes')
         ?.removeAttribute("transform");
+      for (const cross of crosses) cross.node.setAttribute("transform", cross.original);
       delete root.dataset.motionReady;
       delete root.dataset.motion;
     },

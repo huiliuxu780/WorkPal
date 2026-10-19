@@ -154,6 +154,28 @@ class FakeEnvironment implements MotionEnvironment {
 }
 
 describe("AvatarDirector", () => {
+  it("keeps cross-eyes through an explicitly repeated failed entrance", () => {
+    const env = new FakeEnvironment();
+    const director = new AvatarDirector(env);
+    let frame: MotionPresentation | undefined;
+    director.register({
+      instanceKey: "failed",
+      botId: "failed",
+      character: "dot",
+      state: "failed",
+      current: false,
+      render: (p) => {
+        frame = p;
+      },
+    });
+    env.step(1240);
+    director.update("failed", { state: "failed" });
+    env.step(200);
+    expect(frame!.frame.xeyes.opacity).toBe(1);
+    expect(frame!.frame.pupils.opacity).toBe(0);
+    director.dispose();
+  });
+
   it("uses one clock and at most three slots with state priority before current Bot", () => {
     const env = new FakeEnvironment();
     const director = new AvatarDirector(env);

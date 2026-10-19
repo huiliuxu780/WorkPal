@@ -541,11 +541,12 @@ export function inferScript(
       },
     ];
   }
-  if (lower.includes("show a login card")) {
+  if (lower.includes("show a login card") || lower.includes("tracked login card")) {
     return [
       {
         assistant: "i need that sign-in in a protected card.",
         toolCalls: [
+          ...(lower.includes("tracked login card") ? [trackedStepCall("login-step", 0, "Store the login", "running")] : []),
           {
             name: "request_secret",
             args: {

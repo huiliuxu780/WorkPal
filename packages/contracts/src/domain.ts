@@ -321,6 +321,13 @@ export const CreateBotInput = z
     spawnKey: z.string().trim().min(1).max(120).optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.avatarBodyColor !== undefined && value.avatarMode !== "character") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["avatarBodyColor"],
+        message: "Body color requires a character avatar",
+      });
+    }
     if (value.avatarMode === "character" && value.avatarCharacter === undefined) {
       ctx.addIssue({ code: "custom", path: ["avatarCharacter"], message: "Choose a character" });
     }
@@ -380,6 +387,13 @@ export const UpdateBotInput = z
     teamChatRules: z.string().max(TEAM_CHAT_RULES_MAX_LENGTH).optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.avatarBodyColor !== undefined && value.avatarMode !== "character") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["avatarBodyColor"],
+        message: "Body color requires a character avatar",
+      });
+    }
     if (value.avatarMode === "character" && value.avatarCharacter === undefined) {
       ctx.addIssue({ code: "custom", path: ["avatarCharacter"], message: "Choose a character" });
     }

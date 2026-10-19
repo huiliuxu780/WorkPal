@@ -100,12 +100,13 @@ export const AgentAvatar = memo(function AgentAvatar({
   const root = useRef<HTMLSpanElement>(null);
   const instanceKey = useId();
   const priorProgressToken = useRef(progressToken);
+  const priorActivity = useRef(activity);
   useEffect(() => {
     if (isCompact || !root.current) return;
     if (isStill) {
       const renderer = createAvatarDomRenderer(root.current);
       renderer({
-        frame: sample(activity, 0, 0, { character: resolved, static: true }),
+        frame: sample("idle", 0, 0, { character: resolved, static: true }),
         state: activity,
         outgoingState: null,
         outgoingScale: 0,
@@ -135,7 +136,8 @@ export const AgentAvatar = memo(function AgentAvatar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceKey, botId, resolved, bodyColor, tier, isCompact, isStill]);
   useEffect(() => {
-    if (isStill) return;
+    if (isStill || priorActivity.current === activity) return;
+    priorActivity.current = activity;
     avatarDirector().update(instanceKey, { state: activity });
   }, [instanceKey, isStill, activity]);
   useEffect(() => {
