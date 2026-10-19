@@ -296,6 +296,38 @@ export interface MemoryInjectionReadModel {
   legacyImportedDocumentIds: Set<string>;
 }
 
+/**
+ * Cross-scope conflict resolution for one canonical identity (ME-01): the
+ * same proposition can legitimately exist in several scopes (a promotion
+ * keeps the original). The read path injects it once — an explicit bot-scope
+ * fact wins over the generic space/user copies, newest confirmation breaks
+ * remaining ties. User corrections always travel with their own fact row and
+ * are never overridden by model-origin copies (those cannot be active
+ * without confirmation in the first place).
+ */
+export function dedupeFactsByCanonicalKey(facts: MemoryFact[]): MemoryFact[] {
+  const scopePriority: Record<string, number> = { bot: 3, space: 2, user: 1 };
+  const byKey = new Map<string, MemoryFact>();
+  for (const fact of facts) {
+    const existing = byKey.get(fact.canonicalKey);
+    if (!existing) {
+      byKey.set(fact.canonicalKey, fact);
+      continue;
+    }
+    const existingPriority = scopePriority[existing.scopeKind] ?? 0;
+    const candidatePriority = scopePriority[fact.scopeKind] ?? 0;
+    const existingConfirmed = existing.lastConfirmedAt?.getTime() ?? 0;
+    const candidateConfirmed = fact.lastConfirmedAt?.getTime() ?? 0;
+    if (
+      candidatePriority > existingPriority ||
+      (candidatePriority === existingPriority && candidateConfirmed > existingConfirmed)
+    ) {
+      byKey.set(fact.canonicalKey, fact);
+    }
+  }
+  return [...byKey.values()];
+}
+
 export async function loadMemoryInjectionReadModel(
   deps: Pick<FactServiceDeps, "prisma">,
   query: { spaceId: string; userId: string; botId: string | null },
@@ -305,7 +337,7 @@ export async function loadMemoryInjectionReadModel(
     { scopeKind: "space", scopeId: query.spaceId },
   ];
   if (query.botId) scopes.push({ scopeKind: "bot", scopeId: query.botId });
-  const [facts, shards, importedIds] = await Promise.all([
+  const [allFacts, shards, importedIds] = await Promise.all([
     listAuthorizedFacts(deps.prisma, {
       spaceId: query.spaceId,
       userId: query.userId,
@@ -314,6 +346,7 @@ export async function loadMemoryInjectionReadModel(
     listShardsForScopes(deps.prisma, { spaceId: query.spaceId, scopes }),
     listLegacyImportedDocumentIds(deps.prisma, { spaceId: query.spaceId }),
   ]);
+  const facts = dedupeFactsByCanonicalKey(allFacts);
   const shardVersions: Record<string, number> = {};
   for (const shard of shards) shardVersions[shard.id] = shard.version;
   let summary: MemoryInjectionReadModel["summary"] = null;

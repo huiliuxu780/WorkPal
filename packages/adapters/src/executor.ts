@@ -4718,6 +4718,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             "memory.injection.estimated_tokens": assembled.stats.estimatedTokens,
             "memory.injection.total_budget": assembled.stats.budgets.totalTokens,
             "memory.injection.summary_included": assembled.stats.summaryIncluded,
+            "memory.injection.summary_stale_blocked": injectionInputs.readModel.summaryStale,
             "memory.injection.selected_facts": assembled.stats.selectedFactIds.length,
             "memory.injection.omitted_facts": assembled.stats.omittedFactCount,
             "memory.injection.selected_legacy": assembled.stats.selectedLegacyPaths.length,

@@ -1,4 +1,5 @@
 import { ORPCError } from "@orpc/server";
+import { getLogger } from "@rakazo/logging";
 import type { Actor } from "@rakazo/contracts";
 import type { PrismaClient } from "@rakazo/db";
 import { getSpaceMemoryPolicy, setSpaceMemoryPolicy } from "@rakazo/db";
@@ -66,10 +67,22 @@ async function requireSpaceOwner(prisma: PrismaClient, actor: Actor): Promise<vo
 }
 
 async function runFactMutation(
+  action: string,
+  actor: Actor,
+  factId: string,
   mutate: () => Promise<MemoryFactMutationResult>,
 ): Promise<MemoryFactMutationResult> {
   try {
-    return await mutate();
+    const result = await mutate();
+    // ME-02 M6 metrics: confirmations, rejections, corrections, deletions and
+    // promotions are countable without a separate analytics platform.
+    getLogger().info("memory.fact mutation", {
+      "memory.fact.action": action,
+      "memory.fact.status": result.status,
+      "memory.fact.id": factId,
+      "space.id": actor.spaceId,
+    });
+    return result;
   } catch (error) {
     if (error instanceof FactNotFoundError) throw new ORPCError("NOT_FOUND");
     if (error instanceof FactForbiddenError) {
@@ -125,7 +138,7 @@ export async function createMemoryFact(
     });
     if (!bot) throw new ORPCError("NOT_FOUND");
   }
-  return runFactMutation(async () => {
+  return runFactMutation("create", actor, "", async () => {
     const result = await recordMemoryFromEdit(serviceDeps(deps), {
       actor: actorOf(actor),
       scopeKind: input.scopeKind,
@@ -153,7 +166,7 @@ export async function confirmMemoryFact(
   actor: Actor,
   input: MemoryFactConfirmInput,
 ) {
-  return runFactMutation(() =>
+  return runFactMutation("confirm", actor, input.factId, () =>
     confirmFactAsActor(serviceDeps(deps), actorOf(actor), {
       factId: input.factId,
       expectedRevision: input.expectedRevision,
@@ -166,7 +179,7 @@ export async function correctMemoryFact(
   actor: Actor,
   input: MemoryFactCorrectInput,
 ) {
-  return runFactMutation(() =>
+  return runFactMutation("correct", actor, input.factId, () =>
     correctFactAsActor(serviceDeps(deps), actorOf(actor), {
       factId: input.factId,
       expectedRevision: input.expectedRevision,
@@ -185,7 +198,7 @@ export async function rejectMemoryFact(
   actor: Actor,
   input: MemoryFactRejectInput,
 ) {
-  return runFactMutation(() =>
+  return runFactMutation("reject", actor, input.factId, () =>
     rejectFactAsActor(serviceDeps(deps), actorOf(actor), {
       factId: input.factId,
       expectedRevision: input.expectedRevision,
@@ -199,7 +212,7 @@ export async function deleteMemoryFact(
   actor: Actor,
   input: MemoryFactDeleteInput,
 ) {
-  return runFactMutation(() =>
+  return runFactMutation("delete", actor, input.factId, () =>
     deleteFactAsActor(serviceDeps(deps), actorOf(actor), {
       factId: input.factId,
       expectedRevision: input.expectedRevision,
@@ -215,7 +228,7 @@ export async function promoteMemoryFact(
   // Promotion publishes a personal fact to every Space member: space-owner
   // authority plus the per-item action is the authorization.
   await requireSpaceOwner(deps.prisma, actor);
-  return runFactMutation(() =>
+  return runFactMutation("promote", actor, input.factId, () =>
     promoteFactAsActor(serviceDeps(deps), actorOf(actor), {
       factId: input.factId,
       expectedRevision: input.expectedRevision,
@@ -228,7 +241,7 @@ export async function importLegacyMemoryFact(
   actor: Actor,
   input: MemoryFactImportLegacyInput,
 ) {
-  return runFactMutation(() =>
+  return runFactMutation("import_legacy", actor, input.documentId, () =>
     importLegacyDocumentAsFact(serviceDeps(deps), actorOf(actor), {
       documentId: input.documentId,
       ...(input.text !== undefined ? { text: input.text } : {}),
