@@ -1965,12 +1965,16 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     }
   }
   const resolveTranscriptMemberName = useCallback(
-    (botId: string | undefined) =>
-      memberName(transcriptMembers, botId) ??
-      // UX-02: the plan review card names its Bot in direct threads too, where
-      // the member list is empty — fall back to the loaded Bot roster.
-      (botId ? bots.find((candidate) => candidate.id === botId)?.name : undefined),
-    [transcriptMembers, bots],
+    (botId: string | undefined) => memberName(transcriptMembers, botId),
+    [transcriptMembers],
+  );
+  // UX-02: the plan review card names its Bot in direct threads too, where the
+  // member list is empty. This is a SEPARATE resolver: message speaker labels
+  // keep their member-only semantics (a direct-thread bot message never grows
+  // a name label), only the review card header uses the roster fallback.
+  const resolveTranscriptBotDisplayName = useCallback(
+    (botId: string) => resolveTranscriptBot(botId)?.name,
+    [resolveTranscriptBot],
   );
   const replyTargetName = activeReplyTarget
     ? activeReplyTarget.role === "user"
@@ -3817,6 +3821,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                 setPeerConversation(peer);
               }}
               memberName={resolveTranscriptMemberName}
+              botNameOf={resolveTranscriptBotDisplayName}
               peerBot={resolveTranscriptBot}
               onRefresh={refreshActiveThread}
               onBotChanged={refreshBots}
@@ -4912,6 +4917,7 @@ export const Transcript = memo(function Transcript({
   onCancelBackgroundTask,
   showActivityAvatars,
   activityBotColors,
+  botNameOf,
   onLoadOlder,
   onOpenBot,
   onAnswer,
@@ -4953,6 +4959,8 @@ export const Transcript = memo(function Transcript({
   onCancelBackgroundTask?: (taskId: string) => Promise<void>;
   showActivityAvatars?: boolean;
   activityBotColors?: Record<string, string>;
+  /** UX-02: Bot display-name resolver for the plan review card header. */
+  botNameOf?: (botId: string) => string | undefined;
   onLoadOlder: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
@@ -5001,7 +5009,7 @@ export const Transcript = memo(function Transcript({
     activity,
     showActivityAvatars,
     activityBotColors,
-    botNameOf: memberName,
+    botNameOf,
     onRefresh,
   });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
