@@ -100,20 +100,26 @@ Baseline (before, already on `main`):
 
 | Kind | Run | Selected | Duration |
 | --- | --- | --- | --- |
-| main push, full legacy graph | https://github.com/huiliuxu780/WorkPal/actions/runs/39185685190 | web-and-backend, agentscope, agent-runtime-image | 15m40s |
-| docs PR #66 push+PR duplicate | https://github.com/huiliuxu780/WorkPal/actions/runs/39187519571 (push) and https://github.com/huiliuxu780/WorkPal/actions/runs/39187524220 (pull_request) | same three jobs twice | still running at task start |
+| main push, full legacy graph | https://github.com/huiliuxu780/WorkPal/actions/runs/39185685190 | web-and-backend 52s, agentscope 936s (includes worker-chain), image 71s | 15m40s |
+| docs PR #66 push+PR duplicate | https://github.com/huiliuxu780/WorkPal/actions/runs/39187519571 (push, 15m16s) and https://github.com/huiliuxu780/WorkPal/actions/runs/39187524220 (pull_request) | same three jobs twice | ~15m each |
 
-After (this implementation). Rows are filled with real GitHub URLs once the proof PRs and this PR have finished; empty URL means not yet verified.
+After (real GitHub runs on 2026-10-19). Temporary proof PRs targeted this implementation branch so the diff was only the sample file, not the CI rewrite.
 
 | Kind | Selected jobs | Run URL | Duration |
 | --- | --- | --- | --- |
-| This PR (CI files → full) | all | *pending* | *pending* |
-| docs-only proof PR | docs, CI result | *pending* | *pending* |
-| pure UI proof PR | web, CI result | *pending* | *pending* |
-| runtime / prompt proof PR | agentscope, image, runtime-jar, CI result | *pending* | *pending* |
-| Worker proof PR | backend, worker-chain, runtime-jar, CI result | *pending* | *pending* |
-| selected-job failure proof | docs fails → CI result fails | *pending* | *pending* |
-| workflow_dispatch full | all | *pending* | *pending* |
+| This PR #67 (CI files → full) | all jobs + `CI result`; only `pull_request` (no feature-branch `push` clone). First attempt hit a pre-existing `budget-acceptance.spec.ts` flake; **failed-job rerun green**. | https://github.com/huiliuxu780/WorkPal/actions/runs/39190007263 | rerun 5m28s after flake; full `workflow_dispatch` below is the clean all-green wall clock |
+| docs-only proof #68 | `docs`, `CI result`. Skipped web/backend/agentscope/worker-chain/image/runtime-jar. Compare `7a6b5c6` → `5eeb7c9`, file `docs/privacy.md`. | https://github.com/huiliuxu780/WorkPal/actions/runs/39189580308 | 28s |
+| pure UI proof #69 | `web`, `CI result`. 666 web unit tests + focused E2E `settings-shell` + `ui-appearance` (3 passed). Worker/AgentScope/image skipped. | https://github.com/huiliuxu780/WorkPal/actions/runs/39190009372 | 2m34s |
+| runtime / `prompts/*.md` proof #70 | `agentscope`, `agent-runtime-image`, `runtime-jar`, `CI result`. `worker-chain` skipped. Prompt markdown was not classified as docs. | https://github.com/huiliuxu780/WorkPal/actions/runs/39189588261 | 5m48s |
+| Worker proof #71 | `backend`, `worker-chain`, `runtime-jar`, `CI result`. `agentscope` and image skipped. `worker-chain` job 9m34s (lease wait kept). Used `agent-runtime-jar-<sha>` from this commit. | https://github.com/huiliuxu780/WorkPal/actions/runs/39191111946 | 10m32s |
+| selected-job failure proof #72 | `docs` failed on a broken relative link; unselected jobs skipped; `CI result` failed with `selected job docs was failure`. | https://github.com/huiliuxu780/WorkPal/actions/runs/39189599439 | 31s |
+| `workflow_dispatch` `mode=full` | every job including `docs`, `web`, `backend`, `runtime-jar`, `agentscope`, `worker-chain`, `agent-runtime-image`, `CI result` | https://github.com/huiliuxu780/WorkPal/actions/runs/39190028868 | 10m41s |
+
+Duplicate push/PR: implementation and proof branches produced **only** `pull_request` (plus the intentional `workflow_dispatch`). No `push` workflow on those branches.
+
+GHCR: image jobs on PRs and on `workflow_dispatch` built without login/push. Publish remains `event_name == push && ref == refs/heads/main`.
+
+Temporary proof PRs #68–#72 are closed after this note. They must not merge to `main`.
 
 Admin follow-up: none required for protection (none configured). Optional later: make `CI result` the required check.
 
