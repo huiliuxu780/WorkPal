@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +78,43 @@ describe("classifyPath", () => {
     }
   });
 
+  it("unions a changed web spec with its product-path mapping", () => {
+    const history = classifyPath("apps/web/e2e/execution-history.spec.ts");
+    assert.ok(history.jobs.includes("web"));
+    assert.ok(history.webE2e.includes("execution-history.spec.ts"));
+    assert.ok(history.webE2e.includes("execution-card.spec.ts"));
+    assert.ok(history.webE2e.includes("task-center.spec.ts"));
+
+    const avatar = classifyPath("apps/web/e2e/avatar-studio.spec.ts");
+    assert.ok(avatar.jobs.includes("web"));
+    assert.ok(avatar.webE2e.includes("avatar-studio.spec.ts"));
+    assert.ok(avatar.webE2e.includes("ui-appearance.spec.ts"));
+    assert.ok(avatar.webE2e.includes("settings-shell.spec.ts"));
+
+    const approval = classifyPath("apps/web/e2e/approval-resume.spec.ts");
+    assert.ok(approval.jobs.includes("web"));
+    assert.ok(approval.webE2e.includes("approval-resume.spec.ts"));
+    assert.ok(approval.webE2e.includes("ui-appearance.spec.ts"));
+    assert.ok(approval.webE2e.includes("settings-shell.spec.ts"));
+  });
+
+  it("keeps AgentScope and Worker exclusive specs off the web E2E mapping", () => {
+    for (const file of [
+      "apps/web/e2e/agentscope-product.spec.ts",
+      "apps/web/e2e/budget-acceptance.spec.ts",
+      "apps/web/e2e/capability-rules.spec.ts",
+    ]) {
+      const result = classifyPath(file);
+      assert.deepEqual(result.webE2e, [], file);
+      assert.ok(result.jobs.includes("agentscope"), file);
+      assert.equal(result.jobs.includes("web"), false, file);
+    }
+    const worker = classifyPath("apps/web/e2e/worker-chain.spec.ts");
+    assert.deepEqual(worker.webE2e, []);
+    assert.ok(worker.jobs.includes("worker-chain"));
+    assert.equal(worker.jobs.includes("web"), false);
+  });
+
   it("maps Java prompt sources to agentscope + image, not worker-chain", () => {
     const result = classifyPath(
       "services/agent-runtime/src/main/resources/platform-instructions.md",
@@ -134,6 +171,53 @@ describe("selectChecks", () => {
   it("avatar UI selects avatar-focused E2E", () => {
     const result = selectChecks({ files: ["packages/ui-web/src/agent-avatar/agent-avatar.tsx"] });
     assert.match(result.webE2eSpec, /avatar-style/);
+  });
+
+  it("includes a changed executable spec in the focused web E2E set", () => {
+    const history = selectChecks({ files: ["apps/web/e2e/execution-history.spec.ts"] });
+    assert.match(history.webE2eSpec, /execution-history\.spec\.ts/);
+    assert.match(history.webE2eSpec, /execution-card\.spec\.ts/);
+    assert.match(history.webE2eSpec, /task-center\.spec\.ts/);
+
+    const avatar = selectChecks({ files: ["apps/web/e2e/avatar-studio.spec.ts"] });
+    assert.match(avatar.webE2eSpec, /avatar-studio\.spec\.ts/);
+    assert.match(avatar.webE2eSpec, /ui-appearance\.spec\.ts/);
+
+    const approval = selectChecks({ files: ["apps/web/e2e/approval-resume.spec.ts"] });
+    assert.match(approval.webE2eSpec, /approval-resume\.spec\.ts/);
+    assert.match(approval.webE2eSpec, /settings-shell\.spec\.ts/);
+  });
+
+  it("collects the changed spec from the focused Playwright pattern", () => {
+    const e2eDir = path.join(repoRoot, "apps/web/e2e");
+    const names = readdirSync(e2eDir).filter((name) => name.endsWith(".spec.ts"));
+    const collect = (webE2eSpec) => {
+      const matcher = new RegExp(webE2eSpec);
+      return names.filter((name) => matcher.test(name));
+    };
+
+    for (const spec of [
+      "execution-history.spec.ts",
+      "avatar-studio.spec.ts",
+      "approval-resume.spec.ts",
+    ]) {
+      const result = selectChecks({ files: [`apps/web/e2e/${spec}`] });
+      const collected = collect(result.webE2eSpec);
+      assert.ok(
+        collected.includes(spec),
+        `${spec} missing from ${result.webE2eSpec} (collected ${collected.join(", ")})`,
+      );
+    }
+
+    const agentscope = selectChecks({ files: ["apps/web/e2e/agentscope-product.spec.ts"] });
+    assert.equal(agentscope.webE2eSpec, "");
+    assert.ok(agentscope.selected.includes("agentscope"));
+    assert.equal(agentscope.selected.includes("web"), false);
+
+    const worker = selectChecks({ files: ["apps/web/e2e/worker-chain.spec.ts"] });
+    assert.equal(worker.webE2eSpec, "");
+    assert.ok(worker.selected.includes("worker-chain"));
+    assert.equal(worker.selected.includes("web"), false);
   });
 
   it("unions multiple classes", () => {

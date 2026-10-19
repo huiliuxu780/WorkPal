@@ -356,7 +356,26 @@ function full(reason) {
   return { jobs: [...FULL_JOBS], reason, webE2e: [...DEFAULT_WEB_E2E] };
 }
 
-function webE2eFor(file) {
+const WEB_E2E_DIR = "apps/web/e2e";
+const WEB_E2E_FIXTURES = "apps/web/e2e/fixtures";
+const EXCLUSIVE_WEB_SPECS = new Set([
+  "agentscope-product.spec.ts",
+  "budget-acceptance.spec.ts",
+  "capability-rules.spec.ts",
+  "worker-chain.spec.ts",
+]);
+
+/** Basename of a scripted-runtime web spec. AgentScope/Worker/fixtures/helpers return null. */
+export function executableWebSpecName(file) {
+  const p = normalizePath(file);
+  if (!isUnder(p, WEB_E2E_DIR) || isUnder(p, WEB_E2E_FIXTURES)) return null;
+  if (!/\.spec\.tsx?$/.test(p)) return null;
+  const name = path.posix.basename(p);
+  if (EXCLUSIVE_WEB_SPECS.has(name)) return null;
+  return name;
+}
+
+function mappedWebE2e(file) {
   if (
     isUnder(file, "packages/ui-web/src/agent-avatar") ||
     stemMatch(file, "packages/ui-web/src/bot-avatar") ||
@@ -376,6 +395,17 @@ function webE2eFor(file) {
     return ONBOARDING_WEB_E2E;
   }
   return DEFAULT_WEB_E2E;
+}
+
+/**
+ * Product-path mapping, unioned with the changed executable spec itself.
+ * AgentScope and Worker exclusive specs never reach this (classified earlier).
+ */
+function webE2eFor(file) {
+  const mapped = mappedWebE2e(file);
+  const specName = executableWebSpecName(file);
+  if (!specName) return mapped;
+  return unique([specName, ...mapped]);
 }
 
 export function parseNameStatus(text) {

@@ -55,6 +55,11 @@ Focused web E2E (scripted runtime, `WAKEUP_DRIVER=memory`, no Worker process):
 - default: `ui-appearance.spec.ts|settings-shell.spec.ts`
 - avatar packages: avatar-* specs
 - execution/task-center UI: `execution-card.spec.ts|task-center.spec.ts`
+- a changed executable spec under `apps/web/e2e/*.spec.ts` is unioned into this set, so editing `execution-history.spec.ts` / `avatar-studio.spec.ts` / `approval-resume.spec.ts` actually runs that file
+- `agentscope-product.spec.ts`, `budget-acceptance.spec.ts`, `capability-rules.spec.ts` stay on the `agentscope` job
+- `worker-chain.spec.ts` stays on the `worker-chain` job
+
+The `docs` job checks relative links in changed markdown. Deleted or renamed-away paths are not treated as missing files; remaining docs are scanned for leftover links to the old path.
 
 ## How to add a path
 
@@ -129,3 +134,11 @@ Admin follow-up: none required for protection (none configured). Optional later:
 - Does not delete or weaken product tests.
 - Does not fix the screenshot nightly workflow.
 - Does not deploy.
+
+## Review fixes
+
+Changed executable web specs are included alongside the product-path mapping; exclusive AgentScope/Worker specs keep their own jobs. The collection regression matches the generated pattern against real spec filenames; it is not a Playwright `--list` execution.
+
+Markdown rename/delete checks validate surviving files and scan remaining docs for references to removed paths, instead of rejecting the removed file itself.
+
+Local verification after both fixes: selector/result/docs tests 46/46; full markdown link check 89 files; `git diff --check` passed. New-head GitHub validation is recorded separately by its check runs.

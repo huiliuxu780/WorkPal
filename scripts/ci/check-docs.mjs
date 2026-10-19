@@ -69,20 +69,61 @@ export function listMarkdown(repoRoot, roots = ["docs"]) {
   return [...new Set(files)];
 }
 
-export function checkDocs(repoRoot, files) {
-  const errors = [];
+/**
+ * Split selector paths into files that still exist (check links) and
+ * deleted/renamed-away paths (scan remaining docs for leftover references).
+ */
+export function partitionMarkdownFiles(repoRoot, files) {
+  const checkFiles = [];
+  const deletedFiles = [];
   for (const file of files) {
-    if (!/\.(md|markdown)$/i.test(file)) continue;
-    errors.push(...checkMarkdownFile(repoRoot, file));
+    const rel = file.replaceAll("\\", "/");
+    if (!/\.(md|markdown)$/i.test(rel)) continue;
+    if (existsSync(path.join(repoRoot, rel))) checkFiles.push(rel);
+    else deletedFiles.push(rel);
+  }
+  return { checkFiles, deletedFiles };
+}
+
+export function checkDeletedPathReferences(repoRoot, deletedFiles) {
+  if (!deletedFiles.length) return [];
+  const deletedByAbs = new Map();
+  for (const file of deletedFiles) {
+    deletedByAbs.set(path.normalize(path.join(repoRoot, file)), file);
+  }
+  const errors = [];
+  for (const file of listMarkdown(repoRoot)) {
+    const abs = path.join(repoRoot, file);
+    const markdown = readFileSync(abs, "utf8");
+    for (const target of extractRelativeTargets(markdown)) {
+      if (target.startsWith("/")) continue;
+      const resolved = path.normalize(path.join(path.dirname(abs), target));
+      const deleted = deletedByAbs.get(resolved);
+      if (deleted) {
+        errors.push(`${file}: leftover relative link ${target} to deleted ${deleted}`);
+      }
+    }
   }
   return errors;
 }
 
-function filesFromSelectResult(env, repoRoot) {
+export function checkDocs(repoRoot, files) {
+  const { checkFiles, deletedFiles } = partitionMarkdownFiles(repoRoot, files);
+  const errors = [];
+  for (const file of checkFiles) {
+    errors.push(...checkMarkdownFile(repoRoot, file));
+  }
+  errors.push(...checkDeletedPathReferences(repoRoot, deletedFiles));
+  return errors;
+}
+
+export function filesFromSelectResult(env, repoRoot) {
   if (!env.SELECT_RESULT) return listMarkdown(repoRoot);
   const parsed = JSON.parse(env.SELECT_RESULT);
   const files = (parsed.files ?? []).filter((file) => /\.(md|markdown)$/i.test(file));
   if (parsed.mode === "full" || files.length === 0) return listMarkdown(repoRoot);
+  // Keep rename/delete paths. checkDocs partitions existing vs deleted and
+  // scans remaining docs for leftover links to the old path.
   return files;
 }
 
@@ -104,7 +145,8 @@ function isMainModule() {
 if (isMainModule()) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const files = parseFiles(process.argv.slice(2), repoRoot);
-  if (files.length === 0) {
+  const { checkFiles, deletedFiles } = partitionMarkdownFiles(repoRoot, files);
+  if (checkFiles.length === 0 && deletedFiles.length === 0) {
     console.log("No markdown files to check.");
     process.exit(0);
   }
@@ -113,5 +155,6 @@ if (isMainModule()) {
     for (const error of errors) console.error(error);
     process.exit(1);
   }
-  console.log(`Checked ${files.length} markdown file(s); relative links ok.`);
+  const extra = deletedFiles.length ? ` and ${deletedFiles.length} deleted path(s)` : "";
+  console.log(`Checked ${checkFiles.length} markdown file(s)${extra}; relative links ok.`);
 }
