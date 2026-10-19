@@ -120,12 +120,21 @@ export const ProductEventPayloadSchemas = {
     taskId: Id,
     actorUserId: Id,
   }),
-  "effect.reconciled": z.object({
-    executionId: z.string().min(1),
-    kind: z.string().min(1),
-    sourceEffectId: Id,
-    reuse: z.literal("manual_retry"),
-  }),
+  "effect.reconciled": z.union([
+    z.object({
+      executionId: z.string().min(1),
+      kind: z.string().min(1),
+      sourceEffectId: Id,
+      reuse: z.literal("manual_retry"),
+    }),
+    z.object({
+      executionId: z.string().min(1),
+      kind: z.string().min(1),
+      legacy: z.boolean().optional(),
+      sourceEffectId: z.never().optional(),
+      reuse: z.never().optional(),
+    }),
+  ]),
   "budget.exceeded": z.object({ reason: z.string(), limit: z.number().nonnegative().optional() }),
   "delivery.created": z.object({ deliveryId: Id, sourceRunId: Id }),
   "delivery.sent": z.object({ deliveryId: Id, messageId: Id }),

@@ -6,6 +6,24 @@ import {
 } from "./events.js";
 
 describe("Product Event v2 contract", () => {
+  it("accepts existing and manual-retry effect reconciliation payloads", () => {
+    const schema = ProductEventPayloadSchemas["effect.reconciled"];
+    for (const payload of [
+      { executionId: "key-1", kind: "send_email" },
+      { executionId: "key-1", kind: "send_email", legacy: true },
+      {
+        executionId: "key-1",
+        kind: "send_email",
+        sourceEffectId: "effect-1",
+        reuse: "manual_retry",
+      },
+    ])
+      expect(schema.safeParse(payload).success).toBe(true);
+    expect(
+      schema.safeParse({ executionId: "key-1", kind: "send_email", reuse: "manual_retry" }).success,
+    ).toBe(false);
+  });
+
   it("rejects a Step lifecycle event whose payload reports a different status", () => {
     const payload = {
       stepId: "step-1",
