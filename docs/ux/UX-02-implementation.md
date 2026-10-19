@@ -103,6 +103,7 @@
 - E2E（worker-chain，CI 选中）：**5/5 passed (8.6m)**，含 5.3 分钟 no-seam mid-run kill 恢复——attempt-start 计划审阅 repair 在真实 lease-loss 重试路径上零回归。
 - AG-04 baseline：`AG04_WRITE_BASELINE=1` 再生成 25 个 fixture；`<content-trust-rules>` 段落经脚本逐字节对比 **25/25 不变**。
 - 类型检查：contracts/db/adapters/core/api/worker/web `tsc --noEmit` 全绿；`mvn compile` 绿。
+- 格式：biome 仅对本分支触碰的文件执行；两处**字节级比对产物**已从 formatter 豁免并写入 `biome.json`（AG-04 baseline fixture 与 `prompt-texts.generated.ts`——CI 以"生成器输出==提交内容"校验，任何重排都会漂移，本批踩过一次并修复）。
 
 ## 7. 与记忆线（ME-01/02）的共享接口协调
 
