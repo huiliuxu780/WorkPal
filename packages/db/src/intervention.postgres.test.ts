@@ -9,6 +9,7 @@ import {
   pauseRunForInput,
   resolveIntervention,
 } from "./events.js";
+import { applyPlanSubmission, submitDraftForReview } from "./run-plans.js";
 import { createThreadMessage } from "./messages.js";
 import { loadInterventionViews } from "./interventions.js";
 import {
@@ -1241,4 +1242,313 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     expect(await prisma.intervention.findUniqueOrThrow({ where: { id: `legacy_${legacy.message.id}` } }))
       .toMatchObject({ status: "answered", presentation: { text: "Legacy city?" } });
   });
+
+  // -------------------------------------------------------------------------
+  // UX-02 unified plan review: typed plan_review pause, the three decisions,
+  // version CAS, idempotent replays, and orphan settlement.
+  // -------------------------------------------------------------------------
+
+  const PLAN_ACTIONS = [
+    { id: "approve", label: "Go with this plan" },
+    { id: "request_changes", label: "Request changes" },
+    { id: "reject", label: "Reject" },
+  ];
+
+  async function pausedPlanReviewRun(goal = "Deliver the report") {
+    const { task, run, attempt } = await runningRun();
+    const scope = { spaceId: id, threadId, botId, runId: run.id };
+    await applyPlanSubmission(
+      prisma,
+      { ...scope, toolExecutionId: `write-${run.id}` },
+      {
+        expectedRevision: 0,
+        goal,
+        items: [{ id: "draft", title: "Draft the report", status: "pending" as const }],
+      },
+      { source: "plan_write", submit: false },
+    );
+    const submitted = await submitDraftForReview(prisma, {
+      ...scope,
+      toolExecutionId: `exit-${run.id}`,
+    });
+    if (submitted.status !== "review_required") throw new Error("expected review_required");
+    const paused = await pauseRunForInput(prisma, {
+      spaceId: id,
+      threadId,
+      botId,
+      runId: run.id,
+      attemptId: attempt.id,
+      leaseOwner: "worker",
+      leaseFence: 1,
+      blocks: [
+        {
+          kind: "ask",
+          text: `Plan v${submitted.content.contentVersion} is ready for your review.`,
+          status: "pending",
+          actions: PLAN_ACTIONS,
+          planReview: submitted.content,
+        },
+      ],
+      offeredActions: PLAN_ACTIONS,
+      planReviewRound: {
+        roundId: submitted.round.roundId,
+        planId: submitted.round.planId,
+        contentVersion: submitted.round.contentVersion,
+        revision: submitted.round.revision,
+        source: submitted.round.source,
+      },
+    });
+    expect(paused).toBe(true);
+    const intervention = await prisma.intervention.findFirstOrThrow({
+      where: { runId: run.id, status: "pending" },
+    });
+    return { task, run, attempt, submitted, intervention };
+  }
+
+  it("pauses on a typed plan_review intervention bound to the exact version", async () => {
+    const { run, submitted, intervention } = await pausedPlanReviewRun();
+    expect(intervention.kind).toBe("plan_review");
+    expect(intervention.planReview).toMatchObject({
+      content: {
+        planId: submitted.round.planId,
+        contentVersion: 1,
+        goal: "Deliver the report",
+        source: "plan_exit",
+      },
+    });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "waiting_input",
+      waitKind: "approval",
+    });
+    const round = await prisma.runPlanReview.findUniqueOrThrow({
+      where: { id: submitted.round.roundId },
+    });
+    expect(round).toMatchObject({ status: "pending", interventionId: intervention.id });
+    expect(await prisma.event.count({ where: { runId: run.id, type: "plan.review_submitted" } })).toBe(1);
+    // A plan review is never a tool authorization: no effect-backed approval events.
+    expect(await prisma.event.count({ where: { runId: run.id, type: "approval.requested" } })).toBe(0);
+  });
+
+  it("approve resumes the same run, records the basis, and replays idempotently", async () => {
+    const { run, submitted, intervention } = await pausedPlanReviewRun();
+    const submissionId = randomUUID();
+    const first = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: submissionId,
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(first.outcome).toBe("accepted");
+    if (first.outcome !== "accepted") throw new Error("unreachable");
+    expect(first.resume).toBe(true);
+    expect(first.intervention.planReview?.decision).toBe("approve");
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "queued",
+      waitKind: null,
+      planPhase: "build",
+    });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "approved",
+      approvedContentVersion: 1,
+    });
+    expect(
+      await prisma.runPlanReview.findUniqueOrThrow({ where: { id: submitted.round.roundId } }),
+    ).toMatchObject({ status: "approved", decidedByUserId: id, decisionSubmissionId: submissionId });
+    expect(await prisma.event.count({ where: { runId: run.id, type: "plan.review_decided" } })).toBe(1);
+    expect(await prisma.event.count({ where: { runId: run.id, type: "approval.resolved" } })).toBe(0);
+
+    // The same submission id replays as accepted-without-effect; another
+    // client is told already_handled. Neither re-queues or re-decides.
+    const replay = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: submissionId,
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(replay.outcome).toBe("accepted");
+    if (replay.outcome !== "accepted") throw new Error("unreachable");
+    expect(replay.applied).toBe(false);
+    const other = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(other.outcome).toBe("already_handled");
+    expect(await prisma.event.count({ where: { runId: run.id, type: "plan.review_decided" } })).toBe(1);
+  });
+
+  it("request_changes requires concrete feedback and returns to the planning phase", async () => {
+    const { run, intervention } = await pausedPlanReviewRun();
+    const empty = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "request_changes",
+      feedback: "   ",
+    });
+    expect(empty).toEqual({ outcome: "rejected", reason: "invalid_submission" });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "waiting_input",
+    });
+
+    const decided = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "request_changes",
+      feedback: "Split the drafting stage per chapter",
+    });
+    expect(decided.outcome).toBe("accepted");
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "queued",
+      planPhase: "planning",
+    });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "changes_requested",
+    });
+    const round = await prisma.runPlanReview.findFirstOrThrow({
+      where: { runId: run.id, status: "changes_requested" },
+    });
+    expect(round.feedback).toBe("Split the drafting stage per chapter");
+
+    // Only the run owner decides: another member's click on a PENDING card
+    // is refused without touching the round.
+    const foreignRun = await pausedPlanReviewRun("Owner-only goal");
+    const foreign = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: foreignRun.intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: otherUserId,
+      answer: "approve",
+    });
+    expect(foreign.outcome).toBe("rejected");
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: foreignRun.run.id } })).toMatchObject({
+      status: "waiting_input",
+    });
+  });
+
+  it("reject cancels the run with plan_rejected and keeps the audit", async () => {
+    const { task, run, submitted, intervention } = await pausedPlanReviewRun();
+    const decided = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "reject",
+      feedback: "Too risky",
+    });
+    expect(decided.outcome).toBe("accepted");
+    if (decided.outcome !== "accepted") throw new Error("unreachable");
+    expect(decided.resume).toBe(false);
+    expect(decided.cancelledRunId).toBe(run.id);
+    const cancelled = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(cancelled).toMatchObject({ status: "cancelled", error: "plan_rejected", waitKind: null });
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({
+      status: "cancelled",
+    });
+    expect(
+      await prisma.runPlanReview.findUniqueOrThrow({ where: { id: submitted.round.roundId } }),
+    ).toMatchObject({ status: "rejected", feedback: "Too risky", decidedByUserId: id });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "rejected",
+    });
+    const events = await prisma.event.findMany({
+      where: { runId: run.id, type: "run.cancelled" },
+      select: { payload: true },
+    });
+    expect(events).toHaveLength(1);
+    expect((events[0]!.payload as { reason: string }).reason).toBe("plan_rejected");
+    // The decision is a plan rejection, never a fabricated tool denial.
+    expect(await prisma.event.count({ where: { runId: run.id, type: "approval.resolved" } })).toBe(0);
+    expect(await prisma.intervention.findUniqueOrThrow({ where: { id: intervention.id } })).toMatchObject({
+      status: "answered",
+    });
+  });
+
+  it("a stale card click never decides the newer pending version", async () => {
+    const { run, intervention } = await pausedPlanReviewRun("First goal");
+    const first = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "request_changes",
+      feedback: "Rework it",
+    });
+    expect(first.outcome).toBe("accepted");
+    // The run revises and submits content version 2, opening a NEW card.
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { status: "running", waitKind: null, leaseOwner: "worker", leaseFence: 1 },
+    });
+    const revised = await applyPlanSubmission(
+      prisma,
+      { spaceId: id, threadId, botId, runId: run.id, toolExecutionId: `write2-${run.id}` },
+      {
+        expectedRevision: 1,
+        goal: "Second goal",
+        items: [{ id: "draft", title: "Draft the report", status: "pending" as const }],
+        changeReason: "Reworked after feedback",
+      },
+      { source: "plan_write", submit: false },
+    );
+    expect(revised.status).toBe("draft_saved");
+    const resubmit = await submitDraftForReview(prisma, {
+      spaceId: id,
+      threadId,
+      botId,
+      runId: run.id,
+      toolExecutionId: `exit2-${run.id}`,
+    });
+    if (resubmit.status !== "review_required") throw new Error("expected review_required");
+    expect(resubmit.round.contentVersion).toBe(2);
+    // Clicking the OLD (answered) card again is already_handled; it cannot
+    // approve version 2.
+    const stale = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(stale.outcome).toBe("already_handled");
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      contentVersion: 2,
+      reviewStatus: "pending",
+      approvedContentVersion: null,
+    });
+  });
+
+  it("an expired wait settles the pending round and the plan review state", async () => {
+    const { run, submitted } = await pausedPlanReviewRun();
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { waitStartedAt: new Date(Date.now() - WAIT_TIMEOUT_MS.approval - 1_000) },
+    });
+    await prisma.$transaction(async (tx) => {
+      await expireWaitingRunInTransaction(tx, run.id, new Date());
+    }, TX);
+    expect(
+      await prisma.runPlanReview.findUniqueOrThrow({ where: { id: submitted.round.roundId } }),
+    ).toMatchObject({ status: "expired" });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "cancelled",
+    });
+  });
 });
+

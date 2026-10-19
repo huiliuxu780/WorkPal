@@ -212,6 +212,15 @@ export async function applyPlanSubmission(
       items: input.items,
       changeReason: input.changeReason ?? null,
     };
+    // A pending or rejected review freezes the plan before any comparison:
+    // the run is paused or cancelled in those states, and a racing or replayed
+    // submission must see the freeze, not a benign "unchanged".
+    if (current?.reviewStatus === "pending") {
+      throw new Error("A plan review is already pending for this run");
+    }
+    if (current?.reviewStatus === "rejected") {
+      throw new Error("This plan was rejected; the run cannot revise it");
+    }
     if (previous) {
       const ids = new Set(input.items.map((item) => item.id));
       if (previous.items.some((item) => !ids.has(item.id))) {
@@ -222,12 +231,6 @@ export async function applyPlanSubmission(
       if (samePlanContent(previous, input)) {
         return { status: "unchanged" as const, plan: previous };
       }
-    }
-    if (current?.reviewStatus === "pending") {
-      throw new Error("A plan review is already pending for this run");
-    }
-    if (current?.reviewStatus === "rejected") {
-      throw new Error("This plan was rejected; the run cannot revise it");
     }
 
     const fingerprint = planContentFingerprint(input.goal, input.items);

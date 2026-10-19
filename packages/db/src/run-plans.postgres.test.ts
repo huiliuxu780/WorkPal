@@ -157,15 +157,23 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
       ),
     ).toEqual({ status: "conflict", currentRevision: 1 });
 
-    // While a review is pending the run is paused; a racing publish refuses.
+    // While a review is pending the run is paused; a racing publish refuses
+    // even when it carries the current expectedRevision.
     await expect(
       applyPlanSubmission(
         prisma,
         scopeFor(runId, "call-race"),
-        { ...input, items: [{ id: "review", title: "Review source", status: "completed" }] },
+        {
+          ...input,
+          expectedRevision: 1,
+          items: [{ id: "review", title: "Review source", status: "completed" as const }],
+          changeReason: "Race the review",
+        },
         { source: "publish_run_plan", submit: true },
       ),
     ).rejects.toThrow("already pending");
+
+    await decide(runId, first.round.roundId, "approve");
 
     // Removing an item without marking it superseded/skipped still refuses.
     await expect(
@@ -181,8 +189,6 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
         { source: "publish_run_plan", submit: true },
       ),
     ).rejects.toThrow("retain prior item ids");
-
-    await decide(runId, first.round.roundId, "approve");
     const approved = await planRow(runId);
     expect(approved).toMatchObject({
       reviewStatus: "approved",
@@ -351,8 +357,11 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
       { source: "publish_run_plan", submit: true },
     );
     if (first.status !== "review_required") throw new Error("expected review_required");
+    await prisma.run.update({ where: { id: runId }, data: { status: "running" } });
     await decide(runId, first.round.roundId, "reject", "Too dangerous");
     expect(await planRow(runId)).toMatchObject({ reviewStatus: "rejected" });
+    // A rejected plan is frozen even if the run row were somehow still active.
+    await prisma.run.update({ where: { id: runId }, data: { status: "running" } });
     await expect(
       applyPlanSubmission(
         prisma,
