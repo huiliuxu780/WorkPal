@@ -159,8 +159,44 @@ function retryOrchestration(run: RunRow) {
   });
 }
 
+async function chainIds(tx: DbLike, start: RunRow): Promise<Set<string>> {
+  const latest = await latestHop(tx, start);
+  const ancestors = await loadManualRetryPredecessorIds(tx, latest.id);
+  return new Set([latest.id, ...ancestors]);
+}
+
+async function assertNonceBelongsToSource(
+  tx: DbLike,
+  source: RunRow,
+  hit: { id: string; taskId: string },
+): Promise<void> {
+  if (hit.taskId !== source.taskId) {
+    throw new ManualRetryDenied("nonce_conflict");
+  }
+  const ids = await chainIds(tx, source);
+  if (!ids.has(hit.id)) {
+    throw new ManualRetryDenied("nonce_conflict");
+  }
+}
+
+async function replayNonceHit(
+  tx: DbLike,
+  input: { spaceId: string; userId: string; runId: string },
+  source: RunRow,
+  hit: Pick<RunRow, "id" | "taskId" | "threadId" | "botId">,
+): Promise<ManualRetryOutput> {
+  await assertNonceBelongsToSource(tx, source, hit);
+  const target = await authorizeThread(tx, {
+    spaceId: input.spaceId,
+    userId: input.userId,
+    threadId: hit.threadId,
+    botId: hit.botId,
+  });
+  return outputFor(input.runId, hit, target, true);
+}
+
 async function authorizeThread(
-  tx: Prisma.TransactionClient,
+  tx: DbLike,
   input: { spaceId: string; userId: string; threadId: string; botId: string },
 ): Promise<ManualRetryOutput["target"]> {
   const thread = await tx.thread.findUnique({
@@ -267,7 +303,7 @@ export async function createManualRetryRun(
         },
       });
       if (nonceHit) {
-        return outputFor(input.runId, nonceHit, target, true);
+        return replayNonceHit(tx, input, locked, nonceHit);
       }
 
       const latest = await latestHop(tx, locked);
@@ -350,59 +386,38 @@ async function recoverUniqueCollision(
   input: { spaceId: string; userId: string; runId: string; clientNonce: string },
   error: unknown,
 ): Promise<ManualRetryOutput | null> {
+  const source = await loadRun(prisma, input.runId);
+  if (!source || source.spaceId !== input.spaceId) return null;
+
   if (hitsClientNonce(error) || uniqueTarget(error).length === 0) {
     const byNonce = await prisma.run.findUnique({
       where: { spaceId_clientNonce: { spaceId: input.spaceId, clientNonce: input.clientNonce } },
-      select: { id: true, taskId: true, threadId: true, botId: true, spaceId: true },
-    });
-    if (byNonce && byNonce.spaceId === input.spaceId) {
-      const thread = await prisma.thread.findUnique({
-        where: { id: byNonce.threadId },
-        select: { botId: true, groupId: true },
-      });
-      const target = thread?.botId
-        ? { kind: "bot" as const, botId: thread.botId }
-        : thread?.groupId
-          ? { kind: "group" as const, groupId: thread.groupId }
-          : null;
-      if (target) return outputFor(input.runId, byNonce, target, true);
-    }
-  }
-  if (hitsRetryOfRunId(error) || uniqueTarget(error).length === 0) {
-    const source = await prisma.run.findUnique({
-      where: { id: input.runId },
       select: {
         id: true,
-        spaceId: true,
-        botId: true,
-        threadId: true,
         taskId: true,
-        userId: true,
-        status: true,
-        trigger: true,
-        orchestration: true,
-        sourceMessageId: true,
-        routineId: true,
+        threadId: true,
+        botId: true,
+        spaceId: true,
         retryOfRunId: true,
       },
     });
-    if (!source || source.spaceId !== input.spaceId) return null;
+    if (byNonce && byNonce.spaceId === input.spaceId) {
+      return replayNonceHit(prisma, input, source, byNonce);
+    }
+  }
+  if (hitsRetryOfRunId(error) || uniqueTarget(error).length === 0) {
     const latest = await latestHop(prisma, source);
     const successor = await prisma.run.findUnique({
       where: { retryOfRunId: latest.id },
       select: { id: true, taskId: true, threadId: true, botId: true },
     });
-    if (!successor) return null;
-    const thread = await prisma.thread.findUnique({
-      where: { id: successor.threadId },
-      select: { botId: true, groupId: true },
+    if (!successor || successor.taskId !== source.taskId) return null;
+    const target = await authorizeThread(prisma, {
+      spaceId: input.spaceId,
+      userId: input.userId,
+      threadId: successor.threadId,
+      botId: successor.botId,
     });
-    const target = thread?.botId
-      ? { kind: "bot" as const, botId: thread.botId }
-      : thread?.groupId
-        ? { kind: "group" as const, groupId: thread.groupId }
-        : null;
-    if (!target) return null;
     return outputFor(input.runId, successor, target, true);
   }
   return null;

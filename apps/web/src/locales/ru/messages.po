@@ -4314,6 +4314,10 @@ msgid "This reset link is invalid or expired"
 msgstr "Эта ссылка для сброса недействительна или срок ее действия истек."
 
 #: src/lib/manual-retry.ts
+msgid "This retry request was already used for a different task."
+msgstr ""
+
+#: src/lib/manual-retry.ts
 msgid "This run cannot be retried."
 msgstr ""
 

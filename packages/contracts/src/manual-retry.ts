@@ -12,6 +12,7 @@ export const ManualRetryDenyReason = z.enum([
   "bot_unavailable",
   "thread_busy",
   "already_active",
+  "nonce_conflict",
 ]);
 export type ManualRetryDenyReason = z.infer<typeof ManualRetryDenyReason>;
 

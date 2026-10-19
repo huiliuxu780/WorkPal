@@ -127,7 +127,7 @@ describe("decideManualRetryEffect", () => {
   it("reuses a completed recoverable result on the same tool/args/occurrence", () => {
     const decision = decideManualRetryEffect({
       tool: "send_email",
-      args,
+      request: args,
       occurrence: 0,
       predecessors: [
         {
@@ -147,7 +147,7 @@ describe("decideManualRetryEffect", () => {
     expect(
       decideManualRetryEffect({
         tool: "send_email",
-        args: { to: "b@example.com", subject: "hi" },
+        request: { to: "b@example.com", subject: "hi" },
         occurrence: 0,
         predecessors: [
           { effects: [effect({ id: "e1", kind: "send_email", status: "completed" })] },
@@ -157,7 +157,7 @@ describe("decideManualRetryEffect", () => {
     expect(
       decideManualRetryEffect({
         tool: "send_email",
-        args,
+        request: args,
         occurrence: 1,
         predecessors: [
           { effects: [effect({ id: "e1", kind: "send_email", status: "completed" })] },
@@ -170,7 +170,7 @@ describe("decideManualRetryEffect", () => {
     expect(
       decideManualRetryEffect({
         tool: "send_email",
-        args,
+        request: args,
         occurrence: 0,
         predecessors: [{ effects: [effect({ id: "e1", kind: "send_email", status: "denied" })] }],
       }).kind,
@@ -178,7 +178,7 @@ describe("decideManualRetryEffect", () => {
     expect(
       decideManualRetryEffect({
         tool: "send_email",
-        args,
+        request: args,
         occurrence: 0,
         predecessors: [
           {
@@ -200,7 +200,7 @@ describe("decideManualRetryEffect", () => {
     expect(
       decideManualRetryEffect({
         tool: "send_email",
-        args,
+        request: args,
         occurrence: 0,
         predecessors: [
           { effects: [effect({ id: "e1", kind: "send_email", status: "uncertain" })] },
@@ -210,7 +210,7 @@ describe("decideManualRetryEffect", () => {
     expect(
       decideManualRetryEffect({
         tool: "send_email",
-        args,
+        request: args,
         occurrence: 0,
         predecessors: [
           {
@@ -229,7 +229,7 @@ describe("decideManualRetryEffect", () => {
     expect(
       decideManualRetryEffect({
         tool: "send_email",
-        args,
+        request: args,
         occurrence: 0,
         predecessors: [
           {
@@ -251,7 +251,7 @@ describe("decideManualRetryEffect", () => {
   it("prefers the nearest predecessor and keeps occurrence order", () => {
     const decision = decideManualRetryEffect({
       tool: "send_email",
-      args,
+      request: args,
       occurrence: 1,
       predecessors: [
         {
@@ -275,6 +275,117 @@ describe("decideManualRetryEffect", () => {
       ],
     });
     expect(decision).toMatchObject({ kind: "reuse", effect: { id: "near-1" } });
+  });
+
+  it("reuses catalog and bound-direct stored requests against the same live envelope", () => {
+    const marker = "__rakazoCatalogTool";
+    const args = { url: "https://example.test/items", body: "hello" };
+    const route = { connectorId: "fixture", resourceId: "hook", toolName: "hook_write" };
+    const boundRequest = [marker, "direct", { route, args }];
+    const catalogArgs = { id: "hook:hook_write", arguments: args };
+    const catalogRequest = [marker, "fixture_execute_tool", catalogArgs, route];
+
+    expect(
+      decideManualRetryEffect({
+        tool: "hook_write",
+        request: boundRequest,
+        occurrence: 0,
+        predecessors: [
+          {
+            effects: [
+              effect({
+                id: "bound",
+                kind: "hook_write",
+                status: "completed",
+                request: boundRequest,
+                result: { id: "ext-1" },
+              }),
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({ kind: "reuse", effect: { id: "bound" } });
+
+    expect(
+      decideManualRetryEffect({
+        tool: "hook_write",
+        request: catalogRequest,
+        occurrence: 0,
+        predecessors: [
+          {
+            effects: [
+              effect({
+                id: "catalog",
+                kind: "hook_write",
+                status: "completed",
+                request: catalogRequest,
+                result: { id: "ext-2" },
+              }),
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({ kind: "reuse", effect: { id: "catalog" } });
+  });
+
+  it("treats a different connector resource, args, or occurrence as a new operation", () => {
+    const marker = "__rakazoCatalogTool";
+    const args = { url: "https://example.test/items", body: "hello" };
+    const route = { connectorId: "fixture", resourceId: "hook", toolName: "hook_write" };
+    const stored = [marker, "direct", { route, args }];
+    const predecessors = [
+      {
+        effects: [
+          effect({
+            id: "bound",
+            kind: "hook_write",
+            status: "completed",
+            request: stored,
+            result: { id: "ext-1" },
+          }),
+        ],
+      },
+    ];
+
+    expect(
+      decideManualRetryEffect({
+        tool: "hook_write",
+        request: [
+          marker,
+          "direct",
+          {
+            route: { ...route, resourceId: "other-hook" },
+            args,
+          },
+        ],
+        occurrence: 0,
+        predecessors,
+      }).kind,
+    ).toBe("execute");
+    expect(
+      decideManualRetryEffect({
+        tool: "hook_write",
+        request: [marker, "direct", { route, args: { ...args, body: "goodbye" } }],
+        occurrence: 0,
+        predecessors,
+      }).kind,
+    ).toBe("execute");
+    expect(
+      decideManualRetryEffect({
+        tool: "hook_write",
+        request: stored,
+        occurrence: 1,
+        predecessors,
+      }).kind,
+    ).toBe("execute");
+    expect(
+      decideManualRetryEffect({
+        tool: "hook_write",
+        request: args,
+        occurrence: 0,
+        predecessors,
+      }).kind,
+    ).toBe("execute");
   });
 
   it("does not list authorized or cancelled ops as completed prompt context", () => {

@@ -44,11 +44,11 @@ export async function loadManualRetryChain(
 export function matchManualRetryEffect(
   chain: ManualRetryChain,
   tool: string,
-  args: Record<string, unknown>,
+  request: unknown,
   occurrence: number,
 ): ManualRetryEffectDecision {
   if (chain.length === 0) return { kind: "execute" };
-  return decideManualRetryEffect({ tool, args, occurrence, predecessors: chain });
+  return decideManualRetryEffect({ tool, request, occurrence, predecessors: chain });
 }
 
 let cachedRetryTemplate: string | undefined;

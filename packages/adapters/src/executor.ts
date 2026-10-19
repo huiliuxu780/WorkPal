@@ -2298,7 +2298,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             const retryDecision = matchManualRetryEffect(
               retryChain,
               replayEffectToolName,
-              args,
+              effectRequest,
               occurrence,
             );
             if (retryDecision.kind === "reuse") {

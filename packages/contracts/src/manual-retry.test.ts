@@ -27,6 +27,7 @@ describe("manual retry contract", () => {
   it("lists the closed deny-reason set", () => {
     expect(ManualRetryDenyReason.options).toContain("thread_cleared");
     expect(ManualRetryDenyReason.options).toContain("thread_busy");
+    expect(ManualRetryDenyReason.options).toContain("nonce_conflict");
     expect(ManualRetryInputSchema.safeParse({ runId: "run-1", clientNonce: "" }).success).toBe(
       false,
     );

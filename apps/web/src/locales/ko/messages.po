@@ -4314,6 +4314,10 @@ msgid "This reset link is invalid or expired"
 msgstr "이 재설정 링크는 유효하지 않거나 만료되었습니다"
 
 #: src/lib/manual-retry.ts
+msgid "This retry request was already used for a different task."
+msgstr ""
+
+#: src/lib/manual-retry.ts
 msgid "This run cannot be retried."
 msgstr ""
 

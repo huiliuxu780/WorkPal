@@ -4314,6 +4314,10 @@ msgid "This reset link is invalid or expired"
 msgstr "此重置链接无效或已过期"
 
 #: src/lib/manual-retry.ts
+msgid "This retry request was already used for a different task."
+msgstr "此重试请求已用于另一个任务。"
+
+#: src/lib/manual-retry.ts
 msgid "This run cannot be retried."
 msgstr "此执行无法重试。"
 

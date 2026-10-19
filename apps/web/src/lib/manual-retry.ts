@@ -23,6 +23,8 @@ export function manualRetryErrorMessage(error: unknown): string {
     case "ineligible_trigger":
     case "not_root":
       return t`This run cannot be retried.`;
+    case "nonce_conflict":
+      return t`This retry request was already used for a different task.`;
     default:
       return t`Couldn't retry this task. Try again.`;
   }

@@ -21,6 +21,9 @@ describe("manualRetryErrorMessage", () => {
     expect(manualRetryErrorMessage({ data: { reason: "not_root" } })).toBe(
       "This run cannot be retried.",
     );
+    expect(manualRetryErrorMessage({ data: { reason: "nonce_conflict" } })).toBe(
+      "This retry request was already used for a different task.",
+    );
     expect(manualRetryErrorMessage(new Error("network"))).toBe(
       "Couldn't retry this task. Try again.",
     );

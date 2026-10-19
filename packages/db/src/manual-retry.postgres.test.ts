@@ -36,6 +36,7 @@ describePostgres("manual retry (PostgreSQL)", () => {
     spaceId: string;
     botId: string;
     threadId: string;
+    organizationId: string;
   };
 
   async function newActor(): Promise<Ctx> {
@@ -72,7 +73,49 @@ describePostgres("manual retry (PostgreSQL)", () => {
       await prisma.bot.create({ data: { spaceId, userId, name: `${label}-bot`, color: "test" } })
     ).id;
     const threadId = (await prisma.thread.create({ data: { spaceId, userId, botId } })).id;
-    return { userId, spaceId, botId, threadId };
+    return { userId, spaceId, botId, threadId, organizationId: label };
+  }
+
+  async function peerInSpace(owner: Ctx): Promise<Ctx> {
+    const label = `mr${++actorSeq}-${randomUUID().slice(0, 8)}`;
+    const userId = `${label}-user`;
+    await prisma.user.create({
+      data: { id: userId, name: "MR peer", email: `${label}@example.test`, emailVerified: true },
+    });
+    await prisma.member.create({
+      data: {
+        id: `${label}-member`,
+        organizationId: owner.organizationId,
+        userId,
+        role: "member",
+        createdAt: new Date(),
+      },
+    });
+    await prisma.spaceMember.create({
+      data: {
+        id: `${label}-sm`,
+        spaceId: owner.spaceId,
+        organizationId: owner.organizationId,
+        userId,
+        role: "member",
+        createdAt: new Date(),
+      },
+    });
+    const botId = (
+      await prisma.bot.create({
+        data: { spaceId: owner.spaceId, userId, name: `${label}-bot`, color: "test" },
+      })
+    ).id;
+    const threadId = (
+      await prisma.thread.create({ data: { spaceId: owner.spaceId, userId, botId } })
+    ).id;
+    return {
+      userId,
+      spaceId: owner.spaceId,
+      botId,
+      threadId,
+      organizationId: owner.organizationId,
+    };
   }
 
   async function makeRun(
@@ -478,5 +521,115 @@ describePostgres("manual retry (PostgreSQL)", () => {
     const updated = await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } });
     expect(updated.reviewDecision).toBe("manual_retry_authorized");
     expect(updated.runId).toBe(run.id);
+  });
+
+  it("refuses a nonce already used by another task of the same user", async () => {
+    const ctx = await newActor();
+    const first = await makeRun(ctx);
+    const other = await makeRun(ctx);
+    const nonce = `shared-${first.run.id}`;
+    const created = await createManualRetryRun(prisma, {
+      spaceId: ctx.spaceId,
+      userId: ctx.userId,
+      runId: first.run.id,
+      clientNonce: nonce,
+    });
+    await expect(
+      createManualRetryRun(prisma, {
+        spaceId: ctx.spaceId,
+        userId: ctx.userId,
+        runId: other.run.id,
+        clientNonce: nonce,
+      }),
+    ).rejects.toMatchObject({ reason: "nonce_conflict" } satisfies Partial<ManualRetryDenied>);
+    expect(created.taskId).toBe(first.task.id);
+    expect(created.threadId).toBe(ctx.threadId);
+    expect(created.botId).toBe(ctx.botId);
+    expect(await prisma.run.count({ where: { retryOfRunId: other.run.id } })).toBe(0);
+    const replay = await createManualRetryRun(prisma, {
+      spaceId: ctx.spaceId,
+      userId: ctx.userId,
+      runId: first.run.id,
+      clientNonce: nonce,
+    });
+    expect(replay.runId).toBe(created.runId);
+    expect(replay.replayed).toBe(true);
+    expect(replay.taskId).toBe(first.task.id);
+    expect(replay.threadId).toBe(ctx.threadId);
+    expect(replay.botId).toBe(ctx.botId);
+  });
+
+  it("refuses a nonce already used by another user in the same space", async () => {
+    const owner = await newActor();
+    const peer = await peerInSpace(owner);
+    const ownerRun = await makeRun(owner);
+    const peerRun = await makeRun(peer);
+    const nonce = `space-${ownerRun.run.id}`;
+    const created = await createManualRetryRun(prisma, {
+      spaceId: owner.spaceId,
+      userId: owner.userId,
+      runId: ownerRun.run.id,
+      clientNonce: nonce,
+    });
+    await expect(
+      createManualRetryRun(prisma, {
+        spaceId: peer.spaceId,
+        userId: peer.userId,
+        runId: peerRun.run.id,
+        clientNonce: nonce,
+      }),
+    ).rejects.toMatchObject({ reason: "nonce_conflict" } satisfies Partial<ManualRetryDenied>);
+    expect(created.taskId).toBe(ownerRun.task.id);
+    expect(created.threadId).toBe(owner.threadId);
+    expect(created.botId).toBe(owner.botId);
+    expect(await prisma.run.count({ where: { retryOfRunId: peerRun.run.id } })).toBe(0);
+
+    const racerA = await peerInSpace(owner);
+    const racerB = await peerInSpace(owner);
+    const runA = await makeRun(racerA);
+    const runB = await makeRun(racerB);
+    const raceNonce = `race-${runA.run.id}`;
+    const settled = await Promise.allSettled([
+      createManualRetryRun(prisma, {
+        spaceId: racerA.spaceId,
+        userId: racerA.userId,
+        runId: runA.run.id,
+        clientNonce: raceNonce,
+      }),
+      createManualRetryRun(prisma, {
+        spaceId: racerB.spaceId,
+        userId: racerB.userId,
+        runId: runB.run.id,
+        clientNonce: raceNonce,
+      }),
+    ]);
+    const ok = settled.filter((row) => row.status === "fulfilled");
+    const denied = settled.filter((row) => row.status === "rejected");
+    expect(ok).toHaveLength(1);
+    expect(denied).toHaveLength(1);
+    expect((denied[0] as PromiseRejectedResult).reason).toMatchObject({
+      reason: "nonce_conflict",
+    });
+    const winner = (
+      ok[0] as PromiseFulfilledResult<Awaited<ReturnType<typeof createManualRetryRun>>>
+    ).value;
+    expect(winner.replayed).toBe(false);
+    expect([runA.task.id, runB.task.id]).toContain(winner.taskId);
+    expect(
+      winner.taskId === runA.task.id
+        ? winner.threadId === racerA.threadId && winner.botId === racerA.botId
+        : winner.threadId === racerB.threadId && winner.botId === racerB.botId,
+    ).toBe(true);
+
+    const replay = await createManualRetryRun(prisma, {
+      spaceId: owner.spaceId,
+      userId: owner.userId,
+      runId: ownerRun.run.id,
+      clientNonce: nonce,
+    });
+    expect(replay.runId).toBe(created.runId);
+    expect(replay.taskId).toBe(ownerRun.task.id);
+    expect(replay.threadId).toBe(owner.threadId);
+    expect(replay.botId).toBe(owner.botId);
   });
 });

@@ -1,10 +1,40 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { AgentRunRequest } from "@rakazo/adapter-kit";
+import type { AgentRunRequest, ConnectorCall, ConnectorTool } from "@rakazo/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
+import {
+  boundDirectApprovalRequest,
+  catalogApprovalRequest,
+  catalogIdForRoute,
+} from "./approval-effect.js";
 import type * as AutoReviewModule from "./auto-review.js";
 import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
 import { createRunExecutor } from "./executor.js";
+import { CATALOG_EXECUTE } from "./lazy-tool-catalog.js";
+
+const CATALOG_MARKER = "__rakazoCatalogTool";
+
+const hookRoute = {
+  connectorId: "fixture",
+  resourceId: "hook",
+  toolName: "hook_write",
+};
+
+const hookTool: ConnectorTool = {
+  name: "hook_write",
+  description: "POST a countable local fixture",
+  readOnly: false,
+  inputSchema: { type: "object" },
+  route: hookRoute,
+};
+
+const catalogExecuteTool: ConnectorTool = {
+  name: "fixture_execute_tool",
+  description: "Run a fixture tool by id",
+  readOnly: false,
+  inputSchema: { type: "object" },
+  route: { connectorId: "fixture", toolName: CATALOG_EXECUTE },
+};
 
 vi.mock("./computer-lifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof ComputerLifecycleModule>()),
@@ -53,7 +83,15 @@ async function listen(): Promise<{ server: Server; url: string; hits: unknown[] 
   return { server, url: `http://127.0.0.1:${address.port}`, hits };
 }
 
-function fixture(runId = "run-retry") {
+function fixture(
+  runId = "run-retry",
+  opts: {
+    tools?: ConnectorTool[];
+    resolveCall?: (
+      call: ConnectorCall,
+    ) => Promise<{ call: ConnectorCall; tool: ConnectorTool } | undefined>;
+  } = {},
+) {
   const predecessorId = "run-old";
   const effects: Effect[] = [];
   const results: unknown[] = [];
@@ -228,16 +266,8 @@ function fixture(runId = "run-retry") {
     prisma,
     runtime: { describe: () => ({ capabilities: { scripted: false } }), run: runtimeRun },
     connector: {
-      discoverTools: async () => [
-        {
-          name: "hook_write",
-          description: "POST a countable local fixture",
-          readOnly: false,
-          inputSchema: { type: "object" },
-          route: { connectorId: "fixture", resourceId: "hook", toolName: "hook_write" },
-        },
-      ],
-      resolveCall: async () => undefined,
+      discoverTools: async () => opts.tools ?? [hookTool],
+      resolveCall: opts.resolveCall ?? (async () => undefined),
       execute,
     },
     sandbox: { describe: () => ({ capabilities: { graphical: false } }) },
@@ -277,24 +307,40 @@ function fixture(runId = "run-retry") {
   };
 }
 
+async function resolveCatalogHook(call: ConnectorCall) {
+  if (call.route?.resourceId || call.route?.toolName !== CATALOG_EXECUTE) return undefined;
+  const inner = call.args.arguments;
+  if (!inner || typeof inner !== "object" || Array.isArray(inner)) return undefined;
+  return {
+    tool: hookTool,
+    call: {
+      tool: hookTool.name,
+      args: inner as Record<string, unknown>,
+      executionId: call.executionId,
+      route: hookRoute,
+    },
+  };
+}
+
 describe("manual retry effect reuse (production executor)", () => {
-  it("reuses a completed predecessor result and does not POST the fixture again", async () => {
+  it("reuses a completed bound-direct connector request and does not POST again", async () => {
     const http = await listen();
     try {
       const f = fixture();
+      const args = { url: `${http.url}/items`, body: "hello" };
       f.seed({
         id: "e-old",
         runId: f.predecessorId,
         kind: "hook_write",
         idempotencyKey: "old-hook",
         status: "completed",
-        request: { url: `${http.url}/items`, body: "hello" },
+        request: boundDirectApprovalRequest(hookRoute, args, CATALOG_MARKER),
         result: { ok: true, id: "ext-1" },
       });
       f.setCalls([
         {
           name: "hook_write",
-          args: { url: `${http.url}/items`, body: "hello" },
+          args,
           executionId: "call-1",
         },
       ]);
@@ -316,6 +362,55 @@ describe("manual retry effect reuse (production executor)", () => {
       expect(f.prompts[0]).toContain("manual retry");
       expect(f.prompts[0]).toContain("Send the weekly report to Ada");
       expect(f.prompts[0]).toContain("hook_write");
+    } finally {
+      http.server.close();
+    }
+  });
+
+  it("reuses a completed catalog connector request and does not POST again", async () => {
+    const http = await listen();
+    try {
+      const f = fixture("run-retry", {
+        tools: [catalogExecuteTool, hookTool],
+        resolveCall: resolveCatalogHook,
+      });
+      const args = { url: `${http.url}/items`, body: "hello" };
+      const catalogArgs = { id: catalogIdForRoute(hookRoute), arguments: args };
+      f.seed({
+        id: "e-catalog",
+        runId: f.predecessorId,
+        kind: "hook_write",
+        idempotencyKey: "old-catalog",
+        status: "completed",
+        request: catalogApprovalRequest(
+          "fixture_execute_tool",
+          catalogArgs,
+          CATALOG_MARKER,
+          hookRoute,
+        ),
+        result: { ok: true, id: "ext-catalog" },
+      });
+      f.setCalls([
+        {
+          name: "fixture_execute_tool",
+          args: catalogArgs,
+          executionId: "call-catalog",
+        },
+      ]);
+      await f.run();
+      expect(http.hits).toHaveLength(0);
+      expect(f.execute).not.toHaveBeenCalled();
+      expect(f.results[0]).toEqual({ ok: true, id: "ext-catalog" });
+      expect(f.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "effect.reconciled",
+          payload: expect.objectContaining({
+            sourceEffectId: "e-catalog",
+            reuse: "manual_retry",
+            kind: "hook_write",
+          }),
+        }),
+      );
     } finally {
       http.server.close();
     }

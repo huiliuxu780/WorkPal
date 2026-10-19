@@ -678,6 +678,8 @@ function manualRetryMessage(reason: string): string {
     case "ineligible_trigger":
     case "not_root":
       return "This run cannot be retried.";
+    case "nonce_conflict":
+      return "This retry request was already used for a different task.";
     default:
       return "This task cannot be retried.";
   }
@@ -5856,6 +5858,12 @@ export function createRouter(deps: RouterDeps) {
             if (error.reason === "thread_busy") {
               throw new ORPCError("CONFLICT", {
                 message: "This conversation already has work in progress.",
+                data: { reason: error.reason },
+              });
+            }
+            if (error.reason === "nonce_conflict") {
+              throw new ORPCError("CONFLICT", {
+                message: "This retry request was already used for a different task.",
                 data: { reason: error.reason },
               });
             }
