@@ -258,6 +258,11 @@ test("Web chat resumes a native Harness plan after approval", async ({ page }) =
         {
           expect(request) {
             expect(JSON.stringify(request.messages)).toContain("Make a plan for the fixture.");
+            // UX-02: the native plan surface arrives as backend-owned tools.
+            const names = (request.tools ?? []).map((tool) => tool.function.name);
+            expect(names).toContain("plan_enter");
+            expect(names).toContain("plan_write");
+            expect(names).toContain("plan_exit");
           },
           response: { type: "tool", id: "plan-enter", name: "plan_enter", arguments: {} },
         },
@@ -269,12 +274,20 @@ test("Web chat resumes a native Harness plan after approval", async ({ page }) =
             type: "tool",
             id: "plan-write",
             name: "plan_write",
-            arguments: { content: "# Plan\n1. Inspect\n2. Finish" },
+            arguments: {
+              expectedRevision: 0,
+              goal: "Deliver the fixture",
+              items: [
+                { id: "inspect", title: "Inspect the fixture", status: "pending" },
+                { id: "finish", title: "Finish the fixture", status: "pending" },
+              ],
+            },
           },
         },
         {
           expect(request) {
             expect(JSON.stringify(request.messages)).toContain("plan-write");
+            expect(JSON.stringify(request.messages)).toContain("draft_saved");
           },
           response: {
             type: "tool",
@@ -285,7 +298,12 @@ test("Web chat resumes a native Harness plan after approval", async ({ page }) =
         },
         {
           expect(request) {
+            // Resume after the user's approval: the SAME plan_exit call
+            // re-executed through the bridge and returned the decision, and
+            // the persisted native PLAN-mode projection rides the new stream.
             expect(JSON.stringify(request.messages)).toContain("plan-exit");
+            expect(JSON.stringify(request.messages)).toContain('"status":"approved"');
+            expect(JSON.stringify(request.messages)).toContain("PLAN MODE is active");
           },
           response: { type: "text", text: "Plan approved and completed." },
         },
@@ -305,13 +323,18 @@ test("Web chat resumes a native Harness plan after approval", async ({ page }) =
     const composer = page.getByPlaceholder(/Message/);
     await composer.fill("Make a plan for the fixture.");
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeVisible({
-      timeout: 40_000,
-    });
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    // UX-02: the submission pauses on the typed plan_review card — and the
+    // generic workpal-plan-approval ask ("Approve"/"Reject" bubble) is gone.
+    const review = page.locator('[data-testid="plan-review-card"][data-status="pending"]');
+    await expect(review).toBeVisible({ timeout: 60_000 });
+    await expect(review).toContainText("Deliver the fixture");
+    await expect(review).toContainText("Inspect the fixture");
+    await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Allow plan_exit to continue?")).toHaveCount(0);
+    await review.getByTestId("plan-review-approve").click();
     await expect(
       page.getByTestId("transcript").getByText("Plan approved and completed."),
-    ).toBeVisible({ timeout: 40_000 });
+    ).toBeVisible({ timeout: 60_000 });
     plan.assertComplete();
   } finally {
     await plan?.close();

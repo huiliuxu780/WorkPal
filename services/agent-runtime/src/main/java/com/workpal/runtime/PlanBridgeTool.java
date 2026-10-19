@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.state.AgentState;
 import io.agentscope.core.tool.ToolBase;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.ToolSuspendException;
-import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.workspace.WorkspaceManager;
+import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -88,6 +90,14 @@ final class PlanBridgeTool extends ToolBase {
         });
     }
 
+    /**
+     * Drive the native plan-mode projection from the backend decision. This
+     * uses the SAME live-state access as the library's own plan tools
+     * ({@code RuntimeContext.resolveAgentState}) and the harness
+     * {@link PlanModeManager}, so the read-only PLAN middleware, the banner
+     * and plans/PLAN.md all follow the backend's review state. Projection
+     * failures are logged and never fail the tool call.
+     */
     private void applyProjection(String name, ToolBridgeClient.ToolOutcome outcome, ToolCallParam param) {
         if (outcome.error() != null || outcome.result() == null) return;
         JsonNode value = outcome.result();
@@ -95,29 +105,43 @@ final class PlanBridgeTool extends ToolBase {
         try {
             Agent agent = param.getAgent();
             RuntimeContext context = param.getRuntimeContext();
-            HarnessAgent harness = agent instanceof HarnessAgent found ? found : null;
-            if (harness != null && context != null) {
+            if (agent == null || context == null) {
+                writePlanProjectionFile(value);
+                return;
+            }
+            // Exactly the native tools' live-state access: the tool call runs
+            // on the delegate agent, and resolveAgentState returns the session
+            // state the middleware reads on the next model call. The manager
+            // is constructed on this run's workspace root (the same directory
+            // the harness PlanModeManager was built with), so enter/exit and
+            // PLAN.md land on the identical paths.
+            AgentState state = RuntimeContext.resolveAgentState(context, agent);
+            PlanModeManager manager = new PlanModeManager(
+                    new WorkspaceManager(workspace), PlanModeManager.DEFAULT_PLAN_DIR);
+            if (state != null) {
                 if ("plan_enter".equals(name) && "entered".equals(status)
-                        && !harness.isPlanModeActive(context)) {
-                    harness.enterPlanMode(context);
+                        && !manager.isPlanActive(state)) {
+                    manager.enter(state);
                 }
-                if ("approved".equals(status) && harness.isPlanModeActive(context)) {
-                    harness.exitPlanMode(context);
+                if ("approved".equals(status) && manager.isPlanActive(state)) {
+                    manager.exit(state);
                 }
-                if ("changes_requested".equals(status) && !harness.isPlanModeActive(context)) {
-                    harness.enterPlanMode(context);
+                if ("changes_requested".equals(status) && !manager.isPlanActive(state)) {
+                    manager.enter(state);
                 }
             }
-            writePlanProjection(value);
+            JsonNode plan = value.path("plan");
+            if (state != null && plan.isObject() && plan.hasNonNull("goal")) {
+                manager.writePlan(context, state, renderPlanMarkdown(plan));
+            } else {
+                writePlanProjectionFile(value);
+            }
         } catch (Exception error) {
             System.err.println("Plan projection failed (backend plan stays authoritative): " + error);
         }
     }
 
-    /** Rewrite plans/PLAN.md from the backend's plan projection, if present. */
-    private void writePlanProjection(JsonNode value) {
-        JsonNode plan = value.path("plan");
-        if (!plan.isObject() || !plan.hasNonNull("goal")) return;
+    static String renderPlanMarkdown(JsonNode plan) {
         StringBuilder markdown = new StringBuilder("# Plan\n\n");
         long revision = plan.path("revision").asLong(0);
         long contentVersion = plan.path("contentVersion").asLong(0);
@@ -143,10 +167,17 @@ final class PlanBridgeTool extends ToolBase {
         }
         markdown.append("\nThis file is a projection of the authoritative product Plan.")
                 .append(" Edit the plan with plan_write / publish_run_plan, never by writing this file.\n");
+        return markdown.toString();
+    }
+
+    /** Fallback projection when no harness state is reachable (never in production chat runs). */
+    private void writePlanProjectionFile(JsonNode value) {
+        JsonNode plan = value.path("plan");
+        if (!plan.isObject() || !plan.hasNonNull("goal")) return;
         try {
             Path dir = workspace.resolve("plans");
             Files.createDirectories(dir);
-            Files.writeString(dir.resolve("PLAN.md"), markdown.toString(), StandardCharsets.UTF_8);
+            Files.writeString(dir.resolve("PLAN.md"), renderPlanMarkdown(plan), StandardCharsets.UTF_8);
         } catch (Exception error) {
             System.err.println("PLAN.md projection write failed: " + error);
         }

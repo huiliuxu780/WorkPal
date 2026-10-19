@@ -321,11 +321,22 @@ class RuntimeIntegrationTest {
             String projection = readPlanProjection(temp.resolve("workspace"));
             assertTrue(projection.contains("Inspect then execute"), projection);
             assertTrue(projection.contains("Inspect the source"), projection);
+            // Mid-stream the native system-prompt banner does not re-render
+            // (the library composes it once per stream); read-only enforcement
+            // mid-stream is the middleware's per-call onActing plus the
+            // backend plan gate. The banner proves persistence instead: the
+            // RESUME stream (a fresh execute after the pause) must carry it
+            // from the persisted PlanModeContextState.
 
             planExitResult.set("{\"status\":\"approved\",\"planId\":\"plan:plan-1\",\"contentVersion\":1,\"revision\":1}");
+            int requestsBeforeResume = modelRequests.size();
             List<Map<String, Object>> second = new ArrayList<>();
             engine.execute(planRequest(model, bridge, "plan-2", null), second::add);
             assertEquals("done", second.getLast().get("type"));
+            assertTrue(modelRequests.size() > requestsBeforeResume);
+            String resumeCall = modelRequests.get(requestsBeforeResume).path("messages").toString();
+            assertTrue(resumeCall.contains("PLAN MODE is active"),
+                    "the persisted PLAN mode projection must ride the resumed stream");
             List<JsonNode> exits = toolCalls.stream()
                     .filter(call -> "plan_exit".equals(call.path("name").asText())).toList();
             assertEquals(2, exits.size());
