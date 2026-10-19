@@ -75,7 +75,7 @@
 | --- | --- |
 | U-A01 | Java `RuntimeIntegrationTest.unifiedPlanLifecyclePausesForBackendReviewAndResumes`（真实 jar：桥接执行、无 ask 卡、同 executionId 恢复、PLAN.md 投影断言）；PG `run-plans.postgres.test.ts`（两入口同一 planId/版本序列）；e2e `agentscope-product.spec.ts`（结构化发布经真实 Java 暂停→批准→完成） |
 | U-A02 | AG-03 registry：ROUTINE/MESSAGING/AUTOMATION 集不含任何 plan 工具（`scenario-contract.test.ts` 36 例 + integration 真实边界捕获）；`auxiliary-isolation`（辅助 scope 422 拒绝、零工具、无 plan 泄漏）；`RunRequestPolicyTest.planToolsAreBackendOwnedAndRequirePlanningPolicy` |
-| U-A03 | e2e `plan-review.spec.ts` 测试 1：恰好一张卡、region 内/`.exc-details` 外、目标+v1+条目、无 always-allow；组件测试 `PlanReviewCard.test.tsx`（>8 折叠/展开、三动作、feedback 必填） |
+| U-A03 | e2e `plan-review.spec.ts` 测试 1：恰好一张卡、region 内/`.exc-details` 外、Bot 名抬头、目标+v1+条目、无 always-allow；组件测试 `PlanReviewCard.test.tsx`（>8 折叠/展开、三动作、feedback 必填） |
 | U-A04 | e2e 测试 1：批准后同一 runId 恢复至 completed（真实 Worker `run.continue`）；审批前无副作用（暂停即无模型调用）；批准后工具审批不变（`executor-readonly-approval` 41 例）；HTTP fixture=真实 RPC |
 | U-A05 | e2e 测试 2 + PG `intervention.postgres.test.ts`（request_changes→旧卡 Changes requested→同 Run v2→重审）；`run-plans.postgres.test.ts`（changes_requested 循环、旧批准不覆盖新版本） |
 | U-A06 | e2e 测试 3（拒绝原因可选、cancelled、无 result 气泡、无 pending、头像 idle）；PG 断言 `run.cancelled{plan_rejected}`、轮次 rejected+decidedBy、无 `approval.resolved` |
@@ -86,7 +86,7 @@
 | U-A11 | e2e 测试 1/3：头像 `data-state=approval`（等待）/`idle`（拒绝后）；region 卡继承 `FOCUSABLE_CONTROL` 回焦（既有机制，plan 卡为首组）；Task Center 经 `deriveExecutionStatus`→attention verb 定位同一审阅（`task-center.spec.ts` 回归绿）；详情仍可展开（`execution-card.spec.ts`） |
 | U-A12 | UX-01 定向回归全绿：`execution-card`/`execution-history`/`task-center`/`intervention-region` specs + web 674 单测（唯一 a/b、summary-only 兜底、detail-retry、失败原因、去重） |
 | U-A13 | `manual-retry-reuse.test.ts` 13 例绿（plan 记录豁免后原语义不变）+ `PLAN_RECORD_OPERATION_KINDS` 过滤操作清单；e2e `manual-retry.spec.ts` 回归绿；后继 Run 新计划走新审阅（PG cycle 测试） |
-| U-A14 | `ToolVisibilityRefreshIntegrationTest`（每次模型调用刷面）+ registry 阶段集：planning 阶段面=只读+计划记录（`filterToolsForPlanPhase`）；`retryOperationId` 三路保留（`toolsForRetryRun` 未绕过）；ME-00 边界不变（无新原生记忆写入：compaction 配置未动，`MemoryCompactionPurgeIntegrationTest` 10 例绿） |
+| U-A14 | `ToolVisibilityRefreshIntegrationTest`（每次模型调用刷面）+ registry 阶段集 + `executor-plan-phase.test.ts`（planning 阶段面=只读+计划记录+交互工具，mutating 连接器/内建消失；build/null 无操作）；`retryOperationId` 三路保留（`toolsForRetryRun` 未绕过）；ME-00 边界不变（无新原生记忆写入：compaction 配置未动，`MemoryCompactionPurgeIntegrationTest` 10 例绿） |
 | U-A15 | 迁移在真实 PG 落库（e2e harness `prisma migrate deploy` 全部成功）；i18n 22 条 zh-CN 翻译+编译；受影响包检查见 §6 |
 
 ## 6. 验证命令与原始计数（收口时点）
@@ -124,3 +124,5 @@
 4. 旧版纯 native（无 PG 计划行）挂起审批的兼容决定以 `plan:{runId}` cv0 轮次审计，无内容版本可绑定。
 5. 群聊线程中计划审阅与其它 Intervention 同享"每 Run 至多一个 pending"约束；跨 Run 的多卡排序为 plan_review → approval → input。
 6. `threads.answer`（deprecated RPC）不支持 feedback：经它对 plan_review 选择 request_changes 会得到 conflict；Web 使用 `threads.resolveIntervention`。
+7. 拒绝后被中断的 plan 工具调用，其内部 `ExternalEffect` 记录行停留在 `intended`（该调用确实已开始且永不完成；无 UI/匹配/重试路径读取它，属内部审计噪声，不是外部副作用悬挂）。
+8. 群聊线程中的计划审阅与工具审批同规则：仅 Run owner 可决定；其他成员可读卡但决定会得到 conflict。

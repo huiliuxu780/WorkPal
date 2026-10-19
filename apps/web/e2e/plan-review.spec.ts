@@ -81,6 +81,9 @@ test("submitting a plan pauses on one external card and approval resumes the sam
     page.locator('[data-testid="intervention-region"] [data-testid="plan-review-card"]'),
   ).toHaveCount(1);
   await expect(pendingCard).toHaveAttribute("data-content-version", "1");
+  // U2: the card names the Bot (the named header only renders when the
+  // roster resolver is wired; the fallback copy reads differently).
+  await expect(pendingCard).toContainText("submitted a plan for your review");
   await expect(pendingCard).toContainText(`Deliver alpha-${stamp}`);
   await expect(pendingCard).toContainText("Collect input");
   const cardText = await pendingCard.innerText();
