@@ -164,7 +164,10 @@ public record RunRequest(
             throw new IllegalArgumentException("OAuth model credentials are unavailable to AgentScope Java");
         }
         if (executionScope != null && !List.of("chat", "auto-review", "history-compaction",
-                "turn-routing", "team-chat-judge").contains(executionScope)) {
+                "turn-routing", "team-chat-judge",
+                // ME-01/ME-02: zero-tool memory auxiliaries. The AG-01 rule
+                // below (no backend tools or skills outside chat) covers them.
+                "memory-extraction", "memory-summary").contains(executionScope)) {
             throw new IllegalArgumentException("Unsupported execution scope");
         }
         // AG-01: an auxiliary execution must never reach the model with callable
