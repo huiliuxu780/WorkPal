@@ -67,10 +67,11 @@ export function factScopeKey(scope: FactScope): string {
 }
 
 export interface FactEvidenceInput {
-  threadId: string;
+  /** Null for non-message evidence such as legacy document imports. */
+  threadId?: string | null;
   threadGeneration: number;
   messageId?: string | null;
-  messageSeq: number;
+  messageSeq?: number | null;
   authorUserId: string;
   originKind: string;
   evidenceType: string;
@@ -306,10 +307,10 @@ async function insertEvidence(
       .create({
         data: {
           factId,
-          threadId: item.threadId,
+          threadId: item.threadId ?? null,
           threadGeneration: item.threadGeneration,
           messageId: item.messageId ?? null,
-          messageSeq: item.messageSeq,
+          messageSeq: item.messageSeq ?? null,
           authorUserId: item.authorUserId,
           originKind: item.originKind,
           evidenceType: item.evidenceType,
@@ -793,12 +794,21 @@ export interface AuthorizedFactQuery {
 }
 
 function visibleScopeFilter(query: AuthorizedFactQuery): Prisma.MemoryFactWhereInput {
-  const scopes: Array<{ scopeKind: string; scopeKey: string }> = [
-    { scopeKind: "user", scopeKey: memoryScopeKey("user", query.userId) },
+  // User and bot scopes stay private to their owner (matching the legacy
+  // per-user memory document visibility); only per-item promoted space-scope
+  // facts are shared with every Space member.
+  const scopes: Prisma.MemoryFactWhereInput[] = [
+    { scopeKind: "user", scopeKey: memoryScopeKey("user", query.userId), ownerUserId: query.userId },
     { scopeKind: "space", scopeKey: memoryScopeKey("space", query.spaceId) },
   ];
-  if (query.botId) scopes.push({ scopeKind: "bot", scopeKey: memoryScopeKey("bot", query.botId) });
-  return { OR: scopes.map((scope) => ({ scopeKind: scope.scopeKind, scopeKey: scope.scopeKey })) };
+  if (query.botId) {
+    scopes.push({
+      scopeKind: "bot",
+      scopeKey: memoryScopeKey("bot", query.botId),
+      ownerUserId: query.userId,
+    });
+  }
+  return { OR: scopes };
 }
 
 /**
@@ -838,13 +848,14 @@ export async function getFactForActor(
     where: { id: query.factId, spaceId: query.spaceId },
   });
   if (!fact) return null;
-  if (fact.scopeKind === "user" && fact.scopeKey !== memoryScopeKey("user", query.userId)) {
-    // Personal facts of other users stay invisible even inside the same Space.
-    return null;
-  }
-  if (fact.scopeKind === "bot" && fact.scopeKey !== memoryScopeKey("bot", query.botId ?? "")) {
-    // Bot-scope facts are listed per bot surface; management reads pass the bot.
-    if (!query.botId) return fact.ownerUserId === query.userId ? fact : null;
+  // Space-scope facts are shared with every member (they only exist through
+  // per-item promotion); user and bot scopes stay private to their owner.
+  if (fact.scopeKind !== "space" && fact.ownerUserId !== query.userId) return null;
+  if (
+    fact.scopeKind === "bot" &&
+    query.botId &&
+    fact.scopeKey !== memoryScopeKey("bot", query.botId)
+  ) {
     return null;
   }
   return fact;

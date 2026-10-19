@@ -1270,10 +1270,11 @@ model MemoryEvidence {
   id               String     @id @default(cuid())
   factId           String
   fact             MemoryFact @relation(fields: [factId], references: [id], onDelete: Cascade)
-  threadId         String
+  /// Null for non-message evidence (legacy document imports).
+  threadId         String?
   threadGeneration Int
   messageId        String?
-  messageSeq       Int
+  messageSeq       Int?
   authorUserId     String
   /// human_web | human_messaging | user_edit | user_correction | legacy_document
   originKind       String

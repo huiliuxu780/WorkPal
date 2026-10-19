@@ -96,10 +96,10 @@ ALTER TABLE "memory_fact_revisions"
 CREATE TABLE "memory_evidence" (
     "id" TEXT NOT NULL,
     "factId" TEXT NOT NULL,
-    "threadId" TEXT NOT NULL,
+    "threadId" TEXT,
     "threadGeneration" INTEGER NOT NULL,
     "messageId" TEXT,
-    "messageSeq" INTEGER NOT NULL,
+    "messageSeq" INTEGER,
     "authorUserId" TEXT NOT NULL,
     "originKind" TEXT NOT NULL,
     "evidenceType" TEXT NOT NULL,

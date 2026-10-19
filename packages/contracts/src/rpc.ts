@@ -100,6 +100,25 @@ import {
 } from "./integration-settings.js";
 import { ResolveInterventionResultSchema } from "./intervention.js";
 import { ManualRetryInputSchema, ManualRetryOutputSchema } from "./manual-retry.js";
+import {
+  MemoryFactConfirmInputSchema,
+  MemoryFactCorrectInputSchema,
+  MemoryFactDeleteInputSchema,
+  MemoryFactEvidenceListInputSchema,
+  MemoryFactEvidenceSchema,
+  MemoryFactGetInputSchema,
+  MemoryFactGetOutputSchema,
+  MemoryFactImportLegacyInputSchema,
+  MemoryFactListInputSchema,
+  MemoryFactListOutputSchema,
+  MemoryFactMutationResultSchema,
+  MemoryFactPromoteInputSchema,
+  MemoryFactRejectInputSchema,
+  MemoryPolicySchema,
+  MemoryPolicySetInputSchema,
+  MemorySummaryGetInputSchema,
+  MemorySummarySchema,
+} from "./memory-facts.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
@@ -485,6 +504,30 @@ export const appContract = {
       .input(z.object({ defaultMemoryScope: MemoryScopeSchema }))
       .output(SpaceMemoryConfigSchema),
     disconnectProvider: oc.output(z.object({ ok: z.literal(true) })),
+    facts: {
+      list: oc.input(MemoryFactListInputSchema).output(MemoryFactListOutputSchema),
+      get: oc.input(MemoryFactGetInputSchema).output(MemoryFactGetOutputSchema),
+      confirm: oc.input(MemoryFactConfirmInputSchema).output(MemoryFactMutationResultSchema),
+      correct: oc.input(MemoryFactCorrectInputSchema).output(MemoryFactMutationResultSchema),
+      reject: oc.input(MemoryFactRejectInputSchema).output(MemoryFactMutationResultSchema),
+      delete: oc.input(MemoryFactDeleteInputSchema).output(MemoryFactMutationResultSchema),
+      promote: oc.input(MemoryFactPromoteInputSchema).output(MemoryFactMutationResultSchema),
+      importLegacy: oc
+        .input(MemoryFactImportLegacyInputSchema)
+        .output(MemoryFactMutationResultSchema),
+    },
+    factEvidence: {
+      list: oc
+        .input(MemoryFactEvidenceListInputSchema)
+        .output(z.array(MemoryFactEvidenceSchema)),
+    },
+    summary: {
+      get: oc.input(MemorySummaryGetInputSchema).output(MemorySummarySchema),
+    },
+    policy: {
+      get: oc.output(MemoryPolicySchema),
+      set: oc.input(MemoryPolicySetInputSchema).output(MemoryPolicySchema),
+    },
   },
   routines: {
     list: oc.input(botId).output(z.array(RoutineSchema)),
