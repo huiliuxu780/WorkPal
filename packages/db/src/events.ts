@@ -6,42 +6,43 @@ import {
   encodeLoginSecret,
   LoginSecretValue,
   type MessageBlock,
-  type MessageOriginKind,
   MessageBlock as MessageBlockSchema,
+  type MessageOriginKind,
+  type PlanReviewSource,
   type ProductEvent,
 } from "@rakazo/contracts";
 import {
+  BUDGET_ACTIONS,
   blocksToAgentHistoryText,
   budgetAskCheckpoint,
-  BUDGET_ACTIONS,
   callIdFromClientNonce,
   increasedBudgetForViolation,
   isApprovalAskBlock,
   isConversationalRun,
   isSecretAskBlock,
   messagingChannelId,
-  resolveAskChoice,
   parseBudgetAskCheckpoint,
-  turnPolicyFromRun,
+  resolveAskChoice,
   sanitizeJsonValue,
+  turnPolicyFromRun,
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
+import { expireComputerExecutionLeases } from "./computers.js";
+import { enqueueDeliveryInTransaction } from "./delivery-records.js";
 import {
-  type ResolveInterventionOutcome,
   assertSafeClientSubmissionId,
   emitInterventionCreated,
   findOrdinaryTextAsks,
-  insertPausedIntervention,
   InterventionRejected,
+  insertPausedIntervention,
   interventionStore,
   legacyMessageId,
+  type ResolveInterventionOutcome,
   resolveInterventionInTransaction,
   settleAnsweredIntervention,
 } from "./interventions.js";
-import { expireComputerExecutionLeases } from "./computers.js";
-import { enqueueDeliveryInTransaction } from "./delivery-records.js";
 import { invalidateThreadMemoryEvidence } from "./memory-facts.js";
 import {
   assertRunCanWriteHistory,
@@ -156,7 +157,10 @@ export type FinalizeRunInput = FinalizeRunBase &
     | {
         outcome: "failed";
         error: string;
-        budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number };
+        budgetExceeded?: {
+          reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls";
+          limit: number;
+        };
         /** User-visible explanation for a typed failure such as permission_revoked. */
         blocks?: MessageBlock[];
         markUnread?: boolean;
@@ -179,7 +183,24 @@ export interface PauseRunForInput {
   offeredActions?: Array<{ id: string; label: string }>;
   /** Predecessor ExternalEffect id for a manual-retry uncertain-result choice. */
   manualRetryEffectId?: string;
-  budgetExceeded?: { reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls"; limit: number; observed: number };
+  budgetExceeded?: {
+    reason: "tokens" | "cost_usd" | "duration_sec" | "tool_calls";
+    limit: number;
+    observed: number;
+  };
+  /**
+   * UX-02: pair the pending plan review round with the plan_review
+   * Intervention created by this pause and emit plan.review_submitted. The
+   * round row was created (pending) by the unified plan service before this
+   * pause; a crash in between is repaired at the next attempt start.
+   */
+  planReviewRound?: {
+    roundId: string;
+    planId: string;
+    contentVersion: number;
+    revision: number;
+    source: PlanReviewSource;
+  };
 }
 
 const CHOICE_ASK_CHECKPOINT_KIND = "choice_ask_v1";
@@ -254,6 +275,11 @@ export interface AnswerRunInput {
   username?: string;
   /** Opaque retry key. Never the answer or a hash of the answer. */
   clientSubmissionId?: string;
+  /**
+   * Only for a plan_review card: required concrete feedback for
+   * `request_changes`, optional rejection reason for `reject`.
+   */
+  feedback?: string;
 }
 
 export interface ResolveInterventionInput {
@@ -264,6 +290,7 @@ export interface ResolveInterventionInput {
   answeredByUserId: string;
   answer: string;
   username?: string;
+  feedback?: string;
 }
 
 const INTERVENTION_TRANSACTION = { timeout: 20_000, maxWait: 20_000 };
@@ -748,7 +775,9 @@ export async function commitAnswerRunInput(
       clientSubmissionId: input.clientSubmissionId,
     });
     if (selectedChoice.id === "narrow_scope") {
-      const guidance = [{ kind: "text" as const, text: "Send a narrower request to start a new run." }];
+      const guidance = [
+        { kind: "text" as const, text: "Send a narrower request to start a new run." },
+      ];
       const note = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "bot",
@@ -789,6 +818,174 @@ export async function commitAnswerRunInput(
       payload: { reason },
     });
     return { threadId: cancelled.threadId, seq: cancelled.seq, cancelledRunId: input.runId };
+  }
+
+  // UX-02 unified plan review: the decision binds to the exact plan version the
+  // reviewer saw (planId + contentVersion CAS). A stale click never approves a
+  // newer version; it fails as a conflict so the client refreshes and shows the
+  // current review card. A plan decision is never a tool authorization: no
+  // ExternalEffect and no approval.resolved ride along.
+  if (pendingAsk.planReview) {
+    const planBinding = pendingAsk.planReview;
+    if (run.userId !== input.answeredByUserId) return null;
+    const selectedChoice = resolveAskChoice(input.answer, pendingAsk.actions);
+    const decision =
+      selectedChoice?.id === "approve"
+        ? ("approve" as const)
+        : selectedChoice?.id === "request_changes"
+          ? ("request_changes" as const)
+          : selectedChoice?.id === "reject"
+            ? ("reject" as const)
+            : null;
+    if (!decision) return null;
+    const feedback = input.feedback?.trim() ?? "";
+    if (decision === "request_changes" && feedback.length === 0) {
+      throw new InterventionRejected("invalid_submission");
+    }
+    if (feedback.length > 2000) throw new InterventionRejected("invalid_submission");
+    const round = await tx.runPlanReview.findFirst({
+      where: { runId: input.runId, status: "pending" },
+      orderBy: { submittedAt: "desc" },
+    });
+    if (
+      !round ||
+      round.planId !== planBinding.planId ||
+      round.contentVersion !== planBinding.contentVersion
+    ) {
+      return null;
+    }
+    const { applyPlanReviewDecisionInTransaction } = await import("./run-plans.js");
+    await applyPlanReviewDecisionInTransaction(tx, {
+      runId: input.runId,
+      roundId: round.id,
+      decision,
+      feedback: feedback.length > 0 ? feedback : null,
+      decidedByUserId: input.answeredByUserId,
+      ...(input.clientSubmissionId ? { clientSubmissionId: input.clientSubmissionId } : {}),
+    });
+    const interventionId = pendingAsk.interventionId;
+    if (interventionId) {
+      await tx.intervention.updateMany({
+        where: { id: interventionId, status: "pending" },
+        data: {
+          planReview: {
+            content: planBinding,
+            decision,
+            ...(feedback.length > 0 ? { feedback } : {}),
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+    const planBlocks = parsed.data.map((block) =>
+      block === pendingAsk ? { ...block, status: "answered" as const, answer: decision } : block,
+    );
+    await tx.message.update({ where: { id: message.id }, data: { blocks: planBlocks } });
+    const planUpdated = await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: run.botId,
+      type: "thread.message.updated",
+      runId: input.runId,
+      payload: { messageId: message.id, role: "bot", blocks: planBlocks },
+    });
+    const reviewStatus =
+      decision === "approve"
+        ? "approved"
+        : decision === "request_changes"
+          ? "changes_requested"
+          : "rejected";
+    const decidedEvent = await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: run.botId,
+      type: "plan.review_decided",
+      runId: input.runId,
+      schemaVersion: 1,
+      causationId: planUpdated.id,
+      payload: {
+        planId: planBinding.planId,
+        runId: input.runId,
+        contentVersion: planBinding.contentVersion,
+        decision,
+        reviewStatus,
+        ...(interventionId ? { interventionId } : {}),
+        decidedByUserId: input.answeredByUserId,
+        ...(feedback.length > 0 ? { feedback } : {}),
+      },
+    });
+    if (decision === "reject") {
+      await settleAnsweredIntervention(tx, {
+        run: {
+          id: input.runId,
+          spaceId: input.spaceId,
+          threadId: input.threadId,
+          botId: run.botId,
+          waitStartedAt: run.waitStartedAt,
+        },
+        messageId: message.id,
+        ask: pendingAsk,
+        resolvedByUserId: input.answeredByUserId,
+        clientSubmissionId: input.clientSubmissionId,
+      });
+      const cancelledRows = await cancelRunsInTransaction(
+        tx,
+        [{ id: input.runId, taskId: run.taskId }],
+        new Date(),
+        {
+          error: "plan_rejected",
+          clearCheckpoint: true,
+          match: { status: "waiting_input", waitKind: "approval" },
+        },
+      );
+      if (cancelledRows.length !== 1) throw new Error("Plan review Run was no longer waiting");
+      await expireComputerExecutionLeases(tx, { runId: input.runId });
+      const cancelled = await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: run.botId,
+        type: "run.cancelled",
+        runId: input.runId,
+        payload: { reason: "plan_rejected" },
+      });
+      return {
+        threadId: cancelled.threadId,
+        seq: cancelled.seq,
+        cancelledRunId: input.runId,
+      };
+    }
+    // Approve or request changes: the same Task/Run resumes. Request-changes
+    // resumes into the planning-only phase (the runtime re-enters PLAN mode
+    // from the tool result); approve resumes execution on the approved version.
+    const queued = await tx.run.updateMany({
+      where: {
+        id: input.runId,
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        status: "waiting_input",
+      },
+      data: { status: "queued", waitKind: null, checkpoint: null },
+    });
+    if (queued.count !== 1) return null;
+    await settleAnsweredIntervention(tx, {
+      run: {
+        id: input.runId,
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: run.botId,
+        waitStartedAt: run.waitStartedAt,
+      },
+      messageId: message.id,
+      ask: pendingAsk,
+      resolvedByUserId: input.answeredByUserId,
+      clientSubmissionId: input.clientSubmissionId,
+    });
+    if (interventionStore(tx)) {
+      const remaining = await tx.intervention.count({
+        where: { runId: input.runId, status: "pending" },
+      });
+      if (remaining > 0) throw new Error("Run still has a pending intervention");
+    }
+    return { threadId: decidedEvent.threadId, seq: decidedEvent.seq };
   }
 
   const increasedBudget = budgetAsk
@@ -1039,24 +1236,22 @@ export async function resolveIntervention(
   try {
     outcome = await prisma.$transaction(
       (tx: Prisma.TransactionClient) =>
-        resolveInterventionInTransaction(
-          tx,
-          { ...input, runId: located.runId },
-          (transaction) =>
-            commitAnswerRunInput(
-              transaction,
-              {
-                spaceId: input.spaceId,
-                threadId: input.threadId,
-                runId: located.runId,
-                messageId: located.messageId,
-                answeredByUserId: input.answeredByUserId,
-                answer: input.answer,
-                username: input.username,
-                clientSubmissionId: input.clientSubmissionId,
-              },
-              runSecretWriter,
-            ),
+        resolveInterventionInTransaction(tx, { ...input, runId: located.runId }, (transaction) =>
+          commitAnswerRunInput(
+            transaction,
+            {
+              spaceId: input.spaceId,
+              threadId: input.threadId,
+              runId: located.runId,
+              messageId: located.messageId,
+              answeredByUserId: input.answeredByUserId,
+              answer: input.answer,
+              username: input.username,
+              clientSubmissionId: input.clientSubmissionId,
+              feedback: input.feedback,
+            },
+            runSecretWriter,
+          ),
         ),
       INTERVENTION_TRANSACTION,
     );
@@ -1137,7 +1332,13 @@ export async function pauseRunForInput(
     const approvalEffectId = input.blocks.find(
       (block) => block.kind === "ask" && Boolean(block.approvalEffectId),
     );
-    const waitKind = approvalEffectId?.kind === "ask" ? "approval" : "input";
+    // A plan review is a decision wait like a tool approval (24h window,
+    // "needs approval" avatar, honest summary-only fallback), even though it
+    // authorizes a plan version rather than an external effect.
+    const planReviewWait = input.blocks.some(
+      (block) => block.kind === "ask" && Boolean(block.planReview),
+    );
+    const waitKind = approvalEffectId?.kind === "ask" || planReviewWait ? "approval" : "input";
     const waitStartedAt = new Date();
     const paused = await tx.run.updateMany({
       where: {
@@ -1222,16 +1423,41 @@ export async function pauseRunForInput(
       runId: input.runId,
       interventionId: pausedIntervention.id,
     });
-    const budgetEvent = input.budgetExceeded
-      ? await appendEventInTransaction(tx, {
+    let planReviewEvent: { threadId: string; seq: number } | null = null;
+    if (input.planReviewRound) {
+      const paired = await tx.runPlanReview.updateMany({
+        where: { id: input.planReviewRound.roundId, status: "pending", interventionId: null },
+        data: { interventionId: pausedIntervention.id },
+      });
+      if (paired.count !== 1) throw new Error("Plan review round was not pending to pause on");
+      planReviewEvent = await appendEventInTransaction(tx, {
         spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
-        type: "budget.exceeded",
+        type: "plan.review_submitted",
         runId: input.runId,
-        schemaVersion: 2,
+        schemaVersion: 1,
         causationId: waitingEvent.id,
-        payload: { reason: input.budgetExceeded.reason, limit: input.budgetExceeded.limit },
+        payload: {
+          planId: input.planReviewRound.planId,
+          runId: input.runId,
+          contentVersion: input.planReviewRound.contentVersion,
+          revision: input.planReviewRound.revision,
+          source: input.planReviewRound.source,
+          interventionId: pausedIntervention.id,
+        },
+      });
+    }
+    const budgetEvent = input.budgetExceeded
+      ? await appendEventInTransaction(tx, {
+          spaceId: input.spaceId,
+          threadId: input.threadId,
+          botId: input.botId,
+          type: "budget.exceeded",
+          runId: input.runId,
+          schemaVersion: 2,
+          causationId: waitingEvent.id,
+          payload: { reason: input.budgetExceeded.reason, limit: input.budgetExceeded.limit },
         })
       : null;
     const approvalEvent =
@@ -1250,7 +1476,7 @@ export async function pauseRunForInput(
     await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
     return {
       threadId: waitingEvent.threadId,
-      seq: approvalEvent?.seq ?? budgetEvent?.seq ?? interventionEvent.seq,
+      seq: approvalEvent?.seq ?? budgetEvent?.seq ?? planReviewEvent?.seq ?? interventionEvent.seq,
     };
   }, INTERVENTION_TRANSACTION);
 
@@ -1576,7 +1802,11 @@ async function finalizeRunOnce(
           ? input.blocks
           : undefined;
     if (persistBlocks && persistBlocks.length > 0) {
-      const completedBlocks = completedRunBlocks(persistBlocks, writableRun?.startedAt ?? null, now);
+      const completedBlocks = completedRunBlocks(
+        persistBlocks,
+        writableRun?.startedAt ?? null,
+        now,
+      );
       const message = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "bot",
@@ -1612,10 +1842,13 @@ async function finalizeRunOnce(
       botId: input.botId,
       type: input.outcome === "completed" ? "run.completed" : "run.failed",
       runId: input.runId,
-      payload: input.outcome === "completed" ? {} : {
-        error: input.error,
-        ...(input.budgetExceeded ? { reason: "budget_exceeded" } : {}),
-      },
+      payload:
+        input.outcome === "completed"
+          ? {}
+          : {
+              error: input.error,
+              ...(input.budgetExceeded ? { reason: "budget_exceeded" } : {}),
+            },
     });
     let lastSeq = lastEvent.seq;
     if (input.outcome === "failed" && input.budgetExceeded) {

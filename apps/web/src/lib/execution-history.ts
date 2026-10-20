@@ -4,6 +4,7 @@ import type {
   ExecutionResult,
   ExecutionSnapshot,
   ExecutionSummary,
+  PlanReviewState,
   Run,
   RunPlanRevision,
   RunStepSnapshot,
@@ -58,6 +59,7 @@ export function executionDataForRun(input: {
   legacy: LegacyExecutionData;
 }): {
   plan?: RunPlanRevision;
+  planReview?: PlanReviewState;
   steps: RunStepSnapshot[];
   todos: RunTodoSnapshot[];
   activity: ActivityItem[];
@@ -68,6 +70,7 @@ export function executionDataForRun(input: {
   if (detail) {
     return {
       ...(detail.plan ? { plan: detail.plan } : {}),
+      ...(detail.planReview ? { planReview: detail.planReview } : {}),
       steps: detail.steps.items,
       // UX-01C acceptance 17: the detail path applies the SAME linked-Todo
       // dedupe as the legacy path — a Todo whose linkedStepId names a Step

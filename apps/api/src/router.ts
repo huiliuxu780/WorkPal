@@ -1,4 +1,3 @@
-import { AvatarBodyColorSchema } from "@rakazo/contracts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { implement, ORPCError } from "@orpc/server";
 import type {
@@ -122,6 +121,7 @@ import type {
 } from "@rakazo/contracts";
 import {
   ATTACHMENT_MAX_BYTES,
+  AvatarBodyColorSchema,
   appContract,
   ComputerCommandSchema,
   foldComputerCommands,
@@ -1689,7 +1689,11 @@ export function createRouter(deps: RouterDeps) {
         }
         let avatarChoice =
           input.avatarMode === "character"
-            ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter!, avatarBodyColor: input.avatarBodyColor }
+            ? {
+                avatarMode: "character" as const,
+                avatarCharacter: input.avatarCharacter!,
+                avatarBodyColor: input.avatarBodyColor,
+              }
             : input.avatarMode !== undefined || input.color !== undefined
               ? {
                   avatarMode: (input.avatarMode ??
@@ -2572,6 +2576,7 @@ export function createRouter(deps: RouterDeps) {
             answeredByUserId: context.actor.userId,
             answer: input.answer,
             username: input.username,
+            feedback: input.feedback,
           });
           if (result.outcome === "rejected") {
             if (result.reason === "forbidden") {
@@ -2583,7 +2588,9 @@ export function createRouter(deps: RouterDeps) {
               throw new ORPCError("NOT_FOUND", { message: "Intervention was not found" });
             }
             if (result.reason === "invalid_submission") {
-              throw new ORPCError("BAD_REQUEST", { message: "Submission id is not valid" });
+              throw new ORPCError("BAD_REQUEST", {
+                message: "Submission id or plan review feedback is not valid",
+              });
             }
             throw new ORPCError("CONFLICT", {
               message: "This prompt is no longer awaiting an answer",

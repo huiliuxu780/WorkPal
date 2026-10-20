@@ -98,6 +98,8 @@ export type UseExecutionTranscriptInput = {
   activity?: ActivityItem[];
   showActivityAvatars?: boolean;
   activityBotColors?: Record<string, string>;
+  /** UX-02: resolves a Bot display name for the plan review card header. */
+  botNameOf?: (botId: string) => string | undefined;
   onRefresh: () => Promise<void>;
 };
 
@@ -116,6 +118,7 @@ export function useExecutionTranscript({
   activity,
   showActivityAvatars,
   activityBotColors,
+  botNameOf,
   onRefresh,
 }: UseExecutionTranscriptInput) {
   const { t } = useLingui();
@@ -690,6 +693,7 @@ export function useExecutionTranscript({
                 interventions={scopedInterventions}
                 messages={messages}
                 target={artifactTarget}
+                botNameOf={botNameOf}
                 onSettled={(view) =>
                   setSettledInterventions((current) => [
                     ...current.filter((item) => item.id !== view.id),
@@ -702,7 +706,12 @@ export function useExecutionTranscript({
           }
         >
           {data.plan ? (
-            <RunPlanDisclosure plan={data.plan} steps={data.steps} failed={isFailed} />
+            <RunPlanDisclosure
+              plan={data.plan}
+              steps={data.steps}
+              failed={isFailed}
+              review={data.planReview}
+            />
           ) : data.steps.length > 0 ? (
             <RunStepsDisclosure steps={data.steps} failed={isFailed} />
           ) : isOpen && data.todos.length > 0 ? (

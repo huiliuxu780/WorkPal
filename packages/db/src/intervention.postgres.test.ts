@@ -9,13 +9,18 @@ import {
   pauseRunForInput,
   resolveIntervention,
 } from "./events.js";
-import { createThreadMessage } from "./messages.js";
 import { loadInterventionViews } from "./interventions.js";
+import { createThreadMessage } from "./messages.js";
 import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
 } from "./postgres-test-database.js";
-import { expireWaitingRunInTransaction, expireWaitingRuns, WAIT_TIMEOUT_MS } from "./wait-timeouts.js";
+import { applyPlanSubmission, submitDraftForReview } from "./run-plans.js";
+import {
+  expireWaitingRunInTransaction,
+  expireWaitingRuns,
+  WAIT_TIMEOUT_MS,
+} from "./wait-timeouts.js";
 
 const describePostgres =
   process.env.VERIFY_DATABASE && process.env.DATABASE_URL ? describe.sequential : describe.skip;
@@ -56,7 +61,14 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       data: { id, organizationId: id, userId: id, role: "owner", createdAt: new Date() },
     });
     await prisma.spaceMember.create({
-      data: { id, spaceId: id, organizationId: id, userId: id, role: "owner", createdAt: new Date() },
+      data: {
+        id,
+        spaceId: id,
+        organizationId: id,
+        userId: id,
+        role: "owner",
+        createdAt: new Date(),
+      },
     });
     const bot = await prisma.bot.create({
       data: { spaceId: id, userId: id, name: "Intervention bot", color: "test" },
@@ -102,7 +114,14 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   async function runningRun(targetThreadId = threadId, targetBotId = botId) {
     const task = await prisma.task.create({
-      data: { spaceId: id, userId: id, botId: targetBotId, threadId: targetThreadId, prompt: "Wait", status: "running" },
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: targetBotId,
+        threadId: targetThreadId,
+        prompt: "Wait",
+        status: "running",
+      },
     });
     const run = await prisma.run.create({
       data: {
@@ -149,12 +168,21 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("creates the intervention, ask block, and waiting run atomically", async () => {
     const { run, attempt } = await runningRun();
-    expect(await pause(run, attempt, [{ kind: "ask", text: "Which city?", status: "pending" }])).toBe(true);
+    expect(
+      await pause(run, attempt, [{ kind: "ask", text: "Which city?", status: "pending" }]),
+    ).toBe(true);
     const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
-    const message = await prisma.message.findFirstOrThrow({ where: { runId: run.id, role: "bot" } });
+    const message = await prisma.message.findFirstOrThrow({
+      where: { runId: run.id, role: "bot" },
+    });
     const blocks = message.blocks as Array<{ interventionId?: string; status?: string }>;
     expect(blocks[0]?.interventionId).toBe(row.id);
-    expect(row).toMatchObject({ status: "pending", kind: "input", messageId: message.id, revision: 1 });
+    expect(row).toMatchObject({
+      status: "pending",
+      kind: "input",
+      messageId: message.id,
+      revision: 1,
+    });
     expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
       status: "waiting_input",
       waitKind: "input",
@@ -162,12 +190,16 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     expect(await prisma.attempt.findUniqueOrThrow({ where: { id: attempt.id } })).toMatchObject({
       status: "waiting_input",
     });
-    expect(await prisma.event.count({ where: { runId: run.id, type: "intervention.created" } })).toBe(1);
+    expect(
+      await prisma.event.count({ where: { runId: run.id, type: "intervention.created" } }),
+    ).toBe(1);
   });
 
   it("rolls back a second pending intervention and a missing approval effect", async () => {
     const first = await runningRun();
-    expect(await pause(first.run, first.attempt, [{ kind: "ask", text: "First", status: "pending" }])).toBe(true);
+    expect(
+      await pause(first.run, first.attempt, [{ kind: "ask", text: "First", status: "pending" }]),
+    ).toBe(true);
     await prisma.run.update({
       where: { id: first.run.id },
       data: { status: "running", waitKind: null, leaseOwner: "worker", leaseFence: 1 },
@@ -204,8 +236,14 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("answers text and choice without copying the text into the intervention event", async () => {
     const textRun = await runningRun();
-    expect(await pause(textRun.run, textRun.attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
-    const textRow = await prisma.intervention.findFirstOrThrow({ where: { runId: textRun.run.id } });
+    expect(
+      await pause(textRun.run, textRun.attempt, [
+        { kind: "ask", text: "City?", status: "pending" },
+      ]),
+    ).toBe(true);
+    const textRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: textRun.run.id },
+    });
     const textResult = await resolveIntervention(prisma, {
       spaceId: id,
       threadId,
@@ -237,7 +275,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
         },
       ]),
     ).toBe(true);
-    const choiceRow = await prisma.intervention.findFirstOrThrow({ where: { runId: choiceRun.run.id } });
+    const choiceRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: choiceRun.run.id },
+    });
     expect(
       await resolveIntervention(prisma, {
         spaceId: id,
@@ -248,9 +288,11 @@ describePostgres("intervention contract (PostgreSQL)", () => {
         answer: "city-lyon",
       }),
     ).toMatchObject({ outcome: "accepted" });
-    expect(await prisma.task.findUniqueOrThrow({ where: { id: choiceRun.task.id } })).toMatchObject({
-      prompt: "Selected choice city-lyon: Lyon",
-    });
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: choiceRun.task.id } })).toMatchObject(
+      {
+        prompt: "Selected choice city-lyon: Lyon",
+      },
+    );
     expect(
       await resolveIntervention(prisma, {
         spaceId: id,
@@ -311,10 +353,16 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       });
       expect(accepted.outcome).toBe("accepted");
       if (accepted.outcome === "accepted") {
-        expect(accepted.intervention.approval?.decision).toBe(decision === "deny" ? "denied" : "approved");
-        expect(accepted.intervention.approval?.effectStatus).toBe(decision === "deny" ? "denied" : "approved");
+        expect(accepted.intervention.approval?.decision).toBe(
+          decision === "deny" ? "denied" : "approved",
+        );
+        expect(accepted.intervention.approval?.effectStatus).toBe(
+          decision === "deny" ? "denied" : "approved",
+        );
       }
-      expect(JSON.stringify(accepted.outcome === "accepted" ? accepted.intervention : {})).not.toContain(SECRET);
+      expect(
+        JSON.stringify(accepted.outcome === "accepted" ? accepted.intervention : {}),
+      ).not.toContain(SECRET);
       return { run, task, effect };
     }
 
@@ -343,7 +391,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       }),
     ).toBe(1);
     const denied = await approval("deny");
-    expect(await prisma.externalEffect.findUniqueOrThrow({ where: { id: denied.effect.id } })).toMatchObject({
+    expect(
+      await prisma.externalEffect.findUniqueOrThrow({ where: { id: denied.effect.id } }),
+    ).toMatchObject({
       status: "denied",
     });
     expect(await resolvedCount(denied.run.id, "approval.resolved")).toBe(1);
@@ -382,7 +432,11 @@ describePostgres("intervention contract (PostgreSQL)", () => {
         answer: SECRET,
       },
       undefined,
-      { store: async (input) => { seen = input.plaintext; } },
+      {
+        store: async (input) => {
+          seen = input.plaintext;
+        },
+      },
     );
     expect(seen).toBe(SECRET);
     expect(result.outcome).toBe("accepted");
@@ -391,31 +445,49 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       messages: await prisma.message.findMany({ where: { runId: run.id } }),
       events: await prisma.event.findMany({ where: { runId: run.id } }),
       effects: await prisma.externalEffect.findMany({ where: { runId: run.id } }),
-      submissions: await prisma.interventionSubmission.findMany({ where: { interventionId: row.id } }),
+      submissions: await prisma.interventionSubmission.findMany({
+        where: { interventionId: row.id },
+      }),
     });
     expect(stored).not.toContain(SECRET);
     const forbidden = await runningRun();
     expect(
       await pause(forbidden.run, forbidden.attempt, [
-        { kind: "ask", text: "API key", status: "pending", input: "secret", purpose: "api_key", credential },
+        {
+          kind: "ask",
+          text: "API key",
+          status: "pending",
+          input: "secret",
+          purpose: "api_key",
+          credential,
+        },
       ]),
     ).toBe(true);
-    const secretRow = await prisma.intervention.findFirstOrThrow({ where: { runId: forbidden.run.id } });
+    const secretRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: forbidden.run.id },
+    });
     expect(
-      await resolveIntervention(prisma, {
-        spaceId: id,
-        threadId,
-        interventionId: secretRow.id,
-        clientSubmissionId: randomUUID(),
-        answeredByUserId: otherUserId,
-        answer: SECRET,
-      }, undefined, { store: async () => undefined }),
+      await resolveIntervention(
+        prisma,
+        {
+          spaceId: id,
+          threadId,
+          interventionId: secretRow.id,
+          clientSubmissionId: randomUUID(),
+          answeredByUserId: otherUserId,
+          answer: SECRET,
+        },
+        undefined,
+        { store: async () => undefined },
+      ),
     ).toMatchObject({ outcome: "rejected", reason: "forbidden" });
   });
 
   it("returns the first result for the same submission id and already_handled for another client", async () => {
     const { run, attempt } = await runningRun();
-    expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
+    expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(
+      true,
+    );
     const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
     const submissionId = randomUUID();
     const first = await resolveIntervention(prisma, {
@@ -450,7 +522,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("lets one blocked answer win and reports already_handled to the waiter", async () => {
     const { run, attempt } = await runningRun();
-    expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
+    expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(
+      true,
+    );
     const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
     const started = openGate();
     const release = openGate();
@@ -494,8 +568,12 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("answers while timeout is blocked, and expires while answer is blocked", async () => {
     const winner = await runningRun();
-    expect(await pause(winner.run, winner.attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
-    const winnerRow = await prisma.intervention.findFirstOrThrow({ where: { runId: winner.run.id } });
+    expect(
+      await pause(winner.run, winner.attempt, [{ kind: "ask", text: "City?", status: "pending" }]),
+    ).toBe(true);
+    const winnerRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: winner.run.id },
+    });
     const old = new Date(Date.now() - WAIT_TIMEOUT_MS.input - 60_000);
     await prisma.run.update({ where: { id: winner.run.id }, data: { waitStartedAt: old } });
     const started = openGate();
@@ -525,7 +603,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     await holder;
     await expiring;
     expect(await resolvedCount(winner.run.id)).toBe(1);
-    expect(await prisma.intervention.findUniqueOrThrow({ where: { id: winnerRow.id } })).toMatchObject({
+    expect(
+      await prisma.intervention.findUniqueOrThrow({ where: { id: winnerRow.id } }),
+    ).toMatchObject({
       status: "answered",
     });
     expect(await prisma.run.findUniqueOrThrow({ where: { id: winner.run.id } })).toMatchObject({
@@ -533,7 +613,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     });
 
     const loser = await runningRun();
-    expect(await pause(loser.run, loser.attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
+    expect(
+      await pause(loser.run, loser.attempt, [{ kind: "ask", text: "City?", status: "pending" }]),
+    ).toBe(true);
     const loserRow = await prisma.intervention.findFirstOrThrow({ where: { runId: loser.run.id } });
     await prisma.run.update({ where: { id: loser.run.id }, data: { waitStartedAt: old } });
     const expireStarted = openGate();
@@ -562,7 +644,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     }
     await expirer;
     expect(await answering).toMatchObject({ outcome: "already_handled" });
-    expect(await prisma.intervention.findUniqueOrThrow({ where: { id: loserRow.id } })).toMatchObject({
+    expect(
+      await prisma.intervention.findUniqueOrThrow({ where: { id: loserRow.id } }),
+    ).toMatchObject({
       status: "expired",
     });
     expect(await resolvedCount(loser.run.id)).toBe(1);
@@ -572,7 +656,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("answers while clear is blocked, and cancels while answer is blocked", async () => {
     const { run, attempt } = await runningRun();
-    expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
+    expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(
+      true,
+    );
     const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
     const started = openGate();
     const release = openGate();
@@ -605,8 +691,12 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     });
 
     const { run: cancelRun, attempt: cancelAttempt } = await runningRun();
-    expect(await pause(cancelRun, cancelAttempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
-    const cancelRow = await prisma.intervention.findFirstOrThrow({ where: { runId: cancelRun.id } });
+    expect(
+      await pause(cancelRun, cancelAttempt, [{ kind: "ask", text: "City?", status: "pending" }]),
+    ).toBe(true);
+    const cancelRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: cancelRun.id },
+    });
     const cancelStarted = openGate();
     const cancelRelease = openGate();
     let cancelPid = 0;
@@ -615,7 +705,11 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       cancelPid = await backendPid(tx);
       cancelStarted.release();
       await cancelRelease.promise;
-      await cancelRunsInTransaction(tx, [{ id: cancelRun.id, taskId: cancelRun.taskId }], new Date());
+      await cancelRunsInTransaction(
+        tx,
+        [{ id: cancelRun.id, taskId: cancelRun.taskId }],
+        new Date(),
+      );
     }, TX);
     await cancelStarted.promise;
     const answering = resolveIntervention(prisma, {
@@ -633,7 +727,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     }
     await canceller;
     expect(await answering).toMatchObject({ outcome: "already_handled" });
-    expect(await prisma.intervention.findUniqueOrThrow({ where: { id: cancelRow.id } })).toMatchObject({
+    expect(
+      await prisma.intervention.findUniqueOrThrow({ where: { id: cancelRow.id } }),
+    ).toMatchObject({
       status: "cancelled",
     });
     expect(await resolvedCount(cancelRun.id)).toBe(1);
@@ -699,7 +795,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     expect(await prisma.intervention.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({
       status: "pending",
     });
-    expect(await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } })).toMatchObject({
+    expect(
+      await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } }),
+    ).toMatchObject({
       status: "executing",
     });
     expect(await resolvedCount(run.id)).toBe(0);
@@ -737,7 +835,12 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     const { run } = await runningRun();
     await prisma.run.update({
       where: { id: run.id },
-      data: { status: "waiting_input", waitKind: "input", waitStartedAt: new Date(), leaseOwner: null },
+      data: {
+        status: "waiting_input",
+        waitKind: "input",
+        waitStartedAt: new Date(),
+        leaseOwner: null,
+      },
     });
     const message = await createThreadMessage(prisma, {
       threadId,
@@ -760,13 +863,19 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       status: "answered",
       revision: 1,
     });
-    expect(await prisma.event.count({ where: { runId: run.id, type: "intervention.created" } })).toBe(0);
+    expect(
+      await prisma.event.count({ where: { runId: run.id, type: "intervention.created" } }),
+    ).toBe(0);
     expect(await resolvedCount(run.id)).toBe(1);
 
     const left = await runningRun();
     const right = await runningRun();
-    expect(await pause(left.run, left.attempt, [{ kind: "ask", text: "Left", status: "pending" }])).toBe(true);
-    expect(await pause(right.run, right.attempt, [{ kind: "ask", text: "Right", status: "pending" }])).toBe(true);
+    expect(
+      await pause(left.run, left.attempt, [{ kind: "ask", text: "Left", status: "pending" }]),
+    ).toBe(true);
+    expect(
+      await pause(right.run, right.attempt, [{ kind: "ask", text: "Right", status: "pending" }]),
+    ).toBe(true);
     const leftRow = await prisma.intervention.findFirstOrThrow({ where: { runId: left.run.id } });
     await resolveIntervention(prisma, {
       spaceId: id,
@@ -776,7 +885,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       answeredByUserId: id,
       answer: "Left answer",
     });
-    expect(await prisma.intervention.findFirstOrThrow({ where: { runId: right.run.id } })).toMatchObject({
+    expect(
+      await prisma.intervention.findFirstOrThrow({ where: { runId: right.run.id } }),
+    ).toMatchObject({
       status: "pending",
     });
     expect(await prisma.run.findUniqueOrThrow({ where: { id: right.run.id } })).toMatchObject({
@@ -808,7 +919,11 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     expect(row.presentation).toMatchObject({
       text: "Sign in to continue.",
       detail: "We need the account password.",
-      credential: { name: "example_login", origin: "https://login.example.test", authType: "login" },
+      credential: {
+        name: "example_login",
+        origin: "https://login.example.test",
+        authType: "login",
+      },
     });
     const createdEvent = await prisma.event.findFirstOrThrow({
       where: { runId: run.id, type: "intervention.created" },
@@ -868,7 +983,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
         },
       ]),
     ).toBe(true);
-    const approvalRow = await prisma.intervention.findFirstOrThrow({ where: { runId: approvalRun.run.id } });
+    const approvalRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: approvalRun.run.id },
+    });
     expect(approvalRow.presentation).toMatchObject({
       text: "Send the weekly report?",
       detail: "Recipient: team@example.test",
@@ -878,10 +995,20 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("projects pending rows and windowed terminal rows without their messages", async () => {
     const pendingRun = await runningRun();
-    expect(await pause(pendingRun.run, pendingRun.attempt, [{ kind: "ask", text: "Hold?", status: "pending" }])).toBe(true);
+    expect(
+      await pause(pendingRun.run, pendingRun.attempt, [
+        { kind: "ask", text: "Hold?", status: "pending" },
+      ]),
+    ).toBe(true);
     const settledRun = await runningRun();
-    expect(await pause(settledRun.run, settledRun.attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
-    const settledRow = await prisma.intervention.findFirstOrThrow({ where: { runId: settledRun.run.id } });
+    expect(
+      await pause(settledRun.run, settledRun.attempt, [
+        { kind: "ask", text: "City?", status: "pending" },
+      ]),
+    ).toBe(true);
+    const settledRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: settledRun.run.id },
+    });
     expect(
       await resolveIntervention(prisma, {
         spaceId: id,
@@ -893,7 +1020,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       }),
     ).toMatchObject({ outcome: "accepted" });
 
-    const pendingRow = await prisma.intervention.findFirstOrThrow({ where: { runId: pendingRun.run.id } });
+    const pendingRow = await prisma.intervention.findFirstOrThrow({
+      where: { runId: pendingRun.run.id },
+    });
     const noWindow = await prisma.$transaction((tx) => loadInterventionViews(tx, threadId, []));
     const noWindowIds = new Set(noWindow.map((view) => view.id));
     expect(noWindowIds.has(pendingRow.id)).toBe(true);
@@ -923,7 +1052,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("backfills the presentation snapshot on the first terminalization of a row without one", async () => {
     const { run, attempt } = await runningRun();
-    expect(await pause(run, attempt, [{ kind: "ask", text: "Legacy row?", status: "pending" }])).toBe(true);
+    expect(
+      await pause(run, attempt, [{ kind: "ask", text: "Legacy row?", status: "pending" }]),
+    ).toBe(true);
     const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
     await prisma.intervention.update({
       where: { id: row.id },
@@ -1009,7 +1140,10 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     }
   }
 
-  function expectNoDeadlock(results: Array<{ value?: unknown; error?: string }>, round: number): void {
+  function expectNoDeadlock(
+    results: Array<{ value?: unknown; error?: string }>,
+    round: number,
+  ): void {
     for (const result of results) {
       if (result.error) {
         throw new Error(`round ${round}: ${result.error}`);
@@ -1022,7 +1156,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     // cancelRunsInTransaction inside a bare transaction with no prior Thread lock.
     for (let round = 0; round < 8; round++) {
       const { run, attempt } = await runningRun();
-      expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(true);
+      expect(await pause(run, attempt, [{ kind: "ask", text: "City?", status: "pending" }])).toBe(
+        true,
+      );
       const row = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
       const results = await Promise.all([
         raceOutcome(
@@ -1059,11 +1195,15 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     const otherBot = await prisma.bot.create({
       data: { spaceId: id, userId: id, name: "Intervention bot 2", color: "test" },
     });
-    const secondThread = await prisma.thread.create({ data: { spaceId: id, userId: id, botId: otherBot.id } });
+    const secondThread = await prisma.thread.create({
+      data: { spaceId: id, userId: id, botId: otherBot.id },
+    });
     for (let round = 0; round < 8; round++) {
       const first = await runningRun(threadId);
       const second = await runningRun(secondThread.id, otherBot.id);
-      expect(await pause(first.run, first.attempt, [{ kind: "ask", text: "First?", status: "pending" }])).toBe(true);
+      expect(
+        await pause(first.run, first.attempt, [{ kind: "ask", text: "First?", status: "pending" }]),
+      ).toBe(true);
       expect(
         await pause(
           second.run,
@@ -1073,7 +1213,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
           otherBot.id,
         ),
       ).toBe(true);
-      const secondRow = await prisma.intervention.findFirstOrThrow({ where: { runId: second.run.id } });
+      const secondRow = await prisma.intervention.findFirstOrThrow({
+        where: { runId: second.run.id },
+      });
       // The entry shape of destroyBot's first transaction: cancel runs across
       // several Threads in one transaction, in either input order, while an
       // answer races one of the rows. Sorted Thread locks must serialize, not deadlock.
@@ -1085,13 +1227,15 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       const results = await Promise.all([
         raceOutcome(
           side.$transaction(
-            (tx) => cancelRunsInTransaction(tx, round % 2 === 0 ? cancelFirst : cancelSecond, new Date()),
+            (tx) =>
+              cancelRunsInTransaction(tx, round % 2 === 0 ? cancelFirst : cancelSecond, new Date()),
             TX,
           ),
         ),
         raceOutcome(
           prisma.$transaction(
-            (tx) => cancelRunsInTransaction(tx, round % 2 === 0 ? cancelSecond : cancelFirst, new Date()),
+            (tx) =>
+              cancelRunsInTransaction(tx, round % 2 === 0 ? cancelSecond : cancelFirst, new Date()),
             TX,
           ),
         ),
@@ -1162,13 +1306,20 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       expectNoDeadlock(results, round);
       expect(await resolvedCount(run.id)).toBe(1);
       const settled = await prisma.intervention.findFirstOrThrow({ where: { id: row.id } });
-      const settledEffect = await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } });
+      const settledEffect = await prisma.externalEffect.findUniqueOrThrow({
+        where: { id: effect.id },
+      });
       if (settled.status === "expired") {
         // Document order: the Intervention terminal event is appended before the
         // effect expiry's approval.resolved event.
-        expect(["expired", "intended", "approved", "executing", "completed", "uncertain"]).toContain(
-          settledEffect.status,
-        );
+        expect([
+          "expired",
+          "intended",
+          "approved",
+          "executing",
+          "completed",
+          "uncertain",
+        ]).toContain(settledEffect.status);
         const resolved = await prisma.event.findFirstOrThrow({
           where: { runId: run.id, type: "intervention.resolved" },
         });
@@ -1187,7 +1338,12 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     const { run } = await runningRun();
     await prisma.run.update({
       where: { id: run.id },
-      data: { status: "waiting_input", waitKind: "input", waitStartedAt: new Date(), leaseOwner: null },
+      data: {
+        status: "waiting_input",
+        waitKind: "input",
+        waitStartedAt: new Date(),
+        leaseOwner: null,
+      },
     });
     const message = await createThreadMessage(prisma, {
       threadId,
@@ -1201,7 +1357,9 @@ describePostgres("intervention contract (PostgreSQL)", () => {
 
   it("refuses composer text when a new row and a legacy ask coexist, answers only when one is left", async () => {
     const { run, attempt } = await runningRun();
-    expect(await pause(run, attempt, [{ kind: "ask", text: "New city?", status: "pending" }])).toBe(true);
+    expect(await pause(run, attempt, [{ kind: "ask", text: "New city?", status: "pending" }])).toBe(
+      true,
+    );
     const legacy = await legacyWaitingRun("Legacy city?");
     const ambiguous = await prisma.$transaction((tx) =>
       answerSingleOrdinaryTextInTransaction(tx, {
@@ -1238,7 +1396,338 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       }),
     );
     expect(answered).toMatchObject({ runId: legacy.run.id });
-    expect(await prisma.intervention.findUniqueOrThrow({ where: { id: `legacy_${legacy.message.id}` } }))
-      .toMatchObject({ status: "answered", presentation: { text: "Legacy city?" } });
+    expect(
+      await prisma.intervention.findUniqueOrThrow({ where: { id: `legacy_${legacy.message.id}` } }),
+    ).toMatchObject({ status: "answered", presentation: { text: "Legacy city?" } });
+  });
+
+  // -------------------------------------------------------------------------
+  // UX-02 unified plan review: typed plan_review pause, the three decisions,
+  // version CAS, idempotent replays, and orphan settlement.
+  // -------------------------------------------------------------------------
+
+  const PLAN_ACTIONS = [
+    { id: "approve", label: "Go with this plan" },
+    { id: "request_changes", label: "Request changes" },
+    { id: "reject", label: "Reject" },
+  ];
+
+  async function pausedPlanReviewRun(goal = "Deliver the report") {
+    const { task, run, attempt } = await runningRun();
+    const scope = { spaceId: id, threadId, botId, runId: run.id };
+    await applyPlanSubmission(
+      prisma,
+      { ...scope, toolExecutionId: `write-${run.id}` },
+      {
+        expectedRevision: 0,
+        goal,
+        items: [{ id: "draft", title: "Draft the report", status: "pending" as const }],
+      },
+      { source: "plan_write", submit: false },
+    );
+    const submitted = await submitDraftForReview(prisma, {
+      ...scope,
+      toolExecutionId: `exit-${run.id}`,
+    });
+    if (submitted.status !== "review_required") throw new Error("expected review_required");
+    const paused = await pauseRunForInput(prisma, {
+      spaceId: id,
+      threadId,
+      botId,
+      runId: run.id,
+      attemptId: attempt.id,
+      leaseOwner: "worker",
+      leaseFence: 1,
+      blocks: [
+        {
+          kind: "ask",
+          text: `Plan v${submitted.content.contentVersion} is ready for your review.`,
+          status: "pending",
+          actions: PLAN_ACTIONS,
+          planReview: submitted.content,
+        },
+      ],
+      offeredActions: PLAN_ACTIONS,
+      planReviewRound: {
+        roundId: submitted.round.roundId,
+        planId: submitted.round.planId,
+        contentVersion: submitted.round.contentVersion,
+        revision: submitted.round.revision,
+        source: submitted.round.source,
+      },
+    });
+    expect(paused).toBe(true);
+    const intervention = await prisma.intervention.findFirstOrThrow({
+      where: { runId: run.id, status: "pending" },
+    });
+    return { task, run, attempt, submitted, intervention };
+  }
+
+  it("pauses on a typed plan_review intervention bound to the exact version", async () => {
+    const { run, submitted, intervention } = await pausedPlanReviewRun();
+    expect(intervention.kind).toBe("plan_review");
+    expect(intervention.planReview).toMatchObject({
+      content: {
+        planId: submitted.round.planId,
+        contentVersion: 1,
+        goal: "Deliver the report",
+        source: "plan_exit",
+      },
+    });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "waiting_input",
+      waitKind: "approval",
+    });
+    const round = await prisma.runPlanReview.findUniqueOrThrow({
+      where: { id: submitted.round.roundId },
+    });
+    expect(round).toMatchObject({ status: "pending", interventionId: intervention.id });
+    expect(
+      await prisma.event.count({ where: { runId: run.id, type: "plan.review_submitted" } }),
+    ).toBe(1);
+    // A plan review is never a tool authorization: no effect-backed approval events.
+    expect(await prisma.event.count({ where: { runId: run.id, type: "approval.requested" } })).toBe(
+      0,
+    );
+  });
+
+  it("approve resumes the same run, records the basis, and replays idempotently", async () => {
+    const { run, submitted, intervention } = await pausedPlanReviewRun();
+    const submissionId = randomUUID();
+    const first = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: submissionId,
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(first.outcome).toBe("accepted");
+    if (first.outcome !== "accepted") throw new Error("unreachable");
+    expect(first.resume).toBe(true);
+    expect(first.intervention.planReview?.decision).toBe("approve");
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "queued",
+      waitKind: null,
+      planPhase: "build",
+    });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "approved",
+      approvedContentVersion: 1,
+    });
+    expect(
+      await prisma.runPlanReview.findUniqueOrThrow({ where: { id: submitted.round.roundId } }),
+    ).toMatchObject({
+      status: "approved",
+      decidedByUserId: id,
+      decisionSubmissionId: submissionId,
+    });
+    expect(
+      await prisma.event.count({ where: { runId: run.id, type: "plan.review_decided" } }),
+    ).toBe(1);
+    expect(await prisma.event.count({ where: { runId: run.id, type: "approval.resolved" } })).toBe(
+      0,
+    );
+
+    // The same submission id replays as accepted-without-effect; another
+    // client is told already_handled. Neither re-queues or re-decides.
+    const replay = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: submissionId,
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(replay.outcome).toBe("accepted");
+    if (replay.outcome !== "accepted") throw new Error("unreachable");
+    expect(replay.applied).toBe(false);
+    const other = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(other.outcome).toBe("already_handled");
+    expect(
+      await prisma.event.count({ where: { runId: run.id, type: "plan.review_decided" } }),
+    ).toBe(1);
+  });
+
+  it("request_changes requires concrete feedback and returns to the planning phase", async () => {
+    const { run, intervention } = await pausedPlanReviewRun();
+    const empty = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "request_changes",
+      feedback: "   ",
+    });
+    expect(empty).toEqual({ outcome: "rejected", reason: "invalid_submission" });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "waiting_input",
+    });
+
+    const decided = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "request_changes",
+      feedback: "Split the drafting stage per chapter",
+    });
+    expect(decided.outcome).toBe("accepted");
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "queued",
+      planPhase: "planning",
+    });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "changes_requested",
+    });
+    const round = await prisma.runPlanReview.findFirstOrThrow({
+      where: { runId: run.id, status: "changes_requested" },
+    });
+    expect(round.feedback).toBe("Split the drafting stage per chapter");
+
+    // Only the run owner decides: another member's click on a PENDING card
+    // is refused without touching the round.
+    const foreignRun = await pausedPlanReviewRun("Owner-only goal");
+    const foreign = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: foreignRun.intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: otherUserId,
+      answer: "approve",
+    });
+    expect(foreign.outcome).toBe("rejected");
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: foreignRun.run.id } })).toMatchObject({
+      status: "waiting_input",
+    });
+  });
+
+  it("reject cancels the run with plan_rejected and keeps the audit", async () => {
+    const { task, run, submitted, intervention } = await pausedPlanReviewRun();
+    const decided = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "reject",
+      feedback: "Too risky",
+    });
+    expect(decided.outcome).toBe("accepted");
+    if (decided.outcome !== "accepted") throw new Error("unreachable");
+    expect(decided.resume).toBe(false);
+    expect(decided.cancelledRunId).toBe(run.id);
+    const cancelled = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(cancelled).toMatchObject({
+      status: "cancelled",
+      error: "plan_rejected",
+      waitKind: null,
+    });
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({
+      status: "cancelled",
+    });
+    expect(
+      await prisma.runPlanReview.findUniqueOrThrow({ where: { id: submitted.round.roundId } }),
+    ).toMatchObject({ status: "rejected", feedback: "Too risky", decidedByUserId: id });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "rejected",
+    });
+    const events = await prisma.event.findMany({
+      where: { runId: run.id, type: "run.cancelled" },
+      select: { payload: true },
+    });
+    expect(events).toHaveLength(1);
+    expect((events[0]!.payload as { reason: string }).reason).toBe("plan_rejected");
+    // The decision is a plan rejection, never a fabricated tool denial.
+    expect(await prisma.event.count({ where: { runId: run.id, type: "approval.resolved" } })).toBe(
+      0,
+    );
+    expect(
+      await prisma.intervention.findUniqueOrThrow({ where: { id: intervention.id } }),
+    ).toMatchObject({
+      status: "answered",
+    });
+  });
+
+  it("a stale card click never decides the newer pending version", async () => {
+    const { run, intervention } = await pausedPlanReviewRun("First goal");
+    const first = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "request_changes",
+      feedback: "Rework it",
+    });
+    expect(first.outcome).toBe("accepted");
+    // The run revises and submits content version 2, opening a NEW card.
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { status: "running", waitKind: null, leaseOwner: "worker", leaseFence: 1 },
+    });
+    const revised = await applyPlanSubmission(
+      prisma,
+      { spaceId: id, threadId, botId, runId: run.id, toolExecutionId: `write2-${run.id}` },
+      {
+        expectedRevision: 1,
+        goal: "Second goal",
+        items: [{ id: "draft", title: "Draft the report", status: "pending" as const }],
+        changeReason: "Reworked after feedback",
+      },
+      { source: "plan_write", submit: false },
+    );
+    expect(revised.status).toBe("draft_saved");
+    const resubmit = await submitDraftForReview(prisma, {
+      spaceId: id,
+      threadId,
+      botId,
+      runId: run.id,
+      toolExecutionId: `exit2-${run.id}`,
+    });
+    if (resubmit.status !== "review_required") throw new Error("expected review_required");
+    expect(resubmit.round.contentVersion).toBe(2);
+    // Clicking the OLD (answered) card again is already_handled; it cannot
+    // approve version 2.
+    const stale = await resolveIntervention(prisma, {
+      spaceId: id,
+      threadId,
+      interventionId: intervention.id,
+      clientSubmissionId: randomUUID(),
+      answeredByUserId: id,
+      answer: "approve",
+    });
+    expect(stale.outcome).toBe("already_handled");
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      contentVersion: 2,
+      reviewStatus: "pending",
+      approvedContentVersion: null,
+    });
+  });
+
+  it("an expired wait settles the pending round and the plan review state", async () => {
+    const { run, submitted } = await pausedPlanReviewRun();
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { waitStartedAt: new Date(Date.now() - WAIT_TIMEOUT_MS.approval - 1_000) },
+    });
+    await prisma.$transaction(async (tx) => {
+      await expireWaitingRunInTransaction(tx, run.id, new Date());
+    }, TX);
+    expect(
+      await prisma.runPlanReview.findUniqueOrThrow({ where: { id: submitted.round.roundId } }),
+    ).toMatchObject({ status: "expired" });
+    expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
+      reviewStatus: "cancelled",
+    });
   });
 });

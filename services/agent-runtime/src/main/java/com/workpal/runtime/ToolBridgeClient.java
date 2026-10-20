@@ -149,9 +149,12 @@ public final class ToolBridgeClient {
         if (!tools.isArray()) throw new IllegalArgumentException("Tool surface must list tools");
         List<RunRequest.ToolDefinition> parsed = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
+        // UX-02: plan_enter/plan_write/plan_exit ride the live surface like
+        // every backend tool (the engine registers them as PlanBridgeTool
+        // facades); the remaining native names stay reserved.
         Set<String> reserved = Set.of("agent_spawn", "agent_send", "agent_list", "task",
                 "task_output", "task_cancel", "task_list", "wait_async_results",
-                "plan_enter", "plan_write", "plan_exit", "load_skill_through_path");
+                "load_skill_through_path");
         for (JsonNode item : tools) {
             if (item == null || !item.isObject()) throw new IllegalArgumentException("Invalid tool surface entry");
             String name = item.path("name").asText(null);

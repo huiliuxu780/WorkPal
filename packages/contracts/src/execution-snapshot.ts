@@ -4,7 +4,7 @@ import { MessageBlock } from "./events.js";
 import { Id, RunStatus, RunTrigger, WaitKind } from "./ids.js";
 import { InterventionViewSchema } from "./intervention.js";
 import { ManualRetryDenyReason } from "./manual-retry.js";
-import { RunPlanRevisionSchema } from "./run-plans.js";
+import { PlanReviewStateSchema, RunPlanRevisionSchema } from "./run-plans.js";
 import { RunStepSnapshotSchema } from "./run-steps.js";
 import { RunTodoSnapshotSchema } from "./run-todos.js";
 
@@ -156,6 +156,12 @@ export const EXECUTION_SUMMARY_WINDOW = 50;
 export const ExecutionSnapshotSchema = z.strictObject({
   summary: ExecutionSummarySchema,
   plan: RunPlanRevisionSchema.optional(),
+  /**
+   * UX-02: plan-level review state (content version vs approval basis) next to
+   * the current revision. Absent for runs without a plan and for legacy plans
+   * that predate unified review and never opened a review round.
+   */
+  planReview: PlanReviewStateSchema.optional(),
   steps: ExecutionStepsViewSchema,
   todos: ExecutionTodosViewSchema,
   /** Recent durable product nodes for this Run, newest last. */

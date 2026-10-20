@@ -145,6 +145,11 @@ function fixture({
     ),
   };
   const prisma = {
+    runPlan: { findUnique: vi.fn(async () => null) },
+    runPlanReview: {
+      findFirst: vi.fn(async () => null),
+      count: vi.fn(async () => 0),
+    },
     deliveryRecord: { findMany: vi.fn(async () => []) },
     run: {
       findUnique: vi.fn(async () => run),
@@ -194,19 +199,24 @@ function fixture({
     actionAutoReviewPreference: { findUnique: vi.fn(async () => ({ enabled: autoReview })) },
     externalEffect,
   };
-  Object.assign(prisma, { $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
-    callback({
-      $queryRaw: vi.fn(async () => [{ id: run.id }]),
-      run: {
-        findUnique: vi.fn(async () => ({ ...run, leaseExpiresAt: new Date(Date.now() + 60_000) })),
-        updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-          Object.assign(run, data);
-          return { count: 1 };
-        }),
-      },
-      attempt: prisma.attempt,
-    }),
-  ) });
+  Object.assign(prisma, {
+    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        $queryRaw: vi.fn(async () => [{ id: run.id }]),
+        run: {
+          findUnique: vi.fn(async () => ({
+            ...run,
+            leaseExpiresAt: new Date(Date.now() + 60_000),
+          })),
+          updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+            Object.assign(run, data);
+            return { count: 1 };
+          }),
+        },
+        attempt: prisma.attempt,
+      }),
+    ),
+  });
   const pauseRunForInput = vi.fn(async () => {
     run.status = "waiting_input";
     return true;
@@ -293,21 +303,33 @@ describe("connector read-only metadata and approval enforcement", () => {
 
   it("denies a connector tool at the executor boundary before it can execute", async () => {
     const f = fixture({
-      capabilityRules: [{
-        capability: "demo_get_item", resource: "resource-1", scope: "bot", effect: "deny",
-      }],
+      capabilityRules: [
+        {
+          capability: "demo_get_item",
+          resource: "resource-1",
+          scope: "bot",
+          effect: "deny",
+        },
+      ],
     });
     await f.run();
-    expect(f.results[0]).toMatchObject({ error: expect.stringContaining("Capability rule denied") });
+    expect(f.results[0]).toMatchObject({
+      error: expect.stringContaining("Capability rule denied"),
+    });
     expect(f.execute).not.toHaveBeenCalled();
     expect(f.pauseRunForInput).not.toHaveBeenCalled();
   });
 
   it("requires approval for a read-only connector when its Bot rule asks", async () => {
     const f = fixture({
-      capabilityRules: [{
-        capability: "demo_get_item", resource: "resource-1", scope: "bot", effect: "ask",
-      }],
+      capabilityRules: [
+        {
+          capability: "demo_get_item",
+          resource: "resource-1",
+          scope: "bot",
+          effect: "ask",
+        },
+      ],
     });
     await f.run();
     expect(f.pauseRunForInput).toHaveBeenCalledOnce();

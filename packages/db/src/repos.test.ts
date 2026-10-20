@@ -328,11 +328,11 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
         name: "Support",
         title: "Customer support",
         color: "#123456",
-        // b5bb870 added the avatarBodyColor mapping default but missed this
-        // expectation; CI's targeted unit lane never ran repos.test.ts.
-        avatarBodyColor: "ink",
         avatarMode: "legacy",
         avatarCharacter: null,
+        // Baseline repair: the sidebar mapping defaults the body color since
+        // the avatar-body-color merge; the expectation had not caught up.
+        avatarBodyColor: "ink",
         notifyOnFinish: false,
         pinned: true,
         sectionId: null,

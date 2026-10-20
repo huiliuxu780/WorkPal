@@ -38,12 +38,14 @@ import type {
   AvatarCharacter,
   ComputerCommand,
   MessageBlock,
+  PlanReviewContent,
+  PlanReviewSource,
   RunStatus,
 } from "@rakazo/contracts";
 import {
   ATTACHMENT_MAX_BYTES,
-  AvatarCharacterSchema,
   type AvatarBodyColor,
+  AvatarCharacterSchema,
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
@@ -110,17 +112,13 @@ import {
   stableJsonValue,
   toolEffectIdempotencyKey,
 } from "@rakazo/core/node/approval-effect-key";
-import { takeRetryOperationId } from "@rakazo/core/node/manual-retry-match";
 import {
-  emptyManualRetryChain,
-  loadManualRetryChain,
-  matchManualRetryEffect,
-  manualRetryPromptPrefix,
-  manualRetryUncertainAsk,
-  rememberCurrentRetryEffect,
-} from "./manual-retry-effects.js";
+  PLAN_RECORD_OPERATION_KINDS,
+  takeRetryOperationId,
+} from "@rakazo/core/node/manual-retry-match";
 import {
   appendEventInTransaction,
+  applyPlanSubmission,
   avatarChangeView,
   backgroundTaskLockTransactionOptions,
   changeBotAvatarInTransaction,
@@ -134,21 +132,27 @@ import {
   getFactForActor,
   InvalidSpaceNameError,
   isTooManyDatabaseConnections,
+  latestAnsweredNativePlanAsk,
+  loadCurrentPlanProjection,
+  loadPendingPlanReviewRepair,
   loadRunHistoryMessages,
   type McpServer,
   type Prisma,
   type PrismaClient,
   parseComputerMode,
+  planExecutionGate,
+  planReviewRoundForToolExecution,
   promoteLeasedRunWithAttempt,
-  publishRunPlan,
   publishRunStep,
   publishRunTodo,
   reconcileAttemptFenceConflict,
+  recordLegacyNativePlanDecision,
   registerBackgroundTaskProjection,
   renewOwnedRunLease,
   retireModelCredential,
   SpaceLimitError,
   scheduleAutomaticRunRetry,
+  submitDraftForReview,
   type ThreadEvents,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
@@ -197,6 +201,7 @@ import {
   isToolPauseResult,
   parseCatalogApprovalTarget,
   permissionRevokedToolError,
+  planReviewPausedToolResult,
   replaceCompletedExternalEffectResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
@@ -297,6 +302,14 @@ import {
   CATALOG_EXECUTE,
   uniquifyInstalledToolName,
 } from "./lazy-tool-catalog.js";
+import {
+  emptyManualRetryChain,
+  loadManualRetryChain,
+  manualRetryPromptPrefix,
+  manualRetryUncertainAsk,
+  matchManualRetryEffect,
+  rememberCurrentRetryEffect,
+} from "./manual-retry-effects.js";
 import {
   buildMcpCredentialBlob,
   needsOAuthProbe,
@@ -443,6 +456,76 @@ const READ_ONLY_AGENT_TOOLS = new Set([
   "list_secrets",
   "cloud_agent_status",
 ]);
+
+/**
+ * UX-02 unified plan service tools. Native plan_enter/plan_write/plan_exit and
+ * the structured publish_run_plan are backend-owned tools operating on the
+ * same PostgreSQL plan identity; the Java runtime registers projection facades
+ * for the three native names. They gate by TurnPolicy planning like
+ * publish_run_plan always did — never offered on planning-disabled runs.
+ */
+export const PLAN_SERVICE_TOOL_NAMES = new Set([
+  "plan_enter",
+  "plan_write",
+  "plan_exit",
+  "publish_run_plan",
+]);
+
+/**
+ * Internal record operations (single source in core): they write plan/step/
+ * todo state for THIS run only and never send anything external. Manual-retry
+ * operation matching must not reuse or skip them — a successor run records its
+ * own plan and steps and gets its own plan review (U-A13: never inherit the
+ * old approval).
+ */
+const PLAN_RECORD_TOOL_NAMES = PLAN_RECORD_OPERATION_KINDS;
+
+/** Tools that stay visible while the run is in the read-only PLAN phase. */
+const PLAN_PHASE_KEEP_TOOLS = new Set([
+  ...READ_ONLY_AGENT_TOOLS,
+  ...PLAN_RECORD_TOOL_NAMES,
+  "ask_user",
+  "runtime_current_time",
+]);
+
+/**
+ * AG-05 phase expression: the per-request tool surface drops mutating tools
+ * while the native PLAN phase is active, mirroring the runtime's read-only
+ * middleware from the backend authority. The execute-time gate re-checks
+ * before any send, so a stale in-flight surface cannot act either.
+ */
+export function filterToolsForPlanPhase<T extends { name: string; readOnly?: boolean | undefined }>(
+  tools: T[],
+  planPhase: string | null | undefined,
+): T[] {
+  if (planPhase !== "planning") return tools;
+  return tools.filter((tool) => tool.readOnly === true || PLAN_PHASE_KEEP_TOOLS.has(tool.name));
+}
+
+/** The three fixed review actions. There is deliberately no "always allow". */
+const PLAN_REVIEW_ACTIONS = [
+  { id: "approve", label: "Go with this plan" },
+  { id: "request_changes", label: "Request changes" },
+  { id: "reject", label: "Reject" },
+];
+
+function reviewContentFromProjection(
+  projection: { goal: string; items: Array<{ id: string; title: string; status: string }> },
+  round: { planId: string; contentVersion: number; revision: number; source: string },
+): PlanReviewContent {
+  return {
+    planId: round.planId,
+    contentVersion: round.contentVersion,
+    revision: round.revision,
+    goal: projection.goal,
+    items: projection.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      status: item.status as PlanReviewContent["items"][number]["status"],
+    })),
+    source: round.source as PlanReviewSource,
+  };
+}
 /** Added to the turn prompt when the user spoke this message on a live voice call. */
 /** Fixed text: prompts/chat/voice-call.md (P03). */
 export const VOICE_CALL_INSTRUCTION = promptSegment("chat/voice-call");
@@ -1943,7 +2026,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const tools =
           run.trigger === "created" || run.trigger === "delivery"
             ? []
-            : [...builtins, ...exposedConnectorTools];
+            : filterToolsForPlanPhase([...builtins, ...exposedConnectorTools], run.planPhase);
         const loadLiveRunTools = async (): Promise<ConnectorTool[]> => {
           if (run.trigger === "created" || run.trigger === "delivery") return [];
           const stored = await deps.prisma.connection.findMany({
@@ -1957,7 +2040,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               status: true,
             },
           });
-          const liveComposioRows = stored.filter((connection) => connection.connectorId === "composio");
+          const liveComposioRows = stored.filter(
+            (connection) => connection.connectorId === "composio",
+          );
           let refreshSlugs: string[] = [];
           if (needsLivePluginSync(liveComposioRows)) {
             const listing = await loadLivePluginSlugs(deps.listConnectedPluginSlugs, run.userId);
@@ -1997,7 +2082,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }),
             ...(hasMessagingIdentity ? agentConnectionTools : []),
           ];
-          return [...liveBuiltins, ...exposedNow];
+          // UX-02: the phase is re-read on every surface refresh, so entering
+          // PLAN mode shrinks the next model call's surface to reads and plan
+          // records, and the approval flips it back — no restart needed.
+          const phaseRow = await deps.prisma.run.findUnique({
+            where: { id: runId },
+            select: { planPhase: true },
+          });
+          return filterToolsForPlanPhase([...liveBuiltins, ...exposedNow], phaseRow?.planPhase);
         };
         const taskCatalogInstruction = tools.some((tool) => tool.name === "task_catalog")
           ? TASK_CATALOG_GUIDANCE
@@ -2148,6 +2240,65 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const pauseForSecret = () => {
           approvalPausePending = true;
           return secretPausedToolResult();
+        };
+
+        /**
+         * UX-02: suspend the run on the typed plan_review card. The review
+         * round is already pending in PostgreSQL (the plan service committed
+         * it under the run lock); this pause pairs it with the Intervention
+         * and the ask block that carry the exact version binding. A plan
+         * decision is not a tool approval: no ExternalEffect is involved.
+         */
+        const pauseForPlanReview = async (
+          content: PlanReviewContent,
+          round: { roundId: string },
+        ): Promise<void> => {
+          if (!(await renewRunLease(deps, runId, workerId, fence))) {
+            throw new Error("Could not renew the lease to pause for plan review.");
+          }
+          await workspaceCheckpoint.flush();
+          const safeContent: PlanReviewContent = {
+            ...content,
+            goal: redactSecrets(content.goal, runSecrets),
+            items: content.items.map((item) => ({
+              ...item,
+              title: redactSecrets(item.title, runSecrets),
+            })),
+          };
+          const paused = await deps.events.pauseRunForInput({
+            spaceId: run.spaceId,
+            threadId: run.threadId,
+            botId: bot.id,
+            runId,
+            attemptId: attempt.id,
+            leaseOwner: workerId,
+            leaseFence: fence,
+            blocks: [
+              {
+                kind: "ask",
+                text: `Plan v${safeContent.contentVersion} is ready for your review.`,
+                status: "pending",
+                actions: PLAN_REVIEW_ACTIONS,
+                planReview: safeContent,
+              },
+            ],
+            offeredActions: PLAN_REVIEW_ACTIONS,
+            planReviewRound: {
+              roundId: round.roundId,
+              planId: content.planId,
+              contentVersion: content.contentVersion,
+              revision: content.revision,
+              source: content.source,
+            },
+          });
+          if (!paused) throw new Error("Could not pause this run for plan review.");
+          await notifyRun(deps, run, {
+            kind: "help",
+            title: `${bot.name} needs a plan decision`,
+            body: `Plan v${safeContent.contentVersion} is waiting for your review.`,
+            botId: bot.id,
+            threadId: thread.id,
+          });
         };
 
         const mutatingEffectOccurrences = new Map<string, number>();
@@ -2349,8 +2500,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
               const innerArgs = catalogApprovalInnerArgs(approvedCatalog);
               if (!innerArgs) {
                 return {
-                error: renderPromptSegment("feedback/replay-missing-args", { tool: name }),
-              };
+                  error: renderPromptSegment("feedback/replay-missing-args", { tool: name }),
+                };
               }
               args = innerArgs;
             } else {
@@ -2392,6 +2543,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
           const capabilityDecision = capability.decision;
           if (capabilityDecision === "deny") {
             return { error: capability.error ?? `Capability rule denied ${name}.` };
+          }
+          // UX-02: version authorization is re-checked at the execution
+          // boundary, before any external send is prepared. A pending plan
+          // review or an active read-only PLAN phase stops mutating tools with
+          // zero provider requests; plan/step/todo records and declared reads
+          // are exempt because they never send anything external.
+          if (
+            !PLAN_RECORD_TOOL_NAMES.has(name) &&
+            !READ_ONLY_AGENT_TOOLS.has(name) &&
+            declaredReadOnly !== true
+          ) {
+            const planGate = await planExecutionGate(deps.prisma, runId);
+            if (planGate) return { error: planGate };
           }
           const requiresUnattendedApproval = unattendedTriggerToolRequiresApproval(
             run.trigger,
@@ -2468,7 +2632,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           // Connector read-only hints must not bypass approval or review. Retry
           // reuse skips declared reads so they re-read current state.
           let continueOperationId: string | undefined;
-          if (run.retryOfRunId && !READ_ONLY_AGENT_TOOLS.has(name) && declaredReadOnly !== true) {
+          if (
+            run.retryOfRunId &&
+            !READ_ONLY_AGENT_TOOLS.has(name) &&
+            !PLAN_RECORD_TOOL_NAMES.has(name) &&
+            declaredReadOnly !== true
+          ) {
             const retryDecision = matchManualRetryEffect(
               retryChain,
               replayEffectToolName,
@@ -3369,29 +3538,188 @@ export function createRunExecutor(deps: ExecutorDeps) {
               tools,
             });
           }
-          if (name === "publish_run_plan") {
-            const published = await publishRunPlan(
-              deps.prisma,
-              {
-                spaceId: run.spaceId,
-                threadId: thread.id,
-                botId: bot.id,
-                runId,
-                toolExecutionId: executionId,
+          if (PLAN_SERVICE_TOOL_NAMES.has(name)) {
+            const planScope = {
+              spaceId: run.spaceId,
+              threadId: thread.id,
+              botId: bot.id,
+              runId,
+              toolExecutionId: executionId,
+            };
+            const planResultPayload = (
+              plan: { planId: string; revision: number; goal: string; items: unknown[] },
+              extra?: Record<string, unknown>,
+            ) => ({
+              planId: plan.planId,
+              revision: plan.revision,
+              plan: {
+                goal: plan.goal,
+                items: plan.items,
+                revision: plan.revision,
               },
-              args,
-            );
-            if (published.status === "conflict") {
+              ...extra,
+            });
+            // A resumed bridge re-run of a paused submission answers from the
+            // durable review round — the decision never travels through page
+            // state, so any Worker/Java restart replays the same outcome.
+            const round = await planReviewRoundForToolExecution(deps.prisma, runId, executionId);
+            if (round) {
+              const projection = await loadCurrentPlanProjection(deps.prisma, runId);
+              if (round.status === "pending") {
+                // The pause never committed (crash between submit and pause):
+                // re-open the card instead of continuing past the review.
+                if (!projection) throw new Error("Plan review is pending without plan content");
+                await pauseForPlanReview(reviewContentFromProjection(projection, round), {
+                  roundId: round.id,
+                });
+                approvalPausePending = true;
+                return planReviewPausedToolResult();
+              }
+              if (round.status === "approved") {
+                return finish({
+                  status: "approved",
+                  planId: round.planId,
+                  contentVersion: round.contentVersion,
+                  ...(projection ? { revision: projection.revision, plan: projection } : {}),
+                  instruction:
+                    "The user approved this plan version. Execute it now; consequential tools still follow their own approvals.",
+                });
+              }
+              if (round.status === "changes_requested") {
+                return finish({
+                  status: "changes_requested",
+                  planId: round.planId,
+                  contentVersion: round.contentVersion,
+                  ...(round.feedback ? { feedback: round.feedback } : {}),
+                  ...(projection ? { plan: projection } : {}),
+                  instruction:
+                    "The user requested changes. You are back in the read-only planning phase: revise with plan_write, then submit the next version with plan_exit.",
+                });
+              }
               return finish({
-                error: "Plan revision is stale; refresh the expected revision",
-                currentRevision: published.currentRevision,
+                status: round.status === "rejected" ? "rejected" : "cancelled",
+                planId: round.planId,
+                contentVersion: round.contentVersion,
               });
             }
-            await deps.events.notify(thread.id, published.seq);
+            if (name === "plan_enter") {
+              await deps.prisma.run.updateMany({
+                where: { id: runId, status: "running" },
+                data: { planPhase: "planning" },
+              });
+              const projection = await loadCurrentPlanProjection(deps.prisma, runId);
+              return finish({
+                status: "entered",
+                planPhase: "planning",
+                ...(projection ? { plan: projection } : {}),
+              });
+            }
+            if (name === "plan_exit") {
+              // One-time compatibility: a native plan approval answered before
+              // unified review existed decides the original review exactly
+              // once (audited as a legacy_native round keyed by this resume's
+              // executionId); a later fresh plan_exit never re-enters here.
+              const legacyConsumed =
+                (await deps.prisma.runPlanReview.count({
+                  where: { runId, source: "legacy_native" },
+                })) > 0;
+              const legacyAsk = legacyConsumed
+                ? null
+                : await latestAnsweredNativePlanAsk(deps.prisma, runId);
+              if (legacyAsk) {
+                const decided = await recordLegacyNativePlanDecision(
+                  deps.prisma,
+                  { spaceId: run.spaceId, threadId: thread.id, botId: bot.id, runId },
+                  legacyAsk.answer,
+                  {
+                    toolExecutionId: executionId,
+                    interventionId: legacyAsk.interventionId,
+                    decidedByUserId: legacyAsk.resolvedByUserId,
+                  },
+                );
+                return finish(
+                  legacyAsk.answer === "approve"
+                    ? {
+                        status: "approved",
+                        legacy: true,
+                        ...(decided.contentVersion !== null
+                          ? { contentVersion: decided.contentVersion }
+                          : {}),
+                        ...(decided.plan
+                          ? {
+                              plan: {
+                                goal: decided.plan.goal,
+                                items: decided.plan.items,
+                                revision: decided.plan.revision,
+                              },
+                            }
+                          : {}),
+                        instruction:
+                          "The user approved the plan through the pre-unification card. Continue executing; consequential tools still follow their own approvals.",
+                      }
+                    : {
+                        status: "rejected",
+                        legacy: true,
+                        instruction:
+                          "The user rejected the plan through the pre-unification card. Stay in the planning phase and revise.",
+                      },
+                );
+              }
+              const submitted = await submitDraftForReview(deps.prisma, planScope);
+              if (submitted.status === "no_draft") {
+                return finish({
+                  error: "No draft plan to submit. Record the plan with plan_write first.",
+                });
+              }
+              if (submitted.status === "rejected") {
+                return finish({
+                  error: "This plan was rejected; the Run cannot execute it.",
+                });
+              }
+              if (submitted.status === "already_approved") {
+                return finish({
+                  status: "approved",
+                  ...planResultPayload(submitted.plan, {
+                    contentVersion: submitted.contentVersion,
+                  }),
+                });
+              }
+              await pauseForPlanReview(submitted.content, submitted.round);
+              approvalPausePending = true;
+              return planReviewPausedToolResult();
+            }
+            // plan_write | publish_run_plan: one unified write path.
+            const applied = await applyPlanSubmission(deps.prisma, planScope, args, {
+              source: name === "plan_write" ? "plan_write" : "publish_run_plan",
+              submit: name !== "plan_write",
+            });
+            if (applied.status === "conflict") {
+              return finish({
+                error: "Plan revision is stale; refresh the expected revision",
+                currentRevision: applied.currentRevision,
+              });
+            }
+            if (applied.status === "review_required") {
+              await deps.events.notify(thread.id, applied.seq);
+              await pauseForPlanReview(applied.content, applied.round);
+              approvalPausePending = true;
+              return planReviewPausedToolResult();
+            }
+            if (applied.status === "unchanged") {
+              return finish({ status: "unchanged", ...planResultPayload(applied.plan) });
+            }
+            await deps.events.notify(thread.id, applied.seq);
+            if (applied.status === "replayed") {
+              return finish({ status: "replayed", ...planResultPayload(applied.plan) });
+            }
+            if (applied.status === "progress") {
+              return finish({ status: "progress", ...planResultPayload(applied.plan) });
+            }
             return finish({
-              planId: published.plan.planId,
-              revision: published.plan.revision,
-              status: published.status,
+              status: "draft_saved",
+              ...planResultPayload(applied.plan, { contentVersion: applied.contentVersion }),
+              instruction:
+                "Draft saved. Submit it for the user's review with plan_exit when the plan is complete.",
             });
           }
           if (name === "publish_run_step") {
@@ -4290,8 +4618,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({ error: "Ask the user to state the avatar change directly." });
             const sourceBlocks = source!.blocks as MessageBlock[];
             const chosen = AvatarCharacterSchema.safeParse(args.character);
-            const requestedBodyColor = requestedAvatarBodyColor(sourceBlocks.filter(block => block.kind === "text").map(block => block.text).join(""));
-            if (args.body_color !== undefined && args.body_color !== requestedBodyColor) return finish({ error: "Avatar color does not match the user's request." });
+            const requestedBodyColor = requestedAvatarBodyColor(
+              sourceBlocks
+                .filter((block) => block.kind === "text")
+                .map((block) => block.text)
+                .join(""),
+            );
+            if (args.body_color !== undefined && args.body_color !== requestedBodyColor)
+              return finish({ error: "Avatar color does not match the user's request." });
             const imageRequested = args.use_attached_image === true;
             if (
               requested === "attached-image"
@@ -4301,7 +4635,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({ error: "Avatar choice does not match the user's request." });
             }
             let choice:
-              | { avatarMode: "character"; avatarCharacter: AvatarCharacter; avatarBodyColor?: AvatarBodyColor }
+              | {
+                  avatarMode: "character";
+                  avatarCharacter: AvatarCharacter;
+                  avatarBodyColor?: AvatarBodyColor;
+                }
               | { avatarMode: "upload"; color: string };
             if (requested === "attached-image") {
               const sourceImageArtifactIds = attachedImageArtifactIds(sourceBlocks);
@@ -4321,7 +4659,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               if (!("color" in avatar)) return finish({ error: avatar.error });
               choice = { avatarMode: "upload", color: avatar.color };
             } else {
-              choice = { avatarMode: "character", avatarCharacter: requested, avatarBodyColor: requestedBodyColor };
+              choice = {
+                avatarMode: "character",
+                avatarCharacter: requested,
+                avatarBodyColor: requestedBodyColor,
+              };
             }
             const committed = await deps.prisma.$transaction(async (tx) => {
               const owned = await tx.$queryRaw<Array<{ id: string }>>`
@@ -4645,6 +4987,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
         ]
           .filter(Boolean)
           .join("\n\n");
+        // UX-02 crash repair: a review round that committed but whose pause
+        // never persisted (crash between the plan service transaction and the
+        // pause, or a failed pause CAS) re-opens the typed plan_review card
+        // before any model call — a run never continues past a pending review.
+        const planReviewRepair = await loadPendingPlanReviewRepair(deps.prisma, runId);
+        if (planReviewRepair) {
+          await pauseForPlanReview(planReviewRepair.content, {
+            roundId: planReviewRepair.roundId,
+          });
+          return;
+        }
         const answeredAskMessages = scripted
           ? []
           : await deps.prisma.message.findMany({
@@ -4964,16 +5317,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 content: skill.content,
               })),
               tools: toolsForRetryRun(tools, run.retryOfRunId),
-              currentTools: scripted ? undefined : async () => {
-                try {
-                  return toolsForRetryRun(await loadLiveRunTools(), run.retryOfRunId);
-                } catch {
-                  return toolsForRetryRun(
-                    [...builtins, ...connectorTools.values()],
-                    run.retryOfRunId,
-                  );
-                }
-              },
+              currentTools: scripted
+                ? undefined
+                : async () => {
+                    try {
+                      return toolsForRetryRun(await loadLiveRunTools(), run.retryOfRunId);
+                    } catch {
+                      return toolsForRetryRun(
+                        [...builtins, ...connectorTools.values()],
+                        run.retryOfRunId,
+                      );
+                    }
+                  },
               model: {
                 provider: runModelProvider,
                 id: runModelId,
@@ -6333,7 +6688,7 @@ export function selectBuiltinToolsForRun(options: {
       (options.trigger === "user" ||
         options.trigger === "follow_up" ||
         tool.name !== "change_avatar") &&
-      (options.planningEnabled || tool.name !== "publish_run_plan") &&
+      (options.planningEnabled || !PLAN_SERVICE_TOOL_NAMES.has(tool.name)) &&
       (options.mailEnabled === true || tool.name !== "send_email") &&
       (!options.messagingChannelRun ||
         (!["remember", "save_memory", "recall_memory", "forget_memory", "task_catalog"].includes(
