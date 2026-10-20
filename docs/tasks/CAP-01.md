@@ -1,4 +1,4 @@
-# CAP-01 + UX-03 — 全局应用、操作确认、成果闭环与 Bot 管理面收敛
+# CAP-01 + UX-03 — Auto-review、操作闭环与 Bot 管理面收敛
 
 Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pull/81) 必须按本任务重做，并在同一 PR 完成 [UX-03 决策](../ux/UX-03-decision.md)；未合并、未部署。代码核对基线 `main @ 472f0b1`。
 
@@ -28,11 +28,11 @@ Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pu
 - [Bots](https://docs.x.ai/grok-bot/bots)
 - [Files and results](https://docs.x.ai/grok-bot/files-and-results)
 
-WorkPal 当前代码有按 Bot 的 MCP assignment 和 `Bot.capabilityRules`。这是现存实现事实，不是用户界面必须照搬的产品模型。本任务保留它们作为运行时兼容和强制边界；普通用户连接的应用按当前 Space 的账号级能力呈现，供该用户的所有 Bot 使用。
+WorkPal 当前代码已经有全局 `Connect Apps` 目录弹窗；按 Bot 的 MCP assignment 和 `Bot.capabilityRules` 是另外的现存实现事实，不能据此把应用目录重新解释成 Bot 设置。两者在本任务中都保持现有语义。
 
 ## 2. 设计北极星
 
-**用户连接一次应用，所有 Bot 都能在已有授权范围内使用；用户只在平台设置里表达什么时候需要确认，在动作发生时作决定，在原对话里拿到成果。**
+**Connect Apps 保持现状；用户在平台设置里表达什么时候需要确认，在动作发生时作决定，在原对话里拿到成果，并通过悬浮头像进入完整 Bot 管理面。**
 
 系统负责工具注册、资源授权、deny、撤权、幂等和审计。用户不配置 tool、scope、glob、优先级、catalog 或 Bot 级权限矩阵。
 
@@ -65,16 +65,16 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 ## 4. 完整用户流程
 
-### 4.1 全局连接应用
+### 4.1 Connect Apps（现有能力，不在本批重做）
 
-用户从侧栏进入 `Connect Apps`，打开现有 Integrations 大弹窗，而不是切换页面：
+当前产品已经从侧栏进入 `Connect Apps` 并打开全局应用目录大弹窗，已有搜索、catalog、连接状态和详情。本批保持现状：
 
 - 看见可连接和已连接的应用；
 - 登录或重新授权；
 - 断开应用；
-- 看见一句明确说明：`已连接的应用可供这个 Space 中你的所有 Bot 使用。`
+- 普通应用继续按现有全局连接语义供 Bot 使用。
 
-应用行不展示 Bot 名单、每 Bot 开关、底层工具或读写级别。断开是账号级动作，必须说明会影响所有 Bot，并使用既有确认交互。
+不得为了 CAP-01 重写 `PluginsOverlay`、连接生命周期、目录信息架构或普通应用作用域。Draft #81 若已改动这些行为，应恢复到 main；`activeBotId` 只保留现有自定义 MCP/高级流程的真实用途，不能据此误判整个 Connect Apps 是 per-Bot 产品。
 
 已连接不代表每个动作都能执行。服务端仍会在执行时检查当前用户、Space、资源、连接状态、强制策略和是否需要确认。
 
@@ -133,16 +133,12 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 ## 5. 前端任务
 
-### F1. Connect Apps 全局口径
+### F1. Connect Apps 不回归
 
-- 保留现有 `PluginsOverlay` Dialog 外壳：`1080×760`、标题、关闭按钮、搜索和内部滚动区不重做。
-- 修改 Connect Apps 内容语义，删除普通连接应用的 active Bot 选择和每 Bot assignment 文案。
-- 顶部显示已连接应用摘要/数量；点击进入现有连接详情。
-- 保留当前搜索、featured tiles、连接账户详情和 catalog 加载方式；只有真实 catalog 元数据支持时才显示分类，不从名称猜类别。
-- 显示账号级说明、连接状态、重新登录、连接和断开。
-- 断开前说明会影响当前 Space 中所有 Bot；成功后所有相关运行视图刷新。
-- 普通应用行不读取或渲染 connector tool schema。
-- 自定义 MCP 若仍是按 Bot 分配，保留独立的高级入口和现有行为，不与普通应用混排。
+- `PluginsOverlay` 的目录、搜索、featured tiles、连接账户详情、连接/断开和 catalog 加载保持 main 现状。
+- 不新增 Bot picker、权限表或另一套应用目录。
+- 不把自定义 MCP 的高级流程误改成普通连接应用语义。
+- #81 中为旧权限编辑器或错误 per-Bot 方案加入的 Connect Apps 改动全部撤回；本项只有回归验证，没有新产品开发。
 
 ### F2. 平台操作确认设置
 
@@ -200,27 +196,13 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 ## 6. 后端任务
 
-### B1. 普通连接应用全局化
+### B1. Connect Apps 现有契约不变
 
-先列出当前 `Connection`、managed connector、MCP server 与 `BotMcpServer` 的真实关系并写入实现说明。随后只对普通用户连接应用建立一个权威读取路径：
-
-```ts
-apps.connections.list(): {
-  scope: "space-user";
-  availableTo: "all-bots";
-  apps: Array<{
-    connectionId: string;
-    app: { id: string; name: string; icon: string | null };
-    accountLabel: string | null;
-    status: "available" | "login_required" | "revoked";
-  }>;
-}
-```
-
-- 连接、重授权、断开复用现有 Connection 生命周期。
-- executor 为该用户当前 Space 的任一 Bot 解析普通已连接应用；不能再以 UI 中的 activeBotId 决定普通应用是否可见。
-- 当前 per-Bot assignment 数据若只服务普通连接应用，迁移为全局语义后移除；若也服务自定义 MCP，拆分用途并保留 MCP 语义。
-- `Bot.capabilityRules`、资源授权、连接器 allowlist 和服务端 deny 继续逐次执行，不进入这个列表。
+- 不为 Connect Apps 新增 API、schema、migration、作用域模型或第二套目录。
+- 继续使用现有 `connections.catalog/list`、连接生命周期和 `PluginsOverlay` 调用链。
+- `activeBotId` 及按 Bot 的 MCP assignment 只保留它们在现有自定义 MCP / 高级连接流程中的真实用途；本任务不重定义该用途。
+- Draft #81 若为旧权限编辑器或错误的 per-Bot 普通应用方案改变了 Connect Apps、连接解析或 executor 可见性，应回退到 `main` 行为。
+- 本项只做受影响路径的回归验证，不以 CAP-01 名义重测或重构整个应用目录。
 
 ### B2. Auto-review 与自然语言规则
 
@@ -338,27 +320,23 @@ actions: Array<{
 
 ## 7. Draft #81 单 PR 实施顺序
 
-1. 把本任务、CAP-01 v6 原型和 UX-03 冻结原型作为唯一契约，删除 #81 的低层编辑器及 v3 per-Bot app 工作。
-2. 盘点并区分普通 connected apps 与自定义 MCP；冻结全局连接契约。
-3. 移除 Task Center 用户界面和专用投影，把注意、完成、失败、取消与重试入口迁回来源对话。
-4. 完成 Connect Apps 全局化及任一 Bot 的真实工具可用性回归。
-5. 在 Settings → General 完成 Auto-review 与自然语言规则，并接入既有 action-review。
-6. 完成结构化确认卡和全局长期选择。
-7. 完成对话成果卡与 Execution detail 结果投影。
-8. 完成 UX-03 头部移除、悬浮头像与三 tab Bot panel，逐项核对既有 Bot 管理能力。
-9. 用至少两种不同来源的真实动作收口，回写 CAP-01、UX-03、roadmap 和实现说明。
+1. 同步最新 `main`，删除 #81 的低层权限编辑器与错误的 per-Bot 普通应用改动；Connect Apps 恢复并保持 `main` 行为。
+2. 在 Settings → General 完成 Auto-review 与自然语言规则，并接入既有 action-review。
+3. 完成结构化确认卡、长期选择、对话成果和 Execution detail 结果投影；移除 Task Center，把状态与重试入口迁回来源对话。
+4. 完成 UX-03 头部移除、悬浮头像与三 tab Bot panel，逐项核对既有 Bot 管理能力。
+5. 用至少两种不同来源的真实动作收口，并对现有 Connect Apps 做聚焦回归；回写 CAP-01、UX-03、roadmap 和实现说明。
 
 本功能继续一个 PR 完成，不再按前端、后端或迁移拆小 PR。
 
 ## 8. 验收标准
 
-### 全局应用
+### 现有 Connect Apps 不回归
 
 1. 普通应用只在 Connect Apps 管理；Bot Settings 无应用权限或成果区。
 2. Connect Apps 使用现有 `PluginsOverlay` 大弹窗，Settings 使用现有 `SettingsOverlay` 大弹窗；主聊天 Shell、弹窗尺寸、关闭行为和响应式外壳不被另画成页面。
-3. 连接一次后，当前 Space 中该用户的两个不同 Bot 都能通过真实 executor 使用该应用；无需逐 Bot 分配。
-4. 断开/撤权后两个 Bot 都不再获得或执行相关工具，且零 provider 副作用。
-5. 自定义 MCP 的既有独立语义未被普通应用全局化误改。
+3. #81 不新增 Connect Apps API、schema、migration、Bot picker、权限表或第二套目录。
+4. 现有连接、重授权、断开与应用详情的聚焦回归通过；本批不重新定义其作用域。
+5. 自定义 MCP 与按 Bot assignment 的既有独立语义未被误改。
 
 ### 全局操作确认偏好
 
