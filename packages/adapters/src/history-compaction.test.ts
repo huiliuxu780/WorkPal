@@ -275,7 +275,17 @@ function compactionHarness(
             defaultMemoryScope: "isolated",
           }
       : options.memoryConfig;
+  const compactionRevisions: Array<{
+    id: string;
+    threadId: string;
+    generation: number;
+    toSeqInclusive: number;
+  }> = [];
   const prisma = {
+    // persistCompactionRevision wraps the revision insert and the pointer CAS
+    // in one interactive transaction; the mock runs the callback against the
+    // same in-memory state so CAS semantics stay observable.
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     thread: {
       findUniqueOrThrow: vi.fn(async () => thread),
       updateMany: vi.fn(
@@ -299,6 +309,34 @@ function compactionHarness(
         },
       ),
     },
+    threadCompactionRevision: {
+      findFirst: vi.fn(
+        async (args: {
+          where: { threadId: string; generation: number };
+          orderBy?: { toSeqInclusive: "asc" | "desc" };
+        }) => {
+          const matching = compactionRevisions.filter(
+            (revision) =>
+              revision.threadId === args.where.threadId &&
+              revision.generation === args.where.generation,
+          );
+          if (matching.length === 0) return null;
+          const ordered = [...matching].sort((left, right) => left.toSeqInclusive - right.toSeqInclusive);
+          return args.orderBy?.toSeqInclusive === "asc" ? ordered[0]! : ordered[ordered.length - 1]!;
+        },
+      ),
+      create: vi.fn(async (args: { data: Record<string, unknown> }) => {
+        const revision = {
+          id: `compaction-rev-${compactionRevisions.length + 1}`,
+          threadId: String(args.data.threadId),
+          generation: Number(args.data.generation),
+          toSeqInclusive: Number(args.data.toSeqInclusive),
+          ...args.data,
+        };
+        compactionRevisions.push(revision);
+        return revision;
+      }),
+    },
     event: {
       findFirst: vi.fn(async () => (options.wasCleared ? { seq: 0 } : null)),
     },
@@ -318,6 +356,11 @@ function compactionHarness(
           return ordered.slice(0, args.take ?? ordered.length);
         },
       ),
+      findFirst: vi.fn(async () => null),
+    },
+    run: {
+      findFirst: vi.fn(async () => null),
+      findUnique: vi.fn(async () => null),
     },
     deploymentSettings: {
       findUnique: vi.fn(async () => options.settings ?? null),
@@ -375,6 +418,7 @@ function compactionHarness(
     jobs: jobs as unknown as JobPublisher,
     memoryProviders,
     deploymentModelKey: options.deploymentModelKey,
+    memoryDigestKey: "test-digest-key",
     ...(options.resolveModel ? { resolveModel: options.resolveModel } : {}),
   };
   return {
@@ -386,6 +430,7 @@ function compactionHarness(
     purgeHistory,
     memoryProviders,
     jobs,
+    compactionRevisions,
     deps,
   };
 }

@@ -463,6 +463,10 @@ msgstr "动态"
 msgid "Add"
 msgstr "添加"
 
+#: src/pages/memory-facts.tsx
+msgid "Add a memory"
+msgstr "添加记忆"
+
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Add a model in Settings to use this."
 msgstr "请在设置中添加模型后再使用。"
@@ -1091,6 +1095,10 @@ msgstr ""
 msgid "Choose which connected model {productName} uses."
 msgstr "选择 {productName} 使用的已连接模型。"
 
+#: src/pages/memory-facts.tsx
+msgid "Cleaning up indexes…"
+msgstr "正在清理索引…"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
 msgstr "清空"
@@ -1257,8 +1265,13 @@ msgstr "由部署配置"
 msgid "Configured servers"
 msgstr "已配置的服务器"
 
+#: src/pages/memory-facts.tsx
+msgid "Confirm"
+msgstr "确认"
+
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 msgid "Confirm delete"
 msgstr "确认删除"
 
@@ -1266,6 +1279,14 @@ msgstr "确认删除"
 #: src/pages/Auth.tsx
 msgid "Confirm password"
 msgstr "确认密码"
+
+#: src/pages/memory-facts.tsx
+msgid "Confirm share"
+msgstr "确认共享"
+
+#: src/pages/memory-facts.tsx
+msgid "Confirm undo"
+msgstr "确认撤销"
 
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
@@ -1366,6 +1387,10 @@ msgstr "使用邮箱继续"
 #: src/pages/Shell.tsx
 msgid "Copy"
 msgstr "复制"
+
+#: src/pages/memory-facts.tsx
+msgid "Correction saved"
+msgstr "纠正已保存"
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Could not add"
@@ -1532,6 +1557,7 @@ msgid "Could not list files"
 msgstr ""
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Could not load"
 msgstr "无法加载"
 
@@ -1664,6 +1690,7 @@ msgstr "无法运行例行任务"
 
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Could not save"
 msgstr "无法保存"
@@ -1945,6 +1972,7 @@ msgstr ""
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/dialogs.tsx
@@ -2266,6 +2294,14 @@ msgstr "展开"
 msgid "Expand {0}"
 msgstr "展开 {0}"
 
+#: src/pages/memory-facts.tsx
+msgid "expired"
+msgstr "已过期"
+
+#: src/pages/memory-facts.tsx
+msgid "Expired"
+msgstr "已失效"
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Export"
 msgstr "导出"
@@ -2376,6 +2412,11 @@ msgstr "忘记密码？"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Free"
 msgstr "免费"
+
+#. placeholder {0}: fact.evidenceThreadCount
+#: src/pages/memory-facts.tsx
+msgid "from {0} conversations"
+msgstr "来自 {0} 个会话"
 
 #: src/pages/WindowChrome.tsx
 msgid "Fullscreen"
@@ -2523,9 +2564,21 @@ msgstr ""
 msgid "Image must be smaller than 5 MB"
 msgstr ""
 
+#: src/pages/KnowledgeSection.tsx
+msgid "Import as memory"
+msgstr "导入为记忆"
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "导入 OpenAPI JSON"
+
+#: src/pages/memory-facts.tsx
+msgid "Import reverted; the legacy document is used again."
+msgstr "已撤销导入；旧文档恢复使用。"
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Imported"
+msgstr "已导入"
 
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
@@ -2655,6 +2708,10 @@ msgstr ""
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Leave"
 msgstr "退出"
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Legacy documents"
+msgstr "旧版文档"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
@@ -2848,6 +2905,10 @@ msgstr "记忆"
 #: src/pages/shell/bot-panel.tsx
 msgid "Memory scope"
 msgstr "记忆范围"
+
+#: src/pages/memory-facts.tsx
+msgid "Memory text"
+msgstr "记忆正文"
 
 #: src/pages/Shell.tsx
 msgid "Mentions"
@@ -3155,6 +3216,10 @@ msgstr "还没有运行记录"
 msgid "No skills yet"
 msgstr "暂无技能"
 
+#: src/pages/memory-facts.tsx
+msgid "No sources recorded"
+msgstr "没有记录的来源"
+
 #: src/components/ai/TaskCenterView.tsx
 msgid "No tasks running in background"
 msgstr "没有正在后台的任务"
@@ -3201,6 +3266,7 @@ msgid "Nothing is still running"
 msgstr "没有仍在运行的任务"
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Nothing remembered yet"
 msgstr "暂无记忆"
 
@@ -3400,6 +3466,10 @@ msgstr "已暂停"
 msgid "Pending"
 msgstr ""
 
+#: src/pages/memory-facts.tsx
+msgid "Pending confirmation"
+msgstr "待确认"
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "个人凭据"
@@ -3592,6 +3662,7 @@ msgid "Refreshing…"
 msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
+#: src/pages/memory-facts.tsx
 msgid "Reject"
 msgstr "拒绝"
 
@@ -3614,6 +3685,14 @@ msgstr ""
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Release interrupted computer?"
 msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Remember"
+msgstr "记住"
+
+#: src/pages/memory-facts.tsx
+msgid "Remembered"
+msgstr "已记下"
 
 #: src/components/ApprovalRulesSettings.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -3880,6 +3959,10 @@ msgstr ""
 msgid "Save"
 msgstr "保存"
 
+#: src/pages/memory-facts.tsx
+msgid "Save correction"
+msgstr "保存纠正"
+
 #: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
@@ -3919,6 +4002,11 @@ msgstr "正在保存…"
 #: src/lib/call-session.ts
 msgid "Say yes or no, or answer in a sentence."
 msgstr "回答是或否，或一句话说明。"
+
+#. placeholder {0}: scopeLabel(fact.scopeKind, t)
+#: src/pages/memory-facts.tsx
+msgid "scope: {0}"
+msgstr "作用域：{0}"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -4044,6 +4132,10 @@ msgstr "设置：用量"
 msgid "Setup help"
 msgstr "设置帮助"
 
+#: src/pages/memory-facts.tsx
+msgid "Share with space"
+msgstr "共享到空间"
+
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Shared"
@@ -4056,6 +4148,10 @@ msgstr ""
 #: src/pages/KnowledgeSection.tsx
 msgid "Shared documents"
 msgstr "共享文档"
+
+#: src/pages/memory-facts.tsx
+msgid "Shared with the space"
+msgstr "已共享到空间"
 
 #: src/components/computer/TerminalApp.tsx
 msgid "Shell"
@@ -4166,6 +4262,18 @@ msgstr ""
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Software update"
 msgstr "软件更新"
+
+#: src/pages/memory-facts.tsx
+msgid "Something worth remembering…"
+msgstr "值得记住的内容…"
+
+#: src/pages/memory-facts.tsx
+msgid "source no longer accessible"
+msgstr "来源已不可访问"
+
+#: src/pages/memory-facts.tsx
+msgid "Sources"
+msgstr "来源"
 
 #: src/components/ModelTreePicker.tsx
 msgid "Space default"
@@ -4391,6 +4499,15 @@ msgstr ""
 msgid "this Mac"
 msgstr "这台 Mac"
 
+#: src/pages/memory-facts.tsx
+msgid "This memory can no longer be changed that way."
+msgstr "这条记忆已不能再这样修改。"
+
+#: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
+msgid "This memory changed elsewhere; showing the latest version."
+msgstr "这条记忆在其他地方被修改；已显示最新版本。"
+
 #: src/pages/Artifacts.tsx
 msgid "This month"
 msgstr ""
@@ -4516,6 +4633,10 @@ msgstr "不可用"
 #: src/pages/shell/bot-panel.tsx
 msgid "Undo"
 msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Undo import"
+msgstr "撤销导入"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Undone"

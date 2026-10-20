@@ -152,3 +152,5 @@ function snippet(content: string, q: string): string {
   if (idx < 0) return content.slice(0, 140);
   return content.slice(Math.max(0, idx - 40), idx + q.length + 80);
 }
+
+export * from "./facts.js";

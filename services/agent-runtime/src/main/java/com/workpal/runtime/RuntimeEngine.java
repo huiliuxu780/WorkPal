@@ -159,7 +159,10 @@ public final class RuntimeEngine {
             ToolBridgeClient bridge, String taskId, String childSession) {}
 
     public RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot) {
-        this(json, stateRoot, workspaceRoot, productionCompaction(), true);
+        // Null compaction = derive explicit token budgets per request from the
+        // model's actual context window (ME-02 M4); productionCompaction(window)
+        // documents the exact formula.
+        this(json, stateRoot, workspaceRoot, null, true);
     }
 
     /**
@@ -211,12 +214,69 @@ public final class RuntimeEngine {
      * Verified by real-run integration tests, not by builder defaults alone.
      */
     static CompactionConfig productionCompaction() {
+        return productionCompaction(null);
+    }
+
+    /** Reserved head-room for output plus safety margin, matching AgentScope's default. */
+    static final int COMPACTION_RESERVED_TOKENS = 20_000;
+    /** Fallback window when a request reports none (matches ModelFactory's default). */
+    static final int COMPACTION_DEFAULT_WINDOW = 128_000;
+    static final int COMPACTION_KEEP_TOKENS_MIN = 2_000;
+    static final int COMPACTION_KEEP_TOKENS_MAX = 8_000;
+    static final double COMPACTION_KEEP_TOKENS_RATIO = 0.25;
+
+    /**
+     * ME-02 M4: resolves the AG-02 deviation between the "30/10" literals and
+     * AgentScope's dynamic token cutoff. Trigger and keep sizes are now
+     * EXPLICIT token budgets derived from the actual model context window of
+     * each request, mirroring CompactionMiddleware.resolveEffectiveConfig()
+     * exactly so the configured semantics are the real semantics:
+     * <ul>
+     *   <li>trigger: {@code window - reserved} estimated tokens, falling back
+     *       to {@code max(1, window/2)} when the reserve does not fit;
+     *       {@code triggerMessages(30)} remains a genuine coarse backstop for
+     *       many-small-message working sets;</li>
+     *   <li>keep: {@code clamp((window - reserved) * 0.25, 2k..8k)} estimated
+     *       tokens, so retention is token-defined wherever a window is known —
+     *       {@code keepMessages(10)} only applies when AgentScope cannot
+     *       compute token counts at all.</li>
+     * </ul>
+     * flush/offload stay disabled exactly as in AG-02.
+     */
+    static CompactionConfig productionCompaction(Integer contextWindow) {
+        int window = contextWindow == null || contextWindow <= 0
+                ? COMPACTION_DEFAULT_WINDOW
+                : contextWindow;
+        int triggerTokens = window - COMPACTION_RESERVED_TOKENS;
+        if (triggerTokens <= 0) {
+            triggerTokens = Math.max(1, window / 2);
+        }
+        int keepTokens = Math.min(COMPACTION_KEEP_TOKENS_MAX,
+                Math.max(COMPACTION_KEEP_TOKENS_MIN,
+                        (int) Math.round((window - COMPACTION_RESERVED_TOKENS)
+                                * COMPACTION_KEEP_TOKENS_RATIO)));
         return CompactionConfig.builder()
                 .triggerMessages(30)
                 .keepMessages(10)
+                .triggerTokens(triggerTokens)
+                .keepTokens(keepTokens)
                 .flushBeforeCompact(false)
                 .offloadBeforeCompact(false)
                 .build();
+    }
+
+    /**
+     * Production runs derive the compaction budget from each request's model
+     * window (the public constructor stores null); a config injected through
+     * the package-private test seams is used VERBATIM — including AgentScope's
+     * stock defaults when a test pins the legacy pre-fix behavior.
+     */
+    CompactionConfig effectiveCompaction(RunRequest request) {
+        if (compaction != null) {
+            return compaction;
+        }
+        Integer window = request.model() == null ? null : request.model().contextWindow();
+        return productionCompaction(window);
     }
 
     public void cancel(String runId) {
@@ -368,7 +428,12 @@ public final class RuntimeEngine {
                 .workspace(workspace)
                 .stateStore(store)
                 .maxIters(20)
-                .compaction(compaction)
+                // ME-02 M4: production compaction budgets derive from this
+                // request's actual model window; test-seam configs stay verbatim.
+                .compaction(effectiveCompaction(request))
+                // ME-02 M3: bounded lifecycle metadata only — no memory writes,
+                // no tool-result copies, never blocks the model.
+                .hook(new WorkPalMemorySignalHook(request))
                 .toolsConfig(toolFilter)
                 .disableFilesystemTools()
                 .disableShellTool()

@@ -3,26 +3,32 @@ import { promptSegment } from "@rakazo/core";
 
 const MAX_AGENT_MEMORY_BYTES = 32 * 1024;
 
-type ScopedMemoryDocument = MemorySnapshot["documents"][number] & {
+export type ScopedMemoryDocument = MemorySnapshot["documents"][number] & {
   scope: "bot" | "user";
 };
 
-export async function loadAgentMemoryContext(
+/**
+ * Reads both legacy Markdown scopes for one bot surface. ME-02: exported so
+ * the unified injection assembler can budget legacy documents alongside the
+ * new fact/summary layers in a single function.
+ */
+export async function loadLegacyMemoryDocuments(
   memory: MemoryStore,
   botId: string,
   context: AdapterContext,
-  maxBytes = MAX_AGENT_MEMORY_BYTES,
-): Promise<string | undefined> {
+): Promise<ScopedMemoryDocument[]> {
   const [botMemory, userMemory] = await Promise.all([
     memory.read({ scope: "bot", botId }, context),
     memory.read({ scope: "user" }, context),
   ]);
-  const documents: ScopedMemoryDocument[] = [
+  return [
     ...botMemory.documents.map((document) => ({ ...document, scope: "bot" as const })),
     ...userMemory.documents.map((document) => ({ ...document, scope: "user" as const })),
   ];
-  if (documents.length === 0) return undefined;
+}
 
+/** Deterministic legacy ordering: newest first, then revision, scope, path. */
+export function sortLegacyMemoryDocuments(documents: ScopedMemoryDocument[]): void {
   documents.sort(
     (left, right) =>
       memoryTimestamp(right.updatedAt) - memoryTimestamp(left.updatedAt) ||
@@ -30,6 +36,18 @@ export async function loadAgentMemoryContext(
       left.scope.localeCompare(right.scope) ||
       left.path.localeCompare(right.path),
   );
+}
+
+export async function loadAgentMemoryContext(
+  memory: MemoryStore,
+  botId: string,
+  context: AdapterContext,
+  maxBytes = MAX_AGENT_MEMORY_BYTES,
+): Promise<string | undefined> {
+  const documents = await loadLegacyMemoryDocuments(memory, botId, context);
+  if (documents.length === 0) return undefined;
+
+  sortLegacyMemoryDocuments(documents);
 
   // Fixed preamble: prompts/context/durable-memory-preamble.md (P06).
   const preamble = `${promptSegment("context/durable-memory-preamble")}\n\n<durable_memory>\n`;
@@ -55,11 +73,11 @@ export async function loadAgentMemoryContext(
   return `${preamble}${sections.join("")}${closing}`;
 }
 
-function byteLength(value: string): number {
+export function byteLength(value: string): number {
   return Buffer.byteLength(value, "utf8");
 }
 
-function truncateUtf8(value: string, maxBytes: number): string {
+export function truncateUtf8(value: string, maxBytes: number): string {
   if (maxBytes <= 0) return "";
   const characters: string[] = [];
   let bytes = 0;

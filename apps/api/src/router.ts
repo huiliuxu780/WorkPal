@@ -12,6 +12,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import {
   computerControlExpireJobKey,
+  memoryExtractJobKey,
   messagingDeliverJob,
   routineJobKey,
   routineWakeupJob,
@@ -235,6 +236,22 @@ import {
   revertConnectedMcpApprovals,
 } from "./mcp-approval.js";
 import { buildMcpUpdateMaterial } from "./mcp-material.js";
+import {
+  confirmMemoryFact,
+  correctMemoryFact,
+  createMemoryFact,
+  deleteMemoryFact,
+  getMemoryFact,
+  getMemorySummary,
+  getSpaceMemoryPolicyRpc,
+  importLegacyMemoryFact,
+  listMemoryFactEvidence,
+  listMemoryFacts,
+  promoteMemoryFact,
+  rejectMemoryFact,
+  revertImportMemoryFact,
+  setSpaceMemoryPolicyRpc,
+} from "./memory-facts-api.js";
 import {
   disconnectMemoryProvider,
   persistMemoryProviderConfig,
@@ -542,6 +559,8 @@ export interface RouterDeps {
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
+  /** Server-keyed HMAC key for memory evidence digests (ME-01). */
+  memoryDigestKey: string;
   home: AgentHomeStore;
   secrets: EncryptedSecretStore;
   oauthLogins: PiOAuthLogins;
@@ -2187,11 +2206,14 @@ export function createRouter(deps: RouterDeps) {
                 return null;
               })
             : Promise.resolve(null),
-          Promise.all(
-            cancelledRunIds.map((runId) =>
+          Promise.all([
+            ...cancelledRunIds.map((runId) =>
               deps.jobs.cancel(runJobKey(runId)).catch(() => undefined),
             ),
-          ),
+            // ME-01 M5: cancel pending memory extraction; late results are
+            // additionally refused by the cursor's generation fence.
+            deps.jobs.cancel(memoryExtractJobKey(target.threadId)).catch(() => undefined),
+          ]),
         ]);
         // Durable memories remain in their Space-private containers. Clear only removes
         // conversation-derived summaries from the previous generation; including the new
@@ -3362,6 +3384,56 @@ export function createRouter(deps: RouterDeps) {
       disconnectProvider: authed.memory.disconnectProvider.handler(async ({ context }) =>
         disconnectMemoryProvider(deps, context.actor),
       ),
+      facts: {
+        list: authed.memory.facts.list.handler(async ({ context, input }) =>
+          listMemoryFacts(deps, context.actor, input),
+        ),
+        get: authed.memory.facts.get.handler(async ({ context, input }) =>
+          getMemoryFact(deps, context.actor, input),
+        ),
+        create: authed.memory.facts.create.handler(async ({ context, input }) =>
+          createMemoryFact(deps, context.actor, input),
+        ),
+        confirm: authed.memory.facts.confirm.handler(async ({ context, input }) =>
+          confirmMemoryFact(deps, context.actor, input),
+        ),
+        correct: authed.memory.facts.correct.handler(async ({ context, input }) =>
+          correctMemoryFact(deps, context.actor, input),
+        ),
+        reject: authed.memory.facts.reject.handler(async ({ context, input }) =>
+          rejectMemoryFact(deps, context.actor, input),
+        ),
+        delete: authed.memory.facts.delete.handler(async ({ context, input }) =>
+          deleteMemoryFact(deps, context.actor, input),
+        ),
+        promote: authed.memory.facts.promote.handler(async ({ context, input }) =>
+          promoteMemoryFact(deps, context.actor, input),
+        ),
+        importLegacy: authed.memory.facts.importLegacy.handler(async ({ context, input }) =>
+          importLegacyMemoryFact(deps, context.actor, input),
+        ),
+        revertImport: authed.memory.facts.revertImport.handler(async ({ context, input }) =>
+          revertImportMemoryFact(deps, context.actor, input),
+        ),
+      },
+      factEvidence: {
+        list: authed.memory.factEvidence.list.handler(async ({ context, input }) =>
+          listMemoryFactEvidence(deps, context.actor, input),
+        ),
+      },
+      summary: {
+        get: authed.memory.summary.get.handler(async ({ context, input }) =>
+          getMemorySummary(deps, context.actor, input),
+        ),
+      },
+      policy: {
+        get: authed.memory.policy.get.handler(async ({ context }) =>
+          getSpaceMemoryPolicyRpc(deps, context.actor),
+        ),
+        set: authed.memory.policy.set.handler(async ({ context, input }) =>
+          setSpaceMemoryPolicyRpc(deps, context.actor, input),
+        ),
+      },
     },
     routines: {
       list: authed.routines.list.handler(async ({ context, input }) => {

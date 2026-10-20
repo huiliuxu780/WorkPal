@@ -463,6 +463,10 @@ msgstr "Etkinlik"
 msgid "Add"
 msgstr "Ekle"
 
+#: src/pages/memory-facts.tsx
+msgid "Add a memory"
+msgstr ""
+
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Add a model in Settings to use this."
 msgstr ""
@@ -1091,6 +1095,10 @@ msgstr ""
 msgid "Choose which connected model {productName} uses."
 msgstr "{productName}'nun hangi bağlı modeli kullanacağını seç."
 
+#: src/pages/memory-facts.tsx
+msgid "Cleaning up indexes…"
+msgstr ""
+
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
 msgstr "Temizle"
@@ -1257,8 +1265,13 @@ msgstr "Dağıtım tarafından yapılandırıldı"
 msgid "Configured servers"
 msgstr "Yapılandırılmış sunucular"
 
+#: src/pages/memory-facts.tsx
+msgid "Confirm"
+msgstr ""
+
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 msgid "Confirm delete"
 msgstr "Silmeyi onayla"
 
@@ -1266,6 +1279,14 @@ msgstr "Silmeyi onayla"
 #: src/pages/Auth.tsx
 msgid "Confirm password"
 msgstr "Parolayı doğrulayın"
+
+#: src/pages/memory-facts.tsx
+msgid "Confirm share"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Confirm undo"
+msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
@@ -1366,6 +1387,10 @@ msgstr "E-posta ile devam et"
 #: src/pages/Shell.tsx
 msgid "Copy"
 msgstr "Kopyala"
+
+#: src/pages/memory-facts.tsx
+msgid "Correction saved"
+msgstr ""
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Could not add"
@@ -1532,6 +1557,7 @@ msgid "Could not list files"
 msgstr ""
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Could not load"
 msgstr "Yüklenemedi"
 
@@ -1664,6 +1690,7 @@ msgstr ""
 
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Could not save"
 msgstr "Kaydedilemedi"
@@ -1945,6 +1972,7 @@ msgstr ""
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/dialogs.tsx
@@ -2266,6 +2294,14 @@ msgstr "Genişlet"
 msgid "Expand {0}"
 msgstr ""
 
+#: src/pages/memory-facts.tsx
+msgid "expired"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Expired"
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Export"
 msgstr "Dışa aktar"
@@ -2375,6 +2411,11 @@ msgstr "Parolanızı mı unuttunuz?"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Free"
+msgstr ""
+
+#. placeholder {0}: fact.evidenceThreadCount
+#: src/pages/memory-facts.tsx
+msgid "from {0} conversations"
 msgstr ""
 
 #: src/pages/WindowChrome.tsx
@@ -2523,9 +2564,21 @@ msgstr ""
 msgid "Image must be smaller than 5 MB"
 msgstr ""
 
+#: src/pages/KnowledgeSection.tsx
+msgid "Import as memory"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "OpenAPI JSON içe aktar"
+
+#: src/pages/memory-facts.tsx
+msgid "Import reverted; the legacy document is used again."
+msgstr ""
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Imported"
+msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
@@ -2654,6 +2707,10 @@ msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Leave"
+msgstr ""
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Legacy documents"
 msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
@@ -2848,6 +2905,10 @@ msgstr "Hafıza"
 #: src/pages/shell/bot-panel.tsx
 msgid "Memory scope"
 msgstr "Hafıza kapsamı"
+
+#: src/pages/memory-facts.tsx
+msgid "Memory text"
+msgstr ""
 
 #: src/pages/Shell.tsx
 msgid "Mentions"
@@ -3155,6 +3216,10 @@ msgstr ""
 msgid "No skills yet"
 msgstr "Henüz beceri yok"
 
+#: src/pages/memory-facts.tsx
+msgid "No sources recorded"
+msgstr ""
+
 #: src/components/ai/TaskCenterView.tsx
 msgid "No tasks running in background"
 msgstr ""
@@ -3201,6 +3266,7 @@ msgid "Nothing is still running"
 msgstr "Hâlâ çalışan bir şey yok"
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Nothing remembered yet"
 msgstr "Henüz hatırlanan bir şey yok"
 
@@ -3400,6 +3466,10 @@ msgstr ""
 msgid "Pending"
 msgstr ""
 
+#: src/pages/memory-facts.tsx
+msgid "Pending confirmation"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "Kişisel kimlik bilgisi"
@@ -3592,6 +3662,7 @@ msgid "Refreshing…"
 msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
+#: src/pages/memory-facts.tsx
 msgid "Reject"
 msgstr ""
 
@@ -3613,6 +3684,14 @@ msgstr ""
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Release interrupted computer?"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Remember"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Remembered"
 msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
@@ -3880,6 +3959,10 @@ msgstr ""
 msgid "Save"
 msgstr "Kaydet"
 
+#: src/pages/memory-facts.tsx
+msgid "Save correction"
+msgstr ""
+
 #: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
@@ -3919,6 +4002,11 @@ msgstr "Kaydediliyor…"
 #: src/lib/call-session.ts
 msgid "Say yes or no, or answer in a sentence."
 msgstr "Evet ya da hayır de veya bir cümleyle yanıtla."
+
+#. placeholder {0}: scopeLabel(fact.scopeKind, t)
+#: src/pages/memory-facts.tsx
+msgid "scope: {0}"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -4044,6 +4132,10 @@ msgstr "Ayarlar: Kullanım"
 msgid "Setup help"
 msgstr "Kurulum yardımı"
 
+#: src/pages/memory-facts.tsx
+msgid "Share with space"
+msgstr ""
+
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Shared"
@@ -4056,6 +4148,10 @@ msgstr ""
 #: src/pages/KnowledgeSection.tsx
 msgid "Shared documents"
 msgstr "Paylaşılan belgeler"
+
+#: src/pages/memory-facts.tsx
+msgid "Shared with the space"
+msgstr ""
 
 #: src/components/computer/TerminalApp.tsx
 msgid "Shell"
@@ -4165,6 +4261,18 @@ msgstr ""
 
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Software update"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Something worth remembering…"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "source no longer accessible"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Sources"
 msgstr ""
 
 #: src/components/ModelTreePicker.tsx
@@ -4391,6 +4499,15 @@ msgstr ""
 msgid "this Mac"
 msgstr "bu Mac"
 
+#: src/pages/memory-facts.tsx
+msgid "This memory can no longer be changed that way."
+msgstr ""
+
+#: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
+msgid "This memory changed elsewhere; showing the latest version."
+msgstr ""
+
 #: src/pages/Artifacts.tsx
 msgid "This month"
 msgstr ""
@@ -4515,6 +4632,10 @@ msgstr ""
 #: src/pages/Shell.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Undo"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Undo import"
 msgstr ""
 
 #: src/pages/shell/bot-panel.tsx

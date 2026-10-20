@@ -1575,6 +1575,8 @@ describe("computer execution leases", () => {
         updateMany: vi.fn(),
       },
       message: { deleteMany: vi.fn() },
+      memoryEvidence: { updateMany: vi.fn() },
+      memoryFact: { findMany: vi.fn(async () => []), delete: vi.fn() },
       event: {
         deleteMany: vi.fn(),
         create: vi.fn().mockResolvedValue({

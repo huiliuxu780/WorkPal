@@ -27,7 +27,9 @@ test("memory and skills are readable and editable in the app", async ({ page }, 
   const memoryRow = spaceDocs.getByRole("button", { name: /MEMORY\.md/ });
   await expect(memoryRow).toBeVisible();
   await memoryRow.click();
-  const docEditor = spaceDocs.locator("textarea");
+  // ME-01: the space overlay now also carries the fact add-form textarea;
+  // scope the legacy document editor to the document list itself.
+  const docEditor = spaceDocs.getByTestId("space-memory-list").locator("textarea");
   const marker = `Edited in e2e ${stamp}`;
   await docEditor.fill(`# Memory\n\n${marker}\n`);
   await captureScreenshot(page, testInfo, "83-space-memory-editor");

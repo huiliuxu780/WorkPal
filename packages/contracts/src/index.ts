@@ -16,6 +16,7 @@ export * from "./intervention.js";
 export * from "./local-settings.js";
 export * from "./manual-retry.js";
 export * from "./markdown-text.js";
+export * from "./memory-facts.js";
 export * from "./message-provenance.js";
 export * from "./mcp.js";
 export * from "./openai-compatible-ui.js";

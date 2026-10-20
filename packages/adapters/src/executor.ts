@@ -27,6 +27,8 @@ import type {
 } from "@rakazo/adapter-kit";
 import {
   historyCompactJob,
+  memoryExtractJob,
+  memorySummaryJob,
   routineJobKey,
   routineWakeupJob,
   runContinueJob,
@@ -68,6 +70,7 @@ import {
   collaborationFromOrchestration,
   connectorKindFromToolName,
   containsSecret,
+  estimatePromptTokens,
   createStreamingRedactor,
   endsSentence,
   expandSkillReferencesInPrompt,
@@ -126,6 +129,7 @@ import {
   enqueueDeliveryInTransaction,
   findDefaultModelCredential,
   findModelCredential,
+  getFactForActor,
   InvalidSpaceNameError,
   isTooManyDatabaseConnections,
   latestAnsweredNativePlanAsk,
@@ -152,6 +156,13 @@ import {
   type ThreadEvents,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
+import {
+  deleteFactAsActor,
+  FactNotFoundError,
+  recallFactsForActor,
+  recordMemoryFromRun,
+  type FactServiceDeps,
+} from "@rakazo/memory";
 import { parse as parseShellCommand } from "shell-quote";
 import {
   connectAgent,
@@ -264,6 +275,8 @@ import { resolveDeploymentModel } from "./deployment-model.js";
 import { handoffToGroupBot, loadGroupContext } from "./group-handoff.js";
 import {
   COMPACTION_BATCH_SIZE,
+  compactHistory,
+  type CompactHistoryDeps,
   formatCompactedSummary,
   formatRecalledMemory,
   HISTORY_WINDOW_SIZE,
@@ -273,6 +286,17 @@ import {
   selectCompactedHistory,
   shouldEnqueueCompaction,
 } from "./history-compaction.js";
+import {
+  availableHistoryBudgetTokens,
+  compactionModeForTurn,
+  DEFAULT_COMPACTION_MARGINS,
+  decideCompactionTrigger,
+  detectContextOverflow,
+  ensureHistoryCompacted,
+  estimateRequestTokens,
+  type CompactionMargins,
+  type CompactionMode,
+} from "./compaction-mode.js";
 import {
   assertConnectorToolArgs,
   CATALOG_EXECUTE,
@@ -292,7 +316,20 @@ import {
   parseMcpServerToolArgs,
 } from "./mcp-server-tool.js";
 import { loadAgentMemoryContext } from "./memory-context.js";
+import {
+  assembleMemoryInjection,
+  loadMemoryInjectionInputs,
+  MIGRATION_MEMORY_BUDGETS,
+  POST_MIGRATION_MEMORY_BUDGETS,
+  scaleMemoryBudgetsToWindow,
+  type MemoryInjectionInputs,
+} from "./memory-injection.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
+import {
+  filterStaleFactProjections,
+  formatFactForRecall,
+  type RecalledEntry,
+} from "./memory-recall.js";
 import { selectMemoryTools } from "./memory-tools.js";
 import {
   isCatalogModelChoice,
@@ -717,6 +754,21 @@ export interface ExecutorDeps {
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
+  /** Server-keyed HMAC key for memory evidence digests (ME-01 fact service). */
+  memoryDigestKey: string;
+  /**
+   * ME-01/02 rollback switches. factsEnabled=false restores the legacy
+   * 32 KiB document-only injection and stops memory job enqueue (new tables
+   * are kept for repair). legacyInjectionRetired=true shrinks the injection
+   * budget to the post-migration 2,000 estimated tokens.
+   */
+  memoryFactsEnabled?: boolean;
+  memoryLegacyInjectionRetired?: boolean;
+  /** ME-02 M4: server-selected compaction scheduling; defaults come from env. */
+  historyCompaction?: {
+    modeOverride: CompactionMode | null;
+    margins: CompactionMargins;
+  };
   home: AgentHomeStore;
   artifacts?: ArtifactStore;
   connector?: ConnectorProvider;
@@ -1015,6 +1067,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
   const web = deps.web ?? createWebProvider();
   const browser = deps.browser ?? createBrowserProvider(undefined, { sandbox: deps.sandbox });
   const cloudAgent = deps.cloudAgent;
+  // Single backend service behind every first-party memory write/read path
+  // (tools, Knowledge UI and the worker share it), so per-item delete and
+  // revision CAS cannot be bypassed (ME-01 M6).
+  const factService: FactServiceDeps = {
+    prisma: deps.prisma,
+    digestKey: deps.memoryDigestKey,
+  };
   const resolveConnectedModel = async (
     scope: { userId: string; spaceId: string },
     provider: string,
@@ -1693,13 +1752,27 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 context,
               )
             : Promise.resolve(null);
-        const [discovered, currentTurnImages, memoryContext, scratchpadContext, recalled] =
+        const [discovered, currentTurnImages, memoryInputs, scratchpadContext, recalled] =
           await Promise.all([
             discoveredPromise,
             loadCurrentTurnImages(deps, turnBlocks, context),
+            // ME-02: one loader fetches every injection input; assembly runs
+            // later (after the model window is known) through the single
+            // budgeted assembler. The rollback switch restores the legacy
+            // document-only path byte-for-byte.
             messagingChannelRun
-              ? Promise.resolve("")
-              : loadAgentMemoryContext(deps.memory, bot.id, context),
+              ? Promise.resolve(null)
+              : (deps.memoryFactsEnabled ?? true)
+                ? loadMemoryInjectionInputs(
+                    deps.memory,
+                    factService,
+                    bot.id,
+                    { spaceId: run.spaceId, userId: run.userId },
+                    context,
+                  )
+                : loadAgentMemoryContext(deps.memory, bot.id, context).then(
+                    (content): { legacyOnly: string | undefined } => ({ legacyOnly: content }),
+                  ),
             messagingChannelRun
               ? Promise.resolve("")
               : loadAgentScratchpadContext(deps, {
@@ -3364,18 +3437,36 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }, finish);
           }
           if (name === "remember") {
-            await deps.memory.commit(
-              {
-                scope: "bot",
-                botId: bot.id,
-                path: String(args.path ?? "MEMORY.md"),
-                content: String(args.content ?? ""),
-                sourceRunId: runId,
-                sourceThreadId: thread.id,
-              },
-              context,
-            );
-            return finish({ ok: true });
+            // ME-01: explicit memory now creates a first-party fact through
+            // the same service the Knowledge UI uses — never a hidden
+            // document write that bypasses per-item delete. A single clear
+            // instruction from a trusted human turn activates once; anything
+            // else becomes a candidate for user confirmation. The legacy
+            // `path` argument is accepted for schema compatibility and no
+            // longer selects a storage location.
+            const result = await recordMemoryFromRun(factService, {
+              runId,
+              text: String(args.content ?? ""),
+              scopeKind: "bot",
+              ...(typeof args.source_quote === "string"
+                ? { sourceQuote: args.source_quote }
+                : {}),
+            });
+            if (result.status === "invalid") {
+              return finish({
+                ok: false,
+                error:
+                  result.reason === "secret_like_content"
+                    ? "Refused: that looks like a secret or one-time code. Memories are not a credential store — use the credential/secret mechanisms instead."
+                    : `Could not remember: ${result.reason}`,
+              });
+            }
+            return finish({
+              ok: true,
+              remembered: result.status === "remembered" || result.status === "duplicate",
+              status: result.status,
+              factId: result.factId,
+            });
           }
           if (name === "web_search") {
             return finish(await webSearchFromTool(web, context, args));
@@ -3948,42 +4039,126 @@ export function createRunExecutor(deps: ExecutorDeps) {
             });
           }
           if (name === "recall_memory") {
-            return semanticMemory!.recall(
-              {
-                query: String(args.query ?? ""),
-                scope: memoryScope!,
-                botId: bot.id,
-                ...(thread.historyCompactedUpToSeq == null
-                  ? {}
-                  : { historyGeneration: thread.historyCompactionGeneration }),
-                limit: MAX_RECALLED_MEMORIES,
-              },
-              context,
-            );
-          }
-          if (name === "save_memory") {
-            return finish(
-              await semanticMemory!.save(
+            // ME-01: first-party facts are the authority; the external
+            // semantic index is a rebuildable supplement whose fact-backed
+            // entries are validated against current fact state so deleted
+            // memories never flow back through a stale index.
+            const query = String(args.query ?? "");
+            const facts = await recallFactsForActor(factService, {
+              actor: { userId: run.userId, spaceId: run.spaceId },
+              botId: bot.id,
+              text: query,
+              limit: MAX_RECALLED_MEMORIES,
+            });
+            const factResults = facts.map((fact) => ({
+              memory: formatFactForRecall(fact),
+              id: fact.id,
+              provenance: "workpal-fact",
+              entity: fact.scopeKey,
+            }));
+            let externalResults: RecalledEntry[] = [];
+            if (semanticMemory && memoryScope) {
+              const recalled = await semanticMemory.recall(
                 {
-                  content: String(args.content ?? ""),
-                  scope: memoryScope!,
+                  query,
+                  scope: memoryScope,
                   botId: bot.id,
-                  source: { kind: "durable" },
+                  ...(thread.historyCompactedUpToSeq == null
+                    ? {}
+                    : { historyGeneration: thread.historyCompactionGeneration }),
+                  limit: MAX_RECALLED_MEMORIES,
                 },
                 context,
-              ),
-            );
+              );
+              if (recalled.ok) {
+                externalResults = await filterStaleFactProjections(
+                  deps.prisma,
+                  recalled.value,
+                  run.spaceId,
+                );
+              } else {
+                getLogger().error("semantic memory recall failed", recalled.error);
+              }
+            }
+            return { ok: true as const, value: [...factResults, ...externalResults] };
+          }
+          if (name === "save_memory") {
+            // ME-01: same first-party fact service as remember; the external
+            // index projection (when a Space provider is configured) happens
+            // through the durable outbox, so a provider outage can neither
+            // block nor lose the memory.
+            const result = await recordMemoryFromRun(factService, {
+              runId,
+              text: String(args.content ?? ""),
+              scopeKind: "bot",
+              ...(typeof args.source_quote === "string"
+                ? { sourceQuote: args.source_quote }
+                : {}),
+            });
+            if (result.status === "invalid") {
+              return finish({
+                ok: false,
+                error:
+                  result.reason === "secret_like_content"
+                    ? "Refused: that looks like a secret or one-time code. Memories are not a credential store — use the credential/secret mechanisms instead."
+                    : `Could not save memory: ${result.reason}`,
+              });
+            }
+            return finish({
+              ok: true,
+              saved: result.status === "remembered" || result.status === "duplicate",
+              status: result.status,
+              factId: result.factId,
+            });
           }
           if (name === "forget_memory") {
+            const memoryId = String(args.id ?? "");
+            // First-party per-item delete takes precedence: the same
+            // transactional delete the Knowledge UI performs (tombstone,
+            // revision body purge, shard bump, durable external cleanup).
+            const existing = await getFactForActor(deps.prisma, {
+              spaceId: run.spaceId,
+              userId: run.userId,
+              botId: bot.id,
+              factId: memoryId,
+              // Forgetting an already-forgotten fact replays instead of
+              // falling through to the external provider path.
+              includeDeleted: true,
+            });
+            if (existing) {
+              try {
+                await deleteFactAsActor(
+                  factService,
+                  { userId: run.userId, spaceId: run.spaceId },
+                  { factId: memoryId, expectedRevision: existing.revision },
+                );
+              } catch (error) {
+                // A concurrent UI delete already removed it: forgetting is
+                // idempotent from the model's perspective.
+                if (!(error instanceof FactNotFoundError)) throw error;
+              }
+              return finish({
+                ok: true,
+                id: memoryId,
+                expired: true,
+                reason:
+                  typeof args.reason === "string" && args.reason.trim()
+                    ? args.reason.trim()
+                    : "forget_memory tool",
+              });
+            }
+            // Ids from older external citations remain deletable through the
+            // provider when it supports per-item forget.
             if (!semanticMemory?.forget) {
               return finish({
-                error: "This memory provider does not support forgetting individual facts.",
+                error:
+                  "No first-party memory with this id, and the configured provider does not support forgetting individual entries.",
               });
             }
             return finish(
               await semanticMemory.forget(
                 {
-                  id: String(args.id ?? ""),
+                  id: memoryId,
                   ...(typeof args.entity === "string" && args.entity.trim()
                     ? { entity: args.entity.trim() }
                     : {}),
@@ -4883,6 +5058,61 @@ export function createRunExecutor(deps: ExecutorDeps) {
             content: redactSecrets(recalledMemory, runSecrets),
           });
         }
+        // ME-02: the single budgeted assembler selects, truncates, escapes
+        // and counts every memory layer now that the model window is known.
+        // A stale or missing summary never blocks the run — the deterministic
+        // fact assembly covers this turn while a rebuild job refreshes the
+        // projection asynchronously.
+        let memoryContext: string | undefined;
+        if (memoryInputs && "legacyOnly" in memoryInputs) {
+          memoryContext = memoryInputs.legacyOnly ?? undefined;
+        } else if (memoryInputs) {
+          const injectionInputs: MemoryInjectionInputs = memoryInputs;
+          const budgets = scaleMemoryBudgetsToWindow(
+            deps.memoryLegacyInjectionRetired
+              ? POST_MIGRATION_MEMORY_BUDGETS
+              : MIGRATION_MEMORY_BUDGETS,
+            resolved.contextWindow,
+          );
+          const assembled = assembleMemoryInjection(
+            {
+              legacyDocuments: injectionInputs.legacyDocuments,
+              summary: injectionInputs.readModel.summary,
+              facts: injectionInputs.readModel.facts,
+              legacyImportedDocumentIds: injectionInputs.readModel.legacyImportedDocumentIds,
+            },
+            budgets,
+            { taskText: task.prompt },
+          );
+          memoryContext = assembled.content;
+          getLogger().info("memory.injection assembled", {
+            "memory.injection.estimated_tokens": assembled.stats.estimatedTokens,
+            "memory.injection.total_budget": assembled.stats.budgets.totalTokens,
+            "memory.injection.summary_included": assembled.stats.summaryIncluded,
+            "memory.injection.summary_stale_blocked": injectionInputs.readModel.summaryStale,
+            "memory.injection.selected_facts": assembled.stats.selectedFactIds.length,
+            "memory.injection.omitted_facts": assembled.stats.omittedFactCount,
+            "memory.injection.selected_legacy": assembled.stats.selectedLegacyPaths.length,
+            "memory.injection.omitted_legacy": assembled.stats.omittedLegacyCount,
+            "thread.id": thread.id,
+          });
+          const readModel = injectionInputs.readModel;
+          if (
+            (readModel.summaryStale || !readModel.summary) &&
+            readModel.facts.length > 0 &&
+            (deps.memoryFactsEnabled ?? true)
+          ) {
+            await deps.jobs
+              .enqueue(
+                memorySummaryJob({
+                  spaceId: run.spaceId,
+                  recipientUserId: run.userId,
+                  recipientBotId: bot.id,
+                }),
+              )
+              .catch((error) => getLogger().error("memory.summary enqueue failed", error));
+          }
+        }
         // AG-06 review round 2: durable bot/user memory is an untrusted channel
         // like recalled memory, so its body rides in a conversation-history
         // data message instead of the run instructions (which Java renders
@@ -4996,6 +5226,58 @@ export function createRunExecutor(deps: ExecutorDeps) {
             },
             select: { backgroundTaskId: true },
           });
+          const composedInstructions = userTurnInstructions({
+            botInstructions: runIdentityInstruction(bot, run.trigger),
+            groupContext,
+            messagingContext,
+            redactedScratchpadContext: scratchpadContext
+              ? redactSecrets(scratchpadContext, runSecrets)
+              : undefined,
+            hasHistoricalContext: historicalContext.length > 0,
+            computerInstruction,
+            pageBrowserAllowed,
+            taskCatalogInstruction,
+            planInstruction:
+              turnPolicy.planning.mode === "auto"
+                ? promptSegment("chat/plan-instruction")
+                : undefined,
+            stepInstruction: tools.some((tool) => tool.name === "publish_run_step")
+              ? promptSegment("chat/step-instruction")
+              : undefined,
+            workspaceInstruction,
+            agentEnvironmentInstruction,
+            botDirectory,
+            pluginLine,
+            agentSkillsLine,
+            taughtSkillsLine,
+            replyGuidance: runReplyGuidance(run.trigger),
+            mailEnabled: Boolean(deps.mail),
+          })
+            .filter((instruction): instruction is string => Boolean(instruction))
+            .join("\n\n");
+          // ME-02 M4: honest context-insufficiency failure. When the known
+          // window cannot hold the estimated request even after compaction,
+          // fail with actionable guidance instead of silently dropping
+          // originals or letting the provider reject mid-stream. Unknown
+          // windows never fabricate this failure.
+          const contextOverflow = detectContextOverflow({
+            contextWindowTokens: resolved.contextWindow,
+            estimatedRequestTokens: estimateRequestTokens([
+              composedInstructions,
+              prompt,
+              ...runtimeHistory.map((message) => message.content),
+              JSON.stringify(toolsForRetryRun(tools, run.retryOfRunId)),
+            ]),
+          });
+          if (contextOverflow) {
+            getLogger().error("run exceeds model context after compaction", {
+              "history.compact.reason": "context_overflow_after_compaction",
+              "thread.id": thread.id,
+              "run.id": runId,
+            });
+            await failRunBeforeModel(contextOverflow);
+            return;
+          }
           const runtimeEvents = deps.runtime.run(
             {
               botId: bot.id,
@@ -5025,35 +5307,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   : {}),
               },
               prompt,
-              instructions: userTurnInstructions({
-                botInstructions: runIdentityInstruction(bot, run.trigger),
-                groupContext,
-                messagingContext,
-                redactedScratchpadContext: scratchpadContext
-                  ? redactSecrets(scratchpadContext, runSecrets)
-                  : undefined,
-                hasHistoricalContext: historicalContext.length > 0,
-                computerInstruction,
-                pageBrowserAllowed,
-                taskCatalogInstruction,
-                planInstruction:
-                  turnPolicy.planning.mode === "auto"
-                    ? promptSegment("chat/plan-instruction")
-                    : undefined,
-                stepInstruction: tools.some((tool) => tool.name === "publish_run_step")
-                  ? promptSegment("chat/step-instruction")
-                  : undefined,
-                workspaceInstruction,
-                agentEnvironmentInstruction,
-                botDirectory,
-                pluginLine,
-                agentSkillsLine,
-                taughtSkillsLine,
-                replyGuidance: runReplyGuidance(run.trigger),
-                mailEnabled: Boolean(deps.mail),
-              })
-                .filter((instruction): instruction is string => Boolean(instruction))
-                .join("\n\n"),
+              instructions: composedInstructions,
               history: runtimeHistory,
               currentTurnImages,
               skills: (run.trigger === "delivery" ? [] : agentSkills).map((skill) => ({
@@ -5824,24 +6078,29 @@ export function createRunExecutor(deps: ExecutorDeps) {
               );
             }
             for (const mem of turn.memory ?? []) {
-              await deps.memory.commit(
-                {
-                  scope: mem.scope,
-                  botId: mem.scope === "bot" ? bot.id : undefined,
-                  path: mem.path,
-                  content: mem.content,
-                  sourceRunId: runId,
-                  sourceThreadId: thread.id,
-                },
-                context,
-              );
+              // ME-01: the scripted test runtime writes through the same
+              // first-party fact service as the production tools, so tests
+              // exercise the real per-item delete/revision governance. The
+              // legacy `path` field is accepted but no longer selects storage.
+              const result = await recordMemoryFromRun(factService, {
+                runId,
+                text: mem.content,
+                scopeKind: mem.scope === "user" ? "user" : "bot",
+                // The scripted fixture models an explicit instruction turn:
+                // the model quotes the user's own message verbatim.
+                sourceQuote: mem.content,
+              });
               await deps.events.append({
                 spaceId: run.spaceId,
                 threadId: thread.id,
                 botId: bot.id,
                 type: "memory.revised",
                 runId,
-                payload: { path: mem.path, scope: mem.scope },
+                payload: {
+                  scope: mem.scope,
+                  ...("factId" in result ? { factId: result.factId } : {}),
+                  status: result.status,
+                },
               });
             }
           }
@@ -5951,24 +6210,140 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           // Last, and never fatal: the run is already finalized, so a failure here must not reach
           // the catch block below, where a second finalizeRun would match no rows and silently
-          // skip the completion notification.
+          // skip the completion notification. Raw PostgreSQL messages are
+          // already committed at this point — compaction never gates the chat
+          // record (ME-02 M4).
           try {
             const updatedThread = await deps.prisma.thread.findUniqueOrThrow({
               where: { id: thread.id },
               select: {
                 nextMessageSeq: true,
                 historyCompactedUpToSeq: true,
+                historyCompactionGeneration: true,
+                historyCompactionSummary: true,
               },
             });
-            if (
-              shouldEnqueueCompaction(
-                updatedThread.nextMessageSeq,
-                updatedThread.historyCompactedUpToSeq,
-                HISTORY_WINDOW_SIZE,
-                COMPACTION_BATCH_SIZE,
-              )
-            ) {
-              await deps.jobs.enqueue(historyCompactJob(thread.id));
+            const margins = deps.historyCompaction?.margins ?? DEFAULT_COMPACTION_MARGINS;
+            const envOverride = deps.historyCompaction?.modeOverride ?? null;
+            // Available-history-budget trigger: window minus system prompt,
+            // the actual tool schemas, current input, output reserve and
+            // margins — all ESTIMATES, honestly labeled. The historical
+            // message-count rule remains as the fallback bound.
+            const systemPromptTokens = estimatePromptTokens(composedInstructions);
+            const toolSchemaTokens = estimatePromptTokens(
+              JSON.stringify(toolsForRetryRun(tools, run.retryOfRunId)),
+            );
+            const currentInputTokens =
+              estimatePromptTokens(prompt) +
+              (updatedThread.historyCompactionSummary
+                ? estimatePromptTokens(updatedThread.historyCompactionSummary)
+                : 0);
+            const budgetBase = {
+              contextWindowTokens: resolved.contextWindow,
+              systemPromptTokens,
+              toolSchemaTokens,
+              currentInputTokens,
+              margins,
+            };
+            const startBudget = availableHistoryBudgetTokens(budgetBase);
+            const persistBudget = availableHistoryBudgetTokens({ ...budgetBase, persist: true });
+            const compactedCursor = updatedThread.historyCompactedUpToSeq ?? -1;
+            let estimatedUncompactedTokens: number | null = null;
+            if (startBudget !== null) {
+              // Estimated from the loaded window only; when the thread holds
+              // more uncompacted messages than were loaded, the message-count
+              // fallback rule still applies — no fabricated precision.
+              estimatedUncompactedTokens = 0;
+              for (const message of messages) {
+                if (message.seq > compactedCursor) {
+                  estimatedUncompactedTokens += estimatePromptTokens(
+                    blocksToAgentHistoryText(message.blocks as MessageBlock[]),
+                  );
+                }
+              }
+            }
+            const decision = decideCompactionTrigger({
+              nextMessageSeq: updatedThread.nextMessageSeq,
+              historyCompactedUpToSeq: updatedThread.historyCompactedUpToSeq,
+              windowSize: HISTORY_WINDOW_SIZE,
+              batchSize: COMPACTION_BATCH_SIZE,
+              estimatedUncompactedTokens,
+              startBudgetTokens: startBudget,
+              persistBudgetTokens: persistBudget,
+            });
+            const mode = compactionModeForTurn({ decision, envOverride });
+            if (decision.shouldStart && mode !== "disabled") {
+              // Pin the summarizer identity to the Run that just completed:
+              // it is the most recent finished main-conversation Run covering
+              // the batch tail. A later bot-model change must not redirect it.
+              const pin =
+                runModelProvider && runModelId
+                  ? {
+                      sourceRunId: runId,
+                      modelProvider: runModelProvider,
+                      modelId: runModelId,
+                    }
+                  : undefined;
+              const compactDeps: CompactHistoryDeps = {
+                prisma: deps.prisma,
+                runtime: deps.runtime,
+                jobs: deps.jobs,
+                memoryProviders: deps.memoryProviders,
+                ...(deps.deploymentModelKey
+                  ? { deploymentModelKey: deps.deploymentModelKey }
+                  : {}),
+                memoryDigestKey: deps.memoryDigestKey,
+                ...(pin ? { pinnedModel: pin } : {}),
+                resolvePinnedModel: (scope, provider, modelId) =>
+                  resolveConnectedModel(scope, provider, modelId),
+              };
+              const neededUpToSeq = Math.min(
+                compactedCursor + COMPACTION_BATCH_SIZE,
+                updatedThread.nextMessageSeq - 1,
+              );
+              const ensureResult = await ensureHistoryCompacted(
+                {
+                  loadThread: () =>
+                    deps.prisma.thread.findUniqueOrThrow({
+                      where: { id: thread.id },
+                      select: {
+                        historyCompactedUpToSeq: true,
+                        historyCompactionSummary: true,
+                        historyCompactionGeneration: true,
+                        nextMessageSeq: true,
+                      },
+                    }),
+                  enqueueBackground: () =>
+                    deps.jobs.enqueue(historyCompactJob(thread.id, pin)),
+                  compactOnce: () => compactHistory(compactDeps, thread.id),
+                },
+                mode,
+                {
+                  generation: updatedThread.historyCompactionGeneration,
+                  neededUpToSeq,
+                },
+              );
+              getLogger().info("history.compact scheduled", {
+                "history.compact.mode": mode,
+                "history.compact.reason": decision.reason,
+                "history.compact.compacted": ensureResult.compacted,
+                "history.compact.waited_ms": ensureResult.waitedMs,
+                "history.compact.sync_rescues": ensureResult.syncRescues,
+                ...(resolved.contextWindow
+                  ? { "history.compact.context_window": resolved.contextWindow }
+                  : {}),
+                ...(estimatedUncompactedTokens !== null
+                  ? { "history.compact.estimated_uncompacted_tokens": estimatedUncompactedTokens }
+                  : {}),
+                "thread.id": thread.id,
+              });
+            }
+            // ME-02 M3: a completed turn enqueues incremental extraction; the
+            // job itself refuses quickly when the space policy is off.
+            if (deps.memoryFactsEnabled !== false) {
+              await deps.jobs
+                .enqueue(memoryExtractJob(thread.id))
+                .catch((error) => getLogger().error("memory.extract enqueue failed", error));
             }
           } catch (error) {
             getLogger().error("history.compact enqueue failed", error);

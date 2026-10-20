@@ -509,10 +509,18 @@ describeJourneys("required product journeys", () => {
       path: "notes/result.txt",
     });
     expect(persisted.content).toContain("isolation-ok");
-    const coderMem = await rpc<Array<{ content: string }>>(app, ada, "memory/list", {
-      botId: coder.id,
-    });
-    expect(coderMem.some((m) => m.content.toLowerCase().includes("rust"))).toBe(true);
+    // ME-01: the remember tool now records a first-party fact (single
+    // activation from a trusted human turn), not a hidden MEMORY.md write.
+    const coderFacts = await rpc<{ facts: Array<{ text: string; state: string; origin: string }> }>(
+      app,
+      ada,
+      "memory/facts/list",
+      { botId: coder.id },
+    );
+    const rustFact = coderFacts.facts.find((fact) => fact.text.toLowerCase().includes("rust"));
+    expect(rustFact).toBeDefined();
+    expect(rustFact?.state).toBe("active");
+    expect(rustFact?.origin).toBe("user_direct");
     const dedicated = await rpc<Bot>(app, ada, "bots/setComputer", {
       botId: coder.id,
       mode: "dedicated",

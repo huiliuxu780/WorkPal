@@ -883,7 +883,10 @@ code-b
     return [
       {
         assistant: "noted — i will keep that in memory.",
-        memory: [{ scope: "bot", path: "MEMORY.md", content: `# Memory\n\n- ${prompt}\n` }],
+        // ME-01: the scripted runtime now feeds the first-party fact store a
+        // single proposition (the user's own wording), not a Markdown document
+        // body, matching what the production remember tool records.
+        memory: [{ scope: "bot", path: "MEMORY.md", content: prompt }],
         complete: true,
       },
     ];

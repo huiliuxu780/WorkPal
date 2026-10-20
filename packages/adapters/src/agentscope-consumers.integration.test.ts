@@ -193,17 +193,26 @@ describe("AgentScope consumer integration", () => {
         nextMessageSeq: 1,
       };
       const updateMany = vi.fn(async () => ({ count: 1 }));
+      const prismaMock: Record<string, unknown> = {
+        // persistCompactionRevision runs inside an interactive transaction.
+        $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+        thread: { findUniqueOrThrow: async () => thread, updateMany },
+        threadCompactionRevision: {
+          findFirst: async () => null,
+          create: async (args: { data: Record<string, unknown> }) => ({ id: "rev-1", ...args.data }),
+        },
+        message: {
+          findMany: async () => [
+            { seq: 0, role: "user", blocks: [{ kind: "text", text: "SUMMARY_PROMPT_MARKER" }] },
+          ],
+          findFirst: async () => null,
+        },
+        run: { findFirst: async () => null, findUnique: async () => null },
+      };
       await compactHistory(
         {
           runtime,
-          prisma: {
-            thread: { findUniqueOrThrow: async () => thread, updateMany },
-            message: {
-              findMany: async () => [
-                { seq: 0, role: "user", blocks: [{ kind: "text", text: "SUMMARY_PROMPT_MARKER" }] },
-              ],
-            },
-          } as unknown as PrismaClient,
+          prisma: prismaMock as unknown as PrismaClient,
           resolveModel: async () => ({
             provider: "openai-compatible",
             id: "summary-fixture",
@@ -211,6 +220,7 @@ describe("AgentScope consumer integration", () => {
             baseUrl: modelUrl,
           }),
           memoryProviders: { resolve: async () => null },
+          memoryDigestKey: "test-digest-key",
           jobs: { enqueue: async () => undefined } as never,
         },
         "thread-1",

@@ -493,6 +493,75 @@ export async function destroyBot(
               "updatedAt" = CURRENT_TIMESTAMP
           WHERE "botId" = ${bot.id}
         `;
+        // ME-01 M5: bot-scope facts mirror the document archive — they survive
+        // as the owner's user-scope facts unless the same proposition already
+        // exists there, in which case the bot copy bows out as superseded.
+        // (tx.memoryFact guard follows the backgroundAgentTask mock-detection
+        // convention already used in this transaction.)
+        const botFacts = tx.memoryFact
+          ? await tx.memoryFact.findMany({
+              where: { botId: bot.id, scopeKind: "bot", state: { in: ["active", "candidate"] } },
+              select: {
+                id: true,
+                ownerUserId: true,
+                canonicalKey: true,
+                state: true,
+                revision: true,
+              },
+            })
+          : [];
+        for (const fact of botFacts) {
+          const clash = await tx.memoryFact.findFirst({
+            where: {
+              spaceId: bot.spaceId,
+              scopeKind: "user",
+              scopeKey: `user:${fact.ownerUserId}`,
+              canonicalKey: fact.canonicalKey,
+              state: { in: ["active", "candidate"] },
+            },
+            select: { id: true },
+          });
+          if (clash) {
+            await tx.memoryFact.update({
+              where: { id: fact.id },
+              data: { state: "superseded", revision: fact.revision + 1, lastChangedBy: context.userId },
+            });
+          } else {
+            await tx.memoryFact.update({
+              where: { id: fact.id },
+              data: { scopeKind: "user", scopeKey: `user:${fact.ownerUserId}`, botId: null },
+            });
+          }
+        }
+      } else {
+        // Deleting the bot's memories must also reach the external index:
+        // queue per-fact cleanup rows before the cascade removes the rows.
+        // The outbox has no FKs, so these survive the bot deletion and stay
+        // visible/retryable until the provider confirms.
+        const doomedFacts = tx.memoryFact
+          ? await tx.memoryFact.findMany({
+              where: { botId: bot.id },
+              select: { id: true },
+            })
+          : [];
+        for (const fact of doomedFacts) {
+          await tx.memoryJobOutbox.upsert({
+            where: {
+              kind_targetId_sourceVersionDigest: {
+                kind: "index_cleanup",
+                targetId: fact.id,
+                sourceVersionDigest: "",
+              },
+            },
+            create: {
+              kind: "index_cleanup",
+              spaceId: bot.spaceId,
+              targetId: fact.id,
+              payload: { factId: fact.id, botId: bot.id, reason: "bot_deleted" },
+            },
+            update: { nextAttemptAt: new Date() },
+          });
+        }
       }
       const ownBackgroundTasks = tx.backgroundAgentTask
         ? await tx.backgroundAgentTask.findMany({

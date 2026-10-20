@@ -48,6 +48,7 @@ describe("createBackgroundJobHandlers", () => {
       runtime: {} as unknown as AgentRuntime,
       secretStore: {} as unknown as EncryptedSecretStore,
       memoryProviders: { resolve: vi.fn(async () => null) },
+      memoryDigestKey: "test-digest-key",
       messaging: {} as unknown as MessagingSurface,
     });
 
@@ -91,6 +92,7 @@ describe("createBackgroundJobHandlers", () => {
       runtime,
       secretStore,
       memoryProviders,
+      memoryDigestKey: "test-digest-key",
       deploymentModelKey: "openrouter-key",
     });
 
@@ -103,8 +105,48 @@ describe("createBackgroundJobHandlers", () => {
         jobs,
         memoryProviders,
         deploymentModelKey: "openrouter-key",
+        memoryDigestKey: "test-digest-key",
         resolveModel,
       },
+      "thread-1",
+    );
+  });
+
+  it("passes the pinned model identity from the job payload to compactHistory", async () => {
+    const prisma = {} as unknown as PrismaClient;
+    const runtime = {} as unknown as AgentRuntime;
+    const jobs = {} as unknown as JobPublisher;
+    const memoryProviders = { resolve: vi.fn(async () => null) };
+    const resolveModel = vi.fn();
+    const handlers = createBackgroundJobHandlers({
+      executor: { resolveModel } as unknown as ReturnType<typeof createRunExecutor>,
+      prisma,
+      sandbox: {} as unknown as SandboxProvider,
+      home: {} as unknown as AgentHomeStore,
+      jobs,
+      events: {} as unknown as ThreadEvents,
+      workerId: "worker-1",
+      runtime,
+      secretStore: {} as unknown as EncryptedSecretStore,
+      memoryProviders,
+      memoryDigestKey: "test-digest-key",
+    });
+
+    await handlers["history.compact"]({
+      threadId: "thread-1",
+      sourceRunId: "run-9",
+      modelProvider: "openrouter",
+      modelId: "pinned/model",
+    });
+
+    expect(compactHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pinnedModel: {
+          modelProvider: "openrouter",
+          modelId: "pinned/model",
+          sourceRunId: "run-9",
+        },
+      }),
       "thread-1",
     );
   });
@@ -122,6 +164,7 @@ describe("createBackgroundJobHandlers", () => {
       runtime: {} as AgentRuntime,
       secretStore: {} as EncryptedSecretStore,
       memoryProviders: { resolve: vi.fn(async () => null) },
+      memoryDigestKey: "test-digest-key",
     });
     await handlers["delivery.dispatch"]({});
     expect(dispatchOneDeliveryBatch).toHaveBeenCalledTimes(2);

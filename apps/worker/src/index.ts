@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { JobPublisher, JobWorkerHost } from "@rakazo/adapter-kit";
-import { deliveryDispatchJob, runJobKey } from "@rakazo/adapter-kit";
-import { ComposioConnector, IntegrationProviderSettings } from "@rakazo/adapters";
+import { deliveryDispatchJob, memoryOutboxJob, runJobKey } from "@rakazo/adapter-kit";
+import {
+  compactionMarginsFromEnv,
+  compactionModeFromEnv,
+  ComposioConnector,
+  enqueueLaggingMemoryExtractions,
+  IntegrationProviderSettings,
+  memoryJobsConfigFromEnv,
+} from "@rakazo/adapters";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 
 loadRootEnv();
@@ -61,6 +68,7 @@ import {
   listDescendantRunIds,
   createThreadEvents,
   currentThreadGeneration,
+  deriveMemoryDigestKey,
   enqueueDeliveryInTransaction,
   expireWaitingRuns,
   isTooManyDatabaseConnections,
@@ -217,6 +225,10 @@ async function main() {
   );
   // Same resolver the API uses, so both processes agree on provider, model and key.
   const { key: deploymentModelKey } = resolveDeploymentModel();
+  // ME-01/ME-02: one config object for every memory job, resolved once so the
+  // worker never reads these knobs inline mid-job.
+  const memoryConfig = memoryJobsConfigFromEnv();
+  const memoryDigestKey = deriveMemoryDigestKey(resolveEncryptionKey(process.env));
   const sandboxProvider = resolveSandboxProvider(process.env);
   const sandbox = createRunSandbox(sandboxProvider, {
     ...sandboxProviderOptionsFromEnv(process.env),
@@ -417,6 +429,14 @@ async function main() {
     sandbox,
     memory: new MarkdownMemoryStore(prisma),
     memoryProviders,
+    memoryDigestKey: memoryDigestKey,
+    memoryFactsEnabled: memoryConfig.factsEnabled,
+    memoryLegacyInjectionRetired:
+      process.env.WORKPAL_MEMORY_LEGACY_INJECTION_RETIRED === "true",
+    historyCompaction: {
+      modeOverride: compactionModeFromEnv(),
+      margins: compactionMarginsFromEnv(),
+    },
     home,
     artifacts,
     connector: stack.connector,
@@ -468,6 +488,8 @@ async function main() {
     secretStore: secrets,
     memoryProviders,
     deploymentModelKey,
+    memoryDigestKey,
+    memoryConfig,
     messaging,
     cloudAgent,
   });
@@ -499,6 +521,30 @@ async function main() {
   void jobs
     .enqueue(deliveryDispatchJob())
     .catch((error) => logger.error("delivery dispatch scheduling", error));
+  // ME-02: durable memory outbox drain (shard profiles, summary fan-out,
+  // external index projection/cleanup) and the periodic extraction gap-filler.
+  // Both stay off while the rollback switch disables the new memory layer.
+  const memoryOutboxSweep = memoryConfig.factsEnabled
+    ? setInterval(() => {
+        void jobs
+          .enqueue(memoryOutboxJob())
+          .catch((error) => logger.error("memory.outbox scheduling", error));
+      }, memoryConfig.outboxSweepMs)
+    : null;
+  memoryOutboxSweep?.unref?.();
+  if (memoryOutboxSweep) {
+    void jobs
+      .enqueue(memoryOutboxJob())
+      .catch((error) => logger.error("memory.outbox scheduling", error));
+  }
+  const memoryScanSweep = memoryConfig.factsEnabled
+    ? setInterval(() => {
+        void enqueueLaggingMemoryExtractions(prisma, jobs).catch((error) =>
+          logger.error("memory.extract scan scheduling", error),
+        );
+      }, memoryConfig.scanSweepMs)
+    : null;
+  memoryScanSweep?.unref?.();
   const reconciler = createJobReconciler({
     prisma,
     jobs,
@@ -519,6 +565,8 @@ async function main() {
     clearInterval(cancellationSweep);
     clearInterval(childCancellationSweep);
     clearInterval(budgetSweep);
+    if (memoryOutboxSweep) clearInterval(memoryOutboxSweep);
+    if (memoryScanSweep) clearInterval(memoryScanSweep);
     try {
       await reconciler.stop();
       await jobHost.stop();

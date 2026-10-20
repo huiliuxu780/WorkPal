@@ -465,7 +465,11 @@ export interface AgentRunRequest {
     | "auto-review"
     | "history-compaction"
     | "turn-routing"
-    | "team-chat-judge";
+    | "team-chat-judge"
+    // ME-01/ME-02 auxiliary memory executions: zero tools, zero history,
+    // strict structured output, validated deterministically before commit.
+    | "memory-extraction"
+    | "memory-summary";
   /**
    * Product Harness Phase 2 immutable execution policy for this Run
    * (turn-policy wire shape). The runtime enforces it — plan and subagent
@@ -662,7 +666,25 @@ export interface BackgroundJobPayloads {
   "computer.update": { updateId: string };
   "computer.control-expire": { computerId: string; leaseId: string };
   "skill.teaching-expire": { skillId: string };
-  "history.compact": { threadId: string };
+  "history.compact": {
+    threadId: string;
+    /**
+     * ME-02 M4: model identity pinned at enqueue time from the most recent
+     * completed main-conversation Run covering the batch tail. The job
+     * summarizes with exactly this identity and fails visibly when its
+     * credential is gone — it never silently re-selects the current bot
+     * model, and the cursor never advances on such a failure.
+     */
+    sourceRunId?: string;
+    modelProvider?: string;
+    modelId?: string;
+  };
+  /** ME-02 M3: incremental extraction over one thread's trusted messages. */
+  "memory.extract": { threadId: string };
+  /** ME-02 M2: rebuild one recipient's ContextSummary from current shards. */
+  "memory.summary": { spaceId: string; recipientUserId: string; recipientBotId: string };
+  /** ME-02: drain the durable memory outbox (profiles, summaries, index). */
+  "memory.outbox": Record<string, never>;
   "messaging.deliver": { runId?: string };
   "delivery.dispatch": Record<string, never>;
   /** Reconcile durable remote-agent intent; scope is loaded from the database. */

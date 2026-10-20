@@ -19,7 +19,19 @@ const payloadSchemas = {
     leaseId: z.string().min(1),
   }),
   "skill.teaching-expire": z.object({ skillId: z.string().min(1) }),
-  "history.compact": z.object({ threadId: z.string().min(1) }),
+  "history.compact": z.object({
+    threadId: z.string().min(1),
+    sourceRunId: z.string().min(1).optional(),
+    modelProvider: z.string().min(1).optional(),
+    modelId: z.string().min(1).optional(),
+  }),
+  "memory.extract": z.object({ threadId: z.string().min(1) }),
+  "memory.summary": z.object({
+    spaceId: z.string().min(1),
+    recipientUserId: z.string().min(1),
+    recipientBotId: z.string().min(1),
+  }),
+  "memory.outbox": z.object({}),
   "messaging.deliver": z.object({ runId: z.string().min(1).optional() }),
   "delivery.dispatch": z.object({}),
   "cloud_agent.poll": z.object({ agentId: z.string().min(1) }),
@@ -142,12 +154,76 @@ export function deliveryDispatchJob(availableAt?: Date): BackgroundJob {
   };
 }
 
-export function historyCompactJob(threadId: string): BackgroundJob {
+/**
+ * `pinnedModel` fixes the summarizer identity at enqueue time (ME-02 M4): the
+ * most recent completed main-conversation Run covering the batch tail. The
+ * handler must resolve credentials for exactly this identity and fail loudly
+ * when they are gone — a later bot-model change must not redirect the job.
+ */
+export function historyCompactJob(
+  threadId: string,
+  pinnedModel?: { modelProvider: string; modelId: string; sourceRunId?: string },
+): BackgroundJob {
   return {
     name: "history.compact",
-    payload: { threadId },
+    payload: pinnedModel
+      ? {
+          threadId,
+          ...(pinnedModel.sourceRunId ? { sourceRunId: pinnedModel.sourceRunId } : {}),
+          modelProvider: pinnedModel.modelProvider,
+          modelId: pinnedModel.modelId,
+        }
+      : { threadId },
     replaceKey: historyCompactJobKey(threadId),
     maxAttempts: HISTORY_COMPACT_MAX_ATTEMPTS,
+  };
+}
+
+export function memoryExtractJobKey(threadId: string): string {
+  return `memory.extract:${threadId}`;
+}
+
+/**
+ * Extraction attempts one bounded model call; the periodic sweep re-enqueues
+ * threads that still lag, so a failed attempt must not storm paid retries.
+ */
+export const MEMORY_EXTRACT_MAX_ATTEMPTS = 3;
+
+export function memoryExtractJob(threadId: string, availableAt?: Date): BackgroundJob {
+  return {
+    name: "memory.extract",
+    payload: { threadId },
+    replaceKey: memoryExtractJobKey(threadId),
+    maxAttempts: MEMORY_EXTRACT_MAX_ATTEMPTS,
+    ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+export function memorySummaryJobKey(recipientUserId: string, recipientBotId: string): string {
+  return `memory.summary:${recipientUserId}:${recipientBotId}`;
+}
+
+export const MEMORY_SUMMARY_MAX_ATTEMPTS = 3;
+
+export function memorySummaryJob(
+  payload: BackgroundJobPayloads["memory.summary"],
+  availableAt?: Date,
+): BackgroundJob {
+  return {
+    name: "memory.summary",
+    payload,
+    replaceKey: memorySummaryJobKey(payload.recipientUserId, payload.recipientBotId),
+    maxAttempts: MEMORY_SUMMARY_MAX_ATTEMPTS,
+    ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+export function memoryOutboxJob(availableAt?: Date): BackgroundJob {
+  return {
+    name: "memory.outbox",
+    payload: {},
+    replaceKey: "memory.outbox:drain",
+    ...(availableAt ? { availableAt } : {}),
   };
 }
 

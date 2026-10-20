@@ -17,6 +17,8 @@ export * from "./groups.js";
 export * from "./interventions.js";
 export * from "./manual-retry.js";
 export * from "./memory-config.js";
+export * from "./memory-digest.js";
+export * from "./memory-facts.js";
 export * from "./messages.js";
 export * from "./messaging.js";
 export * from "./model-credentials.js";

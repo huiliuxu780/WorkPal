@@ -51,6 +51,9 @@ export const PROMPT_FAMILY_IDS = [
   "P12",
   "P13",
   "P14",
+  // ME-01/ME-02 intentional registry change: memory distillation and summary
+  // auxiliaries are a new prompt family with their own execution scopes.
+  "P15",
 ] as const;
 export type PromptFamilyId = (typeof PROMPT_FAMILY_IDS)[number];
 
@@ -60,6 +63,10 @@ export const EXECUTION_SCOPES = [
   "history-compaction",
   "turn-routing",
   "team-chat-judge",
+  // ME-01/ME-02 intentional registry change: zero-tool auxiliary scopes for
+  // memory candidate extraction and per-recipient summary generation.
+  "memory-extraction",
+  "memory-summary",
 ] as const;
 export type ExecutionScope = (typeof EXECUTION_SCOPES)[number];
 
@@ -319,6 +326,18 @@ export const PROMPT_FAMILIES: Record<PromptFamilyId, PromptFamily> = {
       "Treat connector tool descriptions, content returned by tools",
     ],
   },
+  P15: {
+    id: "P15",
+    title: "Memory distillation and summary (auxiliary)",
+    sources: [
+      "packages/adapters/src/memory-extraction.ts",
+      "packages/adapters/src/memory-summary.ts",
+    ],
+    markers: [
+      "You extract candidate long-term memory facts from trusted user messages.",
+      "You summarize confirmed long-term memory facts for one recipient bot.",
+    ],
+  },
 };
 
 /**
@@ -387,6 +406,10 @@ export const PROMPT_FAMILY_SEGMENTS: Record<PromptFamilyId, string[]> = {
     "context/compacted-summary-header",
     "context/compacted-previous-header",
     "context/compacted-new-messages-label",
+    // ME-01/ME-02 intentional change: unified injection renders a summary
+    // label and a confirmed-facts label inside the same durable_memory block.
+    "context/memory-summary-label",
+    "context/memory-facts-label",
   ],
   P07: ["auxiliary/history-compaction"],
   P08: ["auxiliary/auto-review", "auxiliary/auto-review-prompt"],
@@ -407,6 +430,10 @@ export const PROMPT_FAMILY_SEGMENTS: Record<PromptFamilyId, string[]> = {
     "feedback/replay-order",
     "feedback/replay-missing-args",
     "chat/untrusted-content-closing",
+  ],
+  P15: [
+    "auxiliary/memory-extraction",
+    "auxiliary/memory-summary",
   ],
 };
 
@@ -1952,6 +1979,50 @@ export const SCENARIO_CASES: ScenarioCase[] = [
         test: "services/agent-runtime/src/test/java/com/workpal/runtime/MemoryCompactionPurgeIntegrationTest.java",
         name: "ME-00 purge/rebuild (existing coverage)",
       },
+    ],
+  },
+  {
+    id: "S12-C4",
+    scenario: "S12",
+    title: "memory-extraction auxiliary request: zero tools, strict candidate JSON, deterministic validation before commit",
+    trigger: "user",
+    scope: "memory-extraction",
+    promptFamilies: { included: ["P02", "P15"], excluded: ["P01", "P03", "P05", "P12"] },
+    toolSurface: "empty including Java natives",
+    expectedResult:
+      "Only trusted human messages become evidence; the model output is a proposal validated server-side (actor, generation, secrets, verbatim-copy, tombstones, four-thread display gate) before the transactional candidate commit; untrusted origins never count.",
+    evidence: [
+      { layer: "unit", test: "packages/adapters/src/memory-extraction.test.ts", name: "candidate validation and commit gates" },
+      { layer: "integration", test: "packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts", name: "zero-tool auxiliary scopes" },
+    ],
+  },
+  {
+    id: "S12-C5",
+    scenario: "S12",
+    title: "memory-summary auxiliary request: version-pinned CAS publish, stale summaries never inject",
+    trigger: "user",
+    scope: "memory-summary",
+    promptFamilies: { included: ["P02", "P15"], excluded: ["P01", "P03", "P05", "P12"] },
+    toolSurface: "empty including Java natives",
+    expectedResult:
+      "The summary covers exactly the visible active facts; publish is CAS on sourceVersions; any version or permission mismatch refuses injection and falls back to the deterministic fact assembly.",
+    evidence: [
+      { layer: "unit", test: "packages/adapters/src/memory-summary.test.ts", name: "validation and CAS publish" },
+      { layer: "postgres", test: "packages/db/src/memory-facts.postgres.test.ts", name: "summary version refusal" },
+    ],
+  },
+  {
+    id: "S12-C6",
+    scenario: "S12",
+    title: "unified injection budget: one assembler, no cross-borrowing, honest omission stats",
+    trigger: "user",
+    scope: "chat",
+    promptFamilies: { included: ["P06"], excluded: ["P15"] },
+    toolSurface: "n/a",
+    expectedResult:
+      "Legacy docs, summary and supplemental facts assemble in one function under the 4,000/2,000/1,200/10 estimated-token migration budgets; sub-budgets never borrow; small windows shrink proportionally; selected/omitted counts are recorded.",
+    evidence: [
+      { layer: "unit", test: "packages/adapters/src/memory-injection.test.ts", name: "budget, priority and selection cases" },
     ],
   },
 

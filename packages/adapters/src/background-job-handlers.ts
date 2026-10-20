@@ -16,7 +16,11 @@ import { scheduleComputerSleep, sleepComputerIfIdle } from "./computer-idle.js";
 import { performComputerUpdate } from "./computer-update.js";
 import type { createRunExecutor } from "./executor.js";
 import { compactHistory } from "./history-compaction.js";
+import { runMemoryExtraction } from "./memory-extraction.js";
+import { memoryJobsConfigFromEnv, type MemoryJobsConfig } from "./memory-jobs-config.js";
+import { drainMemoryOutbox, type MemoryOutboxDrainResult } from "./memory-outbox.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
+import { generateRecipientSummary } from "./memory-summary.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
 import { dispatchOneDeliveryBatch, settleDeliveryRun } from "./result-delivery.js";
 import type { EncryptedSecretStore } from "./secrets.js";
@@ -34,9 +38,14 @@ export function createBackgroundJobHandlers(deps: {
   secretStore: EncryptedSecretStore;
   memoryProviders: MemoryProviderResolver;
   deploymentModelKey?: string;
+  /** ME-01/ME-02: server-keyed HMAC key for memory evidence digests. */
+  memoryDigestKey: string;
+  /** Memory job config; defaults to memoryJobsConfigFromEnv(). */
+  memoryConfig?: MemoryJobsConfig;
   messaging?: MessagingSurface;
   cloudAgent?: CloudAgentConnection | null;
 }): BackgroundJobHandlers {
+  const memoryConfig = deps.memoryConfig ?? memoryJobsConfigFromEnv();
   const deliverMessaging = async (runId?: string) => {
     if (!deps.messaging) return;
     await deliverMessagingOutbound(
@@ -113,10 +122,51 @@ export function createBackgroundJobHandlers(deps: {
           jobs: deps.jobs,
           memoryProviders: deps.memoryProviders,
           deploymentModelKey: deps.deploymentModelKey,
+          memoryDigestKey: deps.memoryDigestKey,
+          pinnedModel:
+            payload.modelProvider && payload.modelId
+              ? {
+                  modelProvider: payload.modelProvider,
+                  modelId: payload.modelId,
+                  ...(payload.sourceRunId ? { sourceRunId: payload.sourceRunId } : {}),
+                }
+              : undefined,
           ...(deps.executor.resolveModel ? { resolveModel: deps.executor.resolveModel } : {}),
         },
         payload.threadId,
       );
+    },
+    "memory.extract": async (payload) => {
+      await runMemoryExtraction(
+        {
+          prisma: deps.prisma,
+          runtime: deps.runtime,
+          config: memoryConfig,
+          digestKey: deps.memoryDigestKey,
+        },
+        payload,
+      );
+    },
+    "memory.summary": async (payload) => {
+      await generateRecipientSummary(
+        { prisma: deps.prisma, runtime: deps.runtime, config: memoryConfig },
+        payload,
+      );
+    },
+    "memory.outbox": async () => {
+      let result: MemoryOutboxDrainResult;
+      let drained = 0;
+      do {
+        result = await drainMemoryOutbox({
+          prisma: deps.prisma,
+          jobs: deps.jobs,
+          memoryProviders: deps.memoryProviders,
+          config: memoryConfig,
+          workerId: deps.workerId,
+        });
+        drained += 1;
+        // Bound one job's work; the worker sweep re-enqueues the drain.
+      } while (result.remaining && drained < 10);
     },
   };
 }

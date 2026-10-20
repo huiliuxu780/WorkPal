@@ -463,6 +463,10 @@ msgstr "Actividad"
 msgid "Add"
 msgstr "Agregar"
 
+#: src/pages/memory-facts.tsx
+msgid "Add a memory"
+msgstr ""
+
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Add a model in Settings to use this."
 msgstr "Agrega un modelo en Configuración para usarlo."
@@ -1091,6 +1095,10 @@ msgstr ""
 msgid "Choose which connected model {productName} uses."
 msgstr "Elige qué modelo conectado usa {productName}."
 
+#: src/pages/memory-facts.tsx
+msgid "Cleaning up indexes…"
+msgstr ""
+
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
 msgstr "Borrar"
@@ -1257,8 +1265,13 @@ msgstr "Configurado por el despliegue"
 msgid "Configured servers"
 msgstr "Servidores configurados"
 
+#: src/pages/memory-facts.tsx
+msgid "Confirm"
+msgstr ""
+
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 msgid "Confirm delete"
 msgstr "Confirmar eliminación"
 
@@ -1266,6 +1279,14 @@ msgstr "Confirmar eliminación"
 #: src/pages/Auth.tsx
 msgid "Confirm password"
 msgstr "Confirmar contraseña"
+
+#: src/pages/memory-facts.tsx
+msgid "Confirm share"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Confirm undo"
+msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
@@ -1366,6 +1387,10 @@ msgstr "Continuar con el correo"
 #: src/pages/Shell.tsx
 msgid "Copy"
 msgstr "Copiar"
+
+#: src/pages/memory-facts.tsx
+msgid "Correction saved"
+msgstr ""
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Could not add"
@@ -1532,6 +1557,7 @@ msgid "Could not list files"
 msgstr ""
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Could not load"
 msgstr "No se pudo cargar"
 
@@ -1664,6 +1690,7 @@ msgstr "No se pudo ejecutar la rutina"
 
 #: src/pages/ExternalConversationSettings.tsx
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Could not save"
 msgstr "No se pudo guardar"
@@ -1945,6 +1972,7 @@ msgstr ""
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
 #: src/pages/McpServersOverlay.tsx
+#: src/pages/memory-facts.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 #: src/pages/shell/dialogs.tsx
@@ -2266,6 +2294,14 @@ msgstr "Expandir"
 msgid "Expand {0}"
 msgstr "Expandir {0}"
 
+#: src/pages/memory-facts.tsx
+msgid "expired"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Expired"
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Export"
 msgstr "Exportar"
@@ -2376,6 +2412,11 @@ msgstr "¿Olvidaste la contraseña?"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Free"
 msgstr "Gratis"
+
+#. placeholder {0}: fact.evidenceThreadCount
+#: src/pages/memory-facts.tsx
+msgid "from {0} conversations"
+msgstr ""
 
 #: src/pages/WindowChrome.tsx
 msgid "Fullscreen"
@@ -2523,9 +2564,21 @@ msgstr ""
 msgid "Image must be smaller than 5 MB"
 msgstr ""
 
+#: src/pages/KnowledgeSection.tsx
+msgid "Import as memory"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "Importar JSON de OpenAPI"
+
+#: src/pages/memory-facts.tsx
+msgid "Import reverted; the legacy document is used again."
+msgstr ""
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Imported"
+msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
@@ -2655,6 +2708,10 @@ msgstr ""
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Leave"
 msgstr "Salir"
+
+#: src/pages/KnowledgeSection.tsx
+msgid "Legacy documents"
+msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
@@ -2848,6 +2905,10 @@ msgstr "Memoria"
 #: src/pages/shell/bot-panel.tsx
 msgid "Memory scope"
 msgstr "Alcance de memoria"
+
+#: src/pages/memory-facts.tsx
+msgid "Memory text"
+msgstr ""
 
 #: src/pages/Shell.tsx
 msgid "Mentions"
@@ -3155,6 +3216,10 @@ msgstr "Aún no hay ejecuciones"
 msgid "No skills yet"
 msgstr "Aún no hay habilidades"
 
+#: src/pages/memory-facts.tsx
+msgid "No sources recorded"
+msgstr ""
+
 #: src/components/ai/TaskCenterView.tsx
 msgid "No tasks running in background"
 msgstr ""
@@ -3201,6 +3266,7 @@ msgid "Nothing is still running"
 msgstr "No queda nada en ejecución"
 
 #: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
 msgid "Nothing remembered yet"
 msgstr "Aún no hay recuerdos"
 
@@ -3400,6 +3466,10 @@ msgstr "En pausa"
 msgid "Pending"
 msgstr ""
 
+#: src/pages/memory-facts.tsx
+msgid "Pending confirmation"
+msgstr ""
+
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Personal credential"
 msgstr "Credencial personal"
@@ -3592,6 +3662,7 @@ msgid "Refreshing…"
 msgstr "Actualizando…"
 
 #: src/components/ai/PlanReviewCard.tsx
+#: src/pages/memory-facts.tsx
 msgid "Reject"
 msgstr ""
 
@@ -3613,6 +3684,14 @@ msgstr ""
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Release interrupted computer?"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Remember"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Remembered"
 msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
@@ -3880,6 +3959,10 @@ msgstr ""
 msgid "Save"
 msgstr "Guardar"
 
+#: src/pages/memory-facts.tsx
+msgid "Save correction"
+msgstr ""
+
 #: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
@@ -3919,6 +4002,11 @@ msgstr "Guardando…"
 #: src/lib/call-session.ts
 msgid "Say yes or no, or answer in a sentence."
 msgstr "Di sí o no, o responde en una frase."
+
+#. placeholder {0}: scopeLabel(fact.scopeKind, t)
+#: src/pages/memory-facts.tsx
+msgid "scope: {0}"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -4044,6 +4132,10 @@ msgstr "Configuración: Uso"
 msgid "Setup help"
 msgstr "Ayuda de configuración"
 
+#: src/pages/memory-facts.tsx
+msgid "Share with space"
+msgstr ""
+
 #: src/pages/MemorySettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Shared"
@@ -4056,6 +4148,10 @@ msgstr ""
 #: src/pages/KnowledgeSection.tsx
 msgid "Shared documents"
 msgstr "Documentos compartidos"
+
+#: src/pages/memory-facts.tsx
+msgid "Shared with the space"
+msgstr ""
 
 #: src/components/computer/TerminalApp.tsx
 msgid "Shell"
@@ -4166,6 +4262,18 @@ msgstr ""
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Software update"
 msgstr "Actualización de software"
+
+#: src/pages/memory-facts.tsx
+msgid "Something worth remembering…"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "source no longer accessible"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Sources"
+msgstr ""
 
 #: src/components/ModelTreePicker.tsx
 msgid "Space default"
@@ -4391,6 +4499,15 @@ msgstr ""
 msgid "this Mac"
 msgstr "esta Mac"
 
+#: src/pages/memory-facts.tsx
+msgid "This memory can no longer be changed that way."
+msgstr ""
+
+#: src/pages/KnowledgeSection.tsx
+#: src/pages/memory-facts.tsx
+msgid "This memory changed elsewhere; showing the latest version."
+msgstr ""
+
 #: src/pages/Artifacts.tsx
 msgid "This month"
 msgstr ""
@@ -4515,6 +4632,10 @@ msgstr "No disponible"
 #: src/pages/Shell.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Undo"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Undo import"
 msgstr ""
 
 #: src/pages/shell/bot-panel.tsx
