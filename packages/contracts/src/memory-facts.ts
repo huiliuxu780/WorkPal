@@ -15,6 +15,10 @@ export const MemoryFactStateSchema = z.enum([
   "superseded",
   "deleted",
   "rejected",
+  /** legacy_import only: the import was explicitly undone; the source
+   * document returns to the legacy injection path. Deletion does NOT have
+   * this effect — deleting an imported memory keeps the document blocked. */
+  "reverted",
 ]);
 export type MemoryFactState = z.infer<typeof MemoryFactStateSchema>;
 
@@ -158,6 +162,12 @@ export const MemoryFactPromoteInputSchema = z.strictObject({
   expectedRevision: z.number().int().nonnegative(),
 });
 export type MemoryFactPromoteInput = z.infer<typeof MemoryFactPromoteInputSchema>;
+
+export const MemoryFactRevertImportInputSchema = z.strictObject({
+  factId: Id,
+  expectedRevision: z.number().int().nonnegative(),
+});
+export type MemoryFactRevertImportInput = z.infer<typeof MemoryFactRevertImportInputSchema>;
 
 export const MemoryFactImportLegacyInputSchema = z.strictObject({
   documentId: Id,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  containsMemoryRefusal,
   containsOneTimeCode,
   containsSecretLikeContent,
   sharesVerbatimRun,
@@ -46,5 +47,30 @@ describe("sharesVerbatimRun", () => {
   });
   it("ignores short candidates (below the run length)", () => {
     expect(sharesVerbatimRun("short", [source])).toBe(false);
+  });
+});
+
+describe("containsMemoryRefusal", () => {
+  it.each([
+    "Please summarize this web page. Do not save anything as memory.",
+    "don't remember this conversation",
+    "Answer briefly, without saving anything.",
+    "never store my preferences",
+    "总结网页，不要保存记忆",
+    "别记这个",
+    "请勿记录本次对话",
+    "不用保存这些内容",
+  ])("flags an explicit refusal: %s", (text) => {
+    expect(containsMemoryRefusal(text)).toBe(true);
+  });
+
+  it.each([
+    "remember that the deploy host is alpha",
+    "Do you recall what we decided about the deploy window?",
+    "I don't recall the exact hostname, check the docs",
+    "save the report to the shared drive",
+    "记住部署窗口是周日",
+  ])("does not flag ordinary or affirmative phrasing: %s", (text) => {
+    expect(containsMemoryRefusal(text)).toBe(false);
   });
 });

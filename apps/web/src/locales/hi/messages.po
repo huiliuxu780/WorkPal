@@ -1259,6 +1259,10 @@ msgstr "पासवर्ड की पुष्टि करें"
 msgid "Confirm share"
 msgstr ""
 
+#: src/pages/memory-facts.tsx
+msgid "Confirm undo"
+msgstr ""
+
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
@@ -2529,6 +2533,10 @@ msgstr ""
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "OpenAPI JSON इम्पोर्ट करें"
+
+#: src/pages/memory-facts.tsx
+msgid "Import reverted; the legacy document is used again."
+msgstr ""
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Imported"
@@ -4538,6 +4546,10 @@ msgstr ""
 #: src/pages/Shell.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Undo"
+msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Undo import"
 msgstr ""
 
 #: src/pages/shell/bot-panel.tsx

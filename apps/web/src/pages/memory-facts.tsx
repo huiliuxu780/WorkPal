@@ -54,6 +54,7 @@ export function MemoryFactList({ botId, testId }: { botId?: string; testId: stri
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingShareId, setConfirmingShareId] = useState<string | null>(null);
+  const [confirmingRevertId, setConfirmingRevertId] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<MemoryFactEvidenceDto[] | null>(null);
   const [newMemory, setNewMemory] = useState("");
   const generation = useRef(0);
@@ -109,6 +110,7 @@ export function MemoryFactList({ botId, testId }: { botId?: string; testId: stri
       if (successNotice) setNotice(successNotice);
       setConfirmingDeleteId(null);
       setConfirmingShareId(null);
+      setConfirmingRevertId(null);
       setEvidence(null);
       await reload();
       return true;
@@ -180,12 +182,14 @@ export function MemoryFactList({ botId, testId }: { botId?: string; testId: stri
             setEvidence(null);
             setConfirmingDeleteId(null);
             setConfirmingShareId(null);
+            setConfirmingRevertId(null);
           } else {
             setOpenId(fact.id);
             setDraft(fact.text);
             setEvidence(null);
             setConfirmingDeleteId(null);
             setConfirmingShareId(null);
+            setConfirmingRevertId(null);
             setError(null);
           }
         }}
@@ -334,6 +338,30 @@ export function MemoryFactList({ botId, testId }: { botId?: string; testId: stri
             >
               <Trans>Sources</Trans>
             </Button>
+            {fact.origin === "legacy_import" && fact.state === "active" ? (
+              <Button
+                variant="ghost"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  if (confirmingRevertId !== fact.id) {
+                    setConfirmingRevertId(fact.id);
+                    return;
+                  }
+                  void mutate(
+                    () =>
+                      rpc.memory.facts.revertImport({
+                        factId: fact.id,
+                        expectedRevision: fact.revision,
+                      }),
+                    t`Import reverted; the legacy document is used again.`,
+                  );
+                }}
+                className="rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground"
+              >
+                {confirmingRevertId === fact.id ? <Trans>Confirm undo</Trans> : <Trans>Undo import</Trans>}
+              </Button>
+            ) : null}
             {fact.state !== "superseded" ? (
               <Button
                 variant="ghost"

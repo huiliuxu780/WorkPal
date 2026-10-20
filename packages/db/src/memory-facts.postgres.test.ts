@@ -27,6 +27,7 @@ import {
   publishContextSummary,
   rebuildShardProfile,
   rejectFact,
+  revertLegacyImport,
   type FactScope,
 } from "./memory-facts.js";
 
@@ -824,13 +825,91 @@ describePostgres("memory facts three-layer repository (PostgreSQL)", () => {
     expect(imported.status).toBe("created");
     expect((await listLegacyImportedDocumentIds(prisma, { spaceId })).has(doc.id)).toBe(true);
     if (imported.status !== "created") return;
-    // Reverting the import (delete) makes the document injectable again.
+
+    // Review P1-2: DELETING the imported fact must NOT resurrect the legacy
+    // document — "delete this memory" means gone, not "fall back to the old
+    // injection path".
     await deleteFact(prisma, {
       spaceId,
       actorUserId: userA,
       factId: imported.fact.id,
       expectedRevision: 1,
     });
-    expect((await listLegacyImportedDocumentIds(prisma, { spaceId })).has(doc.id)).toBe(false);
+    expect((await listLegacyImportedDocumentIds(prisma, { spaceId })).has(doc.id)).toBe(true);
+
+    // Only the explicit revert separates the two semantics: undo the import
+    // and the document becomes the legacy-format entry again.
+    const secondImport = await createFact(prisma, {
+      scope: botScope(),
+      ownerUserId: userA,
+      botId,
+      kind: "legacy_document",
+      text: "bot legacy note",
+      origin: "legacy_import",
+      actorUserId: userA,
+      sourceDocumentId: doc.id,
+    });
+    if (secondImport.status !== "created") throw new Error("expected second import");
+    const reverted = await revertLegacyImport(prisma, {
+      spaceId,
+      actorUserId: userA,
+      factId: secondImport.fact.id,
+      expectedRevision: 1,
+    });
+    expect(reverted.status).toBe("updated");
+    if (reverted.status !== "updated") return;
+    expect(reverted.fact.state).toBe("reverted");
+    expect(reverted.fact.text).toBe("");
+
+    // The first (deleted) import still blocks; the reverted one no longer
+    // does — with both facts on the same document the block set is decided
+    // per document by ANY non-reverted import, so re-check with a fresh doc.
+    const doc2 = await prisma.memoryDocument.create({
+      data: { spaceId, userId: userA, scope: "user", path: "LEGACY2.md", content: "second note" },
+    });
+    const import2 = await createFact(prisma, {
+      scope: userScope(userA),
+      ownerUserId: userA,
+      kind: "legacy_document",
+      text: "second note",
+      origin: "legacy_import",
+      actorUserId: userA,
+      sourceDocumentId: doc2.id,
+    });
+    if (import2.status !== "created") throw new Error("expected import2");
+    expect((await listLegacyImportedDocumentIds(prisma, { spaceId })).has(doc2.id)).toBe(true);
+    await revertLegacyImport(prisma, {
+      spaceId,
+      actorUserId: userA,
+      factId: import2.fact.id,
+      expectedRevision: 1,
+    });
+    expect((await listLegacyImportedDocumentIds(prisma, { spaceId })).has(doc2.id)).toBe(false);
+
+    // Revert guards: stale revision is an actionable conflict, and non-import
+    // facts cannot be "reverted".
+    const conflict = await revertLegacyImport(prisma, {
+      spaceId,
+      actorUserId: userA,
+      factId: secondImport.fact.id,
+      expectedRevision: 1,
+    });
+    expect(conflict.status).toBe("conflict");
+    const plain = await createFact(prisma, {
+      scope: userScope(userA),
+      ownerUserId: userA,
+      kind: "stable_fact",
+      text: "Plain fact is not an import",
+      origin: "user_direct",
+      actorUserId: userA,
+    });
+    if (plain.status !== "created") throw new Error("expected plain fact");
+    const invalid = await revertLegacyImport(prisma, {
+      spaceId,
+      actorUserId: userA,
+      factId: plain.fact.id,
+      expectedRevision: 1,
+    });
+    expect(invalid.status).toBe("invalid_state");
   });
 });

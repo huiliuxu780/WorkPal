@@ -1259,6 +1259,10 @@ msgstr "确认密码"
 msgid "Confirm share"
 msgstr "确认共享"
 
+#: src/pages/memory-facts.tsx
+msgid "Confirm undo"
+msgstr "确认撤销"
+
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
@@ -2529,6 +2533,10 @@ msgstr "导入为记忆"
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "导入 OpenAPI JSON"
+
+#: src/pages/memory-facts.tsx
+msgid "Import reverted; the legacy document is used again."
+msgstr "已撤销导入；旧文档恢复使用。"
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Imported"
@@ -4539,6 +4547,10 @@ msgstr "不可用"
 #: src/pages/shell/bot-panel.tsx
 msgid "Undo"
 msgstr ""
+
+#: src/pages/memory-facts.tsx
+msgid "Undo import"
+msgstr "撤销导入"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Undone"

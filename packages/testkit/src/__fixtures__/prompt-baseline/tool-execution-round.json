@@ -403,7 +403,7 @@
         },
         {
           "function": {
-            "description": "Store a durable fact in this bot's explicit memory.",
+            "description": "Store a durable fact in this bot's explicit memory. To save it immediately, pass source_quote with the exact words from the user's current message that ask for it to be remembered; without a verifiable quote the entry becomes a candidate the user must confirm instead.",
             "name": "remember",
             "parameters": {
               "properties": {
@@ -411,6 +411,10 @@
                   "type": "string"
                 },
                 "path": {
+                  "type": "string"
+                },
+                "source_quote": {
+                  "description": "Verbatim span of the user's current message authorizing this memory. Required for direct activation.",
                   "type": "string"
                 }
               },
@@ -2180,7 +2184,7 @@
         },
         {
           "function": {
-            "description": "Store a durable fact in this bot's explicit memory.",
+            "description": "Store a durable fact in this bot's explicit memory. To save it immediately, pass source_quote with the exact words from the user's current message that ask for it to be remembered; without a verifiable quote the entry becomes a candidate the user must confirm instead.",
             "name": "remember",
             "parameters": {
               "properties": {
@@ -2188,6 +2192,10 @@
                   "type": "string"
                 },
                 "path": {
+                  "type": "string"
+                },
+                "source_quote": {
+                  "description": "Verbatim span of the user's current message authorizing this memory. Required for direct activation.",
                   "type": "string"
                 }
               },

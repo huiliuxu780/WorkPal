@@ -524,12 +524,18 @@ export const builtinAgentTools: ConnectorTool[] = [
   },
   {
     name: "remember",
-    description: "Store a durable fact in this bot's explicit memory.",
+    description:
+      "Store a durable fact in this bot's explicit memory. To save it immediately, pass source_quote with the exact words from the user's current message that ask for it to be remembered; without a verifiable quote the entry becomes a candidate the user must confirm instead.",
     inputSchema: {
       type: "object",
       properties: {
         content: { type: "string" },
         path: { type: "string" },
+        source_quote: {
+          type: "string",
+          description:
+            "Verbatim span of the user's current message authorizing this memory. Required for direct activation.",
+        },
       },
       required: ["content"],
     },
@@ -638,11 +644,16 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "save_memory",
     description:
-      "Store a durable fact in this bot's semantic memory (preferences, decisions, recurring context). Use for anything worth recalling in future conversations.",
+      "Store a durable fact in this bot's semantic memory (preferences, decisions, recurring context). Use for anything worth recalling in future conversations. To save it immediately, pass source_quote with the exact words from the user's current message that ask for it to be remembered; without a verifiable quote the entry becomes a candidate the user must confirm instead.",
     inputSchema: {
       type: "object",
       properties: {
         content: { type: "string" },
+        source_quote: {
+          type: "string",
+          description:
+            "Verbatim span of the user's current message authorizing this memory. Required for direct activation.",
+        },
       },
       required: ["content"],
     },

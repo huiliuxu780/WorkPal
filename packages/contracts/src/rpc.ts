@@ -115,6 +115,7 @@ import {
   MemoryFactMutationResultSchema,
   MemoryFactPromoteInputSchema,
   MemoryFactRejectInputSchema,
+  MemoryFactRevertImportInputSchema,
   MemoryPolicySchema,
   MemoryPolicySetInputSchema,
   MemorySummaryGetInputSchema,
@@ -516,6 +517,9 @@ export const appContract = {
       promote: oc.input(MemoryFactPromoteInputSchema).output(MemoryFactMutationResultSchema),
       importLegacy: oc
         .input(MemoryFactImportLegacyInputSchema)
+        .output(MemoryFactMutationResultSchema),
+      revertImport: oc
+        .input(MemoryFactRevertImportInputSchema)
         .output(MemoryFactMutationResultSchema),
     },
     factEvidence: {

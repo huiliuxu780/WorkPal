@@ -139,7 +139,13 @@ function MemoryDocumentList({
     if (!enableLegacyImport) return;
     let cancelled = false;
     void rpc.memory.facts
-      .list({ states: ["active", "candidate", "superseded"], includeExpired: true })
+      .list({
+        // "deleted" stays in the blocked set (review P1-2): deleting an
+        // imported fact must not resurrect the legacy document. Only an
+        // explicit revert (state "reverted", excluded here) unblocks it.
+        states: ["active", "candidate", "superseded", "deleted"],
+        includeExpired: true,
+      })
       .then((result) => {
         if (cancelled) return;
         setMigratedIds(

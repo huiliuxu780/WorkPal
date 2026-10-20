@@ -17,6 +17,7 @@ import {
   promoteFactAsActor,
   recordMemoryFromEdit,
   rejectFactAsActor,
+  revertLegacyImportAsActor,
   SecretLikeContentError,
   evidenceToDto,
   loadFactViews,
@@ -34,6 +35,7 @@ import type {
   MemoryFactMutationResult,
   MemoryFactPromoteInput,
   MemoryFactRejectInput,
+  MemoryFactRevertImportInput,
   MemorySummaryGetInput,
 } from "@rakazo/contracts";
 
@@ -231,6 +233,19 @@ export async function promoteMemoryFact(
   await requireSpaceOwner(deps.prisma, actor);
   return runFactMutation("promote", actor, input.factId, () =>
     promoteFactAsActor(serviceDeps(deps), actorOf(actor), {
+      factId: input.factId,
+      expectedRevision: input.expectedRevision,
+    }),
+  );
+}
+
+export async function revertImportMemoryFact(
+  deps: MemoryFactsApiDeps,
+  actor: Actor,
+  input: MemoryFactRevertImportInput,
+) {
+  return runFactMutation("revert_import", actor, input.factId, () =>
+    revertLegacyImportAsActor(serviceDeps(deps), actorOf(actor), {
       factId: input.factId,
       expectedRevision: input.expectedRevision,
     }),

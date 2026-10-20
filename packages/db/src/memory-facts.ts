@@ -28,6 +28,10 @@ export const MEMORY_FACT_STATES = [
   "superseded",
   "deleted",
   "rejected",
+  /** legacy_import only: the import was undone; the source document returns
+   * to the legacy injection path. Distinct from "deleted" — deleting an
+   * imported fact must NOT resurrect the legacy document. */
+  "reverted",
 ] as const;
 export type MemoryFactState = (typeof MEMORY_FACT_STATES)[number];
 
@@ -664,7 +668,9 @@ export async function deleteFact(
   ref: FactMutationRef & { reason?: string },
 ): Promise<DeleteFactResult> {
   return mutateFact(prisma, ref, async ({ tx, fact, scope }) => {
-    if (fact.state === "deleted") return { status: "replayed" as const, fact };
+    if (fact.state === "deleted" || fact.state === "reverted") {
+      return { status: "replayed" as const, fact };
+    }
     const wasVisible = fact.state === "active";
     const revision = fact.revision + 1;
     const updated = await tx.memoryFact.update({
@@ -870,7 +876,7 @@ export async function getFactForActor(
     where: { id: query.factId, spaceId: query.spaceId },
   });
   if (!fact) return null;
-  if (fact.state === "deleted" && !query.includeDeleted) return null;
+  if ((fact.state === "deleted" || fact.state === "reverted") && !query.includeDeleted) return null;
   // Space-scope facts are shared with every member (they only exist through
   // per-item promotion); user and bot scopes stay private to their owner.
   if (fact.scopeKind !== "space" && fact.ownerUserId !== query.userId) return null;
@@ -1385,9 +1391,72 @@ export async function persistCompactionRevision(
 }
 
 /**
- * Legacy import bookkeeping: document ids that already have a non-deleted
- * imported fact. The injection assembler skips those documents so confirmed
- * migrations never inject twice.
+ * Explicit undo of a per-item legacy import (review P1-2): the fact leaves
+ * every read path (state "reverted", body purged) and the source document
+ * becomes injectable again as the legacy-format entry it was. This is the
+ * ONLY path that unblocks a migrated document — user deletion does not.
+ */
+export async function revertLegacyImport(
+  prisma: PrismaClient,
+  ref: FactMutationRef & { reason?: string },
+): Promise<FactMutationResult> {
+  return mutateFact(prisma, ref, async ({ tx, fact, scope }) => {
+    if (fact.state === "reverted") return { status: "replayed" as const, fact };
+    if (fact.origin !== "legacy_import") return { status: "invalid_state" as const, fact };
+    const wasVisible = fact.state === "active";
+    const revision = fact.revision + 1;
+    const updated = await tx.memoryFact.update({
+      where: { id: fact.id },
+      data: {
+        state: "reverted",
+        text: "",
+        literalValues: Prisma.DbNull,
+        revision,
+        lastChangedBy: ref.actorUserId,
+      },
+    });
+    await tx.memoryFactRevision.create({
+      data: {
+        factId: fact.id,
+        revision,
+        state: "reverted",
+        text: null,
+        kind: fact.kind,
+        changedBy: ref.actorUserId,
+        reason: ref.reason ?? "import_reverted",
+      },
+    });
+    await tx.memoryFactRevision.updateMany({
+      where: { factId: fact.id, revision: { lt: revision } },
+      data: { text: null, literalValues: Prisma.DbNull },
+    });
+    if (wasVisible) {
+      const { shardId } = await lockShardAndBump(tx, scope);
+      await enqueueMemoryJobsInTransaction(tx, [
+        {
+          kind: "shard_profile_rebuild",
+          spaceId: fact.spaceId,
+          targetId: shardId,
+          payload: { shardId } as Prisma.InputJsonValue,
+        },
+        {
+          kind: "summary_rebuild",
+          spaceId: fact.spaceId,
+          targetId: `shard:${shardId}`,
+          payload: { shardId } as Prisma.InputJsonValue,
+        },
+      ]);
+    }
+    return { status: "updated" as const, fact: updated };
+  });
+}
+
+/**
+ * Legacy import bookkeeping: document ids whose content was confirmed
+ * migrated to a fact. The injection assembler skips those documents so
+ * confirmed migrations never inject twice. Only an explicit revert unblocks
+ * a document — DELETING the imported fact keeps the block, because "delete
+ * this memory" must never resurrect the old document body (review P1-2).
  */
 export async function listLegacyImportedDocumentIds(
   prisma: PrismaClient,
@@ -1397,7 +1466,7 @@ export async function listLegacyImportedDocumentIds(
     where: {
       spaceId: query.spaceId,
       sourceDocumentId: { not: null },
-      state: { not: "deleted" },
+      state: { not: "reverted" },
     },
     select: { sourceDocumentId: true },
   });

@@ -249,6 +249,7 @@ import {
   listMemoryFacts,
   promoteMemoryFact,
   rejectMemoryFact,
+  revertImportMemoryFact,
   setSpaceMemoryPolicyRpc,
 } from "./memory-facts-api.js";
 import {
@@ -3403,6 +3404,9 @@ export function createRouter(deps: RouterDeps) {
         ),
         importLegacy: authed.memory.facts.importLegacy.handler(async ({ context, input }) =>
           importLegacyMemoryFact(deps, context.actor, input),
+        ),
+        revertImport: authed.memory.facts.revertImport.handler(async ({ context, input }) =>
+          revertImportMemoryFact(deps, context.actor, input),
         ),
       },
       factEvidence: {

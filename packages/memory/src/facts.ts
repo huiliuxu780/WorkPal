@@ -23,11 +23,17 @@ import {
   memoryScopeKey,
   promoteFactToSpace,
   rejectFact,
+  revertLegacyImport,
   type CreateFactResult,
   type FactScope,
   type MemoryScopeKind,
 } from "@rakazo/db";
-import { blocksToAgentHistoryText, containsOneTimeCode, containsSecretLikeContent } from "@rakazo/core";
+import {
+  blocksToAgentHistoryText,
+  containsMemoryRefusal,
+  containsOneTimeCode,
+  containsSecretLikeContent,
+} from "@rakazo/core";
 import type { MessageBlock } from "@rakazo/contracts";
 
 /**
@@ -405,14 +411,47 @@ export interface RunMemoryInput {
   literalValues?: unknown;
   /** "bot" (default, matches the legacy remember tool) or "user". */
   scopeKind?: "bot" | "user";
+  /**
+   * Verbatim span of the trusted source message in which the user asks for
+   * this memory. Required for single-step activation: the backend verifies
+   * the quote actually occurs in the trusted human message — a human-origin
+   * turn alone is NOT authorization to store memory (review P1-1).
+   */
+  sourceQuote?: string;
 }
+
+export type RunMemoryCandidateReason =
+  | "untrusted_source"
+  | "ambiguous"
+  | "authorization_unverified"
+  | "explicit_refusal";
 
 export type RunMemoryResult =
   | { status: "remembered"; factId: string }
-  | { status: "candidate"; factId: string; reason: "untrusted_source" | "ambiguous" }
+  | { status: "candidate"; factId: string; reason: RunMemoryCandidateReason }
   | { status: "duplicate"; factId: string }
   | { status: "blocked"; factId: string }
   | { status: "invalid"; reason: string };
+
+function normalizeForSpanMatch(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Server-side authorization check: the quoted span must verifiably occur in
+ * the trusted source message (normalization only, never semantic judgment).
+ * A model that cannot point at the user's own authorizing words gets a
+ * candidate for user confirmation instead of a silent activation.
+ */
+export function isVerifiedAuthorizationQuote(quote: string, messageContent: string): boolean {
+  const normalizedQuote = normalizeForSpanMatch(quote);
+  if (normalizedQuote.length < 2) return false;
+  return normalizeForSpanMatch(messageContent).includes(normalizedQuote);
+}
 
 /**
  * Unified tool entry (remember / save_memory). A single explicit instruction
@@ -483,7 +522,24 @@ export async function recordMemoryFromRun(
     }
   }
   const ambiguous = isAmbiguousMemoryText(text);
-  const activate = trusted && !ambiguous;
+  // Review P1-1: a trusted human turn is the evidence channel, not the
+  // authorization itself. Single-step activation additionally requires a
+  // verbatim quote that verifiably occurs in that message, and the message
+  // must not explicitly decline memory storage.
+  const refusal = trusted && evidenceContent !== null && containsMemoryRefusal(evidenceContent);
+  const quoteVerified =
+    trusted &&
+    evidenceContent !== null &&
+    typeof input.sourceQuote === "string" &&
+    isVerifiedAuthorizationQuote(input.sourceQuote, evidenceContent);
+  const activate = trusted && !ambiguous && quoteVerified && !refusal;
+  const candidateReason: RunMemoryCandidateReason = !trusted
+    ? "untrusted_source"
+    : refusal
+      ? "explicit_refusal"
+      : !quoteVerified
+        ? "authorization_unverified"
+        : "ambiguous";
 
   const scopeKind = input.scopeKind ?? "bot";
   const scope: FactScope =
@@ -529,15 +585,11 @@ export async function recordMemoryFromRun(
     case "created":
       return activate
         ? { status: "remembered", factId: result.fact.id }
-        : {
-            status: "candidate",
-            factId: result.fact.id,
-            reason: trusted ? "ambiguous" : "untrusted_source",
-          };
+        : { status: "candidate", factId: result.fact.id, reason: candidateReason };
     case "duplicate":
       return { status: "duplicate", factId: result.fact.id };
     case "merged":
-      return { status: "candidate", factId: result.fact.id, reason: "untrusted_source" };
+      return { status: "candidate", factId: result.fact.id, reason: candidateReason };
     case "blocked_by_user_fact":
       return { status: "blocked", factId: result.fact.id };
   }
@@ -775,6 +827,33 @@ export async function promoteFactAsActor(
     actorUserId: actor.userId,
     factId: input.factId,
     expectedRevision: input.expectedRevision,
+  });
+  return toMutationResult(result, (row) => loadSingleView(deps, row));
+}
+
+/**
+ * Explicit undo of a legacy import (review P1-2). Distinct from delete:
+ * reverting returns the source document to the legacy injection path, while
+ * deleting the imported fact keeps the document blocked forever.
+ */
+export async function revertLegacyImportAsActor(
+  deps: FactServiceDeps,
+  actor: FactActor,
+  input: { factId: string; expectedRevision: number; reason?: string },
+): Promise<MemoryFactMutationResult> {
+  const fact = await getFactForActor(deps.prisma, {
+    spaceId: actor.spaceId,
+    userId: actor.userId,
+    factId: input.factId,
+    includeDeleted: true,
+  });
+  if (!fact) throw new FactNotFoundError();
+  const result = await revertLegacyImport(deps.prisma, {
+    spaceId: actor.spaceId,
+    actorUserId: actor.userId,
+    factId: input.factId,
+    expectedRevision: input.expectedRevision,
+    ...(input.reason ? { reason: input.reason } : {}),
   });
   return toMutationResult(result, (row) => loadSingleView(deps, row));
 }

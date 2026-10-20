@@ -1259,6 +1259,10 @@ msgstr "Confirm password"
 msgid "Confirm share"
 msgstr "Confirm share"
 
+#: src/pages/memory-facts.tsx
+msgid "Confirm undo"
+msgstr "Confirm undo"
+
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
@@ -2529,6 +2533,10 @@ msgstr "Import as memory"
 #: src/pages/PluginsOverlay.tsx
 msgid "Import OpenAPI JSON"
 msgstr "Import OpenAPI JSON"
+
+#: src/pages/memory-facts.tsx
+msgid "Import reverted; the legacy document is used again."
+msgstr "Import reverted; the legacy document is used again."
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Imported"
@@ -4539,6 +4547,10 @@ msgstr "Unavailable"
 #: src/pages/shell/bot-panel.tsx
 msgid "Undo"
 msgstr "Undo"
+
+#: src/pages/memory-facts.tsx
+msgid "Undo import"
+msgstr "Undo import"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Undone"

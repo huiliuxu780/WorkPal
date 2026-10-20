@@ -139,6 +139,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["memory/facts/delete", { factId: "missing-fact", expectedRevision: 1 }],
       ["memory/facts/promote", { factId: "missing-fact", expectedRevision: 1 }],
       ["memory/facts/importLegacy", { documentId: "missing-doc" }],
+      ["memory/facts/revertImport", { factId: "missing-fact", expectedRevision: 1 }],
       ["memory/factEvidence/list", { factId: "missing-fact" }],
       ["memory/summary/get", { botId: "missing-bot" }],
       ["memory/policy/get"],

@@ -3279,6 +3279,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               runId,
               text: String(args.content ?? ""),
               scopeKind: "bot",
+              ...(typeof args.source_quote === "string"
+                ? { sourceQuote: args.source_quote }
+                : {}),
             });
             if (result.status === "invalid") {
               return finish({
@@ -3760,6 +3763,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               runId,
               text: String(args.content ?? ""),
               scopeKind: "bot",
+              ...(typeof args.source_quote === "string"
+                ? { sourceQuote: args.source_quote }
+                : {}),
             });
             if (result.status === "invalid") {
               return finish({
@@ -5725,6 +5731,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 runId,
                 text: mem.content,
                 scopeKind: mem.scope === "user" ? "user" : "bot",
+                // The scripted fixture models an explicit instruction turn:
+                // the model quotes the user's own message verbatim.
+                sourceQuote: mem.content,
               });
               await deps.events.append({
                 spaceId: run.spaceId,

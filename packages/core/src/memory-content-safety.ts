@@ -32,6 +32,34 @@ export function containsOneTimeCode(text: string): boolean {
 }
 
 /**
+ * Deterministic explicit-refusal detection (review P1-1): when the trusted
+ * source message itself declines memory storage, a model-initiated remember
+ * call must never activate — it is demoted to a candidate at most. The
+ * patterns are deliberately narrow (explicit "do not save/remember" phrasing
+ * in English and Chinese); a false positive only costs a confirmation step,
+ * while a miss would store memory against the user's stated will.
+ */
+const MEMORY_REFUSAL_PATTERNS: RegExp[] = [
+  /\bdo\s?n[o']t\s+(?:remember|save|store|keep|memorize|note|record)\b/i,
+  /\bnever\s+(?:remember|save|store|keep|memorize|record)\b/i,
+  /\bwithout\s+(?:saving|storing|remembering|keeping|recording)\b/i,
+  /\bstop\s+(?:remembering|saving|storing|recording)\b/i,
+  /\bdon[o']t\s+(?:remember|save|store|keep|memorize|note|record)\b/i,
+  /不要(?:记住|保存|记录|存储|记下|存下|收录)/,
+  /别(?:记住|保存|记录|存下|存)/,
+  // Bare "别记…" (e.g. 别记这个) except the affirmative "特别记…".
+  /(?:^|[^特])别记/,
+  /不用(?:记住|保存|记录|存)/,
+  /请勿(?:记住|保存|记录|存储)/,
+  /不需要(?:记住|保存|记录|存)/,
+  /(?:禁止|不准)(?:记住|保存|记录)/,
+];
+
+export function containsMemoryRefusal(text: string): boolean {
+  return MEMORY_REFUSAL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
  * Verbatim-copy guard: fact text must be the service's own summarized
  * wording. A shared run of >= minRun characters between the candidate and a
  * source message means the model transcribed user words instead of
