@@ -294,6 +294,90 @@ describePostgres("unified plan review service (PostgreSQL)", () => {
     });
   });
 
+  it("removing an approved stage re-opens review; relabeling out-of-scope markers does not (P1)", async () => {
+    const runId = await makeRun();
+    const items = (build: "pending" | "superseded" | "skipped") => [
+      { id: "build", title: "Build release", status: build },
+      { id: "verify", title: "Verify release", status: "pending" as const },
+    ];
+    const first = await applyPlanSubmission(
+      prisma,
+      scopeFor(runId, "s-1"),
+      { expectedRevision: 0, goal: "Ship the release", items: items("pending") },
+      { source: "publish_run_plan", submit: true },
+    );
+    if (first.status !== "review_required") throw new Error("expected review_required");
+    await decide(runId, first.round.roundId, "approve");
+
+    // P1: the retention rule expresses stage removal as superseded/skipped;
+    // cutting an approved stage out of the effective scope is a content
+    // change and must re-open review, never ride the progress axis.
+    const reduced = await applyPlanSubmission(
+      prisma,
+      scopeFor(runId, "s-2"),
+      {
+        expectedRevision: 1,
+        goal: "Ship the release",
+        items: [
+          {
+            id: "build",
+            title: "Build release",
+            status: "superseded" as const,
+            reason: "Dropped from the approved scope",
+          },
+          { id: "verify", title: "Verify release", status: "pending" as const },
+        ],
+        changeReason: "Drop the build stage",
+      },
+      { source: "publish_run_plan", submit: true },
+    );
+    expect(reduced.status).toBe("review_required");
+    if (reduced.status !== "review_required") throw new Error("expected review_required");
+    expect(reduced.round.contentVersion).toBe(2);
+    await decide(runId, reduced.round.roundId, "approve");
+
+    // Relabeling between the two out-of-scope markers keeps the same
+    // effective scope: a progress revision, no second card.
+    const relabel = await applyPlanSubmission(
+      prisma,
+      scopeFor(runId, "s-3"),
+      {
+        expectedRevision: 2,
+        goal: "Ship the release",
+        items: [
+          {
+            id: "build",
+            title: "Build release",
+            status: "skipped" as const,
+            reason: "Dropped from the approved scope",
+          },
+          { id: "verify", title: "Verify release", status: "pending" as const },
+        ],
+        changeReason: "Record it as skipped instead",
+      },
+      { source: "publish_run_plan", submit: true },
+    );
+    expect(relabel.status).toBe("progress");
+    expect(await roundCount(runId)).toBe(2);
+
+    // Bringing the stage back into scope widens the approved plan: review.
+    const restored = await applyPlanSubmission(
+      prisma,
+      scopeFor(runId, "s-4"),
+      {
+        expectedRevision: 3,
+        goal: "Ship the release",
+        items: items("pending"),
+        changeReason: "Restore the build stage",
+      },
+      { source: "publish_run_plan", submit: true },
+    );
+    expect(restored.status).toBe("review_required");
+    if (restored.status !== "review_required") throw new Error("expected review_required");
+    expect(restored.round.contentVersion).toBe(3);
+    expect(await roundCount(runId)).toBe(3);
+  });
+
   it("runs the draft → submit → changes_requested → resubmit → approve cycle", async () => {
     const runId = await makeRun();
     // plan_write drafts without opening a review.

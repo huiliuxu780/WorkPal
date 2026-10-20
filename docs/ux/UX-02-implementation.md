@@ -45,7 +45,7 @@
 - 拒绝：Run `cancelled`、`run.cancelled{reason:'plan_rejected'}`、`runs.error='plan_rejected'`，Task/版本/操作者审计保留，无后续工具发送，侧栏头像回到 Bot 真实状态（e2e 断言 idle）。
 
 **U3 内容版本 vs 进度修订**
-- 指纹 = sha256(规范化 goal + 有序 items 的 id/title)；状态/耗时/证据/reason 不入指纹。
+- 指纹 = sha256(规范化 goal + 有序 items 的 id/title + 每项**范围参与标记**)。纯执行进度状态（pending/active/completed/unresolved）与耗时/证据/reason 不入指纹；`skipped/superseded` 把工作移出已批准的有效范围（也离开 UX-01 进度分母），在 item-id 保留规则下这正是"阶段删减"的表达形式，因此计入指纹（两个移出标记之间互改不算范围变化）。P1 审查发现即此：删减已批准阶段必须重审。
 - 指纹不变 → 进度修订（新 revision，不动 contentVersion，不弹审批）；指纹变化 → 新 contentVersion + 待审 + **先原子标记再允许前进**（暂停发生在同一工具调用内；执行边界另有 gate：`reviewStatus='pending'` 或 PLAN 阶段时 mutating 工具零外发被拒）。
 - 完全相同内容（含状态）→ `unchanged`，不产生新修订/新审阅；同 executionId 重放 → `replayed`。规范化只吃空白差异（trim + 空白折叠），不猜语义。
 - 模型不能自报"小改动"：轴由指纹决定。批准后发布重要修订同样强制重审（`approvedBasis ⇒ opensReview`）。
@@ -79,7 +79,7 @@
 | U-A04 | e2e 测试 1：批准后同一 runId 恢复至 completed（真实 Worker `run.continue`）；审批前无副作用（暂停即无模型调用）；批准后工具审批不变（`executor-readonly-approval` 41 例）；HTTP fixture=真实 RPC |
 | U-A05 | e2e 测试 2 + PG `intervention.postgres.test.ts`（request_changes→旧卡 Changes requested→同 Run v2→重审）；`run-plans.postgres.test.ts`（changes_requested 循环、旧批准不覆盖新版本） |
 | U-A06 | e2e 测试 3（拒绝原因可选、cancelled、无 result 气泡、无 pending、头像 idle）；PG 断言 `run.cancelled{plan_rejected}`、轮次 rejected+decidedBy、无 `approval.resolved`；副作用计数=零新增：决定事务返回 `resume:false`+`cancelledRunId`，router 对 cancelledRunId 走 `revokeNativeCancellation` 而非 `run.continue` 入队，取消后无任何工具再被执行（e2e 断言无后续 result/工具产物） |
-| U-A07 | PG：进度修订不开轮次、内容变化开 v2、幂等重放不重复发卡（`unchanged`/`replayed`）；e2e paced 场景 v1→批准→v2 自动重审（`execution-card.spec.ts`） |
+| U-A07 | PG：进度修订不开轮次、内容变化开 v2、幂等重放不重复发卡（`unchanged`/`replayed`）；**删减已批准阶段（superseded/skipped）开新内容版本重审、移出标记互改不发卡、恢复范围再重审**（P1 回归，`run-plans.postgres.test.ts` 8/8）；e2e paced 场景 v1→批准→v2 自动重审（`execution-card.spec.ts`） |
 | U-A08 | e2e 测试 4：同 submissionId 重放 accepted、异 client already_handled、竞态 reject 不生效；PG：过期版本 CAS conflict、owner-only |
 | U-A09 | 执行边界 gate：pending/PLAN 阶段 mutating 工具零外发（executor gate + 阶段工具面过滤，`filterToolsForPlanPhase`；executor 单测：PLAN 阶段拦截 `remember` 零 effect 零 commit，attempt-start repair 在任何模型调用/工具执行前以同一版本绑定重开审阅卡）；已发未知结果沿用既有 uncertain 语义（未触碰）；AG-05 撤权路径不变（`agentscope-tool-visibility` 4 例绿） |
 | U-A10 | Java `legacyAskingPlanExitResumesThroughTheBridgeOnce`（合成旧 ASKING 状态→bridge 恰好一次、无第二张卡）；`PermissionRevokedResumeIntegrationTest` 绿；attempt-start repair（PG `loadPendingPlanReviewRepair` + executor 接线）；无 `workpal-plan-approval` 字符串残留于新流程 |
@@ -106,6 +106,10 @@
 - 类型检查：contracts/db/adapters/core/api/worker/web `tsc --noEmit` 全绿；`mvn compile` 绿。
 - **PR #80 CI（head `4055776`）：8/8 checks 绿**（select-checks 8s、docs 10s、runtime-jar 34s、agent-runtime-image 55s、backend 52s、agentscope 6m18s、web 7m0s、worker-chain 10m24s）。收口过程中修掉的两个本批自身问题：CI 生成物字节校验（`prompt-texts.generated.ts` 被格式化重排→豁免+还原）与直聊消息发言人标签回归（roster 回退泄漏到 speakerName→拆为独立 `botNameOf`，onboarding 严格定位恢复，web 685/685 + onboarding/plan-review e2e 7/7 复验）。
 - 格式：biome 仅对本分支触碰的文件执行；两处**字节级比对产物**已从 formatter 豁免并写入 `biome.json`（AG-04 baseline fixture 与 `prompt-texts.generated.ts`——CI 以"生成器输出==提交内容"校验，任何重排都会漂移，本批踩过一次并修复）。
+
+## 6b. 审查轮收口（PR #80 review round 1）
+
+- **P1｜删减已批准阶段不会重新审阅**（审查者复现：批准后将"验证报告"阶段标为 `superseded`，服务返回 `progress`，原批准对缩水范围继续有效）：**确认成立，已修复**。根因：item-id 保留规则把"移除阶段"强制表达为 `superseded/skipped` 状态变化，而审批指纹只计算 goal+id+title+order，范围删减落进了进度轴。修复：指纹为每个条目加入范围参与标记（`skipped/superseded` = out，其余 = in）——纯进度状态仍不触发重审，移出/恢复范围触发新内容版本+重审，两个移出标记互改视为同一范围不发卡。验证：审查者原始复现（mock tx 单测）由红转绿后移除，永久回归落在 `run-plans.postgres.test.ts`（真实 PG：删减→review_required cv2、互改→progress、恢复→review_required cv3，8/8）；既有进度/重放/legacy 语义测试全部不受影响。本轮无其他发现项。
 
 ## 7. 与记忆线（ME-01/02）的共享接口协调
 

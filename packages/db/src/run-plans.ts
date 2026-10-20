@@ -64,11 +64,29 @@ function normalizePlanText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-/** Deterministic approval-basis fingerprint: goal + ordered item ids/titles. */
+/**
+ * Deterministic approval-basis fingerprint: goal + ordered item ids/titles +
+ * each item's effective-scope participation.
+ *
+ * Statuses that only report execution progress (pending/active/completed/
+ * unresolved) are deliberately excluded — they are the progress axis and must
+ * never re-open a review. `skipped`/`superseded` are different: they remove
+ * work from the approved effective scope (and from the UX-01 progress
+ * denominator). Because the item-id retention rule forbids dropping ids,
+ * marking an approved stage out of scope IS the stage-removal content change
+ * (P1 review finding): it changes the fingerprint and re-opens review, while
+ * relabeling between the two out-of-scope markers does not.
+ */
+const OUT_OF_SCOPE_ITEM_STATUSES = new Set(["skipped", "superseded"]);
+
 export function planContentFingerprint(goal: string, items: readonly PlanItem[]): string {
   const canonical = JSON.stringify({
     goal: normalizePlanText(goal),
-    items: items.map((item) => ({ id: item.id, title: normalizePlanText(item.title) })),
+    items: items.map((item) => ({
+      id: item.id,
+      title: normalizePlanText(item.title),
+      scope: OUT_OF_SCOPE_ITEM_STATUSES.has(item.status) ? "out" : "in",
+    })),
   });
   return createHash("sha256").update(canonical).digest("hex");
 }
