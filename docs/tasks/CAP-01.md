@@ -42,7 +42,7 @@ WorkPal 当前代码有按 Bot 的 MCP assignment 和 `Bot.capabilityRules`。�
 | --- | --- | --- | --- |
 | 我连接了哪些应用？ | 侧栏 `Connect Apps` | 当前 Space 的连接、登录状态、连接/断开 | Bot 选择器、每 Bot 开关、工具表 |
 | 什么时候先问我？ | 平台 Settings → `操作确认` | 所有 Bot 共用的自然语言偏好、从真实审批保存的选择 | 内部策略、应用连接管理 |
-| 这一次做不做？ | 对话 / Task Center | 具体动作、对象、影响、一次允许/以后允许/拒绝 | 规则编辑表单 |
+| 这一次做不做？ | 产生动作的原对话 | 具体动作、对象、影响、一次允许/以后允许/拒绝 | 规则编辑表单、全局任务队列 |
 | 做成了吗？成果在哪？ | 原对话 + Execution detail | 文件/链接/消息/变更结果、真实 effect 状态 | Bot 设置、另建成果后台 |
 | 这个 Bot 是谁、怎么工作？ | Bot 设置 | 名称、头像、标签、稳定角色及既有 Bot 选项 | 应用权限、执行结果、长期允许规则 |
 
@@ -107,7 +107,7 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 密码、验证码、CAPTCHA、支付确认和需要用户亲自完成的页面显示 `接管完成`，没有长期允许。
 
-后台 Run 的确认继续出现在 Task Center 的注意状态，并回到原 Run 的同一 Intervention。
+后台 Run 需要确认时，来源 Bot/对话进入 attention 状态。用户点击带有“需要确认”状态的 Bot 或对应对话，直接打开原 Thread 并聚焦同一 Intervention。多个待处理动作按原对话时间顺序保留，不再聚合到另一个中心。
 
 ### 4.4 成果与执行结果
 
@@ -115,7 +115,7 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 - 文件、图片、链接、发送回执和其他成果作为卡片留在原对话；
 - Execution detail 第 2 层显示本 Run 的关键动作及 pending/approved/executing/completed/failed/denied/expired/uncertain 状态；
-- Task Center 只导航回原 Run；
+- 后台完成、失败、取消或等待确认都写回原对话，并更新对应 Bot/对话的预览和头像状态；
 - Bot 设置不展示成果列表，也不新建“安全日志”或“成果中心”。
 
 批准不等于完成。界面只有收到 `ExternalEffect` 的真实终态后才能显示完成。结果未知时沿用现有恢复选择。
@@ -138,21 +138,32 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 - 页面明确写当前 Space、所有 Bot 的作用范围。
 - 删除固定邮件/购买 preset、`Flag unexpected actions` 开关和内部 auto-review 术语。
 
-### F3. 操作确认卡
+### F3. 操作确认卡与来源回焦
 
 - 扩展现有 `AskCard` / `InterventionRegion`，使用服务端结构化展示和动态按钮文案。
 - pending、submitting、accepted、already_handled、expired 和 effect 终态全部来自服务器。
 - 长期选择按钮只在响应含可信 remember proposal 时出现。
 - 恢复、刷新、双击与多标签页提交不得产生第二次外部动作。
+- Bot/对话的 attention 状态点击后直接进入来源 Thread，打开目标 Run 并聚焦确认卡。
+- 后台 Run 的完成、失败和取消状态必须在原对话形成可恢复的记录；没有 shell 的取消 Run 也从原对话卡重试。
 
 ### F4. 对话成果与执行详情
 
 - 复用现有消息卡展示文件、链接和工具产物；不把成果复制进设置页。
 - Execution detail 增加 `操作` 区，展示真实 effect 摘要、对象、时间和终态。
 - 失败原因使用安全业务文案，保留既有 detail retry。
-- Task Center 继续回焦原 Run。
+- Bot 行和对话预览只负责提示状态并直接打开原对话，不复制结果。
 
-### F5. 删除 Draft #81 的错误前端
+### F5. 移除 Task Center 用户界面
+
+- 删除 Task Center 导航入口、路由、列表页、轮询计数、筛选、分页和独立动作按钮。
+- 删除 `TaskCenterView`、`TaskCenterNavEntry` 以及仅服务该列表的 Web 状态和翻译。
+- 将通用的“打开 Run 并聚焦确认/状态”能力改名并保留为来源导航能力，不再使用 `TaskCenter*` 命名或模块内存意图。
+- 删除仅服务 Task Center 的 RPC/contract/projection；若同一查询仍有其他真实调用方，则改名为对应业务用途并记录调用方。
+- 保留 PostgreSQL 的 Task、Run、Attempt、Intervention、ExternalEffect 和 Worker 执行模型。它们是系统执行记录，不是用户管理的新会话或中心。
+- MR-01 的重试入口收敛到原对话失败/取消卡；既有 Task Center E2E 改为来源对话 E2E，不丢验收语义。
+
+### F6. 删除 Draft #81 的错误前端
 
 删除 `BotPermissionsSection`、Bot 级应用摘要、Bot 级停用、capability catalog、advanced input、preview、policyRev 冲突工作台、Shell 级权限草稿和旧 editor 专用 E2E/翻译。Bot Settings 恢复到本任务之前的产品职责；roster 跨 Space 点击恢复原导航。
 
@@ -270,7 +281,14 @@ actions: Array<{
 - 不返回凭据、完整敏感正文、隐藏请求包装或原始 provider result。
 - 对话成果卡和 Execution detail 使用同一结果投影，不复制数据库来源。
 
-### B7. 删除 Draft #81 错误后端
+### B7. 来源状态与直接导航
+
+- 复用 Bot avatar/read projection 表达 idle、working、waiting/approval 和 failed；不增加全局待办计数。
+- attention projection 必须携带可授权的来源 Thread/Run 定位信息，点击后由正常 Thread 授权重新读取目标 Run。
+- 后台 completion/delivery、失败和取消必须生成原对话可见记录，且恢复后仍能找到；不能只存在 Task Center projection。
+- 同一 Bot 有多个待处理动作时，打开原对话后按事件顺序展示全部未处理 Intervention，不另建聚合队列。
+
+### B8. 删除 Draft #81 错误后端
 
 删除 `bots.capabilityPolicy.get/update/preview`、`capabilityPolicyRev`、`CapabilityPolicyChange`、`bots.actionAccess.*`、per-Bot 普通应用停用 API、`BUILTIN_CAPABILITY_TOOL_IDS`、编辑器 catalog 和为其新增的 preview API。可复用的聚合判定函数必须有当前执行边界的真实调用方；不得留下第二个策略系统。
 
@@ -278,11 +296,12 @@ actions: Array<{
 
 1. 把本任务与 v4 原型作为唯一契约，删除 #81 的低层编辑器及 v3 per-Bot app 工作。
 2. 盘点并区分普通 connected apps 与自定义 MCP；冻结全局连接契约。
-3. 完成 Connect Apps 全局化及任一 Bot 的真实工具可用性回归。
-4. 完成全局确认偏好及既有 action-review 接线。
-5. 完成结构化确认卡和全局长期选择。
-6. 完成对话成果卡与 Execution detail 结果投影。
-7. 用至少两种不同来源的真实动作收口，回写任务、roadmap 和实现说明。
+3. 移除 Task Center 用户界面和专用投影，把注意、完成、失败、取消与重试入口迁回来源对话。
+4. 完成 Connect Apps 全局化及任一 Bot 的真实工具可用性回归。
+5. 完成全局确认偏好及既有 action-review 接线。
+6. 完成结构化确认卡和全局长期选择。
+7. 完成对话成果卡与 Execution detail 结果投影。
+8. 用至少两种不同来源的真实动作收口，回写任务、roadmap 和实现说明。
 
 本功能继续一个 PR 完成，不再按前端、后端或迁移拆小 PR。
 
@@ -315,18 +334,21 @@ actions: Array<{
 
 15. 文件、链接、发送回执等成果留在原对话；Bot Settings 不出现成果列表。
 16. approved/executing/completed/failed/uncertain 来自真实 effect 状态，不能把批准显示为完成。
-17. Execution detail 展示本 Run 的动作结果；Task Center 回到同一记录。
+17. Execution detail 展示本 Run 的动作结果；Bot/对话 attention 点击直接打开并聚焦同一记录。
 18. 已保存选择可移除；移除后任一 Bot 的下次同类动作恢复确认。
 19. legacy 规则保持原范围、可读、可移除，没有静默扩权或丢失。
 
 ### 回归与交付
 
 20. 服务端 deny、资源权限、撤权、Plan 审批、secret/takeover 和内部 capability 边界不被绕过。
-21. 删除 #81 的废弃 UI/API/schema/migration；普通用户只有 Connect Apps 与平台操作确认两个设置入口。
-22. roster 跨 Space、Task Center 回焦、approval resume、MR-01 retry、AG-08 撤权恢复与 UX-02 Plan review 不回归。
-23. 至少两个 Bot、两种真实动作完成 PG/executor/E2E，断言真实 HTTP/effect/文件或消息结果。
-24. 受影响包 check、后端定向单测、PG 旅程和聚焦 E2E 通过；不重复跑与本批无关的全量套件。
-25. 实现说明列出连接模型迁移、真实支持动作、降级路径、删除文件、测试数字与截图证据。未部署。
+21. Task Center 导航、路由、视图、轮询计数和专用 projection 已删除；Task/Run 后端执行记录完整保留。
+22. 后台 waiting/completed/failed/cancelled 四种状态都能从来源 Bot/对话发现；点击直接到原 Run，没有第二个任务列表。
+23. 没有 shell 的取消 Run 在原对话仍可手动重试；MR-01 的同 Task/Thread/new Run 语义不变。
+24. 删除 #81 的废弃 UI/API/schema/migration；普通用户只有 Connect Apps 与平台操作确认两个设置入口。
+25. roster 跨 Space、approval resume、AG-08 撤权恢复与 UX-02 Plan review 不回归。
+26. 至少两个 Bot、两种真实动作完成 PG/executor/E2E，断言真实 HTTP/effect/文件或消息结果。
+27. 受影响包 check、后端定向单测、PG 旅程和聚焦 E2E 通过；不重复跑与本批无关的全量套件。
+28. 实现说明列出连接模型迁移、Task Center 删除面、真实支持动作、降级路径、删除文件、测试数字与截图证据。未部署。
 
 ## 9. 交付物
 
