@@ -117,6 +117,9 @@ describe("isMemoryAuthorizationQuote (review R2)", () => {
     "请把这条保存起来",
     "把发票保存到下载目录",
     "把这个文件存一下",
+    "take notes during the meeting",
+    "在我记忆里那天很清楚",
+    "请记得带伞",
   ])("refuses a quote that is not a long-term-memory request: %s", (quote) => {
     expect(isMemoryAuthorizationQuote(quote)).toBe(false);
   });

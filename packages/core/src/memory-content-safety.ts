@@ -87,21 +87,23 @@ const MEMORY_AUTHORIZATION_PATTERNS: RegExp[] = [
   // that …" stays unmatched so reminiscing ("I remember that day") never
   // authorizes.
   /(?:^|[.!?;。！？；]\s*)(?:please\s+|pls\s+|kindly\s+)?(?:remember|memorize|memorise)\b/i,
-  // Note-taking and mind-keeping idioms are memory directives.
+  // Note-taking and mind-keeping idioms are memory directives. Only the
+  // singular idioms count — plural "take notes (during the meeting)" is a
+  // task request, not long-term-memory authorization.
   /\bnote\s+(?:this|that|it)\s+down\b/i,
-  /\b(?:make|take)\s+(?:a\s+)?notes?\b/i,
+  /\bmake\s+a\s+note\b/i,
+  /\btake\s+note\b/i,
   /\bkeep\s+(?:this|that|it)\s+(?:in\s+mind|noted)\b/i,
   /\bdon'?t\s+forget\b/i,
   // Ambiguous storage verbs require an explicit memory target in the span.
   /\b(?:save|store|record|commit|add|keep|put|write)\b[^.!?]{0,60}\b(?:memory|memories|mind)\b/i,
   // Chinese: the 记-family is inherently about memory. 记得 ("I recall")
   // deliberately matches none of these.
-  /记住|记下|记一下|记下来|记入|记到|帮我记|请记|劳驾记/,
+  /记住|记下|记一下|记下来|记入|记到|帮我记|请记(?!得)|劳驾记/,
   /别忘了|别忘记|勿忘/,
   // Ambiguous Chinese storage verbs require an explicit memory target too:
   // "保存到下载目录" is a file operation, "保存到记忆里" is a memory request.
   /(?:保存|存|放|收录|加|写)(?:到|至|进|入|在|成)?[^。！？]{0,12}(?:记忆|备忘|脑子|心里)/,
-  /(?:记忆|备忘)(?:里|中|内)/,
 ];
 
 export function isMemoryAuthorizationQuote(quote: string): boolean {
