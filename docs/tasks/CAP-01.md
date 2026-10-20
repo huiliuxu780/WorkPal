@@ -1,6 +1,6 @@
-# CAP-01 — 全局应用、操作确认与成果闭环
+# CAP-01 + UX-03 — 全局应用、操作确认、成果闭环与 Bot 管理面收敛
 
-Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pull/81) 必须按本任务重做；未合并、未部署。代码核对基线 `main @ 472f0b1`。
+Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pull/81) 必须按本任务重做，并在同一 PR 完成 [UX-03 决策](../ux/UX-03-decision.md)；未合并、未部署。代码核对基线 `main @ 472f0b1`。
 
 历史设计完整保留：
 
@@ -49,6 +49,15 @@ WorkPal 当前代码有按 Bot 的 MCP assignment 和 `Bot.capabilityRules`。�
 | 这个 Bot 是谁、怎么工作？ | Bot 设置 | 名称、头像、标签、稳定角色及既有 Bot 选项 | 应用权限、执行结果、长期允许规则 |
 
 本任务不在 Bot 设置新增“应用与操作”“权限”“成果”或“安全”区域。
+
+### 3.2 UX-03 补充结构
+
+- 聊天头部不再承载 Bot 管理功能：移除头像/名称 trigger、模型切换器、Agent 电脑按钮与独立 run pill。
+- 单 Bot 对话在转录区水平居中贴顶显示一个悬浮头像件；身份、状态环和 `运行中 · N 项动作 / 待审批 · 事由` 文案属于同一控件。
+- 悬浮件单击打开 Bot 侧面板，再次单击收起；不随转录滚动消失。
+- Bot 侧面板使用居中 hero、名称、头衔与 `详情 / 资料库 / 电脑` 三 tab；hero 头像可打开 AvatarStudio 换装。
+- 群聊使用最多 3 个成员头像加计数的悬浮头像簇，点击进入现有群设置；群设置结构保持现状，不改成三 tab。
+- Bot 面板不承载 CAP-01 的 Connect Apps、Auto-review、自定义规则或成果列表。
 
 ### 3.1 范围口径
 
@@ -173,6 +182,21 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 ### F6. 删除 Draft #81 的错误前端
 
 删除 `BotPermissionsSection`、Bot 级应用摘要、Bot 级停用、capability catalog、advanced input、preview、policyRev 冲突工作台、Shell 级权限草稿和旧 editor 专用 E2E/翻译。Bot Settings 恢复到本任务之前的产品职责；roster 跨 Space 点击恢复原导航。
+
+### F7. UX-03：头部、悬浮头像与 Bot 三 tab 面板
+
+- 删除聊天头部中的 Bot 头像/名称 trigger、模型切换器、Agent 电脑按钮和独立 run 状态 pill；移动端导航改为左上悬浮按钮。
+- 在转录区水平居中贴顶放置唯一悬浮头像件，并为首屏内容预留稳定顶部空间，不能遮挡消息或输入框。
+- idle 显示常态头像；running 使用状态环并显示 `运行中 · N 项动作`；waiting/approval 使用状态环并显示可理解的事由。状态不能只靠颜色。
+- 单击悬浮件打开 Bot panel，再单击收起；键盘可达，`aria-label` 包含 Bot 名称、当前状态和动作。
+- 单 Bot panel 使用 hero 头像、名称、头衔和 `详情 / 资料库 / 电脑` 三 tab；hero 点击继续打开 AvatarStudio。
+- `详情`：例行任务列表/开关、名称/头衔/描述、通知、模型与思考深度、记忆范围、朗读/音色、导出/清空及其他既有 Bot 设置。例行任务完整编辑仍钻入 RoutineEditor。
+- `资料库`：现有 KnowledgeSection 与 ScratchpadSection。
+- `电脑`：ComputerModePicker、实时屏幕、维护动作和打开完整窗口。
+- 面板头部只保留导出与关闭两个操作；既有 computer/settings 互切所需语义收进 tab，不再返回聊天头部。
+- 群聊显示成员头像簇（前 3 个 + 计数），点击进入既有 group settings；不得把群设置改造成单 Bot 三 tab。
+- 窄屏悬浮件收为头像/头像簇，隐藏长状态文案但保留可访问名称；不得新增另一套移动端管理页。
+- 全部已有 Bot 管理能力必须逐项迁移，不能因布局重构丢失；CAP-01 平台级应用和规则明确不迁入该面板。
 
 ## 6. 后端任务
 
@@ -305,16 +329,24 @@ actions: Array<{
 
 删除 `bots.capabilityPolicy.get/update/preview`、`capabilityPolicyRev`、`CapabilityPolicyChange`、`bots.actionAccess.*`、per-Bot 普通应用停用 API、`BUILTIN_CAPABILITY_TOOL_IDS`、编辑器 catalog 和为其新增的 preview API。可复用的聚合判定函数必须有当前执行边界的真实调用方；不得留下第二个策略系统。
 
+### B9. UX-03 数据契约复用
+
+- UX-03 不新增持久化模型和第二套 Bot settings API；模型/思考、通知、资料库、草稿板、电脑与例行任务继续复用现有权威契约。
+- 悬浮状态复用现有 Bot avatar/read projection 与 Run/Intervention 状态；不得由前端根据文本猜测 running、approval 或动作数量。
+- 群成员头像簇复用现有已授权成员投影，不能为显示计数扩大成员可见范围。
+- 若删除头部后发现某项既有功能没有可调用入口，应迁移真实入口并补回归，不能保留隐藏 header 作为兼容后门。
+
 ## 7. Draft #81 单 PR 实施顺序
 
-1. 把本任务与 v6 原型作为唯一契约，删除 #81 的低层编辑器及 v3 per-Bot app 工作。
+1. 把本任务、CAP-01 v6 原型和 UX-03 冻结原型作为唯一契约，删除 #81 的低层编辑器及 v3 per-Bot app 工作。
 2. 盘点并区分普通 connected apps 与自定义 MCP；冻结全局连接契约。
 3. 移除 Task Center 用户界面和专用投影，把注意、完成、失败、取消与重试入口迁回来源对话。
 4. 完成 Connect Apps 全局化及任一 Bot 的真实工具可用性回归。
 5. 在 Settings → General 完成 Auto-review 与自然语言规则，并接入既有 action-review。
 6. 完成结构化确认卡和全局长期选择。
 7. 完成对话成果卡与 Execution detail 结果投影。
-8. 用至少两种不同来源的真实动作收口，回写任务、roadmap 和实现说明。
+8. 完成 UX-03 头部移除、悬浮头像与三 tab Bot panel，逐项核对既有 Bot 管理能力。
+9. 用至少两种不同来源的真实动作收口，回写 CAP-01、UX-03、roadmap 和实现说明。
 
 本功能继续一个 PR 完成，不再按前端、后端或迁移拆小 PR。
 
@@ -365,9 +397,25 @@ actions: Array<{
 29. 受影响包 check、后端定向单测、PG 旅程和聚焦 E2E 通过；不重复跑与本批无关的全量套件。
 30. 实现说明列出连接模型迁移、Task Center 删除面、真实支持动作、降级路径、删除文件、测试数字与截图证据。未部署。
 
+### UX-03 管理面收敛
+
+31. 单 Bot 聊天头部不再显示名称行、模型切换器、Agent 电脑按钮或独立 run pill；这些功能均有明确新入口。
+32. 悬浮头像水平居中贴顶、固定在转录区且不遮挡首条消息或输入；单击打开 panel，再次单击收起。
+33. idle/running/waiting-approval/failed 使用现有头像状态投影；running 与 approval 的状态环和文案属于同一悬浮件，且不用颜色作为唯一信息。
+34. Bot panel hero 显示头像、名称、头衔；点击头像仍能打开 AvatarStudio 并完成换装。
+35. `详情` tab 包含例行任务、Bot 基本信息、通知、模型/思考、其他既有设置、导出/清空；RoutineEditor 仍是完整编辑入口。
+36. `资料库` tab 完整承载 KnowledgeSection 与 ScratchpadSection；`电脑` tab 完整承载模式、实时屏幕、维护和完整窗口入口。
+37. Bot panel 没有 Connect Apps、Auto-review、自定义规则、内部 capability policy 或成果列表。
+38. 群聊显示前 3 个成员头像加计数，点击进入既有 group settings；群设置的信息架构和已有能力不变。
+39. 移动端有可达的导航和悬浮头像入口；键盘、focus ring、aria-label、Esc/关闭与打开后焦点行为通过回归。
+40. UX-01 执行卡、UX-02 Plan review、Avatar 状态动画、roster 跨 Space、来源对话 approval/retry 与 computer session 不回归。
+
 ## 9. 交付物
 
 - 当前任务：`docs/tasks/CAP-01.md`
 - 当前可交互原型：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v6/index.html`
 - 当前设计说明：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v6/design-notes.md`
+- UX-03 决策：`docs/ux/UX-03-decision.md`
+- UX-03 冻结原型：`/Users/rivers/Documents/WorkPal-design/ux03-bot-panel-tabs/index.html`
+- UX-03 设计说明与截图：`/Users/rivers/Documents/WorkPal-design/ux03-bot-panel-tabs/design-notes.md`、`shots/`
 - v1/v2/v3 任务与 v1–v5 旧原型完整保留作历史，不再作为实现依据。
