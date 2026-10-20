@@ -481,8 +481,24 @@ test("a Run cleared after the list loaded shows stable feedback and never naviga
   const summary = await settledSummary(page, botId, `summarize the tickets ${stamp}`);
 
   await gotoTaskCenter(page);
+  // The full-page load fires a mount refresh AND a window-focus refresh; on a
+  // slow runner the late list response can land after the clear below and
+  // (correctly) drop the cleared Run — racing the click this test exists to
+  // make (the flake that reddened base CI). Track task-center responses and
+  // require a quiet window before clearing, so no refresh is in flight.
+  let lastTaskCenterResponseAt = Date.now();
+  page.on("response", (response) => {
+    if (response.url().includes("/rpc/runs/taskCenter")) lastTaskCenterResponseAt = Date.now();
+  });
   const item = tcItem(page, `summarize the tickets ${stamp}`);
   await expect(item).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(() => Date.now() - lastTaskCenterResponseAt >= 1_500, {
+      timeout: 30_000,
+      intervals: [250],
+    })
+    .toBe(true);
+  await expect(item.getByRole("button", { name: "View result" })).toBeVisible();
 
   // The Run becomes unreachable while the (unrefreshed) list still shows it.
   await rpc(page, "threads/clear", { botId });
