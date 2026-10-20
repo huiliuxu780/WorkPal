@@ -1,9 +1,10 @@
 import { t } from "@lingui/core/macro";
 import type { InterventionView, ThreadMessage } from "@rakazo/contracts";
 import { useEffect, useId, useRef, useState } from "react";
-import { AskCard, type AskBlock } from "../AskCard";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { type AskBlock, AskCard } from "../AskCard";
+import { PlanReviewCard } from "./PlanReviewCard";
 
 function authorityLabel(view: InterventionView): string {
   if (view.status === "cancelled") return t`Cancelled`;
@@ -28,7 +29,11 @@ function effectStatusLabel(status: string): string {
   return t`Effect status unavailable`;
 }
 
-function presentBlock(block: AskBlock, view: InterventionView, localAnswer: string | null): AskBlock {
+function presentBlock(
+  block: AskBlock,
+  view: InterventionView,
+  localAnswer: string | null,
+): AskBlock {
   if (view.status === "pending") return { ...block, interventionId: view.id, status: "pending" };
   if (view.status !== "answered") return { ...block, interventionId: view.id, status: "expired" };
   const messageAnswer = block.status === "answered" ? block.answer : undefined;
@@ -72,15 +77,16 @@ function blockFromView(view: InterventionView): AskBlock {
         }
       : {}),
     interventionId: view.id,
-    ...(view.approval
-      ? { approvalEffectId: view.approval.effectId }
-      : {}),
+    ...(view.approval ? { approvalEffectId: view.approval.effectId } : {}),
     ...(view.input?.mode === "secret" || view.input?.mode === "text"
       ? { input: view.input.mode }
       : {}),
     ...(view.input?.purpose ? { purpose: view.input.purpose } : {}),
-    status: view.status === "answered" ? "answered" : view.status === "pending" ? "pending" : "expired",
-    ...(actions ? { actions: actions.map((action) => ({ id: action.id, label: action.label })) } : {}),
+    status:
+      view.status === "answered" ? "answered" : view.status === "pending" ? "pending" : "expired",
+    ...(actions
+      ? { actions: actions.map((action) => ({ id: action.id, label: action.label })) }
+      : {}),
   };
 }
 
@@ -107,7 +113,6 @@ function InterventionCard({
   const [announce, setAnnounce] = useState(false);
   const shown = presentBlock(block, view, announce ? null : localAnswer);
   const secret = shown.input === "secret";
-  const terminal = view.status !== "pending";
 
   useEffect(() => {
     if (!announce) return;
@@ -132,8 +137,7 @@ function InterventionCard({
   // authoritative line states the outcome. `announce` keeps the existing
   // already_handled focus behavior.
   const showAuthority = announce || (sourceless && view.status !== "pending");
-  const effectTerminal =
-    view.kind === "approval" && view.status !== "pending" && view.approval;
+  const effectTerminal = view.kind === "approval" && view.status !== "pending" && view.approval;
   return (
     <div data-intervention-id={view.id} data-kind={view.kind} data-mount={mountId}>
       <AskCard
@@ -155,7 +159,11 @@ function InterventionCard({
         </p>
       ) : null}
       {effectTerminal ? (
-        <p role="status" data-testid="intervention-effect" className="mt-1 text-[13px] text-muted-foreground">
+        <p
+          role="status"
+          data-testid="intervention-effect"
+          className="mt-1 text-[13px] text-muted-foreground"
+        >
           {effectStatusLabel(view.approval!.effectStatus)}
         </p>
       ) : null}
@@ -167,21 +175,29 @@ export function InterventionRegion({
   interventions,
   messages,
   target,
+  botNameOf,
   onSettled,
   onRefresh,
 }: {
   interventions: readonly InterventionView[];
   messages: readonly ThreadMessage[];
   target: ArtifactTarget;
+  /** UX-02: resolves a Bot display name for the plan review card header. */
+  botNameOf?: (botId: string) => string | undefined;
   onSettled: (view: InterventionView) => void;
   onRefresh?: () => Promise<void>;
 }) {
   const byMessage = new Map(messages.map((message) => [message.id, message]));
+  // Decision waits lead: a plan review gates the whole Run, then tool
+  // approvals, then ordinary inputs; createdAt orders within one class.
+  const rank = (kind: InterventionView["kind"]) =>
+    kind === "plan_review" ? 0 : kind === "approval" ? 1 : 2;
   const cards = [...interventions].sort((left, right) => {
-    if (left.kind !== right.kind) return left.kind === "approval" ? -1 : 1;
+    if (left.kind !== right.kind) return rank(left.kind) - rank(right.kind);
     return left.createdAt < right.createdAt ? -1 : left.createdAt > right.createdAt ? 1 : 0;
   });
   if (cards.length === 0) return null;
+  const planReviews = cards.filter((view) => view.kind === "plan_review");
   const approvals = cards.filter((view) => view.kind === "approval");
   const inputs = cards.filter((view) => view.kind === "input");
   const renderCard = (view: InterventionView) => {
@@ -201,7 +217,26 @@ export function InterventionRegion({
     );
   };
   return (
-    <section role="region" aria-label="需要你处理" data-testid="intervention-region" className="space-y-2 py-1">
+    <section
+      role="region"
+      aria-label="需要你处理"
+      data-testid="intervention-region"
+      className="space-y-2 py-1"
+    >
+      {planReviews.length > 0 ? (
+        <div data-testid="intervention-plan-reviews" className="space-y-2">
+          {planReviews.map((view) => (
+            <PlanReviewCard
+              key={view.id}
+              view={view}
+              botName={botNameOf?.(view.botId)}
+              target={target}
+              onSettled={onSettled}
+              onRefresh={onRefresh}
+            />
+          ))}
+        </div>
+      ) : null}
       {approvals.length > 0 ? (
         <div data-testid="intervention-approvals" className="space-y-2">
           {approvals.map(renderCard)}

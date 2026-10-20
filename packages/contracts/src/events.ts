@@ -4,7 +4,13 @@ import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { InterventionEventPayloadSchema } from "./intervention.js";
 import { McpTransportSchema } from "./mcp.js";
-import { RunPlanRevisionSchema } from "./run-plans.js";
+import {
+  PlanReviewContentSchema,
+  PlanReviewDecisionSchema,
+  PlanReviewSourceSchema,
+  PlanReviewStatusSchema,
+  RunPlanRevisionSchema,
+} from "./run-plans.js";
 import { RunStepSnapshotSchema } from "./run-steps.js";
 import { RunTodoSnapshotSchema } from "./run-todos.js";
 
@@ -15,6 +21,8 @@ export const ProductEventType = z.enum([
   "thread.message.reaction",
   "thread.progress",
   "plan.revised",
+  "plan.review_submitted",
+  "plan.review_decided",
   "step.created",
   "step.queued",
   "step.started",
@@ -100,8 +108,37 @@ export const EventEnvelopeMeta = z.object({
 });
 export type EventEnvelopeMeta = z.infer<typeof EventEnvelopeMeta>;
 
+export const PlanReviewSubmittedPayloadSchema = z
+  .object({
+    planId: Id,
+    runId: Id,
+    contentVersion: z.number().int().positive(),
+    revision: z.number().int().positive(),
+    source: PlanReviewSourceSchema,
+    /** Typed plan_review Intervention the reviewer resolves. */
+    interventionId: Id,
+  })
+  .strict();
+export type PlanReviewSubmittedPayload = z.infer<typeof PlanReviewSubmittedPayloadSchema>;
+
+export const PlanReviewDecidedPayloadSchema = z
+  .object({
+    planId: Id,
+    runId: Id,
+    contentVersion: z.number().int().positive(),
+    decision: PlanReviewDecisionSchema,
+    reviewStatus: PlanReviewStatusSchema,
+    interventionId: Id,
+    decidedByUserId: Id.optional(),
+    feedback: z.string().max(2000).optional(),
+  })
+  .strict();
+export type PlanReviewDecidedPayload = z.infer<typeof PlanReviewDecidedPayloadSchema>;
+
 export const ProductEventPayloadSchemas = {
   "plan.revised": RunPlanRevisionSchema,
+  "plan.review_submitted": PlanReviewSubmittedPayloadSchema,
+  "plan.review_decided": PlanReviewDecidedPayloadSchema,
   "step.created": RunStepSnapshotSchema,
   "step.queued": RunStepSnapshotSchema,
   "step.started": RunStepSnapshotSchema,
@@ -255,6 +292,13 @@ export const MessageBlock = z.discriminatedUnion("kind", [
         }),
       )
       .optional(),
+    /**
+     * UX-02 unified plan review: the exact plan version this ask reviews.
+     * Present only on plan_review asks; `answer` records the taken action id
+     * (approve | request_changes | reject). A plan review is never a tool
+     * authorization, so it carries no approvalEffectId.
+     */
+    planReview: PlanReviewContentSchema.optional(),
   }),
   z.object({
     kind: z.literal("choice"),

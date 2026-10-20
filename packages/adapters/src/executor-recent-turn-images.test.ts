@@ -69,6 +69,11 @@ async function runWithModel(modelId: string) {
     yield { type: "done" as const, text: "Done" };
   });
   const prisma = {
+    runPlan: { findUnique: vi.fn(async () => null) },
+    runPlanReview: {
+      findFirst: vi.fn(async () => null),
+      count: vi.fn(async () => 0),
+    },
     deliveryRecord: { findMany: vi.fn(async () => []) },
     run: {
       findUnique: vi.fn(async () => run),
@@ -135,19 +140,24 @@ async function runWithModel(modelId: string) {
       ]),
     },
   };
-  Object.assign(prisma, { $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
-    callback({
-      $queryRaw: vi.fn(async () => [{ id: run.id }]),
-      run: {
-        findUnique: vi.fn(async () => ({ ...run, leaseExpiresAt: new Date(Date.now() + 60_000) })),
-        updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-          Object.assign(run, data);
-          return { count: 1 };
-        }),
-      },
-      attempt: prisma.attempt,
-    }),
-  ) });
+  Object.assign(prisma, {
+    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        $queryRaw: vi.fn(async () => [{ id: run.id }]),
+        run: {
+          findUnique: vi.fn(async () => ({
+            ...run,
+            leaseExpiresAt: new Date(Date.now() + 60_000),
+          })),
+          updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+            Object.assign(run, data);
+            return { count: 1 };
+          }),
+        },
+        attempt: prisma.attempt,
+      }),
+    ),
+  });
   const finalizeRun = vi.fn(async () => ({ continuationRunId: null }));
   const executor = createRunExecutor({
     prisma,

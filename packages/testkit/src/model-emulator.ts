@@ -139,6 +139,7 @@ export async function startModelEmulator(options: {
       response.end("data: [DONE]\n\n");
     })().catch((error: unknown) => {
       failures.push(error instanceof Error ? error : new Error(String(error)));
+      if (process.env.MODEL_EMULATOR_DEBUG) console.error("[emulator] step failure:", error);
       failResponse(response);
     });
   });

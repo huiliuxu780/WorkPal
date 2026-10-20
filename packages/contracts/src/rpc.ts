@@ -399,6 +399,11 @@ export const appContract = {
           answer: z.string().min(1),
           /** Only for a login card; `answer` carries its password. */
           username: z.string().min(1).max(512).optional(),
+          /**
+           * Only for a plan_review card: required non-empty concrete feedback
+           * for `request_changes`, optional reason for `reject`.
+           */
+          feedback: z.string().trim().min(1).max(2000).optional(),
         }),
       )
       .output(ResolveInterventionResultSchema),

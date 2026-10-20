@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  type InterventionPlanReview,
+  InterventionPlanReviewSchema,
   type InterventionPresentation,
   InterventionPresentationSchema,
   type InterventionView,
@@ -46,6 +48,7 @@ export type InterventionRecord = {
   inputPurpose: string | null;
   inputActions: unknown;
   presentation: unknown;
+  planReview?: unknown;
   effectId: string | null;
   decision: string | null;
   createdAt: Date;
@@ -80,7 +83,9 @@ export function assertSafeClientSubmissionId(clientSubmissionId: string, answer:
 }
 
 function asksIn(blocks: MessageBlock[]): Array<Extract<MessageBlock, { kind: "ask" }>> {
-  return blocks.filter((block): block is Extract<MessageBlock, { kind: "ask" }> => block.kind === "ask");
+  return blocks.filter(
+    (block): block is Extract<MessageBlock, { kind: "ask" }> => block.kind === "ask",
+  );
 }
 
 function whitelistedActions(
@@ -90,7 +95,9 @@ function whitelistedActions(
   return actions.map((action) => ({ id: action.id, label: action.label }));
 }
 
-function inputModeOf(ask: Extract<MessageBlock, { kind: "ask" }>): "text" | "choice" | "secret" | null {
+function inputModeOf(
+  ask: Extract<MessageBlock, { kind: "ask" }>,
+): "text" | "choice" | "secret" | null {
   if (ask.approvalEffectId) return null;
   if (ask.input === "secret") return "secret";
   if (ask.actions?.length) return "choice";
@@ -122,14 +129,15 @@ async function readEffectStatus(
   return effect?.status ?? "unknown";
 }
 
-export function interventionView(
-  row: InterventionRecord,
-  effectStatus?: string,
-): InterventionView {
+export function interventionView(row: InterventionRecord, effectStatus?: string): InterventionView {
   const parsedPresentation = InterventionPresentationSchema.safeParse(row.presentation);
   const presentation = parsedPresentation.success ? parsedPresentation.data : undefined;
+  const parsedPlanReview = InterventionPlanReviewSchema.safeParse(row.planReview);
+  const planReview: InterventionPlanReview | undefined =
+    row.kind === "plan_review" && parsedPlanReview.success ? parsedPlanReview.data : undefined;
   const actions = actionList(row.inputActions);
-  const decision = row.decision === "approved" || row.decision === "denied" ? row.decision : undefined;
+  const decision =
+    row.decision === "approved" || row.decision === "denied" ? row.decision : undefined;
   const mode =
     row.inputMode === "text" || row.inputMode === "choice" || row.inputMode === "secret"
       ? row.inputMode
@@ -138,7 +146,7 @@ export function interventionView(
     row.inputPurpose === "otp" || row.inputPurpose === "password" || row.inputPurpose === "api_key"
       ? row.inputPurpose
       : undefined;
-  let input: InterventionView["input"] = undefined;
+  let input: InterventionView["input"];
   if (row.kind === "input" && mode) {
     input = { mode };
     if (purpose) input.purpose = purpose;
@@ -156,7 +164,8 @@ export function interventionView(
   return {
     id: row.id,
     revision: row.revision,
-    kind: row.kind === "approval" ? "approval" : "input",
+    kind:
+      row.kind === "approval" ? "approval" : row.kind === "plan_review" ? "plan_review" : "input",
     status:
       row.status === "answered" ||
       row.status === "expired" ||
@@ -182,6 +191,7 @@ export function interventionView(
     },
     ...(input ? { input } : {}),
     ...(approval ? { approval } : {}),
+    ...(planReview ? { planReview } : {}),
     ...(presentation ? { presentation } : {}),
   };
 }
@@ -203,6 +213,7 @@ function eventPayload(view: InterventionView): Record<string, unknown> {
     actor: view.requestingActor,
     ...(view.input ? { input: view.input } : {}),
     ...(view.approval ? { approval: view.approval } : {}),
+    ...(view.planReview ? { planReview: view.planReview } : {}),
     ...(view.presentation ? { presentation: view.presentation } : {}),
   };
 }
@@ -291,11 +302,17 @@ export async function insertPausedIntervention(
   const actions = whitelistedActions(ask.actions);
   const presentation = presentationFromAskBlock(ask);
   const createdAt = input.waitStartedAt;
+  // A plan review carries its version binding instead of an external effect:
+  // it authorizes a plan version's direction, never a tool call.
+  const planReview: InterventionPlanReview | null = ask.planReview
+    ? InterventionPlanReviewSchema.parse({ content: ask.planReview })
+    : null;
+  if (planReview && effectId) throw new Error("A plan review is not a tool approval");
   await store.create({
     data: {
       id,
       revision: 1,
-      kind: effectId ? "approval" : "input",
+      kind: planReview ? "plan_review" : effectId ? "approval" : "input",
       status: "pending",
       spaceId: input.spaceId,
       threadId: input.threadId,
@@ -309,6 +326,7 @@ export async function insertPausedIntervention(
       inputPurpose: mode === "secret" ? (ask.purpose ?? null) : null,
       ...(actions ? { inputActions: actions } : {}),
       presentation,
+      ...(planReview ? { planReview: planReview as object } : {}),
       effectId,
       createdAt,
     },
@@ -414,6 +432,13 @@ async function transitionPending(
   });
   const next = changed[0];
   if (!next) return null;
+  if (next.kind === "plan_review" && status !== "answered") {
+    // The round cannot outlive its card: a Stop/Clear cancel or a wait timeout
+    // settles the pending review round and the plan's review state with it.
+    // (The answered path decides the round before settling, in the answer tx.)
+    const { settleOrphanedPlanReview } = await import("./run-plans.js");
+    await settleOrphanedPlanReview(tx, next.runId, status === "expired" ? "expired" : "cancelled");
+  }
   if (options?.emitEvent !== false) await emitInterventionResolved(tx, next);
   return next;
 }
@@ -437,7 +462,13 @@ async function createTerminalLegacy(
   tx: InterventionTx,
   input: {
     id: string;
-    run: { id: string; spaceId: string; threadId: string; botId: string; waitStartedAt?: Date | null };
+    run: {
+      id: string;
+      spaceId: string;
+      threadId: string;
+      botId: string;
+      waitStartedAt?: Date | null;
+    };
     messageId: string;
     ask: Extract<MessageBlock, { kind: "ask" }>;
     status: "expired" | "cancelled" | "answered";
@@ -483,7 +514,13 @@ async function createTerminalLegacy(
 
 async function terminalizeMissing(
   tx: InterventionTx,
-  run: { id: string; spaceId: string; threadId: string; botId: string; waitStartedAt?: Date | null },
+  run: {
+    id: string;
+    spaceId: string;
+    threadId: string;
+    botId: string;
+    waitStartedAt?: Date | null;
+  },
   status: "expired" | "cancelled",
   options?: { deferEvents?: boolean },
 ): Promise<InterventionRecord[]> {
@@ -522,7 +559,13 @@ async function terminalizeMissing(
 export async function settleAnsweredIntervention(
   tx: InterventionTx,
   input: {
-    run: { id: string; spaceId: string; threadId: string; botId: string; waitStartedAt?: Date | null };
+    run: {
+      id: string;
+      spaceId: string;
+      threadId: string;
+      botId: string;
+      waitStartedAt?: Date | null;
+    };
     messageId: string;
     ask: Extract<MessageBlock, { kind: "ask" }>;
     resolvedByUserId: string;
@@ -578,7 +621,9 @@ export async function cancelPendingInterventions(
     select: { id: true, spaceId: true, threadId: true, botId: true, waitStartedAt: true },
   });
   await lockThreadsForRuns(tx, runs);
-  const ordered = [...runs].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+  const ordered = [...runs].sort((left, right) =>
+    left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+  );
   for (const run of ordered) {
     await lockRun(tx, run.id);
     const fresh = await tx.run.findUnique({ where: { id: run.id }, select: { status: true } });
@@ -699,9 +744,7 @@ export async function loadInterventionViews(
   recentRunIds: readonly string[] = [],
 ): Promise<InterventionView[]> {
   const store = interventionStore(tx);
-  const rows = store
-    ? await loadSnapshotRows(tx, store, threadId, messages, recentRunIds)
-    : [];
+  const rows = store ? await loadSnapshotRows(tx, store, threadId, messages, recentRunIds) : [];
   const effectIds = rows.map((row) => row.effectId).filter((id): id is string => Boolean(id));
   const effects =
     effectIds.length > 0
@@ -711,7 +754,9 @@ export async function loadInterventionViews(
         })
       : [];
   const effectStatus = new Map(effects.map((effect) => [effect.id, effect.status]));
-  const views = rows.map((row) => interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined));
+  const views = rows.map((row) =>
+    interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined),
+  );
   const covered = new Set(views.map((view) => view.messageId));
   for (const message of messages) {
     if (!message.runId || covered.has(message.id)) continue;
@@ -719,7 +764,14 @@ export async function loadInterventionViews(
       if (ask.interventionId && views.some((view) => view.id === ask.interventionId)) continue;
       const run = await tx.run.findUnique({
         where: { id: message.runId },
-        select: { id: true, spaceId: true, threadId: true, botId: true, waitStartedAt: true, status: true },
+        select: {
+          id: true,
+          spaceId: true,
+          threadId: true,
+          botId: true,
+          waitStartedAt: true,
+          status: true,
+        },
       });
       if (!run || run.status !== "waiting_input") continue;
       const mode = inputModeOf(ask);
@@ -742,7 +794,9 @@ export async function loadInterventionViews(
         messageId: message.id,
         createdAt: (run.waitStartedAt ?? new Date(0)).toISOString(),
         ...(run.waitStartedAt
-          ? { expiresAt: new Date(run.waitStartedAt.getTime() + INTERVENTION_WAIT_MS).toISOString() }
+          ? {
+              expiresAt: new Date(run.waitStartedAt.getTime() + INTERVENTION_WAIT_MS).toISOString(),
+            }
           : {}),
         requestingActor: { botId: run.botId },
         ...(!ask.approvalEffectId && mode
@@ -822,10 +876,7 @@ export function legacyMessageId(interventionId: string): string | null {
   return messageId.length > 0 ? messageId : null;
 }
 
-async function viewFor(
-  tx: InterventionTx,
-  row: InterventionRecord,
-): Promise<InterventionView> {
+async function viewFor(tx: InterventionTx, row: InterventionRecord): Promise<InterventionView> {
   return interventionView(row, await readEffectStatus(tx, row.effectId));
 }
 
@@ -841,14 +892,19 @@ export async function resolveInterventionInTransaction(
     threadId: string;
     runId: string;
   },
-  commit: (tx: InterventionTx) => Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null>,
+  commit: (
+    tx: InterventionTx,
+  ) => Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null>,
 ): Promise<ResolveInterventionOutcome> {
   await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
   await lockRun(tx, input.runId);
   let row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
   if (row) await lockIntervention(tx, row.id);
   row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
-  if (row && (row.spaceId !== input.spaceId || row.threadId !== input.threadId || row.runId !== input.runId)) {
+  if (
+    row &&
+    (row.spaceId !== input.spaceId || row.threadId !== input.threadId || row.runId !== input.runId)
+  ) {
     return { outcome: "rejected", reason: "not_found" };
   }
   if (row && row.status !== "pending") {
@@ -896,7 +952,8 @@ export async function resolveInterventionInTransaction(
       : null;
     const ask = pendingAskBlocks(message?.blocks)[0];
     const ownerOnly =
-      Boolean(ask && isApprovalAskBlock(ask)) || Boolean(ask && isSecretAskBlock(ask) && ask.credential);
+      Boolean(ask && isApprovalAskBlock(ask)) ||
+      Boolean(ask && isSecretAskBlock(ask) && ask.credential);
     if (ownerOnly && run && run.userId !== input.answeredByUserId) {
       return { outcome: "rejected", reason: "forbidden" };
     }

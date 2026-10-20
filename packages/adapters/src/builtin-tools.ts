@@ -684,9 +684,75 @@ export const builtinAgentTools: ConnectorTool[] = [
     readOnly: true,
   },
   {
+    name: "plan_enter",
+    description:
+      "Enter PLAN mode for this Run: a read-only phase for research and drafting before consequential changes. While PLAN mode is active, mutating tools are blocked; use plan_write to record the structured plan and plan_exit to submit it for the user's review. Use it for non-trivial, multi-stage, or ambiguous tasks; a simple request needs no plan.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          maxLength: 500,
+          description: "Optional one-line reason this task needs a reviewed plan.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "plan_write",
+    description:
+      "Record or revise THE structured plan for this Run (goal + ordered items). This is the same plan identity as publish_run_plan — one plan per Run, never two. Before the first approval this saves a draft; submit it with plan_exit when ready. While an approved plan is executing, a status-only update is a progress revision, but any change to the goal or to item ids/titles/order is a significant revision that immediately suspends execution for a new user review. The first call has expectedRevision 0; later calls use the revision returned by plan tools and include a changeReason. Keep item ids stable and mark removed work superseded or skipped. This records intent and reported progress, not proof of external effects.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expectedRevision: { type: "integer", minimum: 0 },
+        goal: { type: "string", maxLength: 1000 },
+        changeReason: { type: "string", maxLength: 500 },
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", maxLength: 64 },
+              title: { type: "string", maxLength: 200 },
+              status: {
+                type: "string",
+                enum: ["pending", "active", "completed", "skipped", "superseded", "unresolved"],
+              },
+              reason: { type: "string", maxLength: 500 },
+            },
+            required: ["id", "title", "status"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["expectedRevision", "goal", "items"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "plan_exit",
+    description:
+      "Submit the current plan for the user's review and pause this Run until they decide. The user approves, requests changes (you return to read-only PLAN mode with their feedback and revise), or rejects (the Run ends). On approval the same Run resumes execution on the approved version. Do not call it before plan_write recorded a plan, and do not treat approval as authorization for individual tools — consequential actions still follow their own approvals.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          maxLength: 500,
+          description: "Optional short summary of the plan for the reviewer.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "publish_run_plan",
     description:
-      "Publish or revise a user-visible structured Plan for this Run. Use only when a Plan helps explain a multi-stage goal. The first call has expectedRevision 0; later calls use the revision returned by this tool and include a changeReason. Keep item ids stable across revisions and mark removed work superseded or skipped. This records intent and reported progress, not proof of external effects. Do not copy plan_write Markdown into this tool.",
+      "Publish or revise THE user-visible structured Plan for this Run and submit it for review. Same plan identity as plan_write/plan_exit — one plan per Run, never two. Use only when a Plan helps explain a multi-stage goal. The first call has expectedRevision 0; later calls use the revision returned by this tool and include a changeReason. Publishing pauses the Run for the user's review of that version; a status-only republication of the approved content is a progress update and does not re-open review, while any change to the goal or to item ids/titles/order requires a new approval. Keep item ids stable across revisions and mark removed work superseded or skipped. This records intent and reported progress, not proof of external effects.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1032,7 +1098,13 @@ export const builtinAgentTools: ConnectorTool[] = [
       oneOf: [
         {
           type: "object",
-          properties: { character: { type: "string", enum: ["dot", "treble", "wave", "bounce"] }, body_color: { type: "string", enum: ["orange", "blue", "purple", "brown", "pink", "ink"] } },
+          properties: {
+            character: { type: "string", enum: ["dot", "treble", "wave", "bounce"] },
+            body_color: {
+              type: "string",
+              enum: ["orange", "blue", "purple", "brown", "pink", "ink"],
+            },
+          },
           required: ["character"],
           additionalProperties: false,
         },

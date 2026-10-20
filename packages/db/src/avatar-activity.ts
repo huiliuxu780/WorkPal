@@ -92,12 +92,15 @@ export async function loadBotAvatarStates(
       for (const clear of clears) {
         if (!clearByThread.has(clear.threadId)) clearByThread.set(clear.threadId, clear.createdAt);
       }
+      // Both decision waits — a tool approval and a UX-02 plan review — rank
+      // above an ordinary input wait; the avatar shows "needs approval" for them.
+      const decisionKinds = new Set(["approval", "plan_review"]);
       const pendingByRun = new Map<string, (typeof pending)[number]>();
       for (const item of pending) {
         const previous = pendingByRun.get(item.runId);
         if (
           !previous ||
-          (item.kind === "approval" && previous.kind !== "approval") ||
+          (decisionKinds.has(item.kind) && !decisionKinds.has(previous.kind)) ||
           (item.kind === previous.kind && item.updatedAt > previous.updatedAt)
         ) {
           pendingByRun.set(item.runId, item);
@@ -125,7 +128,7 @@ export async function loadBotAvatarStates(
           if (!intervention) continue; // An orphan wait must not invent an approval.
           append(run.botId, {
             runId: run.id,
-            kind: intervention.kind === "approval" ? "approval" : "waiting_input",
+            kind: decisionKinds.has(intervention.kind) ? "approval" : "waiting_input",
             status: "waiting",
             updatedAt: intervention.updatedAt.toISOString(),
             revision: Math.max(run.snapshotRev, intervention.revision),

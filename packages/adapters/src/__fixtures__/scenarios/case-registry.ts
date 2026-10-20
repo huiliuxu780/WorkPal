@@ -197,10 +197,7 @@ export const PROMPT_FAMILIES: Record<PromptFamilyId, PromptFamily> = {
   P05: {
     id: "P05",
     title: "Skills and connected capability hints",
-    sources: [
-      "packages/core/src/agent-skill.ts",
-      "packages/adapters/src/executor.ts",
-    ],
+    sources: ["packages/core/src/agent-skill.ts", "packages/adapters/src/executor.ts"],
     markers: [
       "Saved taught skills:",
       "follow that skill's playbook exactly",
@@ -391,13 +388,8 @@ export const PROMPT_FAMILY_SEGMENTS: Record<PromptFamilyId, string[]> = {
     "context/compacted-previous-header",
     "context/compacted-new-messages-label",
   ],
-  P07: [
-    "auxiliary/history-compaction",
-  ],
-  P08: [
-    "auxiliary/auto-review",
-    "auxiliary/auto-review-prompt",
-  ],
+  P07: ["auxiliary/history-compaction"],
+  P08: ["auxiliary/auto-review", "auxiliary/auto-review-prompt"],
   P09: [
     "auxiliary/group-router",
     "auxiliary/group-router-prompt",
@@ -405,22 +397,10 @@ export const PROMPT_FAMILY_SEGMENTS: Record<PromptFamilyId, string[]> = {
     "auxiliary/group-router-no-lead",
     "auxiliary/group-router-output",
   ],
-  P10: [
-    "delivery/delivery-instructions",
-    "delivery/hidden-completed",
-    "delivery/hidden-failed",
-  ],
-  P11: [
-    "helper/helper-declaration",
-    "helper/helper-inline-agents",
-  ],
-  P12: [
-    "messaging/dm-surface-note",
-    "messaging/channel-privacy",
-  ],
-  P13: [
-    "auxiliary/team-chat-judge",
-  ],
+  P10: ["delivery/delivery-instructions", "delivery/hidden-completed", "delivery/hidden-failed"],
+  P11: ["helper/helper-declaration", "helper/helper-inline-agents"],
+  P12: ["messaging/dm-surface-note", "messaging/channel-privacy"],
+  P13: ["auxiliary/team-chat-judge"],
   P14: [
     "feedback/replay-different-resource",
     "feedback/replay-direct-required",
@@ -457,7 +437,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "user",
     status: "production-entry",
     entries: [
-      { file: "apps/api/src/thread-target.ts", symbol: "sendToThreadTarget (threads/send)", note: "direct DM/group user turn" },
+      {
+        file: "apps/api/src/thread-target.ts",
+        symbol: "sendToThreadTarget (threads/send)",
+        note: "direct DM/group user turn",
+      },
     ],
     classification: "Interactive owner turn; chat TurnPolicy source.",
     cases: ["S01-C1", "S01-C2", "S01-C3", "S01-C6", "S09-C1"],
@@ -466,7 +450,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "follow_up",
     status: "production-entry",
     entries: [
-      { file: "apps/api/src/router.ts", symbol: "threads.followUp", note: "follow-up while a run is active/queued" },
+      {
+        file: "apps/api/src/router.ts",
+        symbol: "threads.followUp",
+        note: "follow-up while a run is active/queued",
+      },
     ],
     classification: "Interactive owner turn, same rules as user.",
     cases: ["S01-C4"],
@@ -489,7 +477,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "created",
     status: "production-entry",
     entries: [
-      { file: "apps/api/src/router.ts", symbol: "enqueueBotIntroRun", note: "bot creation intro turn" },
+      {
+        file: "apps/api/src/router.ts",
+        symbol: "enqueueBotIntroRun",
+        note: "bot creation intro turn",
+      },
     ],
     classification: "Automation policy; executor sends zero backend tools for the intro.",
     cases: ["S03-C1", "S03-C2"],
@@ -499,7 +491,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     status: "production-entry",
     entries: [
       { file: "apps/api/src/router.ts", symbol: "routines.testRun", note: "manual test fire" },
-      { file: "packages/adapters/src/wakeup.ts", symbol: "routineWakeupJob handler", note: "scheduled fire via worker wakeup" },
+      {
+        file: "packages/adapters/src/wakeup.ts",
+        symbol: "routineWakeupJob handler",
+        note: "scheduled fire via worker wakeup",
+      },
     ],
     classification: "Automation policy; silent-reply guidance; schedule_create removed.",
     cases: ["S04-C1", "S04-C2", "S04-C3"],
@@ -508,7 +504,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "webhook",
     status: "production-entry",
     entries: [
-      { file: "apps/api/src/webhook-inbound.ts", symbol: "handleWebhookInbound", note: "inbound webhook Run" },
+      {
+        file: "apps/api/src/webhook-inbound.ts",
+        symbol: "handleWebhookInbound",
+        note: "inbound webhook Run",
+      },
     ],
     classification:
       "Automation policy; mutating tools additionally require owner approval (unattendedTriggerToolRequiresApproval).",
@@ -518,8 +518,16 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "messaging",
     status: "production-entry",
     entries: [
-      { file: "apps/api/src/messaging-inbound.ts", symbol: "messaging inbound handlers", note: "DM and channel messages" },
-      { file: "apps/api/src/team-chat-bridge.ts", symbol: "team chat bridge", note: "judge-engaged channel Runs" },
+      {
+        file: "apps/api/src/messaging-inbound.ts",
+        symbol: "messaging inbound handlers",
+        note: "DM and channel messages",
+      },
+      {
+        file: "apps/api/src/team-chat-bridge.ts",
+        symbol: "team chat bridge",
+        note: "judge-engaged channel Runs",
+      },
     ],
     classification:
       "Automation policy; channel Runs (channel_message block) drop personal memory/scratchpad surfaces.",
@@ -529,7 +537,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "skill",
     status: "production-entry",
     entries: [
-      { file: "apps/api/src/taught-skills.ts", symbol: "taught skill test/run", note: "skill invocation Run" },
+      {
+        file: "apps/api/src/taught-skills.ts",
+        symbol: "taught skill test/run",
+        note: "skill invocation Run",
+      },
     ],
     classification: "Automation policy; prompt wrapped by formatSkillRunPrompt (P04).",
     cases: ["S05-C4"],
@@ -538,7 +550,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "cloud_agent",
     status: "production-entry",
     entries: [
-      { file: "packages/adapters/src/cloud-agent-poll.ts", symbol: "cloud agent poller", note: "cloud-agent notification Run" },
+      {
+        file: "packages/adapters/src/cloud-agent-poll.ts",
+        symbol: "cloud agent poller",
+        note: "cloud-agent notification Run",
+      },
     ],
     classification: "Automation policy; cloud_agent_* tools conditional on provider enablement.",
     cases: ["S05-C5"],
@@ -547,7 +563,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "spawn",
     status: "production-entry",
     entries: [
-      { file: "packages/adapters/src/child-bots.ts", symbol: "spawn_bot flow", note: "spawned child bot Run" },
+      {
+        file: "packages/adapters/src/child-bots.ts",
+        symbol: "spawn_bot flow",
+        note: "spawned child bot Run",
+      },
     ],
     classification: "Automation policy.",
     cases: ["S05-C6"],
@@ -556,7 +576,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "call_end",
     status: "production-entry",
     entries: [
-      { file: "apps/api/src/router.ts", symbol: "voice hang-up handler", note: "HANG_UP_PROMPT Run after a call ends" },
+      {
+        file: "apps/api/src/router.ts",
+        symbol: "voice hang-up handler",
+        note: "HANG_UP_PROMPT Run after a call ends",
+      },
     ],
     classification:
       "Automation policy; voice context (end_call offered) without the live-call VOICE_CALL_INSTRUCTION.",
@@ -566,10 +590,26 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "bot_message",
     status: "production-entry",
     entries: [
-      { file: "packages/adapters/src/bot-messages.ts", symbol: "message_bot/handoff delivery", note: "support and handoff Runs" },
-      { file: "apps/api/src/team-chat-bridge.ts", symbol: "team chat bridge", note: "group peer messages" },
-      { file: "packages/adapters/src/job-reconciler.ts", symbol: "job reconciler", note: "recovered peer delivery" },
-      { file: "packages/adapters/src/agent-connections.ts", symbol: "agent connections", note: "cross-owner agent messages" },
+      {
+        file: "packages/adapters/src/bot-messages.ts",
+        symbol: "message_bot/handoff delivery",
+        note: "support and handoff Runs",
+      },
+      {
+        file: "apps/api/src/team-chat-bridge.ts",
+        symbol: "team chat bridge",
+        note: "group peer messages",
+      },
+      {
+        file: "packages/adapters/src/job-reconciler.ts",
+        symbol: "job reconciler",
+        note: "recovered peer delivery",
+      },
+      {
+        file: "packages/adapters/src/agent-connections.ts",
+        symbol: "agent connections",
+        note: "cross-owner agent messages",
+      },
     ],
     classification:
       "Support policy (planning disabled, non-interactive). 'handoff' is a collaboration source/role on bot_message Runs (handoff_owner context role), never its own trigger.",
@@ -579,7 +619,11 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     trigger: "delivery",
     status: "production-entry",
     entries: [
-      { file: "packages/adapters/src/result-delivery.ts", symbol: "deliverResults", note: "outbox-claimed background result delivery Run" },
+      {
+        file: "packages/adapters/src/result-delivery.ts",
+        symbol: "deliverResults",
+        note: "outbox-claimed background result delivery Run",
+      },
     ],
     classification:
       "Automation policy with delegation disabled; zero backend tools and zero skills; P10 prompt.",
@@ -613,138 +657,463 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
 
 /** DM, user trigger, no graphics/page/semantic-memory/cloud/mail, planning on. */
 export const BACKEND_MINIMAL_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
-  "create_space", "forget_secret", "list_files", "list_secrets", "message_bot",
-  "message_user", "publish_run_plan", "publish_run_step", "publish_run_todo",
-  "read_file", "remember", "render_plot", "request_secret", "request_takeover",
-  "run_subagent", "runtime_current_time", "schedule_cancel", "schedule_create",
-  "schedule_list", "scratchpad_add", "scratchpad_complete", "scratchpad_list",
-  "scratchpad_remove", "scratchpad_update", "secret_request", "shell",
-  "skill_create", "skill_delete", "skill_read", "skill_update", "spawn_bot",
-  "task_catalog", "update_bot", "web_fetch", "web_search", "write_file",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "change_avatar",
+  "create_space",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "plan_enter",
+  "plan_exit",
+  "plan_write",
+  "publish_run_plan",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
+  "write_file",
 ];
 
 /** DM, user trigger, everything available (graphics, page browser, semantic memory, cloud agent, mail). */
 export const BACKEND_FULL_GRAPHICAL_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "browser_act",
-  "browser_navigate", "browser_snapshot", "change_avatar", "cloud_agent_cancel",
-  "cloud_agent_launch", "cloud_agent_reply", "cloud_agent_status",
-  "computer_act", "computer_observe", "create_space", "forget_memory",
-  "forget_secret", "launch_app", "list_files", "list_secrets", "message_bot",
-  "message_user", "open_path", "publish_run_plan", "publish_run_step",
-  "publish_run_todo", "read_file", "recall_memory", "render_plot",
-  "request_secret", "request_takeover", "run_subagent", "runtime_current_time",
-  "save_memory", "schedule_cancel", "schedule_create", "schedule_list",
-  "scratchpad_add", "scratchpad_complete", "scratchpad_list",
-  "scratchpad_remove", "scratchpad_update", "secret_request", "send_email",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "browser_act",
+  "browser_navigate",
+  "browser_snapshot",
+  "change_avatar",
+  "cloud_agent_cancel",
+  "cloud_agent_launch",
+  "cloud_agent_reply",
+  "cloud_agent_status",
+  "computer_act",
+  "computer_observe",
+  "create_space",
+  "forget_memory",
+  "forget_secret",
+  "launch_app",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "open_path",
+  "plan_enter",
+  "plan_exit",
+  "plan_write",
+  "publish_run_plan",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "recall_memory",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "save_memory",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "send_email",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
   "write_file",
 ];
 
 /** Group thread, user trigger, minimal options: message_bot out, handoff_to_bot in. */
 export const BACKEND_GROUP_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
-  "create_space", "forget_secret", "handoff_to_bot", "list_files",
-  "list_secrets", "message_user", "publish_run_plan", "publish_run_step",
-  "publish_run_todo", "read_file", "remember", "render_plot", "request_secret",
-  "request_takeover", "run_subagent", "runtime_current_time", "schedule_cancel",
-  "schedule_create", "schedule_list", "scratchpad_add", "scratchpad_complete",
-  "scratchpad_list", "scratchpad_remove", "scratchpad_update", "secret_request",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "change_avatar",
+  "create_space",
+  "forget_secret",
+  "handoff_to_bot",
+  "list_files",
+  "list_secrets",
+  "message_user",
+  "plan_enter",
+  "plan_exit",
+  "plan_write",
+  "publish_run_plan",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
   "write_file",
 ];
 
 /** Routine trigger (automation → planning off): schedule_create removed. */
 export const BACKEND_ROUTINE = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "create_space",
-  "forget_secret", "list_files", "list_secrets", "message_bot", "message_user",
-  "publish_run_step", "publish_run_todo", "read_file", "remember",
-  "render_plot", "request_secret", "request_takeover", "run_subagent",
-  "runtime_current_time", "schedule_cancel", "schedule_list", "scratchpad_add",
-  "scratchpad_complete", "scratchpad_list", "scratchpad_remove",
-  "scratchpad_update", "secret_request", "shell", "skill_create",
-  "skill_delete", "skill_read", "skill_update", "spawn_bot", "task_catalog",
-  "update_bot", "web_fetch", "web_search", "write_file",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "create_space",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
+  "write_file",
 ];
 
 /** Messaging channel Run (automation → planning off): memory/task_catalog/scratchpad surfaces removed. */
 export const BACKEND_MESSAGING_CHANNEL = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "create_space",
-  "forget_secret", "list_files", "list_secrets", "message_bot", "message_user",
-  "publish_run_step", "publish_run_todo", "read_file", "render_plot",
-  "request_secret", "request_takeover", "run_subagent", "runtime_current_time",
-  "schedule_cancel", "schedule_create", "schedule_list", "secret_request",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "update_bot", "web_fetch", "web_search", "write_file",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "create_space",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "update_bot",
+  "web_fetch",
+  "web_search",
+  "write_file",
 ];
 
 /** Messaging DM Run (automation → planning off); personal surfaces stay. */
 export const BACKEND_MESSAGING_DM = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "create_space",
-  "forget_secret", "list_files", "list_secrets", "message_bot", "message_user",
-  "publish_run_step", "publish_run_todo", "read_file", "remember",
-  "render_plot", "request_secret", "request_takeover", "run_subagent",
-  "runtime_current_time", "schedule_cancel", "schedule_create", "schedule_list",
-  "scratchpad_add", "scratchpad_complete", "scratchpad_list",
-  "scratchpad_remove", "scratchpad_update", "secret_request", "shell",
-  "skill_create", "skill_delete", "skill_read", "skill_update", "spawn_bot",
-  "task_catalog", "update_bot", "web_fetch", "web_search", "write_file",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "create_space",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
+  "write_file",
 ];
 
 /** Voice turn (user trigger on a live call): end_call added. */
 export const BACKEND_VOICE_USER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "change_avatar",
-  "create_space", "end_call", "forget_secret", "list_files", "list_secrets",
-  "message_bot", "message_user", "publish_run_plan", "publish_run_step",
-  "publish_run_todo", "read_file", "remember", "render_plot", "request_secret",
-  "request_takeover", "run_subagent", "runtime_current_time", "schedule_cancel",
-  "schedule_create", "schedule_list", "scratchpad_add", "scratchpad_complete",
-  "scratchpad_list", "scratchpad_remove", "scratchpad_update", "secret_request",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "change_avatar",
+  "create_space",
+  "end_call",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "plan_enter",
+  "plan_exit",
+  "plan_write",
+  "publish_run_plan",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
   "write_file",
 ];
 
 /** call_end trigger (automation → planning off, voice context): end_call offered, no live-call instruction. */
 export const BACKEND_CALL_END = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "create_space",
-  "end_call", "forget_secret", "list_files", "list_secrets", "message_bot",
-  "message_user", "publish_run_step", "publish_run_todo", "read_file",
-  "remember", "render_plot", "request_secret", "request_takeover",
-  "run_subagent", "runtime_current_time", "schedule_cancel", "schedule_create",
-  "schedule_list", "scratchpad_add", "scratchpad_complete", "scratchpad_list",
-  "scratchpad_remove", "scratchpad_update", "secret_request", "shell",
-  "skill_create", "skill_delete", "skill_read", "skill_update", "spawn_bot",
-  "task_catalog", "update_bot", "web_fetch", "web_search", "write_file",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "create_space",
+  "end_call",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
+  "write_file",
 ];
 
 /** Unattended automation shape shared by webhook/skill/spawn/support bot_message (planning off). */
 export const BACKEND_AUTOMATION_PLANNING_OFF = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file", "create_space",
-  "forget_secret", "list_files", "list_secrets", "message_bot", "message_user",
-  "publish_run_step", "publish_run_todo", "read_file", "remember",
-  "render_plot", "request_secret", "request_takeover", "run_subagent",
-  "runtime_current_time", "schedule_cancel", "schedule_create", "schedule_list",
-  "scratchpad_add", "scratchpad_complete", "scratchpad_list",
-  "scratchpad_remove", "scratchpad_update", "secret_request", "shell",
-  "skill_create", "skill_delete", "skill_read", "skill_update", "spawn_bot",
-  "task_catalog", "update_bot", "web_fetch", "web_search", "write_file",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "create_space",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
+  "write_file",
 ];
 
 /** cloud_agent trigger with the cloud provider enabled (planning off). */
 export const BACKEND_CLOUD_AGENT_TRIGGER = [
-  "add_mcp_server", "archive_bot", "ask_user", "attach_file",
-  "cloud_agent_cancel", "cloud_agent_launch", "cloud_agent_reply",
-  "cloud_agent_status", "create_space", "forget_secret", "list_files",
-  "list_secrets", "message_bot", "message_user", "publish_run_step",
-  "publish_run_todo", "read_file", "remember", "render_plot", "request_secret",
-  "request_takeover", "run_subagent", "runtime_current_time", "schedule_cancel",
-  "schedule_create", "schedule_list", "scratchpad_add", "scratchpad_complete",
-  "scratchpad_list", "scratchpad_remove", "scratchpad_update", "secret_request",
-  "shell", "skill_create", "skill_delete", "skill_read", "skill_update",
-  "spawn_bot", "task_catalog", "update_bot", "web_fetch", "web_search",
+  "add_mcp_server",
+  "archive_bot",
+  "ask_user",
+  "attach_file",
+  "cloud_agent_cancel",
+  "cloud_agent_launch",
+  "cloud_agent_reply",
+  "cloud_agent_status",
+  "create_space",
+  "forget_secret",
+  "list_files",
+  "list_secrets",
+  "message_bot",
+  "message_user",
+  "publish_run_step",
+  "publish_run_todo",
+  "read_file",
+  "remember",
+  "render_plot",
+  "request_secret",
+  "request_takeover",
+  "run_subagent",
+  "runtime_current_time",
+  "schedule_cancel",
+  "schedule_create",
+  "schedule_list",
+  "scratchpad_add",
+  "scratchpad_complete",
+  "scratchpad_list",
+  "scratchpad_remove",
+  "scratchpad_update",
+  "secret_request",
+  "shell",
+  "skill_create",
+  "skill_delete",
+  "skill_read",
+  "skill_update",
+  "spawn_bot",
+  "task_catalog",
+  "update_bot",
+  "web_fetch",
+  "web_search",
   "write_file",
 ];
 
@@ -771,13 +1140,11 @@ export const EXPECTED_FROZEN_SETS: Record<string, string[]> = {
  * one skill on the request. Captured fact: load_skill_through_path is only
  * registered when the request carries skills (RuntimeEngine builds the skill
  * repository on demand); a chat run without skills sees no skill loader.
+ * UX-02: plan_enter/plan_write/plan_exit are NO LONGER native-registered —
+ * they ride the backend surface (PLAN_* entries in the BACKEND_* lists) and
+ * the Java runtime maps them to projection facades over the same service.
  */
-export const NATIVE_CHAT_PLANNING = [
-  "load_skill_through_path",
-  "plan_enter",
-  "plan_exit",
-  "plan_write",
-];
+export const NATIVE_CHAT_PLANNING = ["load_skill_through_path"];
 
 /** Chat Run with planning disabled and skills present (created intro with skills, routine, unattended shapes). */
 export const NATIVE_CHAT_NO_PLANNING = ["load_skill_through_path"];
@@ -799,10 +1166,7 @@ export const NATIVE_SUBAGENT_TOOLS = [
  * Model-visible set for a chat Run: the backend selection minus run_subagent
  * (skipped at Java registration) plus the native surface, sorted.
  */
-export function expectedModelVisibleTools(
-  backendSelection: string[],
-  natives: string[],
-): string[] {
+export function expectedModelVisibleTools(backendSelection: string[], natives: string[]): string[] {
   return [...backendSelection.filter((name) => name !== "run_subagent"), ...natives].sort();
 }
 
@@ -823,10 +1187,16 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "user",
     collaborationRole: "owner",
     scope: "chat",
-    promptFamilies: { included: ["P01", "P02", "P03"], excluded: ["P07", "P08", "P09", "P10", "P12", "P13"] },
+    promptFamilies: {
+      included: ["P01", "P02", "P03"],
+      excluded: ["P07", "P08", "P09", "P10", "P12", "P13"],
+    },
     toolSurface: "BACKEND_MINIMAL_USER minus run_subagent plus NATIVE_CHAT_PLANNING, exact sorted",
-    expectedResult: "System prompt sections ordered platform → content-trust-rules → turn-policy → bot-instructions → collaboration-context(owner) → runtime-context(chat); owner reply text delivered.",
-    evidence: [{ layer: "integration", test: INTEGRATION, name: "S01-C1 owner chat DM minimal shape" }],
+    expectedResult:
+      "System prompt sections ordered platform → content-trust-rules → turn-policy → bot-instructions → collaboration-context(owner) → runtime-context(chat); owner reply text delivered.",
+    evidence: [
+      { layer: "integration", test: INTEGRATION, name: "S01-C1 owner chat DM minimal shape" },
+    ],
   },
   {
     id: "S01-C2",
@@ -837,8 +1207,11 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P01", "P02", "P03", "P05"], excluded: ["P12"] },
     toolSurface: "minimal set + connector tool name + load_skill_through_path native; exact sorted",
-    expectedResult: "Connector tool visible with its schema; skills catalog line present in instructions.",
-    evidence: [{ layer: "integration", test: INTEGRATION, name: "S01-C2 skills and connector surface" }],
+    expectedResult:
+      "Connector tool visible with its schema; skills catalog line present in instructions.",
+    evidence: [
+      { layer: "integration", test: INTEGRATION, name: "S01-C2 skills and connector surface" },
+    ],
   },
   {
     id: "S01-C3",
@@ -860,7 +1233,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P01", "P02", "P03"], excluded: [] },
     toolSurface: "identical to BACKEND_MINIMAL_USER (change_avatar stays for follow_up)",
-    expectedResult: "chat policy source; reply context wrapping available when answering a message.",
+    expectedResult:
+      "chat policy source; reply context wrapping available when answering a message.",
     evidence: [
       { layer: "unit", test: UNIT, name: "tool selection contracts" },
       { layer: "unit", test: UNIT, name: "turn policy mapping" },
@@ -874,7 +1248,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: [], excluded: ["P01", "P02", "P03"] },
     toolSurface: "no model call — reaction starts no AI turn",
-    expectedResult: "threads/react appends a user message + event and creates no Run; 'reaction' stays declared-only in the union.",
+    expectedResult:
+      "threads/react appends a user message + event and creates no Run; 'reaction' stays declared-only in the union.",
     evidence: [
       { layer: "postgres", test: POSTGRES, name: "S01-C5 reaction creates a message and no Run" },
       { layer: "unit", test: UNIT, name: "declared-only values have no production entry" },
@@ -888,8 +1263,10 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     collaborationRole: "owner",
     scope: "chat",
     promptFamilies: { included: ["P01", "P02", "P03"], excluded: [] },
-    toolSurface: "model-visible set captured at the emulator boundary contains write_file and shell",
-    expectedResult: "write_file + shell execute for real, tool results return to the model, Run completes, messages persist.",
+    toolSurface:
+      "model-visible set captured at the emulator boundary contains write_file and shell",
+    expectedResult:
+      "write_file + shell execute for real, tool results return to the model, Run completes, messages persist.",
     evidence: [{ layer: "postgres", test: POSTGRES, name: "S01-C6 production tool execution" }],
   },
   {
@@ -900,7 +1277,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P03"], excluded: [] },
     toolSurface: "BACKEND_GROUP_USER exact sorted",
-    expectedResult: "Group surface hands the stage to members; DM surface keeps private bot messaging.",
+    expectedResult:
+      "Group surface hands the stage to members; DM surface keeps private bot messaging.",
     evidence: [{ layer: "unit", test: UNIT, name: "tool selection contracts" }],
   },
 
@@ -913,9 +1291,14 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: [], excluded: ["P09"] },
     toolSurface: "no model call for routing when explicit targeting resolves",
-    expectedResult: "resolveExplicitTurnOwner settles mention > reply target without consulting the router.",
+    expectedResult:
+      "resolveExplicitTurnOwner settles mention > reply target without consulting the router.",
     evidence: [
-      { layer: "unit", test: "packages/core/src/product-harness/response-owner.test.ts", name: "explicit owner resolution (existing coverage)" },
+      {
+        layer: "unit",
+        test: "packages/core/src/product-harness/response-owner.test.ts",
+        name: "explicit owner resolution (existing coverage)",
+      },
       { layer: "unit", test: UNIT, name: "group routing precedence contract" },
     ],
   },
@@ -927,7 +1310,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "turn-routing",
     promptFamilies: { included: ["P02", "P09"], excluded: ["P01", "P03", "P05", "P06", "P12"] },
     toolSurface: "empty including Java natives (auxiliary enforcement)",
-    expectedResult: "P09 roster prompt reaches the model alone; scope rendered in runtime-context; aux turn-policy text.",
+    expectedResult:
+      "P09 roster prompt reaches the model alone; scope rendered in runtime-context; aux turn-policy text.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "auxiliary scope captures" }],
   },
   {
@@ -940,7 +1324,11 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "n/a — decision validation",
     expectedResult: "Bad router output yields null → lead fallback; never a crashed turn.",
     evidence: [
-      { layer: "unit", test: "packages/adapters/src/product-harness/group-router.test.ts", name: "fallback and validation cases (existing coverage)" },
+      {
+        layer: "unit",
+        test: "packages/adapters/src/product-harness/group-router.test.ts",
+        name: "fallback and validation cases (existing coverage)",
+      },
     ],
   },
   {
@@ -954,7 +1342,11 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "same contract as S01 for the selected owner",
     expectedResult: "Routed owner Run carries route kind and executes like any owner turn.",
     evidence: [
-      { layer: "e2e", test: "apps/web/e2e/group-chats.spec.ts", name: "group routing product journey (existing coverage; broad suite not in the CI 3-spec list — recorded as-is)" },
+      {
+        layer: "e2e",
+        test: "apps/web/e2e/group-chats.spec.ts",
+        name: "group routing product journey (existing coverage; broad suite not in the CI 3-spec list — recorded as-is)",
+      },
     ],
   },
 
@@ -967,8 +1359,10 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     collaborationRole: "owner",
     scope: "chat",
     promptFamilies: { included: ["P01", "P02", "P03"], excluded: ["P05", "P12"] },
-    toolSurface: "backend empty; captured native surface recorded as fact (load_skill_through_path only; no plan tools)",
-    expectedResult: "Intro turn can only speak: no plan natives (planning disabled), no backend tools.",
+    toolSurface:
+      "backend empty; captured native surface recorded as fact (load_skill_through_path only; no plan tools)",
+    expectedResult:
+      "Intro turn can only speak: no plan natives (planning disabled), no backend tools.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S03-C1 created intro shape" }],
   },
   {
@@ -979,7 +1373,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P01"], excluded: [] },
     toolSurface: "zero backend tools at the model boundary",
-    expectedResult: "Bot creation auto-enqueues the intro; Run completes; no sandbox writes; prompt carries BOT_INTRO_PROMPT.",
+    expectedResult:
+      "Bot creation auto-enqueues the intro; Run completes; no sandbox writes; prompt carries BOT_INTRO_PROMPT.",
     evidence: [{ layer: "postgres", test: POSTGRES, name: "S03-C2 intro run has no tool surface" }],
   },
 
@@ -992,7 +1387,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P02", "P03"], excluded: ["P09", "P10"] },
     toolSurface: "BACKEND_ROUTINE minus run_subagent plus NATIVE_CHAT_NO_PLANNING",
-    expectedResult: "Automation policy; ROUTINE_SILENT_REPLY_GUIDANCE present; allowSilentEmpty true.",
+    expectedResult:
+      "Automation policy; ROUTINE_SILENT_REPLY_GUIDANCE present; allowSilentEmpty true.",
     evidence: [
       { layer: "unit", test: UNIT, name: "tool selection contracts" },
       { layer: "integration", test: INTEGRATION, name: "S04-C1 routine shape" },
@@ -1030,7 +1426,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P02", "P03"], excluded: ["P09", "P12"] },
     toolSurface: "BACKEND_AUTOMATION_PLANNING_OFF minus run_subagent plus NATIVE_CHAT_NO_PLANNING",
-    expectedResult: "Non-interactive turn policy; unattendedTriggerToolRequiresApproval gates writes; reads stay unattended-safe.",
+    expectedResult:
+      "Non-interactive turn policy; unattendedTriggerToolRequiresApproval gates writes; reads stay unattended-safe.",
     evidence: [
       { layer: "unit", test: UNIT, name: "webhook unattended approval contract" },
       { layer: "integration", test: INTEGRATION, name: "S05 unattended trigger shapes" },
@@ -1054,7 +1451,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "messaging",
     scope: "chat",
     promptFamilies: { included: ["P02", "P03", "P12"], excluded: ["P06"] },
-    toolSurface: "BACKEND_MESSAGING_CHANNEL minus run_subagent plus NATIVE_CHAT_NO_PLANNING (no remember/save_memory/recall_memory/forget_memory/task_catalog/scratchpad_*)",
+    toolSurface:
+      "BACKEND_MESSAGING_CHANNEL minus run_subagent plus NATIVE_CHAT_NO_PLANNING (no remember/save_memory/recall_memory/forget_memory/task_catalog/scratchpad_*)",
     expectedResult: "Channel privacy rules delivered; semantic recall disabled for channel Runs.",
     evidence: [
       { layer: "unit", test: UNIT, name: "tool selection contracts" },
@@ -1069,7 +1467,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P02", "P04"], excluded: ["P09", "P12"] },
     toolSurface: "BACKEND_AUTOMATION_PLANNING_OFF shape",
-    expectedResult: "formatSkillRunPrompt block (Run taught skill:/Steps:/Approval boundaries:) heads the prompt.",
+    expectedResult:
+      "formatSkillRunPrompt block (Run taught skill:/Steps:/Approval boundaries:) heads the prompt.",
     evidence: [
       { layer: "unit", test: UNIT, name: "family markers" },
       { layer: "integration", test: INTEGRATION, name: "S05-C4 skill invocation shape" },
@@ -1082,11 +1481,17 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "cloud_agent",
     scope: "chat",
     promptFamilies: { included: ["P02"], excluded: ["P09", "P12"] },
-    toolSurface: "BACKEND_CLOUD_AGENT_TRIGGER when the provider is enabled; cloud tools absent otherwise",
-    expectedResult: "Polling entry produces an unattended Run; cloud tool visibility follows deployment enablement.",
+    toolSurface:
+      "BACKEND_CLOUD_AGENT_TRIGGER when the provider is enabled; cloud tools absent otherwise",
+    expectedResult:
+      "Polling entry produces an unattended Run; cloud tool visibility follows deployment enablement.",
     evidence: [
       { layer: "unit", test: UNIT, name: "tool selection contracts" },
-      { layer: "postgres", test: "packages/adapters/src/cloud-agent.postgres.test.ts", name: "cloud agent run chain (existing coverage)" },
+      {
+        layer: "postgres",
+        test: "packages/adapters/src/cloud-agent.postgres.test.ts",
+        name: "cloud agent run chain (existing coverage)",
+      },
     ],
   },
   {
@@ -1107,8 +1512,10 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "call_end",
     scope: "chat",
     promptFamilies: { included: ["P02", "P04"], excluded: ["P12"] },
-    toolSurface: "BACKEND_CALL_END minus run_subagent plus NATIVE_CHAT_NO_PLANNING (end_call present)",
-    expectedResult: "HANG_UP_PROMPT drives the turn; VOICE_CALL_INSTRUCTION only applies to live-call turns, not call_end.",
+    toolSurface:
+      "BACKEND_CALL_END minus run_subagent plus NATIVE_CHAT_NO_PLANNING (end_call present)",
+    expectedResult:
+      "HANG_UP_PROMPT drives the turn; VOICE_CALL_INSTRUCTION only applies to live-call turns, not call_end.",
     evidence: [
       { layer: "unit", test: UNIT, name: "call_end voice contract" },
       { layer: "integration", test: INTEGRATION, name: "S05-C7 call_end shape" },
@@ -1124,7 +1531,13 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "n/a",
     expectedResult:
       "All 14 RunTrigger values map to cases; reaction/resume proven declared-only by source scan (no creation site in apps/api, apps/worker, packages/* outside tests); no unclassified trigger remains.",
-    evidence: [{ layer: "unit", test: UNIT, name: "classifies every RunTrigger union value exactly once, with real cases" }],
+    evidence: [
+      {
+        layer: "unit",
+        test: UNIT,
+        name: "classifies every RunTrigger union value exactly once, with real cases",
+      },
+    ],
   },
 
   // --- S06 bot collaboration --------------------------------------------------
@@ -1136,8 +1549,10 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     collaborationRole: "support",
     scope: "chat",
     promptFamilies: { included: ["P02"], excluded: ["P09", "P10", "P13"] },
-    toolSurface: "BACKEND_AUTOMATION_PLANNING_OFF minus run_subagent; NO plan natives (planning disabled)",
-    expectedResult: "Support identity from the typed lineage, never prompt guesswork; results return upstream.",
+    toolSurface:
+      "BACKEND_AUTOMATION_PLANNING_OFF minus run_subagent; NO plan natives (planning disabled)",
+    expectedResult:
+      "Support identity from the typed lineage, never prompt guesswork; results return upstream.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S06-C1 support shape" }],
   },
   {
@@ -1149,7 +1564,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P02"], excluded: [] },
     toolSurface: "owner-interactive shape (handoff policy: planning auto)",
-    expectedResult: "Handoff context rendered from collaboration role; 'do not hand it back merely to report completion'.",
+    expectedResult:
+      "Handoff context rendered from collaboration role; 'do not hand it back merely to report completion'.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S06-C2 handoff_owner shape" }],
   },
   {
@@ -1161,7 +1577,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P02", "P11"], excluded: [] },
     toolSurface: "owner shape; receivingOutcome renders the resumption context",
-    expectedResult: "'Another persistent bot has returned work you delegated' — owner incorporates the real result and answers the user.",
+    expectedResult:
+      "'Another persistent bot has returned work you delegated' — owner incorporates the real result and answers the user.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S06-C3 owner receiving outcome" }],
   },
   {
@@ -1185,10 +1602,19 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P02"], excluded: [] },
     toolSurface: "per selected bot's S01 rules",
-    expectedResult: "message_bot/handoff create real bot_message Runs that the worker leases and completes.",
+    expectedResult:
+      "message_bot/handoff create real bot_message Runs that the worker leases and completes.",
     evidence: [
-      { layer: "postgres", test: "packages/adapters/src/job-reconciler.postgres.test.ts", name: "bot_message run recovery (existing coverage)" },
-      { layer: "java", test: "services/agent-runtime/src/test/java/com/workpal/runtime/PromptComposerTest.java", name: "collaboration section rendering (existing coverage)" },
+      {
+        layer: "postgres",
+        test: "packages/adapters/src/job-reconciler.postgres.test.ts",
+        name: "bot_message run recovery (existing coverage)",
+      },
+      {
+        layer: "java",
+        test: "services/agent-runtime/src/test/java/com/workpal/runtime/PromptComposerTest.java",
+        name: "collaboration section rendering (existing coverage)",
+      },
     ],
   },
 
@@ -1200,8 +1626,10 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "user",
     scope: "chat",
     promptFamilies: { included: ["P02"], excluded: ["P11"] },
-    toolSurface: "no run_subagent, no agent_spawn/agent_send/agent_list/task_output/task_cancel/task_list — despite TS offering run_subagent and policy allowing delegation",
-    expectedResult: "RuntimeServer entrypoint suspends delegation with no env bypass; turn-policy text states the suspension.",
+    toolSurface:
+      "no run_subagent, no agent_spawn/agent_send/agent_list/task_output/task_cancel/task_list — despite TS offering run_subagent and policy allowing delegation",
+    expectedResult:
+      "RuntimeServer entrypoint suspends delegation with no env bypass; turn-policy text states the suspension.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S07-C1 production suspension" }],
   },
   {
@@ -1211,11 +1639,21 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "user",
     scope: "chat",
     promptFamilies: { included: ["P11"], excluded: [] },
-    toolSurface: "seam-only: package-private constructor with delegationSuspended=false offers agent_* natives",
-    expectedResult: "Separate labeled evidence: the seam exists for tests only; nothing re-enables helper delegation in production.",
+    toolSurface:
+      "seam-only: package-private constructor with delegationSuspended=false offers agent_* natives",
+    expectedResult:
+      "Separate labeled evidence: the seam exists for tests only; nothing re-enables helper delegation in production.",
     evidence: [
-      { layer: "java", test: "services/agent-runtime/src/test/java/com/workpal/runtime/DelegationSuspensionTest.java", name: "suspension + seam behavior (existing coverage)" },
-      { layer: "java", test: "services/agent-runtime/src/test/java/com/workpal/runtime/RuntimeIntegrationTest.java", name: "seam-enabled spawn/delivery regression (existing coverage)" },
+      {
+        layer: "java",
+        test: "services/agent-runtime/src/test/java/com/workpal/runtime/DelegationSuspensionTest.java",
+        name: "suspension + seam behavior (existing coverage)",
+      },
+      {
+        layer: "java",
+        test: "services/agent-runtime/src/test/java/com/workpal/runtime/RuntimeIntegrationTest.java",
+        name: "seam-enabled spawn/delivery regression (existing coverage)",
+      },
     ],
   },
   {
@@ -1226,10 +1664,19 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P10"], excluded: ["P11"] },
     toolSurface: "delivery shape (zero backend tools)",
-    expectedResult: "Previously spawned background tasks keep their outbox delivery/cancel flow while new spawns are suspended.",
+    expectedResult:
+      "Previously spawned background tasks keep their outbox delivery/cancel flow while new spawns are suspended.",
     evidence: [
-      { layer: "postgres", test: "packages/adapters/src/result-delivery.postgres.test.ts", name: "outbox merge/dedup/thread-generation (existing coverage; suite not in the CI harness list — recorded as-is)" },
-      { layer: "e2e", test: "apps/web/e2e/budget-acceptance.spec.ts", name: "worker-chain delivery in CI (existing coverage)" },
+      {
+        layer: "postgres",
+        test: "packages/adapters/src/result-delivery.postgres.test.ts",
+        name: "outbox merge/dedup/thread-generation (existing coverage; suite not in the CI harness list — recorded as-is)",
+      },
+      {
+        layer: "e2e",
+        test: "apps/web/e2e/budget-acceptance.spec.ts",
+        name: "worker-chain delivery in CI (existing coverage)",
+      },
     ],
   },
 
@@ -1241,7 +1688,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "delivery",
     scope: "chat",
     promptFamilies: { included: ["P02", "P03", "P10"], excluded: ["P05", "P09", "P12"] },
-    toolSurface: "zero model-visible tools: backend empty, skills empty (so no skill loader), planning disabled, delegation disabled by turnPolicyFromRun; suppressNativeTaskReminders on",
+    toolSurface:
+      "zero model-visible tools: backend empty, skills empty (so no skill loader), planning disabled, delegation disabled by turnPolicyFromRun; suppressNativeTaskReminders on",
     expectedResult: "Worker-path delivery Run summarizes claimed outbox results and nothing else.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S08-C1 delivery shape" }],
   },
@@ -1255,8 +1703,16 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "n/a — worker claim semantics",
     expectedResult: "Repeated claims deliver once; stale generations are suppressed.",
     evidence: [
-      { layer: "postgres", test: "packages/adapters/src/result-delivery.postgres.test.ts", name: "merge/dedup/stale-generation cases (existing coverage; not CI-collected — recorded as-is)" },
-      { layer: "e2e", test: "apps/web/e2e/budget-acceptance.spec.ts", name: "Routine over-budget outbox chain in CI (WK-01)" },
+      {
+        layer: "postgres",
+        test: "packages/adapters/src/result-delivery.postgres.test.ts",
+        name: "merge/dedup/stale-generation cases (existing coverage; not CI-collected — recorded as-is)",
+      },
+      {
+        layer: "e2e",
+        test: "apps/web/e2e/budget-acceptance.spec.ts",
+        name: "Routine over-budget outbox chain in CI (WK-01)",
+      },
     ],
   },
 
@@ -1270,8 +1726,15 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P04", "P14"], excluded: [] },
     toolSurface: "unchanged shape; approved replay bound to the persisted effect",
-    expectedResult: "Run id and trigger unchanged across the pause (resume is not a new trigger); sandbox effect executes exactly once; effect completed.",
-    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C1/C2 approval allow resumes the same run with the persisted effect" }],
+    expectedResult:
+      "Run id and trigger unchanged across the pause (resume is not a new trigger); sandbox effect executes exactly once; effect completed.",
+    evidence: [
+      {
+        layer: "postgres",
+        test: POSTGRES,
+        name: "S09-C1/C2 approval allow resumes the same run with the persisted effect",
+      },
+    ],
   },
   {
     id: "S09-C2",
@@ -1282,7 +1745,13 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     promptFamilies: { included: ["P14"], excluded: [] },
     toolSurface: "n/a",
     expectedResult: "Zero sandbox effects; effect denied; Run completes with the denial fed back.",
-    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C1/C2 approval deny resumes the same run with the persisted effect" }],
+    evidence: [
+      {
+        layer: "postgres",
+        test: POSTGRES,
+        name: "S09-C1/C2 approval deny resumes the same run with the persisted effect",
+      },
+    ],
   },
   {
     id: "S09-C3",
@@ -1294,7 +1763,9 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "revoked connector tool absent from the resumed surface",
     expectedResult:
       "Approved effect recorded while connected; connector revoked before the answer. AG-08: resume consumes the pending tool_call with a model-visible permission_revoked refusal (provider executions stay zero); effect=denied/executed=false; approval.resolved stays approved; the Run fails with error=permission_revoked after a user-visible explanation; the next ordinary Run on the same Thread/generation reaches the model and completes without replaying the refused call; re-authorization executes a new attempt exactly once and leaves the old denied effect unchanged.",
-    evidence: [{ layer: "postgres", test: POSTGRES, name: "S09-C3 permission change before resume" }],
+    evidence: [
+      { layer: "postgres", test: POSTGRES, name: "S09-C3 permission change before resume" },
+    ],
   },
   {
     id: "S09-C4",
@@ -1304,10 +1775,15 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: [], excluded: [] },
     toolSurface: "n/a",
-    expectedResult: "Source scan finds no trigger:'resume' creation; S09-C1 asserts the resumed Run still carries its original trigger.",
+    expectedResult:
+      "Source scan finds no trigger:'resume' creation; S09-C1 asserts the resumed Run still carries its original trigger.",
     evidence: [
       { layer: "unit", test: UNIT, name: "declared-only values have no production entry" },
-      { layer: "postgres", test: POSTGRES, name: "S09-C1/C2 approval allow resumes the same run with the persisted effect" },
+      {
+        layer: "postgres",
+        test: POSTGRES,
+        name: "S09-C1/C2 approval allow resumes the same run with the persisted effect",
+      },
     ],
   },
   {
@@ -1321,8 +1797,16 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     expectedResult:
       "On main, recovery/retry inside one Run is the automatic Attempt mechanism (retry-policy delays; a lost lease with an intended external effect fails the attempt instead of blind replay). Manual retry (same Task, NEW Run with retry lineage) is MR-01 scope on a parallel branch and is NOT part of this registry. Whether the next model call inside one Run re-trims tools is AG-05 scope; recorded as current behavior only.",
     evidence: [
-      { layer: "postgres", test: "packages/adapters/src/lease-loss-recovery.postgres.test.ts", name: "delayed retry / intended-effect no-replay / lease-loss cases (existing coverage)" },
-      { layer: "postgres", test: "packages/adapters/src/execution-contract.postgres.test.ts", name: "attempt/fence recovery contracts (existing coverage)" },
+      {
+        layer: "postgres",
+        test: "packages/adapters/src/lease-loss-recovery.postgres.test.ts",
+        name: "delayed retry / intended-effect no-replay / lease-loss cases (existing coverage)",
+      },
+      {
+        layer: "postgres",
+        test: "packages/adapters/src/execution-contract.postgres.test.ts",
+        name: "attempt/fence recovery contracts (existing coverage)",
+      },
     ],
   },
 
@@ -1335,7 +1819,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "auto-review",
     promptFamilies: { included: ["P02", "P08"], excluded: ["P01", "P03", "P05", "P06", "P12"] },
     toolSurface: "empty including Java natives",
-    expectedResult: "Judge sees only the bounded redacted action context; aux turn-policy text; scope in runtime-context.",
+    expectedResult:
+      "Judge sees only the bounded redacted action context; aux turn-policy text; scope in runtime-context.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "auxiliary scope captures" }],
   },
   {
@@ -1346,9 +1831,14 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "auto-review",
     promptFamilies: { included: ["P08"], excluded: [] },
     toolSurface: "n/a",
-    expectedResult: "pass proceeds, ask routes to a human, failures never expand permissions or replace mandatory approval.",
+    expectedResult:
+      "pass proceeds, ask routes to a human, failures never expand permissions or replace mandatory approval.",
     evidence: [
-      { layer: "unit", test: "packages/adapters/src/auto-review.test.ts", name: "decision and failure handling (existing coverage, 20 tests)" },
+      {
+        layer: "unit",
+        test: "packages/adapters/src/auto-review.test.ts",
+        name: "decision and failure handling (existing coverage, 20 tests)",
+      },
     ],
   },
 
@@ -1361,7 +1851,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "history-compaction",
     promptFamilies: { included: ["P02", "P07"], excluded: ["P01", "P03", "P05", "P12"] },
     toolSurface: "empty including Java natives",
-    expectedResult: "Summarizer prompt (with previous-summary fence when present) reaches the model alone; allowSilentEmpty set.",
+    expectedResult:
+      "Summarizer prompt (with previous-summary fence when present) reaches the model alone; allowSilentEmpty set.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "auxiliary scope captures" }],
   },
   {
@@ -1374,8 +1865,16 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "n/a",
     expectedResult: "No-summary and empty-summary paths leave the application cursor untouched.",
     evidence: [
-      { layer: "unit", test: "packages/adapters/src/history-compaction.test.ts", name: "cursor/CAS cases (existing coverage, 61 tests)" },
-      { layer: "postgres", test: "packages/testkit/src/history-compaction-agentscope.test.ts", name: "compaction over real chain (existing coverage, CI harness list)" },
+      {
+        layer: "unit",
+        test: "packages/adapters/src/history-compaction.test.ts",
+        name: "cursor/CAS cases (existing coverage, 61 tests)",
+      },
+      {
+        layer: "postgres",
+        test: "packages/testkit/src/history-compaction-agentscope.test.ts",
+        name: "compaction over real chain (existing coverage, CI harness list)",
+      },
     ],
   },
   {
@@ -1386,9 +1885,14 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: [], excluded: ["P07"] },
     toolSurface: "n/a",
-    expectedResult: "Application-layer P07 compaction and AgentScope working-context compaction are distinct; AG-02 flush/offload rules hold.",
+    expectedResult:
+      "Application-layer P07 compaction and AgentScope working-context compaction are distinct; AG-02 flush/offload rules hold.",
     evidence: [
-      { layer: "java", test: "services/agent-runtime/src/test/java/com/workpal/runtime/CompactionBoundaryIntegrationTest.java", name: "AG-02 compaction boundary (existing coverage)" },
+      {
+        layer: "java",
+        test: "services/agent-runtime/src/test/java/com/workpal/runtime/CompactionBoundaryIntegrationTest.java",
+        name: "AG-02 compaction boundary (existing coverage)",
+      },
     ],
   },
 
@@ -1396,15 +1900,21 @@ export const SCENARIO_CASES: ScenarioCase[] = [
   {
     id: "S12-C1",
     scenario: "S12",
-    title: "durable memory, semantic recall and compacted summaries arrive as typed application context",
+    title:
+      "durable memory, semantic recall and compacted summaries arrive as typed application context",
     trigger: "user",
     scope: "chat",
     promptFamilies: { included: ["P06"], excluded: [] },
     toolSurface: "unchanged; memory tools conditional on the semantic provider",
-    expectedResult: "Each injection rides in history with typed provenance (durable_memory / semantic_recall / compacted_summary) and its fence; system prompt only carries the 'untrusted historical data' bridge line.",
+    expectedResult:
+      "Each injection rides in history with typed provenance (durable_memory / semantic_recall / compacted_summary) and its fence; system prompt only carries the 'untrusted historical data' bridge line.",
     evidence: [
       { layer: "integration", test: INTEGRATION, name: "S12-C1 typed memory injections" },
-      { layer: "integration", test: "packages/adapters/src/agentscope-provenance.integration.test.ts", name: "AG-07 provenance wire contract (existing coverage)" },
+      {
+        layer: "integration",
+        test: "packages/adapters/src/agentscope-provenance.integration.test.ts",
+        name: "AG-07 provenance wire contract (existing coverage)",
+      },
     ],
   },
   {
@@ -1415,10 +1925,15 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P06"], excluded: [] },
     toolSurface: "n/a",
-    expectedResult: "Scoped headings ('## bot:' / '## user:') render per document; ordering is deterministic.",
+    expectedResult:
+      "Scoped headings ('## bot:' / '## user:') render per document; ordering is deterministic.",
     evidence: [
       { layer: "unit", test: UNIT, name: "family markers" },
-      { layer: "unit", test: "packages/adapters/src/memory-context.test.ts", name: "scope/order/budget cases (existing coverage)" },
+      {
+        layer: "unit",
+        test: "packages/adapters/src/memory-context.test.ts",
+        name: "scope/order/budget cases (existing coverage)",
+      },
     ],
   },
   {
@@ -1429,9 +1944,14 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P06"], excluded: [] },
     toolSurface: "n/a",
-    expectedResult: "Fingerprint sidecar + native summary rebuild keep purged memory out of restored sessions.",
+    expectedResult:
+      "Fingerprint sidecar + native summary rebuild keep purged memory out of restored sessions.",
     evidence: [
-      { layer: "java", test: "services/agent-runtime/src/test/java/com/workpal/runtime/MemoryCompactionPurgeIntegrationTest.java", name: "ME-00 purge/rebuild (existing coverage)" },
+      {
+        layer: "java",
+        test: "services/agent-runtime/src/test/java/com/workpal/runtime/MemoryCompactionPurgeIntegrationTest.java",
+        name: "ME-00 purge/rebuild (existing coverage)",
+      },
     ],
   },
 
@@ -1443,7 +1963,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "user",
     scope: "chat",
     promptFamilies: { included: ["P03"], excluded: [] },
-    toolSurface: "graphics off ⇒ no computer_observe/computer_act/open_path/launch_app; page off ⇒ no browser_*; toggles proven both directions",
+    toolSurface:
+      "graphics off ⇒ no computer_observe/computer_act/open_path/launch_app; page off ⇒ no browser_*; toggles proven both directions",
     expectedResult: "Selection is capability-driven; visibility alone is never permission.",
     evidence: [{ layer: "unit", test: UNIT, name: "tool selection contracts" }],
   },
@@ -1454,11 +1975,16 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     trigger: "user",
     scope: "chat",
     promptFamilies: { included: ["P14"], excluded: [] },
-    toolSurface: "connector tool visible while connected; absent from the next clean Run after revoke",
+    toolSurface:
+      "connector tool visible while connected; absent from the next clean Run after revoke",
     expectedResult:
       "Proven-available → revoked → zero provider executions (refusal chain pinned in S09-C3); a clean next Run on a fresh session no longer sees any GMAIL_* tool and completes normally.",
     evidence: [
-      { layer: "postgres", test: POSTGRES, name: "S13-C2 revoked connector tool disappears from the next clean run" },
+      {
+        layer: "postgres",
+        test: POSTGRES,
+        name: "S13-C2 revoked connector tool disappears from the next clean run",
+      },
       { layer: "postgres", test: POSTGRES, name: "S09-C3 permission change before resume" },
     ],
   },
@@ -1470,10 +1996,19 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P14"], excluded: [] },
     toolSurface: "n/a",
-    expectedResult: "Executor-side capability/approval checks decide outcomes independently of the tool list.",
+    expectedResult:
+      "Executor-side capability/approval checks decide outcomes independently of the tool list.",
     evidence: [
-      { layer: "e2e", test: "apps/web/e2e/capability-rules.spec.ts", name: "capability rules chain in CI (existing coverage)" },
-      { layer: "unit", test: "packages/adapters/src/executor-computer-safety.test.ts", name: "computer safety gates (existing coverage)" },
+      {
+        layer: "e2e",
+        test: "apps/web/e2e/capability-rules.spec.ts",
+        name: "capability rules chain in CI (existing coverage)",
+      },
+      {
+        layer: "unit",
+        test: "packages/adapters/src/executor-computer-safety.test.ts",
+        name: "computer safety gates (existing coverage)",
+      },
     ],
   },
 
@@ -1481,15 +2016,25 @@ export const SCENARIO_CASES: ScenarioCase[] = [
   {
     id: "S14-C1",
     scenario: "S14",
-    title: "team-chat judge: strict zero tools including natives, privacy framing, no personal memory",
+    title:
+      "team-chat judge: strict zero tools including natives, privacy framing, no personal memory",
     trigger: "messaging",
     scope: "team-chat-judge",
     promptFamilies: { included: ["P02", "P13"], excluded: ["P01", "P03", "P05", "P06", "P12"] },
     toolSurface: "empty including Java natives (AG-01 scope enforcement)",
-    expectedResult: "Judge sees channel messages as untrusted data, standing rules and silence-by-default instructions; history empty.",
+    expectedResult:
+      "Judge sees channel messages as untrusted data, standing rules and silence-by-default instructions; history empty.",
     evidence: [
-      { layer: "integration", test: "apps/api/src/team-chat-judge.integration.test.ts", name: "delivers the P13 engagement-judge family with channel privacy framing and no conversation history" },
-      { layer: "integration", test: "packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts", name: "AG-01 zero-tool enforcement (existing coverage)" },
+      {
+        layer: "integration",
+        test: "apps/api/src/team-chat-judge.integration.test.ts",
+        name: "delivers the P13 engagement-judge family with channel privacy framing and no conversation history",
+      },
+      {
+        layer: "integration",
+        test: "packages/adapters/src/agentscope-auxiliary-isolation.integration.test.ts",
+        name: "AG-01 zero-tool enforcement (existing coverage)",
+      },
     ],
   },
   {
@@ -1502,7 +2047,11 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "n/a",
     expectedResult: "Any parse/model failure yields act:false — no Run, no post.",
     evidence: [
-      { layer: "unit", test: "apps/api/src/team-chat-judge.test.ts", name: "decision parsing and failure silence (existing coverage)" },
+      {
+        layer: "unit",
+        test: "apps/api/src/team-chat-judge.test.ts",
+        name: "decision parsing and failure silence (existing coverage)",
+      },
     ],
   },
   {
@@ -1513,7 +2062,8 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     scope: "chat",
     promptFamilies: { included: ["P12"], excluded: ["P06"] },
     toolSurface: "BACKEND_MESSAGING_CHANNEL shape",
-    expectedResult: "Channel Run omits semantic recall and personal memory tools; privacy block delivered.",
+    expectedResult:
+      "Channel Run omits semantic recall and personal memory tools; privacy block delivered.",
     evidence: [
       { layer: "unit", test: UNIT, name: "channel run context contract" },
       { layer: "integration", test: INTEGRATION, name: "S05-C3 messaging channel shape" },

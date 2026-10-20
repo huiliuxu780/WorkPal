@@ -41,7 +41,7 @@ export function ExecutionShell({
   run: ExecutionRunState | null;
   activity: readonly ActivityItem[];
   /** Present only when the thread snapshot carries an Intervention projection. */
-  pendingInterventionKinds?: readonly ("approval" | "input")[];
+  pendingInterventionKinds?: readonly ("approval" | "input" | "plan_review")[];
   /**
    * The Intervention Region for this Run. It renders OUTSIDE the collapsible
    * detail body: a pending card stays visible and operable while the detail

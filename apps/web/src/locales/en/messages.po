@@ -110,6 +110,11 @@ msgstr "Stopped"
 
 #. js-lingui-explicit-id
 #: src/lib/execution-status.ts
+msgid "Waiting for plan review"
+msgstr "Waiting for plan review"
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
 msgid "Waiting for approval"
 msgstr "Waiting for approval"
 
@@ -277,6 +282,10 @@ msgstr "{actions, plural, one {Done · # action} other {Done · # actions}}"
 msgid "{actions, plural, one {Working… · # action} other {Working… · # actions}}"
 msgstr "{actions, plural, one {Working… · # action} other {Working… · # actions}}"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "{botName} submitted a plan for your review"
+msgstr "{botName} submitted a plan for your review"
+
 #: src/pages/Shell.tsx
 msgid "{botName}’s computer"
 msgstr "{botName}’s computer"
@@ -383,6 +392,10 @@ msgstr "1 evidence reference"
 #: src/pages/shell/message-cards.tsx
 msgid "A bit of everything"
 msgstr "A bit of everything"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "A plan is waiting for your review"
+msgstr "A plan is waiting for your review"
 
 #: src/pages/shell/bot-picker.tsx
 msgid "About groups"
@@ -695,6 +708,7 @@ msgid "Approve this server to let your agent use its tools."
 msgstr "Approve this server to let your agent use its tools."
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 msgid "Approved"
 msgstr "Approved"
 
@@ -832,6 +846,10 @@ msgstr "Avatar Studio"
 msgid "Avatar updated"
 msgstr "Avatar updated"
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Awaiting your review"
+msgstr "Awaiting your review"
+
 #: src/components/computer/FilesApp.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
@@ -943,6 +961,7 @@ msgid "Can't reach the server."
 msgstr "Can't reach the server."
 
 #: src/components/activity/BackgroundTaskActivity.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -969,6 +988,7 @@ msgstr "cancelled"
 
 #: src/components/activity/ActivityRows.tsx
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/AskCard.tsx
 #: src/lib/run-status.ts
@@ -983,6 +1003,11 @@ msgstr "Card view"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Change password"
 msgstr "Change password"
+
+#: src/components/ai/PlanReviewCard.tsx
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Changes requested"
+msgstr "Changes requested"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Changing…"
@@ -1715,6 +1740,10 @@ msgstr "Could not stop this task. Try again."
 msgid "Could not submit this answer"
 msgstr "Could not submit this answer"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Could not submit this decision"
+msgstr "Could not submit this decision"
+
 #: src/pages/Shell.tsx
 msgid "Could not take control"
 msgstr "Could not take control"
@@ -1976,6 +2005,10 @@ msgstr "Deny"
 msgid "Deployment default"
 msgstr "Deployment default"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Describe the concrete changes you want"
+msgstr "Describe the concrete changes you want"
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Describe what this bot does"
 msgstr "Describe what this bot does"
@@ -2043,6 +2076,7 @@ msgid "Don’t have an account?"
 msgstr "Don’t have an account?"
 
 #: src/components/activity/ActivityRows.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
@@ -2372,6 +2406,10 @@ msgstr "Getting ready"
 msgid "Git event"
 msgstr "Git event"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Go with this plan"
+msgstr "Go with this plan"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/Shell.tsx
 msgid "Group"
@@ -2489,6 +2527,7 @@ msgstr "Image must be smaller than 5 MB"
 msgid "Import OpenAPI JSON"
 msgstr "Import OpenAPI JSON"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/ai/RunTodoList.tsx
@@ -3054,6 +3093,7 @@ msgid "No group chats yet."
 msgstr "No group chats yet."
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "No longer active"
@@ -3147,6 +3187,7 @@ msgstr "Not in the plugin catalog"
 msgid "Not now"
 msgstr "Not now"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr "Not started"
@@ -3375,6 +3416,10 @@ msgstr "Plan"
 msgid "Plan progress"
 msgstr "Plan progress"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Plan rejected"
+msgstr "Plan rejected"
+
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/lib/execution-card.ts
 msgid "Plan updated"
@@ -3398,6 +3443,7 @@ msgid "Preview isn't available for this file type — download it to view it."
 msgstr "Preview isn't available for this file type — download it to view it."
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Previous avatar"
 msgstr "Previous avatar"
 
@@ -3459,6 +3505,10 @@ msgstr "Read replies aloud"
 #: src/pages/KnowledgeSection.tsx
 msgid "read-only"
 msgstr "read-only"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reason (optional)"
+msgstr "Reason (optional)"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -3541,6 +3591,18 @@ msgstr "Refresh view"
 msgid "Refreshing…"
 msgstr "Refreshing…"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject"
+msgstr "Reject"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject plan"
+msgstr "Reject plan"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Rejected"
+msgstr "Rejected"
+
 #: src/pages/Shell.tsx
 msgid "Release"
 msgstr "Release"
@@ -3620,6 +3682,7 @@ msgstr "Replace API key"
 msgid "Replace key"
 msgstr "Replace key"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Replaced"
 msgstr "Replaced"
@@ -3644,6 +3707,10 @@ msgstr "Replying to {replyName}"
 #: src/pages/Shell.tsx
 msgid "Replying to {replyName}: “{replyQuote}”"
 msgstr "Replying to {replyName}: “{replyQuote}”"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Request changes"
+msgstr "Request changes"
 
 #: src/pages/shell/message-cards.tsx
 msgid "Research & writing"
@@ -3736,6 +3803,10 @@ msgstr "Return to {productName}"
 #: src/pages/KnowledgeSection.tsx
 msgid "rev {0}"
 msgstr "rev {0}"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Review cancelled"
+msgstr "Review cancelled"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Revoke"
@@ -3911,6 +3982,10 @@ msgstr "Send <0>{linkCode}</0> to the line from your chat app within 10 minutes.
 msgid "Send answer"
 msgstr "Send answer"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Send feedback"
+msgstr "Send feedback"
+
 #: src/components/AskCard.tsx
 msgid "Send it"
 msgstr "Send it"
@@ -3919,6 +3994,7 @@ msgstr "Send it"
 msgid "Send reset link"
 msgstr "Send reset link"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "Sending…"
 msgstr "Sending…"
@@ -3992,6 +4068,10 @@ msgstr "Shell"
 msgid "Show all ({0} more)"
 msgstr "Show all ({0} more)"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Show all ({hidden} more)"
+msgstr "Show all ({hidden} more)"
+
 #: src/pages/Shell.tsx
 msgid "Show bots"
 msgstr "Show bots"
@@ -4000,6 +4080,7 @@ msgstr "Show bots"
 msgid "Show computer"
 msgstr "Show computer"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Show less"
@@ -4063,6 +4144,7 @@ msgstr "Skip"
 msgid "Skip or deploy key"
 msgstr "Skip or deploy key"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Skipped"
@@ -4189,6 +4271,10 @@ msgstr "Submit"
 #: src/components/AskCard.tsx
 msgid "Submitting your answer…"
 msgstr "Submitting your answer…"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Submitting your decision…"
+msgstr "Submitting your decision…"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -4321,6 +4407,10 @@ msgstr "This reset link is invalid or expired"
 msgid "This retry request was already used for a different task."
 msgstr "This retry request was already used for a different task."
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "This review was already decided"
+msgstr "This review was already decided"
+
 #: src/lib/manual-retry.ts
 msgid "This run cannot be retried."
 msgstr "This run cannot be retried."
@@ -4431,6 +4521,7 @@ msgstr "Undo"
 msgid "Undone"
 msgstr "Undone"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Unfinished"
 msgstr "Unfinished"
@@ -4569,6 +4660,11 @@ msgstr "Verifying…"
 msgid "Version"
 msgstr "Version"
 
+#. placeholder {0}: content.contentVersion
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Version v{0}"
+msgstr "Version v{0}"
+
 #: src/lib/task-center.ts
 msgid "View execution"
 msgstr "View execution"
@@ -4640,6 +4736,10 @@ msgstr "What do you want me on first?"
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "What should change in this plan?"
+msgstr "What should change in this plan?"
+
 #: src/pages/RoutineEditor.tsx
 msgid "What should this routine do each time it runs?"
 msgstr "What should this routine do each time it runs?"
@@ -4667,6 +4767,10 @@ msgstr "When to use"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Where should bots run?"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Why are you rejecting this plan? (optional)"
+msgstr "Why are you rejecting this plan? (optional)"
 
 #: src/components/ai/RunTodoList.tsx
 msgid "Work items"

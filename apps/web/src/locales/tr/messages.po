@@ -110,6 +110,11 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/execution-status.ts
+msgid "Waiting for plan review"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
 msgid "Waiting for approval"
 msgstr ""
 
@@ -277,6 +282,10 @@ msgstr ""
 msgid "{actions, plural, one {Working… · # action} other {Working… · # actions}}"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "{botName} submitted a plan for your review"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "{botName}’s computer"
 msgstr "{botName} adlı botun bilgisayarı"
@@ -382,6 +391,10 @@ msgstr ""
 
 #: src/pages/shell/message-cards.tsx
 msgid "A bit of everything"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "A plan is waiting for your review"
 msgstr ""
 
 #: src/pages/shell/bot-picker.tsx
@@ -695,6 +708,7 @@ msgid "Approve this server to let your agent use its tools."
 msgstr "Agent'ının bu sunucunun araçlarını kullanabilmesi için sunucuyu onayla."
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 msgid "Approved"
 msgstr ""
 
@@ -832,6 +846,10 @@ msgstr "Avatar Stüdyosu"
 msgid "Avatar updated"
 msgstr ""
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Awaiting your review"
+msgstr ""
+
 #: src/components/computer/FilesApp.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
@@ -943,6 +961,7 @@ msgid "Can't reach the server."
 msgstr "Sunucuya ulaşılamıyor."
 
 #: src/components/activity/BackgroundTaskActivity.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -969,6 +988,7 @@ msgstr "iptal edildi"
 
 #: src/components/activity/ActivityRows.tsx
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/AskCard.tsx
 #: src/lib/run-status.ts
@@ -983,6 +1003,11 @@ msgstr ""
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Change password"
 msgstr "Parolayı değiştir"
+
+#: src/components/ai/PlanReviewCard.tsx
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Changes requested"
+msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Changing…"
@@ -1715,6 +1740,10 @@ msgstr ""
 msgid "Could not submit this answer"
 msgstr "Bu yanıt gönderilemedi"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Could not submit this decision"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Could not take control"
 msgstr "Kontrol alınamadı"
@@ -1976,6 +2005,10 @@ msgstr "Reddet"
 msgid "Deployment default"
 msgstr "Dağıtım varsayılanı"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Describe the concrete changes you want"
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Describe what this bot does"
 msgstr "Bu botun ne yaptığını açıkla"
@@ -2043,6 +2076,7 @@ msgid "Don’t have an account?"
 msgstr "Hesabın yok mu?"
 
 #: src/components/activity/ActivityRows.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
@@ -2372,6 +2406,10 @@ msgstr ""
 msgid "Git event"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Go with this plan"
+msgstr ""
+
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/Shell.tsx
 msgid "Group"
@@ -2489,6 +2527,7 @@ msgstr ""
 msgid "Import OpenAPI JSON"
 msgstr "OpenAPI JSON içe aktar"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/ai/RunTodoList.tsx
@@ -3054,6 +3093,7 @@ msgid "No group chats yet."
 msgstr ""
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "Artık etkin değil"
@@ -3147,6 +3187,7 @@ msgstr ""
 msgid "Not now"
 msgstr "Şimdi değil"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr ""
@@ -3375,6 +3416,10 @@ msgstr ""
 msgid "Plan progress"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Plan rejected"
+msgstr ""
+
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/lib/execution-card.ts
 msgid "Plan updated"
@@ -3398,6 +3443,7 @@ msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Previous avatar"
 msgstr ""
 
@@ -3459,6 +3505,10 @@ msgstr "Yanıtları sesli oku"
 #: src/pages/KnowledgeSection.tsx
 msgid "read-only"
 msgstr "salt okunur"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reason (optional)"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -3541,6 +3591,18 @@ msgstr ""
 msgid "Refreshing…"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject plan"
+msgstr ""
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Rejected"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Release"
 msgstr "Bırak"
@@ -3620,6 +3682,7 @@ msgstr "API anahtarını değiştir"
 msgid "Replace key"
 msgstr "Anahtarı değiştir"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Replaced"
 msgstr ""
@@ -3643,6 +3706,10 @@ msgstr "{replyName} yanıtlanıyor"
 
 #: src/pages/Shell.tsx
 msgid "Replying to {replyName}: “{replyQuote}”"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Request changes"
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -3736,6 +3803,10 @@ msgstr "{productName}'ya dön"
 #: src/pages/KnowledgeSection.tsx
 msgid "rev {0}"
 msgstr "rev {0}"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Review cancelled"
+msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Revoke"
@@ -3911,6 +3982,10 @@ msgstr ""
 msgid "Send answer"
 msgstr "Yanıtı gönder"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Send feedback"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "Send it"
 msgstr "Gönder"
@@ -3919,6 +3994,7 @@ msgstr "Gönder"
 msgid "Send reset link"
 msgstr "Sıfırlama bağlantısı gönder"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "Sending…"
 msgstr "Gönderiliyor…"
@@ -3992,6 +4068,10 @@ msgstr "Kabuk"
 msgid "Show all ({0} more)"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Show all ({hidden} more)"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Show bots"
 msgstr ""
@@ -4000,6 +4080,7 @@ msgstr ""
 msgid "Show computer"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Show less"
@@ -4063,6 +4144,7 @@ msgstr "Atla"
 msgid "Skip or deploy key"
 msgstr "Atla veya dağıtım anahtarı kullan"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Skipped"
@@ -4188,6 +4270,10 @@ msgstr "Gönder"
 
 #: src/components/AskCard.tsx
 msgid "Submitting your answer…"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Submitting your decision…"
 msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
@@ -4321,6 +4407,10 @@ msgstr "Bu sıfırlama bağlantısı geçersiz veya süresi dolmuş"
 msgid "This retry request was already used for a different task."
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "This review was already decided"
+msgstr ""
+
 #: src/lib/manual-retry.ts
 msgid "This run cannot be retried."
 msgstr ""
@@ -4431,6 +4521,7 @@ msgstr ""
 msgid "Undone"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Unfinished"
 msgstr ""
@@ -4569,6 +4660,11 @@ msgstr "Doğrulanıyor…"
 msgid "Version"
 msgstr ""
 
+#. placeholder {0}: content.contentVersion
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Version v{0}"
+msgstr ""
+
 #: src/lib/task-center.ts
 msgid "View execution"
 msgstr ""
@@ -4640,6 +4736,10 @@ msgstr ""
 msgid "What result will you demonstrate?"
 msgstr "Hangi sonucu göstereceksin?"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "What should change in this plan?"
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "What should this routine do each time it runs?"
 msgstr ""
@@ -4667,6 +4767,10 @@ msgstr "Ne zaman kullanılır"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Botlar nerede çalışsın?"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Why are you rejecting this plan? (optional)"
+msgstr ""
 
 #: src/components/ai/RunTodoList.tsx
 msgid "Work items"

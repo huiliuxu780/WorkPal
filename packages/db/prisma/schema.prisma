@@ -621,6 +621,10 @@ model Run {
   status               String
   waitKind             String?
   waitStartedAt        DateTime?
+  /// UX-02: unified plan phase for dynamic tool surfaces. null = no plan mode
+  /// entered; "planning" = read-only drafting/revision; "build" = approved
+  /// execution. Backend-mirrored projection of the native PlanModeContextState.
+  planPhase            String?
   trigger              String
   /// Immutable Product Harness decision captured when the Run was created.
   orchestration        Json?
@@ -686,11 +690,54 @@ model RunPlan {
   threadGeneration Int
   revision    Int
   current     Json
+  /// UX-02: approval-basis axis. Advances only when normalized content changes.
+  contentVersion Int            @default(1)
+  /// sha256 of the normalized current content (goal + item ids/titles/order).
+  contentFingerprint String?
+  /// draft|pending|approved|changes_requested|rejected|cancelled; NULL = legacy plan.
+  reviewStatus  String?
+  /// Content version the current execution authorization is based on.
+  approvedContentVersion Int?
+  /// Fingerprint of the approved content; progress-only updates never touch it.
+  approvedFingerprint String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   revisions   RunPlanRevision[]
+  reviews     RunPlanReview[]
 
   @@map("run_plans")
+}
+
+/// UX-02: one row per plan review round (submission → decision), the durable
+/// audit of actor, time, feedback, and source. The pending round of a run is
+/// unique; decided rounds accumulate per content version.
+model RunPlanReview {
+  id             String   @id
+  runId          String
+  plan           RunPlan  @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  planId         String
+  contentVersion Int
+  revision       Int
+  /// pending|approved|changes_requested|rejected|cancelled|expired
+  status         String
+  /// plan_exit|plan_write|publish_run_plan|legacy_native
+  source         String
+  /// Bridge execution id of the submitting tool call; pairs the resume re-run.
+  toolExecutionId String?
+  interventionId String?
+  submittedAt    DateTime
+  submittedSeq   Int?
+  decidedAt      DateTime?
+  decidedByUserId String?
+  feedback       String?
+  /// clientSubmissionId of the deciding request (idempotent replay proof).
+  decisionSubmissionId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([runId, toolExecutionId])
+  @@index([runId, contentVersion])
+  @@map("run_plan_reviews")
 }
 
 model RunPlanRevision {
@@ -994,6 +1041,8 @@ model Intervention {
   inputPurpose     String?
   inputActions     Json?
   presentation     Json?
+  /// UX-02: sanitized plan_review projection (content binding + decision + feedback).
+  planReview       Json?
   effectId         String?
   decision         String?
   createdAt        DateTime  @default(now())

@@ -1,8 +1,15 @@
 import * as z from "zod";
-import { Id } from "./ids.js";
 import type { MessageBlock } from "./events.js";
+import { Id } from "./ids.js";
+import { PlanReviewContentSchema, PlanReviewDecisionSchema } from "./run-plans.js";
 
-export const InterventionKindSchema = z.enum(["approval", "input"]);
+/**
+ * `plan_review` is the typed UX-02 waiting reason for a unified plan version
+ * review. It rides the existing waiting_input Run status — no new Run state
+ * machine branch — and is never a tool authorization: approving a plan version
+ * does not approve any tool call, connector, or credential.
+ */
+export const InterventionKindSchema = z.enum(["approval", "input", "plan_review"]);
 export type InterventionKind = z.infer<typeof InterventionKindSchema>;
 
 export const InterventionStatusSchema = z.enum([
@@ -40,6 +47,22 @@ export type InterventionCredential = z.infer<typeof InterventionCredentialSchema
 
 export const MAX_PRESENTATION_TEXT_CHARS = 4_000;
 export const MAX_PRESENTATION_DETAIL_CHARS = 8_000;
+export const MAX_PLAN_REVIEW_FEEDBACK_CHARS = 2_000;
+
+/**
+ * Plan-review projection on an Intervention: the exact version the reviewer
+ * saw (so a stale card can never approve newer content), plus the recorded
+ * decision and feedback once settled. Backend-projected state only — never
+ * inferred from Markdown or tool logs.
+ */
+export const InterventionPlanReviewSchema = z
+  .object({
+    content: PlanReviewContentSchema,
+    decision: PlanReviewDecisionSchema.optional(),
+    feedback: z.string().max(MAX_PLAN_REVIEW_FEEDBACK_CHARS).optional(),
+  })
+  .strict();
+export type InterventionPlanReview = z.infer<typeof InterventionPlanReviewSchema>;
 
 /**
  * Sanitized display snapshot persisted on the Intervention row. The card
@@ -105,6 +128,7 @@ export const InterventionViewSchema = z
       })
       .strict()
       .optional(),
+    planReview: InterventionPlanReviewSchema.optional(),
     presentation: InterventionPresentationSchema.optional(),
   })
   .strict();
@@ -149,6 +173,7 @@ export const InterventionEventPayloadSchema = z
       })
       .strict()
       .optional(),
+    planReview: InterventionPlanReviewSchema.optional(),
     presentation: InterventionPresentationSchema.optional(),
   })
   .strict();

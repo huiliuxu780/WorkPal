@@ -110,6 +110,11 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/execution-status.ts
+msgid "Waiting for plan review"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/execution-status.ts
 msgid "Waiting for approval"
 msgstr ""
 
@@ -277,6 +282,10 @@ msgstr ""
 msgid "{actions, plural, one {Working… · # action} other {Working… · # actions}}"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "{botName} submitted a plan for your review"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "{botName}’s computer"
 msgstr "{botName}의 컴퓨터"
@@ -382,6 +391,10 @@ msgstr ""
 
 #: src/pages/shell/message-cards.tsx
 msgid "A bit of everything"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "A plan is waiting for your review"
 msgstr ""
 
 #: src/pages/shell/bot-picker.tsx
@@ -695,6 +708,7 @@ msgid "Approve this server to let your agent use its tools."
 msgstr "이 서버를 승인하면 Bot이 제공되는 도구를 사용할 수 있습니다."
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 msgid "Approved"
 msgstr ""
 
@@ -832,6 +846,10 @@ msgstr "아바타 스튜디오"
 msgid "Avatar updated"
 msgstr ""
 
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Awaiting your review"
+msgstr ""
+
 #: src/components/computer/FilesApp.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
@@ -943,6 +961,7 @@ msgid "Can't reach the server."
 msgstr "서버에 연결할 수 없습니다."
 
 #: src/components/activity/BackgroundTaskActivity.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -969,6 +988,7 @@ msgstr "취소됨"
 
 #: src/components/activity/ActivityRows.tsx
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/AskCard.tsx
 #: src/lib/run-status.ts
@@ -983,6 +1003,11 @@ msgstr ""
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Change password"
 msgstr "비밀번호 변경"
+
+#: src/components/ai/PlanReviewCard.tsx
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Changes requested"
+msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Changing…"
@@ -1715,6 +1740,10 @@ msgstr ""
 msgid "Could not submit this answer"
 msgstr "답변을 보내지 못했습니다."
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Could not submit this decision"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Could not take control"
 msgstr "직접 조작으로 전환하지 못했습니다."
@@ -1976,6 +2005,10 @@ msgstr "거부"
 msgid "Deployment default"
 msgstr "서버 기본값"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Describe the concrete changes you want"
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Describe what this bot does"
 msgstr "이 Bot이 하는 일을 짧게 설명하세요"
@@ -2043,6 +2076,7 @@ msgid "Don’t have an account?"
 msgstr "계정이 없나요?"
 
 #: src/components/activity/ActivityRows.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/lib/run-status.ts
@@ -2372,6 +2406,10 @@ msgstr ""
 msgid "Git event"
 msgstr "Git 이벤트"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Go with this plan"
+msgstr ""
+
 #: src/pages/MessagingSettingsOverlay.tsx
 #: src/pages/Shell.tsx
 msgid "Group"
@@ -2489,6 +2527,7 @@ msgstr ""
 msgid "Import OpenAPI JSON"
 msgstr "OpenAPI JSON 가져오기"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/components/ai/RunTodoList.tsx
@@ -3054,6 +3093,7 @@ msgid "No group chats yet."
 msgstr "아직 그룹 채팅이 없습니다."
 
 #: src/components/ai/InterventionRegion.tsx
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "이미 종료된 요청입니다"
@@ -3147,6 +3187,7 @@ msgstr "플러그인 카탈로그에 없음"
 msgid "Not now"
 msgstr "나중에"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr ""
@@ -3375,6 +3416,10 @@ msgstr ""
 msgid "Plan progress"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Plan rejected"
+msgstr ""
+
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/lib/execution-card.ts
 msgid "Plan updated"
@@ -3398,6 +3443,7 @@ msgid "Preview isn't available for this file type — download it to view it."
 msgstr ""
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Previous avatar"
 msgstr ""
 
@@ -3459,6 +3505,10 @@ msgstr "답변을 자동으로 읽기"
 #: src/pages/KnowledgeSection.tsx
 msgid "read-only"
 msgstr "읽기 전용"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reason (optional)"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -3541,6 +3591,18 @@ msgstr "화면 새로고침"
 msgid "Refreshing…"
 msgstr "새로고침 중…"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Reject plan"
+msgstr ""
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Rejected"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Release"
 msgstr "제어권 돌려주기"
@@ -3620,6 +3682,7 @@ msgstr "API 키 교체"
 msgid "Replace key"
 msgstr "키 교체"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Replaced"
 msgstr ""
@@ -3643,6 +3706,10 @@ msgstr "{replyName}에게 답장"
 
 #: src/pages/Shell.tsx
 msgid "Replying to {replyName}: “{replyQuote}”"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Request changes"
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -3736,6 +3803,10 @@ msgstr "{productName}로 돌아가기"
 #: src/pages/KnowledgeSection.tsx
 msgid "rev {0}"
 msgstr "리비전 {0}"
+
+#: src/components/ai/RunPlanDisclosure.tsx
+msgid "Review cancelled"
+msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Revoke"
@@ -3911,6 +3982,10 @@ msgstr "10분 안에 채팅 앱에서 연결할 회선으로 <0>{linkCode}</0>�
 msgid "Send answer"
 msgstr "답변 보내기"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Send feedback"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "Send it"
 msgstr "보내기"
@@ -3919,6 +3994,7 @@ msgstr "보내기"
 msgid "Send reset link"
 msgstr "재설정 링크 보내기"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
 msgid "Sending…"
 msgstr "보내는 중…"
@@ -3992,6 +4068,10 @@ msgstr "셸"
 msgid "Show all ({0} more)"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Show all ({hidden} more)"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Show bots"
 msgstr ""
@@ -4000,6 +4080,7 @@ msgstr ""
 msgid "Show computer"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Show less"
@@ -4063,6 +4144,7 @@ msgstr "건너뛰기"
 msgid "Skip or deploy key"
 msgstr "건너뛰거나 배포 키"
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Skipped"
@@ -4188,6 +4270,10 @@ msgstr "확인"
 
 #: src/components/AskCard.tsx
 msgid "Submitting your answer…"
+msgstr ""
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Submitting your decision…"
 msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
@@ -4321,6 +4407,10 @@ msgstr "이 재설정 링크는 유효하지 않거나 만료되었습니다"
 msgid "This retry request was already used for a different task."
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "This review was already decided"
+msgstr ""
+
 #: src/lib/manual-retry.ts
 msgid "This run cannot be retried."
 msgstr ""
@@ -4431,6 +4521,7 @@ msgstr ""
 msgid "Undone"
 msgstr ""
 
+#: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Unfinished"
 msgstr ""
@@ -4569,6 +4660,11 @@ msgstr "확인 중…"
 msgid "Version"
 msgstr ""
 
+#. placeholder {0}: content.contentVersion
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Version v{0}"
+msgstr ""
+
 #: src/lib/task-center.ts
 msgid "View execution"
 msgstr ""
@@ -4640,6 +4736,10 @@ msgstr ""
 msgid "What result will you demonstrate?"
 msgstr "어떤 작업을 직접 보여줄까요?"
 
+#: src/components/ai/PlanReviewCard.tsx
+msgid "What should change in this plan?"
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "What should this routine do each time it runs?"
 msgstr "이 루틴이 실행될 때마다 무엇을 해야 하나요?"
@@ -4667,6 +4767,10 @@ msgstr "언제 사용할지"
 #: src/pages/HostComputerPrompt.tsx
 msgid "Where should bots run?"
 msgstr "Bot을 어디에서 실행할까요?"
+
+#: src/components/ai/PlanReviewCard.tsx
+msgid "Why are you rejecting this plan? (optional)"
+msgstr ""
 
 #: src/components/ai/RunTodoList.tsx
 msgid "Work items"

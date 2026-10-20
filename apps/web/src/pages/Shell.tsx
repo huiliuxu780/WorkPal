@@ -1968,6 +1968,14 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     (botId: string | undefined) => memberName(transcriptMembers, botId),
     [transcriptMembers],
   );
+  // UX-02: the plan review card names its Bot in direct threads too, where the
+  // member list is empty. This is a SEPARATE resolver: message speaker labels
+  // keep their member-only semantics (a direct-thread bot message never grows
+  // a name label), only the review card header uses the roster fallback.
+  const resolveTranscriptBotDisplayName = useCallback(
+    (botId: string) => resolveTranscriptBot(botId)?.name,
+    [resolveTranscriptBot],
+  );
   const replyTargetName = activeReplyTarget
     ? activeReplyTarget.role === "user"
       ? t`You`
@@ -2529,7 +2537,11 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     const bot = await rpc.bots.create({
       ...normalizeCreateBotProfile(input),
       ...(input.avatarMode === "character"
-        ? { avatarMode: "character" as const, avatarCharacter: input.avatarCharacter!, avatarBodyColor: input.avatarBodyColor }
+        ? {
+            avatarMode: "character" as const,
+            avatarCharacter: input.avatarCharacter!,
+            avatarBodyColor: input.avatarBodyColor,
+          }
         : input.avatarMode === "upload"
           ? { avatarMode: "upload" as const, color: input.color! }
           : {}),
@@ -3809,6 +3821,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                 setPeerConversation(peer);
               }}
               memberName={resolveTranscriptMemberName}
+              botNameOf={resolveTranscriptBotDisplayName}
               peerBot={resolveTranscriptBot}
               onRefresh={refreshActiveThread}
               onBotChanged={refreshBots}
@@ -4904,6 +4917,7 @@ export const Transcript = memo(function Transcript({
   onCancelBackgroundTask,
   showActivityAvatars,
   activityBotColors,
+  botNameOf,
   onLoadOlder,
   onOpenBot,
   onAnswer,
@@ -4945,6 +4959,8 @@ export const Transcript = memo(function Transcript({
   onCancelBackgroundTask?: (taskId: string) => Promise<void>;
   showActivityAvatars?: boolean;
   activityBotColors?: Record<string, string>;
+  /** UX-02: Bot display-name resolver for the plan review card header. */
+  botNameOf?: (botId: string) => string | undefined;
   onLoadOlder: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
@@ -4993,6 +5009,7 @@ export const Transcript = memo(function Transcript({
     activity,
     showActivityAvatars,
     activityBotColors,
+    botNameOf,
     onRefresh,
   });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
@@ -6901,10 +6918,16 @@ const MessageView = memo(function MessageView({
               botId={message.botId ?? null}
               changeId={block.changeId}
               before={
-                (block.beforeCharacter ? `${block.beforeCharacter} · ${block.beforeBodyColor ?? "ink"}` : null) ??
+                (block.beforeCharacter
+                  ? `${block.beforeCharacter} · ${block.beforeBodyColor ?? "ink"}`
+                  : null) ??
                 (block.beforeMode === "upload" ? t`Uploaded image` : t`Previous avatar`)
               }
-              after={block.afterCharacter ? `${block.afterCharacter} · ${block.afterBodyColor ?? "ink"}` : t`Uploaded image`}
+              after={
+                block.afterCharacter
+                  ? `${block.afterCharacter} · ${block.afterBodyColor ?? "ink"}`
+                  : t`Uploaded image`
+              }
               onChanged={onBotChanged}
             />
           );

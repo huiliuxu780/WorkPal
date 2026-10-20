@@ -330,6 +330,9 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
         color: "#123456",
         avatarMode: "legacy",
         avatarCharacter: null,
+        // Baseline repair: the sidebar mapping defaults the body color since
+        // the avatar-body-color merge; the expectation had not caught up.
+        avatarBodyColor: "ink",
         notifyOnFinish: false,
         pinned: true,
         sectionId: null,

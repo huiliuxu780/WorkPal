@@ -143,7 +143,11 @@ const TERMINAL_STATUSES: readonly ExecutionDisplayStatus[] = ["done", "failed", 
 /** Region order: approvals first, then by creation time (mirrors InterventionRegion). */
 function sortedPending(pending: readonly InterventionView[]): InterventionView[] {
   return [...pending].sort((left, right) => {
-    if (left.kind !== right.kind) return left.kind === "approval" ? -1 : 1;
+    if (left.kind !== right.kind) {
+      const rank = (kind: string) => (kind === "approval" || kind === "plan_review" ? 0 : 1);
+      const delta = rank(left.kind) - rank(right.kind);
+      if (delta !== 0) return delta;
+    }
     return left.createdAt < right.createdAt ? -1 : left.createdAt > right.createdAt ? 1 : 0;
   });
 }

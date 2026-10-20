@@ -16,7 +16,7 @@ import {
   type IsolatedPostgresDatabase,
 } from "./postgres-test-database.js";
 import { promoteLeasedRunWithAttempt } from "./promote-run.js";
-import { publishRunPlan } from "./run-plans.js";
+import { applyPlanSubmission } from "./run-plans.js";
 import { publishRunStep } from "./run-steps.js";
 import { publishRunTodo } from "./run-todos.js";
 
@@ -163,7 +163,7 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
 
   it("restores plan, step, todo, result and artifacts for a completed Run", async () => {
     const { run } = await makeRun();
-    await publishRunPlan(
+    await applyPlanSubmission(
       prisma,
       { spaceId: id, threadId, botId, runId: run.id, toolExecutionId: "plan-1" },
       {
@@ -171,6 +171,7 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
         goal: "Quarter summary",
         items: [{ id: "draft", title: "Draft", status: "completed" }],
       },
+      { source: "publish_run_plan", submit: true },
     );
     await publishRunStep(
       prisma,

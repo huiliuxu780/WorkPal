@@ -1959,11 +1959,89 @@ describe("activity projection reduction (Phase 4)", () => {
     expect(
       reduceThreadSnapshot(
         resolved,
-        event({ type: "intervention.resolved", seq: 6, payload: { ...payload, revision: 1, status: "cancelled" } }),
+        event({
+          type: "intervention.resolved",
+          seq: 6,
+          payload: { ...payload, revision: 1, status: "cancelled" },
+        }),
       )?.interventions?.[0]?.status,
     ).toBe("answered");
-    expect(reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions).toEqual([]);
+    expect(
+      reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions,
+    ).toEqual([]);
     expect(isThreadSnapshotEvent(event({ type: "intervention.created" }))).toBe(true);
+  });
+
+  it("carries the plan review projection and its decision through the reducer (UX-02)", () => {
+    const payload = {
+      interventionId: "intervention-plan",
+      revision: 1,
+      kind: "plan_review",
+      status: "pending",
+      runId: "run-1",
+      attemptId: "attempt-1",
+      messageId: "message-plan",
+      botId: "bot-1",
+      createdAt: "2026-10-20T00:00:00.000Z",
+      actor: { botId: "bot-1" },
+      planReview: {
+        content: {
+          planId: "plan:run-1",
+          contentVersion: 2,
+          revision: 4,
+          goal: "Deliver the report",
+          items: [{ id: "a", title: "Draft", status: "pending" }],
+          source: "plan_exit",
+        },
+      },
+      presentation: { text: "Plan v2 is ready for your review." },
+    };
+    const created = reduceThreadSnapshot(
+      snapshot([]),
+      event({ type: "intervention.created", seq: 4, payload }),
+    );
+    expect(created?.interventions?.[0]).toMatchObject({
+      kind: "plan_review",
+      planReview: { content: { planId: "plan:run-1", contentVersion: 2 } },
+    });
+    const decided = reduceThreadSnapshot(
+      created,
+      event({
+        type: "intervention.resolved",
+        seq: 5,
+        payload: {
+          ...payload,
+          revision: 2,
+          status: "answered",
+          planReview: {
+            ...payload.planReview,
+            decision: "request_changes",
+            feedback: "Rework stage a",
+          },
+        },
+      }),
+    );
+    expect(decided?.interventions?.[0]?.planReview).toMatchObject({
+      decision: "request_changes",
+      feedback: "Rework stage a",
+    });
+    // plan.review_* lifecycle events never fabricate plan revisions.
+    const afterReviewEvent = reduceThreadSnapshot(
+      decided,
+      event({
+        type: "plan.review_decided",
+        seq: 6,
+        payload: {
+          planId: "plan:run-1",
+          runId: "run-1",
+          contentVersion: 2,
+          decision: "request_changes",
+          reviewStatus: "changes_requested",
+          interventionId: "intervention-plan",
+        },
+      }),
+    );
+    expect(afterReviewEvent?.plans ?? []).toEqual(decided?.plans ?? []);
   });
 });
 
