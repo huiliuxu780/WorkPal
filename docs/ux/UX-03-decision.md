@@ -10,7 +10,7 @@
 
 1. **聊天头部不再承载管理功能。** 模型切换器、Agent 电脑按钮、名称行从头部移除；头部位置不保留替代表头。管理项的唯一入口是侧设置面板。
 2. **悬浮头像是身份与状态的唯一常驻表达。** 水平居中贴顶浮于对话栏；单击开侧面板、再单击收起；运行中/待审批状态以环色+文案表达在同一个悬浮件上（不与状态 pill 分离）。它不遮挡输入、不随转录滚动消失。
-3. **面板功能不丢一项。** 三 tab（详情/资料库/电脑）必须容纳现有 BotSettings 与 computer panel 的全部 Bot 管理能力；例行任务列表进详情 tab，完整编辑仍钻入 RoutineEditor。CAP-01 的应用连接和 Auto-review 规则是平台级能力，明确不进入 Bot 面板。
+3. **面板功能不丢一项。** 三 tab（详情/资料库/电脑）必须容纳现有 BotSettings 与 computer panel 的全部 Bot 管理能力；例行任务列表进详情 tab，完整编辑仍钻入 RoutineEditor。现有 Connect Apps 大弹窗和 Settings 中的 Auto-review 规则明确不进入 Bot 面板，也不因 UX-03 改造。
 
 ---
 
@@ -32,8 +32,10 @@
 
 - **详情**：例行任务（列表+开关）、名称/头衔/描述、通知、模型+思考、其余既有 Bot 高级项（记忆范围/朗读/音色）、导出/清空。不得放 Connect Apps、Auto-review、自定义规则或内部 capability policy。
 - **资料库**：技能（KnowledgeSection）+ 草稿板（ScratchpadSection）。
-- **电脑**：ComputerModePicker + 实时屏幕 + 维护动作 + 打开完整窗口；面板头部齿轮 settings↔computer 互切保留。
+- **电脑**：ComputerModePicker + 实时屏幕 + 维护动作 + 打开完整窗口；原来的 settings↔computer 切换由三 tab 取代。
 - 面板头部仅保留导出/关闭两圆钮（参考截图）。
+
+全局 `SettingsOverlay` 与 `PluginsOverlay` 继续是现有大弹窗；本侧面板只承载当前 Bot 的上下文和管理能力。
 
 ## 3. 头部元素去向
 
