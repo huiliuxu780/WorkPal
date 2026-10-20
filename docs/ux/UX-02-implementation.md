@@ -92,8 +92,8 @@
 ## 6. 验证命令与原始计数（收口时点）
 
 - Java：`JAVA_HOME=openjdk@21 mvn -f services/agent-runtime/pom.xml test` → **90/90**（新增 3 个统一计划测试 + 1 个策略测试；原 nativePlanLifecycle 被 bridge 化重写；含 facade 活状态投影修复后的复跑）。
-- **收口期修复的基线 flake（非本批引入）**：`RuntimeIntegrationTest` 两个后台任务测试间歇性 "Failed to save state: agent_state"（CI runtime-jar 因此红过一次；本机基线 `ee8db3c` 干净树复现 3/6，本批分支 1/5——先于且独立于本批改动）。根因：库 `JsonFileAgentStateStore` 对同一 slot 的并发保存共用固定名 tmp 文件做 rename，AG-05 的每模型调用 `replacePermissionContext` 持久化与 ReAct 循环/后台任务的保存相撞。修复：`SerializedAgentStateStore` 包装器串行化该引擎实例的全部 store 操作（库内版本 CAS 语义不变，方法逐一显式委托）。修复后目标测试 8/8 连跑零失败、全套 90/90。此修复同时消除同类并行负载抖动（此前 `agentscope-provenance` 在满仓并行下偶发一次，属同一 save 竞争类）。
-- 仓库单测（最终收口跑）：`pnpm exec vitest run`（JAVA_HOME=openjdk@21）→ **5301 passed / 1 failed / 363 skipped（5665）**，唯一失败为既有基线项：
+- **收口期修复的基线 flake（非本批引入）**：`RuntimeIntegrationTest` 两个后台任务测试间歇性 "Failed to save state: agent_state"（CI runtime-jar 因此红过一次；本机基线 `ee8db3c` 干净树复现 3/6，本批分支 1/5——先于且独立于本批改动）。根因：库 `JsonFileAgentStateStore` 对同一 slot 的并发保存共用固定名 tmp 文件做 rename，AG-05 的每模型调用 `replacePermissionContext` 持久化与 ReAct 循环/后台任务的保存相撞。修复：`SerializedAgentStateStore` 包装器串行化该引擎实例的全部 store 操作（库内版本 CAS 语义不变，方法逐一显式委托）。修复后目标测试 8/8 连跑零失败、全套 90/90。此修复同时消除同类并行负载抖动（此前 `agentscope-provenance` 在满仓并行下偶发一次，属同一 save 竞争类；修复后的满负荷终轮未再现）。另修复 `task-center.spec` 的基线 flake（main 最近一次 web job 失败即此测试）：整页加载会先后触发 mount 与 window-focus 两次列表刷新，慢 runner 上晚到响应落在 `threads/clear` 之后把条目（正确地）清掉，与断言点击竞态；spec 现在在 clear 前要求 `/rpc/runs/taskCenter` 响应静默 1.5s，受测契约断言一字未改，本机 12/12 连续三轮绿。
+- 仓库单测（最终收口跑，含全部审计轮修复后满负荷并行）：`pnpm exec vitest run`（JAVA_HOME=openjdk@21）→ **5304 passed / 1 failed / 363 skipped（5668）**，唯一失败为既有基线项：
   - `apps/api/src/execution-rpc.test.ts` 1 例为 **ee8db3c 基线固有失败**（已用干净树验证，与本批无关，未掩盖）；
   - `agentscope-provenance` 曾在满负荷并行下偶发一次（单独跑绿；机理同上述状态保存竞争，已随 `SerializedAgentStateStore` 修复，终轮并行跑未再现）；
   - 顺手修复 `packages/db/src/repos.test.ts` 基线期望（avatar body color 合并后未跟进的一行）。
