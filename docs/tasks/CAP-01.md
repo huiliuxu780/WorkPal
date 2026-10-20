@@ -1,252 +1,203 @@
-# CAP-01 — Bot 可用能力、操作偏好与确认闭环（完整前后端任务）
+# CAP-01 — 全局应用、操作确认与成果闭环
 
 Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pull/81) 必须按本任务重做；未合并、未部署。代码核对基线 `main @ 472f0b1`。
 
 历史设计完整保留：
 
-- [v1 低层权限规则编辑器](./archive/CAP-01-low-level-editor.md)：已否决。
-- [v2 两界面草案](./archive/CAP-01-two-surface-draft.md)：覆盖不完整，已否决。
+- [v1 低层权限规则编辑器](./archive/CAP-01-low-level-editor.md)：把内部策略暴露给用户，已否决。
+- [v2 两界面草案](./archive/CAP-01-two-surface-draft.md)：仍以技术权限为中心，已否决。
+- [v3 按 Bot 管理应用草案](./archive/CAP-01-per-bot-apps-draft.md)：错误地把账号级应用和长期选择放进 Bot 设置，已否决。
 - 当前实施契约只有本文件。
 
-## 1. 设计北极星
+## 1. 已核实的产品事实
 
-**用户面对的是 Bot、应用和真实动作：先知道 Bot 能接触什么，告诉它什么时候先问，动作发生时看清并决定，之后能确认到底发生了什么。**
+Grok Bot 的信息架构不是“每个 Bot 配一套应用权限”：
 
-底层工具、权限匹配、内部安全策略、执行器和审计都由系统承担，不能变成用户必须配置的工程字段。
+- 已连接应用对同一账号下的所有 Bot 可用；应用由侧栏 `Connect apps` 管理。
+- Settings 管全局的 Auto-review / Custom Rules，而不是某个 Bot 的工具表。
+- 单个 Bot 的设置用于名称、头像、标签和稳定角色等 Bot 自身信息。
+- 文件、图片、链接和工具结果作为卡片留在产生它们的对话中。
 
-这项功能不是“把权限表单做简单一点”，而是完成四个用户任务：
+官方来源：
 
-1. **能力可见**：这个 Bot 连接了哪些应用，通常能替我完成什么；我能停用它对某个应用的使用。
-2. **事前偏好**：我可以用自己的话告诉 WorkPal 哪些动作先问我，不需要枚举工具或资源模式。
-3. **当场决定**：Bot 真要做一件有后果的事时，我能看清对象和影响，决定这一次执行、以后同类动作直接执行，或拒绝。
-4. **事后追溯**：我能在原任务里看到动作是否真的完成、失败、被拒绝或结果未知，并撤销已保存的长期选择。
+- [Connect apps](https://cursor.com/help/grok-bot/connect-apps)
+- [Work with connected apps](https://cursor.com/docs/grok-bot/work)
+- [Settings](https://cursor.com/docs/grok-bot/settings)
+- [Bots](https://docs.x.ai/grok-bot/bots)
+- [Files and results](https://docs.x.ai/grok-bot/files-and-results)
 
-“邮件、付款、文档”都只是例子，不是固定分类、固定栏目或本任务必须创造的新能力。界面内容必须来自 WorkPal 当前真实连接和真实执行路径。
+WorkPal 当前代码有按 Bot 的 MCP assignment 和 `Bot.capabilityRules`。这是现存实现事实，不是用户界面必须照搬的产品模型。本任务保留它们作为运行时兼容和强制边界；普通用户连接的应用按当前 Space 的账号级能力呈现，供该用户的所有 Bot 使用。
 
-## 2. 参考方式与 WorkPal 的取舍
+## 2. 设计北极星
 
-参考 Grok Bot 的用户模型：审批发生在对话中的具体动作上；一次允许、长期允许和拒绝直接在卡片完成；设置管理用户规则和已保存选择；连接的应用单独管理。
+**用户连接一次应用，所有 Bot 都能在已有授权范围内使用；用户只在平台设置里表达什么时候需要确认，在动作发生时作决定，在原对话里拿到成果。**
 
-来源：
+系统负责工具注册、资源授权、deny、撤权、幂等和审计。用户不配置 tool、scope、glob、优先级、catalog 或 Bot 级权限矩阵。
 
-- [Grok Bot approvals](https://docs.x.ai/grok-bot/approvals-security-and-privacy)
-- [Grok Bot settings](https://cursor.com/docs/grok-bot/settings)
+邮件、付款、文档、日历和数据库都是示例，不是固定权限分类。生产界面只能显示当前真实连接、真实动作和真实结果。
 
-WorkPal 采用相同的信息分工，不复制其企业后台或内部规则语言：
+## 3. 信息架构
 
-| 用户问题 | WorkPal 入口 | 权威对象 |
-| --- | --- | --- |
-| Alice 能用什么？ | Bot 详情 → 应用与操作 | Bot 的有效应用分配与连接状态 |
-| 什么时候先问我？ | 账户设置 → 操作偏好 | 当前用户、当前 Space 的自然语言偏好 |
-| 这一次做不做？ | 对话 / Task Center 的确认卡 | 持久化 Intervention + ExternalEffect |
-| 最后做成了吗？ | 原执行卡第 2 层 / Task Center 回到原 Run | ExternalEffect 的真实结果 |
-| 哪些动作以后不再问？ | 账户设置 → 操作偏好 → 已保存选择 | ActionApprovalRule |
+| 用户问题 | 唯一入口 | 内容 | 不放在这里的内容 |
+| --- | --- | --- | --- |
+| 我连接了哪些应用？ | 侧栏 `Connect Apps` | 当前 Space 的连接、登录状态、连接/断开 | Bot 选择器、每 Bot 开关、工具表 |
+| 什么时候先问我？ | 平台 Settings → `操作确认` | 所有 Bot 共用的自然语言偏好、从真实审批保存的选择 | 内部策略、应用连接管理 |
+| 这一次做不做？ | 对话 / Task Center | 具体动作、对象、影响、一次允许/以后允许/拒绝 | 规则编辑表单 |
+| 做成了吗？成果在哪？ | 原对话 + Execution detail | 文件/链接/消息/变更结果、真实 effect 状态 | Bot 设置、另建成果后台 |
+| 这个 Bot 是谁、怎么工作？ | Bot 设置 | 名称、头像、标签、稳定角色及既有 Bot 选项 | 应用权限、执行结果、长期允许规则 |
 
-## 3. 完整用户流程
+本任务不在 Bot 设置新增“应用与操作”“权限”“成果”或“安全”区域。
 
-### 3.1 看 Bot 能做什么
+### 3.1 范围口径
 
-用户从 Bot 详情进入「应用与操作」。页面按应用展示：
+WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适用于当前 Space 中你的所有 Bot。` 不提供 scope 下拉框。跨 Space 不共享连接或操作偏好，除非后续产品任务专门改变租户边界。
 
-- 应用图标和名称；
-- 当前连接的账户名称；
-- 这个 Bot 能进行的 2–5 条用户任务，例如“查看并整理邮件”“起草和发送邮件”，由连接器注册信息提供；
-- 当前状态：可用、需要登录、已停用；
-- `管理应用` 或 `为此 Bot 停用`。
+## 4. 完整用户流程
 
-这里不展示工具清单、toolName、权限等级、读写位、scope 或规则优先级。用户停用的是“这个 Bot 使用 Gmail”，不是编辑一组 Gmail 工具规则。
+### 4.1 全局连接应用
 
-连接账户仍在现有 Connect Apps 管理；从某个 Bot 停用应用只解除该 Bot 的分配，不撤销用户账户连接，也不影响其他 Bot。真正撤销账户连接继续跳转 Connect Apps。
+用户从侧栏进入 `Connect Apps`：
 
-内置能力如果没有可关闭的产品入口，不在这里伪装成应用开关。页面只展示用户能够理解并采取动作的项目。
+- 看见可连接和已连接的应用；
+- 登录或重新授权；
+- 断开应用；
+- 看见一句明确说明：`已连接的应用可供这个 Space 中你的所有 Bot 使用。`
 
-### 3.2 事前表达“什么时候先问我”
+应用行不展示 Bot 名单、每 Bot 开关、底层工具或读写级别。断开是账号级动作，必须说明会影响所有 Bot，并使用既有确认交互。
 
-账户设置的「操作偏好」顶部提供一个简洁的自然语言区域：
+已连接不代表每个动作都能执行。服务端仍会在执行时检查当前用户、Space、资源、连接状态、强制策略和是否需要确认。
 
-- 标题：`什么时候先问你？`
-- 说明：`写下你希望 WorkPal 在执行前确认的情况。`
-- 每条偏好是一句用户语言，可新增、修改、删除，例如“向公司外的人发送内容前先问我”。例句只是输入提示，不生成固定类别。
-- 偏好适用于当前用户在当前 Space 的所有 Bot，界面直接写清这一范围，不提供 scope 下拉框。
+自定义 MCP/开发者服务若现有产品明确采用按 Bot 分配，可继续留在它自己的高级入口；不得混入普通连接应用列表，也不得被本任务静默改成账号级。
 
-这不是 Bot 指令编辑器。偏好只参与动作审批判断，不能改变 Bot 任务、连接权限或服务端强制边界。
+### 4.2 全局“什么时候先问我”
 
-保存后即时生效；失败时保留当前文字并提供重试。无需整页草稿、跨 Bot 切换守卫、差异工作台或高级模式。
+平台 Settings 的 `操作确认` 页面包含两段。
 
-### 3.3 当场确认真实动作
+第一段 `什么时候先问你？`：
 
-确认卡回答三个问题：
+- 用户以一句自然语言新增、编辑、删除偏好，例如“向公司外的人发送内容前先问我”；
+- 页面直接说明对当前 Space 中所有 Bot 生效；
+- 文本只影响是否提升为确认，不能授予应用、资源或执行权限；
+- 保存失败时保留当前输入并可重试。
 
-- Bot 要做什么？
-- 会影响谁或什么？
-- 执行后会发生什么？
+不提供类别选择器、Bot 选择器、资源 glob、优先级、测试器、冲突工作台或高级模式。
+
+第二段 `无需再次确认`：
+
+- 只展示用户在真实动作确认卡里选择“以后允许”形成的选择；
+- 按应用/动作组织，不按 Bot 分组；
+- 显示可理解的动作、应用/账户、保存时间和适用范围 `当前 Space 中的所有 Bot`；
+- 唯一编辑动作是 `移除`；设置页不能凭空新增允许规则。
+
+### 4.3 当场确认具体动作
+
+确认卡回答三个问题：Bot 要做什么、影响谁或什么、执行后会发生什么。
 
 卡片结构：
 
-1. 标题：`<Bot 名称> 想要 <动作>`，动作使用业务语言。
-2. 关键字段：用 2–4 行展示对象和值；长正文使用“查看完整内容”。
-3. 当前影响：一句话说明发送、修改、删除、发布或其他真实后果。
-4. 动作按钮使用当前动作的动词：
-   - 当前动作，例如 `发送这封邮件`：只批准当前 effect。
-   - 长期选择，例如 `以后直接发送`：批准当前 effect，并保存服务端已定义的同类动作范围。
-   - 拒绝，例如 `不发送`：拒绝当前 effect，不保存长期选择。
+1. 标题：`<Bot 名称> 想要 <动作>`。
+2. 2–4 个关键字段：收件人、文件、金额、日历对象、目标记录等真实对象。
+3. 一句影响说明；长内容可展开查看。
+4. 依据当前动作生成的三个选择：
+   - 一次按钮，例如 `发送这封邮件`；
+   - 可选的长期按钮，例如 `以后直接发送`；
+   - 拒绝按钮，例如 `不发送`。
 
-长期按钮只在系统能够给出稳定且人类可读的范围时出现；辅助文字必须写清范围，例如“以后 Alice 使用 Gmail 发送邮件时不再询问”。不能再弹第二个规则表单。
+长期按钮只在服务端注册了稳定、人类可读的动作身份时出现。其说明固定写清：`以后当前 Space 中任一 Bot 执行这类动作时不再询问。` 连接账户、资源权限或服务端 deny 仍逐次检查。
 
-无法形成长期范围的动作仍完整支持当前一次执行/拒绝，用户不需要补填任何配置。
+密码、验证码、CAPTCHA、支付确认和需要用户亲自完成的页面显示 `接管完成`，没有长期允许。
 
-密码、验证码、支付确认、CAPTCHA 或其他需要用户亲自完成的步骤显示为“接管完成”，不提供长期允许。它们属于当前任务的交接状态，不属于操作偏好。
+后台 Run 的确认继续出现在 Task Center 的注意状态，并回到原 Run 的同一 Intervention。
 
-后台 Run 的确认继续出现在 Task Center 的注意状态，并回到同一 Run 的同一 Intervention；不另建后台审批中心。
+### 4.4 成果与执行结果
 
-### 3.4 查看结果与处理异常
+动作结果属于产生它的工作：
 
-用户做出决定后，卡片保留在原执行记录中，并分别展示：
+- 文件、图片、链接、发送回执和其他成果作为卡片留在原对话；
+- Execution detail 第 2 层显示本 Run 的关键动作及 pending/approved/executing/completed/failed/denied/expired/uncertain 状态；
+- Task Center 只导航回原 Run；
+- Bot 设置不展示成果列表，也不新建“安全日志”或“成果中心”。
 
-- 已批准，正在执行；
-- 已完成；
-- 已失败；
-- 已拒绝；
-- 已过期；
-- 结果未知，需要用户选择现有的恢复动作。
-
-批准不等于完成。对外发送、文件修改等真实结果来自 `ExternalEffect`，不能用按钮成功状态冒充。
-
-原执行卡第 2 层增加「操作」区，列出本 Run 的关键 effect：人类可读动作、对象摘要、状态和时间。Task Center 只负责导航到原 Run，不复制一份独立日志页面。
-
-### 3.5 管理长期选择
-
-账户设置「操作偏好」的第二部分是「无需再次确认」：
-
-- 按 Bot 分组；
-- 显示动作名称、应用/账户说明、保存时间；
-- 唯一动作是 `移除`。
-
-移除后，下次命中该动作恢复正常审批流程。长期选择只能从一次真实确认产生，设置页不提供“新增允许规则”。
-
-旧账户/Space 级审批规则继续按原范围生效，放在「以前保存的选择」分组，可移除；不能静默转成 Bot 范围。
-
-## 4. 界面结构
-
-### 4.1 Bot 详情 → 应用与操作
-
-在现有 BotSettings 中增加轻量区块，位置在通知之后、Advanced 之前：
-
-- 默认展示最多 3 个已分配应用；更多时进入 Connect Apps。
-- 每个应用一行，不展开底层工具表。
-- 主动作：`管理应用`。
-- 次动作：`为此 Bot 停用`；执行成功后列表更新。
-- 空状态：`这个 Bot 还没有连接应用。` + `连接应用`。
-
-### 4.2 账户设置 → 操作偏好
-
-改造现有 `ApprovalRulesSettings`，保留一个页面内的两段：
-
-1. `什么时候先问你？`：自然语言偏好列表。
-2. `无需再次确认`：从真实审批卡保存的长期选择。
-
-删除当前固定的邮件/购买 preset 和 `Flag unexpected actions` 开关。内部审核是否可用不展示给普通用户。
-
-### 4.3 对话 / 执行卡
-
-扩展现有 `AskCard`、`InterventionRegion` 和 Execution detail，不新建平行组件。审批仍位于折叠详情外；结果历史位于第 2 层。
+批准不等于完成。界面只有收到 `ExternalEffect` 的真实终态后才能显示完成。结果未知时沿用现有恢复选择。
 
 ## 5. 前端任务
 
-### F1. Bot 应用摘要
+### F1. Connect Apps 全局口径
 
-- 新增 `BotAppsSummary`，读取后端给出的 Bot 有效应用摘要。
-- 复用 PluginsOverlay/Connect Apps 的图标、名称、连接状态和管理入口。
-- 停用成功就地更新；失败保留行并显示业务错误。
-- 不读取或渲染 connector tool schema；用户任务描述来自后端产品元数据。
+- 修改现有 `PluginsOverlay` / Connect Apps 入口，删除普通连接应用的 active Bot 选择和每 Bot assignment 文案。
+- 显示账号级说明、连接状态、重新登录、连接和断开。
+- 断开前说明会影响当前 Space 中所有 Bot；成功后所有相关运行视图刷新。
+- 普通应用行不读取或渲染 connector tool schema。
+- 自定义 MCP 若仍是按 Bot 分配，保留独立的高级入口和现有行为，不与普通应用混排。
 
-### F2. 自然语言操作偏好
+### F2. 平台操作确认设置
 
-- 重构 `ApprovalRulesSettings`，支持一句一条的新增、编辑、删除。
-- 添加采用就地保存：Enter/保存提交当前句，Esc/取消放弃当前新句；编辑失败保留输入。
-- 页面直接显示“适用于当前 Space 中你的所有 Bot”。
-- 不显示 Auto Review、checker、模型、优先级或规则命中解释。
+- 重构现有 `AccountSettingsOverlay` → `ApprovalRulesSettings`，页面名为 `操作确认`。
+- `什么时候先问你？` 支持短句新增、编辑、删除；Enter/保存提交，Esc/取消当前编辑。
+- `无需再次确认` 按应用/动作展示，不显示 Bot 分组；逐行移除。
+- 页面明确写当前 Space、所有 Bot 的作用范围。
+- 删除固定邮件/购买 preset、`Flag unexpected actions` 开关和内部 auto-review 术语。
 
-### F3. 已保存选择
+### F3. 操作确认卡
 
-- 同页按 Bot 分组展示长期选择和 legacy 分组。
-- 移除时只锁当前行；失败不移除 UI，成功后刷新一致。
-- 没有长期选择时显示简洁空状态，不展示预置建议按钮。
+- 扩展现有 `AskCard` / `InterventionRegion`，使用服务端结构化展示和动态按钮文案。
+- pending、submitting、accepted、already_handled、expired 和 effect 终态全部来自服务器。
+- 长期选择按钮只在响应含可信 remember proposal 时出现。
+- 恢复、刷新、双击与多标签页提交不得产生第二次外部动作。
 
-### F4. 操作确认卡
+### F4. 对话成果与执行详情
 
-- `InterventionPresentation` 扩展为结构化动作展示，不再依赖一段模型生成的 `text/detail` 承担所有信息。
-- `AskCard` 使用服务端给出的动态按钮文案；没有长期提案时不显示长期按钮。
-- pending、submitting、accepted、already_handled、expired、effect executing/completed/failed/uncertain 全部使用服务器状态。
-- 重复点击和页面恢复不得重复执行。
+- 复用现有消息卡展示文件、链接和工具产物；不把成果复制进设置页。
+- Execution detail 增加 `操作` 区，展示真实 effect 摘要、对象、时间和终态。
+- 失败原因使用安全业务文案，保留既有 detail retry。
+- Task Center 继续回焦原 Run。
 
-### F5. 操作结果
+### F5. 删除 Draft #81 的错误前端
 
-- Execution detail 增加 Action section，读取服务器投影的 effect summaries。
-- 每项显示动作、对象摘要、结果和发生时间；失败展示安全的业务原因。
-- Task Center 继续回到原执行记录，不卡片复制、不新建“安全日志”导航。
-
-### F6. 删除旧 #81 前端
-
-删除：
-
-- `BotPermissionsSection`；
-- capability catalog、advanced input、preview、冲突差异和整份草稿状态；
-- Shell 级权限草稿与切 Bot 守卫；
-- 旧 editor 专用翻译和 E2E。
-
-恢复 roster 跨 Space 点击的原 `openSpaceChat` 路径。
+删除 `BotPermissionsSection`、Bot 级应用摘要、Bot 级停用、capability catalog、advanced input、preview、policyRev 冲突工作台、Shell 级权限草稿和旧 editor 专用 E2E/翻译。Bot Settings 恢复到本任务之前的产品职责；roster 跨 Space 点击恢复原导航。
 
 ## 6. 后端任务
 
-### B1. Bot 有效应用摘要
+### B1. 普通连接应用全局化
 
-在现有连接与 Bot assignment 之上提供只读聚合，不创建新权限源：
+先列出当前 `Connection`、managed connector、MCP server 与 `BotMcpServer` 的真实关系并写入实现说明。随后只对普通用户连接应用建立一个权威读取路径：
 
 ```ts
-bots.actionAccess.get({ botId }): {
+apps.connections.list(): {
+  scope: "space-user";
+  availableTo: "all-bots";
   apps: Array<{
-    assignmentId: string;
+    connectionId: string;
     app: { id: string; name: string; icon: string | null };
     accountLabel: string | null;
-    status: "available" | "login_required" | "disabled";
-    actions: string[]; // 人类可读、由注册元数据提供
-    canDisableForBot: boolean;
+    status: "available" | "login_required" | "revoked";
   }>;
 }
-
-bots.actionAccess.disable({ botId, assignmentId }): { ok: true }
 ```
 
-- get/disable 复用现有 Bot/Space 授权和 assignment 数据。
-- disable 只解除该 Bot 分配，不撤销共享 Connection，不影响其他 Bot。
-- `actions` 来自连接器/工具注册的产品描述；不把工具名拆词后冒充用户任务。
-- 管理账户连接继续使用现有 Connections API 和 PluginsOverlay。
+- 连接、重授权、断开复用现有 Connection 生命周期。
+- executor 为该用户当前 Space 的任一 Bot 解析普通已连接应用；不能再以 UI 中的 activeBotId 决定普通应用是否可见。
+- 当前 per-Bot assignment 数据若只服务普通连接应用，迁移为全局语义后移除；若也服务自定义 MCP，拆分用途并保留 MCP 语义。
+- `Bot.capabilityRules`、资源授权、连接器 allowlist 和服务端 deny 继续逐次执行，不进入这个列表。
 
-### B2. 自然语言操作偏好
+### B2. 自然语言确认偏好
 
-演进现有 `ActionAutoReviewPreference`，不要新建第二个 Auto Review 系统：
-
-- 增加 `instructions`，存储有顺序的短句，限制总长度和条数。
-- `enabled` 不再作为普通用户开关；迁移保留旧值，运行时以存在的偏好和系统配置决定是否执行审阅。
-- 偏好作用域固定为当前 `spaceId + userId`。
-
-API：
+演进现有 `ActionAutoReviewPreference`，作用域固定为 `spaceId + userId`：
 
 ```ts
 actionPreferences.instructions.get(): { items: Array<{ id: string; text: string }> }
-actionPreferences.instructions.add({ text: string }): { item: ... }
-actionPreferences.instructions.update({ id: string, text: string }): { item: ... }
+actionPreferences.instructions.add({ text: string }): { item: { id: string; text: string } }
+actionPreferences.instructions.update({ id: string, text: string }): { item: { id: string; text: string } }
 actionPreferences.instructions.remove({ id: string }): { ok: true }
 ```
 
-- API 做归属检查、空白/长度/数量校验和基本审计。
-- 文本是用户偏好数据，不能拼进 system prompt 充当更高权限指令；只传给既有 action review 输入。
-- 审阅只会把默认可执行动作提升为“需要确认”，不能越过 deny，也不能创造权限。
+- 做归属、空白、长度和数量校验，写现有审计事件。
+- 文本是用户数据，只进入既有 action-review 输入，不能提升为 system 指令。
+- 命中只能把本来可执行的动作提升为确认，不能把 deny 变成 allow。
 
-### B3. 动作展示注册
+### B3. 受信任的动作展示与身份
 
-在工具进入审批边界前，由受信任适配器生成：
+工具进入审批边界前，由受信任适配器生成：
 
 ```ts
 type ApprovalActionPresentation = {
@@ -265,53 +216,43 @@ type ApprovalActionPresentation = {
 };
 ```
 
-- 当前动作展示随 Intervention 白名单快照持久化，恢复与翻页后不丢。
+- 展示随 Intervention 白名单快照持久化。
 - 模型不能提供 `actionKey`、scope 或按钮语义。
-- catalog 包装调用先解析到真实工具身份，再生成展示与 actionKey；不得持久化 `__catalog_execute`。
-- 同一注册动作通过 direct/catalog 路径使用同一 actionKey；具有不同真实效果的动作必须不同。
-- 敏感接管动作没有 `remember`。
+- direct/catalog 路径解析到同一真实动作身份；不得保存 wrapper 名称。
+- 不同真实效果、账户或明确资源范围使用不同身份。
+- 未注册动作仍可一次允许/拒绝，不显示长期按钮。
 
-首批只给仓库中可以通过真实 executor 验证的动作注册产品展示；未注册动作沿用安全的一次审批卡，不伪造业务名称。
+### B4. 全局长期选择
 
-### B4. 长期选择
+继续使用 `ActionApprovalRule`，不增加 `botId`：
 
-继续使用 `ActionApprovalRule` 作为唯一权威来源：
-
-- 增加可空 `botId`、稳定 `actionKey`、展示快照和可选 `sourceEffectId`。
-- 新长期选择固定为当前 `spaceId + userId + botId + actionKey`。
-- 旧 `matchKind/matchValue` 记录保持原范围和兼容读取，列入 legacy；不静默迁移到 Bot 范围。
-- `always` 选择从服务器持久化的 remember 提案创建，客户端不能直接提交 actionKey。
-
-设置 API：
+- 新选择作用域为 `spaceId + createdByUserId + actionKey`，必要的账户/资源区别编码进受信任 actionKey。
+- 保存展示快照与可选 `sourceEffectId`，用于设置页和审计。
+- 旧 `matchKind/matchValue` 保持原语义，列入 legacy 并可移除；不静默扩权。
+- 新规则只能由服务器持久化的 remember proposal 产生，客户端不能直接 create/update。
 
 ```ts
 actionPreferences.saved.list(): {
-  bots: Array<{ bot: BotIdentity; items: SavedActionPreference[] }>;
+  items: Array<SavedActionPreference>;
   legacy: SavedActionPreference[];
 }
 actionPreferences.saved.remove({ id: string }): { ok: true }
 ```
 
-设置页没有 create/update/preview/catalog API。
+### B5. 唯一执行判定
 
-### B5. 执行判定
-
-执行顺序保持一个权威边界：
-
-1. 当前 actor、Bot、Space 与资源权限；
-2. 服务端 deny、撤权、Plan gate 和其他强制边界；
-3. 用户自然语言“先问我”偏好；
+1. 当前 actor、Space、Bot、Connection 和资源权限；
+2. 服务端 deny、撤权、Plan gate、secret/takeover 等强制边界；
+3. 用户全局“先问我”偏好；
 4. 已保存的长期允许；
 5. 默认动作策略；
 6. 必要时创建 Intervention。
 
-若“先问我”偏好与长期允许同时命中，当前明确偏好优先要求确认。用户不需要看到优先级表。
+“先问我”偏好与长期允许同时命中时，当前显式偏好要求确认。一次允许只批准当前 effect；长期允许原子地批准当前 effect 并保存选择；拒绝不保存。继续使用既有 Intervention 幂等和 `ExternalEffect` exactly-once。
 
-`仅这一次` 只批准当前 effect；长期选择原子地批准当前 effect 并保存偏好；拒绝不保存。重复提交保持既有 Intervention 幂等和 ExternalEffect exactly-once。
+### B6. 结果投影
 
-### B6. 结果投影与审计
-
-扩展现有 execution detail 输出：
+Execution detail 输出：
 
 ```ts
 actions: Array<{
@@ -320,79 +261,76 @@ actions: Array<{
   targetSummary?: string;
   status: "pending" | "approved" | "executing" | "completed" | "failed" | "denied" | "expired" | "uncertain";
   occurredAt: string;
+  result?: { kind: "file" | "link" | "message" | "change" | "receipt"; label: string; href?: string };
   failureReason?: string;
 }>
 ```
 
-- 数据来自 ExternalEffect/Intervention，不从模型消息反推。
-- 不返回原始凭据、完整正文、隐藏请求包装或敏感 result。
-- 创建/修改/删除自然语言偏好和长期选择写入现有审计事件体系，记录 actor、space、bot/actionKey、来源 effect 与时间，不再新增 #81 的整份 policy snapshot 审计表。
+- 数据来自 `ExternalEffect` / Intervention 和受信任结果适配器，不从模型正文反推。
+- 不返回凭据、完整敏感正文、隐藏请求包装或原始 provider result。
+- 对话成果卡和 Execution detail 使用同一结果投影，不复制数据库来源。
 
-## 7. #81 改造清单
+### B7. 删除 Draft #81 错误后端
 
-继续一个 PR #81 完成本功能，不拆前端/后端/迁移/文档 PR。
+删除 `bots.capabilityPolicy.get/update/preview`、`capabilityPolicyRev`、`CapabilityPolicyChange`、`bots.actionAccess.*`、per-Bot 普通应用停用 API、`BUILTIN_CAPABILITY_TOOL_IDS`、编辑器 catalog 和为其新增的 preview API。可复用的聚合判定函数必须有当前执行边界的真实调用方；不得留下第二个策略系统。
 
-必须删除旧实现：
+## 7. Draft #81 单 PR 实施顺序
 
-- `bots.capabilityPolicy.get/update/preview`；
-- `capabilityPolicyRev` 与 `CapabilityPolicyChange`；
-- `BUILTIN_CAPABILITY_TOOL_IDS`、旧 catalog 及 `__catalog_execute` UI 身份；
-- BotPermissionsSection、policy draft、preview、CAS conflict workbench；
-- 与旧编辑器绑定的 E2E、文案和状态工具。
+1. 把本任务与 v4 原型作为唯一契约，删除 #81 的低层编辑器及 v3 per-Bot app 工作。
+2. 盘点并区分普通 connected apps 与自定义 MCP；冻结全局连接契约。
+3. 完成 Connect Apps 全局化及任一 Bot 的真实工具可用性回归。
+4. 完成全局确认偏好及既有 action-review 接线。
+5. 完成结构化确认卡和全局长期选择。
+6. 完成对话成果卡与 Execution detail 结果投影。
+7. 用至少两种不同来源的真实动作收口，回写任务、roadmap 和实现说明。
 
-可以保留的内容必须能被当前设计直接使用；不能为了减少删码保留无用户价值的 API 或表。
-
-实施顺序：
-
-1. 删除旧 UI/API/schema/migration并恢复跨 Space 导航。
-2. 完成 Bot 应用摘要和停用闭环。
-3. 完成自然语言偏好及既有 action review 接线。
-4. 完成结构化确认卡和长期选择。
-5. 完成 execution detail action result。
-6. 用真实 executor 支持的两种不同来源动作做完整收口，回写任务、roadmap 和实现说明。
+本功能继续一个 PR 完成，不再按前端、后端或迁移拆小 PR。
 
 ## 8. 验收标准
 
-### 能力可见
+### 全局应用
 
-1. Bot 详情只展示真实已分配/可用应用和注册的用户任务，不显示工具名或虚构能力。
-2. 为此 Bot 停用应用后刷新一致，该 Bot 不再获得其工具；共享账户连接和其他 Bot 不受影响。
-3. 需要登录、已撤权和不可用状态如实显示并链接现有 Connect Apps 处理。
+1. 普通应用只在 Connect Apps 管理；Bot Settings 无应用权限或成果区。
+2. 连接一次后，当前 Space 中该用户的两个不同 Bot 都能通过真实 executor 使用该应用；无需逐 Bot 分配。
+3. 断开/撤权后两个 Bot 都不再获得或执行相关工具，且零 provider 副作用。
+4. 自定义 MCP 的既有独立语义未被普通应用全局化误改。
 
-### 事前偏好
+### 全局操作确认偏好
 
-4. 用户能用一句自然语言新增、修改、删除“先问我”偏好，重开页面一致；失败保留输入。
-5. 偏好只在当前用户与 Space 生效，不改变 Bot 指令、不授予工具或资源权限。
-6. 至少两类真实动作证明偏好能把默认执行提升为审批；未命中动作行为不变。
+5. 用户能新增、修改、删除自然语言偏好，刷新一致；失败保留输入。
+6. 页面明确显示“当前 Space 中所有 Bot”，没有 Bot picker、scope、glob 或规则优先级。
+7. 两个不同 Bot 的真实动作都受同一偏好影响；其他用户和 Space 不受影响。
+8. 偏好只能增加确认，不能授予连接、资源或执行权限。
 
-### 当场确认
+### 当场确认与长期选择
 
-7. 卡片展示真实动作、对象和影响，不出现 toolName、JSON、scope、glob 或模型判断过程。
-8. 当前动作按钮只执行当前 effect 一次；刷新、恢复和重复提交不产生第二次外部动作。
-9. 长期按钮只在服务器有稳定 remember 提案时出现；保存后同 Bot 同 actionKey 不再询问。
-10. 不同 Bot、Space、actionKey、账户或注册为不同范围的动作不会误命中。
-11. 拒绝、过期和敏感接管不创建长期允许；确认前无外部副作用。
-12. direct/catalog 对同一真实动作使用同一身份，不能保存 wrapper 名称。
+9. 卡片展示真实动作、对象和影响，不出现 toolName、JSON、wrapper 或模型判断过程。
+10. 一次按钮只执行当前 effect；刷新、恢复、重复提交和多标签页不会重复外部动作。
+11. 长期按钮只在服务端有稳定 proposal 时出现；保存后同 Space 任一 Bot 的同 actionKey 命中。
+12. 不同 Space、用户、actionKey、账户和明确不同资源范围不误命中。
+13. 拒绝、过期和敏感接管不创建长期选择；确认前无外部副作用。
+14. direct/catalog 对同一真实动作使用同一身份。
 
-### 结果与管理
+### 成果和执行结果
 
-13. 批准后的 executing/completed/failed/uncertain 来自真实 effect 状态，不能把“已批准”显示为“已完成”。
-14. Execution detail 能看到本 Run 的关键动作结果；Task Center 导航回同一记录，不复制日志。
-15. 已保存选择按 Bot 分组并可移除；移除后刷新一致，下次动作重新确认。
-16. legacy 规则保持原范围、可读展示和可移除；没有静默扩权或丢失。
+15. 文件、链接、发送回执等成果留在原对话；Bot Settings 不出现成果列表。
+16. approved/executing/completed/failed/uncertain 来自真实 effect 状态，不能把批准显示为完成。
+17. Execution detail 展示本 Run 的动作结果；Task Center 回到同一记录。
+18. 已保存选择可移除；移除后任一 Bot 的下次同类动作恢复确认。
+19. legacy 规则保持原范围、可读、可移除，没有静默扩权或丢失。
 
-### 系统边界与回归
+### 回归与交付
 
-17. 服务端 deny、资源权限、撤权、Plan 审批、secret/takeover 和 Bot capability 强制边界不被任何用户偏好绕过。
-18. 删除 #81 旧编辑器及全部废弃 API/schema/migration；普通用户只有一个操作偏好入口。
-19. roster 跨 Space 导航、Connect Apps、Task Center 回焦、approval resume、MR-01 retry、AG-08 撤权恢复与 UX-02 Plan review 不回归。
-20. 至少两条来自不同执行来源的真实动作完成 PG/executor/E2E；断言真实 HTTP/effect/文件结果，而非只断言文案。
-21. 受影响包 check、后端定向单测、PG 旅程和聚焦 E2E 通过；不为本批重复运行无关全量套件。
-22. 实现说明列出真实支持的动作、未注册动作降级、旧数据迁移、删除文件及截图证据。未部署。
+20. 服务端 deny、资源权限、撤权、Plan 审批、secret/takeover 和内部 capability 边界不被绕过。
+21. 删除 #81 的废弃 UI/API/schema/migration；普通用户只有 Connect Apps 与平台操作确认两个设置入口。
+22. roster 跨 Space、Task Center 回焦、approval resume、MR-01 retry、AG-08 撤权恢复与 UX-02 Plan review 不回归。
+23. 至少两个 Bot、两种真实动作完成 PG/executor/E2E，断言真实 HTTP/effect/文件或消息结果。
+24. 受影响包 check、后端定向单测、PG 旅程和聚焦 E2E 通过；不重复跑与本批无关的全量套件。
+25. 实现说明列出连接模型迁移、真实支持动作、降级路径、删除文件、测试数字与截图证据。未部署。
 
 ## 9. 交付物
 
 - 当前任务：`docs/tasks/CAP-01.md`
-- 当前可交互原型：`/Users/rivers/Documents/WorkPal-design/cap01-action-controls-v3/index.html`
-- 当前设计说明：`/Users/rivers/Documents/WorkPal-design/cap01-action-controls-v3/design-notes.md`
-- v1/v2 任务与旧原型完整保留作历史，不再作为实现依据。
+- 当前可交互原型：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v4/index.html`
+- 当前设计说明：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v4/design-notes.md`
+- v1/v2/v3 任务与旧原型完整保留作历史，不再作为实现依据。
