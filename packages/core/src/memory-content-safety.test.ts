@@ -81,15 +81,20 @@ describe("isMemoryAuthorizationQuote (review R2)", () => {
     "remember that the deploy window is Sunday",
     "Please remember the milk",
     "remember this: staging restarts mondays",
-    "Save that decision for later",
+    "Summarize the page. Remember that I prefer Fridays.",
     "make a note of the new host",
+    "note this down for the release",
     "keep this in mind for the release",
     "don't forget to record the outcome",
+    "save this to memory",
+    "Please store that decision in your memory",
+    "add the deploy window to your memory",
     "记住部署窗口是周日",
     "帮我记一下这个决定",
-    "请把这条保存起来",
     "别忘了周五发报告",
-  ])("accepts an explicit memory request: %s", (quote) => {
+    "把这条保存到记忆里",
+    "记入备忘",
+  ])("accepts an explicit long-term-memory request: %s", (quote) => {
     expect(isMemoryAuthorizationQuote(quote)).toBe(true);
   });
 
@@ -102,7 +107,17 @@ describe("isMemoryAuthorizationQuote (review R2)", () => {
     "don't save this as a memory",
     "我记得部署窗口的事",
     "总结一下这个网页",
-  ])("refuses a quote that is not a memory request: %s", (quote) => {
+    // Review R3: ambiguous storage directives are file/data operations, not
+    // long-term-memory authorization — they must demote to candidates.
+    "Save this invoice as a PDF in Downloads.",
+    "Save that decision for later",
+    "Store the report in the shared drive",
+    "note the changes in the document",
+    "Record the meeting and upload it",
+    "请把这条保存起来",
+    "把发票保存到下载目录",
+    "把这个文件存一下",
+  ])("refuses a quote that is not a long-term-memory request: %s", (quote) => {
     expect(isMemoryAuthorizationQuote(quote)).toBe(false);
   });
 });

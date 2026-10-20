@@ -62,32 +62,46 @@ export function containsMemoryRefusal(text: string): boolean {
 }
 
 /**
- * Review round R2: a verbatim span check alone cannot prove authorization —
- * the model could quote any real sentence ("Please summarize this web
- * page.") while storing an unrelated fact. The quoted span must ITSELF be an
- * explicit memory request. Detection is deterministic (curated English and
- * Chinese imperative forms), never semantic: a quote that does not match
- * demotes the entry to a candidate for user confirmation, so a false
- * negative costs one confirmation click while a false activation would
- * create an unauthorized durable memory. Refusals inside the quoted span
- * ("don't save this") veto every intent pattern.
+ * Review rounds R2+R3: a verbatim span check alone cannot prove
+ * authorization, and neither can a bare storage imperative. The quoted span
+ * must ITSELF be an explicit request to store something in LONG-TERM MEMORY:
+ *
+ * - Verbs inherently about memory (remember, memorize, don't forget, note
+ *   this down, make/take a note, keep in mind, the CJK 记-family) authorize
+ *   on their own.
+ * - Ambiguous storage verbs (save/store/record/keep/保存/存/收录…) authorize
+ *   ONLY when the span names a memory target (memory/mind/记忆/备忘/心里…).
+ *   "Save this invoice as a PDF in Downloads" is a file operation and must
+ *   never authorize a durable memory (review R3): an already-activated
+ *   record never passes through candidate confirmation, so after-the-fact
+ *   deletion is not a substitute for authorization — ambiguous targets
+ *   demote to a candidate instead.
+ *
+ * Detection stays deterministic (curated patterns), never semantic: a false
+ * negative costs one confirmation click, a false activation would create an
+ * unauthorized durable memory. Refusals inside the span veto everything.
  */
 const MEMORY_AUTHORIZATION_PATTERNS: RegExp[] = [
-  // English imperative at the start of the quote (optional politeness prefix).
-  /^(?:please\s+|pls\s+|kindly\s+)?(?:remember|memorize|memorise|save|store|note)\b/i,
-  // Explicit "remember/save/note this|it" request anywhere in the quote.
-  // "that/those" are deliberately excluded here: reminiscing "I remember
-  // that day" must not authorize; directive "remember that X" quotes are
-  // covered by the sentence-start anchor above.
-  /\b(?:remember|save|store|note|record)\s+(?:this|these|it)\b/i,
+  // Inherently-memory directives at the start of the quote or of a sentence
+  // inside it (optional politeness prefix). A bare mid-clause "remember
+  // that …" stays unmatched so reminiscing ("I remember that day") never
+  // authorizes.
+  /(?:^|[.!?;。！？；]\s*)(?:please\s+|pls\s+|kindly\s+)?(?:remember|memorize|memorise)\b/i,
+  // Note-taking and mind-keeping idioms are memory directives.
+  /\bnote\s+(?:this|that|it)\s+down\b/i,
+  /\b(?:make|take)\s+(?:a\s+)?notes?\b/i,
   /\bkeep\s+(?:this|that|it)\s+(?:in\s+mind|noted)\b/i,
-  /\bmake\s+a\s+note\b/i,
   /\bdon'?t\s+forget\b/i,
-  // Chinese imperative forms. 记得 ("I recall") deliberately matches none of
-  // these; 记住/记下 are essentially always directives.
-  /记住|记下|记一下|记下来|帮我记|请记|劳驾记/,
+  // Ambiguous storage verbs require an explicit memory target in the span.
+  /\b(?:save|store|record|commit|add|keep|put|write)\b[^.!?]{0,60}\b(?:memory|memories|mind)\b/i,
+  // Chinese: the 记-family is inherently about memory. 记得 ("I recall")
+  // deliberately matches none of these.
+  /记住|记下|记一下|记下来|记入|记到|帮我记|请记|劳驾记/,
   /别忘了|别忘记|勿忘/,
-  /保存(?:这|此|一下|起来|好)|存一下|存起来|收录(?:这|此)|备忘/,
+  // Ambiguous Chinese storage verbs require an explicit memory target too:
+  // "保存到下载目录" is a file operation, "保存到记忆里" is a memory request.
+  /(?:保存|存|放|收录|加|写)(?:到|至|进|入|在|成)?[^。！？]{0,12}(?:记忆|备忘|脑子|心里)/,
+  /(?:记忆|备忘)(?:里|中|内)/,
 ];
 
 export function isMemoryAuthorizationQuote(quote: string): boolean {

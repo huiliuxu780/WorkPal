@@ -159,6 +159,18 @@ R1 的 `source_quote` 只验证"该段文字出现在可信消息中"。评审�
 
 R2 复验：core 扫描器 27/27（含意图模式双向用例）；facts 服务 quote 门控 18/18（评审场景 + 边界截取 + CJK 指令）；两份评审复现套件 4/4；turbo check 绿；单测扫尾 3,801/3,802（唯一失败仍为基线既有 execution-rpc）；journeys remember 激活路径通过；E2E memory-facts + knowledge-panel 2/2；黄金样本 diff 仅描述文本。
 
+## 5.3 评审轮 R3（2026-10-20，PR #79）：歧义存储动词不构成记忆授权
+
+R2 的意图词表把 `save/store/note` 的祈使形式一律当作记忆指令。评审复现：用户说 "Save this invoice as a PDF in Downloads."（文件操作），模型原样引用即可为无关事实取得 `user_direct` 激活。复现测试移植入分支（`packages/adapters/src/memory-file-save-authorization-review.test.ts`，先红后绿）。
+
+收紧规则（按评审要求"存储目标不明确是长期记忆时进入候选确认"）：
+
+- **记忆本动词**自足授权：remember/memorize（句首或引用内句首）、note this down、make/take a note、keep … in mind/noted、don't forget；中文 记 家族（记住/记下/记一下/记下来/记入/记到/帮我记/请记）、别忘了/别忘记/勿忘。
+- **歧义存储动词**（save/store/record/commit/add/keep/put/write；保存/存/放/收录/加/写）仅当引用内出现**明确记忆目标**才授权：memory/memories/mind；记忆/备忘/脑子/心里。"Save this invoice as a PDF in Downloads"、"把发票保存到下载目录"、"把这个文件存一下" 全部降级为候选（`quote_not_authorizing`）。
+- 评审强调的原则已固化进代码注释与本文档：**已激活记录不经过候选确认，事后删除不能替代授权**——闸门必须在激活前拦截。
+
+本轮无工具 schema/描述变化，黄金样本零漂移。R3 复验：core 扫描器 33/33（16 项授权 + 17 项拒绝，含评审场景与中文文件操作句）；三份评审复现套件 6/6；facts 门控 18/18；turbo check 绿；单测扫尾 3,816/3,817（唯一失败仍为基线既有 execution-rpc）；journeys remember 激活路径绿；E2E memory-facts 1/1。残留边界不变（§5.2：词法规则，非语义理解；若用户消息本身含明确的长期记忆指令措辞而模型据此保存无关事实，仍需确认流与逐条删除兜底——但"保存文件"类指令已不再属于该边界，它们现在确定性地进入候选）。
+
 ## 6. 与 UX-02 的协调
 
 共同文档提交 `ee8db3c` 随本功能 PR 一并进入 main（UX-02 线合入最新 main 后只保留其自身差异）。本批触碰的共享面及边界：`executor.ts`（记忆加载/装配、finalize 压缩入队、instructions 提升为 `composedInstructions` 常量——字节不变）、`adapter-kit` types（executionScope +2、BackgroundJobPayloads +3、history.compact payload 扩展——均为**追加**，不改既有字段语义）、`contracts/rpc.ts`（memory 家族内追加子命名空间）、case-registry（P15/新 scope/S12-C4..C6，注释标明有意变更）、prompts/（4 个新段，P06/P15 归属登记）。retryOperationId、AG-05 每请求工具刷新、TurnPolicy、plan/step/todo 工具面**零改动**；UX-02 计划审批线与本批无重叠修改块。UX-02 worktree 截至本批收口尚未建立，无并行冲突发生。
