@@ -40,8 +40,8 @@ WorkPal 当前代码有按 Bot 的 MCP assignment 和 `Bot.capabilityRules`。�
 
 | 用户问题 | 唯一入口 | 内容 | 不放在这里的内容 |
 | --- | --- | --- | --- |
-| 我连接了哪些应用？ | 侧栏 `Connect Apps` | 当前 Space 的连接、登录状态、连接/断开 | Bot 选择器、每 Bot 开关、工具表 |
-| 什么时候先问我？ | 平台 Settings → `操作确认` | 所有 Bot 共用的自然语言偏好、从真实审批保存的选择 | 内部策略、应用连接管理 |
+| 我连接了哪些应用？ | 侧栏 `Connect Apps` → 现有 Integrations 大弹窗 | 当前 Space 的连接、登录状态、连接/断开 | Bot 选择器、每 Bot 开关、工具表 |
+| 什么时候先问我？ | 现有 Settings 大弹窗 → `操作确认` 导航项 | 所有 Bot 共用的自然语言偏好、从真实审批保存的选择 | 内部策略、应用连接管理 |
 | 这一次做不做？ | 产生动作的原对话 | 具体动作、对象、影响、一次允许/以后允许/拒绝 | 规则编辑表单、全局任务队列 |
 | 做成了吗？成果在哪？ | 原对话 + Execution detail | 文件/链接/消息/变更结果、真实 effect 状态 | Bot 设置、另建成果后台 |
 | 这个 Bot 是谁、怎么工作？ | Bot 设置 | 名称、头像、标签、稳定角色及既有 Bot 选项 | 应用权限、执行结果、长期允许规则 |
@@ -56,7 +56,7 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 ### 4.1 全局连接应用
 
-用户从侧栏进入 `Connect Apps`：
+用户从侧栏进入 `Connect Apps`，打开现有 Integrations 大弹窗，而不是切换页面：
 
 - 看见可连接和已连接的应用；
 - 登录或重新授权；
@@ -71,7 +71,7 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 ### 4.2 全局“什么时候先问我”
 
-平台 Settings 的 `操作确认` 页面包含两段。
+现有 Settings 大弹窗新增独立的 `操作确认` 左侧导航项，内容区包含两段。
 
 第一段 `什么时候先问你？`：
 
@@ -124,7 +124,8 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 ### F1. Connect Apps 全局口径
 
-- 修改现有 `PluginsOverlay` / Connect Apps 入口，删除普通连接应用的 active Bot 选择和每 Bot assignment 文案。
+- 保留现有 `PluginsOverlay` Dialog 外壳：`1080×760`、标题、关闭按钮、搜索和内部滚动区不重做。
+- 修改 Connect Apps 内容语义，删除普通连接应用的 active Bot 选择和每 Bot assignment 文案。
 - 显示账号级说明、连接状态、重新登录、连接和断开。
 - 断开前说明会影响当前 Space 中所有 Bot；成功后所有相关运行视图刷新。
 - 普通应用行不读取或渲染 connector tool schema。
@@ -132,7 +133,9 @@ WorkPal 的账号数据按 Space 隔离，因此界面写明：`这些设置适�
 
 ### F2. 平台操作确认设置
 
-- 重构现有 `AccountSettingsOverlay` → `ApprovalRulesSettings`，页面名为 `操作确认`。
+- 保留现有 `SettingsOverlay` Dialog 外壳：普通面板 `920×720`、约 `200px` 左侧导航、标题和关闭方式不重做。
+- 在 `SettingsSection` 和现有左侧导航增加独立 `confirmations` / `操作确认` 项；不把它继续藏在 General → Advanced。
+- 将 `ApprovalRulesSettings` 重构为该导航项的内容面板。
 - `什么时候先问你？` 支持短句新增、编辑、删除；Enter/保存提交，Esc/取消当前编辑。
 - `无需再次确认` 按应用/动作展示，不显示 Bot 分组；逐行移除。
 - 页面明确写当前 Space、所有 Bot 的作用范围。
@@ -294,7 +297,7 @@ actions: Array<{
 
 ## 7. Draft #81 单 PR 实施顺序
 
-1. 把本任务与 v4 原型作为唯一契约，删除 #81 的低层编辑器及 v3 per-Bot app 工作。
+1. 把本任务与 v5 原型作为唯一契约，删除 #81 的低层编辑器及 v3 per-Bot app 工作。
 2. 盘点并区分普通 connected apps 与自定义 MCP；冻结全局连接契约。
 3. 移除 Task Center 用户界面和专用投影，把注意、完成、失败、取消与重试入口迁回来源对话。
 4. 完成 Connect Apps 全局化及任一 Bot 的真实工具可用性回归。
@@ -310,49 +313,51 @@ actions: Array<{
 ### 全局应用
 
 1. 普通应用只在 Connect Apps 管理；Bot Settings 无应用权限或成果区。
-2. 连接一次后，当前 Space 中该用户的两个不同 Bot 都能通过真实 executor 使用该应用；无需逐 Bot 分配。
-3. 断开/撤权后两个 Bot 都不再获得或执行相关工具，且零 provider 副作用。
-4. 自定义 MCP 的既有独立语义未被普通应用全局化误改。
+2. Connect Apps 使用现有 `PluginsOverlay` 大弹窗，Settings 使用现有 `SettingsOverlay` 大弹窗；主聊天 Shell、弹窗尺寸、关闭行为和响应式外壳不被另画成页面。
+3. 连接一次后，当前 Space 中该用户的两个不同 Bot 都能通过真实 executor 使用该应用；无需逐 Bot 分配。
+4. 断开/撤权后两个 Bot 都不再获得或执行相关工具，且零 provider 副作用。
+5. 自定义 MCP 的既有独立语义未被普通应用全局化误改。
 
 ### 全局操作确认偏好
 
-5. 用户能新增、修改、删除自然语言偏好，刷新一致；失败保留输入。
-6. 页面明确显示“当前 Space 中所有 Bot”，没有 Bot picker、scope、glob 或规则优先级。
-7. 两个不同 Bot 的真实动作都受同一偏好影响；其他用户和 Space 不受影响。
-8. 偏好只能增加确认，不能授予连接、资源或执行权限。
+6. 用户能新增、修改、删除自然语言偏好，刷新一致；失败保留输入。
+7. `操作确认` 是 Settings 左侧独立导航项，内容区明确显示“当前 Space 中所有 Bot”。
+8. 页面没有 Bot picker、scope、glob 或规则优先级。
+9. 两个不同 Bot 的真实动作都受同一偏好影响；其他用户和 Space 不受影响。
+10. 偏好只能增加确认，不能授予连接、资源或执行权限。
 
 ### 当场确认与长期选择
 
-9. 卡片展示真实动作、对象和影响，不出现 toolName、JSON、wrapper 或模型判断过程。
-10. 一次按钮只执行当前 effect；刷新、恢复、重复提交和多标签页不会重复外部动作。
-11. 长期按钮只在服务端有稳定 proposal 时出现；保存后同 Space 任一 Bot 的同 actionKey 命中。
-12. 不同 Space、用户、actionKey、账户和明确不同资源范围不误命中。
-13. 拒绝、过期和敏感接管不创建长期选择；确认前无外部副作用。
-14. direct/catalog 对同一真实动作使用同一身份。
+11. 卡片展示真实动作、对象和影响，不出现 toolName、JSON、wrapper 或模型判断过程。
+12. 一次按钮只执行当前 effect；刷新、恢复、重复提交和多标签页不会重复外部动作。
+13. 长期按钮只在服务端有稳定 proposal 时出现；保存后同 Space 任一 Bot 的同 actionKey 命中。
+14. 不同 Space、用户、actionKey、账户和明确不同资源范围不误命中。
+15. 拒绝、过期和敏感接管不创建长期选择；确认前无外部副作用。
+16. direct/catalog 对同一真实动作使用同一身份。
 
 ### 成果和执行结果
 
-15. 文件、链接、发送回执等成果留在原对话；Bot Settings 不出现成果列表。
-16. approved/executing/completed/failed/uncertain 来自真实 effect 状态，不能把批准显示为完成。
-17. Execution detail 展示本 Run 的动作结果；Bot/对话 attention 点击直接打开并聚焦同一记录。
-18. 已保存选择可移除；移除后任一 Bot 的下次同类动作恢复确认。
-19. legacy 规则保持原范围、可读、可移除，没有静默扩权或丢失。
+17. 文件、链接、发送回执等成果留在原对话；Bot Settings 不出现成果列表。
+18. approved/executing/completed/failed/uncertain 来自真实 effect 状态，不能把批准显示为完成。
+19. Execution detail 展示本 Run 的动作结果；Bot/对话 attention 点击直接打开并聚焦同一记录。
+20. 已保存选择可移除；移除后任一 Bot 的下次同类动作恢复确认。
+21. legacy 规则保持原范围、可读、可移除，没有静默扩权或丢失。
 
 ### 回归与交付
 
-20. 服务端 deny、资源权限、撤权、Plan 审批、secret/takeover 和内部 capability 边界不被绕过。
-21. Task Center 导航、路由、视图、轮询计数和专用 projection 已删除；Task/Run 后端执行记录完整保留。
-22. 后台 waiting/completed/failed/cancelled 四种状态都能从来源 Bot/对话发现；点击直接到原 Run，没有第二个任务列表。
-23. 没有 shell 的取消 Run 在原对话仍可手动重试；MR-01 的同 Task/Thread/new Run 语义不变。
-24. 删除 #81 的废弃 UI/API/schema/migration；普通用户只有 Connect Apps 与平台操作确认两个设置入口。
-25. roster 跨 Space、approval resume、AG-08 撤权恢复与 UX-02 Plan review 不回归。
-26. 至少两个 Bot、两种真实动作完成 PG/executor/E2E，断言真实 HTTP/effect/文件或消息结果。
-27. 受影响包 check、后端定向单测、PG 旅程和聚焦 E2E 通过；不重复跑与本批无关的全量套件。
-28. 实现说明列出连接模型迁移、Task Center 删除面、真实支持动作、降级路径、删除文件、测试数字与截图证据。未部署。
+22. 服务端 deny、资源权限、撤权、Plan 审批、secret/takeover 和内部 capability 边界不被绕过。
+23. Task Center 导航、路由、视图、轮询计数和专用 projection 已删除；Task/Run 后端执行记录完整保留。
+24. 后台 waiting/completed/failed/cancelled 四种状态都能从来源 Bot/对话发现；点击直接到原 Run，没有第二个任务列表。
+25. 没有 shell 的取消 Run 在原对话仍可手动重试；MR-01 的同 Task/Thread/new Run 语义不变。
+26. 删除 #81 的废弃 UI/API/schema/migration；普通用户只有 Connect Apps 与平台操作确认两个设置入口。
+27. roster 跨 Space、approval resume、AG-08 撤权恢复与 UX-02 Plan review 不回归。
+28. 至少两个 Bot、两种真实动作完成 PG/executor/E2E，断言真实 HTTP/effect/文件或消息结果。
+29. 受影响包 check、后端定向单测、PG 旅程和聚焦 E2E 通过；不重复跑与本批无关的全量套件。
+30. 实现说明列出连接模型迁移、Task Center 删除面、真实支持动作、降级路径、删除文件、测试数字与截图证据。未部署。
 
 ## 9. 交付物
 
 - 当前任务：`docs/tasks/CAP-01.md`
-- 当前可交互原型：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v4/index.html`
-- 当前设计说明：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v4/design-notes.md`
-- v1/v2/v3 任务与旧原型完整保留作历史，不再作为实现依据。
+- 当前可交互原型：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v5/index.html`
+- 当前设计说明：`/Users/rivers/Documents/WorkPal-design/cap01-global-action-controls-v5/design-notes.md`
+- v1/v2/v3 任务与 v1–v4 旧原型完整保留作历史，不再作为实现依据。
