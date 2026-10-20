@@ -3,6 +3,7 @@ import {
   containsMemoryRefusal,
   containsOneTimeCode,
   containsSecretLikeContent,
+  isMemoryAuthorizationQuote,
   sharesVerbatimRun,
 } from "./memory-content-safety.js";
 
@@ -72,5 +73,36 @@ describe("containsMemoryRefusal", () => {
     "记住部署窗口是周日",
   ])("does not flag ordinary or affirmative phrasing: %s", (text) => {
     expect(containsMemoryRefusal(text)).toBe(false);
+  });
+});
+
+describe("isMemoryAuthorizationQuote (review R2)", () => {
+  it.each([
+    "remember that the deploy window is Sunday",
+    "Please remember the milk",
+    "remember this: staging restarts mondays",
+    "Save that decision for later",
+    "make a note of the new host",
+    "keep this in mind for the release",
+    "don't forget to record the outcome",
+    "记住部署窗口是周日",
+    "帮我记一下这个决定",
+    "请把这条保存起来",
+    "别忘了周五发报告",
+  ])("accepts an explicit memory request: %s", (quote) => {
+    expect(isMemoryAuthorizationQuote(quote)).toBe(true);
+  });
+
+  it.each([
+    "Please summarize this web page.",
+    "The user prefers reports sent every Friday.",
+    "what is the release schedule?",
+    "I remember that day fondly",
+    "we decided to save the report to the drive",
+    "don't save this as a memory",
+    "我记得部署窗口的事",
+    "总结一下这个网页",
+  ])("refuses a quote that is not a memory request: %s", (quote) => {
+    expect(isMemoryAuthorizationQuote(quote)).toBe(false);
   });
 });

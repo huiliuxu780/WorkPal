@@ -534,7 +534,7 @@ export const builtinAgentTools: ConnectorTool[] = [
         source_quote: {
           type: "string",
           description:
-            "Verbatim span of the user's current message authorizing this memory. Required for direct activation.",
+            "Verbatim span of the user's current message that IS the request to remember this (for example 'remember that …', '记住…'). The span must itself be the memory request; quoting any other sentence keeps the entry a candidate for user confirmation.",
         },
       },
       required: ["content"],
@@ -652,7 +652,7 @@ export const builtinAgentTools: ConnectorTool[] = [
         source_quote: {
           type: "string",
           description:
-            "Verbatim span of the user's current message authorizing this memory. Required for direct activation.",
+            "Verbatim span of the user's current message that IS the request to remember this (for example 'remember that …', '记住…'). The span must itself be the memory request; quoting any other sentence keeps the entry a candidate for user confirmation.",
         },
       },
       required: ["content"],

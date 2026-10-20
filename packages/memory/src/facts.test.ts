@@ -218,6 +218,84 @@ describe("recordMemoryFromRun activation requires verified explicit authorizatio
   });
 });
 
+describe("recordMemoryFromRun refuses quotes that are not memory requests (review R2)", () => {
+  function runPrisma(messageText: string) {
+    return {
+      run: {
+        findUnique: vi.fn(async () => ({
+          id: "run-1",
+          spaceId: "s1",
+          userId: "u1",
+          botId: "b1",
+          threadId: "t1",
+          trigger: "user",
+          sourceMessageId: "m1",
+        })),
+      },
+      message: {
+        findUnique: vi.fn(async () => ({
+          id: "m1",
+          seq: 7,
+          role: "user",
+          blocks: [{ kind: "text", text: messageText }],
+          authorUserId: "u1",
+          originKind: "human_web",
+          threadId: "t1",
+        })),
+      },
+      thread: { findUnique: vi.fn(async () => ({ historyCompactionGeneration: 0 })) },
+    } as unknown as PrismaClient;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createFact).mockImplementation((async (_prisma: unknown, input: unknown) => ({
+      status: "created",
+      fact: { id: "fact-1", ...(input as object) },
+    })) as never);
+  });
+
+  it("demotes a verbatim quote of an unrelated request (the reviewer repro)", async () => {
+    const result = await recordMemoryFromRun(
+      { prisma: runPrisma("Please summarize this web page."), digestKey: "k" },
+      {
+        runId: "run-1",
+        text: "The user prefers reports sent every Friday.",
+        sourceQuote: "Please summarize this web page.",
+      },
+    );
+    expect(result).toEqual({
+      status: "candidate",
+      factId: "fact-1",
+      reason: "quote_not_authorizing",
+    });
+    expect(vi.mocked(createFact).mock.calls[0]![1]).toMatchObject({
+      origin: "model_candidate",
+      state: "candidate",
+    });
+  });
+
+  it("demotes a span carved out of a non-directive clause", async () => {
+    const result = await recordMemoryFromRun(
+      { prisma: runPrisma("I remember that day fondly"), digestKey: "k" },
+      {
+        runId: "run-1",
+        text: "The user is nostalgic about that day",
+        sourceQuote: "remember that day fondly",
+      },
+    );
+    expect(result).toMatchObject({ status: "candidate", reason: "authorization_unverified" });
+  });
+
+  it("accepts a CJK directive quote", async () => {
+    const result = await recordMemoryFromRun(
+      { prisma: runPrisma("帮我记住部署窗口是周日"), digestKey: "k" },
+      { runId: "run-1", text: "部署窗口是周日", sourceQuote: "记住部署窗口是周日" },
+    );
+    expect(result).toEqual({ status: "remembered", factId: "fact-1" });
+  });
+});
+
 describe("isVerifiedAuthorizationQuote", () => {
   it("matches verbatim spans up to normalization", () => {
     expect(isVerifiedAuthorizationQuote("Remember THIS", "please remember this, thanks")).toBe(true);

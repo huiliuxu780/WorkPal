@@ -143,6 +143,22 @@ pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=knowledge-panel.s
 
 修复后全量复验：turbo check 绿；单测 4,643/4,644（唯一失败为基线既有 execution-rpc）；jar 集成 47/47（含再生成黄金样本）；PG journeys+authorization 57/58（唯一失败为基线既有 #54）；memory-facts PG 15/15（含新 revert 语义）；E2E memory-facts + knowledge-panel 2/2。
 
+## 5.2 评审轮 R2（2026-10-20，PR #79）：P1-1 二次收紧——引用真实原文 ≠ 记忆授权
+
+R1 的 `source_quote` 只验证"该段文字出现在可信消息中"。评审复现：用户说 "Please summarize this web page."，模型原样引用该句却保存无关事实（"The user prefers reports sent every Friday."），仍被激活。复现测试移植入分支（`packages/adapters/src/memory-authorization-quote-review.test.ts`，先红后绿）。
+
+修复把单步激活的授权判定升级为**三重确定性闸门**（全部服务端执行，无语义判断）：
+
+1. **逐字命中**（R1 已有）：引用必须规范化后逐字出现在可信来源消息中；
+2. **边界忠实性**（新）：引用不得从拉丁语从句中间截取——引用起点必须是消息开头、句读之后，或 please/and/also 等礼貌/连接词之后（"I remember that day" 截出 "remember that day" 被拒 → `authorization_unverified`）；CJK 前文放行，因为中文意图模式本身只匹配指令式（记得 ≠ 记住/记下）；
+3. **引用本身必须是记忆指令**（新，`isMemoryAuthorizationQuote`）：英文祈使句首锚定（remember/memorize/save/store/note，可带 please 前缀）+ "remember/save/note this|it" 等短语形式；中文指令词表（记住/记下/记一下/帮我记/别忘了/保存起来/备忘…）；引用内命中拒绝模式一票否决。**刻意排除**任意位置的 "remember that" 匹配——回忆性陈述（"I remember that day"）不得授权，指令式 "remember that X" 由句首锚点覆盖。
+
+不满足任一闸门 → 候选并带精确原因（`authorization_unverified` / `quote_not_authorizing` / `explicit_refusal`），进入用户确认流；评审场景现在返回 `quote_not_authorizing` 候选，绝不激活。工具描述同步更新（有意变更）：黄金样本再次定向再生成，diff 审查确认变化 100% 限于 `source_quote` 描述文本。scripted 测试运行时引用=消息原文（"remember that …" 句首祈使），journeys 与 E2E 的激活语义实测保持。
+
+**如实标注的残留边界**：闸门是词法级确定性规则，不做语义理解。理论上用户消息中存在祈使形式的"remember …"片段、而模型引用该片段去保存一个无关事实，仍可能激活——但这要求用户消息本身包含记忆指令措辞，且候选确认流、UI 逐条删除与纠正仍是完整救济。宁可在真实授权上偶尔多一次确认（假阴性→候选），不制造未经授权的持久记忆（假阳性→激活）。
+
+R2 复验：core 扫描器 27/27（含意图模式双向用例）；facts 服务 quote 门控 18/18（评审场景 + 边界截取 + CJK 指令）；两份评审复现套件 4/4；turbo check 绿；单测扫尾 3,801/3,802（唯一失败仍为基线既有 execution-rpc）；journeys remember 激活路径通过；E2E memory-facts + knowledge-panel 2/2；黄金样本 diff 仅描述文本。
+
 ## 6. 与 UX-02 的协调
 
 共同文档提交 `ee8db3c` 随本功能 PR 一并进入 main（UX-02 线合入最新 main 后只保留其自身差异）。本批触碰的共享面及边界：`executor.ts`（记忆加载/装配、finalize 压缩入队、instructions 提升为 `composedInstructions` 常量——字节不变）、`adapter-kit` types（executionScope +2、BackgroundJobPayloads +3、history.compact payload 扩展——均为**追加**，不改既有字段语义）、`contracts/rpc.ts`（memory 家族内追加子命名空间）、case-registry（P15/新 scope/S12-C4..C6，注释标明有意变更）、prompts/（4 个新段，P06/P15 归属登记）。retryOperationId、AG-05 每请求工具刷新、TurnPolicy、plan/step/todo 工具面**零改动**；UX-02 计划审批线与本批无重叠修改块。UX-02 worktree 截至本批收口尚未建立，无并行冲突发生。

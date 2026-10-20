@@ -429,7 +429,7 @@
                   "type": "string"
                 },
                 "source_quote": {
-                  "description": "Verbatim span of the user's current message authorizing this memory. Required for direct activation.",
+                  "description": "Verbatim span of the user's current message that IS the request to remember this (for example 'remember that …', '记住…'). The span must itself be the memory request; quoting any other sentence keeps the entry a candidate for user confirmation.",
                   "type": "string"
                 }
               },

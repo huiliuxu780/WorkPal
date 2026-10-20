@@ -41,11 +41,13 @@ export function containsOneTimeCode(text: string): boolean {
  */
 const MEMORY_REFUSAL_PATTERNS: RegExp[] = [
   /\bdo\s?n[o']t\s+(?:remember|save|store|keep|memorize|note|record)\b/i,
+  /\bdon[o']t\s+want\s+to\s+(?:save|store|remember|keep|record|memorize)\b/i,
   /\bnever\s+(?:remember|save|store|keep|memorize|record)\b/i,
   /\bwithout\s+(?:saving|storing|remembering|keeping|recording)\b/i,
   /\bstop\s+(?:remembering|saving|storing|recording)\b/i,
   /\bdon[o']t\s+(?:remember|save|store|keep|memorize|note|record)\b/i,
   /不要(?:记住|保存|记录|存储|记下|存下|收录)/,
+  /不想(?:保存|记录|记|存)/,
   /别(?:记住|保存|记录|存下|存)/,
   // Bare "别记…" (e.g. 别记这个) except the affirmative "特别记…".
   /(?:^|[^特])别记/,
@@ -57,6 +59,42 @@ const MEMORY_REFUSAL_PATTERNS: RegExp[] = [
 
 export function containsMemoryRefusal(text: string): boolean {
   return MEMORY_REFUSAL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Review round R2: a verbatim span check alone cannot prove authorization —
+ * the model could quote any real sentence ("Please summarize this web
+ * page.") while storing an unrelated fact. The quoted span must ITSELF be an
+ * explicit memory request. Detection is deterministic (curated English and
+ * Chinese imperative forms), never semantic: a quote that does not match
+ * demotes the entry to a candidate for user confirmation, so a false
+ * negative costs one confirmation click while a false activation would
+ * create an unauthorized durable memory. Refusals inside the quoted span
+ * ("don't save this") veto every intent pattern.
+ */
+const MEMORY_AUTHORIZATION_PATTERNS: RegExp[] = [
+  // English imperative at the start of the quote (optional politeness prefix).
+  /^(?:please\s+|pls\s+|kindly\s+)?(?:remember|memorize|memorise|save|store|note)\b/i,
+  // Explicit "remember/save/note this|it" request anywhere in the quote.
+  // "that/those" are deliberately excluded here: reminiscing "I remember
+  // that day" must not authorize; directive "remember that X" quotes are
+  // covered by the sentence-start anchor above.
+  /\b(?:remember|save|store|note|record)\s+(?:this|these|it)\b/i,
+  /\bkeep\s+(?:this|that|it)\s+(?:in\s+mind|noted)\b/i,
+  /\bmake\s+a\s+note\b/i,
+  /\bdon'?t\s+forget\b/i,
+  // Chinese imperative forms. 记得 ("I recall") deliberately matches none of
+  // these; 记住/记下 are essentially always directives.
+  /记住|记下|记一下|记下来|帮我记|请记|劳驾记/,
+  /别忘了|别忘记|勿忘/,
+  /保存(?:这|此|一下|起来|好)|存一下|存起来|收录(?:这|此)|备忘/,
+];
+
+export function isMemoryAuthorizationQuote(quote: string): boolean {
+  const normalized = quote.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  if (containsMemoryRefusal(normalized)) return false;
+  return MEMORY_AUTHORIZATION_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 /**

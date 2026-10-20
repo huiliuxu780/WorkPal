@@ -33,6 +33,7 @@ import {
   containsMemoryRefusal,
   containsOneTimeCode,
   containsSecretLikeContent,
+  isMemoryAuthorizationQuote,
 } from "@rakazo/core";
 import type { MessageBlock } from "@rakazo/contracts";
 
@@ -424,6 +425,7 @@ export type RunMemoryCandidateReason =
   | "untrusted_source"
   | "ambiguous"
   | "authorization_unverified"
+  | "quote_not_authorizing"
   | "explicit_refusal";
 
 export type RunMemoryResult =
@@ -442,15 +444,54 @@ function normalizeForSpanMatch(text: string): string {
 }
 
 /**
- * Server-side authorization check: the quoted span must verifiably occur in
- * the trusted source message (normalization only, never semantic judgment).
- * A model that cannot point at the user's own authorizing words gets a
- * candidate for user confirmation instead of a silent activation.
+ * Quote-start boundary rule (review R2): a quote carved out of the middle of
+ * a latin clause ("…I remember that day" → "remember that day") is not a
+ * faithful authorization span. The span must start the message, follow
+ * sentence punctuation, or follow a politeness/connective word. CJK
+ * antecedents are allowed because the CJK intent patterns themselves are
+ * directive-only (记得 does not match 记住/记下).
  */
-export function isVerifiedAuthorizationQuote(quote: string, messageContent: string): boolean {
+const QUOTE_BOUNDARY_TAIL = /[A-Za-z0-9'"]\s*$/;
+const QUOTE_BOUNDARY_ALLOWED_WORDS = new Set([
+  "please",
+  "pls",
+  "kindly",
+  "and",
+  "also",
+  "just",
+  "but",
+  "so",
+  "hey",
+  "oh",
+  "now",
+]);
+
+/**
+ * Server-side span check: the quoted span must verifiably occur in the
+ * trusted source message (normalization only, never semantic judgment) and
+ * start at a faithful boundary. Intent is checked separately by
+ * isMemoryAuthorizationQuote — a real sentence that is not a memory request
+ * ("Please summarize this web page.") never authorizes activation.
+ */
+export function isQuotedSpanOfMessage(quote: string, messageContent: string): boolean {
   const normalizedQuote = normalizeForSpanMatch(quote);
   if (normalizedQuote.length < 2) return false;
-  return normalizeForSpanMatch(messageContent).includes(normalizedQuote);
+  const normalizedMessage = normalizeForSpanMatch(messageContent);
+  const index = normalizedMessage.indexOf(normalizedQuote);
+  if (index < 0) return false;
+  if (index > 0) {
+    const previous = normalizedMessage.slice(0, index);
+    if (QUOTE_BOUNDARY_TAIL.test(previous)) {
+      const word = /([a-z]+)\s*$/.exec(previous)?.[1];
+      if (!word || !QUOTE_BOUNDARY_ALLOWED_WORDS.has(word)) return false;
+    }
+  }
+  return true;
+}
+
+/** Span verification AND memory-intent: the full single-activation gate. */
+export function isVerifiedAuthorizationQuote(quote: string, messageContent: string): boolean {
+  return isQuotedSpanOfMessage(quote, messageContent) && isMemoryAuthorizationQuote(quote);
 }
 
 /**
@@ -527,19 +568,25 @@ export async function recordMemoryFromRun(
   // verbatim quote that verifiably occurs in that message, and the message
   // must not explicitly decline memory storage.
   const refusal = trusted && evidenceContent !== null && containsMemoryRefusal(evidenceContent);
-  const quoteVerified =
+  const quoteSpanVerified =
     trusted &&
     evidenceContent !== null &&
     typeof input.sourceQuote === "string" &&
-    isVerifiedAuthorizationQuote(input.sourceQuote, evidenceContent);
-  const activate = trusted && !ambiguous && quoteVerified && !refusal;
+    isQuotedSpanOfMessage(input.sourceQuote, evidenceContent);
+  // Review R2: the quoted span must itself be an explicit memory request —
+  // quoting a real but unrelated sentence never authorizes activation.
+  const quoteAuthorizing =
+    quoteSpanVerified && isMemoryAuthorizationQuote(String(input.sourceQuote));
+  const activate = trusted && !ambiguous && quoteAuthorizing && !refusal;
   const candidateReason: RunMemoryCandidateReason = !trusted
     ? "untrusted_source"
     : refusal
       ? "explicit_refusal"
-      : !quoteVerified
+      : !quoteSpanVerified
         ? "authorization_unverified"
-        : "ambiguous";
+        : !quoteAuthorizing
+          ? "quote_not_authorizing"
+          : "ambiguous";
 
   const scopeKind = input.scopeKind ?? "bot";
   const scope: FactScope =
