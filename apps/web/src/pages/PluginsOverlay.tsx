@@ -1030,6 +1030,7 @@ export function PluginsOverlay({
                         {sourceKind !== "treg" && sourceKind !== "executor" ? (
                           <NativeSelect
                             className="w-full"
+                            aria-label={t`Authentication method`}
                             value={authType}
                             onChange={(event) => setAuthType(event.target.value as typeof authType)}
                           >
