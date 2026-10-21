@@ -1,14 +1,19 @@
 import type {
+  AgentHomeStore,
   AgentRunRequest,
   AgentRuntime,
   JobPublisher,
+  SandboxProvider,
   SemanticMemoryResponse,
 } from "@rakazo/adapter-kit";
 import { historyCompactJob } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
+import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import { createLogger, createTestSink, installLogger, wrapJobPayload } from "@rakazo/logging";
 import { describe, expect, it, vi } from "vitest";
+import { createBackgroundJobHandlers } from "./background-job-handlers.js";
+import { createRunExecutor } from "./executor.js";
+import type { EncryptedSecretStore } from "./secrets.js";
 import {
   compactHistory,
   formatCompactedSummary,
@@ -1255,5 +1260,169 @@ describe("compactHistory", () => {
     await compactHistory(harness.deps, "thread-1");
 
     expect(harness.jobs.enqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe("compactHistory pinned-model resolution (#93)", () => {
+  const pin = { modelProvider: "openrouter", modelId: "pinned/model", sourceRunId: "run-9" };
+  const pinnedModel = { provider: "openrouter", id: "pinned/model", apiKey: "pinned-key" };
+
+  it("summarizes with exactly the pinned identity and records it on the revision", async () => {
+    // A deployment key and a fallback resolver are both present and must stay unused.
+    const harness = compactionHarness({ deploymentModelKey: "openrouter-key" });
+    const resolvePinnedModel = vi.fn(async () => pinnedModel);
+    const resolveModel = vi.fn(async (): Promise<AgentRunRequest["model"]> => {
+      throw new Error("unpinned fallback must not run for a pinned job");
+    });
+
+    await compactHistory(
+      { ...harness.deps, pinnedModel: pin, resolvePinnedModel, resolveModel },
+      "thread-1",
+    );
+
+    expect(resolvePinnedModel).toHaveBeenCalledWith(
+      { userId: "user-1", spaceId: "workspace-1" },
+      "openrouter",
+      "pinned/model",
+    );
+    const [request] = harness.runtime.run.mock.calls[0]!;
+    expect(request.model).toEqual(pinnedModel);
+    expect(harness.thread.historyCompactedUpToSeq).toBe(49);
+    expect(harness.compactionRevisions).toHaveLength(1);
+    expect(harness.compactionRevisions[0]).toMatchObject({
+      modelProvider: "openrouter",
+      modelId: "pinned/model",
+      sourceRunId: "run-9",
+    });
+  });
+
+  it("a revoked pinned credential fails visibly without swapping models or advancing the cursor", async () => {
+    const harness = compactionHarness({ deploymentModelKey: "openrouter-key" });
+    const resolveModel = vi.fn(
+      async (): Promise<AgentRunRequest["model"]> => ({
+        provider: "openrouter",
+        id: "some/other-model",
+        apiKey: "other-key",
+      }),
+    );
+    const resolvePinnedModel = vi.fn(async (): Promise<AgentRunRequest["model"]> => {
+      throw new Error("Connect that model provider first");
+    });
+    const sink = installCompactionLogger();
+    try {
+      await compactHistory(
+        { ...harness.deps, pinnedModel: pin, resolvePinnedModel, resolveModel },
+        "thread-1",
+      );
+    } finally {
+      silenceLogger();
+    }
+
+    expect(harness.runtime.run).not.toHaveBeenCalled();
+    expect(resolveModel).not.toHaveBeenCalled();
+    expect(harness.thread.historyCompactedUpToSeq).toBeNull();
+    expect(harness.compactionRevisions).toHaveLength(0);
+    expect(sink.events.at(-1)).toMatchObject({
+      level: "error",
+      message: "history.compact failed permanently",
+      "history.compact.reason": "pinned_model_credential_unavailable",
+      "history.compact.retryable": false,
+    });
+  });
+
+  it("without a resolver the pinned job fails closed — never the unpinned fallback", async () => {
+    const harness = compactionHarness({ deploymentModelKey: "openrouter-key" });
+    const sink = installCompactionLogger();
+    try {
+      await compactHistory({ ...harness.deps, pinnedModel: pin }, "thread-1");
+    } finally {
+      silenceLogger();
+    }
+
+    expect(harness.runtime.run).not.toHaveBeenCalled();
+    expect(harness.thread.historyCompactedUpToSeq).toBeNull();
+    expect(sink.events.at(-1)).toMatchObject({
+      "history.compact.reason": "pinned_model_resolver_missing",
+      "history.compact.retryable": false,
+    });
+  });
+
+  it("a duplicate pinned job does not re-summarize the already-compacted batch", async () => {
+    const harness = compactionHarness();
+    const resolvePinnedModel = vi.fn(async () => pinnedModel);
+    const deps = { ...harness.deps, pinnedModel: pin, resolvePinnedModel };
+
+    await compactHistory(deps, "thread-1");
+    await compactHistory(deps, "thread-1");
+
+    expect(harness.runtime.run).toHaveBeenCalledOnce();
+    expect(resolvePinnedModel).toHaveBeenCalledOnce();
+    expect(harness.compactionRevisions).toHaveLength(1);
+    expect(harness.thread.historyCompactedUpToSeq).toBe(49);
+  });
+});
+
+describe("background history.compact handler journey (#93, real handler — no mocks)", () => {
+  const pinnedModel = { provider: "openrouter", id: "pinned/model", apiKey: "pinned-key" };
+
+  function journeyHandlers(harness: ReturnType<typeof compactionHarness>, executor: unknown) {
+    return createBackgroundJobHandlers({
+      executor: executor as ReturnType<typeof createRunExecutor>,
+      prisma: harness.prisma as unknown as PrismaClient,
+      sandbox: {} as unknown as SandboxProvider,
+      home: {} as unknown as AgentHomeStore,
+      jobs: harness.jobs as unknown as JobPublisher,
+      events: {} as unknown as ThreadEvents,
+      workerId: "test-worker",
+      runtime: harness.runtime as unknown as AgentRuntime,
+      secretStore: {} as unknown as EncryptedSecretStore,
+      memoryProviders: harness.memoryProviders,
+      memoryDigestKey: "test-digest-key",
+    });
+  }
+
+  it("a pinned job resolves through the executor's pinned-identity resolver and advances the cursor", async () => {
+    const harness = compactionHarness();
+    const resolvePinnedModel = vi.fn(async () => pinnedModel);
+    const handlers = journeyHandlers(harness, { resolvePinnedModel });
+
+    await handlers["history.compact"]({
+      threadId: "thread-1",
+      sourceRunId: "run-9",
+      modelProvider: "openrouter",
+      modelId: "pinned/model",
+    });
+
+    expect(resolvePinnedModel).toHaveBeenCalledWith(
+      { userId: "user-1", spaceId: "workspace-1" },
+      "openrouter",
+      "pinned/model",
+    );
+    expect(harness.thread.historyCompactedUpToSeq).toBe(49);
+    const [request] = harness.runtime.run.mock.calls[0]!;
+    expect(request.model).toEqual(pinnedModel);
+    expect(harness.compactionRevisions).toHaveLength(1);
+  });
+
+  it("an executor without the resolver keeps the pinned job failed-closed even with a deployment key", async () => {
+    const harness = compactionHarness();
+    const handlers = journeyHandlers(harness, {});
+    const sink = installCompactionLogger();
+    try {
+      await handlers["history.compact"]({
+        threadId: "thread-1",
+        modelProvider: "openrouter",
+        modelId: "pinned/model",
+      });
+    } finally {
+      silenceLogger();
+    }
+
+    expect(harness.runtime.run).not.toHaveBeenCalled();
+    expect(harness.thread.historyCompactedUpToSeq).toBeNull();
+    expect(sink.events.at(-1)).toMatchObject({
+      "history.compact.reason": "pinned_model_resolver_missing",
+      "history.compact.retryable": false,
+    });
   });
 });

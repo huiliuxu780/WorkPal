@@ -131,6 +131,17 @@ export function createBackgroundJobHandlers(deps: {
                   ...(payload.sourceRunId ? { sourceRunId: payload.sourceRunId } : {}),
                 }
               : undefined,
+          // #93: a pinned job must resolve through the executor's exact
+          // pinned-identity resolver — the user-connected credential chain
+          // first, then only an EXACT deployment-key / deployment-settings
+          // local-model match (never a substitute). Without this the shared
+          // handler — both the API in-process sweep and the standalone
+          // Worker — could only fail the job closed
+          // (pinned_model_resolver_missing), which is the production default
+          // background path. Absent resolver still means fail-closed.
+          ...(deps.executor.resolvePinnedModel
+            ? { resolvePinnedModel: deps.executor.resolvePinnedModel }
+            : {}),
           ...(deps.executor.resolveModel ? { resolveModel: deps.executor.resolveModel } : {}),
         },
         payload.threadId,
