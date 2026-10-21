@@ -1,6 +1,6 @@
 # UX-03 决策：Bot 管理面收敛（三 tab 面板 + 悬浮头像）
 
-> **状态：决策已由用户于 2026-10-20 批准（含四个开放点答复）。UX-03 为 decision-approved、等待实现门控：实现分支排在 CAP-01（PR #81）合并之后开工。**
+> **状态：已交付并合并。决策由用户于 2026-10-20 批准（含四个开放点答复）；实现按门控排在 CAP-01（PR #81，`457d27f`）之后，通过 PR [#83](https://github.com/huiliuxu780/WorkPal/pull/83) 于 2026-10-21 合并为 `e00d726`（CI 绿；合并后 smoke 通过）。roadmap 行 26 承载交付证据。**
 > 原型：`WorkPal-design/ux03-bot-panel-tabs/`（index.html 冻结版 + design-notes.md + shots/）。
 > 本文只记决策与映射；实现期以最新 main 定位代码。
 
