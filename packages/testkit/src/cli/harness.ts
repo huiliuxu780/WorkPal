@@ -258,10 +258,13 @@ async function main() {
             "exec",
             "playwright",
             "test",
-            // The agentscope harness hosts one in-process API/Java runtime and
-            // shared sweeps; keep spec files serial so parallel workers never
-            // race the single backend (historic single-spec runs were serial).
-            ...(agentRuntime === "agentscope" ? ["--workers=1"] : []),
+            // Both runtimes host ONE in-process API with shared sweeps over a
+            // single database; parallel spec-file workers race that single
+            // backend — multi-spec batches timed out wholesale under default
+            // workers while every spec passes solo (#85). Keep spec files
+            // serial; single-spec runs are unaffected (fullyParallel is
+            // already false, so one file never used more than one worker).
+            "--workers=1",
             ...(e2eSpec ? [e2eSpec] : []),
             ...(e2eGrep ? ["--grep", e2eGrep] : []),
           ],

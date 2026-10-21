@@ -22,7 +22,15 @@ test("Team Computer gives bots a home folder plus shared space while Private sta
   const chiefId = activeBotId(page);
 
   await openComputerPanel(page);
-  await expect(page.getByText("Team Computer", { exact: true }).last()).toBeVisible();
+  // Wait on the server-trusted provisioning state, then assert the stable
+  // projection of team mode. The "Team Computer" placeholder caption only
+  // exists while the computer is running but the live screen has not been
+  // committed — the iframe replaces it as soon as the screen URL arrives, so
+  // the caption is a transient window that walks both directions (#85).
+  await waitForComputerRunning(page, chiefId);
+  await expect(
+    page.getByTestId("bot-settings").getByRole("button", { name: "Team", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await captureScreenshot(page, testInfo, "41-team-computer");
 
   const writerId = await createBot(page, "Writer", "team");
@@ -249,7 +257,12 @@ async function setComputerMode(
   botId: string,
   mode: "team" | "dedicated",
 ) {
-  await page.getByRole("button", { name: botName, exact: true }).last().click();
+  // Scope the roster click to the sidebar: an exact bot-name button match
+  // also hits the floating identity pill (its aria-label is the active bot's
+  // name), and clicking the pill toggles the panel instead of selecting the
+  // bot (#85). openBot waits for the composer placeholder, so the switch is
+  // committed before the panel opens.
+  await openBot(page, botName);
   if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
     await page.getByTestId("bot-settings-trigger").click();
   }
@@ -329,6 +342,15 @@ async function waitForIdle(page: Page, botId: string) {
       timeout: realSandboxTimeout(90_000, 20_000),
     })
     .toBe("idle");
+}
+
+async function waitForComputerRunning(page: Page, botId: string) {
+  await expect
+    .poll(async () => (await rpc<{ state: string }>(page, "computer/status", { botId })).state, {
+      timeout: realSandboxTimeout(90_000, 20_000),
+      message: `computer for bot ${botId} must reach running before its panel state is asserted`,
+    })
+    .toBe("running");
 }
 
 function threadSnapshot(page: Page, botId: string) {
