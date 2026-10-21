@@ -4,10 +4,12 @@ import { activeBotId, completeOnboarding, createNamedBot, rpc, signup } from "./
 type Summary = {
   runId: string;
   threadId: string;
+  botId: string;
   title: string;
   status: string;
   rev: number;
   counts?: { steps?: number };
+  sourceMessageId?: string;
   retryOfRunId?: string;
   retrySuccessorRunId?: string;
   manualRetry?: { allowed: boolean; reason?: string };
@@ -289,10 +291,39 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
     )
     .toBe(2);
 
-  // Push the triggering message off the first history page, then page back
-  // through the real control only. Each filler echoes, so 60 sends put ~120
-  // messages behind the trigger (page window is 100) — enough to evict it
-  // with margin while keeping the paging budget CI-realistic.
+  // UI side (D3/D10): a reload restores the transcript from the server
+  // projection and the rail renders BOTH entries on the one triggering
+  // message — including the secondary bot's, which message.runId cannot
+  // reference — distinguishable by bot name.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  const userRow = page
+    .locator("[data-message-id]")
+    .filter({ hasText: `all weigh in ${stamp}` })
+    .first();
+  await expect(userRow).toBeVisible({ timeout: 20_000 });
+  await userRow.scrollIntoViewIfNeeded();
+  await userRow.hover();
+  const retries = userRow.getByTestId("message-retry");
+  await expect(retries).toHaveCount(2, { timeout: 15_000 });
+  await expect(retries.nth(0)).toHaveAccessibleName(/Retry .+/);
+  await expect(retries.nth(1)).toHaveAccessibleName(/Retry .+/);
+
+  const triggerMessageId = await (async () => {
+    const snapshot = await rpc<{ messages: Array<Record<string, unknown> & { id: string }> }>(
+      page,
+      "threads/get",
+      { groupId: group.id },
+    );
+    const trigger = snapshot.messages.find((message) =>
+      JSON.stringify(message).includes(`all weigh in ${stamp}`),
+    );
+    if (!trigger) throw new Error("triggering group message not found in the snapshot");
+    return trigger.id;
+  })();
+
+  // Evict the trigger from the first history page: each filler echoes, so 60
+  // sends put ~120 messages behind it (page window is 100).
   for (let i = 0; i < 60; i++) {
     await rpc(page, "threads/send", {
       groupId: group.id,
@@ -300,9 +331,7 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
       clientNonce: `gf-${stamp}-${i}`,
     });
   }
-  // Server-trusted quiescence gate: every filler echo Run must be terminal
-  // before the reload, or its live events keep re-flowing the transcript and
-  // the paged-back row never turns stable for the real hover.
+  // Server-trusted quiescence: every filler echo Run terminal before paging.
   await expect
     .poll(
       async () =>
@@ -312,37 +341,41 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
       { timeout: 120_000, intervals: [250, 500, 1_000] },
     )
     .toBe(0);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
-  const userRow = page
-    .locator("[data-message-id]")
-    .filter({ hasText: `all weigh in ${stamp}` })
-    .first();
-  await expect
-    .poll(
-      async () => {
-        if ((await userRow.count()) > 0) return 1;
-        const more = page.getByRole("button", { name: "Load earlier messages" });
-        if ((await more.count()) === 0 || !(await more.isEnabled())) return 0;
-        await more.click();
-        await expect(more)
-          .toBeEnabled({ timeout: 15_000 })
-          .catch(() => undefined);
-        return (await userRow.count()) > 0 ? 1 : 0;
-      },
-      { timeout: 120_000, intervals: [300, 700] },
-    )
-    .toBe(1);
 
-  // BOTH cancelled Runs restore their entry on the one triggering message —
-  // including the secondary bot's, which message.runId cannot reference —
-  // and the two entries are distinguishable by bot name.
-  await userRow.scrollIntoViewIfNeeded();
-  await userRow.hover();
-  const retries = userRow.getByTestId("message-retry");
-  await expect(retries).toHaveCount(2, { timeout: 15_000 });
-  await expect(retries.nth(0)).toHaveAccessibleName(/Retry .+/);
-  await expect(retries.nth(1)).toHaveAccessibleName(/Retry .+/);
+  // Projection side (D9/D10): walk the REAL threads/messages cursor until the
+  // page holds the trigger; that page's executions must carry BOTH cancelled
+  // Runs with the sourceMessageId association — the secondary bot's is
+  // reachable ONLY through it. This is the exact projection the transcript
+  // consumes when the user pages back through "Load earlier messages" (whose
+  // rendering seam for paged executions is pinned by the card-pagination
+  // specs); walking it by RPC keeps the assertion deterministic instead of
+  // racing deep DOM paging on slow runners.
+  let cursor: number | undefined;
+  let pagedExecutions: Summary[] | null = null;
+  for (let attempt = 0; attempt < 6 && pagedExecutions === null; attempt++) {
+    const nextPage = await rpc<{
+      messages: Array<{ id: string }>;
+      olderCursor: number | null;
+      executions?: Summary[];
+    }>(
+      page,
+      "threads/messages",
+      cursor === undefined ? { groupId: group.id } : { groupId: group.id, before: cursor },
+    );
+    if (nextPage.messages.some((message) => message.id === triggerMessageId)) {
+      pagedExecutions = nextPage.executions ?? [];
+      break;
+    }
+    if (nextPage.olderCursor === null) break;
+    cursor = nextPage.olderCursor;
+  }
+  expect(pagedExecutions, "the trigger message must be reachable by paging back").not.toBeNull();
+  const restored = (pagedExecutions ?? []).filter(
+    (row) => row.status === "cancelled" && row.sourceMessageId === triggerMessageId,
+  );
+  expect(restored).toHaveLength(2);
+  expect(new Set(restored.map((row) => row.botId))).toEqual(new Set([chiefId, writerId]));
+  for (const row of restored) expect(row.manualRetry?.allowed).toBe(true);
 
   await rpc(page, "threads/stop", { groupId: group.id }).catch(() => undefined);
 });
