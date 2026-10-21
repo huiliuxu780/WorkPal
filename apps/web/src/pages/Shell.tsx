@@ -146,8 +146,6 @@ import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
-import { TaskCenterNavEntry } from "../components/ai/TaskCenterNavEntry";
-import { TaskCenterView } from "../components/ai/TaskCenterView";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -222,8 +220,8 @@ import { sharedInflight } from "../lib/shared-inflight";
 import {
   EXECUTION_NAV_INTENT_EVENT,
   rosterAttentionIntent,
-  setTaskCenterNavIntent,
-} from "../lib/task-center";
+  setExecutionNavIntent,
+} from "../lib/execution-nav";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
@@ -427,7 +425,7 @@ function readCollapsedRosterParents(userId: string | null | undefined): Set<stri
   return readCollapsedIdSet(collapsedRosterParentsStorageKey(userId));
 }
 
-export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
+export function ShellPage() {
   const { t } = useLingui();
   const { botId, groupId } = useParams();
   const navigate = useNavigate();
@@ -438,9 +436,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
   // Stable mirror of the route mode for callbacks (refreshBots) that must not
-  // be re-created when the Shell switches between chat and Task Center.
-  const tasksModeRef = useRef(tasksMode);
-  tasksModeRef.current = tasksMode;
+  // be re-created when the Shell switches route modes.
   const session = authClient.useSession();
   const userId = session.data?.user.id;
   const [groups, setGroups] = useState<Group[]>([]);
@@ -594,40 +590,6 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [pickerInfoTopic, setPickerInfoTopic] = useState<"group" | "space" | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  // Task Center sidebar badge: the server's authoritative activeCount, fetched
-  // through the same RPC (and therefore the same authorization, root-Run and
-  // generation rules) as the list itself. Null while unknown — the badge is
-  // omitted, never guessed. Epoch-guarded so a late response cannot regress
-  // the count, and refreshed on the existing lightweight triggers (mount,
-  // focus/visibility, slow poll) without a new transport.
-  const [taskCenterCount, setTaskCenterCount] = useState<number | null>(null);
-  const taskCenterCountRequest = useRef(0);
-  const refreshTaskCenterCount = useCallback(() => {
-    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-    const requestId = ++taskCenterCountRequest.current;
-    void rpc.runs
-      .taskCenter({ limit: 1 })
-      .then((page) => {
-        if (requestId === taskCenterCountRequest.current) setTaskCenterCount(page.activeCount);
-      })
-      .catch(() => {
-        if (requestId === taskCenterCountRequest.current) setTaskCenterCount(null);
-      });
-  }, []);
-  useEffect(() => {
-    refreshTaskCenterCount();
-    const onFocus = () => refreshTaskCenterCount();
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
-    const poll = window.setInterval(refreshTaskCenterCount, 15_000);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-      window.clearInterval(poll);
-    };
-    // tasksMode re-runs the fetch when entering/leaving the Task Center route
-    // (the Shell itself stays mounted across that transition).
-  }, [refreshTaskCenterCount, tasksMode]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
@@ -1006,9 +968,6 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
           }
           return;
         }
-        // The Task Center route has no chat target of its own: never redirect
-        // it back to the first thread (its sidebar and badge stay live).
-        if (tasksModeRef.current) return;
         const currentBotId = routeBotId.current;
         if (!currentBotId || !list.some((bot) => bot.id === currentBotId)) {
           navigate(firstThreadRoute(list, groupList), { replace: true });
@@ -1231,9 +1190,6 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
           navigate("/onboarding", { replace: true });
           return;
         }
-        // The Task Center route keeps the sidebar but has no chat to select:
-        // never redirect it to the first bot.
-        if (tasksMode) return;
         if (groupId) {
           if (!groupList.some((group) => group.id === groupId)) {
             navigate(firstThreadRoute(bootstrap.bots, groupList), { replace: true });
@@ -1781,7 +1737,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
     if (targetInPage) initiallyScrolledThread.current = page.threadId;
     // The around-page carries the summaries of its own Runs (HISTORY-001):
     // merging them keeps a jumped-to Execution Card server-driven even when
-    // the Run sits outside the thread's recent window (Task Center anchor).
+    // the Run sits outside the thread's recent window (anchor jump).
     const mergedExecutions = targetInPage
       ? mergeExecutionsByRun(page.executions, snap.executions)
       : snap.executions;
@@ -3048,14 +3004,6 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
             />
           ) : (
             <>
-              <TaskCenterNavEntry
-                count={taskCenterCount}
-                current={tasksMode}
-                onSelect={() => {
-                  setMobileSidebarOpen(false);
-                  if (!tasksMode) navigate("/app/tasks");
-                }}
-              />
               {activityMode ? (
                 <ActivityList
                   onOpenRun={(run) => {
@@ -3277,7 +3225,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                                   }}
                                   onClick={() => {
                                     if (item.kind === "bot") {
-                                      // Waiting/approval Bots reuse the Task Center
+                                      // Waiting/approval Bots reuse the execution-nav
                                       // return-intent: after the target Thread loads,
                                       // focus lands on the Intervention's first
                                       // operable control. The roster row carries a
@@ -3294,7 +3242,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
                                           })
                                         : null;
                                       if (intent) {
-                                        setTaskCenterNavIntent(intent);
+                                        setExecutionNavIntent(intent);
                                         window.dispatchEvent(new Event(EXECUTION_NAV_INTENT_EVENT));
                                       }
                                     }
@@ -3631,15 +3579,6 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
         />
       )}
 
-      {tasksMode ? (
-        /* Task Center: the sidebar stays (with its existing mobile collapse);
-           the chat main area yields to the background-tasks list. */
-        <TaskCenterView
-          mobileSidebarOpen={mobileSidebarOpen}
-          onBeforeNavigate={() => setMobileSidebarOpen(false)}
-          onOpenNavigation={() => setMobileSidebarOpen(true)}
-        />
-      ) : (
         <main
           aria-hidden={mobileSidebarOpen || undefined}
           inert={mobileSidebarOpen}
@@ -3896,7 +3835,7 @@ export function ShellPage({ tasksMode = false }: { tasksMode?: boolean } = {}) {
             />
           ) : null}
         </main>
-      )}
+
 
       <CallCard onSettings={() => openSettings("voice")} />
 
@@ -4991,7 +4930,7 @@ export const Transcript = memo(function Transcript({
     [messages],
   );
   // UX-01A: the execution region (anchor merge, server summaries, expansion,
-  // detail cache, Interventions, Task Center return focus and the per-anchor
+  // detail cache, Interventions, execution-nav return focus and the per-anchor
   // ExecutionShell rendering) is owned by useExecutionTranscript; messageById
   // is shared read-only input, not an execution-region responsibility.
   const { coveredAsks, renderExecutions } = useExecutionTranscript({

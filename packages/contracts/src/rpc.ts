@@ -124,7 +124,6 @@ import {
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
-import { TASK_CENTER_MAX_LIMIT, TaskCenterPageSchema } from "./task-center.js";
 
 const botId = z.object({ botId: Id });
 const groupId = z.object({ groupId: Id });
@@ -945,22 +944,6 @@ export const appContract = {
         }),
       )
       .output(ExecutionActivityPageSchema),
-    /**
-     * Task Center: the cross-conversation index of the actor's authorized ROOT
-     * Runs — every active/waiting one plus the bounded recent-terminal window
-     * of the current generation. Read-only navigation surface over the
-     * existing ExecutionSummary; never a second Task/Run state. The cursor is
-     * opaque, versioned and actor-bound; a cursor from another user, Space or
-     * layout version is rejected, never reinterpreted.
-     */
-    taskCenter: oc
-      .input(
-        z.object({
-          cursor: z.string().min(16).max(512).optional(),
-          limit: z.number().int().min(1).max(TASK_CENTER_MAX_LIMIT).optional(),
-        }),
-      )
-      .output(TaskCenterPageSchema),
     /**
      * Manual retry: same Task, new Run, original Thread. Distinct from
      * automatic same-Run Attempt retry (`run.retried`).

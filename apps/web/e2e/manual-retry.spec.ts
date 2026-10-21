@@ -7,6 +7,7 @@ type Summary = {
   title: string;
   status: string;
   rev: number;
+  counts?: { steps?: number };
   retryOfRunId?: string;
   retrySuccessorRunId?: string;
   manualRetry?: { allowed: boolean; reason?: string };
@@ -107,18 +108,28 @@ test("a failed chat card retries into a new Run on the same Task and keeps the o
   expect(rows.some((row) => row.runId === successorId)).toBe(true);
 });
 
-test("Task Center retries a cancelled Run that has no chat Execution shell", async ({ page }) => {
+test("a cancelled Run retries from the execution card in its source conversation", async ({
+  page,
+}) => {
   const stamp = Date.now();
-  await signup(page, `mr-tc-${stamp}@rakazo.test`, "password12", "MR TaskCenter");
+  await signup(page, `mr-cancel-${stamp}@rakazo.test`, "password12", "MR Cancel");
   await completeOnboarding(page);
   const botId = activeBotId(page);
 
-  await send(page, `keep working until i stop you ${stamp}`);
+  // The tracked-steps hang publishes a real semantic Step first, so the Run
+  // keeps an execution surface (UX-01B rule 1) and its card stays in this
+  // conversation — where MR-01 retry lives after the CAP-01 convergence.
+  await send(page, `keep working with tracked steps until i stop you ${stamp}`);
+  // The cancel must not race the Step publish: a run cancelled before its
+  // step lands keeps no execution surface (UX-01B rule 1) and therefore no
+  // card to retry from. Wait until the server summary counts the persisted
+  // step — the same fact the surface eligibility derivation reads.
   await expect
     .poll(
       async () => {
         const rows = await executionsOf(page, botId);
-        return rows.some((row) => row.title.includes(`${stamp}`)) ? 1 : 0;
+        const run = rows.find((row) => row.title.includes(`${stamp}`));
+        return run && (run.counts?.steps ?? 0) > 0 ? 1 : 0;
       },
       { timeout: 60_000, intervals: [250, 500, 1_000] },
     )
@@ -126,14 +137,33 @@ test("Task Center retries a cancelled Run that has no chat Execution shell", asy
   await rpc(page, "threads/stop", { botId });
   const cancelled = await settledSummary(page, botId, `${stamp}`);
   expect(cancelled.status).toBe("cancelled");
+  expect(cancelled.manualRetry?.allowed).toBe(true);
 
-  await page.goto("/app/tasks");
-  await expect(page.getByTestId("task-center")).toBeVisible({ timeout: 20_000 });
-  const item = page.locator('[data-testid="task-center-item"]').filter({ hasText: `${stamp}` });
-  await expect(item).toBeVisible({ timeout: 30_000 });
-  await expect(item.getByTestId("execution-retry")).toBeVisible();
-  await item.getByTestId("execution-retry").click();
-  await page.waitForURL(new RegExp(`/app/${botId}`), { timeout: 20_000 });
+  // Refresh the source conversation so the card restores from the persisted
+  // summary, then page back to its anchor if it sits outside the first
+  // window — through the real "Load earlier messages" control only.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  const card = cardOf(page, `${stamp}`);
+  await expect
+    .poll(
+      async () => {
+        if ((await card.count()) > 0) return 1;
+        const more = page.getByRole("button", { name: "Load earlier messages" });
+        if ((await more.count()) === 0 || !(await more.isEnabled())) return 0;
+        await more.click();
+        await expect(more)
+          .toBeEnabled({ timeout: 15_000 })
+          .catch(() => undefined);
+        return (await card.count()) > 0 ? 1 : 0;
+      },
+      { timeout: 60_000, intervals: [300, 700] },
+    )
+    .toBe(1);
+
+  await expect(card).toHaveAttribute("data-status", "cancelled", { timeout: 15_000 });
+  await expect(card.getByTestId("execution-retry")).toBeVisible({ timeout: 15_000 });
+  await card.getByTestId("execution-retry").click();
 
   await expect
     .poll(
@@ -145,5 +175,6 @@ test("Task Center retries a cancelled Run that has no chat Execution shell", asy
     )
     .toBe(1);
 
+  // The successor re-runs the same hanging prompt; leave nothing running.
   await rpc(page, "threads/stop", { botId }).catch(() => undefined);
 });
