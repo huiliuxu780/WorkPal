@@ -151,11 +151,11 @@ describe("createBackgroundJobHandlers", () => {
     );
   });
 
-  it("passes the executor's connected-model resolver as the pinned resolver", async () => {
+  it("passes the executor's exact pinned-identity resolver to compactHistory", async () => {
     const resolveModel = vi.fn();
-    const resolveConnectedModel = vi.fn();
+    const resolvePinnedModel = vi.fn();
     const handlers = createBackgroundJobHandlers({
-      executor: { resolveModel, resolveConnectedModel } as unknown as ReturnType<
+      executor: { resolveModel, resolvePinnedModel } as unknown as ReturnType<
         typeof createRunExecutor
       >,
       prisma: {} as unknown as PrismaClient,
@@ -177,9 +177,10 @@ describe("createBackgroundJobHandlers", () => {
       modelId: "pinned/model",
     });
 
-    // The pinned identity must resolve through the same connected-model chain
-    // (validation + user/Space credential lookup) the executor's inline
-    // compaction path uses — never a separate or wider credential read (#93).
+    // The pinned identity must resolve through the executor's exact
+    // pinned-identity resolver (connected credential first, then only an
+    // exact deployment/local match) shared with the inline compaction path —
+    // never a separate or wider credential read (#93).
     expect(compactHistory).toHaveBeenCalledWith(
       expect.objectContaining({
         pinnedModel: {
@@ -187,7 +188,7 @@ describe("createBackgroundJobHandlers", () => {
           modelId: "pinned/model",
           sourceRunId: "run-9",
         },
-        resolvePinnedModel: resolveConnectedModel,
+        resolvePinnedModel,
       }),
       "thread-1",
     );

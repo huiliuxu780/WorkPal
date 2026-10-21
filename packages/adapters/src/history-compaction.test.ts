@@ -1381,10 +1381,10 @@ describe("background history.compact handler journey (#93, real handler — no m
     });
   }
 
-  it("a pinned job resolves through the executor's connected-model chain and advances the cursor", async () => {
+  it("a pinned job resolves through the executor's pinned-identity resolver and advances the cursor", async () => {
     const harness = compactionHarness();
-    const resolveConnectedModel = vi.fn(async () => pinnedModel);
-    const handlers = journeyHandlers(harness, { resolveConnectedModel });
+    const resolvePinnedModel = vi.fn(async () => pinnedModel);
+    const handlers = journeyHandlers(harness, { resolvePinnedModel });
 
     await handlers["history.compact"]({
       threadId: "thread-1",
@@ -1393,7 +1393,7 @@ describe("background history.compact handler journey (#93, real handler — no m
       modelId: "pinned/model",
     });
 
-    expect(resolveConnectedModel).toHaveBeenCalledWith(
+    expect(resolvePinnedModel).toHaveBeenCalledWith(
       { userId: "user-1", spaceId: "workspace-1" },
       "openrouter",
       "pinned/model",

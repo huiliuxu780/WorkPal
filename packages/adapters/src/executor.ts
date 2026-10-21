@@ -55,6 +55,7 @@ import {
   isAttachmentImageMimeType,
   isMessageOriginKind,
   OPENAI_COMPATIBLE_PROVIDER_ID,
+  usableModelId,
 } from "@rakazo/contracts";
 import {
   type ActionApprovalRule,
@@ -1124,8 +1125,63 @@ export function createRunExecutor(deps: ExecutorDeps) {
         : undefined,
     };
   };
+  /**
+   * Exact pinned-identity resolver for compaction (#93 review P1). A run that
+   * executed without a user-connected credential pins the deployment-key model,
+   * the deployment-settings local model, or (scripted) the runtime fallback;
+   * requiring a connected credential would permanently fail those threads'
+   * compaction even though the pinned model is still configured. Every
+   * credentialless branch below requires the configuration to point at EXACTLY
+   * the pinned provider+modelId — a mismatched pin fails visibly and never
+   * resolves a substitute model.
+   */
+  const resolvePinnedModelIdentity = async (
+    scope: { userId: string; spaceId: string },
+    provider: string,
+    modelId: string,
+  ): Promise<AgentRunRequest["model"]> => {
+    try {
+      return await resolveConnectedModel(scope, provider, modelId);
+    } catch (connectedError) {
+      const settings = await deps.prisma.deploymentSettings.findUnique({
+        where: { id: "default" },
+      });
+      const deployment = deps.deploymentModelKey ? resolveDeploymentModel() : null;
+      const fallback = runtimeFallbackModel(deps.runtime);
+      const configuredExactly =
+        (settings?.defaultModelProvider === provider &&
+          usableModelId(settings.defaultModelId) === modelId) ||
+        (deployment !== null && deployment.provider === provider && deployment.model === modelId) ||
+        (fallback !== null && fallback.provider === provider && fallback.id === modelId);
+      if (!configuredExactly) throw connectedError;
+      // The same credentialless resolution normal runs use: the deployment key
+      // for the deployment provider, nothing otherwise.
+      const resolved = await resolveModelKey(
+        deps,
+        scope.userId,
+        scope.spaceId,
+        null,
+        provider,
+        modelId,
+      );
+      return {
+        provider,
+        id: modelId,
+        apiKey: resolved.apiKey,
+        baseUrl: resolved.baseUrl,
+        reasoning: resolved.reasoning,
+        maxTokens: resolved.maxTokens,
+        contextWindow: resolved.contextWindow,
+        acceptsImages: resolved.acceptsImages,
+        maxImagesPerPrompt: resolved.maxImagesPerPrompt,
+        thinkingLevel: resolved.thinkingLevel ?? null,
+      };
+    }
+  };
+
   return {
     resolveConnectedModel,
+    resolvePinnedModel: resolvePinnedModelIdentity,
     async resolveModel(scope: {
       userId: string;
       spaceId: string;
@@ -6294,8 +6350,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   : {}),
                 memoryDigestKey: deps.memoryDigestKey,
                 ...(pin ? { pinnedModel: pin } : {}),
-                resolvePinnedModel: (scope, provider, modelId) =>
-                  resolveConnectedModel(scope, provider, modelId),
+                resolvePinnedModel: resolvePinnedModelIdentity,
               };
               const neededUpToSeq = Math.min(
                 compactedCursor + COMPACTION_BATCH_SIZE,
