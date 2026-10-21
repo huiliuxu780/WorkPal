@@ -496,7 +496,7 @@ Gate status against the round-3 re-enable conditions:
 | --- | --- |
 | Upstream public API can give a declared leaf helper the safe compaction/eviction config | **NOT MET** in 2.0.4 and 2.1.0-BETA1 |
 | Real-run proof: helper compacts with no flush/offload side effects | Not run — blocked by gate 1 |
-| Session-derivation / background / delivery / cancel regressions green | Not run — blocked by gate 1 |
+| Session-derivation / background-delivery / cancel / resume / credential-expiry regressions green | Not run — blocked by gate 1 |
 | Helper cannot widen tool or resource permissions | Unchanged (delegation is never offered; boundary refuses bypassing calls) |
 
 Re-check trigger: upstream PR #2378 (or an equivalent) merged **and shipped in a stable release**;
