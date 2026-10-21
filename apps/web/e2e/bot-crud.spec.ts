@@ -103,8 +103,8 @@ test("bot creation, editing, and deletion persist", async ({ page }, testInfo) =
   const modelSelect = settings.locator("label:has-text('Model') button[aria-haspopup='listbox']");
   const teamComputer = settings.getByRole("button", { name: "Team" });
   const openWork = settings.getByTestId("bot-scratchpad");
+  await expect(modelSelect).toBeVisible();
   await expect(teamComputer).toBeHidden();
-  await expect(modelSelect).toBeHidden();
   await expect(openWork).toBeHidden();
   await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeVisible();
   await expect(settings.getByRole("button", { name: "Recover computer" })).toHaveCount(0);
@@ -121,6 +121,9 @@ test("bot creation, editing, and deletion persist", async ({ page }, testInfo) =
   await expect(sidePanel).toHaveAttribute("data-panel", "settings");
   await expect(page.getByRole("tab", { name: "Computer" })).toHaveAttribute("aria-selected", "true");
   await expect(teamComputer).toBeVisible();
+  await page.getByRole("tab", { name: "Library" }).click();
+  await expect(openWork).toBeVisible();
+  await page.getByRole("tab", { name: "Computer" }).click();
   // Overlay may flash during boot or never appear (already ready/asleep/stopped). Assert panel
   // chrome, then wait until any overlay has cleared — avoid Locator.or() strict-mode multi-hits.
   const bootOverlay = page.getByText(/Booting up .* computer/);

@@ -3592,7 +3592,7 @@ export function ShellPage() {
           {/* Window drag region formerly provided by the conversation header. */}
           <div className="app-drag pointer-events-none absolute inset-x-0 top-0 h-12" aria-hidden="true" />
           {(active || activeGroup) && !mobileSidebarOpen ? (
-            <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex items-start justify-center px-3">
+            <div className="pointer-events-none absolute inset-x-0 top-2.5 z-40 flex items-start justify-center px-3">
               <div className="pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
                 {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
                 <button
