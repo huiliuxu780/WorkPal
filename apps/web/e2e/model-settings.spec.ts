@@ -102,9 +102,6 @@ test("custom connections persist reasoning support and bot thinking", async ({
   await page.reload();
   await page.locator("main").getByRole("button", { name: "Chief", exact: true }).click();
   await expect(settings).toBeVisible();
-  await advanced.evaluate((element) => {
-    (element as HTMLDetailsElement).open = true;
-  });
   await expect(thinking).toHaveValue("low");
 });
 

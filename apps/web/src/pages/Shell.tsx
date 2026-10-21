@@ -4078,7 +4078,10 @@ export function ShellPage() {
                 saving={savingRoutine}
                 running={runningRoutine}
                 error={routineError}
-                onBack={() => setPanel("computer")}
+                onBack={() => {
+                    setPanel("settings");
+                    setSettingsTab("detail");
+                  }}
                 onClose={() => setPanel(null)}
                 onEnsureWebhook={async () => {
                   await ensureWebhookSecret(active.id);
