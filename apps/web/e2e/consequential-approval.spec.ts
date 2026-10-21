@@ -31,22 +31,18 @@ test("actions run by default while optional confirmations live in advanced user 
   await expect(settings).toBeFocused();
   await expect(settings.getByText("Advanced", { exact: true })).toBeVisible();
   await expect(settings.getByText("Optional controls most people never need")).toHaveCount(0);
-  await expect(settings.getByRole("heading", { name: "Action confirmations" })).not.toBeVisible();
+  // UX-03/CAP-01 convergence: action review lives in General main content.
+  await expect(settings.getByRole("heading", { name: "Action review" })).toBeVisible();
+  await expect(settings.getByText("Applies to all your Bots in this Space.")).toBeVisible();
   await captureScreenshot(page, testInfo, "51-user-settings-advanced-collapsed");
-
-  await settings.getByText("Advanced", { exact: true }).click();
-  await expect(settings.getByRole("heading", { name: "Action confirmations" })).toBeVisible();
-  await expect(
-    settings.getByText(
-      "Bots act without asking by default. Add an exception only when you want to review a type of action first.",
-    ),
-  ).toHaveCount(0);
-  await expect(settings.getByText("No exceptions. Actions run automatically.")).toHaveCount(0);
   await expect(settings.getByTestId("auto-review-toggle")).toBeVisible();
   await expect(settings.getByTestId("auto-review-toggle")).not.toBeChecked();
-  await expect(settings.getByText("Flag unexpected actions")).toBeVisible();
-  await settings.getByRole("button", { name: "Ask before sending external email" }).click();
-  await expect(settings.getByText("Ask before email actions", { exact: true })).toBeVisible();
+  await settings.getByRole("button", { name: "Add rule" }).click();
+  await settings.getByLabel("What action?").fill("Sending email");
+  await settings.getByRole("radio", { name: "Ask me first" }).click();
+  await settings.getByRole("button", { name: "Save rule" }).click();
+  await expect(settings.getByText("Sending email", { exact: true })).toBeVisible();
+  await expect(settings.getByText("Ask me first")).toBeVisible();
   await captureScreenshot(page, testInfo, "52-advanced-action-confirmations");
   await settings.getByRole("button", { name: "Close user settings" }).click();
 

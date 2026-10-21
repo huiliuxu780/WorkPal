@@ -120,6 +120,10 @@ export function GeneralSettingsPanels({
         <UiLocalePicker value={locale} onChange={chooseLocale} />
       </section>
 
+      <section className="rounded-xl border border-border px-4 py-4">
+        <ApprovalRulesSettings />
+      </section>
+
       {isDeploymentOwner ? (
         <Button variant="outline" render={<Link to="/integrations/setup" />}>
           <Trans>Server integrations</Trans>
@@ -169,7 +173,6 @@ export function GeneralSettingsPanels({
               <Trans>Show tool activity</Trans>
             </Label>
           </div>
-          <ApprovalRulesSettings />
         </div>
       </details>
       <nav aria-label={PRODUCT_BRAND.name} className="flex gap-4 text-sm text-muted-foreground">

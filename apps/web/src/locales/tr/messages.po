@@ -259,11 +259,6 @@ msgstr "{0} model çağrısı · {1} girdi jetonu · {2} çıktı jetonu"
 msgid "{0} rollup hours"
 msgstr ""
 
-#. placeholder {0}: list.activeCount
-#: src/components/ai/TaskCenterView.tsx
-msgid "{0} running in background"
-msgstr ""
-
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} will still respond to direct mentions."
@@ -430,8 +425,8 @@ msgid "Accounts"
 msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Action confirmations"
-msgstr "İşlem onayları"
+msgid "Action review"
+msgstr ""
 
 #. placeholder {0}: bot.name
 #. placeholder {0}: group.spaceName
@@ -465,10 +460,6 @@ msgstr "Ekle"
 
 #: src/pages/memory-facts.tsx
 msgid "Add a memory"
-msgstr ""
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Add a model in Settings to use this."
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -527,6 +518,10 @@ msgstr "OpenAPI ekle"
 #: src/pages/PluginsOverlay.tsx
 msgid "Add remote MCP server"
 msgstr "Uzak MCP sunucusu ekle"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Add rule"
+msgstr ""
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Add server"
@@ -592,32 +587,9 @@ msgstr ""
 msgid "All time"
 msgstr "Tüm zamanlar"
 
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} actions without asking"
-msgstr "{0} işlemlerine sormadan izin ver"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} connector without asking"
-msgstr "{0} bağlayıcısına sormadan izin ver"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} without asking"
-msgstr "{0} için sormadan izin ver"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow email actions without asking"
-msgstr "E-posta işlemlerine sormadan izin ver"
-
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "Bir kez izin ver"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow purchase actions without asking"
-msgstr "Satın alma işlemlerine sormadan izin ver"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -637,6 +609,10 @@ msgstr ""
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
+msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Always allow"
 msgstr ""
 
 #: src/components/AskCard.tsx
@@ -698,6 +674,10 @@ msgstr "API anahtarı üstbilgisi"
 msgid "Appearance"
 msgstr "Görünüm"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Applies to all your Bots in this Space."
+msgstr ""
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Approval boundaries"
 msgstr "Onay sınırları"
@@ -741,36 +721,9 @@ msgstr "Argümanlar"
 msgid "Artifacts"
 msgstr ""
 
-#. placeholder {0}: rule.matchValue
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0}"
-msgstr "{0} öncesinde sor"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} actions"
-msgstr "{0} işlemlerinden önce sor"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} connector"
-msgstr "{0} bağlayıcısından önce sor"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before email actions"
-msgstr "E-posta işlemlerinden önce sor"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchase actions"
-msgstr "Satın alma işlemlerinden önce sor"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchases"
-msgstr "Satın almadan önce sor"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before sending external email"
-msgstr "Dışarıya e-posta göndermeden önce sor"
+msgid "Ask me first"
+msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Ask the server owner to configure this provider."
@@ -860,18 +813,9 @@ msgstr ""
 msgid "Back"
 msgstr ""
 
-#: src/lib/task-center.ts
-msgid "Back to conversation"
-msgstr ""
-
 #: src/pages/Auth.tsx
 msgid "Back to sign in"
 msgstr "Oturum açmaya geri dön"
-
-#: src/components/ai/TaskCenterNavEntry.tsx
-#: src/components/ai/TaskCenterView.tsx
-msgid "Background tasks"
-msgstr ""
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Base URL"
@@ -966,6 +910,7 @@ msgstr "Sunucuya ulaşılamıyor."
 
 #: src/components/activity/BackgroundTaskActivity.tsx
 #: src/components/ai/PlanReviewCard.tsx
+#: src/components/ApprovalRulesSettings.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -1040,6 +985,10 @@ msgstr ""
 #: src/pages/Shell.tsx
 msgid "Chat Settings"
 msgstr "Sohbet Ayarları"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Check actions against my rules before they run"
+msgstr ""
 
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Check failed"
@@ -1562,8 +1511,8 @@ msgid "Could not load"
 msgstr "Yüklenemedi"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not load approval rules"
-msgstr "Onay kuralları yüklenemedi"
+msgid "Could not load action rules"
+msgstr ""
 
 #: src/pages/Artifacts.tsx
 msgid "Could not load artifacts."
@@ -1661,8 +1610,8 @@ msgid "Could not remove group"
 msgstr "Grup kaldırılamadı"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not remove rule"
-msgstr "Kural kaldırılamadı"
+msgid "Could not remove this rule"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
@@ -1696,7 +1645,7 @@ msgid "Could not save"
 msgstr "Kaydedilemedi"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save Auto Review"
+msgid "Could not save action review"
 msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
@@ -1714,10 +1663,6 @@ msgstr "Model kaydedilemedi"
 #: src/pages/Shell.tsx
 msgid "Could not save routine"
 msgstr "Rutin kaydedilemedi"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save rule"
-msgstr "Kural kaydedilemedi"
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not save skill"
@@ -1738,6 +1683,10 @@ msgstr "Bu ses kaydedilemedi"
 #: src/pages/shell/message-cards.tsx
 msgid "Could not save this choice"
 msgstr "Bu seçim kaydedilemedi"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Could not save this rule"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not search catalog"
@@ -1803,20 +1752,12 @@ msgstr "Varsayılan hafıza kapsamı güncellenemedi"
 msgid "Could not upload file"
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't load background tasks."
-msgstr ""
-
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
 msgstr ""
 
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Couldn't load the execution detail."
-msgstr ""
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't open this task. Try again."
 msgstr ""
 
 #: src/lib/manual-retry.ts
@@ -1968,6 +1909,7 @@ msgstr "Varsayılan kapsam"
 msgid "Deferred"
 msgstr ""
 
+#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -2032,6 +1974,10 @@ msgstr "Reddet"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Deployment default"
 msgstr "Dağıtım varsayılanı"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Describe the action in your own words"
+msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
 msgid "Describe the concrete changes you want"
@@ -2148,12 +2094,20 @@ msgstr "Taslak beceri"
 msgid "Duplicate"
 msgstr "Çoğalt"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "e.g. emailing someone outside the Space"
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "e.g. Hivenet Agent, Presales, Timesheets bot"
 msgstr "örn. Hivenet Agent, Presales, puantaj botu"
 
 #: src/pages/Shell.tsx
 msgid "Earlier message"
+msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Edit"
 msgstr ""
 
 #: src/components/AskCard.tsx
@@ -2397,10 +2351,6 @@ msgstr "Tamamlandı."
 msgid "Finishing MCP connection…"
 msgstr "MCP bağlantısı tamamlanıyor…"
 
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Flag unexpected actions"
-msgstr ""
-
 #: src/components/RunDetailsPanel.tsx
 msgid "Follows bot notification settings"
 msgstr ""
@@ -2466,10 +2416,6 @@ msgstr ""
 
 #: src/pages/shell/dialogs.tsx
 msgid "Groups"
-msgstr ""
-
-#: src/lib/task-center.ts
-msgid "Handle now"
 msgstr ""
 
 #: src/components/call/CallCard.tsx
@@ -2749,10 +2695,6 @@ msgstr "Önceki mesajları yükle"
 msgid "Load more"
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Load more tasks"
-msgstr ""
-
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
 msgstr "Etkinlik yükleniyor…"
@@ -2790,7 +2732,6 @@ msgid "Loading voice providers…"
 msgstr "Ses sağlayıcıları yükleniyor…"
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
@@ -2825,6 +2766,10 @@ msgstr "Düşük"
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
 msgstr "Bu bilgisayarda hâlâ çalışan bir şey olmadığından emin ol."
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Making purchases"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Manage MCP servers"
@@ -3208,6 +3153,10 @@ msgstr ""
 msgid "No results"
 msgstr "Sonuç yok"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "No runs yet"
 msgstr ""
@@ -3218,10 +3167,6 @@ msgstr "Henüz beceri yok"
 
 #: src/pages/memory-facts.tsx
 msgid "No sources recorded"
-msgstr ""
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "No tasks running in background"
 msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -3255,10 +3200,6 @@ msgstr "Şimdi değil"
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
-msgstr ""
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
 msgstr ""
 
 #: src/components/ComputerUpdateProgress.tsx
@@ -3343,7 +3284,6 @@ msgstr ""
 msgid "Open in full window"
 msgstr "Tam pencerede aç"
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "Gezinmeyi aç"
@@ -3694,7 +3634,6 @@ msgstr ""
 msgid "Remembered"
 msgstr ""
 
-#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/ScratchpadSection.tsx
 msgid "Remove"
@@ -3857,7 +3796,6 @@ msgid "Retry"
 msgstr ""
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 msgid "Retry now"
 msgstr "Şimdi tekrar dene"
@@ -3908,6 +3846,10 @@ msgstr "Rutin"
 #: src/pages/RoutineEditor.tsx
 msgid "Routines"
 msgstr "Rutinler"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Rules guide action review only — they never connect apps, widen resource access, or skip server-side protections."
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -3961,6 +3903,10 @@ msgstr "Kaydet"
 
 #: src/pages/memory-facts.tsx
 msgid "Save correction"
+msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Save rule"
 msgstr ""
 
 #: src/components/ai/InterventionRegion.tsx
@@ -4081,6 +4027,10 @@ msgstr "Gönder"
 #: src/pages/Auth.tsx
 msgid "Send reset link"
 msgstr "Sıfırlama bağlantısı gönder"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Sending email"
+msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
@@ -4560,7 +4510,6 @@ msgstr "Bu abonelik girişi {productName}'da henüz kullanılamıyor. Bir dağı
 msgid "This task already completed."
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/lib/manual-retry.ts
 msgid "This task is no longer available."
 msgstr ""
@@ -4769,6 +4718,11 @@ msgstr "Bu modeli kullan"
 msgid "Username"
 msgstr ""
 
+#. placeholder {0}: rule.matchValue
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Using {0}"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Verify and add"
 msgstr "Doğrula ve ekle"
@@ -4786,10 +4740,6 @@ msgstr ""
 msgid "Version v{0}"
 msgstr ""
 
-#: src/lib/task-center.ts
-msgid "View execution"
-msgstr ""
-
 #: src/lib/execution-card.ts
 msgid "View progress"
 msgstr ""
@@ -4800,7 +4750,6 @@ msgid "View reason"
 msgstr ""
 
 #: src/lib/execution-card.ts
-#: src/lib/task-center.ts
 msgid "View result"
 msgstr ""
 
@@ -4849,6 +4798,10 @@ msgstr "Hafta içi"
 msgid "What about its memories?"
 msgstr "Hafızası ne olsun?"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What action?"
+msgstr ""
+
 #: src/pages/shell/message-cards.tsx
 msgid "What do you want me on first?"
 msgstr ""
@@ -4859,6 +4812,10 @@ msgstr "Hangi sonucu göstereceksin?"
 
 #: src/components/ai/PlanReviewCard.tsx
 msgid "What should change in this plan?"
+msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What should happen?"
 msgstr ""
 
 #: src/pages/RoutineEditor.tsx
@@ -4939,6 +4896,10 @@ msgstr "E-posta adresin"
 #: src/pages/Auth.tsx
 msgid "Your name"
 msgstr "Adın"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Your rules"
+msgstr ""
 
 #: src/pages/Welcome.tsx
 msgid "Your team of always-on agents<0/>that you can give real work to."

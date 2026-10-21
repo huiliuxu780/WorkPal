@@ -259,11 +259,6 @@ msgstr "{0} 次模型调用 · {1} 输入 token · {2} 输出 token"
 msgid "{0} rollup hours"
 msgstr ""
 
-#. placeholder {0}: list.activeCount
-#: src/components/ai/TaskCenterView.tsx
-msgid "{0} running in background"
-msgstr "{0} 个正在后台"
-
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} will still respond to direct mentions."
@@ -430,8 +425,8 @@ msgid "Accounts"
 msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Action confirmations"
-msgstr "操作确认"
+msgid "Action review"
+msgstr "操作审查"
 
 #. placeholder {0}: bot.name
 #. placeholder {0}: group.spaceName
@@ -466,10 +461,6 @@ msgstr "添加"
 #: src/pages/memory-facts.tsx
 msgid "Add a memory"
 msgstr "添加记忆"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Add a model in Settings to use this."
-msgstr "请在设置中添加模型后再使用。"
 
 #: src/pages/Shell.tsx
 msgid "Add a run time for this one-shot."
@@ -527,6 +518,10 @@ msgstr "添加 OpenAPI"
 #: src/pages/PluginsOverlay.tsx
 msgid "Add remote MCP server"
 msgstr "添加远程 MCP 服务器"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Add rule"
+msgstr "添加规则"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Add server"
@@ -592,32 +587,9 @@ msgstr ""
 msgid "All time"
 msgstr "全部时间"
 
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} actions without asking"
-msgstr "允许 {0} 操作，无需询问"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} connector without asking"
-msgstr "允许 {0} 连接器，无需询问"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} without asking"
-msgstr "允许 {0}，无需询问"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow email actions without asking"
-msgstr "允许邮件操作，无需询问"
-
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "允许一次"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow purchase actions without asking"
-msgstr "允许购买操作，无需询问"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -638,6 +610,10 @@ msgstr "已重试"
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
 msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Always allow"
+msgstr "自动允许"
 
 #: src/components/AskCard.tsx
 msgid "Always allow this tool"
@@ -698,6 +674,10 @@ msgstr "API 密钥请求头"
 msgid "Appearance"
 msgstr "外观"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Applies to all your Bots in this Space."
+msgstr "适用于你在此 Space 的所有 Bot。"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Approval boundaries"
 msgstr "审批边界"
@@ -741,36 +721,9 @@ msgstr "参数"
 msgid "Artifacts"
 msgstr ""
 
-#. placeholder {0}: rule.matchValue
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0}"
-msgstr "{0} 前询问"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} actions"
-msgstr "{0} 操作前询问"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} connector"
-msgstr "{0} 连接器前询问"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before email actions"
-msgstr "邮件操作前询问"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchase actions"
-msgstr "购买操作前询问"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchases"
-msgstr "购买前询问"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before sending external email"
-msgstr "发送外部邮件前询问"
+msgid "Ask me first"
+msgstr "先问我"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Ask the server owner to configure this provider."
@@ -860,18 +813,9 @@ msgstr "待你审阅"
 msgid "Back"
 msgstr "返回"
 
-#: src/lib/task-center.ts
-msgid "Back to conversation"
-msgstr "回到对话"
-
 #: src/pages/Auth.tsx
 msgid "Back to sign in"
 msgstr "返回登录"
-
-#: src/components/ai/TaskCenterNavEntry.tsx
-#: src/components/ai/TaskCenterView.tsx
-msgid "Background tasks"
-msgstr "后台任务"
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Base URL"
@@ -966,6 +910,7 @@ msgstr "无法连接服务器。"
 
 #: src/components/activity/BackgroundTaskActivity.tsx
 #: src/components/ai/PlanReviewCard.tsx
+#: src/components/ApprovalRulesSettings.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -1040,6 +985,10 @@ msgstr "聊天应用、群组频道和 Agent 连接。"
 #: src/pages/Shell.tsx
 msgid "Chat Settings"
 msgstr "聊天设置"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Check actions against my rules before they run"
+msgstr "动作执行前按我的规则检查"
 
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Check failed"
@@ -1562,8 +1511,8 @@ msgid "Could not load"
 msgstr "无法加载"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not load approval rules"
-msgstr "无法加载审批规则"
+msgid "Could not load action rules"
+msgstr "无法载入操作规则"
 
 #: src/pages/Artifacts.tsx
 msgid "Could not load artifacts."
@@ -1661,8 +1610,8 @@ msgid "Could not remove group"
 msgstr "无法移除群组"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not remove rule"
-msgstr "无法移除规则"
+msgid "Could not remove this rule"
+msgstr "无法删除这条规则"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
@@ -1696,8 +1645,8 @@ msgid "Could not save"
 msgstr "无法保存"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save Auto Review"
-msgstr "无法保存自动审核"
+msgid "Could not save action review"
+msgstr "无法保存操作审查设置"
 
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Could not save avatar"
@@ -1714,10 +1663,6 @@ msgstr "无法保存模型"
 #: src/pages/Shell.tsx
 msgid "Could not save routine"
 msgstr "无法保存例行任务"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save rule"
-msgstr "无法保存规则"
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not save skill"
@@ -1738,6 +1683,10 @@ msgstr "无法保存该语音"
 #: src/pages/shell/message-cards.tsx
 msgid "Could not save this choice"
 msgstr "无法保存此选择"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Could not save this rule"
+msgstr "无法保存这条规则"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not search catalog"
@@ -1803,10 +1752,6 @@ msgstr "无法更新默认记忆范围"
 msgid "Could not upload file"
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't load background tasks."
-msgstr "无法加载后台任务。"
-
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
 msgstr "无法加载消息设置"
@@ -1814,10 +1759,6 @@ msgstr "无法加载消息设置"
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Couldn't load the execution detail."
 msgstr "无法加载执行详情。"
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't open this task. Try again."
-msgstr "无法打开这个任务。请重试。"
 
 #: src/lib/manual-retry.ts
 msgid "Couldn't retry this task. Try again."
@@ -1968,6 +1909,7 @@ msgstr "默认范围"
 msgid "Deferred"
 msgstr ""
 
+#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -2032,6 +1974,10 @@ msgstr "拒绝"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Deployment default"
 msgstr "部署默认"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Describe the action in your own words"
+msgstr "用你自己的话描述这个操作"
 
 #: src/components/ai/PlanReviewCard.tsx
 msgid "Describe the concrete changes you want"
@@ -2148,6 +2094,10 @@ msgstr "技能草稿"
 msgid "Duplicate"
 msgstr "复制"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "e.g. emailing someone outside the Space"
+msgstr "例如：给 Space 外的人发邮件"
+
 #: src/pages/shell/bot-panel.tsx
 msgid "e.g. Hivenet Agent, Presales, Timesheets bot"
 msgstr "例如 Hivenet Agent、Presales、工时表机器人"
@@ -2155,6 +2105,10 @@ msgstr "例如 Hivenet Agent、Presales、工时表机器人"
 #: src/pages/Shell.tsx
 msgid "Earlier message"
 msgstr "更早的消息"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Edit"
+msgstr ""
 
 #: src/components/AskCard.tsx
 msgid "Edit first"
@@ -2397,10 +2351,6 @@ msgstr "已完成。"
 msgid "Finishing MCP connection…"
 msgstr "正在完成 MCP 连接…"
 
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Flag unexpected actions"
-msgstr "标记异常操作"
-
 #: src/components/RunDetailsPanel.tsx
 msgid "Follows bot notification settings"
 msgstr ""
@@ -2467,10 +2417,6 @@ msgstr ""
 #: src/pages/shell/dialogs.tsx
 msgid "Groups"
 msgstr ""
-
-#: src/lib/task-center.ts
-msgid "Handle now"
-msgstr "去处理"
 
 #: src/components/call/CallCard.tsx
 msgid "Hang up"
@@ -2749,10 +2695,6 @@ msgstr "加载更早的消息"
 msgid "Load more"
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Load more tasks"
-msgstr "加载更多任务"
-
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
 msgstr "正在加载动态…"
@@ -2790,7 +2732,6 @@ msgid "Loading voice providers…"
 msgstr "正在加载语音提供方…"
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
@@ -2825,6 +2766,10 @@ msgstr "低"
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
 msgstr "请确认这台电脑上没有仍在运行的任务。"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Making purchases"
+msgstr "进行购买"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Manage MCP servers"
@@ -3208,6 +3153,10 @@ msgstr ""
 msgid "No results"
 msgstr "无结果"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
+msgstr "还没有规则。操作遵循各 Bot 自身的审批；添加规则可以让我先问你、或始终允许某类具体操作。"
+
 #: src/pages/RoutineEditor.tsx
 msgid "No runs yet"
 msgstr "还没有运行记录"
@@ -3219,10 +3168,6 @@ msgstr "暂无技能"
 #: src/pages/memory-facts.tsx
 msgid "No sources recorded"
 msgstr "没有记录的来源"
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "No tasks running in background"
-msgstr "没有正在后台的任务"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No team conversations yet."
@@ -3256,10 +3201,6 @@ msgstr "暂不"
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr ""
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
-msgstr "后台没有正在跑的任务。离开聊天时，需要继续的工作会在这里继续运行。"
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Nothing is still running"
@@ -3343,7 +3284,6 @@ msgstr ""
 msgid "Open in full window"
 msgstr "在完整窗口中打开"
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "打开导航"
@@ -3694,7 +3634,6 @@ msgstr "记住"
 msgid "Remembered"
 msgstr "已记下"
 
-#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/ScratchpadSection.tsx
 msgid "Remove"
@@ -3857,7 +3796,6 @@ msgid "Retry"
 msgstr "重试"
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 msgid "Retry now"
 msgstr "立即重试"
@@ -3908,6 +3846,10 @@ msgstr "例行任务"
 #: src/pages/RoutineEditor.tsx
 msgid "Routines"
 msgstr "例行任务"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Rules guide action review only — they never connect apps, widen resource access, or skip server-side protections."
+msgstr "规则只用于指导操作审查——不会连接应用、扩大资源权限或绕过服务端保护。"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -3962,6 +3904,10 @@ msgstr "保存"
 #: src/pages/memory-facts.tsx
 msgid "Save correction"
 msgstr "保存纠正"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Save rule"
+msgstr "保存规则"
 
 #: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
@@ -4081,6 +4027,10 @@ msgstr "发送"
 #: src/pages/Auth.tsx
 msgid "Send reset link"
 msgstr "发送重置链接"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Sending email"
+msgstr "发送邮件"
 
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
@@ -4560,7 +4510,6 @@ msgstr "此订阅登录在 {productName} 中尚不可用。请使用部署凭据
 msgid "This task already completed."
 msgstr "此任务已完成。"
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/lib/manual-retry.ts
 msgid "This task is no longer available."
 msgstr "该任务已不可用。"
@@ -4769,6 +4718,11 @@ msgstr "使用此模型"
 msgid "Username"
 msgstr ""
 
+#. placeholder {0}: rule.matchValue
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Using {0}"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Verify and add"
 msgstr "校验并添加"
@@ -4786,10 +4740,6 @@ msgstr ""
 msgid "Version v{0}"
 msgstr "版本 v{0}"
 
-#: src/lib/task-center.ts
-msgid "View execution"
-msgstr "查看执行"
-
 #: src/lib/execution-card.ts
 msgid "View progress"
 msgstr "查看进展"
@@ -4800,7 +4750,6 @@ msgid "View reason"
 msgstr "查看原因"
 
 #: src/lib/execution-card.ts
-#: src/lib/task-center.ts
 msgid "View result"
 msgstr "查看结果"
 
@@ -4849,6 +4798,10 @@ msgstr "工作日"
 msgid "What about its memories?"
 msgstr "它的记忆怎么处理？"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What action?"
+msgstr "什么操作？"
+
 #: src/pages/shell/message-cards.tsx
 msgid "What do you want me on first?"
 msgstr "你想让我先做什么？"
@@ -4860,6 +4813,10 @@ msgstr "你要示范什么结果？"
 #: src/components/ai/PlanReviewCard.tsx
 msgid "What should change in this plan?"
 msgstr "这个计划需要修改什么？"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What should happen?"
+msgstr "应该怎么处理？"
 
 #: src/pages/RoutineEditor.tsx
 msgid "What should this routine do each time it runs?"
@@ -4939,6 +4896,10 @@ msgstr "你的邮箱"
 #: src/pages/Auth.tsx
 msgid "Your name"
 msgstr "你的名字"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Your rules"
+msgstr "我的规则"
 
 #: src/pages/Welcome.tsx
 msgid "Your team of always-on agents<0/>that you can give real work to."
