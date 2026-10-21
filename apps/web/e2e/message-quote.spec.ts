@@ -60,22 +60,44 @@ async function selectAndRelease(
 }
 
 /**
- * Send through the real composer and wait for the server to persist the
- * message before any UI-projection assertion. The row-visible window then
- * only measures rendering of an already-durable message: contention on an
- * aged local database (e.g. the startup backlog reconciliation storm, #87)
- * delays the persistence response instead of silently eating the projection
- * budget. Sends must also resolve one-by-one — the composer swallows input
- * while a send is in flight.
+ * Send through the real composer deterministically (#87), gating on both
+ * ends of the send:
+ *
+ * 1. Composer readiness. `send()` swallows Enter silently while the
+ *    previous submission finalizes — the in-flight guard stays up through
+ *    the post-send thread refresh, which is exactly what slows down on an
+ *    aged local database. The Send button's disabled state (`sending ||
+ *    !canSend`) is the observable projection of that guard, so with a
+ *    non-empty draft, "Send enabled" means the composer will accept this
+ *    keystroke instead of dropping it.
+ * 2. Server persistence. Waiting for the /rpc/threads/send response makes
+ *    the following row-visible window measure only the rendering of an
+ *    already-durable message.
  */
 async function sendPersisted(page: Page, composer: Locator, text: string) {
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await composer.fill(text);
+  await expect(send).toBeEnabled();
   const persisted = page.waitForResponse(
     (response) => response.url().includes("/rpc/threads/send") && response.ok(),
   );
-  await composer.fill(text);
   await composer.press("Enter");
   await persisted;
 }
+
+// Runs left active by a failed or timed-out test are picked up by the job
+// reconciler on every later harness start and re-enqueued forever; that
+// permanent churn degrades every subsequent run on a shared local database
+// (#87). Stop this test's own runs — best effort, pass or fail — so the spec
+// never leaves that residue. Only this test's bot is touched, never shared
+// data.
+test.afterEach(async ({ page }) => {
+  try {
+    await rpc(page, "threads/stop", { botId: activeBotId(page) }).catch(() => undefined);
+  } catch {
+    // Never onboarded or the page is already gone — nothing owned to stop.
+  }
+});
 
 test("selecting a text span quotes it into a reply", async ({ page }, testInfo) => {
   const stamp = Date.now();
