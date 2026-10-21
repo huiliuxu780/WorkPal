@@ -290,8 +290,10 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
     .toBe(2);
 
   // Push the triggering message off the first history page, then page back
-  // through the real control only.
-  for (let i = 0; i < 105; i++) {
+  // through the real control only. Each filler echoes, so 60 sends put ~120
+  // messages behind the trigger (page window is 100) — enough to evict it
+  // with margin while keeping the paging budget CI-realistic.
+  for (let i = 0; i < 60; i++) {
     await rpc(page, "threads/send", {
       groupId: group.id,
       text: `group-filler-${stamp}-${i}`,
