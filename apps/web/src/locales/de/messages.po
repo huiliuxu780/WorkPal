@@ -558,17 +558,12 @@ msgstr "Wird hinzugefügt…"
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineSchedule.tsx
-#: src/pages/shell/bot-panel.tsx
 msgid "Advanced"
 msgstr "Erweitert"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Advanced..."
 msgstr ""
-
-#: src/pages/Shell.tsx
-msgid "Agent computer"
-msgstr "Agent-Computer"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Agent connections"
@@ -865,6 +860,10 @@ msgstr "Bot-Bildschirm"
 #: src/pages/Shell.tsx
 msgid "Bot screen preview"
 msgstr "Bot-Bildschirmvorschau"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Bot settings sections"
+msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Bot to link"
@@ -2001,6 +2000,7 @@ msgstr ""
 
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Details"
 msgstr ""
 
@@ -2659,6 +2659,10 @@ msgstr ""
 msgid "Legacy documents"
 msgstr ""
 
+#: src/pages/shell/bot-panel.tsx
+msgid "Library"
+msgstr ""
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
 msgstr "Hell"
@@ -3276,8 +3280,16 @@ msgstr "Öffnen"
 msgid "Open {0}"
 msgstr ""
 
+#: src/pages/Shell.tsx
+msgid "Open bot settings"
+msgstr ""
+
 #: src/components/RunDetailsPanel.tsx
 msgid "Open computer"
+msgstr ""
+
+#: src/pages/Shell.tsx
+msgid "Open group settings"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -3856,7 +3868,6 @@ msgid "Run at"
 msgstr ""
 
 #: src/components/RunDetailsPanel.tsx
-#: src/pages/Shell.tsx
 msgid "Run details"
 msgstr ""
 
@@ -4122,10 +4133,6 @@ msgstr ""
 msgid "Show bots"
 msgstr ""
 
-#: src/pages/Shell.tsx
-msgid "Show computer"
-msgstr ""
-
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
@@ -4143,10 +4150,6 @@ msgstr "Mehr anzeigen"
 #: src/pages/Auth.tsx
 msgid "Show password"
 msgstr ""
-
-#: src/pages/Shell.tsx
-msgid "Show settings"
-msgstr "Einstellungen anzeigen"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Show tool activity"

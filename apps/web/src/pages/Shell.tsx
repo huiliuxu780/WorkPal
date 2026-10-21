@@ -158,7 +158,6 @@ import { VoiceChatCard } from "../components/call/VoiceChatCard";
 import { ComputerWorkspace } from "../components/computer/ComputerWorkspace";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
 import { ModelTreePicker } from "../components/ModelTreePicker";
-import { RunDetailsPanel } from "../components/RunDetailsPanel";
 import {
   LIVE_TOOL_STEP_WINDOW,
   StandaloneToolActivity,
@@ -319,7 +318,6 @@ type Panel =
   | "create"
   | "create-group"
   | "group-settings"
-  | "run"
   | null;
 
 type PendingAttachment = {
@@ -487,6 +485,7 @@ export function ShellPage() {
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  const [settingsTab, setSettingsTab] = useState<"detail" | "library" | "computer">("detail");
   const [peerConversation, setPeerConversation] = useState<{
     peerBotId: string;
     peerBotName: string;
@@ -770,7 +769,8 @@ export function ShellPage() {
   const notifiedBrowserEvents = useRef(new Set<string>());
   const pendingBrowserNotifications = useRef(new Map<string, PendingBrowserNotification>());
   const computerVisible = useRef(false);
-  computerVisible.current = panel === "computer" || computerOpen;
+  computerVisible.current =
+    (panel === "settings" && settingsTab === "computer") || computerOpen;
   const autoSpoken = useRef<string | null>(null);
   const autoSpokenBotId = useRef<string | null>(null);
 
@@ -1801,7 +1801,8 @@ export function ShellPage() {
         setEditingRoutine(routine);
         setPanel("routine");
       } else {
-        setPanel("computer");
+        setPanel("settings");
+        setSettingsTab("computer");
       }
       const next = new URLSearchParams(searchParams);
       next.delete("routine");
@@ -1877,6 +1878,8 @@ export function ShellPage() {
     () => userVisibleMessages(activeSnapshot?.messages ?? [], { includePeerReceipts: true }),
     [activeSnapshot?.messages],
   );
+  const transcriptMessagesRef = useRef(transcriptMessages);
+  transcriptMessagesRef.current = transcriptMessages;
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
     [active?.id, groupId, inGroup],
@@ -2530,7 +2533,11 @@ export function ShellPage() {
     void scheduleFocusPrompt({
       immediate: isFirstBot,
       signal: controller.signal,
-      shouldSkip: () => sendingRef.current,
+      // A new Bot whose intro run already posted a message does not need the
+      // setup focus card on top of it (user report: "two cards at once").
+      shouldSkip: () =>
+        sendingRef.current ||
+        transcriptMessagesRef.current.some((message) => message.role === "bot"),
       prompt: async () => {
         if (focusPromptBotIdRef.current !== bot.id || activeBotId.current !== bot.id) return;
         await rpc.onboarding.promptFocus({ botId: bot.id }).catch(() => undefined);
@@ -2602,7 +2609,7 @@ export function ShellPage() {
   }
 
   useEffect(() => {
-    if (panel !== "computer") {
+    if (!(panel === "settings" && settingsTab === "computer")) {
       autoBooted.current = null;
       return;
     }
@@ -2635,7 +2642,7 @@ export function ShellPage() {
     return () => {
       cancelled = true;
     };
-  }, [panel, active?.id]);
+  }, [panel, settingsTab, active?.id]);
 
   useEffect(() => {
     setComputerOpen(false);
@@ -2708,7 +2715,9 @@ export function ShellPage() {
 
   useEffect(() => {
     const heartbeatBotId = computerBot?.id ?? active?.id;
-    if ((panel !== "computer" && !computerOpen) || !heartbeatBotId || computer?.state !== "running")
+    if ((!(panel === "settings" && settingsTab === "computer") && !computerOpen) ||
+      !heartbeatBotId ||
+      computer?.state !== "running")
       return;
     const ping = () =>
       void rpc.computer.heartbeat({ botId: heartbeatBotId }).catch(() => undefined);
@@ -3450,27 +3459,14 @@ export function ShellPage() {
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => setPluginsOpen(true)}
-          className="mx-3 mb-1 flex items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-sidebar-accent"
-        >
-          <span className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent text-foreground/80">
-            <LayoutGrid size={15} strokeWidth={1.8} />
-          </span>
-          <span className="text-[14px] font-medium text-foreground/90">
-            <Trans>Integrations</Trans>
-          </span>
-        </button>
+        <div className="mx-3 mb-2 flex items-center gap-2">
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>
           <PopoverTrigger
             data-testid="user-menu-trigger"
-            className="flex items-center gap-[11px] px-[18px] py-3.5"
+            aria-label={userName}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-[12px] text-foreground/75 hover:bg-sidebar-accent"
           >
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-[12px] text-foreground/75">
-              {initials}
-            </span>
-            <span className="text-[14.5px] text-foreground/90">{userName}</span>
+            {initials}
           </PopoverTrigger>
           {menuOpen ? (
             <PopoverContent
@@ -3531,6 +3527,18 @@ export function ShellPage() {
             </PopoverContent>
           ) : null}
         </Popover>
+        <button
+          type="button"
+          onClick={() => setPluginsOpen(true)}
+          data-testid="integrations-entry"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-sidebar-border px-3 py-1.5 text-[12.5px] text-foreground/80 hover:bg-sidebar-accent"
+        >
+          <LayoutGrid size={13} strokeWidth={1.8} className="shrink-0" />
+          <span className="truncate">
+            <Trans>Integrations</Trans>
+          </span>
+        </button>
+        </div>
       </aside>
 
       {/* The full-screen computer covers the sidebar, so its edge must not catch clicks there. */}
@@ -3582,37 +3590,51 @@ export function ShellPage() {
         <main
           aria-hidden={mobileSidebarOpen || undefined}
           inert={mobileSidebarOpen}
-          className="flex min-w-0 flex-1 flex-col bg-background"
+          className="relative flex min-w-0 flex-1 flex-col bg-background"
         >
-          <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
-            <div className="flex min-w-0 items-center gap-2">
-              {/* Collapsed bots sidebar: this header is the leading edge for window chrome. */}
-              {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-              <button
-                type="button"
-                aria-label={t`Open navigation`}
-                onClick={() => setMobileSidebarOpen(true)}
-                className="app-no-drag grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-              >
-                <Menu size={19} strokeWidth={1.7} />
-              </button>
-              {botsSidebarCollapsed ? (
+          {/* Window drag region formerly provided by the conversation header. */}
+          <div className="app-drag pointer-events-none absolute inset-x-0 top-0 h-12" aria-hidden="true" />
+          {(active || activeGroup) && !mobileSidebarOpen ? (
+            <div className="pointer-events-none absolute inset-x-0 top-2.5 z-40 flex items-start justify-center px-3">
+              <div className="app-no-drag pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
+                {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
                 <button
                   type="button"
-                  data-testid="restore-bots-sidebar"
-                  aria-label={t`Show bots`}
-                  title={t`Show bots`}
-                  onClick={() => setBotsSidebarCollapsedPref(false)}
-                  className="app-no-drag hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                  aria-label={t`Open navigation`}
+                  onClick={() => setMobileSidebarOpen(true)}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
                 >
-                  <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                  <Menu size={19} strokeWidth={1.7} />
                 </button>
-              ) : null}
+                {botsSidebarCollapsed ? (
+                  <button
+                    type="button"
+                    data-testid="restore-bots-sidebar"
+                    aria-label={t`Show bots`}
+                    title={t`Show bots`}
+                    onClick={() => setBotsSidebarCollapsedPref(false)}
+                    className="hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                  >
+                    <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+              {/* One control only: avatar, name and run status share a single
+                  click that opens or closes the Bot panel (UX-03 F5). */}
               <button
                 type="button"
                 data-testid="bot-settings-trigger"
-                onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-                className="app-no-drag flex min-w-0 items-center gap-3"
+                title={inGroup ? t`Open group settings` : t`Open bot settings`}
+                aria-label={
+                  inGroup
+                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                    : (active?.name ?? t`Select a bot`)
+                }
+                onClick={() => {
+                  const target = inGroup ? ("group-settings" as const) : ("settings" as const);
+                  setPanel(panel === target ? null : target);
+                }}
+                className="app-no-drag pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
               >
                 {inGroup ? (
                   <GroupAvatar
@@ -3627,84 +3649,33 @@ export function ShellPage() {
                     status={activeBotLiveStatus}
                   />
                 ) : null}
-                <span className="min-w-0">
-                  <span
-                    className="block truncate text-[16px] font-medium text-foreground"
-                    dir="auto"
-                  >
-                    {inGroup
-                      ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                      : (active?.name ?? t`Select a bot`)}
-                  </span>
+                <span
+                  className="max-w-[150px] truncate text-[13px] font-medium text-foreground"
+                  dir="auto"
+                >
+                  {inGroup
+                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                    : (active?.name ?? t`Select a bot`)}
                 </span>
+                {!inGroup && active && panelRun ? (
+                  <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                    <span
+                      className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
+                      style={
+                        isRunActive(panelRun.status)
+                          ? { animation: "rkPulse 1.2s ease-in-out infinite" }
+                          : undefined
+                      }
+                      aria-hidden="true"
+                    />
+                    <span className={runStatusTextClass(panelRun.status)}>
+                      {runStatusLabel(panelRun.status)}
+                    </span>
+                  </span>
+                ) : null}
               </button>
             </div>
-            <div className="flex items-center gap-1">
-              {!inGroup && active ? (
-                <button
-                  type="button"
-                  title={t`Agent computer`}
-                  onClick={() => {
-                    const next = panel === "computer" ? null : "computer";
-                    setPanel(next);
-                    if (next === "computer" && active) {
-                      // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                      void refreshThread(active.id).catch(() => undefined);
-                    }
-                  }}
-                  data-active={panel === "computer" ? "" : undefined}
-                  className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
-                >
-                  <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
-                </button>
-              ) : null}
-              {!inGroup && active ? (
-                <div className="app-no-drag w-[190px]">
-                  <ModelTreePicker
-                    id="model-switch-trigger"
-                    align="end"
-                    value={
-                      active.modelProvider
-                        ? { provider: active.modelProvider, modelId: active.modelId ?? "" }
-                        : null
-                    }
-                    spaceDefaultLabel={
-                      bootstrapMe?.defaultProvider && bootstrapMe.defaultModel
-                        ? modelSwitchCatalog.find(
-                            (entry) =>
-                              entry.provider === bootstrapMe.defaultProvider &&
-                              entry.id === bootstrapMe.defaultModel,
-                          )?.label
-                        : undefined
-                    }
-                    onChange={(next) => void switchConversationModel(next)}
-                  />
-                </div>
-              ) : null}
-              {!inGroup && active && panelRun ? (
-                <button
-                  type="button"
-                  data-testid="run-panel-trigger"
-                  title={t`Run details`}
-                  onClick={() => setPanel(panel === "run" ? null : "run")}
-                  data-active={panel === "run" ? "" : undefined}
-                  className="app-no-drag ms-1 flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12.5px] hover:bg-accent data-active:bg-accent"
-                >
-                  <span
-                    className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
-                    style={
-                      isRunActive(panelRun.status)
-                        ? { animation: "rkPulse 1.2s ease-in-out infinite" }
-                        : undefined
-                    }
-                  />
-                  <span className={runStatusTextClass(panelRun.status)}>
-                    {runStatusLabel(panelRun.status)}
-                  </span>
-                </button>
-              ) : null}
-            </div>
-          </div>
+          ) : null}
           {!active && !activeGroup && initialBotsLoaded ? (
             <div className="grid flex-1 place-items-center">
               <Button onClick={() => setPanel("create")}>
@@ -3716,6 +3687,7 @@ export function ShellPage() {
             <Transcript
               key={activeSnapshot?.threadId}
               scrollRef={messageScroll}
+              reservePillBand={Boolean(active || activeGroup)}
               scrollRequest={scrollRequest}
               onScrollRequestHandled={clearScrollRequest}
               artifactTarget={transcriptArtifactTarget}
@@ -3896,8 +3868,7 @@ export function ShellPage() {
             {panel !== "routine" &&
             panel !== "create" &&
             panel !== "create-group" &&
-            panel !== "group-settings" &&
-            panel !== "run" ? (
+            panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-[13.5px] text-muted-foreground">
                   {panel === "settings" ? (
@@ -3909,29 +3880,6 @@ export function ShellPage() {
                   )}
                 </span>
                 <div className="flex gap-1">
-                  {active &&
-                  panel === "computer" &&
-                  !computerOpen &&
-                  computerPanelNeedsMaintenance(computer?.state, booting) ? (
-                    <ComputerMaintenanceActions
-                      botId={active.id}
-                      computer={computer}
-                      onChanged={async () => {
-                        await refreshThread(active.id);
-                      }}
-                    />
-                  ) : null}
-                  {active ? (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={panel === "settings" ? t`Show computer` : t`Show settings`}
-                      onClick={() => setPanel(panel === "settings" ? "computer" : "settings")}
-                      className={panel === "settings" ? "text-foreground" : "text-muted-foreground"}
-                    >
-                      <Settings size={16} strokeWidth={1.7} />
-                    </Button>
-                  ) : null}
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -3941,97 +3889,6 @@ export function ShellPage() {
                     <X size={16} strokeWidth={1.8} />
                   </Button>
                 </div>
-              </div>
-            ) : null}
-            {panel === "run" && active && panelRun ? (
-              <RunDetailsPanel
-                runId={panelRun.id}
-                snapshot={activeSnapshot}
-                onClose={() => setPanel(null)}
-                onOpenComputer={() => setPanel("computer")}
-              />
-            ) : null}
-            {panel === "computer" && active ? (
-              <div>
-                <div
-                  data-testid="computer-preview"
-                  className="group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-background"
-                >
-                  {computerOpen ? (
-                    <div className="grid h-full place-items-center text-sm text-muted-foreground/80">
-                      <Trans>Open in full window</Trans>
-                    </div>
-                  ) : computer?.kind === "desktop" ? (
-                    <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80" />
-                  ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
-                    <iframe
-                      title={t`Bot screen preview`}
-                      src={embeddedScreenUrl}
-                      sandbox={screenIframeSandbox(embeddedScreenUrl)}
-                      className="h-full w-full border-0 bg-black"
-                      allow="clipboard-read; clipboard-write"
-                      style={{ pointerEvents: "none" }}
-                    />
-                  ) : (
-                    <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80">
-                      {computerScreenError ??
-                        (computersAreUnavailable(bootstrapMe?.sandboxProvider) ? (
-                          <ComputersUnavailableHint />
-                        ) : (
-                          computerPlaceholder(
-                            computer?.state,
-                            booting,
-                            computerLabel(computer?.mode, active.name),
-                          )
-                        ))}
-                    </div>
-                  )}
-                  {!computerScreenError ? (
-                    <button
-                      type="button"
-                      data-testid="computer-preview-open"
-                      className="absolute inset-0 flex cursor-pointer items-center justify-center bg-overlay/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                      aria-label={t`Open`}
-                      onClick={() => void openComputer()}
-                    >
-                      <span className="inline-flex items-center gap-2 rounded-full bg-overlay px-3.5 py-2 text-[14px] text-foreground shadow-md">
-                        <Maximize2 size={15} strokeWidth={1.9} aria-hidden />
-                        <Trans>Open</Trans>
-                      </span>
-                    </button>
-                  ) : null}
-                </div>
-                <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
-                  {t`${active.name}'s screen`}
-                </p>
-                <RoutineListHeader
-                  onCreate={() => {
-                    setRoutineDraft(emptyRoutineDraft());
-                    setRoutineWebhookSecret(null);
-                    setEditingRoutine(null);
-                    setRoutineError(null);
-                    setPanel("routine");
-                  }}
-                />
-                {activeRoutines.map((routine) => {
-                  const routineRunning =
-                    snapshot?.run?.routineId === routine.id && isActive(snapshot.run.status);
-                  return (
-                    <RoutineListRow
-                      key={routine.id}
-                      routine={routine}
-                      running={routineRunning}
-                      onOpen={() => {
-                        setRoutineDraft(draftFromRoutine(routine));
-                        setRoutineWebhookSecret(null);
-                        setEditingRoutine(routine);
-                        setRoutineError(null);
-                        setPanel("routine");
-                      }}
-                      onStop={() => void stopRun()}
-                    />
-                  );
-                })}
               </div>
             ) : null}
             {panel === "group-settings" && activeGroup ? (
@@ -4063,6 +3920,105 @@ export function ShellPage() {
               <BotSettings
                 key={active.id}
                 bot={active}
+                settingsTab={settingsTab}
+                onSettingsTabChange={setSettingsTab}
+                computerScreen={
+                  <div>
+                    <div
+                      data-testid="computer-preview"
+                      className="group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-background"
+                    >
+                      {computerOpen ? (
+                        <div className="grid h-full place-items-center text-sm text-muted-foreground/80">
+                          <Trans>Open in full window</Trans>
+                        </div>
+                      ) : computer?.kind === "desktop" ? (
+                        <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80" />
+                      ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
+                        <iframe
+                          title={t`Bot screen preview`}
+                          src={embeddedScreenUrl}
+                          sandbox={screenIframeSandbox(embeddedScreenUrl)}
+                          className="h-full w-full border-0 bg-black"
+                          allow="clipboard-read; clipboard-write"
+                          style={{ pointerEvents: "none" }}
+                        />
+                      ) : (
+                        <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80">
+                          {computerScreenError ??
+                            (computersAreUnavailable(bootstrapMe?.sandboxProvider) ? (
+                              <ComputersUnavailableHint />
+                            ) : (
+                              computerPlaceholder(
+                                computer?.state,
+                                booting,
+                                computerLabel(computer?.mode, active.name),
+                              )
+                            ))}
+                        </div>
+                      )}
+                      {!computerScreenError ? (
+                        <button
+                          type="button"
+                          data-testid="computer-preview-open"
+                          className="absolute inset-0 flex cursor-pointer items-center justify-center bg-overlay/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                          aria-label={t`Open`}
+                          onClick={() => void openComputer()}
+                        >
+                          <span className="inline-flex items-center gap-2 rounded-full bg-overlay px-3.5 py-2 text-[14px] text-foreground shadow-md">
+                            <Maximize2 size={15} strokeWidth={1.9} aria-hidden />
+                            <Trans>Open</Trans>
+                          </span>
+                        </button>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
+                      {t`${active.name}'s screen`}
+                    </p>
+                    {!computerOpen &&
+                    computerPanelNeedsMaintenance(computer?.state, booting) ? (
+                      <ComputerMaintenanceActions
+                        botId={active.id}
+                        computer={computer}
+                        onChanged={async () => {
+                          await refreshThread(active.id);
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                }
+                routines={
+                  <div>
+                    <RoutineListHeader
+                      onCreate={() => {
+                        setRoutineDraft(emptyRoutineDraft());
+                        setRoutineWebhookSecret(null);
+                        setEditingRoutine(null);
+                        setRoutineError(null);
+                        setPanel("routine");
+                      }}
+                    />
+                    {activeRoutines.map((routine) => {
+                      const routineRunning =
+                        snapshot?.run?.routineId === routine.id && isActive(snapshot.run.status);
+                      return (
+                        <RoutineListRow
+                          key={routine.id}
+                          routine={routine}
+                          running={routineRunning}
+                          onOpen={() => {
+                            setRoutineDraft(draftFromRoutine(routine));
+                            setRoutineWebhookSecret(null);
+                            setEditingRoutine(routine);
+                            setRoutineError(null);
+                            setPanel("routine");
+                          }}
+                          onStop={() => void stopRun()}
+                        />
+                      );
+                    })}
+                  </div>
+                }
                 memoryProviderConfigured={memoryProviderConfig != null}
                 onSkillsChange={setAgentSkills}
                 onSave={async ({ computerMode, ...patch }) => {
@@ -4114,7 +4070,10 @@ export function ShellPage() {
                 saving={savingRoutine}
                 running={runningRoutine}
                 error={routineError}
-                onBack={() => setPanel("computer")}
+                onBack={() => {
+                    setPanel("settings");
+                    setSettingsTab("detail");
+                  }}
                 onClose={() => setPanel(null)}
                 onEnsureWebhook={async () => {
                   await ensureWebhookSecret(active.id);
@@ -4835,6 +4794,7 @@ export function ShellPage() {
 // (shell-execution-transcript.test.tsx); rendering behavior is unchanged.
 export const Transcript = memo(function Transcript({
   scrollRef,
+  reservePillBand,
   scrollRequest,
   onScrollRequestHandled,
   artifactTarget,
@@ -4876,6 +4836,12 @@ export const Transcript = memo(function Transcript({
   onOpenComputer,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
+  /**
+   * UX-03 §5: a floating identity pill is anchored over the top of the
+   * conversation column — reserve its band as scroll-top padding so
+   * transcript controls are never clicked through the pill.
+   */
+  reservePillBand?: boolean;
   scrollRequest: { messageId: string; nonce: number } | null;
   onScrollRequestHandled: () => void;
   artifactTarget: ArtifactTarget;
@@ -5179,7 +5145,13 @@ export const Transcript = memo(function Transcript({
             following.current = false;
           }
         }}
-        className="rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
+        className={`rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-5 md:px-7 md:pb-6 ${
+          // UX-03 §5 collision avoidance: while the floating identity pill is
+          // up it occupies the top ~48px of this column (top-2.5 + h-[38px]);
+          // reserve its band as scroll-top padding so "Load earlier messages"
+          // and the first transcript rows are never clicked through the pill.
+          reservePillBand ? "pt-16" : "pt-5 md:pt-6"
+        }`}
       >
         {olderCursor != null ? (
           <button

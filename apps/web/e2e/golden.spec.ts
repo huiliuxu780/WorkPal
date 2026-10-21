@@ -91,13 +91,14 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
       message: "the second protected-input run must be ready for takeover",
     })
     .toBe("waiting_takeover");
-  // Agent computer toggles the panel. Re-open when closed so Open can refresh computer status.
+  // The computer view is a tab inside the settings panel; re-open when closed
+  // so Open can refresh computer status.
   const sidePanel = page.getByTestId("side-panel");
-  if ((await sidePanel.getAttribute("data-panel")) === "computer") {
-    await page.getByTitle("Agent computer").click();
+  if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
   }
-  await page.getByTitle("Agent computer").click();
-  await expect(sidePanel).toHaveAttribute("data-panel", "computer");
+  await page.getByRole("tab", { name: "Computer" }).click();
+  await expect(sidePanel).toHaveAttribute("data-panel", "settings");
   await expect(sidePanel).toHaveCSS("width", "384px");
   const [mainBox, panelBox] = await Promise.all([
     page.locator("main").boundingBox(),
@@ -118,6 +119,11 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   });
   await captureScreenshot(page, testInfo, "09a-computer-takeover-skipped");
 
+  // Routines live in the Details tab; the computer flow above left the panel
+  // on the Computer tab. Switch by accessible tab semantics, not DOM order.
+  const detailsTab = page.getByRole("tab", { name: "Details" });
+  await detailsTab.click();
+  await expect(detailsTab).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Create Routine" }).click();
   await page.locator("label:has-text('Name') input").fill("Monday briefing");
   await page
@@ -260,7 +266,12 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await expect(page.getByPlaceholder("https://example.com/mcp")).toHaveValue(
     "https://mcp.example.test/mcp",
   );
-  await expect(page.locator("select")).toHaveValue("bearer");
+  // Scope by option content: with the Bot panel open the Details tab's
+  // Thinking select is also on the page — the auth select is the one whose
+  // options are the authentication modes.
+  await expect(
+    page.locator("select").filter({ has: page.locator("option[value='bearer']") }),
+  ).toHaveValue("bearer");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
 
   await page.getByRole("button", { name: "Add Treg", exact: true }).click();
@@ -279,7 +290,10 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await page
     .getByPlaceholder("https://example.com/openapi.json")
     .fill("https://api.example.test/openapi.json");
-  await page.locator("select").selectOption("bearer");
+  await page
+    .locator("select")
+    .filter({ has: page.locator("option[value='bearer']") })
+    .selectOption("bearer");
   await page.getByPlaceholder("Credential").fill("fake-openapi-browser-credential");
   await page.getByRole("button", { name: "Verify and add", exact: true }).click();
   await expect(
@@ -301,11 +315,9 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await page.getByRole("button", { name: "Close integrations" }).click();
 
   await page.getByText("Chief").first().click();
-  const gear = page.getByRole("button", { name: "Show settings" });
-  if (!(await gear.isVisible().catch(() => false))) {
-    await page.getByTitle("Agent computer").click();
+  if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
   }
-  await gear.click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export" }).click();
   const download = await downloadPromise;

@@ -558,17 +558,12 @@ msgstr "추가 중…"
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineSchedule.tsx
-#: src/pages/shell/bot-panel.tsx
 msgid "Advanced"
 msgstr "고급 설정"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Advanced..."
 msgstr "고급..."
-
-#: src/pages/Shell.tsx
-msgid "Agent computer"
-msgstr "Agent 컴퓨터"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Agent connections"
@@ -865,6 +860,10 @@ msgstr "Bot 화면"
 #: src/pages/Shell.tsx
 msgid "Bot screen preview"
 msgstr "Bot 화면 미리보기"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Bot settings sections"
+msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Bot to link"
@@ -2001,6 +2000,7 @@ msgstr ""
 
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Details"
 msgstr ""
 
@@ -2659,6 +2659,10 @@ msgstr "나가기"
 msgid "Legacy documents"
 msgstr ""
 
+#: src/pages/shell/bot-panel.tsx
+msgid "Library"
+msgstr ""
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
 msgstr "라이트"
@@ -3276,8 +3280,16 @@ msgstr "열기"
 msgid "Open {0}"
 msgstr "{0} 열기"
 
+#: src/pages/Shell.tsx
+msgid "Open bot settings"
+msgstr ""
+
 #: src/components/RunDetailsPanel.tsx
 msgid "Open computer"
+msgstr ""
+
+#: src/pages/Shell.tsx
+msgid "Open group settings"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -3856,7 +3868,6 @@ msgid "Run at"
 msgstr "실행 시간"
 
 #: src/components/RunDetailsPanel.tsx
-#: src/pages/Shell.tsx
 msgid "Run details"
 msgstr ""
 
@@ -4122,10 +4133,6 @@ msgstr ""
 msgid "Show bots"
 msgstr ""
 
-#: src/pages/Shell.tsx
-msgid "Show computer"
-msgstr ""
-
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
@@ -4143,10 +4150,6 @@ msgstr "더 보기"
 #: src/pages/Auth.tsx
 msgid "Show password"
 msgstr "비밀번호 표시"
-
-#: src/pages/Shell.tsx
-msgid "Show settings"
-msgstr "설정 보기"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Show tool activity"
