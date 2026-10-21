@@ -149,5 +149,30 @@ describe("BotSettings three-tab layout", () => {
       );
     });
     expect(onTab).toHaveBeenCalledWith("library");
+    // ArrowLeft wraps backwards from the same (controlled) selection.
+    act(() => {
+      tablist.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onTab).toHaveBeenLastCalledWith("computer");
+  });
+
+  it("jumps to the first and last tab with Home and End", () => {
+    const onTab = vi.fn();
+    renderSettings("library", onTab);
+    const tablist = container.querySelector('[role="tablist"]') as HTMLElement;
+    act(() => {
+      tablist.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onTab).toHaveBeenCalledWith("computer");
+    act(() => {
+      tablist.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onTab).toHaveBeenLastCalledWith("detail");
   });
 });

@@ -3598,7 +3598,7 @@ export function ShellPage() {
           <div className="app-drag pointer-events-none absolute inset-x-0 top-0 h-12" aria-hidden="true" />
           {(active || activeGroup) && !mobileSidebarOpen ? (
             <div className="pointer-events-none absolute inset-x-0 top-2.5 z-40 flex items-start justify-center px-3">
-              <div className="pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
+              <div className="app-no-drag pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
                 {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
                 <button
                   type="button"
@@ -3636,7 +3636,7 @@ export function ShellPage() {
                   const target = inGroup ? ("group-settings" as const) : ("settings" as const);
                   setPanel(panel === target ? null : target);
                 }}
-                className="pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
+                className="app-no-drag pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
               >
                 {inGroup ? (
                   <GroupAvatar
@@ -3689,6 +3689,7 @@ export function ShellPage() {
             <Transcript
               key={activeSnapshot?.threadId}
               scrollRef={messageScroll}
+              reservePillBand={Boolean(active || activeGroup)}
               scrollRequest={scrollRequest}
               onScrollRequestHandled={clearScrollRequest}
               artifactTarget={transcriptArtifactTarget}
@@ -4807,6 +4808,7 @@ export function ShellPage() {
 // (shell-execution-transcript.test.tsx); rendering behavior is unchanged.
 export const Transcript = memo(function Transcript({
   scrollRef,
+  reservePillBand,
   scrollRequest,
   onScrollRequestHandled,
   artifactTarget,
@@ -4848,6 +4850,12 @@ export const Transcript = memo(function Transcript({
   onOpenComputer,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
+  /**
+   * UX-03 §5: a floating identity pill is anchored over the top of the
+   * conversation column — reserve its band as scroll-top padding so
+   * transcript controls are never clicked through the pill.
+   */
+  reservePillBand?: boolean;
   scrollRequest: { messageId: string; nonce: number } | null;
   onScrollRequestHandled: () => void;
   artifactTarget: ArtifactTarget;
@@ -5151,7 +5159,13 @@ export const Transcript = memo(function Transcript({
             following.current = false;
           }
         }}
-        className="rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
+        className={`rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-5 md:px-7 md:pb-6 ${
+          // UX-03 §5 collision avoidance: while the floating identity pill is
+          // up it occupies the top ~48px of this column (top-2.5 + h-[38px]);
+          // reserve its band as scroll-top padding so "Load earlier messages"
+          // and the first transcript rows are never clicked through the pill.
+          reservePillBand ? "pt-16" : "pt-5 md:pt-6"
+        }`}
       >
         {olderCursor != null ? (
           <button

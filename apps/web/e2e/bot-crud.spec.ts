@@ -137,6 +137,19 @@ test("bot creation, editing, and deletion persist", async ({ page }, testInfo) =
   await expect(sidePanel.getByRole("button", { name: "Take control" })).toHaveCount(0);
   await expect(sidePanel.getByTestId("computer-more-button")).toHaveCount(0);
   await captureScreenshot(page, testInfo, "27b-computer-panel");
+
+  // Close→reopen contract: the selected tab is Shell-level state and must
+  // survive closing the panel without a reload — the pill toggles the panel,
+  // and re-opening lands back on the same tab.
+  await page.getByTestId("bot-settings-trigger").click();
+  await expect(settings).toBeHidden();
+  await page.getByTestId("bot-settings-trigger").click();
+  await expect(settings).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Computer" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
   await page.getByRole("tab", { name: "Details" }).click();
 
   await nameInput.fill("Atlas");

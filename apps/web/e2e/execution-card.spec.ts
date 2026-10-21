@@ -540,6 +540,11 @@ test("a paged-out historical Run expands from its card after loading earlier mes
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
 
+  // UX-03 regression guard: the floating identity pill sits at the top of the
+  // transcript column and must never intercept clicks on transcript controls.
+  const pill = page.getByTestId("bot-settings-trigger");
+  await expect(pill).toBeVisible();
+
   // Page back until the shell returns, then expand from the card.
   await expect
     .poll(
@@ -575,6 +580,10 @@ test("a paged-out historical Run expands from its card after loading earlier mes
   // guard) — covered end-to-end by execution-history.spec.ts; here the card
   // simply stays consistent after the paging dance.
   await expect(cardOf(page, title)).toHaveAttribute("data-status", "done");
+
+  // After the whole paging dance the pill still opens the Bot panel.
+  await pill.click();
+  await expect(page.getByTestId("bot-settings")).toBeVisible();
 });
 
 test("a cleared Run's card never revives through artifact maintenance", async ({ page }) => {
