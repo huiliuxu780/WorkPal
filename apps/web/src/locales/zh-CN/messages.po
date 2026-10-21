@@ -3762,9 +3762,15 @@ msgid "Result preview truncated"
 msgstr "结果预览已截断"
 
 #: src/lib/execution-card.ts
+#: src/pages/Shell.tsx
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Retry"
 msgstr "重试"
+
+#. placeholder {0}: botNameOf?.(entry.botId) ?? entry.botId
+#: src/pages/Shell.tsx
+msgid "Retry {0}"
+msgstr "重试 {0}"
 
 #: src/App.tsx
 #: src/pages/PeerMessagesOverlay.tsx
@@ -3780,6 +3786,7 @@ msgid "Retrying"
 msgstr ""
 
 #: src/lib/execution-card.ts
+#: src/pages/Shell.tsx
 msgid "Retrying…"
 msgstr "重试中…"
 

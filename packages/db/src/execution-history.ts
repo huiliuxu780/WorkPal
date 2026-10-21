@@ -376,6 +376,7 @@ export async function buildExecutionSummariesForRuns(
       artifacts: artifactsByRun.get(run.id) ?? [],
       artifactsTotal,
       anchorMessageId: anchorMessage?.id ?? null,
+      sourceMessageId: run.sourceMessageId,
       retryOfRunId: run.retryOfRunId ?? null,
       retrySuccessorRunId: successorByPredecessor.get(run.id)?.id ?? null,
       manualRetry: projectManualRetryEligibility({

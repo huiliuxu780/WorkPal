@@ -490,6 +490,53 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(transcriptOf(host).lastElementChild).toBe(failedShell);
   });
 
+  it("offers message-level retry only for cardless cancelled Runs the projection allows (PD-01)", () => {
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "PLAIN-CANCELLED-ASK" }]),
+        message("m2", "user", [{ kind: "text", text: "TRACKED-CANCELLED-ASK" }]),
+        message("m3", "user", [{ kind: "text", text: "DENIED-CANCELLED-ASK" }]),
+      ],
+      runs: [],
+      executions: [
+        summary({
+          runId: "run-cardless",
+          status: "cancelled",
+          title: "CARDLESS-CANCEL",
+          sourceMessageId: "m1",
+          manualRetry: { allowed: true },
+        }),
+        summary({
+          runId: "run-carded",
+          status: "cancelled",
+          title: "CARDED-CANCEL",
+          sourceMessageId: "m2",
+          counts: { steps: 1 },
+          manualRetry: { allowed: true },
+        }),
+        summary({
+          runId: "run-denied",
+          status: "cancelled",
+          title: "DENIED-CANCEL",
+          sourceMessageId: "m3",
+          manualRetry: { allowed: false, reason: "not_root" },
+        }),
+      ],
+    });
+
+    const retriesFor = (messageId: string) =>
+      host.querySelectorAll(`[data-message-id="${messageId}"] [data-testid="message-retry"]`);
+
+    // Cardless cancelled Run: exactly one entry on its triggering message (D3).
+    expect(retriesFor("m1")).toHaveLength(1);
+    // A Run WITH a surface keeps the card's own entry — no message-level
+    // duplicate (D7); its shell renders as before.
+    expect(retriesFor("m2")).toHaveLength(0);
+    expect(host.textContent).toContain("CARDED-CANCEL");
+    // A denied projection yields no actionable entry (D4).
+    expect(retriesFor("m3")).toHaveLength(0);
+  });
+
   it("creates no execution surface for Todo-only, Activity-only or plain active Runs", () => {
     const host = renderTranscript({
       messages: [

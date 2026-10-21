@@ -1,13 +1,15 @@
 import { expect, type Page, test } from "@playwright/test";
-import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
+import { activeBotId, completeOnboarding, createNamedBot, rpc, signup } from "./helpers";
 
 type Summary = {
   runId: string;
   threadId: string;
+  botId: string;
   title: string;
   status: string;
   rev: number;
   counts?: { steps?: number };
+  sourceMessageId?: string;
   retryOfRunId?: string;
   retrySuccessorRunId?: string;
   manualRetry?: { allowed: boolean; reason?: string };
@@ -177,4 +179,203 @@ test("a cancelled Run retries from the execution card in its source conversation
 
   // The successor re-runs the same hanging prompt; leave nothing running.
   await rpc(page, "threads/stop", { botId }).catch(() => undefined);
+});
+
+test("a cancelled cardless Run retries from its triggering message (PD-01)", async ({ page }) => {
+  const stamp = Date.now();
+  await signup(page, `msg-retry-${stamp}@rakazo.test`, "password12", "Message Retry");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+
+  // The plain hang fixture publishes no Plan/Step/Intervention, so the
+  // cancelled Run keeps NO execution surface (UX-01B rule 1, pinned by
+  // execution-card.spec) and the card-borne MR-01 entry does not exist.
+  await send(page, `keep working until i stop you ${stamp}`);
+  await expect
+    .poll(
+      async () => {
+        const rows = await executionsOf(page, botId);
+        return rows.find((row) => row.title.includes(`${stamp}`))?.status ?? "none";
+      },
+      { timeout: 60_000, intervals: [250, 500, 1_000] },
+    )
+    .toBe("running");
+  await rpc(page, "threads/stop", { botId });
+  const cancelled = await settledSummary(page, botId, `${stamp}`);
+  expect(cancelled.status).toBe("cancelled");
+  expect(cancelled.manualRetry?.allowed).toBe(true);
+  expect(cancelled.counts?.steps).toBeUndefined();
+  await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0);
+
+  // The entry rides the triggering message's hover rail and restores from the
+  // same projection after a reload (D3/D6) — still without any card (D1).
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  const userRow = page
+    .locator("[data-message-id]")
+    .filter({ hasText: `keep working until i stop you ${stamp}` })
+    .first();
+  await expect(userRow).toBeVisible({ timeout: 20_000 });
+  await userRow.hover();
+  const retry = userRow.getByTestId("message-retry");
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0);
+  await retry.click();
+
+  // Exactly one successor through the existing runs/retry path (D5/D8); the
+  // projection flip removes the entry, so a second click is impossible.
+  await expect
+    .poll(
+      async () => {
+        const rows = await executionsOf(page, botId);
+        return rows.filter((row) => row.retryOfRunId === cancelled.runId).length;
+      },
+      { timeout: 90_000, intervals: [250, 500, 1_000] },
+    )
+    .toBe(1);
+  await expect(userRow.getByTestId("message-retry")).toHaveCount(0);
+
+  // The successor re-runs the same hanging prompt; leave nothing running.
+  await rpc(page, "threads/stop", { botId }).catch(() => undefined);
+});
+
+test("a group message's secondary-bot cancelled Run restores its entry after pagination (PD-01 D10)", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  await signup(page, `group-retry-${stamp}@rakazo.test`, "password12", "Group Retry");
+  await completeOnboarding(page);
+  const chiefId = activeBotId(page);
+  const writerId = await createNamedBot(page, "Writer");
+
+  const group = await rpc<{ id: string }>(page, "groups/create", {
+    name: `Retry team ${stamp}`,
+    botIds: [chiefId, writerId],
+  });
+  await page.goto(`/app/g/${group.id}`);
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+
+  // Deterministic setup: one group message mentioning both bots creates one
+  // hanging Run each — the "all weigh in" marker is required: multiple
+  // explicit mentions WITHOUT a separate-answers request route to a single
+  // owner by product policy (response-owner.ts). The message links only the
+  // FIRST Run via message.runId, so the secondary bot's Run is reachable
+  // only through the summary's sourceMessageId projection (D9).
+  const ask = `keep working until i stop you, all weigh in ${stamp}`;
+  await rpc(page, "threads/send", {
+    groupId: group.id,
+    text: ask,
+    mentions: [chiefId, writerId],
+    clientNonce: `gr-send-${stamp}`,
+  });
+  const groupExecutions = async () => {
+    const snapshot = await rpc<{ executions?: Summary[] }>(page, "threads/get", {
+      groupId: group.id,
+    });
+    return snapshot.executions ?? [];
+  };
+  await expect
+    .poll(
+      async () => (await groupExecutions()).filter((row) => row.status === "running").length,
+      { timeout: 60_000, intervals: [250, 500, 1_000] },
+    )
+    .toBe(2);
+  await rpc(page, "threads/stop", { groupId: group.id });
+  await expect
+    .poll(
+      async () =>
+        (await groupExecutions()).filter(
+          (row) => row.status === "cancelled" && row.manualRetry?.allowed,
+        ).length,
+      { timeout: 60_000, intervals: [250, 500, 1_000] },
+    )
+    .toBe(2);
+
+  // UI side (D3/D10): a reload restores the transcript from the server
+  // projection and the rail renders BOTH entries on the one triggering
+  // message — including the secondary bot's, which message.runId cannot
+  // reference — distinguishable by bot name.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
+  const userRow = page
+    .locator("[data-message-id]")
+    .filter({ hasText: `all weigh in ${stamp}` })
+    .first();
+  await expect(userRow).toBeVisible({ timeout: 20_000 });
+  await userRow.scrollIntoViewIfNeeded();
+  await userRow.hover();
+  const retries = userRow.getByTestId("message-retry");
+  await expect(retries).toHaveCount(2, { timeout: 15_000 });
+  await expect(retries.nth(0)).toHaveAccessibleName(/Retry .+/);
+  await expect(retries.nth(1)).toHaveAccessibleName(/Retry .+/);
+
+  const triggerMessageId = await (async () => {
+    const snapshot = await rpc<{ messages: Array<Record<string, unknown> & { id: string }> }>(
+      page,
+      "threads/get",
+      { groupId: group.id },
+    );
+    const trigger = snapshot.messages.find((message) =>
+      JSON.stringify(message).includes(`all weigh in ${stamp}`),
+    );
+    if (!trigger) throw new Error("triggering group message not found in the snapshot");
+    return trigger.id;
+  })();
+
+  // Evict the trigger from the first history page: each filler echoes, so 60
+  // sends put ~120 messages behind it (page window is 100).
+  for (let i = 0; i < 60; i++) {
+    await rpc(page, "threads/send", {
+      groupId: group.id,
+      text: `group-filler-${stamp}-${i}`,
+      clientNonce: `gf-${stamp}-${i}`,
+    });
+  }
+  // Server-trusted quiescence: every filler echo Run terminal before paging.
+  await expect
+    .poll(
+      async () =>
+        (await groupExecutions()).filter(
+          (row) => row.status === "running" || row.status === "queued",
+        ).length,
+      { timeout: 120_000, intervals: [250, 500, 1_000] },
+    )
+    .toBe(0);
+
+  // Projection side (D9/D10): walk the REAL threads/messages cursor until the
+  // page holds the trigger; that page's executions must carry BOTH cancelled
+  // Runs with the sourceMessageId association — the secondary bot's is
+  // reachable ONLY through it. This is the exact projection the transcript
+  // consumes when the user pages back through "Load earlier messages" (whose
+  // rendering seam for paged executions is pinned by the card-pagination
+  // specs); walking it by RPC keeps the assertion deterministic instead of
+  // racing deep DOM paging on slow runners.
+  let cursor: number | undefined;
+  let pagedExecutions: Summary[] | null = null;
+  for (let attempt = 0; attempt < 6 && pagedExecutions === null; attempt++) {
+    const nextPage = await rpc<{
+      messages: Array<{ id: string }>;
+      olderCursor: number | null;
+      executions?: Summary[];
+    }>(
+      page,
+      "threads/messages",
+      cursor === undefined ? { groupId: group.id } : { groupId: group.id, before: cursor },
+    );
+    if (nextPage.messages.some((message) => message.id === triggerMessageId)) {
+      pagedExecutions = nextPage.executions ?? [];
+      break;
+    }
+    if (nextPage.olderCursor === null) break;
+    cursor = nextPage.olderCursor;
+  }
+  expect(pagedExecutions, "the trigger message must be reachable by paging back").not.toBeNull();
+  const restored = (pagedExecutions ?? []).filter(
+    (row) => row.status === "cancelled" && row.sourceMessageId === triggerMessageId,
+  );
+  expect(restored).toHaveLength(2);
+  expect(new Set(restored.map((row) => row.botId))).toEqual(new Set([chiefId, writerId]));
+  for (const row of restored) expect(row.manualRetry?.allowed).toBe(true);
+
+  await rpc(page, "threads/stop", { groupId: group.id }).catch(() => undefined);
 });

@@ -113,6 +113,7 @@ import {
   Plus,
   Puzzle,
   Reply,
+  RotateCcw,
   Search,
   Settings,
   Smile,
@@ -4899,7 +4900,7 @@ export const Transcript = memo(function Transcript({
   // detail cache, Interventions, execution-nav return focus and the per-anchor
   // ExecutionShell rendering) is owned by useExecutionTranscript; messageById
   // is shared read-only input, not an execution-region responsibility.
-  const { coveredAsks, renderExecutions } = useExecutionTranscript({
+  const { coveredAsks, renderExecutions, messageRetry } = useExecutionTranscript({
     threadId,
     artifactTarget,
     messages,
@@ -5274,6 +5275,15 @@ export const Transcript = memo(function Transcript({
                         side={message.role === "user" ? "start" : "end"}
                         onReply={onReply}
                         onReact={onReact}
+                        retryEntries={
+                          message.role === "user"
+                            ? messageRetry.entries.get(message.id)
+                            : undefined
+                        }
+                        onRetryRun={messageRetry.retryRun}
+                        retryingRunId={messageRetry.retryingRunId}
+                        retryError={messageRetry.retryError}
+                        botNameOf={memberName}
                       />
                     )}
                   </div>
@@ -6247,11 +6257,26 @@ function MessageHoverActions({
   side,
   onReply,
   onReact,
+  retryEntries,
+  onRetryRun,
+  retryingRunId,
+  retryError,
+  botNameOf,
 }: {
   message: ThreadMessage;
   side: "start" | "end";
   onReply: (message: ThreadMessage) => void;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
+  /**
+   * PD-01: cancelled cardless Runs this message triggered, from the server
+   * projection (D3/D4/D9). Undefined for bot-side messages; Runs with an
+   * execution card never appear here (D7).
+   */
+  retryEntries?: Array<{ runId: string; botId: string }>;
+  onRetryRun: (runId: string) => void;
+  retryingRunId: string | null;
+  retryError: { runId: string; message: string } | null;
+  botNameOf?: (botId: string | undefined) => string | undefined;
 }) {
   const { t } = useLingui();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -6316,6 +6341,40 @@ function MessageHoverActions({
         >
           <Reply size={15} strokeWidth={1.7} />
         </button>
+        {retryEntries?.map((entry) => {
+          const retrying = retryingRunId === entry.runId;
+          return (
+            <button
+              key={entry.runId}
+              type="button"
+              data-testid="message-retry"
+              aria-label={
+                retrying
+                  ? t`Retrying…`
+                  : retryEntries.length > 1
+                    ? t`Retry ${botNameOf?.(entry.botId) ?? entry.botId}`
+                    : t`Retry`
+              }
+              disabled={retryingRunId !== null}
+              onClick={() => onRetryRun(entry.runId)}
+              className={cn(
+                iconButtonClass,
+                "h-11 w-11 [@media(hover:hover)_and_(pointer:fine)]:h-7 [@media(hover:hover)_and_(pointer:fine)]:w-7",
+              )}
+            >
+              <RotateCcw size={15} strokeWidth={1.7} />
+            </button>
+          );
+        })}
+        {retryError && retryEntries?.some((entry) => entry.runId === retryError.runId) ? (
+          <span
+            data-testid="message-retry-error"
+            role="status"
+            className="max-w-40 truncate text-xs text-destructive"
+          >
+            {retryError.message}
+          </span>
+        ) : null}
         <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
           <DropdownMenuTrigger
             aria-label={t`More`}

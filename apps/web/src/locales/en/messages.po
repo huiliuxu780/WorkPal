@@ -3762,9 +3762,15 @@ msgid "Result preview truncated"
 msgstr "Result preview truncated"
 
 #: src/lib/execution-card.ts
+#: src/pages/Shell.tsx
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Retry"
 msgstr "Retry"
+
+#. placeholder {0}: botNameOf?.(entry.botId) ?? entry.botId
+#: src/pages/Shell.tsx
+msgid "Retry {0}"
+msgstr "Retry {0}"
 
 #: src/App.tsx
 #: src/pages/PeerMessagesOverlay.tsx
@@ -3780,6 +3786,7 @@ msgid "Retrying"
 msgstr "Retrying"
 
 #: src/lib/execution-card.ts
+#: src/pages/Shell.tsx
 msgid "Retrying…"
 msgstr "Retrying…"
 

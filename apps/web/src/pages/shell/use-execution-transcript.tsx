@@ -159,6 +159,27 @@ export function useExecutionTranscript({
       }),
     [runs, plans, steps, serverSummaries, executionDetails, shownInterventions],
   );
+  // PD-01: message-level retry entries for cancelled Runs that kept NO
+  // execution-card surface. The association is projection-driven
+  // (summary.sourceMessageId, D9), so it restores identically after reload
+  // and history pagination — including a secondary bot's Run of a group
+  // message, which message.runId cannot express. Runs WITH a surface keep
+  // the card's own entry (D7); a denied projection never yields an
+  // actionable entry (D4).
+  const messageRetryEntries = useMemo(() => {
+    const entries = new Map<string, Array<{ runId: string; botId: string }>>();
+    if (!serverSummaries) return entries;
+    for (const summary of serverSummaries.values()) {
+      if (summary.status !== "cancelled") continue;
+      if (!summary.sourceMessageId) continue;
+      if (eligibleRunIds.has(summary.runId)) continue;
+      if (summary.manualRetry?.allowed !== true) continue;
+      const list = entries.get(summary.sourceMessageId) ?? [];
+      list.push({ runId: summary.runId, botId: summary.botId });
+      entries.set(summary.sourceMessageId, list);
+    }
+    return entries;
+  }, [serverSummaries, eligibleRunIds]);
   // Message ids whose bubble ask block already carries a settled status: a
   // settled Intervention of a surface-less Run yields its ask back to the
   // bubble (honest history) instead of vanishing with the region.
@@ -773,5 +794,14 @@ export function useExecutionTranscript({
         </ExecutionShell>
       );
     });
-  return { coveredAsks, renderExecutions };
+  return {
+    coveredAsks,
+    renderExecutions,
+    messageRetry: {
+      entries: messageRetryEntries,
+      retryRun,
+      retryingRunId,
+      retryError,
+    },
+  };
 }
