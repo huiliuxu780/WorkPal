@@ -300,6 +300,18 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
       clientNonce: `gf-${stamp}-${i}`,
     });
   }
+  // Server-trusted quiescence gate: every filler echo Run must be terminal
+  // before the reload, or its live events keep re-flowing the transcript and
+  // the paged-back row never turns stable for the real hover.
+  await expect
+    .poll(
+      async () =>
+        (await groupExecutions()).filter(
+          (row) => row.status === "running" || row.status === "queued",
+        ).length,
+      { timeout: 120_000, intervals: [250, 500, 1_000] },
+    )
+    .toBe(0);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
   const userRow = page
@@ -325,6 +337,7 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
   // BOTH cancelled Runs restore their entry on the one triggering message —
   // including the secondary bot's, which message.runId cannot reference —
   // and the two entries are distinguishable by bot name.
+  await userRow.scrollIntoViewIfNeeded();
   await userRow.hover();
   const retries = userRow.getByTestId("message-retry");
   await expect(retries).toHaveCount(2, { timeout: 15_000 });
