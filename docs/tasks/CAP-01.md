@@ -59,6 +59,16 @@ Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pu
 2. 删除 Task Center 用户界面，让等待、完成、失败、取消和重试回到来源 Bot / 原对话。
 3. 实施 UX-03：聊天顶部悬浮头像与状态，Bot 侧面板收敛为 `详情 / 资料库 / 电脑` 三 tab；群设置不变。
 
+### 1.4 对 Draft #83 的事实复核（2026-10-21）
+
+用户已在 stacked Draft PR #83 实现 UX-03 的主体。代码复核后的处理结论如下：
+
+- **保留**：移除旧聊天头部、顶部居中悬浮身份件、群头像簇继续打开 `GroupSettings`、Bot hero 继续打开 AvatarStudio、`详情 / 资料库 / 电脑` 三 tab、例行任务迁入详情、资料库懒加载、实时电脑预览与维护入口迁入电脑 tab。
+- **必须移除**：#83 继承并继续接线的 `BotPermissionsSection`、`CapabilityPolicyDraft`、policy draft Shell 状态、capability-policy E2E/mocks，以及只服务于该错误策略系统的 CAS transaction timeout 改动。
+- **必须修正**：当前悬浮胶囊仍包含 `bot-settings-trigger` 与 `run-panel-trigger` 两个按钮，只是视觉上共用外壳；这不符合“单一悬浮件、单击打开/收起 Bot 面板”的已批准交互。状态文案应属于同一个 Bot 面板触发按钮，Run 详情继续从原对话执行卡进入。
+- **必须修正**：`ComputerModePicker` 当前仍在详情 tab，应与实时屏幕和维护动作一起进入电脑 tab。
+- **交付边界调整**：不再要求 CAP-01 与 UX-03 挤在同一个 PR。保留两个完整功能 PR：先把 #81 收敛为 CAP-01，再将 #83 rebase/retarget 到收敛后的 #81 或其 merge commit。不得把它们继续拆成组件级小 PR。
+
 ## 2. 产品结构
 
 | 用户要做的事 | 入口 | 本批处理 |
@@ -106,7 +116,7 @@ Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pu
 ### F5. UX-03 管理面收敛
 
 - 移除聊天头部的 Bot 名称/头像 trigger、模型切换器、电脑按钮和独立 run pill。
-- 转录区水平居中贴顶显示一个悬浮头像件；状态环与 `运行中 · N 项动作` / `待审批 · 事由` 属于同一个控件。
+- 转录区水平居中贴顶显示一个悬浮头像件；头像、名称、状态环与 `运行中 · N 项动作` / `待审批 · 事由` 属于**同一个按钮和同一次点击行为**，不得在同一胶囊内嵌第二个 `run-panel-trigger`。
 - 点击悬浮件打开/收起 Bot 侧面板。
 - Bot 面板 hero 保留 AvatarStudio；tab 为 `详情 / 资料库 / 电脑`。
 - `详情` 迁入现有 BotSettings 的身份、通知、模型/思考、记忆、语音、导出/清空和例行任务入口。
@@ -114,6 +124,7 @@ Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pu
 - `电脑` 迁入现有电脑模式、实时屏幕、维护和完整窗口入口。
 - 群聊显示头像簇并打开现有 GroupSettings；GroupSettings 内容不改。
 - Connect Apps、Auto-review、规则、执行结果和成果不进入 Bot 面板。
+- 三个 tab 使用完整 tab 语义并支持键盘切换；当前 tab 与对应 panel 必须建立 `aria-controls` / `aria-labelledby` 关系。
 
 ## 4. 后端任务
 
@@ -146,11 +157,11 @@ Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pu
 
 ## 5. 实施顺序
 
-1. 将 #81 的功能代码恢复到 `main`，只保留经单独确认的任务文档；移出无关 nightly/memory 修改。
-2. 在现有 ApprovalRulesSettings、approvalRules 和 autoReview 链路上完成用户化改造。
-3. 删除 Task Center UI，并把来源导航命名和入口收敛回原对话。
-4. 实施 UX-03 的头部、悬浮头像和三 tab Bot 面板。
-5. 运行受影响的定向测试与聚焦 E2E，一次收口同一 PR；不按组件拆 PR。
+1. 在 #81 删除错误 capabilityPolicy 实现与无关 nightly/memory 修改，恢复受影响的现有产品行为。
+2. 在 #81 完成现有 ApprovalRulesSettings / approvalRules / autoReview 的用户化改造，并删除 Task Center UI、收敛来源导航。
+3. 将 #83 rebase 到收敛后的 #81 head；保留已实现的 UX-03 主体，移除 inherited capabilityPolicy 接线与 CAS timeout 改动。
+4. 在 #83 把悬浮胶囊收成单按钮，把 `ComputerModePicker` 移到电脑 tab，并补齐 tab 键盘语义。
+5. 分别对 #81 和 #83 运行各自受影响的定向测试与聚焦 E2E；最终按 `#81 → #83` 顺序合并。两个 PR 都是完整功能批次，不再按组件拆 PR。
 
 ## 6. 验收标准
 
@@ -170,6 +181,9 @@ Status: `in-progress`。Draft PR [#81](https://github.com/huiliuxu780/WorkPal/pu
 14. UX-01 执行卡、UX-02 Plan review、AG-08 撤权恢复、头像状态和跨 Space 导航不回归。
 15. #81 不夹带 nightly workflow、memory 文档或其他无关修改。
 16. 受影响包类型检查、现有审批定向测试、来源导航测试和聚焦 E2E 通过；未部署。
+17. #83 不包含 `BotPermissionsSection`、policy draft 状态、capability-policy E2E/mocks 或专用 CAS timeout 改动。
+18. 悬浮头像、名称和 Run 状态只有一个交互按钮；不存在嵌套或并列的独立 `run-panel-trigger`。
+19. `ComputerModePicker` 只在电脑 tab；三 tab 支持键盘切换并正确关联 tab/panel。
 
 ## 7. 交付物
 
