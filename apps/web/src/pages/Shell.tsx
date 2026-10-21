@@ -1880,6 +1880,8 @@ export function ShellPage() {
     () => userVisibleMessages(activeSnapshot?.messages ?? [], { includePeerReceipts: true }),
     [activeSnapshot?.messages],
   );
+  const transcriptMessagesRef = useRef(transcriptMessages);
+  transcriptMessagesRef.current = transcriptMessages;
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
     [active?.id, groupId, inGroup],
@@ -2533,7 +2535,11 @@ export function ShellPage() {
     void scheduleFocusPrompt({
       immediate: isFirstBot,
       signal: controller.signal,
-      shouldSkip: () => sendingRef.current,
+      // A new Bot whose intro run already posted a message does not need the
+      // setup focus card on top of it (user report: "two cards at once").
+      shouldSkip: () =>
+        sendingRef.current ||
+        transcriptMessagesRef.current.some((message) => message.role === "bot"),
       prompt: async () => {
         if (focusPromptBotIdRef.current !== bot.id || activeBotId.current !== bot.id) return;
         await rpc.onboarding.promptFocus({ botId: bot.id }).catch(() => undefined);
@@ -3455,27 +3461,14 @@ export function ShellPage() {
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => setPluginsOpen(true)}
-          className="mx-3 mb-1 flex items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-sidebar-accent"
-        >
-          <span className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent text-foreground/80">
-            <LayoutGrid size={15} strokeWidth={1.8} />
-          </span>
-          <span className="text-[14px] font-medium text-foreground/90">
-            <Trans>Integrations</Trans>
-          </span>
-        </button>
+        <div className="mx-3 mb-2 flex items-center gap-2">
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>
           <PopoverTrigger
             data-testid="user-menu-trigger"
-            className="flex items-center gap-[11px] px-[18px] py-3.5"
+            aria-label={userName}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-[12px] text-foreground/75 hover:bg-sidebar-accent"
           >
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-[12px] text-foreground/75">
-              {initials}
-            </span>
-            <span className="text-[14.5px] text-foreground/90">{userName}</span>
+            {initials}
           </PopoverTrigger>
           {menuOpen ? (
             <PopoverContent
@@ -3536,6 +3529,18 @@ export function ShellPage() {
             </PopoverContent>
           ) : null}
         </Popover>
+        <button
+          type="button"
+          onClick={() => setPluginsOpen(true)}
+          data-testid="integrations-entry"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-sidebar-border px-3 py-1.5 text-[12.5px] text-foreground/80 hover:bg-sidebar-accent"
+        >
+          <LayoutGrid size={13} strokeWidth={1.8} className="shrink-0" />
+          <span className="truncate">
+            <Trans>Integrations</Trans>
+          </span>
+        </button>
+        </div>
       </aside>
 
       {/* The full-screen computer covers the sidebar, so its edge must not catch clicks there. */}
