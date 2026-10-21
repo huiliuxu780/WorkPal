@@ -442,3 +442,63 @@ Roadmap AG-02 → `done`: the production HTTP entrypoint always suspends native 
 env bypass), so the helper-compaction native-memory-write/dangling-pointer path is closed in
 production; re-enable is a gated code change. Main-agent compaction (flush/offload off) and
 tool-result eviction (off + bounded) remain fixed and test-pinned.
+
+## AG-09 re-evaluation (2026-10-21): suspension stays — no released upstream version closes the gap
+
+Task AG-09 asked whether a newer AgentScope release now lets a declared leaf helper carry the safe
+compaction/eviction configuration. Evaluation method: `javap` against the locked local jars, source
+reads of the upstream tags, and Maven Central metadata. **Result: BLOCKED — evidence only, no
+production behavior changed, no re-enable PR proposed, and the re-enable regression chain
+(session-derivation / background delivery / cancel / resume / credential-expiry) was not run
+because its first gate is unmet.**
+
+Facts:
+
+- Pinned version is unchanged: `io.agentscope:*:2.0.3` (`services/agent-runtime/pom.xml:10`, single
+  property; the health endpoint hard-codes the same string at `RuntimeServer.java:51`). `~/.m2`
+  holds only 2.0.3.
+- Upstream (`github.com/agentscope-ai/agentscope-java`, Maven Central metadata lastUpdated
+  2026-10-08) has released exactly two newer versions: **2.0.4** and **2.1.0-BETA1** (both
+  published 2026-10-08).
+- **v2.0.4 — gap unchanged.** `SubagentDeclaration.Builder` gains only
+  `enablePendingToolRecovery(Boolean)`; it still exposes no compaction / eviction / memory hook.
+  `asLeafSubagent()` remains package-private (`HarnessAgent.java:2300`).
+  `HarnessAgentBuilderSupport.buildDeclaredFactory` (lines 433–602) still propagates
+  `disableFilesystemTools/disableShellTool/disableMemoryTools/disableMemoryHooks` but **zero**
+  `CompactionConfig` / `ToolResultEvictionConfig` wiring — those captures (347–351) and application
+  (412–421) exist only in `buildGeneralPurposeFactory`. `deriveChildSessionId` remains
+  package-private (line 677) and the public `subagentFactory(String, Function<String,Agent>)` path
+  still bypasses it. `CompactionConfig` defaults unchanged (`flushBeforeCompact = true`,
+  `offloadBeforeCompact = true`, lines 282–283).
+- **v2.1.0-BETA1 — same API gap, one material risk reduction.** No compaction hook on
+  `SubagentDeclaration.Builder`; `asLeafSubagent()` still package-private (`HarnessAgent.java:2454`);
+  `buildDeclaredFactory` (437–684) still has zero compaction/eviction wiring. However
+  **`offloadBeforeCompact` was removed entirely** (`CompactionConfig` no longer declares it;
+  `ConversationCompactor.java` contains 0 occurrences of "offload" vs 20 in v2.0.4) — the P1-2
+  dangling-`.jsonl`-pointer offload path is gone upstream. The flush half remains:
+  `flushBeforeCompact = true` by default (`CompactionConfig.java:279`) and
+  `MemoryFlushManager.flushMemories` still runs inside the compactor
+  (`ConversationCompactor.java:31,53-54,217-218`), and per this document's round-1 finding
+  `disableMemoryHooks/Tools` does not cover that compaction-triggered flush. It is a BETA and is
+  not adopted here.
+- The exact fix this suspension waits for is upstream **PR
+  [#2378](https://github.com/agentscope-ai/agentscope-java/pull/2378) "feat(harness): support
+  per-subagent compaction config"** (adds `SubagentDeclaration.Builder.compaction(CompactionConfig)`
+  and applies it in the declared factory) targeting issue
+  [#2325](https://github.com/agentscope-ai/agentscope-java/issues/2325) — **still OPEN** (created
+  2026-07-24, last updated 2026-10-13, i.e. after both releases shipped), merged in no released
+  version as of 2026-10-21. Related parity issue
+  [#2061](https://github.com/agentscope-ai/agentscope-java/issues/2061) also open.
+
+Gate status against the round-3 re-enable conditions:
+
+| Gate | Status |
+| --- | --- |
+| Upstream public API can give a declared leaf helper the safe compaction/eviction config | **NOT MET** in 2.0.4 and 2.1.0-BETA1 |
+| Real-run proof: helper compacts with no flush/offload side effects | Not run — blocked by gate 1 |
+| Session-derivation / background / delivery / cancel regressions green | Not run — blocked by gate 1 |
+| Helper cannot widen tool or resource permissions | Unchanged (delegation is never offered; boundary refuses bypassing calls) |
+
+Re-check trigger: upstream PR #2378 (or an equivalent) merged **and shipped in a stable release**;
+then re-run the full gate chain above before proposing any re-enable PR. No env var or hidden
+switch may re-enable delegation in the meantime (round-4 invariant, unchanged).
