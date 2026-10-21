@@ -151,6 +151,78 @@ describe("createBackgroundJobHandlers", () => {
     );
   });
 
+  it("passes the executor's connected-model resolver as the pinned resolver", async () => {
+    const resolveModel = vi.fn();
+    const resolveConnectedModel = vi.fn();
+    const handlers = createBackgroundJobHandlers({
+      executor: { resolveModel, resolveConnectedModel } as unknown as ReturnType<
+        typeof createRunExecutor
+      >,
+      prisma: {} as unknown as PrismaClient,
+      sandbox: {} as unknown as SandboxProvider,
+      home: {} as unknown as AgentHomeStore,
+      jobs: {} as unknown as JobPublisher,
+      events: {} as unknown as ThreadEvents,
+      workerId: "worker-1",
+      runtime: {} as unknown as AgentRuntime,
+      secretStore: {} as unknown as EncryptedSecretStore,
+      memoryProviders: { resolve: vi.fn(async () => null) },
+      memoryDigestKey: "test-digest-key",
+    });
+
+    await handlers["history.compact"]({
+      threadId: "thread-1",
+      sourceRunId: "run-9",
+      modelProvider: "openrouter",
+      modelId: "pinned/model",
+    });
+
+    // The pinned identity must resolve through the same connected-model chain
+    // (validation + user/Space credential lookup) the executor's inline
+    // compaction path uses — never a separate or wider credential read (#93).
+    expect(compactHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pinnedModel: {
+          modelProvider: "openrouter",
+          modelId: "pinned/model",
+          sourceRunId: "run-9",
+        },
+        resolvePinnedModel: resolveConnectedModel,
+      }),
+      "thread-1",
+    );
+  });
+
+  it("stays fail-closed when the executor exposes no pinned-model resolver", async () => {
+    const resolveModel = vi.fn();
+    const handlers = createBackgroundJobHandlers({
+      executor: { resolveModel } as unknown as ReturnType<typeof createRunExecutor>,
+      prisma: {} as unknown as PrismaClient,
+      sandbox: {} as unknown as SandboxProvider,
+      home: {} as unknown as AgentHomeStore,
+      jobs: {} as unknown as JobPublisher,
+      events: {} as unknown as ThreadEvents,
+      workerId: "worker-1",
+      runtime: {} as unknown as AgentRuntime,
+      secretStore: {} as unknown as EncryptedSecretStore,
+      memoryProviders: { resolve: vi.fn(async () => null) },
+      memoryDigestKey: "test-digest-key",
+    });
+
+    await handlers["history.compact"]({
+      threadId: "thread-1",
+      modelProvider: "openrouter",
+      modelId: "pinned/model",
+    });
+
+    const deps = vi.mocked(compactHistory).mock.calls.at(-1)![0];
+    // No resolver → compactHistory keeps failing the pinned job closed
+    // (pinned_model_resolver_missing); the unpinned fallback chain is
+    // untouched for jobs without a pin.
+    expect(deps.resolvePinnedModel).toBeUndefined();
+    expect(deps.resolveModel).toBe(resolveModel);
+  });
+
   it("drains due delivery batches", async () => {
     vi.mocked(dispatchOneDeliveryBatch).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     const handlers = createBackgroundJobHandlers({
