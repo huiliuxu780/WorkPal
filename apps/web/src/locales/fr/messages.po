@@ -212,11 +212,6 @@ msgstr "{0} (plus de 10 MiB)"
 msgid "{0} {unitLabel}"
 msgstr "{0} {unitLabel}"
 
-#. placeholder {0}: attempts.length
-#: src/components/RunDetailsPanel.tsx
-msgid "{0} attempts"
-msgstr ""
-
 #. placeholder {0}: block.name
 #: src/pages/shell/message-cards.tsx
 msgid "{0} connection"
@@ -626,10 +621,6 @@ msgstr "Répondre"
 msgid "Answer accepted; syncing status…"
 msgstr ""
 
-#: src/components/RunDetailsPanel.tsx
-msgid "Answer in thread"
-msgstr ""
-
 #: src/lib/call-session.ts
 msgid "Answer this on screen."
 msgstr ""
@@ -745,11 +736,13 @@ msgstr ""
 msgid "Attachment"
 msgstr "Pièce jointe"
 
-#. placeholder {0}: attempt.fence
 #. placeholder {0}: step.attemptNumber
 #: src/components/ai/RunStepsDisclosure.tsx
-#: src/components/RunDetailsPanel.tsx
 msgid "Attempt {0}"
+msgstr ""
+
+#: src/pages/PluginsOverlay.tsx
+msgid "Authentication method"
 msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx
@@ -1123,7 +1116,6 @@ msgstr "Fermer les paramètres de modèle"
 msgid "Close navigation"
 msgstr "Fermer la navigation"
 
-#: src/components/RunDetailsPanel.tsx
 #: src/pages/Shell.tsx
 msgid "Close panel"
 msgstr "Fermer le panneau"
@@ -2158,11 +2150,6 @@ msgstr ""
 msgid "Effect status unavailable"
 msgstr ""
 
-#. placeholder {0}: effects.length
-#: src/components/RunDetailsPanel.tsx
-msgid "Effects · {0}"
-msgstr ""
-
 #: src/pages/Auth.tsx
 msgid "Email"
 msgstr "E-mail"
@@ -2224,11 +2211,6 @@ msgstr "Chaque mois"
 #: src/pages/RoutineSchedule.tsx
 msgid "Every week"
 msgstr "Chaque semaine"
-
-#. placeholder {0}: history.length
-#: src/components/RunDetailsPanel.tsx
-msgid "Execution history · {0}"
-msgstr ""
 
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "Execution progress"
@@ -2350,10 +2332,6 @@ msgstr "Terminé."
 #: src/pages/McpOAuthCallback.tsx
 msgid "Finishing MCP connection…"
 msgstr "Finalisation de la connexion MCP…"
-
-#: src/components/RunDetailsPanel.tsx
-msgid "Follows bot notification settings"
-msgstr ""
 
 #: src/pages/Auth.tsx
 msgid "Forgot password?"
@@ -2736,7 +2714,6 @@ msgid "Loading voice providers…"
 msgstr "Chargement des fournisseurs vocaux…"
 
 #: src/App.tsx
-#: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
 #: src/pages/Onboarding.tsx
@@ -3015,7 +2992,6 @@ msgstr "Nommez ce groupe"
 msgid "Name this routine"
 msgstr "Nommez cette routine"
 
-#: src/components/RunDetailsPanel.tsx
 #: src/lib/run-status.ts
 msgid "Needs input"
 msgstr "Nécessite une saisie"
@@ -3219,14 +3195,6 @@ msgstr "Rien n'est mémorisé pour le moment"
 msgid "Notifications"
 msgstr "Notifications"
 
-#: src/components/RunDetailsPanel.tsx
-msgid "Notifications off"
-msgstr ""
-
-#: src/components/RunDetailsPanel.tsx
-msgid "Notifications on"
-msgstr ""
-
 #: src/pages/ActivityList.tsx
 msgid "Now"
 msgstr "Maintenant"
@@ -3282,10 +3250,6 @@ msgstr "Ouvrir {0}"
 
 #: src/pages/Shell.tsx
 msgid "Open bot settings"
-msgstr ""
-
-#: src/components/RunDetailsPanel.tsx
-msgid "Open computer"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -3363,11 +3327,6 @@ msgstr "Autre modèle…"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Output"
 msgstr "Sortie"
-
-#. placeholder {0}: artifacts.length
-#: src/components/RunDetailsPanel.tsx
-msgid "Outputs · {0}"
-msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
@@ -3849,7 +3808,6 @@ msgstr "Guide de la salle"
 msgid "Rotate key"
 msgstr "Tourner la clé"
 
-#: src/components/RunDetailsPanel.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/Shell.tsx
 msgid "Routine"
@@ -3866,10 +3824,6 @@ msgstr ""
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "Exécuter à"
-
-#: src/components/RunDetailsPanel.tsx
-msgid "Run details"
-msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run history"
@@ -4279,10 +4233,6 @@ msgstr ""
 msgid "Step {0}"
 msgstr ""
 
-#: src/components/RunDetailsPanel.tsx
-msgid "Step details are in the thread transcript."
-msgstr ""
-
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "Étapes"
@@ -4319,10 +4269,6 @@ msgstr "Stocké en toute sécurité. Jamais affiché ici."
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Stream replies"
 msgstr "Diffuser les réponses"
-
-#: src/components/RunDetailsPanel.tsx
-msgid "subagent"
-msgstr "sous-agent"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -4402,10 +4348,6 @@ msgstr "Exécution de test"
 #: src/components/SoftwareUpdateSection.tsx
 msgid "The API did not come back. Refresh this page."
 msgstr "L'API n'est pas revenue. Actualisez cette page."
-
-#: src/components/RunDetailsPanel.tsx
-msgid "The bot is waiting for computer takeover."
-msgstr ""
 
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "The selected memory provider is not available in this build."
@@ -4556,10 +4498,6 @@ msgstr "Traiter comme une personne"
 #: src/pages/PluginsOverlay.tsx
 msgid "Treg token"
 msgstr "Jeton Treg"
-
-#: src/components/RunDetailsPanel.tsx
-msgid "Triggered by you"
-msgstr ""
 
 #: src/pages/Onboarding.tsx
 msgid "Try again"
@@ -4862,7 +4800,6 @@ msgstr ""
 msgid "Working"
 msgstr ""
 
-#: src/components/RunDetailsPanel.tsx
 #: src/pages/Auth.tsx
 msgid "Working…"
 msgstr "En cours…"
