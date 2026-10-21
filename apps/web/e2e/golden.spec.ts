@@ -386,8 +386,13 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   await expect(voiceButton).toBeVisible();
   await composer.fill("Use the newer report and keep the answer short.");
   await expect(voiceButton).toHaveCount(0);
+  const sendButton = page.getByRole("button", { name: "Send", exact: true });
+  // The single Tab below must land on Send; while the draft-empty disabled
+  // state is still committed, sequential focus navigation skips the button
+  // and focus can never land retroactively (#86).
+  await expect(sendButton).toBeEnabled();
   await composer.press("Tab");
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeFocused();
+  await expect(sendButton).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
     page.getByTestId("transcript").getByText("Use the newer report and keep the answer short."),
