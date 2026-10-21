@@ -59,6 +59,24 @@ async function selectAndRelease(
   await page.mouse.up();
 }
 
+/**
+ * Send through the real composer and wait for the server to persist the
+ * message before any UI-projection assertion. The row-visible window then
+ * only measures rendering of an already-durable message: contention on an
+ * aged local database (e.g. the startup backlog reconciliation storm, #87)
+ * delays the persistence response instead of silently eating the projection
+ * budget. Sends must also resolve one-by-one — the composer swallows input
+ * while a send is in flight.
+ */
+async function sendPersisted(page: Page, composer: Locator, text: string) {
+  const persisted = page.waitForResponse(
+    (response) => response.url().includes("/rpc/threads/send") && response.ok(),
+  );
+  await composer.fill(text);
+  await composer.press("Enter");
+  await persisted;
+}
+
 test("selecting a text span quotes it into a reply", async ({ page }, testInfo) => {
   const stamp = Date.now();
   await signup(page, `quote-${stamp}@rakazo.test`, "password12", "Quote Tester");
@@ -69,8 +87,7 @@ test("selecting a text span quotes it into a reply", async ({ page }, testInfo) 
   const quoteButton = page.getByTestId("quote-selection");
 
   const sourceText = `quote-source-${stamp} shows **forty two percent** growth`;
-  await composer.fill(sourceText);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, sourceText);
   const sourceRow = transcript
     .locator("[data-message-id]")
     .filter({ has: page.getByTestId("message-user-bubble") })
@@ -108,8 +125,7 @@ test("selecting a text span quotes it into a reply", async ({ page }, testInfo) 
   await expect(replyChip).toContainText("**forty two percent**");
 
   const replyText = `quote-reply-${stamp} why this number?`;
-  await composer.fill(replyText);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, replyText);
   await expect(replyChip).toHaveCount(0);
   // Sending disarms the reply — the live region must not keep a stale
   // "Replying to" that no longer describes anything after the chip is gone.
@@ -155,8 +171,7 @@ test("rendered markdown selections survive server quote derivation", async ({ pa
   const transcript = page.getByTestId("transcript");
   const composer = page.getByRole("combobox", { name: /Message/ });
   const sourceMarker = `md-${stamp}`;
-  await composer.fill(`quote markdown fixture ${sourceMarker}`);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, `quote markdown fixture ${sourceMarker}`);
 
   // Bot bubble: scripted fixture → ChatMarkdown + server markdown derivation.
   const sourceRow = transcript
@@ -169,8 +184,7 @@ test("rendered markdown selections survive server quote derivation", async ({ pa
   const quoteAndSend = async (start: string, end: string, replyMarker: string) => {
     await selectAndRelease(page, sourceRow, start, end);
     await page.getByTestId("quote-selection").click();
-    await composer.fill(replyMarker);
-    await composer.press("Enter");
+    await sendPersisted(page, composer, replyMarker);
     const replyRow = transcript
       .locator("[data-message-id]")
       .filter({ has: page.getByTestId("message-user-bubble") })
@@ -208,8 +222,12 @@ test("rendered markdown selections survive server quote derivation", async ({ pa
     })
     .toBe("1");
   await rail.getByRole("button", { name: "Reply" }).click();
+  const persistedPlain = page.waitForResponse(
+    (response) => response.url().includes("/rpc/threads/send") && response.ok(),
+  );
   await composer.fill(`reply-plain-${stamp}`);
   await page.getByRole("button", { name: "Send", exact: true }).click();
+  await persistedPlain;
   const plainReply = transcript
     .locator("[data-message-id]")
     .filter({ has: page.getByTestId("message-user-bubble") })
@@ -231,10 +249,11 @@ test("selecting text inside a table cell quotes the rendered cell", async ({ pag
   const cellText = `quarterly revenue ${stamp}`;
   // The scripted bot echoes the prompt, so the reply carries a table card.
   // Chrome (row numbers, toolbar, pager) is unselectable; cell text is not.
-  await composer.fill(
+  await sendPersisted(
+    page,
+    composer,
     `show this table:\n\n| Metric | Value |\n| --- | --- |\n| ${cellText} | 42 |\n| cloud spend | 7 |`,
   );
-  await composer.press("Enter");
 
   const sourceRow = transcript
     .locator("[data-message-id]")
@@ -259,8 +278,7 @@ test("selecting text inside a table cell quotes the rendered cell", async ({ pag
 
   // The sent reply persists the server-derived excerpt from the same cell.
   const replyText = `quote-cell-${stamp} confirmed?`;
-  await composer.fill(replyText);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, replyText);
   const replyRow = transcript
     .locator("[data-message-id]")
     .filter({ has: page.getByTestId("message-user-bubble") })
@@ -287,8 +305,7 @@ test("an armed reply survives the parent paging out of the transcript", async ({
       .first();
 
   const parentText = `quote-evict-parent-${stamp}`;
-  await composer.fill(parentText);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, parentText);
   const parentRow = userRow(parentText);
   await expect(parentRow).toBeVisible({ timeout: 20_000 });
 
@@ -334,8 +351,7 @@ test("an armed reply survives the parent paging out of the transcript", async ({
   await expect(replyChip).toBeVisible();
 
   const replyText = `quote-evict-reply-${stamp}`;
-  await composer.fill(replyText);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, replyText);
   const replyRow = userRow(replyText);
   await expect(replyRow).toBeVisible({ timeout: 20_000 });
   const parentPreview = replyRow.getByTestId("reply-parent-preview");
@@ -367,11 +383,9 @@ test("a selection spanning two messages offers no quote action", async ({ page }
 
   const firstText = `quote-first-${stamp}`;
   const secondText = `quote-second-${stamp}`;
-  await composer.fill(firstText);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, firstText);
   await expect(userRow(firstText)).toBeVisible({ timeout: 20_000 });
-  await composer.fill(secondText);
-  await composer.press("Enter");
+  await sendPersisted(page, composer, secondText);
   await expect(userRow(secondText)).toBeVisible({ timeout: 20_000 });
 
   await selectAndRelease(page, transcript, firstText, secondText);
@@ -396,22 +410,10 @@ test("quoting a second message retargets the armed reply", async ({ page }) => {
 
   const firstText = `quote-switch-a-${stamp}`;
   const secondText = `quote-switch-b-${stamp}`;
-  // Each send must resolve before the next Enter — the composer swallows
-  // input while a send is in flight.
-  const sentFirst = page.waitForResponse(
-    (response) => response.url().includes("/rpc/threads/send") && response.ok(),
-  );
-  await composer.fill(firstText);
-  await composer.press("Enter");
-  await sentFirst;
+  await sendPersisted(page, composer, firstText);
   const firstRow = userRow(firstText);
   await expect(firstRow).toBeVisible({ timeout: 20_000 });
-  const sentSecond = page.waitForResponse(
-    (response) => response.url().includes("/rpc/threads/send") && response.ok(),
-  );
-  await composer.fill(secondText);
-  await composer.press("Enter");
-  await sentSecond;
+  await sendPersisted(page, composer, secondText);
   const secondRow = userRow(secondText);
   await expect(secondRow).toBeVisible({ timeout: 20_000 });
 
