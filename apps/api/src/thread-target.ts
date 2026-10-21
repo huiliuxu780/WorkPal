@@ -868,8 +868,25 @@ export async function threadMessagePage(
       input.includePeerRuns,
       input.includePeerReceipts,
     );
+    const messageRunIds = page.messages
+      .map((message) => message.runId)
+      .filter((id): id is string => Boolean(id));
+    // PD-01 D9: a group message links only its FIRST Run through
+    // message.runId, so a secondary bot's cancelled Run would be unreachable
+    // from the page. Also load the cancelled Runs the page's messages
+    // triggered (indexed sourceMessageId) to keep every message-level retry
+    // entry recoverable after pagination; the manualRetry projection still
+    // decides what is actionable, and carded Runs come through unchanged.
+    const linkedCancelledRuns = await tx.run.findMany({
+      where: {
+        threadId: target.threadId,
+        status: "cancelled",
+        sourceMessageId: { in: page.messages.map((message) => message.id) },
+      },
+      select: { id: true },
+    });
     const runIds = [
-      ...new Set(page.messages.map((message) => message.runId).filter((id): id is string => Boolean(id))),
+      ...new Set([...messageRunIds, ...linkedCancelledRuns.map((run) => run.id)]),
     ];
     const executions =
       runIds.length > 0
