@@ -37,12 +37,10 @@ export type ExecutionCardAction = {
   /**
    * `toggle` flips the detail expansion; `attention` keeps the pending
    * Intervention discoverable — it focuses the first authoritative control
-   * instead of collapsing; `navigate` returns to the original conversation
-   * (Task Center second entry — the compact list card carries no detail of
-   * its own); `retry` requests a manual retry; `view_successor` opens the
-   * already-created retry Run.
+   * instead of collapsing; `retry` requests a manual retry; `view_successor`
+   * opens the already-created retry Run.
    */
-  act: "toggle" | "attention" | "navigate" | "retry" | "view_successor";
+  act: "toggle" | "attention" | "retry" | "view_successor";
 };
 
 /**
@@ -127,13 +125,6 @@ export type ExecutionCardInput = {
    * tests) covers the background presentation without inventing a signal.
    */
   background?: boolean;
-  /**
-   * Caller-owned primary action (Task Center navigation verbs). When present
-   * it REPLACES the computed toggle/attention action — the display status
-   * still comes from the one shared derivation, so this is a verb mapping,
-   * never a second status matrix. `null` renders no action.
-   */
-  actionOverride?: ExecutionCardAction | null;
   /** True while a manual retry mutation is in flight for this Run. */
   retrying?: boolean;
 };
@@ -358,9 +349,7 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
         : t`View progress`;
   let action: ExecutionCardAction | null = null;
   let secondaryAction: ExecutionCardAction | null = null;
-  if (input.actionOverride !== undefined) {
-    action = input.actionOverride;
-  } else if (status.needsAttention) {
+  if (status.needsAttention) {
     action = { verb: t`Needs your attention`, act: "attention" };
     // Review round P1: the attention verb focuses the Intervention control;
     // the detail body keeps its OWN toggle so a waiting Run's Plan/Steps and

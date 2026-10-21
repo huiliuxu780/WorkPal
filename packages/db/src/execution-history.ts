@@ -187,9 +187,8 @@ export async function currentThreadGenerations(
 /**
  * Batched summaries for already-authorized Runs of one OR several Threads:
  * one grouped pass per fact source regardless of how many Runs the window
- * holds (no per-Run — and no per-Thread — query fan-out). Shared by the
- * per-Thread window (`loadExecutionSummaries`) and the cross-conversation
- * Task Center window.
+ * holds (no per-Run — and no per-Thread — query fan-out). Used by the
+ * per-Thread window (`loadExecutionSummaries`).
  *
  * Generation fence: active Runs and Runs with pending Interventions are
  * current by construction (clear cancels and settles them); a terminal Run is

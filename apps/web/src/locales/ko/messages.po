@@ -259,11 +259,6 @@ msgstr "{0} 모델 호출 · {1} 입력 토큰 · {2} 출력 토"
 msgid "{0} rollup hours"
 msgstr ""
 
-#. placeholder {0}: list.activeCount
-#: src/components/ai/TaskCenterView.tsx
-msgid "{0} running in background"
-msgstr ""
-
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} will still respond to direct mentions."
@@ -430,8 +425,8 @@ msgid "Accounts"
 msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Action confirmations"
-msgstr "작업 실행 전 확인"
+msgid "Action review"
+msgstr ""
 
 #. placeholder {0}: bot.name
 #. placeholder {0}: group.spaceName
@@ -466,10 +461,6 @@ msgstr "추가"
 #: src/pages/memory-facts.tsx
 msgid "Add a memory"
 msgstr ""
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Add a model in Settings to use this."
-msgstr "이 기능을 사용하려면 설정에서 모델을 추가하세요."
 
 #: src/pages/Shell.tsx
 msgid "Add a run time for this one-shot."
@@ -527,6 +518,10 @@ msgstr "OpenAPI 추가"
 #: src/pages/PluginsOverlay.tsx
 msgid "Add remote MCP server"
 msgstr "원격 MCP 서버 추가"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Add rule"
+msgstr ""
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Add server"
@@ -592,32 +587,9 @@ msgstr ""
 msgid "All time"
 msgstr "전체 기간"
 
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} actions without asking"
-msgstr "확인 없이 {0} 동작 허용"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} connector without asking"
-msgstr "확인 없이 {0} 커넥터 허용"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} without asking"
-msgstr "확인 없이 {0} 허용"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow email actions without asking"
-msgstr "확인 없이 이메일 동작 허용"
-
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "한 번 허용"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow purchase actions without asking"
-msgstr "확인 없이 결제 동작 허용"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -637,6 +609,10 @@ msgstr ""
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
+msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Always allow"
 msgstr ""
 
 #: src/components/AskCard.tsx
@@ -698,6 +674,10 @@ msgstr "API 키 헤더"
 msgid "Appearance"
 msgstr "모양"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Applies to all your Bots in this Space."
+msgstr ""
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Approval boundaries"
 msgstr "승인이 필요한 범위"
@@ -741,36 +721,9 @@ msgstr "인자"
 msgid "Artifacts"
 msgstr ""
 
-#. placeholder {0}: rule.matchValue
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0}"
-msgstr "{0} 전에 확인"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} actions"
-msgstr "{0} 동작 전에 확인"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} connector"
-msgstr "{0} 커넥터 전에 확인"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before email actions"
-msgstr "이메일 동작 전에 확인"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchase actions"
-msgstr "결제 동작 전에 확인"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchases"
-msgstr "결제하기 전에 확인"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before sending external email"
-msgstr "외부 이메일을 보내기 전에 확인"
+msgid "Ask me first"
+msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Ask the server owner to configure this provider."
@@ -860,18 +813,9 @@ msgstr ""
 msgid "Back"
 msgstr "뒤로"
 
-#: src/lib/task-center.ts
-msgid "Back to conversation"
-msgstr ""
-
 #: src/pages/Auth.tsx
 msgid "Back to sign in"
 msgstr "로그인으로 돌아가기"
-
-#: src/components/ai/TaskCenterNavEntry.tsx
-#: src/components/ai/TaskCenterView.tsx
-msgid "Background tasks"
-msgstr ""
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Base URL"
@@ -966,6 +910,7 @@ msgstr "서버에 연결할 수 없습니다."
 
 #: src/components/activity/BackgroundTaskActivity.tsx
 #: src/components/ai/PlanReviewCard.tsx
+#: src/components/ApprovalRulesSettings.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -1040,6 +985,10 @@ msgstr "채팅 앱, 그룹 채널 및 Agent 연결을 관리합니다."
 #: src/pages/Shell.tsx
 msgid "Chat Settings"
 msgstr "채팅 설정"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Check actions against my rules before they run"
+msgstr ""
 
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Check failed"
@@ -1562,8 +1511,8 @@ msgid "Could not load"
 msgstr "불러올 수 없음"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not load approval rules"
-msgstr "확인 규칙을 불러오지 못했습니다."
+msgid "Could not load action rules"
+msgstr ""
 
 #: src/pages/Artifacts.tsx
 msgid "Could not load artifacts."
@@ -1661,8 +1610,8 @@ msgid "Could not remove group"
 msgstr "그룹을 삭제하지 못했습니다."
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not remove rule"
-msgstr "확인 규칙을 삭제하지 못했습니다."
+msgid "Could not remove this rule"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
@@ -1696,8 +1645,8 @@ msgid "Could not save"
 msgstr "저장하지 못했습니다."
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save Auto Review"
-msgstr "자동 검토를 저장할 수 없습니다"
+msgid "Could not save action review"
+msgstr ""
 
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Could not save avatar"
@@ -1714,10 +1663,6 @@ msgstr "AI 모델을 저장하지 못했습니다."
 #: src/pages/Shell.tsx
 msgid "Could not save routine"
 msgstr "자동 실행을 저장하지 못했습니다."
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save rule"
-msgstr "확인 규칙을 저장하지 못했습니다."
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not save skill"
@@ -1738,6 +1683,10 @@ msgstr "목소리를 저장하지 못했습니다."
 #: src/pages/shell/message-cards.tsx
 msgid "Could not save this choice"
 msgstr "선택 내용을 저장하지 못했습니다."
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Could not save this rule"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not search catalog"
@@ -1803,20 +1752,12 @@ msgstr "기본 기억 범위를 변경하지 못했습니다."
 msgid "Could not upload file"
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't load background tasks."
-msgstr ""
-
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
 msgstr "메시징 설정을 불러올 수 없습니다"
 
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Couldn't load the execution detail."
-msgstr ""
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't open this task. Try again."
 msgstr ""
 
 #: src/lib/manual-retry.ts
@@ -1968,6 +1909,7 @@ msgstr "기본 기억 범위"
 msgid "Deferred"
 msgstr ""
 
+#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -2032,6 +1974,10 @@ msgstr "거부"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Deployment default"
 msgstr "서버 기본값"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Describe the action in your own words"
+msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
 msgid "Describe the concrete changes you want"
@@ -2148,6 +2094,10 @@ msgstr "작업 기술 초안"
 msgid "Duplicate"
 msgstr "복제"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "e.g. emailing someone outside the Space"
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "e.g. Hivenet Agent, Presales, Timesheets bot"
 msgstr "예: Hivenet Agent, Presales, 근무표 봇"
@@ -2155,6 +2105,10 @@ msgstr "예: Hivenet Agent, Presales, 근무표 봇"
 #: src/pages/Shell.tsx
 msgid "Earlier message"
 msgstr "이전 메시지"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Edit"
+msgstr ""
 
 #: src/components/AskCard.tsx
 msgid "Edit first"
@@ -2397,10 +2351,6 @@ msgstr "완료되었습니다."
 msgid "Finishing MCP connection…"
 msgstr "MCP 연결을 마무리하는 중…"
 
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Flag unexpected actions"
-msgstr "예상하지 못한 작업 표시"
-
 #: src/components/RunDetailsPanel.tsx
 msgid "Follows bot notification settings"
 msgstr ""
@@ -2466,10 +2416,6 @@ msgstr ""
 
 #: src/pages/shell/dialogs.tsx
 msgid "Groups"
-msgstr ""
-
-#: src/lib/task-center.ts
-msgid "Handle now"
 msgstr ""
 
 #: src/components/call/CallCard.tsx
@@ -2749,10 +2695,6 @@ msgstr "이전 메시지 불러오기"
 msgid "Load more"
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Load more tasks"
-msgstr ""
-
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
 msgstr "활동을 불러오는 중…"
@@ -2790,7 +2732,6 @@ msgid "Loading voice providers…"
 msgstr "음성 서비스를 불러오는 중…"
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
@@ -2825,6 +2766,10 @@ msgstr "낮음"
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
 msgstr "이 컴퓨터에서 실행 중인 작업이 없는지 확인하세요."
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Making purchases"
+msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Manage MCP servers"
@@ -3208,6 +3153,10 @@ msgstr ""
 msgid "No results"
 msgstr "검색 결과가 없습니다"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
+msgstr ""
+
 #: src/pages/RoutineEditor.tsx
 msgid "No runs yet"
 msgstr "아직 실행 기록이 없습니다"
@@ -3218,10 +3167,6 @@ msgstr "아직 스킬이 없습니다"
 
 #: src/pages/memory-facts.tsx
 msgid "No sources recorded"
-msgstr ""
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "No tasks running in background"
 msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -3255,10 +3200,6 @@ msgstr "나중에"
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
-msgstr ""
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
 msgstr ""
 
 #: src/components/ComputerUpdateProgress.tsx
@@ -3343,7 +3284,6 @@ msgstr ""
 msgid "Open in full window"
 msgstr "전체 창으로 열기"
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "메뉴 열기"
@@ -3694,7 +3634,6 @@ msgstr ""
 msgid "Remembered"
 msgstr ""
 
-#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/ScratchpadSection.tsx
 msgid "Remove"
@@ -3857,7 +3796,6 @@ msgid "Retry"
 msgstr ""
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 msgid "Retry now"
 msgstr "지금 다시 시도"
@@ -3908,6 +3846,10 @@ msgstr "자동 실행"
 #: src/pages/RoutineEditor.tsx
 msgid "Routines"
 msgstr "자동 실행"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Rules guide action review only — they never connect apps, widen resource access, or skip server-side protections."
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -3961,6 +3903,10 @@ msgstr "저장"
 
 #: src/pages/memory-facts.tsx
 msgid "Save correction"
+msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Save rule"
 msgstr ""
 
 #: src/components/ai/InterventionRegion.tsx
@@ -4081,6 +4027,10 @@ msgstr "보내기"
 #: src/pages/Auth.tsx
 msgid "Send reset link"
 msgstr "재설정 링크 보내기"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Sending email"
+msgstr ""
 
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
@@ -4560,7 +4510,6 @@ msgstr "이 구독 로그인 방식은 아직 {productName}에서 지원되지 �
 msgid "This task already completed."
 msgstr ""
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/lib/manual-retry.ts
 msgid "This task is no longer available."
 msgstr ""
@@ -4769,6 +4718,11 @@ msgstr "이 모델 사용"
 msgid "Username"
 msgstr ""
 
+#. placeholder {0}: rule.matchValue
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Using {0}"
+msgstr ""
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Verify and add"
 msgstr "확인 후 추가"
@@ -4786,10 +4740,6 @@ msgstr ""
 msgid "Version v{0}"
 msgstr ""
 
-#: src/lib/task-center.ts
-msgid "View execution"
-msgstr ""
-
 #: src/lib/execution-card.ts
 msgid "View progress"
 msgstr ""
@@ -4800,7 +4750,6 @@ msgid "View reason"
 msgstr ""
 
 #: src/lib/execution-card.ts
-#: src/lib/task-center.ts
 msgid "View result"
 msgstr ""
 
@@ -4849,6 +4798,10 @@ msgstr "주중"
 msgid "What about its memories?"
 msgstr "이 Bot의 기억은 어떻게 할까요?"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What action?"
+msgstr ""
+
 #: src/pages/shell/message-cards.tsx
 msgid "What do you want me on first?"
 msgstr ""
@@ -4859,6 +4812,10 @@ msgstr "어떤 작업을 직접 보여줄까요?"
 
 #: src/components/ai/PlanReviewCard.tsx
 msgid "What should change in this plan?"
+msgstr ""
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What should happen?"
 msgstr ""
 
 #: src/pages/RoutineEditor.tsx
@@ -4939,6 +4896,10 @@ msgstr "이메일 주소"
 #: src/pages/Auth.tsx
 msgid "Your name"
 msgstr "이름"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Your rules"
+msgstr ""
 
 #: src/pages/Welcome.tsx
 msgid "Your team of always-on agents<0/>that you can give real work to."

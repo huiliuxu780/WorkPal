@@ -49,7 +49,6 @@ export function ExecutionCard({
   planUpdated,
   onToggle,
   onAttention,
-  onNavigate,
   onRetry,
   onViewSuccessor,
   retrying,
@@ -66,8 +65,6 @@ export function ExecutionCard({
   planUpdated?: boolean;
   onToggle: () => void;
   onAttention: () => void;
-  /** Task Center second entry: the primary action returns to the conversation. */
-  onNavigate?: () => void;
   onRetry?: () => void;
   onViewSuccessor?: () => void;
   retrying?: boolean;
@@ -171,7 +168,6 @@ export function ExecutionCard({
               aria-controls={card.action.act === "toggle" && hasDetail ? detailsId : undefined}
               onClick={() => {
                 if (card.action?.act === "attention") onAttention();
-                else if (card.action?.act === "navigate") onNavigate?.();
                 else onToggle();
               }}
             >

@@ -52,11 +52,11 @@ import { manualRetryErrorMessage } from "../../lib/manual-retry";
 import { rpc } from "../../lib/rpc";
 import { isRunActive } from "../../lib/run-status";
 import {
-  clearTaskCenterNavIntent,
+  clearExecutionNavIntent,
   EXECUTION_NAV_INTENT_EVENT,
-  peekTaskCenterNavIntent,
-  setTaskCenterNavIntent,
-} from "../../lib/task-center";
+  peekExecutionNavIntent,
+  setExecutionNavIntent,
+} from "../../lib/execution-nav";
 import { unlinkedRunTodos } from "../../lib/work-progress-view";
 
 /**
@@ -73,8 +73,8 @@ import { unlinkedRunTodos } from "../../lib/work-progress-view";
  *   surface eligibility (Plan, semantic Step, pending Intervention, failed —
  *   Todos and Activity never create a shell on their own, and the legacy
  *   Todo list no longer renders; its "事项清单" fallback is UX-01C scope);
- * - Task Center "return to conversation" intent consumption, force-open and
- *   focus retry;
+ * - the execution-nav "return to conversation" intent consumption, force-open
+ *   and focus retry;
  * - the per-anchor `ExecutionShell` rendering.
  *
  * `Transcript` keeps the plain message list, scrolling, selection quoting,
@@ -459,7 +459,7 @@ export function useExecutionTranscript({
         .retry({ runId, clientNonce: nonce })
         .then(async (result) => {
           retryNonceByRun.current.delete(runId);
-          setTaskCenterNavIntent({
+          setExecutionNavIntent({
             threadId: result.threadId,
             runId: result.runId,
             rev: 0,
@@ -494,12 +494,12 @@ export function useExecutionTranscript({
     },
     [loadExecutionDetail, serverSummaries, threadId],
   );
-  // Task Center "return to conversation": a module-memory intent (never the
+  // Execution-nav "return to conversation": a module-memory intent (never the
   // DOM, never browser storage) asks this Thread to open one Run's card and
   // focus it — the Intervention control for waiting states (mirroring the
   // card's attention action), the status line otherwise. It applies once the
   // Run's server summary is present (thread window or the merged anchor page).
-  const [taskCenterFocus, setTaskCenterFocus] = useState<{
+  const [navFocus, setNavFocus] = useState<{
     attention: boolean;
     nonce: number;
   } | null>(null);
@@ -513,19 +513,19 @@ export function useExecutionTranscript({
     return () => window.removeEventListener(EXECUTION_NAV_INTENT_EVENT, handler);
   }, []);
   useEffect(() => {
-    const intent = peekTaskCenterNavIntent();
+    const intent = peekExecutionNavIntent();
     if (!intent || intent.threadId !== threadId) return;
     const summary = serverSummaries?.get(intent.runId);
     if (!summary) return;
-    clearTaskCenterNavIntent();
+    clearExecutionNavIntent();
     setExpansionEntries((entries) =>
       forceOpenExpansion({ entries, threadId, runId: intent.runId, rev: summary.rev }),
     );
     loadExecutionDetail(intent.runId, summary.rev);
-    setTaskCenterFocus({ attention: intent.attention, nonce: summary.rev });
+    setNavFocus({ attention: intent.attention, nonce: summary.rev });
   }, [threadId, serverSummaries, loadExecutionDetail, intentPing]);
   useEffect(() => {
-    if (!taskCenterFocus) return;
+    if (!navFocus) return;
     // The card can lag the intent by a page commit (the anchor jump still in
     // flight), so retry briefly until the open card exists — then focus once.
     // Single-open contract: at most one card carries data-open="1".
@@ -535,7 +535,7 @@ export function useExecutionTranscript({
       const card = document.querySelector('article[data-testid="execution-card"][data-open="1"]');
       const section = card?.closest('section[data-testid="execution-shell"]');
       if (section) {
-        if (taskCenterFocus.attention) {
+        if (navFocus.attention) {
           const control = section
             .querySelector('[data-testid="execution-interventions"]')
             ?.querySelector<HTMLElement>(FOCUSABLE_CONTROL);
@@ -552,7 +552,7 @@ export function useExecutionTranscript({
     };
     timer = window.setTimeout(attempt, 0);
     return () => window.clearTimeout(timer);
-  }, [taskCenterFocus]);
+  }, [navFocus]);
   const renderExecutions = (anchor: string) =>
     [...(executionsByAnchor.get(anchor)?.values() ?? [])].map((execution) => {
       // UX-01B core rule 1: no Plan, no semantic Step, no pending

@@ -585,7 +585,7 @@ describe("rekeyExpansionRev (live-Run detail arrival must not self-close)", () =
   });
 });
 
-describe("forceOpenExpansion (Task Center return navigation)", () => {
+describe("forceOpenExpansion (execution-nav return navigation)", () => {
   it("opens the target Run and closes every other open entry of the same Thread", () => {
     const entries = {
       "t:other": { threadId: "t", runId: "other", rev: 3, open: true },

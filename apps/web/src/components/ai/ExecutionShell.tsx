@@ -86,7 +86,7 @@ export function ExecutionShell({
   });
   // UX-01B: no auto-expansion. Uncontrolled shells start collapsed and only
   // collapse further when the Run reaches a terminal state; every open is an
-  // explicit user action (or the Task Center / sidebar return intent).
+  // explicit user action (or the execution-nav / sidebar return intent).
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const sectionRef = useRef<HTMLElement>(null);

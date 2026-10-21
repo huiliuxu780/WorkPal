@@ -355,8 +355,8 @@ export function expansionLogShape(entries: ExpansionMap): ExpansionEntry[] {
 }
 
 /**
- * Force one Run open (Task Center "return to conversation" navigation): every
- * other stored open entry of the SAME Thread closes, so the at-most-one-open
+ * Force one Run open (execution-nav "return to conversation"): every other
+ * stored open entry of the SAME Thread closes, so the at-most-one-open
  * contract holds unconditionally. Other Threads' decisions are never touched.
  */
 export function forceOpenExpansion(input: {

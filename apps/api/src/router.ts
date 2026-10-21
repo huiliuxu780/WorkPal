@@ -183,7 +183,6 @@ import {
   loadBotAvatarStates,
   loadExecutionSnapshot,
   loadRunActivityPage,
-  loadTaskCenterPage,
   lockOwnedGroup,
   ManualRetryDenied,
   newestModelCredentialOrder,
@@ -201,7 +200,6 @@ import {
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
   summarizeModelUsage,
-  TaskCenterCursorError,
   touchGroupUpdatedAt,
   undoBotAvatarChangeInTransaction,
 } from "@rakazo/db";
@@ -5884,31 +5882,6 @@ export function createRouter(deps: RouterDeps) {
           }
         },
       ),
-      /**
-       * Task Center: cross-conversation index of the actor's authorized root
-       * Runs. One consistent read; authorization, the root-Run rule and the
-       * Thread Clear generation fence are all server-side — unauthorized
-       * items never reach the browser.
-       */
-      taskCenter: authed.runs.taskCenter.handler(async ({ context, input }) => {
-        try {
-          return await deps.prisma.$transaction((tx) =>
-            loadTaskCenterPage(tx, {
-              spaceId: context.actor.spaceId,
-              userId: context.actor.userId,
-              ...(input.cursor ? { cursor: input.cursor } : {}),
-              ...(input.limit ? { limit: input.limit } : {}),
-            }),
-          );
-        } catch (error) {
-          if (error instanceof TaskCenterCursorError) {
-            throw new ORPCError("BAD_REQUEST", {
-              message: "This task list cursor is no longer valid. Refresh the list.",
-            });
-          }
-          throw error;
-        }
-      }),
       retry: authed.runs.retry.handler(async ({ context, input }) => {
         try {
           const result = await createManualRetryRun(deps.prisma, {

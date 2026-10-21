@@ -259,11 +259,6 @@ msgstr "{0} model calls · {1} input tokens · {2} output tokens"
 msgid "{0} rollup hours"
 msgstr "{0} rollup hours"
 
-#. placeholder {0}: list.activeCount
-#: src/components/ai/TaskCenterView.tsx
-msgid "{0} running in background"
-msgstr "{0} running in background"
-
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} will still respond to direct mentions."
@@ -430,8 +425,8 @@ msgid "Accounts"
 msgstr "Accounts"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Action confirmations"
-msgstr "Action confirmations"
+msgid "Action review"
+msgstr "Action review"
 
 #. placeholder {0}: bot.name
 #. placeholder {0}: group.spaceName
@@ -466,10 +461,6 @@ msgstr "Add"
 #: src/pages/memory-facts.tsx
 msgid "Add a memory"
 msgstr "Add a memory"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Add a model in Settings to use this."
-msgstr "Add a model in Settings to use this."
 
 #: src/pages/Shell.tsx
 msgid "Add a run time for this one-shot."
@@ -527,6 +518,10 @@ msgstr "Add OpenAPI"
 #: src/pages/PluginsOverlay.tsx
 msgid "Add remote MCP server"
 msgstr "Add remote MCP server"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Add rule"
+msgstr "Add rule"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Add server"
@@ -592,32 +587,9 @@ msgstr "All bots"
 msgid "All time"
 msgstr "All time"
 
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} actions without asking"
-msgstr "Allow {0} actions without asking"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} connector without asking"
-msgstr "Allow {0} connector without asking"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow {0} without asking"
-msgstr "Allow {0} without asking"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow email actions without asking"
-msgstr "Allow email actions without asking"
-
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "Allow once"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Allow purchase actions without asking"
-msgstr "Allow purchase actions without asking"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -638,6 +610,10 @@ msgstr "Already retried"
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
 msgstr "Always act"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Always allow"
+msgstr "Always allow"
 
 #: src/components/AskCard.tsx
 msgid "Always allow this tool"
@@ -698,6 +674,10 @@ msgstr "API key header"
 msgid "Appearance"
 msgstr "Appearance"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Applies to all your Bots in this Space."
+msgstr "Applies to all your Bots in this Space."
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Approval boundaries"
 msgstr "Approval boundaries"
@@ -741,36 +721,9 @@ msgstr "Arguments"
 msgid "Artifacts"
 msgstr "Artifacts"
 
-#. placeholder {0}: rule.matchValue
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0}"
-msgstr "Ask before {0}"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} actions"
-msgstr "Ask before {0} actions"
-
-#. placeholder {0}: rule.matchValue
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before {0} connector"
-msgstr "Ask before {0} connector"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before email actions"
-msgstr "Ask before email actions"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchase actions"
-msgstr "Ask before purchase actions"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before purchases"
-msgstr "Ask before purchases"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Ask before sending external email"
-msgstr "Ask before sending external email"
+msgid "Ask me first"
+msgstr "Ask me first"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Ask the server owner to configure this provider."
@@ -860,18 +813,9 @@ msgstr "Awaiting your review"
 msgid "Back"
 msgstr "Back"
 
-#: src/lib/task-center.ts
-msgid "Back to conversation"
-msgstr "Back to conversation"
-
 #: src/pages/Auth.tsx
 msgid "Back to sign in"
 msgstr "Back to sign in"
-
-#: src/components/ai/TaskCenterNavEntry.tsx
-#: src/components/ai/TaskCenterView.tsx
-msgid "Background tasks"
-msgstr "Background tasks"
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx
 msgid "Base URL"
@@ -966,6 +910,7 @@ msgstr "Can't reach the server."
 
 #: src/components/activity/BackgroundTaskActivity.tsx
 #: src/components/ai/PlanReviewCard.tsx
+#: src/components/ApprovalRulesSettings.tsx
 #: src/components/AskCard.tsx
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/components/ComputerUpdateProgress.tsx
@@ -1040,6 +985,10 @@ msgstr "Chat apps, group channels, and agent connections."
 #: src/pages/Shell.tsx
 msgid "Chat Settings"
 msgstr "Chat Settings"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Check actions against my rules before they run"
+msgstr "Check actions against my rules before they run"
 
 #: src/components/SoftwareUpdateSection.tsx
 msgid "Check failed"
@@ -1562,8 +1511,8 @@ msgid "Could not load"
 msgstr "Could not load"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not load approval rules"
-msgstr "Could not load approval rules"
+msgid "Could not load action rules"
+msgstr "Could not load action rules"
 
 #: src/pages/Artifacts.tsx
 msgid "Could not load artifacts."
@@ -1661,8 +1610,8 @@ msgid "Could not remove group"
 msgstr "Could not remove group"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not remove rule"
-msgstr "Could not remove rule"
+msgid "Could not remove this rule"
+msgstr "Could not remove this rule"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
@@ -1696,8 +1645,8 @@ msgid "Could not save"
 msgstr "Could not save"
 
 #: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save Auto Review"
-msgstr "Could not save Auto Review"
+msgid "Could not save action review"
+msgstr "Could not save action review"
 
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Could not save avatar"
@@ -1714,10 +1663,6 @@ msgstr "Could not save model"
 #: src/pages/Shell.tsx
 msgid "Could not save routine"
 msgstr "Could not save routine"
-
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Could not save rule"
-msgstr "Could not save rule"
 
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not save skill"
@@ -1738,6 +1683,10 @@ msgstr "Could not save that voice"
 #: src/pages/shell/message-cards.tsx
 msgid "Could not save this choice"
 msgstr "Could not save this choice"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Could not save this rule"
+msgstr "Could not save this rule"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not search catalog"
@@ -1803,10 +1752,6 @@ msgstr "Could not update the default memory scope"
 msgid "Could not upload file"
 msgstr "Could not upload file"
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't load background tasks."
-msgstr "Couldn't load background tasks."
-
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
@@ -1814,10 +1759,6 @@ msgstr "Couldn't load messaging settings"
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Couldn't load the execution detail."
 msgstr "Couldn't load the execution detail."
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Couldn't open this task. Try again."
-msgstr "Couldn't open this task. Try again."
 
 #: src/lib/manual-retry.ts
 msgid "Couldn't retry this task. Try again."
@@ -1968,6 +1909,7 @@ msgstr "Default scope"
 msgid "Deferred"
 msgstr "Deferred"
 
+#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/BotContextMenu.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -2032,6 +1974,10 @@ msgstr "Deny"
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Deployment default"
 msgstr "Deployment default"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Describe the action in your own words"
+msgstr "Describe the action in your own words"
 
 #: src/components/ai/PlanReviewCard.tsx
 msgid "Describe the concrete changes you want"
@@ -2148,6 +2094,10 @@ msgstr "Draft skill"
 msgid "Duplicate"
 msgstr "Duplicate"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "e.g. emailing someone outside the Space"
+msgstr "e.g. emailing someone outside the Space"
+
 #: src/pages/shell/bot-panel.tsx
 msgid "e.g. Hivenet Agent, Presales, Timesheets bot"
 msgstr "e.g. Hivenet Agent, Presales, Timesheets bot"
@@ -2155,6 +2105,10 @@ msgstr "e.g. Hivenet Agent, Presales, Timesheets bot"
 #: src/pages/Shell.tsx
 msgid "Earlier message"
 msgstr "Earlier message"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Edit"
+msgstr "Edit"
 
 #: src/components/AskCard.tsx
 msgid "Edit first"
@@ -2397,10 +2351,6 @@ msgstr "Finished."
 msgid "Finishing MCP connection…"
 msgstr "Finishing MCP connection…"
 
-#: src/components/ApprovalRulesSettings.tsx
-msgid "Flag unexpected actions"
-msgstr "Flag unexpected actions"
-
 #: src/components/RunDetailsPanel.tsx
 msgid "Follows bot notification settings"
 msgstr "Follows bot notification settings"
@@ -2467,10 +2417,6 @@ msgstr "Group updates"
 #: src/pages/shell/dialogs.tsx
 msgid "Groups"
 msgstr "Groups"
-
-#: src/lib/task-center.ts
-msgid "Handle now"
-msgstr "Handle now"
 
 #: src/components/call/CallCard.tsx
 msgid "Hang up"
@@ -2749,10 +2695,6 @@ msgstr "Load earlier messages"
 msgid "Load more"
 msgstr "Load more"
 
-#: src/components/ai/TaskCenterView.tsx
-msgid "Load more tasks"
-msgstr "Load more tasks"
-
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
 msgstr "Loading activity…"
@@ -2790,7 +2732,6 @@ msgid "Loading voice providers…"
 msgstr "Loading voice providers…"
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/components/RunDetailsPanel.tsx
 #: src/pages/Artifacts.tsx
 #: src/pages/IntegrationSetup.tsx
@@ -2825,6 +2766,10 @@ msgstr "Low"
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
 msgstr "Make sure nothing is still running on this computer."
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Making purchases"
+msgstr "Making purchases"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Manage MCP servers"
@@ -3208,6 +3153,10 @@ msgstr "No remote MCP servers found"
 msgid "No results"
 msgstr "No results"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
+msgstr "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
+
 #: src/pages/RoutineEditor.tsx
 msgid "No runs yet"
 msgstr "No runs yet"
@@ -3219,10 +3168,6 @@ msgstr "No skills yet"
 #: src/pages/memory-facts.tsx
 msgid "No sources recorded"
 msgstr "No sources recorded"
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "No tasks running in background"
-msgstr "No tasks running in background"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No team conversations yet."
@@ -3256,10 +3201,6 @@ msgstr "Not now"
 #: src/components/ai/RunPlanDisclosure.tsx
 msgid "Not started"
 msgstr "Not started"
-
-#: src/components/ai/TaskCenterView.tsx
-msgid "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
-msgstr "Nothing is running in the background. When you leave a chat, work that needs to continue keeps running here."
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Nothing is still running"
@@ -3343,7 +3284,6 @@ msgstr "Open computer"
 msgid "Open in full window"
 msgstr "Open in full window"
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/Shell.tsx
 msgid "Open navigation"
 msgstr "Open navigation"
@@ -3694,7 +3634,6 @@ msgstr "Remember"
 msgid "Remembered"
 msgstr "Remembered"
 
-#: src/components/ApprovalRulesSettings.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/ScratchpadSection.tsx
 msgid "Remove"
@@ -3857,7 +3796,6 @@ msgid "Retry"
 msgstr "Retry"
 
 #: src/App.tsx
-#: src/components/ai/TaskCenterView.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 msgid "Retry now"
 msgstr "Retry now"
@@ -3908,6 +3846,10 @@ msgstr "Routine"
 #: src/pages/RoutineEditor.tsx
 msgid "Routines"
 msgstr "Routines"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Rules guide action review only — they never connect apps, widen resource access, or skip server-side protections."
+msgstr "Rules guide action review only — they never connect apps, widen resource access, or skip server-side protections."
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -3962,6 +3904,10 @@ msgstr "Save"
 #: src/pages/memory-facts.tsx
 msgid "Save correction"
 msgstr "Save correction"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Save rule"
+msgstr "Save rule"
 
 #: src/components/ai/InterventionRegion.tsx
 #: src/components/AskCard.tsx
@@ -4081,6 +4027,10 @@ msgstr "Send it"
 #: src/pages/Auth.tsx
 msgid "Send reset link"
 msgstr "Send reset link"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Sending email"
+msgstr "Sending email"
 
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/AskCard.tsx
@@ -4560,7 +4510,6 @@ msgstr "This subscription sign-in is not available in {productName} yet. Use a d
 msgid "This task already completed."
 msgstr "This task already completed."
 
-#: src/components/ai/TaskCenterView.tsx
 #: src/lib/manual-retry.ts
 msgid "This task is no longer available."
 msgstr "This task is no longer available."
@@ -4769,6 +4718,11 @@ msgstr "Use this model"
 msgid "Username"
 msgstr "Username"
 
+#. placeholder {0}: rule.matchValue
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Using {0}"
+msgstr "Using {0}"
+
 #: src/pages/PluginsOverlay.tsx
 msgid "Verify and add"
 msgstr "Verify and add"
@@ -4786,10 +4740,6 @@ msgstr "Version"
 msgid "Version v{0}"
 msgstr "Version v{0}"
 
-#: src/lib/task-center.ts
-msgid "View execution"
-msgstr "View execution"
-
 #: src/lib/execution-card.ts
 msgid "View progress"
 msgstr "View progress"
@@ -4800,7 +4750,6 @@ msgid "View reason"
 msgstr "View reason"
 
 #: src/lib/execution-card.ts
-#: src/lib/task-center.ts
 msgid "View result"
 msgstr "View result"
 
@@ -4849,6 +4798,10 @@ msgstr "Weekdays"
 msgid "What about its memories?"
 msgstr "What about its memories?"
 
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What action?"
+msgstr "What action?"
+
 #: src/pages/shell/message-cards.tsx
 msgid "What do you want me on first?"
 msgstr "What do you want me on first?"
@@ -4860,6 +4813,10 @@ msgstr "What result will you demonstrate?"
 #: src/components/ai/PlanReviewCard.tsx
 msgid "What should change in this plan?"
 msgstr "What should change in this plan?"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "What should happen?"
+msgstr "What should happen?"
 
 #: src/pages/RoutineEditor.tsx
 msgid "What should this routine do each time it runs?"
@@ -4939,6 +4896,10 @@ msgstr "Your email address"
 #: src/pages/Auth.tsx
 msgid "Your name"
 msgstr "Your name"
+
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Your rules"
+msgstr "Your rules"
 
 #: src/pages/Welcome.tsx
 msgid "Your team of always-on agents<0/>that you can give real work to."

@@ -12,7 +12,7 @@
  *    message anchor falls back to the transcript tail.
  * 3. A pending Intervention renders outside the collapsible detail, and the
  *    Ask block it covers never appears as a second card in the bubble.
- * 4. The Task Center return intent is consumed once: it opens the target
+ * 4. The execution-nav return intent is consumed once: it opens the target
  *    Run's card and focuses the Intervention control (attention) or the
  *    status line (non-attention).
  *
@@ -34,11 +34,11 @@ import { act, type ComponentProps, type ReactNode, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  clearTaskCenterNavIntent,
+  clearExecutionNavIntent,
   EXECUTION_NAV_INTENT_EVENT,
-  peekTaskCenterNavIntent,
-  setTaskCenterNavIntent,
-} from "../lib/task-center";
+  peekExecutionNavIntent,
+  setExecutionNavIntent,
+} from "../lib/execution-nav";
 
 const rpcMocks = vi.hoisted(() => ({
   executionSnapshot: vi.fn(),
@@ -377,7 +377,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   window.sessionStorage.clear();
-  clearTaskCenterNavIntent();
+  clearExecutionNavIntent();
   rpcMocks.executionSnapshot.mockReset();
   rpcMocks.executionSnapshot.mockRejectedValue(new Error("detail unavailable in smoke test"));
   rpcMocks.executionActivityPage.mockReset();
@@ -386,7 +386,7 @@ beforeEach(() => {
 
 afterEach(() => {
   unmountTranscript();
-  clearTaskCenterNavIntent();
+  clearExecutionNavIntent();
 });
 
 describe("Shell execution region smoke (UX-01A baseline)", () => {
@@ -651,8 +651,8 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(region.closest(".exc-details")).toBeNull();
   });
 
-  it("consumes the Task Center attention intent once: opens the Run and focuses its Intervention control", async () => {
-    setTaskCenterNavIntent({ threadId: THREAD, runId: "run-5", rev: 3, attention: true });
+  it("consumes the execution-nav attention intent once: opens the Run and focuses its Intervention control", async () => {
+    setExecutionNavIntent({ threadId: THREAD, runId: "run-5", rev: 3, attention: true });
     const host = renderTranscript({
       messages: [
         message("m1", "user", [{ kind: "text", text: "USER-QUESTION-4" }]),
@@ -701,7 +701,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     });
 
     // The intent is consumed exactly once (module memory cleared).
-    expect(peekTaskCenterNavIntent()).toBeNull();
+    expect(peekExecutionNavIntent()).toBeNull();
     // The card is open and its detail load was requested against the current
     // artifact target.
     const card = host.querySelector('article[data-testid="execution-card"][data-open="1"]');
@@ -718,7 +718,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(active!.textContent).toContain("Allow");
   });
 
-  it("force-opens a closed card and focuses the status line for a non-attention Task Center return", async () => {
+  it("force-opens a closed card and focuses the status line for a non-attention execution-nav return", async () => {
     const scenario = {
       messages: [
         message("m1", "user", [{ kind: "text", text: "USER-QUESTION-5" }]),
@@ -745,16 +745,16 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
       closed.querySelector('article[data-testid="execution-card"]')!.getAttribute("data-open"),
     ).toBe("0");
 
-    // The same Run, returned to from the Task Center without attention, is
-    // forced open and its status line receives focus.
-    setTaskCenterNavIntent({ threadId: THREAD, runId: "run-6", rev: 7, attention: false });
+    // The same Run, returned to via the execution-nav intent without
+    // attention, is forced open and its status line receives focus.
+    setExecutionNavIntent({ threadId: THREAD, runId: "run-6", rev: 7, attention: false });
     const host = renderTranscript(scenario);
 
     await act(async () => {
       await sleep(60);
     });
 
-    expect(peekTaskCenterNavIntent()).toBeNull();
+    expect(peekExecutionNavIntent()).toBeNull();
     const openCard = host.querySelector('article[data-testid="execution-card"][data-open="1"]');
     expect(openCard).not.toBeNull();
     expect(openCard!.closest('[data-testid="execution-shell"]')!.textContent).toContain(
@@ -897,9 +897,9 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
         }),
       ],
     });
-    expect(peekTaskCenterNavIntent()).toBeNull();
+    expect(peekExecutionNavIntent()).toBeNull();
 
-    setTaskCenterNavIntent({ threadId: THREAD, runId: "run-11", rev: 2, attention: true });
+    setExecutionNavIntent({ threadId: THREAD, runId: "run-11", rev: 2, attention: true });
     act(() => {
       window.dispatchEvent(new Event(EXECUTION_NAV_INTENT_EVENT));
     });
@@ -907,7 +907,7 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
       await sleep(60);
     });
 
-    expect(peekTaskCenterNavIntent()).toBeNull();
+    expect(peekExecutionNavIntent()).toBeNull();
     const card = host.querySelector('article[data-testid="execution-card"][data-open="1"]');
     expect(card).not.toBeNull();
     const active = document.activeElement;
