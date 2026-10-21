@@ -63,12 +63,14 @@ describe("window chrome", () => {
   it("keeps conversation header controls clickable", () => {
     const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "../pages");
     const shell = readFileSync(path.join(root, "Shell.tsx"), "utf8");
+    expect(shell).toContain('className="app-drag pointer-events-none absolute inset-x-0 top-0');
+    expect(shell).toContain('data-testid="bot-settings-trigger"');
+    // UX-03: the floating identity pill is a single control; run details stay
+    // on the execution card in the conversation.
+    expect(shell).not.toContain('data-testid="run-panel-trigger"');
     expect(shell).toContain(
-      'className="app-drag flex items-center justify-between border-b border-sidebar-border',
+      'className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"',
     );
-    expect(shell).toContain('className="app-no-drag grid h-8 w-8');
-    expect(shell).toContain('className="app-no-drag flex min-w-0 items-center gap-3"');
-    expect(shell.match(/className="app-no-drag grid h-\[30px\] w-\[34px\]/g)).toHaveLength(1);
   });
 
   it("moves window chrome into the conversation header when the bots sidebar is collapsed", () => {

@@ -91,7 +91,10 @@ test("user control leaves another Team bot's screen available", async ({ page },
   const workerId = await createBot(page, "Worker", "team");
 
   await openBot(page, "Chief");
-  await page.getByTitle("Agent computer").click();
+    if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
+  }
+  await page.getByRole("tab", { name: "Computer" }).click();
   await page.getByTestId("computer-preview").hover();
   await page.getByTestId("computer-preview-open").click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
@@ -128,7 +131,10 @@ test("user control leaves another Team bot's screen available", async ({ page },
 test("a failed control release keeps the computer open for retry", async ({ page }, testInfo) => {
   await signup(page, `team-release-${Date.now()}@rakazo.test`, "password12", "Team Release");
   await completeOnboarding(page);
-  await page.getByTitle("Agent computer").click();
+    if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
+  }
+  await page.getByRole("tab", { name: "Computer" }).click();
   await page.getByTestId("computer-preview").hover();
   await page.getByTestId("computer-preview-open").click();
   const chrome = page.getByTestId("computer-chrome");
@@ -186,7 +192,10 @@ test("an active Team bot must be stopped before user takeover", async ({ page },
     .poll(async () => (await threadSnapshot(page, chiefId)).run?.status ?? "idle")
     .toBe("running");
 
-  await page.getByTitle("Agent computer").click();
+    if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
+  }
+  await page.getByRole("tab", { name: "Computer" }).click();
   const sidePanel = page.getByTestId("side-panel");
   await expect(sidePanel.getByRole("button", { name: /Take control/i })).toHaveCount(0);
   await page.getByTestId("computer-preview").hover();
@@ -241,15 +250,17 @@ async function setComputerMode(
   mode: "team" | "dedicated",
 ) {
   await page.getByRole("button", { name: botName, exact: true }).last().click();
+  if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
+  }
+  await page.getByRole("tab", { name: "Details" }).click();
   const settings = page.getByTestId("bot-settings");
   await expect(settings.locator("label:has-text('Name') input")).toHaveValue(botName);
-  const advanced = settings.getByTestId("bot-settings-advanced");
-  await advanced.evaluate((element) => {
-    (element as HTMLDetailsElement).open = true;
-  });
+  await page.getByRole("tab", { name: "Computer" }).click();
   await settings
     .getByRole("button", { name: mode === "team" ? "Team" : "Private", exact: true })
     .click();
+  await page.getByRole("tab", { name: "Details" }).click();
   await settings.getByRole("button", { name: "Save", exact: true }).click();
   await expect
     .poll(async () => {
@@ -268,7 +279,10 @@ async function openBot(page: Page, name: string) {
 }
 
 async function openComputerPanel(page: Page) {
-  await page.getByTitle("Agent computer").click();
+    if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
+  }
+  await page.getByRole("tab", { name: "Computer" }).click();
   await expect(page.getByTestId("computer-preview")).toBeVisible();
   await expect(page.getByTestId("computer-preview-open")).toHaveCount(1);
 }

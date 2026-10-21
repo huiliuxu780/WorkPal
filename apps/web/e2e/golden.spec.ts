@@ -91,13 +91,14 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
       message: "the second protected-input run must be ready for takeover",
     })
     .toBe("waiting_takeover");
-  // Agent computer toggles the panel. Re-open when closed so Open can refresh computer status.
+  // The computer view is a tab inside the settings panel; re-open when closed
+  // so Open can refresh computer status.
   const sidePanel = page.getByTestId("side-panel");
-  if ((await sidePanel.getAttribute("data-panel")) === "computer") {
-    await page.getByTitle("Agent computer").click();
+  if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
   }
-  await page.getByTitle("Agent computer").click();
-  await expect(sidePanel).toHaveAttribute("data-panel", "computer");
+  await page.getByRole("tab", { name: "Computer" }).click();
+  await expect(sidePanel).toHaveAttribute("data-panel", "settings");
   await expect(sidePanel).toHaveCSS("width", "384px");
   const [mainBox, panelBox] = await Promise.all([
     page.locator("main").boundingBox(),
@@ -301,11 +302,9 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await page.getByRole("button", { name: "Close integrations" }).click();
 
   await page.getByText("Chief").first().click();
-  const gear = page.getByRole("button", { name: "Show settings" });
-  if (!(await gear.isVisible().catch(() => false))) {
-    await page.getByTitle("Agent computer").click();
+  if (!(await page.getByTestId("bot-settings").isVisible().catch(() => false))) {
+    await page.getByTestId("bot-settings-trigger").click();
   }
-  await gear.click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export" }).click();
   const download = await downloadPromise;

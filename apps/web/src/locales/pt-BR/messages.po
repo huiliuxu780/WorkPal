@@ -558,17 +558,12 @@ msgstr "Adicionando"
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineSchedule.tsx
-#: src/pages/shell/bot-panel.tsx
 msgid "Advanced"
 msgstr "Avançado"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Advanced..."
 msgstr ""
-
-#: src/pages/Shell.tsx
-msgid "Agent computer"
-msgstr "Computador do agente"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Agent connections"
@@ -865,6 +860,10 @@ msgstr "Tela do bot"
 #: src/pages/Shell.tsx
 msgid "Bot screen preview"
 msgstr "Pré-visualização da tela"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Bot settings sections"
+msgstr ""
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Bot to link"
@@ -2001,6 +2000,7 @@ msgstr ""
 
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Details"
 msgstr ""
 
@@ -2659,6 +2659,10 @@ msgstr ""
 msgid "Legacy documents"
 msgstr ""
 
+#: src/pages/shell/bot-panel.tsx
+msgid "Library"
+msgstr ""
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
 msgstr "Claro"
@@ -3276,8 +3280,16 @@ msgstr "Abrir"
 msgid "Open {0}"
 msgstr ""
 
+#: src/pages/Shell.tsx
+msgid "Open bot settings"
+msgstr ""
+
 #: src/components/RunDetailsPanel.tsx
 msgid "Open computer"
+msgstr ""
+
+#: src/pages/Shell.tsx
+msgid "Open group settings"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -3856,7 +3868,6 @@ msgid "Run at"
 msgstr ""
 
 #: src/components/RunDetailsPanel.tsx
-#: src/pages/Shell.tsx
 msgid "Run details"
 msgstr ""
 
@@ -4122,10 +4133,6 @@ msgstr ""
 msgid "Show bots"
 msgstr ""
 
-#: src/pages/Shell.tsx
-msgid "Show computer"
-msgstr ""
-
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
@@ -4143,10 +4150,6 @@ msgstr "Mostrar mais"
 #: src/pages/Auth.tsx
 msgid "Show password"
 msgstr ""
-
-#: src/pages/Shell.tsx
-msgid "Show settings"
-msgstr "Mostrar configurações"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Show tool activity"

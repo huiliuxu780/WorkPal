@@ -558,17 +558,12 @@ msgstr "正在添加…"
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineSchedule.tsx
-#: src/pages/shell/bot-panel.tsx
 msgid "Advanced"
 msgstr "高级"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Advanced..."
 msgstr "高级..."
-
-#: src/pages/Shell.tsx
-msgid "Agent computer"
-msgstr "Agent 电脑"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Agent connections"
@@ -865,6 +860,10 @@ msgstr "Bot 屏幕"
 #: src/pages/Shell.tsx
 msgid "Bot screen preview"
 msgstr "Bot 屏幕预览"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Bot settings sections"
+msgstr "Bot 设置分区"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Bot to link"
@@ -2001,8 +2000,9 @@ msgstr ""
 
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Details"
-msgstr ""
+msgstr "详情"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Direct MCP"
@@ -2659,6 +2659,10 @@ msgstr "退出"
 msgid "Legacy documents"
 msgstr "旧版文档"
 
+#: src/pages/shell/bot-panel.tsx
+msgid "Library"
+msgstr "资料库"
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
 msgstr "浅色"
@@ -3276,9 +3280,17 @@ msgstr "打开"
 msgid "Open {0}"
 msgstr "打开 {0}"
 
+#: src/pages/Shell.tsx
+msgid "Open bot settings"
+msgstr "打开 Bot 设置"
+
 #: src/components/RunDetailsPanel.tsx
 msgid "Open computer"
 msgstr ""
+
+#: src/pages/Shell.tsx
+msgid "Open group settings"
+msgstr "打开群设置"
 
 #: src/pages/Shell.tsx
 msgid "Open in full window"
@@ -3856,7 +3868,6 @@ msgid "Run at"
 msgstr "运行时间"
 
 #: src/components/RunDetailsPanel.tsx
-#: src/pages/Shell.tsx
 msgid "Run details"
 msgstr ""
 
@@ -4122,10 +4133,6 @@ msgstr "显示全部（还有 {hidden} 项）"
 msgid "Show bots"
 msgstr ""
 
-#: src/pages/Shell.tsx
-msgid "Show computer"
-msgstr ""
-
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
@@ -4143,10 +4150,6 @@ msgstr "显示更多"
 #: src/pages/Auth.tsx
 msgid "Show password"
 msgstr "显示密码"
-
-#: src/pages/Shell.tsx
-msgid "Show settings"
-msgstr "显示设置"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Show tool activity"

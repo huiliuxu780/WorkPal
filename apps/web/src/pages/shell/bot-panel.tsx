@@ -26,7 +26,7 @@ import {
   Textarea,
   Toggle,
 } from "@rakazo/ui-web";
-import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ModelTreePicker } from "../../components/ModelTreePicker";
 import {
   modelOptionKey,
@@ -246,8 +246,16 @@ export function BotSettings({
   onExport,
   onClear,
   onAvatarChanged,
+  settingsTab,
+  onSettingsTabChange,
+  computerScreen,
+  routines,
 }: {
   bot: Bot;
+  settingsTab: "detail" | "library" | "computer";
+  onSettingsTabChange: (tab: "detail" | "library" | "computer") => void;
+  computerScreen: ReactNode;
+  routines: ReactNode;
   onSkillsChange: (skills: AgentSkillCatalogEntry[]) => void;
   memoryProviderConfigured: boolean;
   onSave: (patch: {
@@ -273,7 +281,7 @@ export function BotSettings({
   onAvatarChanged: () => Promise<void>;
 }) {
   const { t } = useLingui();
-  const [advancedOpened, setAdvancedOpened] = useState(false);
+  const [libraryOpened, setLibraryOpened] = useState(false);
   const ids = useId();
   const [name, setName] = useState(bot.name);
   const [title, setTitle] = useState(bot.title);
@@ -520,6 +528,67 @@ export function BotSettings({
           </ol>
         </details>
       ) : null}
+      <div className="mt-3 text-center text-[16px] font-semibold text-foreground" dir="auto">
+        {name}
+      </div>
+      <div className="mt-1 text-center text-[12.5px] text-muted-foreground" dir="auto">
+        {title}
+      </div>
+      <div
+        className="mt-4 flex justify-center gap-1"
+        role="tablist"
+        aria-label={t`Bot settings sections`}
+        onKeyDown={(event) => {
+          const order = ["detail", "library", "computer"] as const;
+          const index = order.indexOf(settingsTab);
+          let next: (typeof order)[number] | null = null;
+          if (event.key === "ArrowRight") next = order[(index + 1) % order.length]!;
+          else if (event.key === "ArrowLeft")
+            next = order[(index + order.length - 1) % order.length]!;
+          else if (event.key === "Home") next = order[0];
+          else if (event.key === "End") next = order[order.length - 1]!;
+          if (!next) return;
+          event.preventDefault();
+          const target = next;
+          onSettingsTabChange(target);
+          if (target === "library") setLibraryOpened(true);
+          window.requestAnimationFrame(() =>
+            document.getElementById(`${ids}-tab-${target}`)?.focus(),
+          );
+        }}
+      >
+        {(
+          [
+            ["detail", t`Details`],
+            ["library", t`Library`],
+            ["computer", t`Computer`],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`${ids}-tab-${key}`}
+            aria-controls={`${ids}-panel-${key}`}
+            aria-selected={settingsTab === key}
+            tabIndex={settingsTab === key ? 0 : -1}
+            className={`rounded-full px-3.5 py-1.5 text-[13px] transition-colors ${
+              settingsTab === key
+                ? "bg-accent font-medium text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => {
+              onSettingsTabChange(key);
+              if (key === "library") setLibraryOpened(true);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {settingsTab === "detail" ? (
+        <div role="tabpanel" id={`${ids}-panel-detail`} aria-labelledby={`${ids}-tab-detail`}>
+      <div className="mt-4">{routines}</div>
       <label htmlFor={`${ids}-name`} className="mt-4 block text-[13.5px] text-muted-foreground/80">
         <Trans>Name</Trans>
         <Input
@@ -578,28 +647,6 @@ export function BotSettings({
           }}
         />
       </div>
-      <details
-        data-testid="bot-settings-advanced"
-        className="group mt-5"
-        onToggle={(event) => {
-          if (event.currentTarget.open) setAdvancedOpened(true);
-        }}
-      >
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[14px] text-muted-foreground">
-          <span className="text-muted-foreground">
-            <Trans>Advanced</Trans>
-          </span>
-          <span aria-hidden="true" className="transition-transform group-open:rotate-90">
-            ›
-          </span>
-        </summary>
-        <ComputerModePicker value={computerMode} onChange={setComputerMode} />
-        <Suspense fallback={null}>
-          <ScratchpadSection botId={bot.id} />
-          {advancedOpened ? (
-            <KnowledgeSection botId={bot.id} onSkillsChange={onSkillsChange} />
-          ) : null}
-        </Suspense>
         <label htmlFor={`${ids}-model`} className={fieldLabelClass}>
           <Trans>Model</Trans>
           <div className="mt-2">
@@ -693,7 +740,6 @@ export function BotSettings({
             </NativeSelect>
           </label>
         ) : null}
-      </details>
       {error ? <p className="mt-2 text-[13px] text-destructive">{error}</p> : null}
       <div className="mt-5 flex flex-col items-start gap-3">
         <Button
@@ -721,6 +767,24 @@ export function BotSettings({
           <Trans>Clear conversation</Trans>
         </Button>
       </div>
+        </div>
+      ) : settingsTab === "library" ? (
+        <div role="tabpanel" id={`${ids}-panel-library`} aria-labelledby={`${ids}-tab-library`}>
+          <Suspense fallback={null}>
+            <ScratchpadSection botId={bot.id} />
+            {libraryOpened ? (
+              <KnowledgeSection botId={bot.id} onSkillsChange={onSkillsChange} />
+            ) : null}
+          </Suspense>
+        </div>
+      ) : (
+        <div role="tabpanel" id={`${ids}-panel-computer`} aria-labelledby={`${ids}-tab-computer`}>
+          <div className="mt-4">
+            <ComputerModePicker value={computerMode} onChange={setComputerMode} />
+          </div>
+          <div className="mt-4">{computerScreen}</div>
+        </div>
+      )}
     </div>
   );
 }

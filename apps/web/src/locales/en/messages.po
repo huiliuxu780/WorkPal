@@ -558,17 +558,12 @@ msgstr "Adding…"
 #: src/pages/Onboarding.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineSchedule.tsx
-#: src/pages/shell/bot-panel.tsx
 msgid "Advanced"
 msgstr "Advanced"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Advanced..."
 msgstr "Advanced..."
-
-#: src/pages/Shell.tsx
-msgid "Agent computer"
-msgstr "Agent computer"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Agent connections"
@@ -865,6 +860,10 @@ msgstr "Bot screen"
 #: src/pages/Shell.tsx
 msgid "Bot screen preview"
 msgstr "Bot screen preview"
+
+#: src/pages/shell/bot-panel.tsx
+msgid "Bot settings sections"
+msgstr "Bot settings sections"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Bot to link"
@@ -2001,6 +2000,7 @@ msgstr "Desktop update"
 
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
+#: src/pages/shell/bot-panel.tsx
 msgid "Details"
 msgstr "Details"
 
@@ -2659,6 +2659,10 @@ msgstr "Leave"
 msgid "Legacy documents"
 msgstr "Legacy documents"
 
+#: src/pages/shell/bot-panel.tsx
+msgid "Library"
+msgstr "Library"
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Light"
 msgstr "Light"
@@ -3276,9 +3280,17 @@ msgstr "Open"
 msgid "Open {0}"
 msgstr "Open {0}"
 
+#: src/pages/Shell.tsx
+msgid "Open bot settings"
+msgstr "Open bot settings"
+
 #: src/components/RunDetailsPanel.tsx
 msgid "Open computer"
 msgstr "Open computer"
+
+#: src/pages/Shell.tsx
+msgid "Open group settings"
+msgstr "Open group settings"
 
 #: src/pages/Shell.tsx
 msgid "Open in full window"
@@ -3856,7 +3868,6 @@ msgid "Run at"
 msgstr "Run at"
 
 #: src/components/RunDetailsPanel.tsx
-#: src/pages/Shell.tsx
 msgid "Run details"
 msgstr "Run details"
 
@@ -4122,10 +4133,6 @@ msgstr "Show all ({hidden} more)"
 msgid "Show bots"
 msgstr "Show bots"
 
-#: src/pages/Shell.tsx
-msgid "Show computer"
-msgstr "Show computer"
-
 #: src/components/ai/PlanReviewCard.tsx
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
@@ -4143,10 +4150,6 @@ msgstr "Show more"
 #: src/pages/Auth.tsx
 msgid "Show password"
 msgstr "Show password"
-
-#: src/pages/Shell.tsx
-msgid "Show settings"
-msgstr "Show settings"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Show tool activity"
