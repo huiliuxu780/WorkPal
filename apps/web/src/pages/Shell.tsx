@@ -158,7 +158,6 @@ import { VoiceChatCard } from "../components/call/VoiceChatCard";
 import { ComputerWorkspace } from "../components/computer/ComputerWorkspace";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
 import { ModelTreePicker } from "../components/ModelTreePicker";
-import { RunDetailsPanel } from "../components/RunDetailsPanel";
 import {
   LIVE_TOOL_STEP_WINDOW,
   StandaloneToolActivity,
@@ -319,7 +318,6 @@ type Panel =
   | "create"
   | "create-group"
   | "group-settings"
-  | "run"
   | null;
 
 type PendingAttachment = {
@@ -3870,8 +3868,7 @@ export function ShellPage() {
             {panel !== "routine" &&
             panel !== "create" &&
             panel !== "create-group" &&
-            panel !== "group-settings" &&
-            panel !== "run" ? (
+            panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-[13.5px] text-muted-foreground">
                   {panel === "settings" ? (
@@ -3893,17 +3890,6 @@ export function ShellPage() {
                   </Button>
                 </div>
               </div>
-            ) : null}
-            {panel === "run" && active && panelRun ? (
-              <RunDetailsPanel
-                runId={panelRun.id}
-                snapshot={activeSnapshot}
-                onClose={() => setPanel(null)}
-                onOpenComputer={() => {
-                    setPanel("settings");
-                    setSettingsTab("computer");
-                  }}
-              />
             ) : null}
             {panel === "group-settings" && activeGroup ? (
               <GroupSettings
