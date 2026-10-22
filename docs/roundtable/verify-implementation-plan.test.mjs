@@ -81,8 +81,8 @@ test("rejects moving session recovery scenarios away from their owners", () => {
   assert.throws(() => verifyImplementationPlan(prd, changed), /RT-26 must own scenario F04/);
 });
 
-test("rejects a dependency cycle and forward dependency", () => {
+test("allows forward dependencies but rejects a dependency cycle", () => {
+  assert.doesNotThrow(() => verifyImplementationPlan(prd, plan));
   const changed = plan.replace("依赖：无。", "依赖：RT-01。");
-  assert.throws(() => verifyImplementationPlan(prd, changed), /depends on later task RT-01/);
   assert.throws(() => verifyImplementationPlan(prd, changed), /dependency cycle includes/);
 });

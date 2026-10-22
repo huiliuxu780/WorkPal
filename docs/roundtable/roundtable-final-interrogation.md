@@ -29,7 +29,7 @@ reviewer 不修改文件。每轮成立的 finding 先退出审查阶段，再�
 4. 等待审批或输入前，Runtime pending state 按 Run/Attempt 从共享 chat state 原子 snapshot-and-detach；下一条普通 prompt 不能误答或批准旧请求。
 5. 每次 Runtime 调用（包括 resume）前都预持久化新的 execution fence 和 suspension key。Runtime pending state 从创建起携带身份。
 6. owner 过期时先进入 recovering；只有 Runtime 对旧 fence 给出 `clean | detached` 证明后才能释放并唤醒下一 Run。
-7. RT-25 明确负责 C06、P05、F04；验证器固定检查这三项语义归属，不能由其他任务的同名覆盖掩盖。
+7. RT-25 负责 F04；RT-26 负责 C06、P05、F04。验证器固定检查这一归属拆分，避免 fencing、排队、恢复与压缩安全的关键场景重新漂移成“无人负责”。
 
 ## 最终结论
 

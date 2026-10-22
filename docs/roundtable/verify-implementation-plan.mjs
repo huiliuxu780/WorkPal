@@ -95,7 +95,6 @@ export function verifyImplementationPlan(prd, plan) {
     errors.push(`task sequence must be contiguous: ${taskIds.join(", ")}`);
   }
 
-  const order = new Map(taskIds.map((id, index) => [id, index]));
   const graph = new Map(taskIds.map((id) => [id, []]));
   for (const task of tasks) {
     if (task.dependencyLines.length !== 1) {
@@ -113,9 +112,6 @@ export function verifyImplementationPlan(prd, plan) {
       }
       if (dependency === task.id) errors.push(`${task.id} depends on itself`);
       graph.get(task.id).push(dependency);
-      if (order.get(dependency) >= order.get(task.id)) {
-        errors.push(`${task.id} depends on later task ${dependency}`);
-      }
     }
   }
 

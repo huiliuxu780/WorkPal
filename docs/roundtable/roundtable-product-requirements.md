@@ -734,8 +734,8 @@ Joy owner Run
 - `packages/adapters/src/schedule-tools.ts:24`：当前群聊过滤 `message_bot` 的位置。
 - `packages/core/src/composer-mentions.ts:230-276`：用户 composer 已支持选择另一个群、剥离群 mention 并把剩余文本改投目标群；`message_group` 应复用这套目标语义。
 - `apps/web/src/components/ai/CollaborationMarker.tsx`：现有 A→B 发送回显组件，可扩展 GroupAvatar 目的地版本。
-- `packages/adapters/src/executor.ts:4629-4900`：BackgroundAgentTask 注册、进度、完成和 DeliveryRecord。
-- `services/agent-runtime/src/main/java/com/workpal/runtime/RuntimeEngine.java:304-315`：当前生产 `run_subagent` 暂停边界。
+- `packages/adapters/src/executor.ts:5430-5702`：BackgroundAgentTask 注册、进度、完成和 DeliveryRecord。
+- `services/agent-runtime/src/main/java/com/workpal/runtime/RuntimeEngine.java:129-145,370-405`：当前生产 `run_subagent` 暂停边界的声明与执行约束。
 - `packages/db/src/background-task-registration.ts`：当前只用 runtime task ID 和 `parentRunId` 注册后台投影，没有产品 Task、执行 Run、Attempt 或 revision 关系。
 - `packages/db/src/delivery-records.ts` 与 `packages/adapters/src/result-delivery.ts`：当前 delivery 主要按 Thread 和时间窗合并，且用首条记录的 Bot 创建 delivery Run。多 Bot 群 Thread 上线前必须扩展 batch identity。
 - `packages/db/src/events.ts` 的 `commitAnswerRunInput`：当前追问回答会覆盖 `Task.prompt`。instruction envelope 上线前必须迁移该写路径和所有直接读取者。
