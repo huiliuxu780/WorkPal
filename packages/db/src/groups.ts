@@ -7,6 +7,7 @@ import {
   type SpaceGroup,
 } from "@rakazo/contracts";
 import { selectGroupLead } from "@rakazo/core";
+import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import {
   backgroundTaskLockTransactionOptions,
   lockThreadForBackgroundTask,
@@ -138,6 +139,13 @@ async function assertOwnedBots(
   });
 }
 
+/**
+ * These repos address user-managed groups only. `agent_pair` groups are a
+ * separate hidden surface with their own read path, so exclusion belongs here
+ * rather than in every caller that must not forget it.
+ */
+const standardGroupScope = { kind: CHAT_GROUP_KIND_STANDARD } as const;
+
 const groupInclude = {
   thread: {
     include: {
@@ -170,13 +178,16 @@ const groupTargetInclude = {
           id: true,
           name: true,
           color: true,
+          avatarMode: true,
+          avatarCharacter: true,
+          avatarBodyColor: true,
           runs: activeRunSelection,
         },
       },
     },
-    orderBy: { createdAt: "asc" as const },
+    orderBy: [{ createdAt: "asc" }, { botId: "asc" }],
   },
-} as const;
+} satisfies Prisma.ChatGroupInclude;
 
 type RunTeardownTarget = {
   id: string;
@@ -270,6 +281,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         spaceId: { in: spaceIds },
         userId: actor.userId,
         archivedAt: null,
+        ...standardGroupScope,
       },
       select: {
         id: true,
@@ -304,6 +316,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: options.archived ? { not: null } : null,
+          ...standardGroupScope,
         },
         include: groupInclude,
         orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
@@ -322,6 +335,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           spaceId: actor.spaceId,
           userId: actor.userId,
           ...(options.includeArchived ? {} : { archivedAt: null }),
+          ...standardGroupScope,
         },
         include: groupInclude,
       });
@@ -329,13 +343,14 @@ export function createGroupRepos(prisma: PrismaClient) {
       return group as GroupRecord;
     },
 
-    async getGroupTarget(actor: Actor, groupId: string) {
+    async getGroupTarget(actor: Pick<Actor, "userId" | "spaceId">, groupId: string) {
       const group = await prisma.chatGroup.findFirst({
         where: {
           id: groupId,
           spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: null,
+          ...standardGroupScope,
         },
         include: groupTargetInclude,
       });

@@ -1,16 +1,21 @@
 import { createHash } from "node:crypto";
 import type { ArtifactStore } from "@rakazo/adapter-kit";
-import type { Actor } from "@rakazo/contracts";
+import type { Actor, MessageInline } from "@rakazo/contracts";
 import { ATTACHMENT_MAX_COUNT } from "@rakazo/contracts";
 import {
+  type ArtifactSummary,
   AttachmentValidationError,
   decodeAttachmentBase64,
+  type GroupPageQuery,
   messageBlockForArtifact,
+  type Page,
+  parseArtifactSummary,
   promptTextForAttachments,
   validateAttachmentMimeType,
 } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import {
+  createGroupRepos,
   deleteArtifactRowWithDetachEvent,
   IsolationError,
   Prisma,
@@ -219,15 +224,36 @@ type ArtifactListCursor = {
   createdAt: string;
   id: string;
   botId: string | null;
+  groupId: string | null;
   // Freezes the version set for this page sequence.
   asOf: string;
 };
 
+type ArtifactListScope =
+  | { kind: "space"; botId: string | null }
+  | { kind: "group"; groupId: string };
+
 const ARTIFACT_LIST_CURSOR_PREFIX = "v1.";
 
 function encodeArtifactListCursor(cursor: ArtifactListCursor): string {
+  // Keep the historical cursor bytes for space/bot pages; only a group-scoped
+  // page needs the extra scope field.
+  const payload = cursor.groupId
+    ? {
+        createdAt: cursor.createdAt,
+        id: cursor.id,
+        botId: cursor.botId,
+        groupId: cursor.groupId,
+        asOf: cursor.asOf,
+      }
+    : {
+        createdAt: cursor.createdAt,
+        id: cursor.id,
+        botId: cursor.botId,
+        asOf: cursor.asOf,
+      };
   return (
-    ARTIFACT_LIST_CURSOR_PREFIX + Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url")
+    ARTIFACT_LIST_CURSOR_PREFIX + Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")
   );
 }
 
@@ -252,12 +278,19 @@ function decodeArtifactListCursor(value: string): ArtifactListCursor {
     throw new ArtifactListCursorError();
   }
   const botId = cursorBotId(record.botId);
+  const groupId = cursorGroupId(record.groupId);
   const createdAt = new Date(record.createdAt);
   const asOf = new Date(record.asOf);
   if (Number.isNaN(createdAt.getTime()) || Number.isNaN(asOf.getTime())) {
     throw new ArtifactListCursorError();
   }
-  return { createdAt: createdAt.toISOString(), id: record.id, botId, asOf: asOf.toISOString() };
+  return {
+    createdAt: createdAt.toISOString(),
+    id: record.id,
+    botId,
+    groupId,
+    asOf: asOf.toISOString(),
+  };
 }
 
 function cursorBotId(value: unknown): string | null {
@@ -265,21 +298,39 @@ function cursorBotId(value: unknown): string | null {
   throw new ArtifactListCursorError();
 }
 
-export async function listSpaceArtifacts(
-  deps: { prisma: Pick<PrismaClient, "artifact" | "$queryRaw"> },
-  actor: Actor,
-  input: { botId?: string; cursor?: string; limit?: number },
+function cursorGroupId(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string" && value) return value;
+  throw new ArtifactListCursorError();
+}
+
+function cursorMatchesScope(cursor: ArtifactListCursor, scope: ArtifactListScope): boolean {
+  if (scope.kind === "group") {
+    return cursor.groupId === scope.groupId && cursor.botId === null;
+  }
+  return cursor.groupId === null && cursor.botId === scope.botId;
+}
+
+async function listArtifactPage(
+  deps: { prisma: Pick<PrismaClient, "$queryRaw"> },
+  actor: Pick<Actor, "userId" | "spaceId">,
+  input: { scope: ArtifactListScope; cursor?: string; limit?: number },
 ) {
   const take = Math.min(Math.max(input.limit ?? 30, 1), 60);
-  const scopeBotId = input.botId ?? null;
-  const botFilter = scopeBotId ? Prisma.sql`AND "botId" = ${scopeBotId}` : Prisma.empty;
+  const { scope } = input;
+  const scopeFilter =
+    scope.kind === "group"
+      ? Prisma.sql`AND "groupId" = ${scope.groupId}`
+      : scope.botId
+        ? Prisma.sql`AND "botId" = ${scope.botId}`
+        : Prisma.empty;
 
   let asOf = new Date();
   let cursorFilter = Prisma.empty;
   if (input.cursor) {
     // Position is stored on the cursor so a deleted row cannot replay the first page.
     const cursor = decodeArtifactListCursor(input.cursor);
-    if (cursor.botId !== scopeBotId) throw new ArtifactListCursorError();
+    if (!cursorMatchesScope(cursor, scope)) throw new ArtifactListCursorError();
     asOf = new Date(cursor.asOf);
     cursorFilter = Prisma.sql`AND (latest."createdAt", latest.id) < (${new Date(cursor.createdAt)}, ${cursor.id})`;
   }
@@ -287,7 +338,7 @@ export async function listSpaceArtifacts(
   const rows = await deps.prisma.$queryRaw<ListSpaceRow[]>(Prisma.sql`
     WITH scoped AS (
       SELECT * FROM "artifacts"
-      WHERE "spaceId" = ${actor.spaceId} AND "userId" = ${actor.userId} ${botFilter}
+      WHERE "spaceId" = ${actor.spaceId} AND "userId" = ${actor.userId} ${scopeFilter}
         AND "createdAt" <= ${asOf}
     ),
     latest AS (
@@ -336,10 +387,42 @@ export async function listSpaceArtifacts(
         ? encodeArtifactListCursor({
             createdAt: last.createdAt.toISOString(),
             id: last.id,
-            botId: scopeBotId,
+            botId: scope.kind === "space" ? scope.botId : null,
+            groupId: scope.kind === "group" ? scope.groupId : null,
             asOf: asOf.toISOString(),
           })
         : null,
+  };
+}
+
+export async function listSpaceArtifacts(
+  deps: { prisma: Pick<PrismaClient, "$queryRaw"> },
+  actor: Actor,
+  input: { botId?: string; cursor?: string; limit?: number } = {},
+) {
+  return listArtifactPage(deps, actor, {
+    scope: { kind: "space", botId: input.botId ?? null },
+    cursor: input.cursor,
+    limit: input.limit,
+  });
+}
+
+export async function listGroupArtifactSummaries(
+  deps: { prisma: PrismaClient },
+  query: GroupPageQuery,
+): Promise<Page<ArtifactSummary>> {
+  const group = await createGroupRepos(deps.prisma).getGroupTarget(query.actor, query.groupId);
+  if (!group.thread) throw new IsolationError("Group is missing its thread");
+  const page = await listArtifactPage(deps, query.actor, {
+    // Only artifacts stamped with this group: delegating a Bot must not expose
+    // its private space artifacts.
+    scope: { kind: "group", groupId: group.id },
+    cursor: query.cursor,
+    limit: query.limit,
+  });
+  return {
+    items: page.items.map((item) => parseArtifactSummary(item)),
+    nextCursor: page.nextCursor,
   };
 }
 
@@ -419,9 +502,7 @@ export async function deleteArtifactFamily(
       // while a retry after an event failure tolerates the already-removed
       // blob (removeArtifactBlob accepts "not found").
       await removeArtifactBlob(deps.artifacts, actor, child);
-      await deps.prisma.$transaction((tx) =>
-        deleteArtifactRowWithDetachEvent(tx, child),
-      );
+      await deps.prisma.$transaction((tx) => deleteArtifactRowWithDetachEvent(tx, child));
       continue;
     }
     const root = members.find((row) => row.id === rootId);
@@ -441,21 +522,19 @@ async function deleteArtifactRootIfChildless(
   // detach event: a storage failure rolls everything back (row survives,
   // artifact stays usable), an event failure rolls back the row deletion,
   // and a retry tolerates the already-removed blob.
-  return deps.prisma.$transaction(
-    async (tx): Promise<"deleted" | "gone" | "has-child"> => {
-      const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+  return deps.prisma.$transaction(async (tx): Promise<"deleted" | "gone" | "has-child"> => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT id FROM "artifacts" WHERE id = ${root.id} FOR UPDATE
       `);
-      if (locked.length === 0) return "gone";
-      const child = await tx.artifact.findFirst({
-        where: { rootArtifactId: root.id },
-        select: { id: true },
-      });
-      if (child) return "has-child";
-      await removeArtifactBlob(deps.artifacts, actor, root);
-      return (await deleteArtifactRowWithDetachEvent(tx, root)) ? "deleted" : "gone";
-    },
-  );
+    if (locked.length === 0) return "gone";
+    const child = await tx.artifact.findFirst({
+      where: { rootArtifactId: root.id },
+      select: { id: true },
+    });
+    if (child) return "has-child";
+    await removeArtifactBlob(deps.artifacts, actor, root);
+    return (await deleteArtifactRowWithDetachEvent(tx, root)) ? "deleted" : "gone";
+  });
 }
 
 async function removeArtifactBlob(
@@ -567,10 +646,17 @@ export async function resolveGroupSendAttachments(
 export function buildUserMessageBlocks(
   text: string | undefined,
   attachmentBlocks: ReturnType<typeof messageBlockForArtifact>[],
+  mentionInlines?: MessageInline[],
 ) {
   const blocks = [];
   const caption = text?.trim();
-  if (caption) blocks.push({ kind: "text" as const, text: caption });
+  if (caption) {
+    blocks.push({
+      kind: "text" as const,
+      text: caption,
+      ...(mentionInlines?.length ? { inlines: mentionInlines } : {}),
+    });
+  }
   blocks.push(...attachmentBlocks);
   return blocks;
 }

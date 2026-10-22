@@ -1,0 +1,110 @@
+import { resolveAvatarIdentity } from "@rakazo/contracts";
+import {
+  type GroupMembersSummary,
+  type GroupPanelQueries,
+  type GroupQuery,
+  type GroupRoutineSummary,
+  parseGroupMembersSummary,
+  parseGroupRoutineSummary,
+} from "@rakazo/core";
+import { createGroupRepos, IsolationError, type PrismaClient } from "@rakazo/db";
+import { listGroupArtifactSummaries } from "./artifacts.js";
+import { CURRENT_USER_AVATAR_STYLE } from "./avatar-style.js";
+import { mapRoutine } from "./routines.js";
+
+type GroupTarget = Awaited<ReturnType<ReturnType<typeof createGroupRepos>["getGroupTarget"]>>;
+type GroupTargetMember = GroupTarget["members"][number];
+
+function requireGroupThread(group: GroupTarget): string {
+  if (!group.thread) throw new IsolationError("Group is missing its thread");
+  return group.thread.id;
+}
+
+function agentIdentity(member: GroupTargetMember) {
+  const avatar = resolveAvatarIdentity(
+    member.bot.avatarMode,
+    member.bot.avatarCharacter,
+    member.bot.color,
+  );
+  return {
+    kind: "agent" as const,
+    botId: member.bot.id,
+    name: member.bot.name,
+    color: member.bot.color,
+    avatarMode: avatar.avatarMode,
+    avatarCharacter: avatar.avatarCharacter,
+    avatarBodyColor: member.bot.avatarBodyColor ?? "ink",
+  };
+}
+
+async function listGroupRoutines(
+  deps: { prisma: PrismaClient },
+  query: GroupQuery,
+): Promise<readonly GroupRoutineSummary[]> {
+  const group = await createGroupRepos(deps.prisma).getGroupTarget(query.actor, query.groupId);
+  const threadId = requireGroupThread(group);
+  const members = new Map(group.members.map((member) => [member.bot.id, member]));
+
+  const rows = await deps.prisma.routine.findMany({
+    where: {
+      spaceId: query.actor.spaceId,
+      userId: query.actor.userId,
+      threadId,
+      botId: { in: [...members.keys()] },
+      bot: { archivedAt: null },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+
+  return rows.map((row) => {
+    const member = members.get(row.botId);
+    if (!member) throw new IsolationError();
+    return parseGroupRoutineSummary({
+      ...mapRoutine(row),
+      threadId,
+      executorBot: agentIdentity(member),
+    });
+  });
+}
+
+async function listGroupMembers(
+  deps: { prisma: PrismaClient },
+  query: GroupQuery,
+): Promise<GroupMembersSummary> {
+  const group = await createGroupRepos(deps.prisma).getGroupTarget(query.actor, query.groupId);
+  const threadId = requireGroupThread(group);
+  const user = await deps.prisma.user.findFirst({
+    where: { id: query.actor.userId },
+    select: { id: true, name: true, image: true },
+  });
+  if (!user) throw new IsolationError();
+
+  const agents = group.members.map((member) => ({
+    ...agentIdentity(member),
+    status: member.bot.runs[0]?.status ?? "idle",
+  }));
+
+  return parseGroupMembersSummary({
+    groupId: group.id,
+    threadId,
+    currentUser: {
+      kind: "user",
+      userId: user.id,
+      name: user.name,
+      image: user.image,
+      avatarStyle: CURRENT_USER_AVATAR_STYLE,
+    },
+    agents,
+    agentCount: agents.length,
+    memberCount: agents.length + 1,
+  });
+}
+
+/** Panel-owned read methods; RT-20 composes its work port separately. */
+export function createGroupPanelQueries(deps: { prisma: PrismaClient }): GroupPanelQueries {
+  return {
+    listArtifacts: (query) => listGroupArtifactSummaries(deps, query),
+    listRoutines: (query) => listGroupRoutines(deps, query),
+    listMembers: (query) => listGroupMembers(deps, query),
+  };
+}

@@ -1,7 +1,7 @@
 import { i18n } from "@lingui/core";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown, LinkifiedText } from "@rakazo/chat-ui/web";
+import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
   ActivityItem,
   AgentSkillCatalogEntry,
@@ -145,6 +145,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
+import { MessageText } from "../components/ai/AgentMentionText";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
@@ -269,6 +270,8 @@ import {
 import type { SettingsSection } from "./SettingsOverlay";
 import { SpaceSearchResults } from "./SpaceSearch";
 import { BotSettings, CreateBotForm } from "./shell/bot-panel";
+import { GroupIdentityCluster } from "./shell/group-identity-cluster";
+import { GroupPanel, type GroupPanelTab } from "./shell/group-panel";
 import { BotCreatePicker } from "./shell/bot-picker";
 import { CommandPalette, isCommandPaletteHotkey } from "./shell/command-palette";
 import {
@@ -288,6 +291,7 @@ import {
   McpApprovalCard,
 } from "./shell/message-cards";
 import { useExecutionTranscript } from "./shell/use-execution-transcript";
+import { type GroupArtifactItem, useGroupPanel } from "./shell/use-group-panel";
 import { WindowChrome } from "./WindowChrome";
 
 const BotContextMenu = lazy(() =>
@@ -317,6 +321,7 @@ type Panel =
   | "routine"
   | "create"
   | "create-group"
+  | "group"
   | "group-settings"
   | null;
 
@@ -485,6 +490,7 @@ export function ShellPage() {
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  const [groupTab, setGroupTab] = useState<GroupPanelTab>("details");
   const [settingsTab, setSettingsTab] = useState<"detail" | "library" | "computer">("detail");
   const [peerConversation, setPeerConversation] = useState<{
     peerBotId: string;
@@ -781,6 +787,13 @@ export function ShellPage() {
   computerOpenRef.current = computerOpen;
   computerBotIdRef.current = computerBotId ?? active?.id;
   const activeGroup = groups.find((group) => group.id === groupId);
+  const groupPanel = useGroupPanel(inGroup ? (groupId ?? null) : null);
+  useEffect(() => {
+    if (!inGroup && panel === "group") setPanel(null);
+  }, [inGroup, panel]);
+  useEffect(() => {
+    if (panel === "group") groupPanel.reload();
+  }, [panel, groupPanel.reload]);
   const activePendingAttachments = useMemo(
     () => attachmentsForThread(pendingAttachments, inGroup ? groupId : active?.id),
     [active?.id, groupId, inGroup, pendingAttachments],
@@ -2276,6 +2289,7 @@ export function ShellPage() {
             clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
+            mentionSpans: plan.mentionSpans.length ? plan.mentionSpans : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: reroutedToGroup ? undefined : activeReplyTarget?.id,
             replyQuote: reroutedToGroup ? undefined : (activeReplyQuote ?? undefined),
@@ -2286,6 +2300,7 @@ export function ShellPage() {
             clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
+            mentionSpans: plan.mentionSpans.length ? plan.mentionSpans : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: activeReplyTarget?.id,
             replyQuote: activeReplyQuote ?? undefined,
@@ -3624,23 +3639,32 @@ export function ShellPage() {
               <button
                 type="button"
                 data-testid="bot-settings-trigger"
-                title={inGroup ? t`Open group settings` : t`Open bot settings`}
+                aria-expanded={inGroup ? panel === "group" : undefined}
+                title={inGroup ? t`Open group details` : t`Open bot settings`}
                 aria-label={
                   inGroup
                     ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
                     : (active?.name ?? t`Select a bot`)
                 }
                 onClick={() => {
-                  const target = inGroup ? ("group-settings" as const) : ("settings" as const);
-                  setPanel(panel === target ? null : target);
+                  if (inGroup) {
+                    setGroupTab("details");
+                    setPanel(panel === "group" ? null : "group");
+                    return;
+                  }
+                  setPanel(panel === "settings" ? null : "settings");
                 }}
                 className="app-no-drag pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
               >
                 {inGroup ? (
-                  <GroupAvatar
-                    members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                    size={26}
-                  />
+                  groupPanel.members ? (
+                    <GroupIdentityCluster members={groupPanel.members} variant="capsule" />
+                  ) : (
+                    <GroupAvatar
+                      members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                      size={26}
+                    />
+                  )
                 ) : active ? (
                   <BotAvatar
                     color={active.color}
@@ -3864,10 +3888,17 @@ export function ShellPage() {
         }`}
       >
         {panel && (active || activeGroup) ? (
-          <div className="rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[384px]">
+          <div
+            className={
+              panel === "group"
+                ? "h-full w-full md:w-[384px]"
+                : "rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[384px]"
+            }
+          >
             {panel !== "routine" &&
             panel !== "create" &&
             panel !== "create-group" &&
+            panel !== "group" &&
             panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-[13.5px] text-muted-foreground">
@@ -3890,6 +3921,47 @@ export function ShellPage() {
                   </Button>
                 </div>
               </div>
+            ) : null}
+            {panel === "group" && activeGroup ? (
+              <GroupPanel
+                key={activeGroup.id}
+                members={groupPanel.members}
+                membersError={groupPanel.membersError}
+                groupName={activeGroup.name}
+                tab={groupTab}
+                onTabChange={setGroupTab}
+                onClose={() => setPanel(null)}
+                onRename={async (next) => {
+                  const updated = await rpc.groups.update({
+                    groupId: activeGroup.id,
+                    name: next,
+                  });
+                  setGroups((current) =>
+                    current.map((group) => (group.id === updated.id ? updated : group)),
+                  );
+                  setSnapshot((current) =>
+                    current && current.groupId === updated.id
+                      ? { ...current, groupName: updated.name }
+                      : current,
+                  );
+                  groupPanel.reload();
+                  await Promise.all([refreshBots(), refreshGroupThread(activeGroup.id)]).catch(
+                    () => undefined,
+                  );
+                }}
+                onManageMembers={() => setPanel("group-settings")}
+                routines={groupPanel.routines}
+                routinesError={groupPanel.routinesError}
+                artifacts={groupPanel.artifacts}
+                artifactsError={groupPanel.artifactsError}
+                artifactsLoading={groupPanel.artifactsLoading}
+                nextCursor={groupPanel.nextCursor}
+                onLoadMoreArtifacts={groupPanel.loadMoreArtifacts}
+                onOpenArtifact={(item: GroupArtifactItem) => {
+                  navigate(`/app/artifacts/${item.id}`);
+                }}
+                onRetry={groupPanel.reload}
+              />
             ) : null}
             {panel === "group-settings" && activeGroup ? (
               <GroupSettings
@@ -5252,6 +5324,7 @@ export const Transcript = memo(function Transcript({
                       }
                       memberName={memberName}
                       peerBot={peerBot}
+                      botNameOf={botNameOf}
                       replyPreview={
                         message.replyToMessageId
                           ? messageById.get(message.replyToMessageId)
@@ -6490,6 +6563,7 @@ const MessageView = memo(function MessageView({
   speakerName,
   memberName,
   peerBot,
+  botNameOf,
   replyPreview,
   replyToMessageId,
   onJumpToMessage,
@@ -6512,6 +6586,7 @@ const MessageView = memo(function MessageView({
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
+  botNameOf?: (botId: string) => string | undefined;
   replyPreview?: ThreadMessage;
   replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
@@ -6904,9 +6979,9 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text" && message.role === "user") {
-          // User bubbles stay literal text on web and mobile. Only explicit URLs
-          // and email addresses are links, so a sent address is tappable without
-          // formatting bold or headings.
+          // User bubbles stay literal text on web and mobile. Only structured
+          // mention inlines and explicit URLs are links; a bare `@name` is
+          // never promoted to identity.
           return (
             <div key={i} className="flex w-fit max-w-full justify-end [@media(hover:none)]:w-full">
               <div
@@ -6915,7 +6990,20 @@ const MessageView = memo(function MessageView({
                 className="max-w-full whitespace-pre-wrap wrap-anywhere rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground"
                 dir="auto"
               >
-                <LinkifiedText>{block.text}</LinkifiedText>
+                <MessageText
+                  text={block.text}
+                  inlines={block.inlines}
+                  resolveMention={(mentionedBotId) => {
+                    const name = botNameOf?.(mentionedBotId);
+                    if (!name) return undefined;
+                    return {
+                      name,
+                      color: peerBot(mentionedBotId)?.color ?? FALLBACK_BOT_COLOR,
+                      available: true,
+                    };
+                  }}
+                  onOpenMention={onOpenBot}
+                />
               </div>
             </div>
           );

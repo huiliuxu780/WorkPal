@@ -212,6 +212,11 @@ msgstr "{0} (over 10 MiB)"
 msgid "{0} {unitLabel}"
 msgstr "{0} {unitLabel}"
 
+#. placeholder {0}: members.agentCount
+#: src/pages/shell/group-panel.tsx
+msgid "{0} Agents"
+msgstr "{0} Agents"
+
 #. placeholder {0}: block.name
 #: src/pages/shell/message-cards.tsx
 msgid "{0} connection"
@@ -227,6 +232,11 @@ msgstr "{0} default"
 msgid "{0} evidence references"
 msgstr "{0} evidence references"
 
+#. placeholder {0}: time.value.slice(6)
+#: src/pages/shell/group-panel.tsx
+msgid "{0} h ago"
+msgstr "{0} h ago"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} handling"
@@ -241,6 +251,11 @@ msgstr "{0} KB"
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} MB"
 msgstr "{0} MB"
+
+#. placeholder {0}: time.value.slice(8)
+#: src/pages/shell/group-panel.tsx
+msgid "{0} min ago"
+msgstr "{0} min ago"
 
 #. placeholder {0}: usage.calls
 #. placeholder {1}: usage.inputTokens
@@ -476,6 +491,10 @@ msgstr "Add a server name."
 #: src/pages/McpServersOverlay.tsx
 msgid "Add a stdio command."
 msgstr "Add a stdio command."
+
+#: src/pages/shell/group-panel.tsx
+msgid "Add Agent"
+msgstr "Add Agent"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Add an HTTPS server URL."
@@ -1086,6 +1105,10 @@ msgstr "Close chart"
 msgid "Close computer"
 msgstr "Close computer"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Close group details"
+msgstr "Close group details"
+
 #: src/pages/shell/message-cards.tsx
 msgid "Close image preview"
 msgstr "Close image preview"
@@ -1644,6 +1667,7 @@ msgid "Could not save avatar"
 msgstr "Could not save avatar"
 
 #: src/pages/GroupPanel.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Could not save group"
 msgstr "Could not save group"
 
@@ -1993,6 +2017,7 @@ msgstr "Desktop update"
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Details"
 msgstr "Details"
 
@@ -2384,6 +2409,18 @@ msgstr "Go with this plan"
 msgid "Group"
 msgstr "Group"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Group details tabs"
+msgstr "Group details tabs"
+
+#: src/pages/shell/group-panel.tsx
+msgid "Group name"
+msgstr "Group name"
+
+#: src/pages/shell/group-panel.tsx
+msgid "Group routine setup is not connected yet."
+msgstr "Group routine setup is not connected yet."
+
 #: src/pages/GroupPanel.tsx
 msgid "Group settings"
 msgstr "Group settings"
@@ -2597,6 +2634,10 @@ msgstr "Jump to replied message: {0}"
 msgid "just now"
 msgstr "just now"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Just now"
+msgstr "Just now"
+
 #: src/pages/shell/dialogs.tsx
 msgid "Keep memories"
 msgstr "Keep memories"
@@ -2621,6 +2662,10 @@ msgstr "Last 30 days"
 msgid "Last 7 days"
 msgstr "Last 7 days"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Last run failed"
+msgstr "Last run failed"
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr "Later"
@@ -2638,6 +2683,7 @@ msgid "Legacy documents"
 msgstr "Legacy documents"
 
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Library"
 msgstr "Library"
 
@@ -2674,6 +2720,7 @@ msgid "Load earlier messages"
 msgstr "Load earlier messages"
 
 #: src/pages/Artifacts.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Load more"
 msgstr "Load more"
 
@@ -2719,6 +2766,7 @@ msgstr "Loading voice providers…"
 #: src/pages/Onboarding.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 #: src/pages/Shell.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Loading…"
 msgstr "Loading…"
 
@@ -2813,6 +2861,10 @@ msgstr "MCP servers"
 #: src/pages/shell/bot-panel.tsx
 msgid "Medium"
 msgstr "Medium"
+
+#: src/pages/shell/group-panel.tsx
+msgid "Members"
+msgstr "Members"
 
 #: src/pages/GroupPanel.tsx
 msgid "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
@@ -3074,6 +3126,10 @@ msgstr "No bots match"
 msgid "No chat apps linked yet."
 msgstr "No chat apps linked yet."
 
+#: src/pages/shell/group-panel.tsx
+msgid "No files saved in this group yet."
+msgstr "No files saved in this group yet."
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No group chats yet."
 msgstr "No group chats yet."
@@ -3133,6 +3189,10 @@ msgstr "No remote MCP servers found"
 msgid "No results"
 msgstr "No results"
 
+#: src/pages/shell/group-panel.tsx
+msgid "No routines in this group yet."
+msgstr "No routines in this group yet."
+
 #: src/components/ApprovalRulesSettings.tsx
 msgid "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
 msgstr "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
@@ -3158,6 +3218,7 @@ msgid "No tools available."
 msgstr "No tools available."
 
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "No trigger"
 msgstr "No trigger"
 
@@ -3234,6 +3295,10 @@ msgstr "On a schedule"
 msgid "on the 1st at {0}"
 msgstr "on the 1st at {0}"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Online"
+msgstr "Online"
+
 #: src/pages/Shell.tsx
 msgid "Only empty spaces can be deleted. Delete its bots and groups first."
 msgstr "Only empty spaces can be deleted. Delete its bots and groups first."
@@ -3253,8 +3318,8 @@ msgid "Open bot settings"
 msgstr "Open bot settings"
 
 #: src/pages/Shell.tsx
-msgid "Open group settings"
-msgstr "Open group settings"
+msgid "Open group details"
+msgstr "Open group details"
 
 #: src/pages/Shell.tsx
 msgid "Open in full window"
@@ -3369,6 +3434,7 @@ msgid "Paste your API key"
 msgstr "Paste your API key"
 
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Paused"
 msgstr "Paused"
 
@@ -3762,6 +3828,7 @@ msgid "Result preview truncated"
 msgstr "Result preview truncated"
 
 #: src/lib/execution-card.ts
+#: src/pages/shell/group-panel.tsx
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Retry"
 msgstr "Retry"
@@ -3814,6 +3881,7 @@ msgid "Routine"
 msgstr "Routine"
 
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Routines"
 msgstr "Routines"
 
@@ -4026,6 +4094,10 @@ msgstr "Server name"
 #: src/pages/Onboarding.tsx
 msgid "Server URL"
 msgstr "Server URL"
+
+#: src/pages/shell/group-panel.tsx
+msgid "Set up routines"
+msgstr "Set up routines"
 
 #: src/components/call/CallCard.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -4353,6 +4425,10 @@ msgstr "The API did not come back. Refresh this page."
 msgid "The selected memory provider is not available in this build."
 msgstr "The selected memory provider is not available in this build."
 
+#: src/pages/shell/group-panel.tsx
+msgid "The work view for this group is not connected yet."
+msgstr "The work view for this group is not connected yet."
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Thinking"
 msgstr "Thinking"
@@ -4476,6 +4552,7 @@ msgid "To:"
 msgstr "To:"
 
 #: src/pages/Artifacts.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Today"
 msgstr "Today"
 
@@ -4791,6 +4868,10 @@ msgstr "Where should bots run?"
 msgid "Why are you rejecting this plan? (optional)"
 msgstr "Why are you rejecting this plan? (optional)"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Work"
+msgstr "Work"
+
 #: src/components/ai/RunTodoList.tsx
 msgid "Work items"
 msgstr "Work items"
@@ -4799,6 +4880,10 @@ msgstr "Work items"
 #: src/pages/Shell.tsx
 msgid "Working"
 msgstr "Working"
+
+#: src/pages/shell/group-panel.tsx
+msgid "Working in background"
+msgstr "Working in background"
 
 #: src/pages/Auth.tsx
 msgid "Working…"
@@ -4809,6 +4894,7 @@ msgid "Wrote {path}"
 msgstr "Wrote {path}"
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Yesterday"
 msgstr "Yesterday"
 

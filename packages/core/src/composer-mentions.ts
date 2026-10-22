@@ -1,3 +1,4 @@
+import { type ComposerMentionSpan, composerMentionSpans } from "./composer-slash.js";
 import { formatCron } from "./cron.js";
 import { hasMentionToken } from "./group-mentions.js";
 
@@ -240,6 +241,8 @@ export function resolveComposerSendPlan(input: {
   rerouteGroupId: string | null;
   rerouteGroupName: string | null;
   mentionPayload: ReturnType<typeof toThreadMentionPayload>;
+  /** Ranges of typed Bot chips in `trimmed`; empty when no Bot chip survives. */
+  mentionSpans: ComposerMentionSpan[];
   shouldSend: boolean;
   shouldOpenGroup: boolean;
   shouldRunRoutines: boolean;
@@ -268,6 +271,7 @@ export function resolveComposerSendPlan(input: {
     mentionPayload: toThreadMentionPayload(
       input.mentions.filter((mention) => mention.kind !== "group" && mention.kind !== "routine"),
     ),
+    mentionSpans: composerMentionSpans(trimmed, input.mentions),
     shouldSend,
     shouldOpenGroup,
     shouldRunRoutines,

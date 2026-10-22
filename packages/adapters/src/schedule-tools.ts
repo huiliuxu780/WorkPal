@@ -24,14 +24,15 @@ export function filterBuiltinToolsForRun<T extends { name: string }>(
 export function filterBuiltinToolsForThread<T extends { name: string }>(
   tools: T[],
   groupId: string | null | undefined,
+  publicCollaborationEnabled = false,
 ): T[] {
-  return tools.filter(
-    (tool) =>
-      (groupId || tool.name !== "handoff_to_bot") &&
-      // In a group the room is the shared surface: hand the stage to a member
-      // rather than starting a private thread off to one side.
-      (!groupId || tool.name !== "message_bot"),
-  );
+  return tools.filter((tool) => {
+    if (!groupId) return tool.name !== "handoff_to_bot";
+    // In a group, message_bot is only safe once dispatch posts into the shared
+    // Thread instead of the target bot's DM. The server gate owns that rollout.
+    if (tool.name === "message_bot") return publicCollaborationEnabled;
+    return true;
+  });
 }
 
 type ScheduleUnit = "minutes" | "hours" | "days" | "seconds";

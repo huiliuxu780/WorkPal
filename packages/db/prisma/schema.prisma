@@ -479,6 +479,12 @@ model ChatGroup {
   space      Space             @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   userId     String
   name       String
+  /// "standard" is a user-managed group. "agent_pair" is the hidden fixed two-Bot
+  /// collaboration Thread; it is never a user-manageable conversation.
+  kind       String            @default("standard")
+  /// Canonical unordered Bot pair identity. Carried only by agent_pair groups, so a
+  /// rename or avatar change can never move a pair onto a different identity.
+  pairKey    String?
   pinned     Boolean           @default(false)
   sectionId  String?
   section    BotSection?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
@@ -495,6 +501,10 @@ model ChatGroup {
 
   @@index([spaceId, userId, archivedAt, pinned, updatedAt])
   @@index([sectionId])
+  // The partial unique index chat_groups_spaceId_pairKey_agent_pair and the
+  // chat_groups_kind_chk / chat_groups_pair_key_chk constraints are created in
+  // SQL: one agent_pair group per unordered Bot pair per Space, a known kind
+  // only, and pairKey present exactly for agent_pair.
   @@map("chat_groups")
 }
 

@@ -157,6 +157,20 @@ describe("filterBuiltinToolsForThread", () => {
     ]);
   });
 
+  it("opens group message_bot only when destination-aware public dispatch is enabled", () => {
+    expect(filterBuiltinToolsForThread(tools, "group-1", true).map((tool) => tool.name)).toEqual([
+      "handoff_to_bot",
+      "message_bot",
+      "schedule_create",
+      "schedule_list",
+      "schedule_cancel",
+      "remember",
+    ]);
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", false).map((tool) => tool.name),
+    ).not.toContain("message_bot");
+  });
+
   it("hides schedule creation from routine runs without removing schedule management", () => {
     expect(filterBuiltinToolsForRun(tools, "routine").map((tool) => tool.name)).toEqual([
       "handoff_to_bot",

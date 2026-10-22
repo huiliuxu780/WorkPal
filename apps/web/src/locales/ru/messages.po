@@ -212,6 +212,11 @@ msgstr "{0} (более 10 МБ)"
 msgid "{0} {unitLabel}"
 msgstr "{0} {unitLabel}"
 
+#. placeholder {0}: members.agentCount
+#: src/pages/shell/group-panel.tsx
+msgid "{0} Agents"
+msgstr ""
+
 #. placeholder {0}: block.name
 #: src/pages/shell/message-cards.tsx
 msgid "{0} connection"
@@ -225,6 +230,11 @@ msgstr "{0} по умолчанию"
 #. placeholder {0}: step.evidence.length
 #: src/components/ai/RunStepsDisclosure.tsx
 msgid "{0} evidence references"
+msgstr ""
+
+#. placeholder {0}: time.value.slice(6)
+#: src/pages/shell/group-panel.tsx
+msgid "{0} h ago"
 msgstr ""
 
 #. placeholder {0}: sender.name
@@ -241,6 +251,11 @@ msgstr "{0} КБ"
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} MB"
 msgstr "{0} МБ"
+
+#. placeholder {0}: time.value.slice(8)
+#: src/pages/shell/group-panel.tsx
+msgid "{0} min ago"
+msgstr ""
 
 #. placeholder {0}: usage.calls
 #. placeholder {1}: usage.inputTokens
@@ -476,6 +491,10 @@ msgstr "Добавьте имя сервера."
 #: src/pages/McpServersOverlay.tsx
 msgid "Add a stdio command."
 msgstr "Добавьте команду stdio."
+
+#: src/pages/shell/group-panel.tsx
+msgid "Add Agent"
+msgstr ""
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Add an HTTPS server URL."
@@ -1086,6 +1105,10 @@ msgstr "Закрыть график"
 msgid "Close computer"
 msgstr "Закрыть компьютер"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Close group details"
+msgstr ""
+
 #: src/pages/shell/message-cards.tsx
 msgid "Close image preview"
 msgstr "Закрыть предварительный просмотр изображения"
@@ -1644,6 +1667,7 @@ msgid "Could not save avatar"
 msgstr ""
 
 #: src/pages/GroupPanel.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Could not save group"
 msgstr "Не удалось сохранить группу"
 
@@ -1993,6 +2017,7 @@ msgstr "Обновление настольного приложения"
 #: src/components/ai/RunPlanDisclosure.tsx
 #: src/components/ai/RunStepsDisclosure.tsx
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Details"
 msgstr ""
 
@@ -2384,6 +2409,18 @@ msgstr ""
 msgid "Group"
 msgstr "Группа"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Group details tabs"
+msgstr ""
+
+#: src/pages/shell/group-panel.tsx
+msgid "Group name"
+msgstr ""
+
+#: src/pages/shell/group-panel.tsx
+msgid "Group routine setup is not connected yet."
+msgstr ""
+
 #: src/pages/GroupPanel.tsx
 msgid "Group settings"
 msgstr "Настройки группы"
@@ -2597,6 +2634,10 @@ msgstr ""
 msgid "just now"
 msgstr "только что"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Just now"
+msgstr ""
+
 #: src/pages/shell/dialogs.tsx
 msgid "Keep memories"
 msgstr "Сохранить память"
@@ -2621,6 +2662,10 @@ msgstr "За 30 дней"
 msgid "Last 7 days"
 msgstr "За 7 дней"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Last run failed"
+msgstr ""
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr "Позже"
@@ -2638,6 +2683,7 @@ msgid "Legacy documents"
 msgstr ""
 
 #: src/pages/shell/bot-panel.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Library"
 msgstr ""
 
@@ -2674,6 +2720,7 @@ msgid "Load earlier messages"
 msgstr "Загрузить более ранние сообщения"
 
 #: src/pages/Artifacts.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Load more"
 msgstr ""
 
@@ -2719,6 +2766,7 @@ msgstr "Загрузка поставщиков голосовой связи…
 #: src/pages/Onboarding.tsx
 #: src/pages/PeerMessagesOverlay.tsx
 #: src/pages/Shell.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Loading…"
 msgstr "Загрузка…"
 
@@ -2813,6 +2861,10 @@ msgstr "MCP-серверы"
 #: src/pages/shell/bot-panel.tsx
 msgid "Medium"
 msgstr "Средний"
+
+#: src/pages/shell/group-panel.tsx
+msgid "Members"
+msgstr ""
 
 #: src/pages/GroupPanel.tsx
 msgid "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
@@ -3074,6 +3126,10 @@ msgstr "Ни один бот не подходит"
 msgid "No chat apps linked yet."
 msgstr "Приложения для чата пока не связаны."
 
+#: src/pages/shell/group-panel.tsx
+msgid "No files saved in this group yet."
+msgstr ""
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No group chats yet."
 msgstr "Групповых чатов пока нет."
@@ -3133,6 +3189,10 @@ msgstr "Удаленные MCP-серверы не найдены"
 msgid "No results"
 msgstr "Нет результатов"
 
+#: src/pages/shell/group-panel.tsx
+msgid "No routines in this group yet."
+msgstr ""
+
 #: src/components/ApprovalRulesSettings.tsx
 msgid "No rules yet. Actions follow each Bot's own approvals; add a rule to always be asked — or to always allow — something specific."
 msgstr ""
@@ -3158,6 +3218,7 @@ msgid "No tools available."
 msgstr "Нет доступных инструментов."
 
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "No trigger"
 msgstr "Нет триггера"
 
@@ -3234,6 +3295,10 @@ msgstr "По расписанию"
 msgid "on the 1st at {0}"
 msgstr "1-го числа в {0}"
 
+#: src/pages/shell/group-panel.tsx
+msgid "Online"
+msgstr ""
+
 #: src/pages/Shell.tsx
 msgid "Only empty spaces can be deleted. Delete its bots and groups first."
 msgstr "Удалить можно только пустые пространства. Сначала удалите их ботов и группы."
@@ -3253,7 +3318,7 @@ msgid "Open bot settings"
 msgstr ""
 
 #: src/pages/Shell.tsx
-msgid "Open group settings"
+msgid "Open group details"
 msgstr ""
 
 #: src/pages/Shell.tsx
@@ -3369,6 +3434,7 @@ msgid "Paste your API key"
 msgstr "Вставьте свой ключ API"
 
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Paused"
 msgstr "Приостановлено"
 
@@ -3762,6 +3828,7 @@ msgid "Result preview truncated"
 msgstr ""
 
 #: src/lib/execution-card.ts
+#: src/pages/shell/group-panel.tsx
 #: src/pages/shell/use-execution-transcript.tsx
 msgid "Retry"
 msgstr ""
@@ -3814,6 +3881,7 @@ msgid "Routine"
 msgstr "Задача"
 
 #: src/pages/RoutineEditor.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Routines"
 msgstr "Задачи"
 
@@ -4026,6 +4094,10 @@ msgstr "Имя сервера"
 #: src/pages/Onboarding.tsx
 msgid "Server URL"
 msgstr "URL-адрес сервера"
+
+#: src/pages/shell/group-panel.tsx
+msgid "Set up routines"
+msgstr ""
 
 #: src/components/call/CallCard.tsx
 #: src/pages/MessagingSettingsOverlay.tsx
@@ -4353,6 +4425,10 @@ msgstr "API не вернулся. Обновите эту страницу."
 msgid "The selected memory provider is not available in this build."
 msgstr "Выбранный поставщик памяти недоступен в этой сборке."
 
+#: src/pages/shell/group-panel.tsx
+msgid "The work view for this group is not connected yet."
+msgstr ""
+
 #: src/pages/shell/bot-panel.tsx
 msgid "Thinking"
 msgstr "рассуждение"
@@ -4476,6 +4552,7 @@ msgid "To:"
 msgstr "К:"
 
 #: src/pages/Artifacts.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Today"
 msgstr ""
 
@@ -4791,6 +4868,10 @@ msgstr "Где должны работать боты?"
 msgid "Why are you rejecting this plan? (optional)"
 msgstr ""
 
+#: src/pages/shell/group-panel.tsx
+msgid "Work"
+msgstr ""
+
 #: src/components/ai/RunTodoList.tsx
 msgid "Work items"
 msgstr ""
@@ -4798,6 +4879,10 @@ msgstr ""
 #: src/components/activity/ActivityRows.tsx
 #: src/pages/Shell.tsx
 msgid "Working"
+msgstr ""
+
+#: src/pages/shell/group-panel.tsx
+msgid "Working in background"
 msgstr ""
 
 #: src/pages/Auth.tsx
@@ -4809,6 +4894,7 @@ msgid "Wrote {path}"
 msgstr ""
 
 #: src/pages/Shell.tsx
+#: src/pages/shell/group-panel.tsx
 msgid "Yesterday"
 msgstr "Вчера"
 

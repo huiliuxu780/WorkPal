@@ -12,6 +12,7 @@ import {
   type ProductEvent,
 } from "@rakazo/contracts";
 import {
+  authorizeInterventionPresentation,
   BUDGET_ACTIONS,
   blocksToAgentHistoryText,
   budgetAskCheckpoint,
@@ -22,7 +23,11 @@ import {
   isSecretAskBlock,
   messagingChannelId,
   parseBudgetAskCheckpoint,
+  RoundtableContractError,
+  type RoundtableFeatureGates,
   resolveAskChoice,
+  resolveInterventionThreads,
+  resolveRoundtableFeatureGates,
   sanitizeJsonValue,
   turnPolicyFromRun,
 } from "@rakazo/core";
@@ -39,6 +44,7 @@ import {
   insertPausedIntervention,
   interventionStore,
   legacyMessageId,
+  lockInterventionThreads,
   type ResolveInterventionOutcome,
   resolveInterventionInTransaction,
   settleAnsweredIntervention,
@@ -169,7 +175,23 @@ export type FinalizeRunInput = FinalizeRunBase &
 
 export interface PauseRunForInput {
   spaceId: string;
+  /** Thread of the pausing Run. It holds the ask Message and is resumed. */
   threadId: string;
+  /**
+   * Thread the user answers from, when the Run executes somewhere the user must
+   * not write to (a fixed Agent pair). Requires `origin` and the `private_pair`
+   * capability; without both the pause fails instead of publishing the wait into
+   * a Thread the collaboration was never anchored in. Defaults to `threadId`.
+   */
+  presentationThreadId?: string;
+  /**
+   * CollaborationOrigin anchoring a cross-Thread wait to its visible source.
+   * Typed as `unknown` on purpose: it arrives from persisted Run lineage, so the
+   * core resolver parses it rather than trusting a caller-shaped object.
+   */
+  origin?: unknown;
+  /** Deployment gates; absent means every roundtable capability is off. */
+  gates?: RoundtableFeatureGates;
   botId: string;
   runId: string;
   attemptId: string;
@@ -266,7 +288,14 @@ export interface PauseRunForTakeover {
 
 export interface AnswerRunInput {
   spaceId: string;
+  /** Thread of the Run being answered: it holds the ask Message and resumes. */
   threadId: string;
+  /**
+   * Thread the user answered from when it is not the Run's own — an origin-aware
+   * Intervention whose card is projected into the Thread that started the work.
+   * Defaults to `threadId`.
+   */
+  presentationThreadId?: string;
   runId: string;
   messageId: string;
   answeredByUserId: string;
@@ -284,6 +313,7 @@ export interface AnswerRunInput {
 
 export interface ResolveInterventionInput {
   spaceId: string;
+  /** Thread the submission is addressed at: the card's presentation Thread. */
   threadId: string;
   interventionId: string;
   clientSubmissionId: string;
@@ -291,9 +321,14 @@ export interface ResolveInterventionInput {
   answer: string;
   username?: string;
   feedback?: string;
+  /** Deployment gates; absent means every roundtable capability is off. */
+  gates?: RoundtableFeatureGates;
 }
 
 const INTERVENTION_TRANSACTION = { timeout: 20_000, maxWait: 20_000 };
+
+/** Fail closed: a caller that wires no gates gets no cross-Thread behaviour. */
+const ROUNDTABLE_GATES_DISABLED = resolveRoundtableFeatureGates({});
 
 export interface SendUserMessageInput {
   spaceId: string;
@@ -336,12 +371,23 @@ export interface RunSecretWriter {
 export function createThreadEvents(
   prisma: PrismaClient,
   realtime?: RealtimeFanout,
-  options: { catchUpMs?: number; runSecretWriter?: RunSecretWriter } = {},
+  options: {
+    catchUpMs?: number;
+    runSecretWriter?: RunSecretWriter;
+    /** Process-wide roundtable gates; absent means every capability is off. */
+    roundtableFeatures?: RoundtableFeatureGates;
+  } = {},
 ): ThreadEvents {
+  const gates = options.roundtableFeatures ?? ROUNDTABLE_GATES_DISABLED;
   return {
     answerRunInput: (input) => answerRunInput(prisma, input, realtime, options.runSecretWriter),
     resolveIntervention: (input) =>
-      resolveIntervention(prisma, input, realtime, options.runSecretWriter),
+      resolveIntervention(
+        prisma,
+        { ...input, gates: input.gates ?? gates },
+        realtime,
+        options.runSecretWriter,
+      ),
     append: (input) => appendEvent(prisma, input, realtime),
     claimSteering: (input) => claimSteering(prisma, input),
     clearThread: (input) => clearThread(prisma, input, realtime),
@@ -349,7 +395,8 @@ export function createThreadEvents(
       finalizeComputerControlRelease(prisma, input, realtime),
     finalizeRun: (input) => finalizeRun(prisma, input, realtime),
     notify: (threadId, seq) => notifyRealtime(realtime, threadId, seq),
-    pauseRunForInput: (input) => pauseRunForInput(prisma, input, realtime),
+    pauseRunForInput: (input) =>
+      pauseRunForInput(prisma, { ...input, gates: input.gates ?? gates }, realtime),
     pauseRunForTakeover: (input) => pauseRunForTakeover(prisma, input, realtime),
     sendUserMessage: (input) => sendUserMessage(prisma, input, realtime),
     follow: (threadId, cursor, signal) =>
@@ -670,9 +717,11 @@ export async function commitAnswerRunInput(
   input: AnswerRunInput,
   runSecretWriter?: RunSecretWriter,
 ): Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null> {
-  // Thread row first, then run rows — the same order as clearThread and finalizeRun, so a
-  // concurrent clear cannot deadlock against this transaction.
-  await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+  // Thread rows first, then run rows — the same order as clearThread and
+  // finalizeRun, so a concurrent clear cannot deadlock against this transaction.
+  // An origin-aware answer also settles its Intervention in the presentation
+  // Thread, so that Thread is locked here rather than after the Run.
+  await lockInterventionThreads(tx, input.threadId, input.presentationThreadId);
   await tx.$queryRaw`SELECT id FROM runs WHERE id = ${input.runId} FOR UPDATE`;
   const run = await tx.run.findFirst({
     where: {
@@ -769,6 +818,7 @@ export async function commitAnswerRunInput(
         botId: run.botId,
         waitStartedAt: run.waitStartedAt,
       },
+      presentationThreadId: input.presentationThreadId,
       messageId: message.id,
       ask: pendingAsk,
       resolvedByUserId: input.answeredByUserId,
@@ -922,6 +972,7 @@ export async function commitAnswerRunInput(
           botId: run.botId,
           waitStartedAt: run.waitStartedAt,
         },
+        presentationThreadId: input.presentationThreadId,
         messageId: message.id,
         ask: pendingAsk,
         resolvedByUserId: input.answeredByUserId,
@@ -974,6 +1025,7 @@ export async function commitAnswerRunInput(
         botId: run.botId,
         waitStartedAt: run.waitStartedAt,
       },
+      presentationThreadId: input.presentationThreadId,
       messageId: message.id,
       ask: pendingAsk,
       resolvedByUserId: input.answeredByUserId,
@@ -1149,6 +1201,7 @@ export async function commitAnswerRunInput(
       botId: run.botId,
       waitStartedAt: run.waitStartedAt,
     },
+    presentationThreadId: input.presentationThreadId,
     messageId: message.id,
     ask: pendingAsk,
     resolvedByUserId: input.answeredByUserId,
@@ -1194,13 +1247,27 @@ export async function answerRunInput(
 async function locateInterventionTarget(
   prisma: PrismaClient,
   input: { spaceId: string; threadId: string; interventionId: string },
-): Promise<{ runId: string; messageId: string } | null> {
+): Promise<{ runId: string; messageId: string; executionThreadId: string } | null> {
   const store = interventionStore(prisma);
   if (store) {
     const row = await store.findUnique({ where: { id: input.interventionId } });
     if (row) {
       if (row.spaceId !== input.spaceId || row.threadId !== input.threadId) return null;
-      return { runId: row.runId, messageId: row.messageId };
+      // The executing Thread is derived from the bound Run and never taken from
+      // the caller: the row's own threadId is only the presentation anchor, while
+      // the Run is the sole authority for where the ask Message lives and which
+      // execution a decision may resume. A Run that left the Space, or is gone,
+      // leaves nothing that can be answered.
+      const run = await prisma.run.findFirst({
+        where: { id: row.runId, spaceId: input.spaceId },
+        select: { threadId: true },
+      });
+      if (!run) return null;
+      return {
+        runId: row.runId,
+        messageId: row.messageId,
+        executionThreadId: run.threadId,
+      };
     }
   }
   const messageId = legacyMessageId(input.interventionId);
@@ -1212,10 +1279,10 @@ async function locateInterventionTarget(
   if (!message?.runId) return null;
   const run = await prisma.run.findFirst({
     where: { id: message.runId, threadId: input.threadId, spaceId: input.spaceId },
-    select: { id: true },
+    select: { id: true, threadId: true },
   });
   if (!run) return null;
-  return { runId: run.id, messageId: message.id };
+  return { runId: run.id, messageId: message.id, executionThreadId: run.threadId };
 }
 
 export async function resolveIntervention(
@@ -1232,26 +1299,38 @@ export async function resolveIntervention(
   }
   const located = await locateInterventionTarget(prisma, input);
   if (!located) return { outcome: "rejected", reason: "not_found" };
+  // Answering away from the executing Thread is a roundtable capability. The
+  // refusal propagates as RoundtableFeatureDisabledError so the API can report
+  // the disabled feature instead of dressing it up as a stale card.
+  authorizeInterventionPresentation({
+    gates: input.gates ?? ROUNDTABLE_GATES_DISABLED,
+    executionThreadId: located.executionThreadId,
+    presentationThreadId: input.threadId,
+  });
   let outcome: ResolveInterventionOutcome;
   try {
     outcome = await prisma.$transaction(
       (tx: Prisma.TransactionClient) =>
-        resolveInterventionInTransaction(tx, { ...input, runId: located.runId }, (transaction) =>
-          commitAnswerRunInput(
-            transaction,
-            {
-              spaceId: input.spaceId,
-              threadId: input.threadId,
-              runId: located.runId,
-              messageId: located.messageId,
-              answeredByUserId: input.answeredByUserId,
-              answer: input.answer,
-              username: input.username,
-              clientSubmissionId: input.clientSubmissionId,
-              feedback: input.feedback,
-            },
-            runSecretWriter,
-          ),
+        resolveInterventionInTransaction(
+          tx,
+          { ...input, runId: located.runId, executionThreadId: located.executionThreadId },
+          (transaction) =>
+            commitAnswerRunInput(
+              transaction,
+              {
+                spaceId: input.spaceId,
+                threadId: located.executionThreadId,
+                presentationThreadId: input.threadId,
+                runId: located.runId,
+                messageId: located.messageId,
+                answeredByUserId: input.answeredByUserId,
+                answer: input.answer,
+                username: input.username,
+                clientSubmissionId: input.clientSubmissionId,
+                feedback: input.feedback,
+              },
+              runSecretWriter,
+            ),
         ),
       INTERVENTION_TRANSACTION,
     );
@@ -1266,6 +1345,16 @@ export async function resolveIntervention(
   }
   if (outcome.applied && outcome.seq > 0) {
     await notifyRealtime(realtime, outcome.threadId, outcome.seq);
+  }
+  // The settled projection is appended to the presentation Thread, so its own
+  // followers need that position or the answering user watches a stale card.
+  if (
+    outcome.applied &&
+    outcome.presentationThreadId !== undefined &&
+    outcome.presentationSeq !== undefined &&
+    outcome.presentationSeq > 0
+  ) {
+    await notifyRealtime(realtime, outcome.presentationThreadId, outcome.presentationSeq);
   }
   return outcome;
 }
@@ -1325,10 +1414,41 @@ export async function pauseRunForInput(
   input: PauseRunForInput,
   realtime?: RealtimeFanout,
 ): Promise<boolean> {
+  // Resolved before the transaction opens: a pause that is not allowed to leave
+  // the executing Thread must fail without having written anything.
+  const threads = resolveInterventionThreads({
+    gates: input.gates ?? ROUNDTABLE_GATES_DISABLED,
+    executionThreadId: input.threadId,
+    presentationThreadId: input.presentationThreadId,
+    origin: input.origin,
+  });
   const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // Thread row first, then run rows — the same order as clearThread and finalizeRun, so a
-    // concurrent clear cannot deadlock against this transaction.
-    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+    // Thread rows first, then run rows — the same order as clearThread and
+    // finalizeRun, so a concurrent clear cannot deadlock against this
+    // transaction. Both Threads of an origin-aware pause are in the set: the
+    // projection event writes the presentation Thread row.
+    await lockInterventionThreads(tx, threads.executionThreadId, threads.presentationThreadId);
+    if (threads.origin !== null) {
+      // The origin is what makes this wait publishable away from the Run, so the
+      // source Run has to be real: same Space and actually anchored in the
+      // presentation Thread. A fabricated anchor would otherwise hand one Run's
+      // approval to whoever can write in an unrelated Thread.
+      const source = await tx.run.findFirst({
+        where: {
+          id: threads.origin.sourceRunId,
+          spaceId: input.spaceId,
+          threadId: threads.presentationThreadId,
+        },
+        select: { id: true },
+      });
+      if (!source) {
+        throw new RoundtableContractError(
+          "CollaborationOrigin",
+          "sourceRunId",
+          "must be a Run of the presentation Thread in this Space",
+        );
+      }
+    }
     const approvalEffectId = input.blocks.find(
       (block) => block.kind === "ask" && Boolean(block.approvalEffectId),
     );
@@ -1383,7 +1503,7 @@ export async function pauseRunForInput(
     const messageId = randomUUID();
     const pausedIntervention = await insertPausedIntervention(tx, {
       spaceId: input.spaceId,
-      threadId: input.threadId,
+      threads,
       botId: input.botId,
       runId: input.runId,
       attemptId: input.attemptId,
@@ -1416,13 +1536,7 @@ export async function pauseRunForInput(
       runId: input.runId,
       payload: { waitKind },
     });
-    const interventionEvent = await emitInterventionCreated(tx, {
-      spaceId: input.spaceId,
-      threadId: input.threadId,
-      botId: input.botId,
-      runId: input.runId,
-      interventionId: pausedIntervention.id,
-    });
+    const interventionEvent = await emitInterventionCreated(tx, pausedIntervention.id);
     let planReviewEvent: { threadId: string; seq: number } | null = null;
     if (input.planReviewRound) {
       const paired = await tx.runPlanReview.updateMany({
@@ -1477,11 +1591,17 @@ export async function pauseRunForInput(
     return {
       threadId: waitingEvent.threadId,
       seq: approvalEvent?.seq ?? budgetEvent?.seq ?? planReviewEvent?.seq ?? interventionEvent.seq,
+      // Only a cross-Thread pause has a second Thread to publish to; otherwise
+      // this is the same position the line above already reports.
+      presentation: threads.crossThread ? interventionEvent : null,
     };
   }, INTERVENTION_TRANSACTION);
 
   if (!committed) return false;
   await notifyRealtime(realtime, committed.threadId, committed.seq);
+  if (committed.presentation) {
+    await notifyRealtime(realtime, committed.presentation.threadId, committed.presentation.seq);
+  }
   return true;
 }
 
