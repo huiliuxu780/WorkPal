@@ -156,6 +156,12 @@ const agentIdentity = {
   avatarBodyColor: "blue" as const,
 };
 const agentMember = { ...agentIdentity, status: "idle" };
+const peerAgentMember = {
+  ...agentIdentity,
+  botId: ids.peerBot,
+  name: "Little Cyan",
+  status: "idle" as const,
+};
 const currentUser = {
   kind: "user" as const,
   userId: ids.user,
@@ -167,9 +173,9 @@ const membersSummary = {
   groupId: ids.group,
   threadId: ids.thread,
   currentUser,
-  agents: [agentMember],
-  agentCount: 1,
-  memberCount: 2,
+  agents: [agentMember, peerAgentMember],
+  agentCount: 2,
+  memberCount: 3,
 };
 const routine = {
   id: "routine-1",
@@ -416,6 +422,24 @@ describe("TaskInstructionEnvelope", () => {
       () => parseTaskInstructionEnvelope({ taskId: ids.task, revision: 1, amendments: [] }),
       "TaskInstructionEnvelope",
       "original",
+    );
+  });
+
+  it("rejects counters beyond JavaScript's safe integer range", () => {
+    const overflow = Number.MAX_SAFE_INTEGER + 1;
+    expectContractError(
+      () => parseTaskInstructionEnvelope({ ...envelope, revision: overflow }),
+      "TaskInstructionEnvelope",
+      "revision",
+    );
+    expectContractError(
+      () =>
+        parseTaskInstructionEnvelope({
+          ...envelope,
+          amendments: [{ messageId: ids.message, seq: overflow, content: "Split by region." }],
+        }),
+      "TaskInstructionEnvelope",
+      "amendments[0].seq",
     );
   });
 });
@@ -776,7 +800,7 @@ describe("group read contracts", () => {
     };
     const all: GroupQueries = { ...panel, ...work };
 
-    expect((await all.listMembers({ actor, groupId: ids.group })).agentCount).toBe(1);
+    expect((await all.listMembers({ actor, groupId: ids.group })).agentCount).toBe(2);
     expect((await all.listWork({ actor, groupId: ids.group, limit: 20 })).items[0]?.taskId).toBe(
       ids.task,
     );
@@ -792,8 +816,8 @@ describe("group read contracts", () => {
   it("counts only agents in agentCount and derives memberCount", () => {
     const parsed = parseGroupMembersSummary(membersSummary);
     expect(parsed.currentUser.userId).toBe(ids.user);
-    expect(parsed.agents.map((agent) => agent.botId)).toEqual([ids.bot]);
-    expect(parsed.agentCount).toBe(1);
+    expect(parsed.agents.map((agent) => agent.botId)).toEqual([ids.bot, ids.peerBot]);
+    expect(parsed.agentCount).toBe(2);
     expect(parsed.memberCount).toBe(parsed.agentCount + 1);
   });
 
@@ -804,7 +828,7 @@ describe("group read contracts", () => {
       "kind",
     );
     expectContractError(
-      () => parseGroupMembersSummary({ ...membersSummary, agentCount: 2 }),
+      () => parseGroupMembersSummary({ ...membersSummary, agentCount: 3 }),
       "GroupMembersSummary",
       "agentCount",
     );
@@ -848,6 +872,35 @@ describe("group read contracts", () => {
         }),
       "GroupMembersSummary",
       "agentCount",
+    );
+  });
+
+  it("rejects a group summary below the two-Agent product floor", () => {
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          groupId: ids.group,
+          threadId: ids.thread,
+          currentUser,
+          agents: [agentMember],
+          agentCount: 1,
+          memberCount: 2,
+        }),
+      "GroupMembersSummary",
+      "agentCount",
+    );
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          groupId: ids.group,
+          threadId: ids.thread,
+          currentUser,
+          agents: [agentMember],
+          agentCount: 2,
+          memberCount: 3,
+        }),
+      "GroupMembersSummary",
+      "agents",
     );
   });
 

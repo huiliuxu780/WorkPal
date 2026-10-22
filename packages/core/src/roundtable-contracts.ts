@@ -1,4 +1,4 @@
-import { GROUP_MEMBER_MAX } from "@rakazo/contracts";
+import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN } from "@rakazo/contracts";
 
 export type BrandedId<Name extends string> = string & { readonly __brand: Name };
 
@@ -60,12 +60,12 @@ function asInteger(
 ): number {
   if (
     typeof value !== "number" ||
-    !Number.isInteger(value) ||
+    !Number.isSafeInteger(value) ||
     value < minimum ||
     (maximum !== undefined && value > maximum)
   ) {
     const range = maximum === undefined ? `>= ${minimum}` : `between ${minimum} and ${maximum}`;
-    invalid(contract, path, `expected an integer ${range}`);
+    invalid(contract, path, `expected a safe integer ${range}`);
   }
   return value;
 }
@@ -75,11 +75,7 @@ function asBoolean(value: unknown, contract: string, path: string): boolean {
   return value;
 }
 
-function asNullableMessageProvider(
-  value: unknown,
-  contract: string,
-  path: string,
-): string | null {
+function asNullableMessageProvider(value: unknown, contract: string, path: string): string | null {
   const parsed = asNullableNonEmptyString(value, contract, path);
   if (parsed !== null && (parsed.length > 50 || !/^[a-z0-9._-]+$/i.test(parsed))) {
     invalid(contract, path, "expected 1-50 letters, digits, dots, underscores or hyphens");
@@ -836,7 +832,16 @@ export function parseGroupMembersSummary(value: unknown): GroupMembersSummary {
   if (!Array.isArray(raw.agents)) invalid(contract, "agents", "expected an array");
   const currentUser = parseGroupUserMember(raw.currentUser);
   const agents = raw.agents.map((member) => parseGroupAgentMember(member));
-  const agentCount = asInteger(raw.agentCount, contract, "agentCount", 0, GROUP_MEMBER_MAX);
+  const agentCount = asInteger(
+    raw.agentCount,
+    contract,
+    "agentCount",
+    GROUP_MEMBER_MIN,
+    GROUP_MEMBER_MAX,
+  );
+  if (agents.length < GROUP_MEMBER_MIN) {
+    invalid(contract, "agents", `must contain at least ${GROUP_MEMBER_MIN} agents`);
+  }
   if (agents.length > GROUP_MEMBER_MAX) {
     invalid(contract, "agents", `must contain at most ${GROUP_MEMBER_MAX} agents`);
   }
