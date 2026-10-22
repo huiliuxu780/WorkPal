@@ -227,7 +227,7 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
-import { createGroupQueries } from "./group-queries.js";
+import { createGroupPanelQueries } from "./group-queries.js";
 import {
   parseGroupArtifactListQuery,
   parseGroupPanelQuery,
@@ -785,7 +785,7 @@ export function createRouter(deps: RouterDeps) {
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
   const groupRepos = createGroupRepos(deps.prisma);
-  const groupQueries = createGroupQueries(deps);
+  const groupPanelQueries = createGroupPanelQueries(deps);
   const turnRouting =
     deps.turnRouting ??
     createTurnRoutingProvider({
@@ -2063,7 +2063,7 @@ export function createRouter(deps: RouterDeps) {
         list: authed.groups.artifacts.list.handler(async ({ context, input }) => {
           const query = parseGroupArtifactListQuery(context.actor, input);
           try {
-            return toWireArtifactPage(query.groupId, await groupQueries.listArtifacts(query));
+            return toWireArtifactPage(await groupPanelQueries.listArtifacts(query));
           } catch (error) {
             if (error instanceof ArtifactListCursorError) {
               throw new ORPCError("BAD_REQUEST", { message: error.message });
@@ -2077,7 +2077,7 @@ export function createRouter(deps: RouterDeps) {
         list: authed.groups.routines.list.handler(async ({ context, input }) => {
           const query = parseGroupPanelQuery(context.actor, input.groupId);
           try {
-            return toWireGroupRoutines(await groupQueries.listRoutines(query));
+            return toWireGroupRoutines(await groupPanelQueries.listRoutines(query));
           } catch (error) {
             if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
             throw error;
@@ -2088,7 +2088,7 @@ export function createRouter(deps: RouterDeps) {
         list: authed.groups.members.list.handler(async ({ context, input }) => {
           const query = parseGroupPanelQuery(context.actor, input.groupId);
           try {
-            return toWireGroupMembers(await groupQueries.listMembers(query));
+            return toWireGroupMembers(await groupPanelQueries.listMembers(query));
           } catch (error) {
             if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
             throw error;

@@ -41,15 +41,13 @@ export function parseGroupPanelQuery(actor: Actor, groupId: string): GroupQuery 
   });
 }
 
-export function toWireArtifactPage(groupId: string, page: Page<ArtifactSummary>): ArtifactPage {
+export function toWireArtifactPage(page: Page<ArtifactSummary>): ArtifactPage {
   return {
     items: page.items.map((item) => ({
       id: item.id,
-      // The frozen group projection omits artifact authoring fields; keep the
-      // wire contract's nullable slots without inventing values.
-      botId: null,
-      groupId,
-      runId: null,
+      botId: item.botId,
+      groupId: item.groupId,
+      runId: item.runId,
       name: item.name,
       description: item.description,
       mimeType: item.mimeType,

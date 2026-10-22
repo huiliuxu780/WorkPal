@@ -9,7 +9,7 @@ import {
 } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { createGroupQueries } from "./group-queries.js";
+import { createGroupPanelQueries } from "./group-queries.js";
 import { createRouter, type RouterDeps } from "./router.js";
 
 const actor: Actor = {
@@ -56,7 +56,7 @@ function groupArtifactRow() {
     familyId: "family-a",
     botId: "bot-1",
     groupId: "group-1",
-    runId: null,
+    runId: "run-1",
     name: "Notes",
     description: null,
     mimeType: "text/markdown",
@@ -158,9 +158,9 @@ describe("group-scoped query RPC contract", () => {
         items: [
           {
             id: "family-a",
-            botId: null,
+            botId: "bot-1",
             groupId: "group-1",
-            runId: null,
+            runId: "run-1",
             name: "Notes",
             description: null,
             mimeType: "text/markdown",
@@ -329,7 +329,7 @@ describe("core GroupQueries port to RPC mapping", () => {
       groupId: "group-1",
       limit: 30,
     });
-    const port = await createGroupQueries(deps).listArtifacts(query);
+    const port = await createGroupPanelQueries(deps).listArtifacts(query);
     const { body } = await call("groups/artifacts/list", { groupId: "group-1", limit: 30 });
     const wire = body as {
       json: { items: Array<Record<string, unknown>>; nextCursor: string | null };
@@ -339,14 +339,25 @@ describe("core GroupQueries port to RPC mapping", () => {
     expect(wire.json.items).toHaveLength(port.items.length);
     wire.json.items.forEach((item, index) => {
       const core = port.items[index]!;
-      expect(item).toEqual({ ...core, botId: null, groupId: "group-1", runId: null });
+      expect(item).toEqual(core);
       expect(parseArtifactSummary(item)).toEqual(core);
+    });
+  });
+
+  it("keeps the Agent, group and Run source on every artifact", async () => {
+    const { call } = fixture({ group: groupTarget(), queryRaw: [groupArtifactRow()] });
+    const { body } = await call("groups/artifacts/list", { groupId: "group-1", limit: 30 });
+
+    expect((body as { json: { items: unknown[] } }).json.items[0]).toMatchObject({
+      botId: "bot-1",
+      groupId: "group-1",
+      runId: "run-1",
     });
   });
 
   it("maps routines one-to-one between the port and the RPC", async () => {
     const { call, deps } = fixture({ group: groupTarget(), routines: [groupRoutineRow()] });
-    const port = await createGroupQueries(deps).listRoutines(panelQuery());
+    const port = await createGroupPanelQueries(deps).listRoutines(panelQuery());
     const { body } = await call("groups/routines/list", { groupId: "group-1" });
 
     expect((body as { json: unknown }).json).toEqual(port);
@@ -357,7 +368,7 @@ describe("core GroupQueries port to RPC mapping", () => {
 
   it("maps the member summary one-to-one between the port and the RPC", async () => {
     const { call, deps } = fixture({ group: groupTarget(), user: groupUser });
-    const port = await createGroupQueries(deps).listMembers(panelQuery());
+    const port = await createGroupPanelQueries(deps).listMembers(panelQuery());
     const { body } = await call("groups/members/list", { groupId: "group-1" });
 
     expect((body as { json: unknown }).json).toEqual(port);

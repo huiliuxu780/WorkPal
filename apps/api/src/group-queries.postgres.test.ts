@@ -14,7 +14,7 @@ import {
 } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ArtifactListCursorError } from "./artifacts.js";
-import { createGroupQueries } from "./group-queries.js";
+import { createGroupPanelQueries } from "./group-queries.js";
 
 const describePostgres =
   process.env.VERIFY_DATABASE && process.env.DATABASE_URL ? describe.sequential : describe.skip;
@@ -29,12 +29,12 @@ type Owner = {
 describePostgres("group-scoped queries (PostgreSQL)", () => {
   let isolated: IsolatedPostgresDatabase;
   let prisma: IsolatedPostgresDatabase["db"]["prisma"];
-  let groupQueries: ReturnType<typeof createGroupQueries>;
+  let groupQueries: ReturnType<typeof createGroupPanelQueries>;
 
   beforeAll(async () => {
     isolated = await createIsolatedPostgresDatabase("group_queries");
     prisma = isolated.db.prisma;
-    groupQueries = createGroupQueries({ prisma });
+    groupQueries = createGroupPanelQueries({ prisma });
   }, 180_000);
 
   afterAll(async () => {
@@ -149,6 +149,7 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
     owner: Owner;
     botId: string | null;
     groupId: string | null;
+    runId?: string | null;
     name: string;
     createdAt: Date;
     rootArtifactId?: string;
@@ -160,6 +161,7 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
         userId: input.owner.userId,
         botId: input.botId,
         groupId: input.groupId,
+        runId: input.runId ?? null,
         name: input.name,
         mimeType: "text/plain",
         size: 1,
@@ -168,6 +170,30 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
         createdAt: input.createdAt,
         rootArtifactId: input.rootArtifactId,
         version: input.version ?? 1,
+      },
+    });
+  }
+
+  async function createRunSource(owner: Owner, botId: string, threadId: string) {
+    const task = await prisma.task.create({
+      data: {
+        spaceId: owner.spaceId,
+        botId,
+        threadId,
+        userId: owner.userId,
+        prompt: "Produce the group artifact",
+        status: "completed",
+      },
+    });
+    return prisma.run.create({
+      data: {
+        spaceId: owner.spaceId,
+        botId,
+        threadId,
+        taskId: task.id,
+        userId: owner.userId,
+        status: "completed",
+        trigger: "user",
       },
     });
   }
@@ -219,10 +245,12 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
     const owner = await createOwner("artifacts");
     const group = await createGroup(owner, "Artifact group");
     const other = await createGroup(owner, "Other group");
+    const runSource = await createRunSource(owner, group.botA.id, group.thread.id);
     const root = await createArtifact({
       owner,
       botId: group.botA.id,
       groupId: group.group.id,
+      runId: runSource.id,
       name: "First family",
       createdAt: new Date("2026-09-01T00:00:00.000Z"),
     });
@@ -230,6 +258,7 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
       owner,
       botId: group.botA.id,
       groupId: group.group.id,
+      runId: runSource.id,
       name: "First family v2",
       createdAt: new Date("2026-09-03T00:00:00.000Z"),
       rootArtifactId: root.id,
@@ -264,6 +293,9 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
     expect(first.items).toHaveLength(1);
     expect(first.items[0]).toMatchObject({
       id: root.id,
+      botId: group.botA.id,
+      groupId: group.group.id,
+      runId: runSource.id,
       name: "First family v2",
       version: 2,
       versionCount: 2,

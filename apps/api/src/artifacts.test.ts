@@ -4,7 +4,7 @@ import { parseGroupPageQuery } from "@rakazo/core";
 import { IsolationError, type PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { ArtifactListCursorError, deleteArtifactFamily, listSpaceArtifacts } from "./artifacts.js";
-import { createGroupQueries } from "./group-queries.js";
+import { createGroupPanelQueries } from "./group-queries.js";
 
 const actor: Actor = {
   userId: "user-1",
@@ -384,7 +384,7 @@ function groupListRow(
   groupId = "group-1",
   createdAt = "2026-09-01T00:00:00.000Z",
 ) {
-  return { ...listRow(id, familyId, createdAt), groupId };
+  return { ...listRow(id, familyId, createdAt), groupId, runId: "run-1" };
 }
 
 function groupTarget(overrides: { id?: string; threadId?: string | null } = {}) {
@@ -419,7 +419,7 @@ function listGroupArtifacts(
   actor: Actor,
   input: { groupId: string; cursor?: string; limit?: number },
 ) {
-  return createGroupQueries(deps).listArtifacts(
+  return createGroupPanelQueries(deps).listArtifacts(
     parseGroupPageQuery({
       actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
       groupId: input.groupId,
@@ -459,8 +459,11 @@ describe("GroupQueries.listArtifacts", () => {
     expect(statement(sql)).toContain('ORDER BY latest."createdAt" DESC, latest.id DESC');
     expect(page.items.map((item) => item.id)).toEqual(["family-a", "family-b"]);
     expect(page.items.every((item) => item.versionCount === 1)).toBe(true);
-    expect(page.items[0]).not.toHaveProperty("groupId");
-    expect(page.items[0]).not.toHaveProperty("botId");
+    expect(page.items[0]).toMatchObject({
+      botId: "bot-1",
+      groupId: "group-1",
+      runId: "run-1",
+    });
     expect(cursorPayload(page.nextCursor ?? "")).toMatchObject({
       id: "version-b",
       botId: null,

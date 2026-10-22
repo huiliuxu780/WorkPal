@@ -1,14 +1,8 @@
 import type { Actor } from "@rakazo/contracts";
-import {
-  parseGroupMembersSummary,
-  parseGroupPageQuery,
-  parseGroupQuery,
-  parseGroupRoutineSummary,
-  parseGroupWorkQuery,
-} from "@rakazo/core";
+import { parseGroupMembersSummary, parseGroupQuery, parseGroupRoutineSummary } from "@rakazo/core";
 import { IsolationError, type PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { createGroupQueries, GroupQueryNotImplementedError } from "./group-queries.js";
+import { createGroupPanelQueries } from "./group-queries.js";
 
 const actor: Actor = {
   userId: "user-1",
@@ -122,7 +116,7 @@ describe("GroupQueries.listRoutines", () => {
       ],
     });
 
-    const result = await createGroupQueries(deps).listRoutines(groupQuery());
+    const result = await createGroupPanelQueries(deps).listRoutines(groupQuery());
 
     expect(chatGroupFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -178,7 +172,7 @@ describe("GroupQueries.listRoutines", () => {
       routines: [routineRow()],
     });
 
-    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+    await expect(createGroupPanelQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
       IsolationError,
     );
     expect(routineFindMany).not.toHaveBeenCalled();
@@ -187,7 +181,7 @@ describe("GroupQueries.listRoutines", () => {
   it("rejects a group owned by another space or user before reading routines", async () => {
     const { deps, routineFindMany } = queryDeps({ group: null });
 
-    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+    await expect(createGroupPanelQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
       IsolationError,
     );
     expect(routineFindMany).not.toHaveBeenCalled();
@@ -208,7 +202,7 @@ describe("GroupQueries.listRoutines", () => {
     };
 
     await expect(
-      createGroupQueries(deps).listRoutines(
+      createGroupPanelQueries(deps).listRoutines(
         parseGroupQuery({
           actor: { kind: "user", userId: actor.userId, spaceId: "space-2" },
           groupId: "group-1",
@@ -216,7 +210,7 @@ describe("GroupQueries.listRoutines", () => {
       ),
     ).rejects.toBeInstanceOf(IsolationError);
     await expect(
-      createGroupQueries(deps).listRoutines(
+      createGroupPanelQueries(deps).listRoutines(
         parseGroupQuery({
           actor: { kind: "user", userId: "user-2", spaceId: actor.spaceId },
           groupId: "group-1",
@@ -229,7 +223,7 @@ describe("GroupQueries.listRoutines", () => {
   it("rejects a group whose thread disappeared", async () => {
     const { deps, routineFindMany } = queryDeps({ group: groupTarget({ threadId: null }) });
 
-    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+    await expect(createGroupPanelQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
       IsolationError,
     );
     expect(routineFindMany).not.toHaveBeenCalled();
@@ -243,7 +237,7 @@ describe("GroupQueries.listRoutines", () => {
       routines: [routineRow({ id: "routine-a", botId: "bot-removed" })],
     });
 
-    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+    await expect(createGroupPanelQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
       IsolationError,
     );
   });
@@ -256,7 +250,7 @@ describe("GroupQueries.listMembers", () => {
       user: currentUser,
     });
 
-    const result = await createGroupQueries(deps).listMembers(groupQuery());
+    const result = await createGroupPanelQueries(deps).listMembers(groupQuery());
 
     expect(userFindFirst).toHaveBeenCalledWith({
       where: { id: actor.userId },
@@ -329,7 +323,7 @@ describe("GroupQueries.listMembers", () => {
       user: currentUser,
     });
 
-    const result = await createGroupQueries(deps).listMembers(groupQuery());
+    const result = await createGroupPanelQueries(deps).listMembers(groupQuery());
 
     expect(result.agents[0]?.avatarCharacter).toBe("dot");
     expect(result.agentCount).toBe(2);
@@ -339,7 +333,7 @@ describe("GroupQueries.listMembers", () => {
   it("rejects an unauthorized group without reading the user profile", async () => {
     const { deps, userFindFirst } = queryDeps({ group: null, user: currentUser });
 
-    await expect(createGroupQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
+    await expect(createGroupPanelQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
       IsolationError,
     );
     expect(userFindFirst).not.toHaveBeenCalled();
@@ -351,7 +345,7 @@ describe("GroupQueries.listMembers", () => {
       user: currentUser,
     });
 
-    await expect(createGroupQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
+    await expect(createGroupPanelQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
       IsolationError,
     );
     expect(userFindFirst).not.toHaveBeenCalled();
@@ -360,27 +354,8 @@ describe("GroupQueries.listMembers", () => {
   it("rejects an actor whose user row is gone", async () => {
     const { deps } = queryDeps({ group: groupTarget(), user: null });
 
-    await expect(createGroupQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
+    await expect(createGroupPanelQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
       IsolationError,
     );
-  });
-});
-
-describe("GroupQueries work projections", () => {
-  it("fails closed instead of faking work data", async () => {
-    const queries = createGroupQueries({ prisma: {} as unknown as PrismaClient });
-    const pageQuery = parseGroupPageQuery({
-      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
-      groupId: "group-1",
-      limit: 20,
-    });
-    const workQuery = parseGroupWorkQuery({
-      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
-      groupId: "group-1",
-      taskId: "task-1",
-    });
-
-    await expect(queries.listWork(pageQuery)).rejects.toBeInstanceOf(GroupQueryNotImplementedError);
-    await expect(queries.getWork(workQuery)).rejects.toBeInstanceOf(GroupQueryNotImplementedError);
   });
 });

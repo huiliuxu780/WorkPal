@@ -1,7 +1,7 @@
 import { resolveAvatarIdentity } from "@rakazo/contracts";
 import {
   type GroupMembersSummary,
-  type GroupQueries,
+  type GroupPanelQueries,
   type GroupQuery,
   type GroupRoutineSummary,
   parseGroupMembersSummary,
@@ -13,13 +13,6 @@ import { mapRoutine } from "./routines.js";
 
 type GroupTarget = Awaited<ReturnType<ReturnType<typeof createGroupRepos>["getGroupTarget"]>>;
 type GroupTargetMember = GroupTarget["members"][number];
-
-export class GroupQueryNotImplementedError extends Error {
-  constructor(query: "listWork" | "getWork") {
-    super(`GroupQueries.${query} is not implemented`);
-    this.name = "GroupQueryNotImplementedError";
-  }
-}
 
 function requireGroupThread(group: GroupTarget): string {
   if (!group.thread) throw new IsolationError("Group is missing its thread");
@@ -106,15 +99,9 @@ async function listGroupMembers(
   });
 }
 
-/** The single application implementation of the frozen roundtable GroupQueries port. */
-export function createGroupQueries(deps: { prisma: PrismaClient }): GroupQueries {
+/** Panel-owned read methods; RT-20 composes its work port separately. */
+export function createGroupPanelQueries(deps: { prisma: PrismaClient }): GroupPanelQueries {
   return {
-    async listWork() {
-      throw new GroupQueryNotImplementedError("listWork");
-    },
-    async getWork() {
-      throw new GroupQueryNotImplementedError("getWork");
-    },
     listArtifacts: (query) => listGroupArtifactSummaries(deps, query),
     listRoutines: (query) => listGroupRoutines(deps, query),
     listMembers: (query) => listGroupMembers(deps, query),
