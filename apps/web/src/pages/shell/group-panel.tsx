@@ -455,9 +455,11 @@ export function GroupPanel({
             {members ? <Trans>{members.agentCount} Agents</Trans> : <Trans>Members</Trans>}
           </PanelSectionHead>
           {members === null ? (
-            <p className="text-[11px] text-muted-foreground">
-              <Trans>Loading…</Trans>
-            </p>
+            membersError ? null : (
+              <p className="text-[11px] text-muted-foreground">
+                <Trans>Loading…</Trans>
+              </p>
+            )
           ) : (
             <div className="grid gap-1">
               {members.agents.map((agent) => (

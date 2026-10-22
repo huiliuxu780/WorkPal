@@ -168,6 +168,16 @@ function blur(field: HTMLInputElement) {
   });
 }
 
+describe("members load failure", () => {
+  it("shows the error without an endless loading state", () => {
+    render({ members: null, membersError: "Group summary unavailable", tab: "members" });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "Group summary unavailable",
+    );
+    expect(container.textContent).not.toContain("Loading");
+  });
+});
+
 describe("group name inline edit (AC33)", () => {
   it("is read-only until clicked, then saves on Enter", () => {
     const onSave = render();
@@ -264,7 +274,10 @@ describe("library page (AC36)", () => {
     yesterday.setHours(12, 0, 0, 0);
     render({
       tab: "library" as GroupPanelTab,
-      artifacts: [artifact("a1", new Date().toISOString()), artifact("a2", yesterday.toISOString())],
+      artifacts: [
+        artifact("a1", new Date().toISOString()),
+        artifact("a2", yesterday.toISOString()),
+      ],
     });
     const rows = container.querySelectorAll("[data-testid='group-library-row']");
     expect(rows).toHaveLength(2);

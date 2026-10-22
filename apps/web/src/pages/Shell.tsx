@@ -3659,7 +3659,12 @@ export function ShellPage() {
                 {inGroup ? (
                   groupPanel.members ? (
                     <GroupIdentityCluster members={groupPanel.members} variant="capsule" />
-                  ) : null
+                  ) : (
+                    <GroupAvatar
+                      members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                      size={26}
+                    />
+                  )
                 ) : active ? (
                   <BotAvatar
                     color={active.color}
