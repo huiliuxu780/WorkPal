@@ -3,6 +3,7 @@
 - 状态：探针完成；真实 helper 压缩会触发 native memory flush 与 transcript offload，压缩安全验收未通过；生产 delegation 继续 suspended，未解除
 - SDK：AgentScope 2.0.3（`io.agentscope:agentscope-harness` / `agentscope-core`）
 - 测试：`services/agent-runtime/src/test/java/com/workpal/runtime/AgentScopeBackgroundProbeTest.java`
+- 追加：2026-10-22 的 `subagentFactory` 验证见第 7 节；safe compaction 可通过，但失败归因和内置 `general-purpose` 仍阻断。
 - 结论：**helper 压缩不安全，整体解除条件未满足。**
 
 ## 1. 探针方法
@@ -170,3 +171,71 @@ node --test docs/roundtable/verify-implementation-plan.test.mjs
 
 **因此：不解除 production suspension，不开启 `background_helper` gate，不进入 RT-16 实现。**
 压缩安全、失败归因和 child session 持久化仍是阻断项；在 RT-16 补齐 WorkPal 侧记录与失败通道、并解决 helper 压缩副作用之前，后台 helper 不能进入生产。
+
+## 7. 追加探针：自定义 subagentFactory 的适配边界
+
+本节是 2026-10-22 的追加验证，保留第 1–6 节 declared helper 首次探针的事实，不覆盖历史结论。测试入口：`AgentScopeSubagentFactoryProbeTest`（8 tests）。生产构造器、`background_helper` gate 和 RT-16 均未改动；也没有使用私有 fork 或运行时反射 patch。
+
+### 7.1 方法
+
+- 通过公开的 `HarnessAgent.Builder.subagentFactory(name, description, Function<String, Agent>)` 注册工厂；工厂在每次 spawn 时新建一个只读子 `HarnessAgent`。
+- 子 Agent 显式配置：`CompactionConfig.builder().flushBeforeCompact(false).offloadBeforeCompact(false).build()`、`disableMemoryHooks()`、`disableToolResultEviction()`、`disableSubagents()`、只读 toolkit、独立 workspace/state store、`disableSessionPersistence()`。
+- 父 Agent 使用真实 `HarnessAgent`，模型端点仍是本地 OpenAI-compatible HTTP fixture；任务仓库使用 WorkPal 的 `InterruptibleTaskRepository`（与生产取消路径一致）。
+- 由于本任务禁止修改生产代码，工厂探针没有向 `RuntimeEngine` 增加 factory 注入口；它直接驱动 HarnessAgent 和相同的 TaskRepository/ spawn 输出契约。`RuntimeEngine.registerBackground` 对 factory 是无感知的，仍从 spawn 输出的 `session_id` 读取 child session，这一路径未被本探针改写。
+
+### 7.2 生命周期、session 与异常传播机制
+
+1. **factory 入口**：`HarnessAgent.Builder.subagentFactory` 把 `Function<String, Agent>` 包装成 `SubagentFactoryEntry`；`buildSubagentEntries` 生成一个 `SubagentEntry`，其 declaration 为 `null`。工厂的 `Function` 只收到固定的 agent name，不收到 parent `RuntimeContext`；`SubagentFactory.create(RuntimeContext)` 的 context 被 builder 的适配 lambda 丢弃。
+2. **session 派生**：`AgentSpawnTool` 在 declaration 为空时走非 declared 分支，为每次 spawn 生成随机 `task-<uuid>` 和 `sub-<uuid>`。两个 sibling 因此天然得到不同 session；child 通过 `DefaultAgentManager.invokeAgent` 的 `RuntimeContext` 收到自己的 `sub-<uuid>`。实际执行 session **不是** `deriveChildSessionId` 的结果。
+3. **parent 正文隔离**：factory 每次创建新的 HarnessAgent 和新 state store；child 的 system prompt/任务消息中没有父聊天正文。探针在 child 请求中找不到 `PARENT_ONLY_SECRET_FACTORY_9C1`。
+4. **失败传播**：`DefaultAgentManager.invokeAgent(...).block()` 的异常仍由 `AgentSpawnTool` 的 local supplier 处理。HTTP 500 被转成 `Error: Retries exhausted: 2/2`；即使 child 模型直接抛 `TypedFailureError extends Error`，Reactor 的 `block()` 仍把它包装成 `RuntimeException`，`AgentSpawnTool` 最终返回 `Error: ...TypedFailureError...`。`WorkspaceTaskRepository` 看到的是正常 supplier 结果，记录为 `COMPLETED`。
+5. **取消**：原生 `TaskRepository.cancelTask` 会设置 cancel 标志和终态，但默认 `WorkspaceTaskRepository` 不会中断正在执行的 local supplier；WorkPal 的 `InterruptibleTaskRepository` 包装 supplier 并中断 worker，探针使用该仓库后取消能真实停止 child。factory 本身不改变这条路径。
+6. **内置 general-purpose**：`buildSubagentEntries` 总是先加入 `general-purpose`，再追加 custom factory；factory 没有删除或替换内置项的公开方法。父 Agent 的 system prompt 仍列出 `general-purpose`，模型可以 spawn 它；它复制父 toolkit（包括 mutating 工具），只是 `asLeafSubagent()` 阻止继续嵌套。
+
+### 7.3 逐项对比
+
+| 能力 | declared helper（首次探针） | custom subagentFactory（本次） | 判定 |
+| --- | --- | --- | --- |
+| child 独立 session / sibling 不复用 | 通过（实际 `sub-<uuid>`） | 通过（每次 spawn 随机 `sub-<uuid>`） | 适配可行 |
+| child 不继承父聊天 | 通过 | 通过 | 适配可行 |
+| safe compaction | 未通过：stock flush/offload | **通过**：`flushBeforeCompact=false`、`offloadBeforeCompact=false` | 适配可行 |
+| >50 msgs / >8k tokens 无 memory/offload 产物 | 未通过 | **通过**：max 50 msgs / 32,903 tokens，有 summary，无 flush/offload | 适配可行 |
+| success / cancel / failure 可区分 | success/cancel 通过；failure 拍平 | success/cancel 通过；**failure 仍拍平** | **阻断** |
+| registration / terminal / delivery identity | 通过（spawn 输出 + native record） | 通过（taskId + parentSessionId + sessionId） | 适配可行 |
+| owner-only cancel 真实停止 | 通过（WorkPal interrupt wrapper） | 通过（同一 `InterruptibleTaskRepository`） | 适配可行 |
+| WorkPal 取得 child session | registration body 的 `sessionId` | spawn 输出的 `session_id`；native `subSessionId` 仍为空 | 需要 WorkPal 持久化 |
+| helper 只读 / 无嵌套 | declared leaf + 只读工具 | custom child 只读且 `disableSubagents()` 通过 | 适配可行 |
+| 不暴露内置 unsafe agent | 未覆盖 | **未通过**：`general-purpose` 仍可 spawn 并继承父 mutating toolkit | **阻断** |
+
+### 7.4 关键证据
+
+- safe compaction 探针在压缩前观测到 **50 messages / 32,903 tokens**；出现 `SUMMARY` 模型调用，未出现 `FLUSH`、offload pointer、`memory/`、`memory/YYYY-MM-DD.md` 或 `sessions/*.jsonl`。
+- 标准 child HTTP 500：terminal 和 native record 都是 `COMPLETED`，结果文本为 `Error: Retries exhausted: 2/2`。
+- typed `Error` 探针：terminal 仍为 `COMPLETED`，结果文本为 `Error: ...$TypedFailureError: typed factory child model failure`；没有 `FAILED` terminal，也没有 typed error 字段。**不能**把这类文本匹配当作生产失败判断。
+- 取消探针：foreign parent session 返回 `false` 且不改变状态；owner parent session 返回 `true`，状态为 `CANCELLED`，取消后只读工具调用数为 0。
+- delivery 探针：同一 parent session 的下一次 Run 收到 child 结果，foreign session 收不到；native `deliveredAt` 被写入。
+- child session：spawn 输出包含 `session_id: sub-<uuid>`；两个 sibling 不同；native `TaskRecord.subSessionId` 仍为空。WorkPal 只能从 spawn 输出持久化该身份。
+- 内置 `general-purpose` 探针：custom factory 注册后仍能成功 spawn `general-purpose`，其 child tools 包含父级的 `probe_write`；因此“所有 helper 只读”不成立。
+
+### 7.5 最终判定与下一步
+
+**自定义 subagentFactory 可以作为“安全压缩 + 独立 session + 只读 leaf”的兼容适配基础，但不足以解除生产阻断。** 失败归因仍被 2.0.3 拍平，内置 `general-purpose` 仍提供绕过 custom factory 的 mutating 路径，child session 也没有进入 native TaskRecord。RT-16 继续阻断；production suspension 保持不动。
+
+在继续实现 RT-16 前，至少需要 AgentScope 提供以下公开能力（不猜测不存在的版本号）：
+
+1. **typed failure propagation**：child 的失败必须让 `BackgroundTask`/`TaskRecord` 进入 `FAILED`，并保留可读取的异常类型；不能由 `AgentSpawnTool` 把子异常转成 `COMPLETED` 文本。
+2. **built-in agent 的可控暴露**：注册 custom factory 时能禁用/移除内置 `general-purpose`，或明确只暴露显式注册的 agent id；不能依赖模型不去选择内置 unsafe agent。
+3. **child session 的 native 身份回传**：factory 创建时拿到本次 spawn 的 child session，或 `TaskRecord.subSessionId` 由 SDK 填充；否则 WorkPal 只能依赖 spawn 文本，无法形成稳定的数据库注册事务。
+4. 继续保留可配置的 safe compaction（当前 custom factory 已能做到）和 WorkPal 的 interruptible cancel（现有实现已能真实停止 child）。
+
+同名覆盖内置 `general-purpose` 未在本探针验证，不能写成已解决；私有 fork 和运行时反射 patch 明确不可接受（高维护成本）。下一步应先升级并重新运行 `AgentScopeSubagentFactoryProbeTest` 与 `AgentScopeBackgroundProbeTest`，再评估 RT-16。
+
+### 7.6 验证命令与结果
+
+```bash
+JAVA_HOME="$JDK21_HOME" mvn \
+  -Dtest='AgentScopeBackgroundProbeTest,AgentScopeSubagentFactoryProbeTest,CompactionBoundaryIntegrationTest,CompactionTokenBudgetTest,DelegationSuspensionTest,InterruptibleTaskRepositoryTest,MemoryCompactionPurgeIntegrationTest,ToolResultEvictionBoundaryTest,RuntimeIntegrationTest' \
+  test
+```
+
+结果：**71 tests，0 failures，0 errors**。其中首次 RT-15 探针 **7/7**、factory 探针 **8/8**、`DelegationSuspensionTest` **3/3**。计划验证器与 node 测试结果见第 5 节同一命令，未因本次追加改变。
