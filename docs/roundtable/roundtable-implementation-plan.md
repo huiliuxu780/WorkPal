@@ -467,6 +467,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 覆盖：AC04。场景 B01。
 
+交付记录：[RT-15 AgentScope 后台安全能力探针报告](RT-15-agentscope-background-probe.md)。结论：真实 helper 压缩会触发 native memory flush、memory ledger 写入和 transcript offload，压缩安全验收未通过；失败归因与 child session 持久化也未满足，delegation 继续 suspended。
+
 ### RT-16 建立后台执行身份和注册事务
 
 目标：每个 helper 都有独立产品 Task、Run、Attempt 和 runtime task identity，并通过崩溃安全协议启动。
