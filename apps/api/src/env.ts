@@ -4,8 +4,10 @@ import {
   resolveSandboxProvider,
 } from "@rakazo/adapters";
 import {
+  type RoundtableFeatureGates,
   resolveAuthSecret,
   resolveEncryptionKey,
+  resolveRoundtableFeatureGates,
   resolveScreenProxySecret,
   resolveSupervisorToken,
 } from "@rakazo/core";
@@ -14,6 +16,8 @@ export { resolveCloudAgentProvider, resolveSandboxProvider } from "@rakazo/adapt
 
 export interface AppEnv {
   nodeEnv: string;
+  /** Server-only roundtable capability gates; all off unless explicitly enabled. */
+  roundtableFeatures: RoundtableFeatureGates;
   desktopStackToken?: string;
   databaseUrl: string;
   realtimeDatabaseUrl: string;
@@ -108,6 +112,7 @@ export interface AppEnv {
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
+  const roundtableFeatures = resolveRoundtableFeatureGates(source);
   const authSecret = resolveAuthSecret(source);
   const sandboxProvider = resolveSandboxProvider(source);
   const cloudAgentProvider = resolveCloudAgentProvider(source);
@@ -116,6 +121,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const updaterToken = optional(source.RAKAZO_UPDATER_TOKEN);
   return {
     nodeEnv: source.NODE_ENV ?? "",
+    roundtableFeatures,
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
     desktopStackToken: optional(source.RAKAZO_DESKTOP_STACK_TOKEN),

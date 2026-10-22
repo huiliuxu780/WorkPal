@@ -29,6 +29,18 @@ test("rejects one task whose coverage declaration is missing", () => {
   );
 });
 
+test("rejects a single missing implementation owner", () => {
+  const changed = plan.replace("覆盖：AC19、AC24、AC37、AC38。场景 D06、Q06、Q07。", "");
+  assert.throws(
+    () => verifyImplementationPlan(prd, changed),
+    /acceptance has no implementation owner: AC37/,
+  );
+  assert.throws(
+    () => verifyImplementationPlan(prd, changed),
+    /acceptance has no implementation owner: AC38/,
+  );
+});
+
 test("rejects a duplicate task", () => {
   const changed = `${plan}\n### RT-01 duplicate\n\n依赖：无。\n`;
   assert.throws(() => verifyImplementationPlan(prd, changed), /duplicate task definitions/);
