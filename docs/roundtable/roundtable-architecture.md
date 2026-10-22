@@ -375,6 +375,8 @@ interface ThreadPolicy {
 
 所有用户写入口调用同一个 `ThreadPolicy`。页面隐藏 composer 只是表现，不是权限边界。
 
+`agent_pair` 的完整 Thread 只供两个 Agent 的执行上下文连续使用。人类读取必须从来源 receipt 进入，并对返回的每条消息按持久化 `origin.sourceThreadId` 再做授权；pair Thread 本身可读不代表其中所有来源都可读。分页、定位和计数都在授权过滤后的投影上计算，不能先返回整页再由 Web 隐藏。
+
 ### 4.3 group dispatch
 
 ```ts

@@ -164,7 +164,7 @@ message_bot({
 
 - 为 `ChatGroup` 增加可区分的 `kind=agent_pair` 与唯一 `pairKey`；`pairKey` 由同 workspace 内排序后的两个 bot id 计算，因此 A→B 与 B→A 命中同一个 Thread。
 - `agent_pair` group 恰好有两个 Bot 成员，由服务端创建和维护，不进入侧边栏、群选择器、普通群搜索或成员管理页面。
-- 用户只可从协作回执打开只读视图；`sendThreadMessage`、composer、reaction、审批按钮和成员 mutation 都必须拒绝这个 Thread 上的人类写入。
+- 用户只可从协作回执打开只读视图；receipt 是读取入口和定位凭据，不是读取整个 pair Thread 的通行证。服务端按每条消息持久化的 origin 校验用户对来源 Thread 的读取权，只返回授权来源的消息。`sendThreadMessage`、composer、reaction、审批按钮和成员 mutation 都必须拒绝这个 Thread 上的人类写入。
 - 完整逐字记录仍写 PostgreSQL；该 Thread 自己持久化 AgentScope 工作上下文和压缩状态。它是长期对话，不等于把内容自动写入任一 Bot 的长期记忆。
 - 创建 pair Thread 只建立通信范围，不授予文件、群、集成或工具凭据。消息引用的资源仍逐项走现有授权；B 无权访问时必须失败或把 scoped Intervention 投影回用户可见来源 Thread。
 - Bot 被停用后，历史仍可只读查看；新投递明确失败。既有错误落到 B 用户单聊的历史消息不做危险搬迁，新规则只作用于新投递。
@@ -174,7 +174,7 @@ message_bot({
 1. 解析目标 Bot，按无序 bot pair 查找或创建唯一 agent-pair group / Thread。
 2. 在 pair Thread 写入 A 的 outbound 与 B 的 inbound 事实，并创建 B 的 support Run；lineage、hop、去重和 outcome resumption 继续复用。
 3. 在来源用户会话只写轻量 receipt：发送者、目标 Bot、pairThreadId、pairMessageId 和状态。不要复制完整委派正文或伪造“B 已收到”。
-4. 点击 receipt 打开 A ↔ B 的长期完整记录；无输入框，用户不能介入。
+4. 点击 receipt 打开 A ↔ B 的长期对话投影并定位对应消息；Agent 自身的 pair 上下文保持连续，但人类投影逐条校验 origin，只显示用户仍有权读取的来源内容。无输入框，用户不能介入。
 5. 若 B 的执行需要用户审批或补充信息，不能在 pair Thread 里向用户提问；创建 scoped Intervention 并投影回原始用户可见 Thread。用户答复后，再恢复对应 pair Run。
 6. B 的结果先回到 pair Thread；A 的 outcome resumption 读取最新用户 Thread 后，另发一条面向原始目标的汇报。receipt 只显示很轻的状态变化，不承担结果正文。
 
@@ -567,7 +567,7 @@ Joy owner Run
 - 用户 typed mention 使用当前 composer mention chip。
 - Agent 在群里公开调用 `message_bot`，展示为自然的 `@Name` 文本。
 - Agent 私下调用 `message_bot`，来源会话只显示一行独立轻回执，例如“已发消息给 小蓝”；它位于正常消息之间，不嵌进 Agent 回复气泡，也不承载委派正文、运行详情或整张目的地卡。
-- 单目标 receipt 点击后直接打开两个 Agent 的长期固定对话；聚合 receipt 点击后在原行下方展开 Agent 下拉列表，选择目标后再打开对应 pair。双 Agent 对话可滚动、可看历史、不可输入，不出现在用户会话列表。
+- 单目标 receipt 点击后直接打开两个 Agent 的长期固定对话；聚合 receipt 点击后在原行下方展开 Agent 下拉列表，选择目标后再打开对应 pair。双 Agent 对话可滚动、可看该用户对各 origin 仍有读取权的历史、不可输入，不出现在用户会话列表。
 - Agent 收到任务后的确认、追问、拒绝、结果都是正常新消息。
 - 消息状态不承担后台事实；后台事实来自 Run / BackgroundAgentTask 投影。
 
@@ -892,7 +892,7 @@ Joy owner Run
 | Q03 | B 后来反向联系 A | 仍命中同一个 A ↔ B Thread，历史连续，不创建“B ↔ A”第二条会话 | 复用 canonical pair resolver |
 | Q04 | 同一对 Agent 多次承担不同任务 | 消息追加到固定 Thread；每次委派仍有独立 Task/Run、parentRunId、delivery key 和完成状态 | 复用 Thread + 独立 lineage |
 | Q05 | 同一 pair 同时承接来自多个用户会话或群的任务 | 每个 Run 保留 `sourceThreadId/sourceRunId`；结果、审批、取消和重试只回到自己的来源，不按“最近会话”猜归属 | 增量：持久 origin reference |
-| Q06 | 用户从 receipt 查看 pair 对话 | 可读取完整历史并定位对应消息；pair 不出现在列表、搜索、群选择器，所有人类消息、reaction、成员修改和 pair 内审批 API 均拒绝 | 增量：只读入口 + 服务端写保护 |
+| Q06 | 用户从 receipt 查看 pair 对话 | 定位对应消息，并逐条按持久 origin 校验来源 Thread 读取权；未授权来源不进入人类投影。pair 不出现在列表、搜索、群选择器，所有人类消息、reaction、成员修改和 pair 内审批 API 均拒绝 | 增量：origin-scoped 只读投影 + 服务端写保护 |
 | Q07 | 同一 source Run 私下通知多个 Agent | 来源可合并为“已发消息给 N 个 Agent”；点开在原行下方展开 Agent 下拉列表，再选择一组双人对话；每个目标仍有独立 pair Thread 和 Run | 增量：聚合 receipt，不合并执行 |
 | Q08 | Bot 改名、停用、删除或恢复 | 改名/头像更新不改变 pair 身份；停用或软删除后历史保留只读、新投递失败；同一 Bot id 恢复后续用原 pair，新建的替代 Bot 不继承旧历史 | 增量：生命周期与保留策略 |
 

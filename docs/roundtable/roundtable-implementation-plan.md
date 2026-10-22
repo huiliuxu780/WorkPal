@@ -173,12 +173,12 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 ### RT-03 实施 pair Thread 访问策略
 
-目标：用户可以从 receipt 只读查看 pair 历史，但 pair 不成为用户可管理的会话。
+目标：用户可以从 receipt 只读查看自己有权访问的 pair 历史投影，但 pair 不成为用户可管理的会话。
 
 输出：
 
 - list、read、write、react、archive、member mutation 和 Routine binding 规则。
-- receipt locator 驱动的只读接口。
+- receipt locator 驱动、逐条按 origin source Thread 授权的只读接口。
 - 服务端列表、搜索、群选择器和未读过滤。
 - 停用和软删除后的历史读取规则。
 
@@ -186,6 +186,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 - 所有人类消息、reaction、成员变更、归档和 pair 内审批写入都被服务端拒绝。
 - pair 不出现在普通列表、搜索、群选择器或未读数中。
+- 同一 pair 承接多个来源时，用户只看到其有权读取的 origin；分页、定位和总数不会侧漏未授权消息。
 - 软删除保留历史，新建替代 Bot 不继承旧 pair。
 - API 和 DB 定向测试通过。
 
@@ -308,7 +309,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 ### RT-09 实现 private receipt 和 pair 浮窗
 
-目标：来源只显示轻量投递痕迹，用户按需打开完整 pair 历史。
+目标：来源只显示轻量投递痕迹，用户按需打开经 origin 授权过滤的 pair 历史。
 
 输出：
 

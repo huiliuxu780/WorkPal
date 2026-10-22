@@ -133,6 +133,9 @@ export function verifyImplementationPlan(prd, plan) {
   const expectedAcceptanceSet = new Set(expectedAcceptance);
   const expectedScenarioSet = new Set(expectedScenarios);
   for (const task of tasks) {
+    if (task.verificationCoverageLines.length === 0 && task.coverageLines.length !== 1) {
+      errors.push(`${task.id} must declare exactly one implementation coverage line`);
+    }
     if (task.coverageLines.length > 1) errors.push(`${task.id} has multiple implementation coverage lines`);
     if (task.verificationCoverageLines.length > 1) {
       errors.push(`${task.id} has multiple verification coverage lines`);

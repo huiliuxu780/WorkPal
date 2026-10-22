@@ -21,6 +21,14 @@ test("rejects missing implementation coverage", () => {
   assert.throws(() => verifyImplementationPlan(prd, changed), /has no implementation owner/);
 });
 
+test("rejects one task whose coverage declaration is missing", () => {
+  const changed = plan.replace("覆盖：AC02、AC03。场景 R04、D01、C01。", "");
+  assert.throws(
+    () => verifyImplementationPlan(prd, changed),
+    /RT-08 must declare exactly one implementation coverage line/,
+  );
+});
+
 test("rejects a duplicate task", () => {
   const changed = `${plan}\n### RT-01 duplicate\n\n依赖：无。\n`;
   assert.throws(() => verifyImplementationPlan(prd, changed), /duplicate task definitions/);
