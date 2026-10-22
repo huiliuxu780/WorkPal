@@ -792,9 +792,11 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
       },
     });
   }
-  if (affectedGroups.length) {
-    await tx.chatGroupMember.deleteMany({ where: { botId } });
-  }
+  // Every membership row must go before the bot row: chat_group_members.botId
+  // is ON DELETE NO ACTION. agent_pair groups are kept for their readable
+  // history, so detachBotFromGroups never reports them; clearing only the
+  // standard groups here would make hard-deleting a pair-only Bot fail.
+  await tx.chatGroupMember.deleteMany({ where: { botId } });
   const groupArtifacts = dissolvedGroupIds.length
     ? await tx.artifact.findMany({
         where: { groupId: { in: dissolvedGroupIds } },

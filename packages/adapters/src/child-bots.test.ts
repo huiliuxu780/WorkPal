@@ -230,6 +230,7 @@ describe("destroyBot", () => {
           findMany: vi.fn().mockResolvedValue([]),
           deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
+        chatGroupMember: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
         artifact: { findMany: findArtifacts, deleteMany: deleteArtifacts },
         computerExecutionLease: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
         computer: { updateMany: releaseComputers },
@@ -548,7 +549,10 @@ describe("destroyBot", () => {
       }),
     );
     expect(deleteGroups).not.toHaveBeenCalled();
-    expect(deleteMemberships).not.toHaveBeenCalled();
+    // The pair group survives for its readable history, but the deleted Bot's
+    // membership row must still go or the bot row itself violates the
+    // ON DELETE NO ACTION foreign key.
+    expect(deleteMemberships).toHaveBeenCalledWith({ where: { botId: "bot-1" } });
   });
 
   it("surfaces transaction failures instead of reporting deletion success", async () => {
@@ -1323,6 +1327,7 @@ function deletionPrisma(team: { id: string }) {
         findMany: vi.fn().mockResolvedValue([]),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      chatGroupMember: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       artifact: {
         findMany: vi.fn().mockResolvedValue([]),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
