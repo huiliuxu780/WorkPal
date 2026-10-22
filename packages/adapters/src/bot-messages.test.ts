@@ -725,6 +725,23 @@ describe("public group delegation", () => {
     expect(harness.tx.run.create).not.toHaveBeenCalled();
     expect(harness.enqueue).not.toHaveBeenCalled();
   });
+
+  it("retries a serialization conflict without dropping the group delivery", async () => {
+    const harness = deps({
+      sourceGroupId: "group-1",
+      roundtableFeatures: publicCollaborationEnabled,
+      transactionConflictOnce: true,
+    });
+    const sent = await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "check the baseline",
+      intent: "request",
+      deliveryKey: "call-1",
+    });
+    expect(sent).toMatchObject({ ok: true, botId: "bot-target", targetRunId: "run-2" });
+    expect(harness.deps.prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(harness.enqueue).toHaveBeenCalledOnce();
+  });
 });
 
 describe("hop lookup", () => {
