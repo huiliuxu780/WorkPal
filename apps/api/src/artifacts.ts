@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ArtifactStore } from "@rakazo/adapter-kit";
-import type { Actor } from "@rakazo/contracts";
+import type { Actor, MessageInline } from "@rakazo/contracts";
 import { ATTACHMENT_MAX_COUNT } from "@rakazo/contracts";
 import {
   type ArtifactSummary,
@@ -502,9 +502,7 @@ export async function deleteArtifactFamily(
       // while a retry after an event failure tolerates the already-removed
       // blob (removeArtifactBlob accepts "not found").
       await removeArtifactBlob(deps.artifacts, actor, child);
-      await deps.prisma.$transaction((tx) =>
-        deleteArtifactRowWithDetachEvent(tx, child),
-      );
+      await deps.prisma.$transaction((tx) => deleteArtifactRowWithDetachEvent(tx, child));
       continue;
     }
     const root = members.find((row) => row.id === rootId);
@@ -524,21 +522,19 @@ async function deleteArtifactRootIfChildless(
   // detach event: a storage failure rolls everything back (row survives,
   // artifact stays usable), an event failure rolls back the row deletion,
   // and a retry tolerates the already-removed blob.
-  return deps.prisma.$transaction(
-    async (tx): Promise<"deleted" | "gone" | "has-child"> => {
-      const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+  return deps.prisma.$transaction(async (tx): Promise<"deleted" | "gone" | "has-child"> => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT id FROM "artifacts" WHERE id = ${root.id} FOR UPDATE
       `);
-      if (locked.length === 0) return "gone";
-      const child = await tx.artifact.findFirst({
-        where: { rootArtifactId: root.id },
-        select: { id: true },
-      });
-      if (child) return "has-child";
-      await removeArtifactBlob(deps.artifacts, actor, root);
-      return (await deleteArtifactRowWithDetachEvent(tx, root)) ? "deleted" : "gone";
-    },
-  );
+    if (locked.length === 0) return "gone";
+    const child = await tx.artifact.findFirst({
+      where: { rootArtifactId: root.id },
+      select: { id: true },
+    });
+    if (child) return "has-child";
+    await removeArtifactBlob(deps.artifacts, actor, root);
+    return (await deleteArtifactRowWithDetachEvent(tx, root)) ? "deleted" : "gone";
+  });
 }
 
 async function removeArtifactBlob(
@@ -650,10 +646,17 @@ export async function resolveGroupSendAttachments(
 export function buildUserMessageBlocks(
   text: string | undefined,
   attachmentBlocks: ReturnType<typeof messageBlockForArtifact>[],
+  mentionInlines?: MessageInline[],
 ) {
   const blocks = [];
   const caption = text?.trim();
-  if (caption) blocks.push({ kind: "text" as const, text: caption });
+  if (caption) {
+    blocks.push({
+      kind: "text" as const,
+      text: caption,
+      ...(mentionInlines?.length ? { inlines: mentionInlines } : {}),
+    });
+  }
   blocks.push(...attachmentBlocks);
   return blocks;
 }

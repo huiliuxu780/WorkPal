@@ -3544,7 +3544,13 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
 
   async function sendGroup(
     harness: ReturnType<typeof groupSendHarness>,
-    input: { text?: string; mentions?: string[]; replyToMessageId?: string; clientNonce: string },
+    input: {
+      text?: string;
+      mentions?: Array<string | { kind: "bot" | "group" | "routine" | "connector"; id: string }>;
+      mentionSpans?: Array<{ botId: string; start: number; end: number }>;
+      replyToMessageId?: string;
+      clientNonce: string;
+    },
   ) {
     return sendThreadMessage(
       {
@@ -3903,5 +3909,97 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
     expect(
       tx.event.create.mock.calls.every(([arg]) => arg.data.type !== "thread.turn.routed"),
     ).toBe(true);
+  });
+
+  it("persists typed Bot mention identity on the user text block", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+
+    await sendGroup(harness, {
+      text: "@Beta review this",
+      mentions: [{ kind: "bot", id: "bot-b" }],
+      mentionSpans: [{ botId: "bot-b", start: 0, end: 5 }],
+      clientNonce: "n-mention-inline",
+    });
+
+    expect(harness.tx.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        blocks: [
+          {
+            kind: "text",
+            text: "@Beta review this",
+            inlines: [
+              { kind: "bot_mention", botId: "bot-b", label: "Beta" },
+              { kind: "text", text: " review this" },
+            ],
+          },
+        ],
+      }),
+    });
+  });
+
+  it("keeps a non-member mention as plain text instead of a link", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+
+    await sendGroup(harness, {
+      text: "@Gamma @Beta review",
+      mentions: [
+        { kind: "bot", id: "bot-gamma" },
+        { kind: "bot", id: "bot-b" },
+      ],
+      mentionSpans: [
+        { botId: "bot-gamma", start: 0, end: 6 },
+        { botId: "bot-b", start: 7, end: 12 },
+      ],
+      clientNonce: "n-mention-nonmember",
+    });
+
+    expect(harness.tx.message.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        blocks: [
+          {
+            kind: "text",
+            text: "@Gamma @Beta review",
+            inlines: [
+              { kind: "text", text: "@Gamma " },
+              { kind: "bot_mention", botId: "bot-b", label: "Beta" },
+              { kind: "text", text: " review" },
+            ],
+          },
+        ],
+      }),
+    });
+  });
+
+  it("keeps legacy sends text-only when no mention ranges are supplied", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+
+    await sendGroup(harness, {
+      text: "@Beta review this",
+      mentions: [{ kind: "bot", id: "bot-b" }],
+      clientNonce: "n-mention-legacy",
+    });
+
+    const createCall = harness.tx.message.create.mock.calls[0]?.[0] as {
+      data: { blocks: unknown[] };
+    };
+    expect(createCall.data.blocks).toEqual([{ kind: "text", text: "@Beta review this" }]);
   });
 });
