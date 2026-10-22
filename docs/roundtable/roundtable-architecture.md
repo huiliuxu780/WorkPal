@@ -201,13 +201,19 @@ type MessageInline =
   | { kind: "text"; text: string }
   | { kind: "bot_mention"; botId: BotId; label: string };
 
+type CollaborationReceiptTarget =
+  | { kind: "bot"; botId: BotId }
+  | { kind: "group"; groupId: GroupId; threadId: ThreadId };
+
 type CollaborationReceipt = {
   kind: "collaboration_receipt";
-  targetBotId: BotId;
-  destination: DestinationLocator;
+  target: CollaborationReceiptTarget;
   state: "sent" | "failed" | "completed" | "cancelled";
+  destination: DestinationLocator | null;
 };
 ```
+
+成功投递的回执必须携带与 target 一致的 locator；失败回执的 destination 必须为 null。群目标不得用 Bot ID 代替 Group ID。
 
 Agent mention 不使用 Markdown 渲染后的字符 offset。旧纯文本消息继续显示，但不会被反解析成工具调用、Run 或可导航身份。
 
@@ -588,16 +594,42 @@ terminal callback 先执行 Attempt-level compare-and-set。只有仍是当前 A
 ### 4.9 group queries
 
 ```ts
-interface GroupQueries {
-  listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
-  getWork(input: { actor: UserActor; groupId: GroupId; taskId: TaskId }): Promise<GroupWorkDetail>;
+type GroupQuery = { actor: UserActor; groupId: GroupId };
+type GroupPageQuery = { actor: UserActor; groupId: GroupId; cursor?: string; limit: number };
+
+type GroupMembersSummary = {
+  groupId: GroupId;
+  threadId: ThreadId;
+  currentUser: GroupUserMember;
+  agents: readonly GroupAgentMember[];
+  agentCount: number;
+  memberCount: number;
+};
+
+interface GroupPanelQueries {
   listArtifacts(input: GroupPageQuery): Promise<Page<ArtifactSummary>>;
-  listRoutines(input: GroupPageQuery): Promise<Page<GroupRoutineSummary>>;
-  listMembers(input: GroupPageQuery): Promise<Page<GroupMemberSummary>>;
+  listRoutines(input: GroupQuery): Promise<readonly GroupRoutineSummary[]>;
+  listMembers(input: GroupQuery): Promise<GroupMembersSummary>;
 }
+
+interface GroupWorkQueries {
+  listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
+  getWork(input: GroupWorkQuery): Promise<GroupWorkDetail>;
+}
+
+/** Composite for consumers that need both projections. */
+interface GroupQueries extends GroupPanelQueries, GroupWorkQueries {}
 ```
 
-`listRoutines` 查询目标 `threadId`，但 Routine 仍由 `botId` 指定的 Bot 拥有。`listArtifacts` 必须把 group scope 编入分页游标，不能先拉全空间数据再在 Web 过滤。
+群面板和工作投影由不同模块拥有。`GroupPanelQueries` 只覆盖资料库、例行任务和成员，`GroupWorkQueries` 只覆盖工作列表和 Task 详情；任何模块只实现自己真正拥有的接口，不得为了满足 `GroupQueries` 而实现不属于自己的方法并抛出“未实现”异常。`GroupQueries` 仅组合给同时消费两边的调用方。
+
+群最多只有 6 个 Agent，因此成员和例行任务不做人为分页。Work 和 Artifact 继续分页：`listArtifacts` 必须把 group scope 和冻结的 `asOf` 快照编入游标，不能先拉全空间数据再在 Web 过滤。`ArtifactSummary` 携带来源身份 `botId`、`groupId`、`runId`（不适用时为 `null`）和 `versionCount`，供右栏的文件归属与版本操作使用。
+
+`GroupAgentIdentity` 是群胶囊、成员行和例行任务执行者标签共用的 Agent 头像身份：`kind: "agent"`、`botId`、`name`、`color`、`avatarMode`、`avatarCharacter`、`avatarBodyColor`。`GroupAgentMember` 在此基础上增加 `status`。`GroupUserMember` 保持独立：`kind: "user"`、`userId`、`name`、`image`、`avatarStyle`。`agentCount` 不包含当前用户，`memberCount` 恒等于 `agentCount + 1`。
+
+`listRoutines` 查询绑定到目标 `threadId` 的 Routine，但 Routine 仍由具体 `botId` 的 Bot 拥有。每个 `GroupRoutineSummary` 都必须携带 `botId`、`threadId` 和具体的 `executorBot` 身份；不存在没有执行 Agent 的群级 Routine。
+
+`packages/contracts` 负责 RPC/Zod wire schema，`packages/core` 负责带 branded ID 的领域类型和 `GroupQueries` port。两层可以在边界映射，但不得出现语义不同的第二套定义。
 
 ## 5. Ownership
 
