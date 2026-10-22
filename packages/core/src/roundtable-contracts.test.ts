@@ -3,6 +3,9 @@ import {
   type CollaborationDestination,
   type CollaborationReceiptTarget,
   type DestinationLocator,
+  type GroupPanelQueries,
+  type GroupQueries,
+  type GroupWorkQueries,
   type GroupWorkState,
   parseArtifactSummary,
   parseAttemptId,
@@ -732,6 +735,28 @@ describe("group read contracts", () => {
     expectContractError(() => parseGroupWorkItem(withoutChildren), "GroupWorkItem", "children");
   });
 
+  it("lets panel and work modules implement only their own port", async () => {
+    const panel: GroupPanelQueries = {
+      listArtifacts: async () => ({ items: [], nextCursor: null }),
+      listRoutines: async () => [],
+      listMembers: async () => membersSummary,
+    };
+    const work: GroupWorkQueries = {
+      listWork: async () => ({ items: [workItem], nextCursor: null }),
+      getWork: async () => ({
+        groupId: ids.group,
+        work: workItem,
+        instruction: envelope,
+      }),
+    };
+    const all: GroupQueries = { ...panel, ...work };
+
+    expect((await all.listMembers({ actor, groupId: ids.group })).agentCount).toBe(1);
+    expect((await all.listWork({ actor, groupId: ids.group, limit: 20 })).items[0]?.taskId).toBe(
+      ids.task,
+    );
+  });
+
   it("keeps the current user and agents as separate identities", () => {
     expect(parseGroupAgentIdentity(agentIdentity)).toEqual(agentIdentity);
     expect(parseGroupAgentMember(agentMember)).toEqual(agentMember);
@@ -836,9 +861,12 @@ describe("group read contracts", () => {
     );
   });
 
-  it("keeps artifact pagination fields and version count", () => {
+  it("keeps artifact provenance, pagination fields and version count", () => {
     const artifact = {
       id: "artifact-1",
+      botId: ids.bot,
+      groupId: ids.group,
+      runId: ids.run,
       name: "report.csv",
       description: null,
       mimeType: "text/csv",
@@ -851,11 +879,18 @@ describe("group read contracts", () => {
     expect(
       parseArtifactSummary({
         ...artifact,
-        botId: ids.bot,
-        groupId: ids.group,
-        runId: ids.run,
+        botId: null,
+        groupId: null,
+        runId: null,
       }),
-    ).toEqual(artifact);
+    ).toEqual({ ...artifact, botId: null, groupId: null, runId: null });
+    expectContractError(
+      () => parseArtifactSummary({ ...artifact, groupId: "" }),
+      "ArtifactSummary",
+      "groupId",
+    );
+    const { botId: _botId, ...withoutBotId } = artifact;
+    expectContractError(() => parseArtifactSummary(withoutBotId), "ArtifactSummary", "botId");
     expectContractError(
       () => parseArtifactSummary({ ...artifact, size: -1 }),
       "ArtifactSummary",

@@ -600,16 +600,24 @@ type GroupMembersSummary = {
   memberCount: number;
 };
 
-interface GroupQueries {
-  listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
-  getWork(input: GroupWorkQuery): Promise<GroupWorkDetail>;
+interface GroupPanelQueries {
   listArtifacts(input: GroupPageQuery): Promise<Page<ArtifactSummary>>;
   listRoutines(input: GroupQuery): Promise<readonly GroupRoutineSummary[]>;
   listMembers(input: GroupQuery): Promise<GroupMembersSummary>;
 }
+
+interface GroupWorkQueries {
+  listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
+  getWork(input: GroupWorkQuery): Promise<GroupWorkDetail>;
+}
+
+/** Composite for consumers that need both projections. */
+interface GroupQueries extends GroupPanelQueries, GroupWorkQueries {}
 ```
 
-群最多只有 6 个 Agent，因此成员和例行任务不做人为分页。Work 和 Artifact 继续分页：`listArtifacts` 必须把 group scope 和冻结的 `asOf` 快照编入游标，不能先拉全空间数据再在 Web 过滤；`ArtifactSummary` 携带 `versionCount`，供右栏的版本操作使用。
+群面板和工作投影由不同模块拥有。`GroupPanelQueries` 只覆盖资料库、例行任务和成员，`GroupWorkQueries` 只覆盖工作列表和 Task 详情；任何模块只实现自己真正拥有的接口，不得为了满足 `GroupQueries` 而实现不属于自己的方法并抛出“未实现”异常。`GroupQueries` 仅组合给同时消费两边的调用方。
+
+群最多只有 6 个 Agent，因此成员和例行任务不做人为分页。Work 和 Artifact 继续分页：`listArtifacts` 必须把 group scope 和冻结的 `asOf` 快照编入游标，不能先拉全空间数据再在 Web 过滤。`ArtifactSummary` 携带来源身份 `botId`、`groupId`、`runId`（不适用时为 `null`）和 `versionCount`，供右栏的文件归属与版本操作使用。
 
 `GroupAgentIdentity` 是群胶囊、成员行和例行任务执行者标签共用的 Agent 头像身份：`kind: "agent"`、`botId`、`name`、`color`、`avatarMode`、`avatarCharacter`、`avatarBodyColor`。`GroupAgentMember` 在此基础上增加 `status`。`GroupUserMember` 保持独立：`kind: "user"`、`userId`、`name`、`image`、`avatarStyle`。`agentCount` 不包含当前用户，`memberCount` 恒等于 `agentCount + 1`。
 

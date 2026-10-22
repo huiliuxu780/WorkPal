@@ -100,6 +100,14 @@ function parseBrandedId<Name extends string>(
   return asNonEmptyString(value, contract, path) as BrandedId<Name>;
 }
 
+function parseNullableBrandedId<Name extends string>(
+  value: unknown,
+  contract: string,
+  path: string,
+): BrandedId<Name> | null {
+  return value === null ? null : parseBrandedId<Name>(value, contract, path);
+}
+
 export function parseUserId(value: unknown): UserId {
   return parseBrandedId(value, "UserId", "");
 }
@@ -342,6 +350,9 @@ export type GroupMembersSummary = Readonly<{
 
 export type ArtifactSummary = Readonly<{
   id: string;
+  botId: BotId | null;
+  groupId: GroupId | null;
+  runId: RunId | null;
   name: string;
   description: string | null;
   mimeType: string;
@@ -371,13 +382,21 @@ export type GroupRoutineSummary = Readonly<{
   executorBot: GroupAgentIdentity;
 }>;
 
-export interface GroupQueries {
-  listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
-  getWork(input: GroupWorkQuery): Promise<GroupWorkDetail>;
+/** Panel read projection; implemented by the group data module. */
+export interface GroupPanelQueries {
   listArtifacts(input: GroupPageQuery): Promise<Page<ArtifactSummary>>;
   listRoutines(input: GroupQuery): Promise<readonly GroupRoutineSummary[]>;
   listMembers(input: GroupQuery): Promise<GroupMembersSummary>;
 }
+
+/** Work read projection; implemented by the work projection module. */
+export interface GroupWorkQueries {
+  listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
+  getWork(input: GroupWorkQuery): Promise<GroupWorkDetail>;
+}
+
+/** Composite for consumers that need both projections. */
+export interface GroupQueries extends GroupPanelQueries, GroupWorkQueries {}
 
 export function parseCollaborationDestination(value: unknown): CollaborationDestination {
   const contract = "CollaborationDestination";
@@ -815,6 +834,9 @@ export function parseArtifactSummary(value: unknown): ArtifactSummary {
   }
   return {
     id: asNonEmptyString(raw.id, contract, "id"),
+    botId: parseNullableBrandedId<"BotId">(raw.botId, contract, "botId"),
+    groupId: parseNullableBrandedId<"GroupId">(raw.groupId, contract, "groupId"),
+    runId: parseNullableBrandedId<"RunId">(raw.runId, contract, "runId"),
     name: asString(raw.name, contract, "name"),
     description: typeof raw.description === "string" ? raw.description : null,
     mimeType: asNonEmptyString(raw.mimeType, contract, "mimeType"),
