@@ -170,13 +170,16 @@ const groupTargetInclude = {
           id: true,
           name: true,
           color: true,
+          avatarMode: true,
+          avatarCharacter: true,
+          avatarBodyColor: true,
           runs: activeRunSelection,
         },
       },
     },
-    orderBy: { createdAt: "asc" as const },
+    orderBy: [{ createdAt: "asc" }, { botId: "asc" }],
   },
-} as const;
+} satisfies Prisma.ChatGroupInclude;
 
 type RunTeardownTarget = {
   id: string;
@@ -329,7 +332,7 @@ export function createGroupRepos(prisma: PrismaClient) {
       return group as GroupRecord;
     },
 
-    async getGroupTarget(actor: Actor, groupId: string) {
+    async getGroupTarget(actor: Pick<Actor, "userId" | "spaceId">, groupId: string) {
       const group = await prisma.chatGroup.findFirst({
         where: {
           id: groupId,

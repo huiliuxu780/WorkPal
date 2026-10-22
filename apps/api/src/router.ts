@@ -207,6 +207,7 @@ import { getLogger } from "@rakazo/logging";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { aiConsentStatus, allowAiConsent } from "./ai-consent.js";
+import { CURRENT_USER_AVATAR_STYLE } from "./avatar-style.js";
 import {
   ArtifactListCursorError,
   createOwnedArtifact,
@@ -227,6 +228,14 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import { createGroupPanelQueries } from "./group-queries.js";
+import {
+  parseGroupArtifactListQuery,
+  parseGroupPanelQuery,
+  toWireArtifactPage,
+  toWireGroupMembers,
+  toWireGroupRoutines,
+} from "./group-queries-rpc.js";
 import { searchIntegrationCatalog } from "./integration-catalog.js";
 import {
   dismissMcpServerApprovals,
@@ -263,6 +272,7 @@ import {
   promptFocus,
   startOnboarding,
 } from "./onboarding.js";
+import { mapRoutine } from "./routines.js";
 import { getRunDetail, listSpaceRuns } from "./runs.js";
 import { addScreenProxyCapability } from "./screen-proxy.js";
 import { querySpaceSearch } from "./search.js";
@@ -776,6 +786,7 @@ export function createRouter(deps: RouterDeps) {
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
   const groupRepos = createGroupRepos(deps.prisma);
+  const groupPanelQueries = createGroupPanelQueries(deps);
   const turnRouting =
     deps.turnRouting ??
     createTurnRoutingProvider({
@@ -2049,6 +2060,42 @@ export function createRouter(deps: RouterDeps) {
         }
         return { ok: true as const };
       }),
+      artifacts: {
+        list: authed.groups.artifacts.list.handler(async ({ context, input }) => {
+          const query = parseGroupArtifactListQuery(context.actor, input);
+          try {
+            return toWireArtifactPage(await groupPanelQueries.listArtifacts(query));
+          } catch (error) {
+            if (error instanceof ArtifactListCursorError) {
+              throw new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
+            throw error;
+          }
+        }),
+      },
+      routines: {
+        list: authed.groups.routines.list.handler(async ({ context, input }) => {
+          const query = parseGroupPanelQuery(context.actor, input.groupId);
+          try {
+            return toWireGroupRoutines(await groupPanelQueries.listRoutines(query));
+          } catch (error) {
+            if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
+            throw error;
+          }
+        }),
+      },
+      members: {
+        list: authed.groups.members.list.handler(async ({ context, input }) => {
+          const query = parseGroupPanelQuery(context.actor, input.groupId);
+          try {
+            return toWireGroupMembers(await groupPanelQueries.listMembers(query));
+          } catch (error) {
+            if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
+            throw error;
+          }
+        }),
+      },
     },
     botSections: {
       list: authed.botSections.list.handler(async ({ context }) =>
@@ -6235,9 +6282,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     computerHost: computerHostFor(setup.settings?.computerHost, deps.env.sandboxProvider),
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
-    // Bloub is the only avatar style; stored robot/organic values are legacy
-    // rows from before the migration and are normalized on read.
-    avatarStyle: "bloub" as const,
+    avatarStyle: CURRENT_USER_AVATAR_STYLE,
   };
 }
 
@@ -6629,40 +6674,6 @@ function nextRoutineDate(crons: string[], timezone: string): Date {
   }
   if (!next) throw new ORPCError("BAD_REQUEST", { message: "Enter a valid cron expression." });
   return next;
-}
-
-function mapRoutine(row: {
-  id: string;
-  botId: string;
-  name: string;
-  prompt: string;
-  crons: string[];
-  timezone: string;
-  active: boolean;
-  notify: boolean;
-  webhookEnabled: boolean;
-  githubEnabled: boolean;
-  messageProvider: string | null;
-  lastRunAt: Date | null;
-  nextRunAt: Date | null;
-  createdAt: Date;
-}) {
-  return {
-    id: row.id,
-    botId: row.botId,
-    name: row.name,
-    prompt: row.prompt,
-    crons: row.crons,
-    timezone: row.timezone,
-    active: row.active,
-    notify: row.notify,
-    webhookEnabled: row.webhookEnabled,
-    githubEnabled: row.githubEnabled,
-    messageProvider: row.messageProvider,
-    lastRunAt: row.lastRunAt?.toISOString() ?? null,
-    nextRunAt: row.nextRunAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-  };
 }
 
 async function listRoutinesDto(deps: RouterDeps, actor: Actor, botId: string) {

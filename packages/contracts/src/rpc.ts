@@ -20,6 +20,7 @@ import {
   AgentSkillCatalogEntrySchema,
   AgentSkillSchema,
   AppBootstrapSchema,
+  ArtifactPageSchema,
   ArtifactSchema,
   ArtifactVersionSchema,
   ArtifactWithContentSchema,
@@ -43,6 +44,8 @@ import {
   ExportManifestSchema,
   ExternalConversationPolicySchema,
   GroupDetailSchema,
+  GroupMembersSchema,
+  GroupRoutineSummarySchema,
   GroupSchema,
   IntegrationCatalogResultSchema,
   McpServerConfigInput,
@@ -315,6 +318,22 @@ export const appContract = {
     archive: oc.input(groupId).output(z.object({ ok: z.literal(true) })),
     restore: oc.input(groupId).output(z.object({ ok: z.literal(true) })),
     remove: oc.input(groupId).output(z.object({ ok: z.literal(true) })),
+    artifacts: {
+      list: oc
+        .input(
+          groupId.safeExtend({
+            cursor: z.string().optional(),
+            limit: z.number().int().min(1).max(60).optional(),
+          }),
+        )
+        .output(ArtifactPageSchema),
+    },
+    routines: {
+      list: oc.input(groupId).output(z.array(GroupRoutineSummarySchema)),
+    },
+    members: {
+      list: oc.input(groupId).output(GroupMembersSchema),
+    },
   },
   botSections: {
     list: oc.output(z.array(BotSectionSchema)),
@@ -862,12 +881,7 @@ export const appContract = {
           limit: z.number().int().min(1).max(60).optional(),
         }),
       )
-      .output(
-        z.object({
-          items: z.array(ArtifactSchema.extend({ versionCount: z.number().int() })),
-          nextCursor: z.string().nullable(),
-        }),
-      ),
+      .output(ArtifactPageSchema),
     listVersions: oc.input(z.object({ familyId: Id })).output(z.array(ArtifactVersionSchema)),
     create: oc
       .input(

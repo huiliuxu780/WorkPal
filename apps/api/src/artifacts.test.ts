@@ -1,8 +1,10 @@
 import type { ArtifactStore } from "@rakazo/adapter-kit";
 import type { Actor } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
+import { parseGroupPageQuery } from "@rakazo/core";
+import { IsolationError, type PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { ArtifactListCursorError, deleteArtifactFamily, listSpaceArtifacts } from "./artifacts.js";
+import { createGroupPanelQueries } from "./group-queries.js";
 
 const actor: Actor = {
   userId: "user-1",
@@ -373,5 +375,201 @@ describe("deleteArtifactFamily", () => {
       ),
     ).resolves.toEqual({ ok: true });
     expect(client.calls).toEqual(["remove:blob-root", "delete:root"]);
+  });
+});
+
+function groupListRow(
+  id: string,
+  familyId: string,
+  groupId = "group-1",
+  createdAt = "2026-09-01T00:00:00.000Z",
+) {
+  return { ...listRow(id, familyId, createdAt), groupId, runId: "run-1" };
+}
+
+function groupTarget(overrides: { id?: string; threadId?: string | null } = {}) {
+  return {
+    id: overrides.id ?? "group-1",
+    thread: overrides.threadId === null ? null : { id: overrides.threadId ?? "thread-1" },
+    members: [{ bot: { id: "bot-1" } }, { bot: { id: "bot-2" } }],
+  };
+}
+
+function groupDeps(group: unknown, rows: unknown[] = []) {
+  const findFirst = vi.fn().mockResolvedValue(group);
+  const queryRaw = vi.fn().mockResolvedValue(rows);
+  return {
+    findFirst,
+    queryRaw,
+    deps: {
+      prisma: { chatGroup: { findFirst }, $queryRaw: queryRaw } as unknown as PrismaClient,
+    },
+  };
+}
+
+function cursorPayload(value: string) {
+  return JSON.parse(Buffer.from(value.slice(3), "base64url").toString("utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
+function listGroupArtifacts(
+  deps: { prisma: PrismaClient },
+  actor: Actor,
+  input: { groupId: string; cursor?: string; limit?: number },
+) {
+  return createGroupPanelQueries(deps).listArtifacts(
+    parseGroupPageQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId: input.groupId,
+      cursor: input.cursor,
+      limit: input.limit ?? 30,
+    }),
+  );
+}
+
+describe("GroupQueries.listArtifacts", () => {
+  it("filters by the authorized group in SQL instead of a delegated bot", async () => {
+    const { deps, findFirst, queryRaw } = groupDeps(groupTarget(), [
+      groupListRow("version-a", "family-a"),
+      groupListRow("version-b", "family-b"),
+      groupListRow("version-c", "family-c"),
+    ]);
+
+    const page = await listGroupArtifacts(deps, actor, { groupId: "group-1", limit: 2 });
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "group-1",
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+        archivedAt: null,
+      },
+      include: expect.anything(),
+    });
+    const sql = queryRaw.mock.calls[0]?.[0] as { strings: string[]; values: unknown[] };
+    const scoped = scopedClause(sql);
+    expect(scoped).toContain('"groupId" =');
+    expect(scoped).not.toContain('"botId"');
+    expect(scoped).not.toMatch(/\bOR\b/);
+    expect(sql.values).toContain("group-1");
+    expect(sql.values).toContain(actor.spaceId);
+    expect(sql.values).toContain(actor.userId);
+    expect(statement(sql)).toContain('ORDER BY latest."createdAt" DESC, latest.id DESC');
+    expect(page.items.map((item) => item.id)).toEqual(["family-a", "family-b"]);
+    expect(page.items.every((item) => item.versionCount === 1)).toBe(true);
+    expect(page.items[0]).toMatchObject({
+      botId: "bot-1",
+      groupId: "group-1",
+      runId: "run-1",
+    });
+    expect(cursorPayload(page.nextCursor ?? "")).toMatchObject({
+      id: "version-b",
+      botId: null,
+      groupId: "group-1",
+      asOf: expect.any(String),
+    });
+  });
+
+  it("refuses a group that is not owned by the actor before querying", async () => {
+    const { deps, queryRaw } = groupDeps(null);
+    await expect(listGroupArtifacts(deps, actor, { groupId: "group-1" })).rejects.toBeInstanceOf(
+      IsolationError,
+    );
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("refuses a group whose thread is gone", async () => {
+    const { deps, queryRaw } = groupDeps(groupTarget({ threadId: null }));
+    await expect(listGroupArtifacts(deps, actor, { groupId: "group-1" })).rejects.toBeInstanceOf(
+      IsolationError,
+    );
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cursor minted for another group", async () => {
+    const first = groupDeps(groupTarget(), [
+      groupListRow("version-a", "family-a"),
+      groupListRow("version-b", "family-b"),
+      groupListRow("version-c", "family-c"),
+    ]);
+    const page = await listGroupArtifacts(first.deps, actor, { groupId: "group-1", limit: 2 });
+    const other = groupDeps(groupTarget({ id: "group-2" }));
+
+    await expect(
+      listGroupArtifacts(other.deps, actor, {
+        groupId: "group-2",
+        cursor: page.nextCursor ?? undefined,
+      }),
+    ).rejects.toBeInstanceOf(ArtifactListCursorError);
+    expect(other.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("rejects a space or bot cursor instead of replaying it as a group page", async () => {
+    const { deps, queryRaw } = groupDeps(groupTarget());
+    await expect(
+      listGroupArtifacts(deps, actor, {
+        groupId: "group-1",
+        cursor: cursor({
+          createdAt: "2026-08-01T00:00:00.000Z",
+          id: "version-b",
+          botId: "bot-1",
+        }),
+      }),
+    ).rejects.toBeInstanceOf(ArtifactListCursorError);
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("rejects a group cursor in the space library", async () => {
+    const first = groupDeps(groupTarget(), [
+      groupListRow("version-a", "family-a"),
+      groupListRow("version-b", "family-b"),
+      groupListRow("version-c", "family-c"),
+    ]);
+    const page = await listGroupArtifacts(first.deps, actor, { groupId: "group-1", limit: 2 });
+    const queryRaw = vi.fn();
+
+    await expect(
+      listSpaceArtifacts(
+        {
+          prisma: { $queryRaw: queryRaw } as unknown as Pick<PrismaClient, "$queryRaw">,
+        },
+        actor,
+        { cursor: page.nextCursor ?? undefined },
+      ),
+    ).rejects.toBeInstanceOf(ArtifactListCursorError);
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("keeps the frozen snapshot and group scope on later pages", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-20T12:00:00.000Z"));
+    try {
+      const first = groupDeps(groupTarget(), [
+        groupListRow("version-a", "family-a"),
+        groupListRow("version-b", "family-b"),
+        groupListRow("version-c", "family-c"),
+      ]);
+      const page = await listGroupArtifacts(first.deps, actor, { groupId: "group-1", limit: 2 });
+
+      vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
+      const findFirst = vi.fn().mockResolvedValue(groupTarget());
+      const queryRaw = vi.fn().mockResolvedValue([]);
+      await listGroupArtifacts(
+        { prisma: { chatGroup: { findFirst }, $queryRaw: queryRaw } as unknown as PrismaClient },
+        actor,
+        { groupId: "group-1", cursor: page.nextCursor ?? undefined, limit: 2 },
+      );
+
+      const sql = queryRaw.mock.calls[0]?.[0] as { strings: string[]; values: unknown[] };
+      expect(sql.values).toContainEqual(new Date("2026-09-20T12:00:00.000Z"));
+      expect(sql.values).not.toContainEqual(new Date("2026-09-21T12:00:00.000Z"));
+      expect(sql.values).toContain("group-1");
+      expect(sql.values).toContain("version-b");
+      expect(scopedClause(sql)).toContain('"groupId" =');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
