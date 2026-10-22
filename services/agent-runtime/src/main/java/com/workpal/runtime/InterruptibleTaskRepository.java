@@ -60,8 +60,10 @@ final class InterruptibleTaskRepository extends WorkspaceTaskRepository {
 
     @Override public boolean cancelTask(RuntimeContext context, String sessionId, String taskId) {
         boolean cancelled = super.cancelTask(context, sessionId, taskId);
-        Thread worker = localWorkers.get(taskId);
-        if (worker != null) worker.interrupt();
+        if (cancelled) {
+            Thread worker = localWorkers.get(taskId);
+            if (worker != null) worker.interrupt();
+        }
         return cancelled;
     }
 }
