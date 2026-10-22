@@ -83,7 +83,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | RT-01 合入 | RT-02、RT-04、RT-06、RT-07、RT-11、RT-13、RT-25 |
 | RT-02 合入 | RT-03 |
 | RT-07 合入 | RT-10 |
-| RT-13 合入 | RT-14；若 RT-15 也完成，同时派 RT-16 |
+| RT-13 合入 | RT-14 |
+| 新 AgentScope 版本同时满足 typed failure、禁用内置 `general-purpose`、native child session 回传，且 RT-13 合入、RT-15 重新验证通过 | RT-16 |
 | RT-21 合入 | RT-22 |
 | RT-25 合入 | RT-26；若 RT-11、RT-14 也完成，同时派 RT-27 |
 | RT-03、RT-04 合入 | RT-05 |
