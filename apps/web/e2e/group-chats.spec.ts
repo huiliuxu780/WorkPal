@@ -157,18 +157,18 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
     timeout: 60_000,
   });
   const transcript = page.getByTestId("transcript");
-  // The previous wait can be satisfied by the user's own message ("gather
-  // sources."), so these two assertions are the real reply wait; give them the
-  // same window as the scripted runtime's response.
-  await expect(transcript.getByText("Researcher", { exact: true }).first()).toBeVisible({
-    timeout: 60_000,
-  });
+  // Product Harness ownership: several explicit mentions without a
+  // separate-answers marker ("one by one", "all weigh in", ...) produce exactly
+  // one response owner — the first mention. Both mentions still persist as
+  // links, so assert those plus the single owner reply.
+  await expect(transcript.getByText("@Research Writer", { exact: true })).toBeVisible();
+  await expect(transcript.getByText("@Researcher", { exact: true })).toBeVisible();
   await expect(transcript.getByText("Research Writer", { exact: true }).first()).toBeVisible({
     timeout: 60_000,
   });
-  const researcherSpeak = transcript
+  const ownerSpeak = transcript
     .locator("div")
-    .filter({ has: page.getByText("Researcher", { exact: true }) })
+    .filter({ has: page.getByText("Research Writer", { exact: true }) })
     .filter({ has: page.getByRole("button", { name: "Speak this reply" }) })
     .first()
     .getByRole("button", { name: "Speak this reply" });
@@ -176,9 +176,9 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
     page.waitForRequest(
       (request) => request.url().includes("/api/voice/speak") && request.method() === "POST",
     ),
-    researcherSpeak.click(),
+    ownerSpeak.click(),
   ]);
-  expect(speechRequest.postDataJSON()).toMatchObject({ botId: researcherId });
+  expect(speechRequest.postDataJSON()).toMatchObject({ botId: writerId });
   await captureScreenshot(page, testInfo, "group-transcript");
 
   await composer.fill("@Res");
@@ -200,7 +200,11 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
       { timeout: 60_000 },
     )
     .toBe("waiting_input");
-  const cityAsk = page.locator("p").filter({ hasText: /^Which city should I use\?$/ });
+  // RT-04 projects the ask both into the execution transcript and the
+  // intervention card; target the card to avoid a strict-mode double match.
+  const cityAsk = page
+    .getByTestId("intervention-inputs")
+    .getByText("Which city should I use?", { exact: true });
   if ((await cityAsk.count()) === 0) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByRole("combobox", { name: "Message Draft team" })).toBeVisible({
@@ -269,8 +273,12 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("button", { name: "Close navigation" })).toBeVisible();
   await page.getByRole("button", { name: "Close navigation" }).click();
-  await page.getByTestId("bot-settings-trigger").click();
   const settings = page.getByTestId("side-panel");
+  // The desktop rename section leaves the group panel open; the trigger is a
+  // toggle, so only click it when the panel is actually closed.
+  if ((await settings.getAttribute("data-panel")) !== "group") {
+    await page.getByTestId("bot-settings-trigger").click();
+  }
   await expect(settings).toHaveAttribute("data-panel", "group");
   expect((await settings.boundingBox())?.width).toBeLessThanOrEqual(390);
   await captureScreenshot(page, testInfo, "group-settings-mobile");
