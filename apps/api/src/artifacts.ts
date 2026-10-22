@@ -3,9 +3,13 @@ import type { ArtifactStore } from "@rakazo/adapter-kit";
 import type { Actor } from "@rakazo/contracts";
 import { ATTACHMENT_MAX_COUNT } from "@rakazo/contracts";
 import {
+  type ArtifactSummary,
   AttachmentValidationError,
   decodeAttachmentBase64,
+  type GroupPageQuery,
   messageBlockForArtifact,
+  type Page,
+  parseArtifactSummary,
   promptTextForAttachments,
   validateAttachmentMimeType,
 } from "@rakazo/core";
@@ -309,7 +313,7 @@ function cursorMatchesScope(cursor: ArtifactListCursor, scope: ArtifactListScope
 
 async function listArtifactPage(
   deps: { prisma: Pick<PrismaClient, "$queryRaw"> },
-  actor: Actor,
+  actor: Pick<Actor, "userId" | "spaceId">,
   input: { scope: ArtifactListScope; cursor?: string; limit?: number },
 ) {
   const take = Math.min(Math.max(input.limit ?? 30, 1), 60);
@@ -403,20 +407,23 @@ export async function listSpaceArtifacts(
   });
 }
 
-export async function listGroupArtifacts(
+export async function listGroupArtifactSummaries(
   deps: { prisma: PrismaClient },
-  actor: Actor,
-  input: { groupId: string; cursor?: string; limit?: number },
-) {
-  const group = await createGroupRepos(deps.prisma).getGroupTarget(actor, input.groupId);
+  query: GroupPageQuery,
+): Promise<Page<ArtifactSummary>> {
+  const group = await createGroupRepos(deps.prisma).getGroupTarget(query.actor, query.groupId);
   if (!group.thread) throw new IsolationError("Group is missing its thread");
-  return listArtifactPage(deps, actor, {
+  const page = await listArtifactPage(deps, query.actor, {
     // Only artifacts stamped with this group: delegating a Bot must not expose
     // its private space artifacts.
     scope: { kind: "group", groupId: group.id },
-    cursor: input.cursor,
-    limit: input.limit,
+    cursor: query.cursor,
+    limit: query.limit,
   });
+  return {
+    items: page.items.map((item) => parseArtifactSummary(item)),
+    nextCursor: page.nextCursor,
+  };
 }
 
 export async function listArtifactVersions(

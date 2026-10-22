@@ -159,7 +159,7 @@ export const GroupDetailSchema = GroupSchema.extend({
 });
 
 /** Stable agent identity for group headers and routine execution labels. */
-export const GroupAgentIdentitySchema = z.object({
+const GroupAgentIdentitySchema = z.object({
   kind: z.literal("agent"),
   botId: Id,
   name: z.string(),
@@ -168,21 +168,18 @@ export const GroupAgentIdentitySchema = z.object({
   avatarCharacter: AvatarCharacterSchema.nullable(),
   avatarBodyColor: AvatarBodyColorSchema,
 });
-export type GroupAgentIdentity = z.infer<typeof GroupAgentIdentitySchema>;
 
-export const GroupAgentMemberSchema = GroupAgentIdentitySchema.extend({
+const GroupAgentMemberSchema = GroupAgentIdentitySchema.extend({
   status: z.string(),
 });
-export type GroupAgentMember = z.infer<typeof GroupAgentMemberSchema>;
 
-export const GroupUserMemberSchema = z.object({
+const GroupUserMemberSchema = z.object({
   kind: z.literal("user"),
   userId: Id,
   name: z.string(),
   image: z.string().nullable(),
   avatarStyle: AvatarStyleSchema,
 });
-export type GroupUserMember = z.infer<typeof GroupUserMemberSchema>;
 
 export const GroupMembersSchema = z.object({
   groupId: Id,

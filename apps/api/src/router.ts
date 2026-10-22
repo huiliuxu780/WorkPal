@@ -215,7 +215,6 @@ import {
   getSpaceArtifact,
   getSpaceArtifactById,
   listArtifactVersions,
-  listGroupArtifacts,
   listSpaceArtifacts,
 } from "./artifacts.js";
 import {
@@ -228,7 +227,14 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
-import { listGroupMembers, listGroupRoutines } from "./group-queries.js";
+import { createGroupQueries } from "./group-queries.js";
+import {
+  parseGroupArtifactListQuery,
+  parseGroupPanelQuery,
+  toWireArtifactPage,
+  toWireGroupMembers,
+  toWireGroupRoutines,
+} from "./group-queries-rpc.js";
 import { searchIntegrationCatalog } from "./integration-catalog.js";
 import {
   dismissMcpServerApprovals,
@@ -779,6 +785,7 @@ export function createRouter(deps: RouterDeps) {
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
   const groupRepos = createGroupRepos(deps.prisma);
+  const groupQueries = createGroupQueries(deps);
   const turnRouting =
     deps.turnRouting ??
     createTurnRoutingProvider({
@@ -2054,8 +2061,9 @@ export function createRouter(deps: RouterDeps) {
       }),
       artifacts: {
         list: authed.groups.artifacts.list.handler(async ({ context, input }) => {
+          const query = parseGroupArtifactListQuery(context.actor, input);
           try {
-            return await listGroupArtifacts(deps, context.actor, input);
+            return toWireArtifactPage(query.groupId, await groupQueries.listArtifacts(query));
           } catch (error) {
             if (error instanceof ArtifactListCursorError) {
               throw new ORPCError("BAD_REQUEST", { message: error.message });
@@ -2067,8 +2075,9 @@ export function createRouter(deps: RouterDeps) {
       },
       routines: {
         list: authed.groups.routines.list.handler(async ({ context, input }) => {
+          const query = parseGroupPanelQuery(context.actor, input.groupId);
           try {
-            return await listGroupRoutines(deps, context.actor, input.groupId);
+            return toWireGroupRoutines(await groupQueries.listRoutines(query));
           } catch (error) {
             if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
             throw error;
@@ -2077,8 +2086,9 @@ export function createRouter(deps: RouterDeps) {
       },
       members: {
         list: authed.groups.members.list.handler(async ({ context, input }) => {
+          const query = parseGroupPanelQuery(context.actor, input.groupId);
           try {
-            return await listGroupMembers(deps, context.actor, input.groupId);
+            return toWireGroupMembers(await groupQueries.listMembers(query));
           } catch (error) {
             if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
             throw error;

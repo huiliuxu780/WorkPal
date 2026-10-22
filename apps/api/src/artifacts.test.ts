@@ -1,13 +1,10 @@
 import type { ArtifactStore } from "@rakazo/adapter-kit";
 import type { Actor } from "@rakazo/contracts";
+import { parseGroupPageQuery } from "@rakazo/core";
 import { IsolationError, type PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import {
-  ArtifactListCursorError,
-  deleteArtifactFamily,
-  listGroupArtifacts,
-  listSpaceArtifacts,
-} from "./artifacts.js";
+import { ArtifactListCursorError, deleteArtifactFamily, listSpaceArtifacts } from "./artifacts.js";
+import { createGroupQueries } from "./group-queries.js";
 
 const actor: Actor = {
   userId: "user-1",
@@ -417,7 +414,22 @@ function cursorPayload(value: string) {
   >;
 }
 
-describe("listGroupArtifacts", () => {
+function listGroupArtifacts(
+  deps: { prisma: PrismaClient },
+  actor: Actor,
+  input: { groupId: string; cursor?: string; limit?: number },
+) {
+  return createGroupQueries(deps).listArtifacts(
+    parseGroupPageQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId: input.groupId,
+      cursor: input.cursor,
+      limit: input.limit ?? 30,
+    }),
+  );
+}
+
+describe("GroupQueries.listArtifacts", () => {
   it("filters by the authorized group in SQL instead of a delegated bot", async () => {
     const { deps, findFirst, queryRaw } = groupDeps(groupTarget(), [
       groupListRow("version-a", "family-a"),
@@ -446,7 +458,9 @@ describe("listGroupArtifacts", () => {
     expect(sql.values).toContain(actor.userId);
     expect(statement(sql)).toContain('ORDER BY latest."createdAt" DESC, latest.id DESC');
     expect(page.items.map((item) => item.id)).toEqual(["family-a", "family-b"]);
-    expect(page.items.every((item) => item.groupId === "group-1")).toBe(true);
+    expect(page.items.every((item) => item.versionCount === 1)).toBe(true);
+    expect(page.items[0]).not.toHaveProperty("groupId");
+    expect(page.items[0]).not.toHaveProperty("botId");
     expect(cursorPayload(page.nextCursor ?? "")).toMatchObject({
       id: "version-b",
       botId: null,

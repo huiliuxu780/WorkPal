@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@rakazo/contracts";
 import {
+  parseArtifactSummary,
+  parseGroupMembersSummary,
+  parseGroupPageQuery,
+  parseGroupQuery,
+  parseGroupRoutineSummary,
+} from "@rakazo/core";
+import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
   IsolationError,
 } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ArtifactListCursorError, listGroupArtifacts } from "./artifacts.js";
-import { listGroupMembers, listGroupRoutines } from "./group-queries.js";
+import { ArtifactListCursorError } from "./artifacts.js";
+import { createGroupQueries } from "./group-queries.js";
 
 const describePostgres =
   process.env.VERIFY_DATABASE && process.env.DATABASE_URL ? describe.sequential : describe.skip;
@@ -22,10 +29,12 @@ type Owner = {
 describePostgres("group-scoped queries (PostgreSQL)", () => {
   let isolated: IsolatedPostgresDatabase;
   let prisma: IsolatedPostgresDatabase["db"]["prisma"];
+  let groupQueries: ReturnType<typeof createGroupQueries>;
 
   beforeAll(async () => {
     isolated = await createIsolatedPostgresDatabase("group_queries");
     prisma = isolated.db.prisma;
+    groupQueries = createGroupQueries({ prisma });
   }, 180_000);
 
   afterAll(async () => {
@@ -186,6 +195,26 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
     });
   }
 
+  function groupQueryFor(actor: Actor, groupId: string) {
+    return parseGroupQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId,
+    });
+  }
+
+  function groupPageQueryFor(
+    actor: Actor,
+    groupId: string,
+    input: { cursor?: string; limit?: number } = {},
+  ) {
+    return parseGroupPageQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId,
+      cursor: input.cursor,
+      limit: input.limit ?? 30,
+    });
+  }
+
   it("pages only artifacts stamped with the requested group", async () => {
     const owner = await createOwner("artifacts");
     const group = await createGroup(owner, "Artifact group");
@@ -228,10 +257,9 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
       createdAt: new Date("2026-09-05T00:00:00.000Z"),
     });
 
-    const first = await listGroupArtifacts({ prisma }, owner.actor, {
-      groupId: group.group.id,
-      limit: 1,
-    });
+    const first = await groupQueries.listArtifacts(
+      groupPageQueryFor(owner.actor, group.group.id, { limit: 1 }),
+    );
 
     expect(first.items).toHaveLength(1);
     expect(first.items[0]).toMatchObject({
@@ -239,28 +267,30 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
       name: "First family v2",
       version: 2,
       versionCount: 2,
-      groupId: group.group.id,
     });
+    expect(parseArtifactSummary(first.items[0])).toEqual(first.items[0]);
     expect(first.nextCursor).not.toBeNull();
 
-    const second = await listGroupArtifacts({ prisma }, owner.actor, {
-      groupId: group.group.id,
-      cursor: first.nextCursor ?? undefined,
-      limit: 1,
-    });
+    const second = await groupQueries.listArtifacts(
+      groupPageQueryFor(owner.actor, group.group.id, {
+        cursor: first.nextCursor ?? undefined,
+        limit: 1,
+      }),
+    );
     expect(second.items.map((item) => item.name)).toEqual(["Second family"]);
     expect(second.nextCursor).toBeNull();
 
-    const all = await listGroupArtifacts({ prisma }, owner.actor, { groupId: group.group.id });
+    const all = await groupQueries.listArtifacts(groupPageQueryFor(owner.actor, group.group.id));
     expect(all.items.map((item) => item.name)).toEqual(["First family v2", "Second family"]);
     expect(all.items.some((item) => item.name === "Other group file")).toBe(false);
     expect(all.items.some((item) => item.name === "Private Bot file")).toBe(false);
 
     await expect(
-      listGroupArtifacts({ prisma }, owner.actor, {
-        groupId: other.group.id,
-        cursor: first.nextCursor ?? undefined,
-      }),
+      groupQueries.listArtifacts(
+        groupPageQueryFor(owner.actor, other.group.id, {
+          cursor: first.nextCursor ?? undefined,
+        }),
+      ),
     ).rejects.toBeInstanceOf(ArtifactListCursorError);
   });
 
@@ -306,13 +336,14 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
       name: "Unbound routine",
     });
 
-    const routines = await listGroupRoutines({ prisma }, owner.actor, group.group.id);
+    const routines = await groupQueries.listRoutines(groupQueryFor(owner.actor, group.group.id));
 
     expect(routines.map((routine) => routine.name)).toEqual([
       "Newer group routine",
       "Older group routine",
     ]);
     expect(routines.map((routine) => routine.id)).toEqual([newer.id, older.id]);
+    for (const routine of routines) expect(parseGroupRoutineSummary(routine)).toEqual(routine);
     expect(routines[0]).toMatchObject({
       botId: group.botA.id,
       threadId: group.thread.id,
@@ -339,7 +370,7 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
       data: { name: "Rivers", avatarStyle: "organic" },
     });
 
-    const members = await listGroupMembers({ prisma }, owner.actor, group.group.id);
+    const members = await groupQueries.listMembers(groupQueryFor(owner.actor, group.group.id));
 
     expect(members.currentUser).toEqual({
       kind: "user",
@@ -352,6 +383,7 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
     expect(members.agentCount).toBe(2);
     expect(members.memberCount).toBe(3);
     expect(members.agents.every((agent) => agent.kind === "agent")).toBe(true);
+    expect(parseGroupMembersSummary(members)).toEqual(members);
   });
 
   it("rejects cross-space, cross-user, archived, and threadless groups", async () => {
@@ -362,23 +394,23 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
 
     for (const actor of [otherSpace.actor, { ...owner.actor, userId: otherUser }]) {
       await expect(
-        listGroupArtifacts({ prisma }, actor, { groupId: group.group.id }),
+        groupQueries.listArtifacts(groupPageQueryFor(actor, group.group.id)),
       ).rejects.toBeInstanceOf(IsolationError);
-      await expect(listGroupRoutines({ prisma }, actor, group.group.id)).rejects.toBeInstanceOf(
-        IsolationError,
-      );
-      await expect(listGroupMembers({ prisma }, actor, group.group.id)).rejects.toBeInstanceOf(
-        IsolationError,
-      );
+      await expect(
+        groupQueries.listRoutines(groupQueryFor(actor, group.group.id)),
+      ).rejects.toBeInstanceOf(IsolationError);
+      await expect(
+        groupQueries.listMembers(groupQueryFor(actor, group.group.id)),
+      ).rejects.toBeInstanceOf(IsolationError);
     }
 
     await prisma.chatGroup.update({
       where: { id: group.group.id },
       data: { archivedAt: new Date() },
     });
-    await expect(listGroupMembers({ prisma }, owner.actor, group.group.id)).rejects.toBeInstanceOf(
-      IsolationError,
-    );
+    await expect(
+      groupQueries.listMembers(groupQueryFor(owner.actor, group.group.id)),
+    ).rejects.toBeInstanceOf(IsolationError);
 
     await prisma.chatGroup.update({
       where: { id: group.group.id },
@@ -388,13 +420,13 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
     // its thread (the threads_owner_chk constraint forbids a bare ownerless thread).
     await prisma.thread.delete({ where: { id: group.thread.id } });
     await expect(
-      listGroupArtifacts({ prisma }, owner.actor, { groupId: group.group.id }),
+      groupQueries.listArtifacts(groupPageQueryFor(owner.actor, group.group.id)),
     ).rejects.toBeInstanceOf(IsolationError);
-    await expect(listGroupRoutines({ prisma }, owner.actor, group.group.id)).rejects.toBeInstanceOf(
-      IsolationError,
-    );
-    await expect(listGroupMembers({ prisma }, owner.actor, group.group.id)).rejects.toBeInstanceOf(
-      IsolationError,
-    );
+    await expect(
+      groupQueries.listRoutines(groupQueryFor(owner.actor, group.group.id)),
+    ).rejects.toBeInstanceOf(IsolationError);
+    await expect(
+      groupQueries.listMembers(groupQueryFor(owner.actor, group.group.id)),
+    ).rejects.toBeInstanceOf(IsolationError);
   });
 });

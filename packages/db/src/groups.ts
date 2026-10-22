@@ -332,7 +332,7 @@ export function createGroupRepos(prisma: PrismaClient) {
       return group as GroupRecord;
     },
 
-    async getGroupTarget(actor: Actor, groupId: string) {
+    async getGroupTarget(actor: Pick<Actor, "userId" | "spaceId">, groupId: string) {
       const group = await prisma.chatGroup.findFirst({
         where: {
           id: groupId,

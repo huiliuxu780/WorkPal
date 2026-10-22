@@ -1,7 +1,15 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import type { Actor } from "@rakazo/contracts";
+import {
+  parseArtifactSummary,
+  parseGroupMembersSummary,
+  parseGroupPageQuery,
+  parseGroupQuery,
+  parseGroupRoutineSummary,
+} from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
+import { createGroupQueries } from "./group-queries.js";
 import { createRouter, type RouterDeps } from "./router.js";
 
 const actor: Actor = {
@@ -42,6 +50,45 @@ function groupTarget(id = "group-1") {
   };
 }
 
+function groupArtifactRow() {
+  return {
+    id: "version-a",
+    familyId: "family-a",
+    botId: "bot-1",
+    groupId: "group-1",
+    runId: null,
+    name: "Notes",
+    description: null,
+    mimeType: "text/markdown",
+    size: 12,
+    version: 2,
+    createdAt: new Date("2026-09-01T00:00:00.000Z"),
+    versionCount: 2,
+  };
+}
+
+function groupRoutineRow() {
+  return {
+    id: "routine-1",
+    botId: "bot-1",
+    threadId: "thread-1",
+    name: "Morning digest",
+    prompt: "Summarize the day",
+    crons: ["0 9 * * *"],
+    timezone: "UTC",
+    active: true,
+    notify: true,
+    webhookEnabled: false,
+    githubEnabled: false,
+    messageProvider: null,
+    lastRunAt: null,
+    nextRunAt: new Date("2026-10-23T09:00:00.000Z"),
+    createdAt: new Date("2026-10-19T00:00:00.000Z"),
+  };
+}
+
+const groupUser = { id: "user-1", name: "Rivers", image: null, avatarStyle: "organic" };
+
 function fixture(
   overrides: { group?: unknown; queryRaw?: unknown[]; routines?: unknown[]; user?: unknown } = {},
 ) {
@@ -77,7 +124,7 @@ function fixture(
     );
     return { response, body: await response.json() };
   }
-  return { call, chatGroupFindFirst, routineFindMany, userFindFirst, queryRaw };
+  return { call, deps, chatGroupFindFirst, routineFindMany, userFindFirst, queryRaw };
 }
 
 function groupCursor(groupId: string, id = "version-b") {
@@ -97,22 +144,7 @@ describe("group-scoped query RPC contract", () => {
   it("returns a paginated artifact page for the authorized group", async () => {
     const { call } = fixture({
       group: groupTarget(),
-      queryRaw: [
-        {
-          id: "version-a",
-          familyId: "family-a",
-          botId: "bot-1",
-          groupId: "group-1",
-          runId: null,
-          name: "Notes",
-          description: null,
-          mimeType: "text/markdown",
-          size: 12,
-          version: 2,
-          createdAt: new Date("2026-09-01T00:00:00.000Z"),
-          versionCount: 2,
-        },
-      ],
+      queryRaw: [groupArtifactRow()],
     });
 
     const { response, body } = await call("groups/artifacts/list", {
@@ -126,7 +158,7 @@ describe("group-scoped query RPC contract", () => {
         items: [
           {
             id: "family-a",
-            botId: "bot-1",
+            botId: null,
             groupId: "group-1",
             runId: null,
             name: "Notes",
@@ -189,25 +221,7 @@ describe("group-scoped query RPC contract", () => {
   it("returns group routines with the executing Bot identity", async () => {
     const { call, routineFindMany } = fixture({
       group: groupTarget(),
-      routines: [
-        {
-          id: "routine-1",
-          botId: "bot-1",
-          threadId: "thread-1",
-          name: "Morning digest",
-          prompt: "Summarize the day",
-          crons: ["0 9 * * *"],
-          timezone: "UTC",
-          active: true,
-          notify: true,
-          webhookEnabled: false,
-          githubEnabled: false,
-          messageProvider: null,
-          lastRunAt: null,
-          nextRunAt: new Date("2026-10-23T09:00:00.000Z"),
-          createdAt: new Date("2026-10-19T00:00:00.000Z"),
-        },
-      ],
+      routines: [groupRoutineRow()],
     });
 
     const { response, body } = await call("groups/routines/list", { groupId: "group-1" });
@@ -254,7 +268,7 @@ describe("group-scoped query RPC contract", () => {
   it("returns the current user and Agents with counts", async () => {
     const { call } = fixture({
       group: groupTarget(),
-      user: { id: "user-1", name: "Rivers", image: null, avatarStyle: "organic" },
+      user: groupUser,
     });
 
     const { response, body } = await call("groups/members/list", { groupId: "group-1" });
@@ -297,5 +311,56 @@ describe("group-scoped query RPC contract", () => {
         memberCount: 3,
       },
     });
+  });
+});
+
+describe("core GroupQueries port to RPC mapping", () => {
+  function panelQuery(groupId = "group-1") {
+    return parseGroupQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId,
+    });
+  }
+
+  it("maps artifact pages without losing or inventing core fields", async () => {
+    const { call, deps } = fixture({ group: groupTarget(), queryRaw: [groupArtifactRow()] });
+    const query = parseGroupPageQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId: "group-1",
+      limit: 30,
+    });
+    const port = await createGroupQueries(deps).listArtifacts(query);
+    const { body } = await call("groups/artifacts/list", { groupId: "group-1", limit: 30 });
+    const wire = body as {
+      json: { items: Array<Record<string, unknown>>; nextCursor: string | null };
+    };
+
+    expect(wire.json.nextCursor).toBe(port.nextCursor);
+    expect(wire.json.items).toHaveLength(port.items.length);
+    wire.json.items.forEach((item, index) => {
+      const core = port.items[index]!;
+      expect(item).toEqual({ ...core, botId: null, groupId: "group-1", runId: null });
+      expect(parseArtifactSummary(item)).toEqual(core);
+    });
+  });
+
+  it("maps routines one-to-one between the port and the RPC", async () => {
+    const { call, deps } = fixture({ group: groupTarget(), routines: [groupRoutineRow()] });
+    const port = await createGroupQueries(deps).listRoutines(panelQuery());
+    const { body } = await call("groups/routines/list", { groupId: "group-1" });
+
+    expect((body as { json: unknown }).json).toEqual(port);
+    for (const routine of (body as { json: unknown[] }).json) {
+      expect(parseGroupRoutineSummary(routine)).toEqual(routine);
+    }
+  });
+
+  it("maps the member summary one-to-one between the port and the RPC", async () => {
+    const { call, deps } = fixture({ group: groupTarget(), user: groupUser });
+    const port = await createGroupQueries(deps).listMembers(panelQuery());
+    const { body } = await call("groups/members/list", { groupId: "group-1" });
+
+    expect((body as { json: unknown }).json).toEqual(port);
+    expect(parseGroupMembersSummary((body as { json: unknown }).json)).toEqual(port);
   });
 });

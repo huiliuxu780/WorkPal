@@ -1,7 +1,14 @@
 import type { Actor } from "@rakazo/contracts";
+import {
+  parseGroupMembersSummary,
+  parseGroupPageQuery,
+  parseGroupQuery,
+  parseGroupRoutineSummary,
+  parseGroupWorkQuery,
+} from "@rakazo/core";
 import { IsolationError, type PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { listGroupMembers, listGroupRoutines } from "./group-queries.js";
+import { createGroupQueries, GroupQueryNotImplementedError } from "./group-queries.js";
 
 const actor: Actor = {
   userId: "user-1",
@@ -9,6 +16,13 @@ const actor: Actor = {
   email: "owner@example.com",
   isDeploymentOwner: false,
 };
+
+function groupQuery(groupId = "group-1") {
+  return parseGroupQuery({
+    actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+    groupId,
+  });
+}
 
 function groupTarget(
   overrides: {
@@ -98,7 +112,7 @@ const currentUser = {
   avatarStyle: "organic",
 };
 
-describe("listGroupRoutines", () => {
+describe("GroupQueries.listRoutines", () => {
   it("binds routines to the group thread and keeps each executing Bot", async () => {
     const { deps, chatGroupFindFirst, routineFindMany } = queryDeps({
       group: groupTarget(),
@@ -108,7 +122,7 @@ describe("listGroupRoutines", () => {
       ],
     });
 
-    const result = await listGroupRoutines(deps, actor, "group-1");
+    const result = await createGroupQueries(deps).listRoutines(groupQuery());
 
     expect(chatGroupFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -155,6 +169,7 @@ describe("listGroupRoutines", () => {
       avatarBodyColor: "ink",
     });
     expect(result.every((routine) => routine.threadId === "thread-1")).toBe(true);
+    for (const routine of result) expect(parseGroupRoutineSummary(routine)).toEqual(routine);
   });
 
   it("returns no routines for a group without active members", async () => {
@@ -163,14 +178,18 @@ describe("listGroupRoutines", () => {
       routines: [routineRow()],
     });
 
-    await expect(listGroupRoutines(deps, actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
+    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+      IsolationError,
+    );
     expect(routineFindMany).not.toHaveBeenCalled();
   });
 
   it("rejects a group owned by another space or user before reading routines", async () => {
     const { deps, routineFindMany } = queryDeps({ group: null });
 
-    await expect(listGroupRoutines(deps, actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
+    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+      IsolationError,
+    );
     expect(routineFindMany).not.toHaveBeenCalled();
   });
 
@@ -189,10 +208,20 @@ describe("listGroupRoutines", () => {
     };
 
     await expect(
-      listGroupRoutines(deps, { ...actor, spaceId: "space-2" }, "group-1"),
+      createGroupQueries(deps).listRoutines(
+        parseGroupQuery({
+          actor: { kind: "user", userId: actor.userId, spaceId: "space-2" },
+          groupId: "group-1",
+        }),
+      ),
     ).rejects.toBeInstanceOf(IsolationError);
     await expect(
-      listGroupRoutines(deps, { ...actor, userId: "user-2" }, "group-1"),
+      createGroupQueries(deps).listRoutines(
+        parseGroupQuery({
+          actor: { kind: "user", userId: "user-2", spaceId: actor.spaceId },
+          groupId: "group-1",
+        }),
+      ),
     ).rejects.toBeInstanceOf(IsolationError);
     expect(routineFindMany).not.toHaveBeenCalled();
   });
@@ -200,7 +229,9 @@ describe("listGroupRoutines", () => {
   it("rejects a group whose thread disappeared", async () => {
     const { deps, routineFindMany } = queryDeps({ group: groupTarget({ threadId: null }) });
 
-    await expect(listGroupRoutines(deps, actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
+    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+      IsolationError,
+    );
     expect(routineFindMany).not.toHaveBeenCalled();
   });
 
@@ -212,18 +243,20 @@ describe("listGroupRoutines", () => {
       routines: [routineRow({ id: "routine-a", botId: "bot-removed" })],
     });
 
-    await expect(listGroupRoutines(deps, actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
+    await expect(createGroupQueries(deps).listRoutines(groupQuery())).rejects.toBeInstanceOf(
+      IsolationError,
+    );
   });
 });
 
-describe("listGroupMembers", () => {
+describe("GroupQueries.listMembers", () => {
   it("returns the current user separately from the Agents and excludes them from agentCount", async () => {
     const { deps, userFindFirst } = queryDeps({
       group: groupTarget(),
       user: currentUser,
     });
 
-    const result = await listGroupMembers(deps, actor, "group-1");
+    const result = await createGroupQueries(deps).listMembers(groupQuery());
 
     expect(userFindFirst).toHaveBeenCalledWith({
       where: { id: actor.userId },
@@ -266,6 +299,7 @@ describe("listGroupMembers", () => {
     });
     expect(result.agentCount).toBe(result.agents.length);
     expect(result.memberCount).toBe(result.agentCount + 1);
+    expect(parseGroupMembersSummary(result)).toEqual(result);
   });
 
   it("resolves malformed stored avatar characters without dropping the Agent", async () => {
@@ -295,7 +329,7 @@ describe("listGroupMembers", () => {
       user: currentUser,
     });
 
-    const result = await listGroupMembers(deps, actor, "group-1");
+    const result = await createGroupQueries(deps).listMembers(groupQuery());
 
     expect(result.agents[0]?.avatarCharacter).toBe("dot");
     expect(result.agentCount).toBe(2);
@@ -305,7 +339,9 @@ describe("listGroupMembers", () => {
   it("rejects an unauthorized group without reading the user profile", async () => {
     const { deps, userFindFirst } = queryDeps({ group: null, user: currentUser });
 
-    await expect(listGroupMembers(deps, actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
+    await expect(createGroupQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
+      IsolationError,
+    );
     expect(userFindFirst).not.toHaveBeenCalled();
   });
 
@@ -315,13 +351,36 @@ describe("listGroupMembers", () => {
       user: currentUser,
     });
 
-    await expect(listGroupMembers(deps, actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
+    await expect(createGroupQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
+      IsolationError,
+    );
     expect(userFindFirst).not.toHaveBeenCalled();
   });
 
   it("rejects an actor whose user row is gone", async () => {
     const { deps } = queryDeps({ group: groupTarget(), user: null });
 
-    await expect(listGroupMembers(deps, actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
+    await expect(createGroupQueries(deps).listMembers(groupQuery())).rejects.toBeInstanceOf(
+      IsolationError,
+    );
+  });
+});
+
+describe("GroupQueries work projections", () => {
+  it("fails closed instead of faking work data", async () => {
+    const queries = createGroupQueries({ prisma: {} as unknown as PrismaClient });
+    const pageQuery = parseGroupPageQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId: "group-1",
+      limit: 20,
+    });
+    const workQuery = parseGroupWorkQuery({
+      actor: { kind: "user", userId: actor.userId, spaceId: actor.spaceId },
+      groupId: "group-1",
+      taskId: "task-1",
+    });
+
+    await expect(queries.listWork(pageQuery)).rejects.toBeInstanceOf(GroupQueryNotImplementedError);
+    await expect(queries.getWork(workQuery)).rejects.toBeInstanceOf(GroupQueryNotImplementedError);
   });
 });
