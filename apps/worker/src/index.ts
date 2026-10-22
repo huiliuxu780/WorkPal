@@ -85,7 +85,8 @@ import { MarkdownMemoryStore } from "@rakazo/memory";
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
 async function main() {
-  // Fail fast on invalid deployment gates; feature entry points consume this later.
+  // Fail fast on invalid deployment gates. Consumed by the Intervention pause
+  // path, which is the only roundtable entry point the Worker drives today.
   const roundtableFeatures = resolveRoundtableFeatureGates(process.env);
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
@@ -105,6 +106,7 @@ async function main() {
   const secrets = new EncryptedSecretStore(resolveEncryptionKey(process.env));
   const events = createThreadEvents(prisma, realtime, {
     runSecretWriter: createRunSecretWriter(secrets),
+    roundtableFeatures,
   });
   // Task credentials and callbacks live in the Worker process. A stopped Worker cannot
   // resume a native local supplier; expire its projection after missed heartbeats.

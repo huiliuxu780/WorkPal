@@ -10,7 +10,12 @@ import {
   MessageBlock as MessageBlockSchema,
   presentationFromAskBlock,
 } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES, isApprovalAskBlock, isSecretAskBlock } from "@rakazo/core";
+import {
+  ACTIVE_RUN_STATUSES,
+  type InterventionThreads,
+  isApprovalAskBlock,
+  isSecretAskBlock,
+} from "@rakazo/core";
 import type { Prisma } from "./client.js";
 
 /** Same wait as input and approval runs. Kept here to avoid a cycle with wait-timeouts. */
@@ -250,26 +255,90 @@ async function lockIntervention(tx: InterventionTx, interventionId: string) {
 }
 
 /**
- * Lock every Thread of the given Runs (sorted by id) before any Run or
- * Intervention row is touched. Terminalizing an Intervention appends an event,
- * which writes the Thread row; without this pre-lock a cancel that starts from
- * the Run would take Run → Thread while every answer takes Thread → Run —
- * the deadlock PostgreSQL resolves by aborting one transaction with 40P01.
- * Every path that settles an Intervention funnels through these helpers, so
- * no caller has to remember the order.
+ * Lock the Thread rows a settling transaction is about to write, in the ONE
+ * order every path uses: execution Threads first (sorted), then presentation
+ * Threads (sorted).
+ *
+ * Terminalizing an Intervention appends an event, which writes the Thread row;
+ * without a pre-lock a cancel that starts from the Run takes Run → Thread while
+ * an answer takes Thread → Run — the deadlock PostgreSQL resolves by aborting
+ * one transaction with 40P01.
+ *
+ * Two groups rather than one sorted set: every cancel and clear entry point in
+ * this repository locks the Run's own Thread before it reaches this helper, so a
+ * presentation Thread that happens to sort earlier would be acquired second and
+ * invert against a concurrent answer. Grouping keeps those callers correct
+ * unchanged, because the Thread a caller pre-locks is always an execution Thread
+ * and a presentation Thread is only ever reached from here.
+ *
+ * Precondition: a presentation Thread is never the execution Thread of another
+ * cross-Thread Intervention. RT-03 guarantees that — a Thread humans cannot
+ * write to is not addressable as a presentation target.
  */
-async function lockThreadsForRuns(tx: InterventionTx, runs: readonly { threadId: string }[]) {
-  const threadIds = [...new Set(runs.map((run) => run.threadId))].sort();
-  for (const threadId of threadIds) {
-    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${threadId} FOR UPDATE`;
+async function lockThreadGroups(
+  tx: InterventionTx,
+  executionThreadIds: Iterable<string | null | undefined>,
+  presentationThreadIds: Iterable<string | null | undefined> = [],
+): Promise<void> {
+  const locked = new Set<string>();
+  for (const group of [executionThreadIds, presentationThreadIds]) {
+    const unique = [...new Set(group)].filter((threadId): threadId is string => Boolean(threadId));
+    for (const threadId of unique.sort()) {
+      if (locked.has(threadId)) continue;
+      locked.add(threadId);
+      await tx.$queryRaw`SELECT id FROM threads WHERE id = ${threadId} FOR UPDATE`;
+    }
   }
+}
+
+/** Lock one Intervention's execution Thread, then the Thread it is presented in. */
+export async function lockInterventionThreads(
+  tx: InterventionTx,
+  executionThreadId: string | null | undefined,
+  presentationThreadId?: string | null,
+): Promise<void> {
+  await lockThreadGroups(tx, [executionThreadId], [presentationThreadId]);
+}
+
+/**
+ * Lock the Threads of these Runs plus the presentation Threads of their pending
+ * Interventions. The execution group is taken first and on its own: a concurrent
+ * pause or answer needs one of those locks to create or settle a row, so once
+ * they are held the pending set read below cannot grow underneath us.
+ */
+export async function lockThreadsForRunSettling(
+  tx: InterventionTx,
+  runs: readonly { id: string; threadId: string }[],
+): Promise<void> {
+  if (runs.length === 0) return;
+  await lockThreadGroups(
+    tx,
+    runs.map((run) => run.threadId),
+  );
+  if (!interventionStore(tx)) return;
+  const runIds = [...new Set(runs.map((run) => run.id))];
+  const pending = await tx.intervention.findMany({
+    where: { runId: { in: runIds }, status: "pending" },
+    select: { threadId: true },
+  });
+  await lockThreadGroups(
+    tx,
+    [],
+    pending.map((row) => row.threadId),
+  );
 }
 
 export async function insertPausedIntervention(
   tx: InterventionTx,
   input: {
     spaceId: string;
-    threadId: string;
+    /**
+     * Execution/presentation pair resolved by `resolveInterventionThreads`, so
+     * the row can only be anchored at a foreign Thread through the gated,
+     * origin-validated path. `threadId` stays the presentation Thread: it is
+     * what the snapshot projection and the submission authorization read.
+     */
+    threads: InterventionThreads;
     botId: string;
     runId: string;
     attemptId: string;
@@ -315,7 +384,7 @@ export async function insertPausedIntervention(
       kind: planReview ? "plan_review" : effectId ? "approval" : "input",
       status: "pending",
       spaceId: input.spaceId,
-      threadId: input.threadId,
+      threadId: input.threads.presentationThreadId,
       runId: input.runId,
       attemptId: input.attemptId,
       botId: input.botId,
@@ -337,21 +406,24 @@ export async function insertPausedIntervention(
   return { id, blocks };
 }
 
+/**
+ * Append the `intervention.created` projection to the row's OWN Thread, which
+ * is the presentation Thread: an origin-aware Intervention is created inside the
+ * executing Run's transaction but has to surface where the user answers it.
+ * Mirrors `emitInterventionResolved`, so both projections always land together.
+ */
 export async function emitInterventionCreated(
   tx: InterventionTx,
-  input: {
-    spaceId: string;
-    threadId: string;
-    botId: string;
-    runId: string;
-    interventionId: string;
-  },
+  interventionId: string,
 ): Promise<{ threadId: string; seq: number }> {
-  const row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
+  const row = await tx.intervention.findUnique({ where: { id: interventionId } });
   if (!row) throw new Error("Intervention was not created");
   const effectStatus = await readEffectStatus(tx, row.effectId);
   const event = await appendInterventionEvent(tx, {
-    ...input,
+    spaceId: row.spaceId,
+    threadId: row.threadId,
+    botId: row.botId,
+    runId: row.runId,
     type: "intervention.created",
     view: interventionView(row, effectStatus),
   });
@@ -469,6 +541,8 @@ async function createTerminalLegacy(
       botId: string;
       waitStartedAt?: Date | null;
     };
+    /** Anchors the audit row where the user answered; defaults to the Run. */
+    presentationThreadId?: string;
     messageId: string;
     ask: Extract<MessageBlock, { kind: "ask" }>;
     status: "expired" | "cancelled" | "answered";
@@ -488,7 +562,7 @@ async function createTerminalLegacy(
       kind: input.ask.approvalEffectId ? "approval" : "input",
       status: input.status,
       spaceId: input.run.spaceId,
-      threadId: input.run.threadId,
+      threadId: input.presentationThreadId ?? input.run.threadId,
       runId: input.run.id,
       attemptId: await latestAttemptId(tx, input.run.id),
       botId: input.run.botId,
@@ -566,6 +640,8 @@ export async function settleAnsweredIntervention(
       botId: string;
       waitStartedAt?: Date | null;
     };
+    /** Thread the user answered from; the Run's own Thread when omitted. */
+    presentationThreadId?: string;
     messageId: string;
     ask: Extract<MessageBlock, { kind: "ask" }>;
     resolvedByUserId: string;
@@ -574,7 +650,7 @@ export async function settleAnsweredIntervention(
   },
 ): Promise<void> {
   if (!interventionStore(tx)) return;
-  await lockThreadsForRuns(tx, [input.run]);
+  await lockInterventionThreads(tx, input.run.threadId, input.presentationThreadId);
   const id = input.ask.interventionId ?? legacyInterventionId(input.messageId);
   const existing = await tx.intervention.findUnique({ where: { id } });
   if (existing && existing.status !== "pending") return;
@@ -591,6 +667,7 @@ export async function settleAnsweredIntervention(
     await createTerminalLegacy(tx, {
       id,
       run: input.run,
+      ...(input.presentationThreadId ? { presentationThreadId: input.presentationThreadId } : {}),
       messageId: input.messageId,
       ask: input.ask,
       status: "answered",
@@ -620,7 +697,7 @@ export async function cancelPendingInterventions(
     },
     select: { id: true, spaceId: true, threadId: true, botId: true, waitStartedAt: true },
   });
-  await lockThreadsForRuns(tx, runs);
+  await lockThreadsForRunSettling(tx, runs);
   const ordered = [...runs].sort((left, right) =>
     left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
   );
@@ -651,7 +728,7 @@ export async function expirePendingIntervention(
   options?: { deferEvents?: boolean },
 ): Promise<InterventionRecord[]> {
   if (!interventionStore(tx)) return [];
-  await lockThreadsForRuns(tx, [run]);
+  await lockThreadsForRunSettling(tx, [run]);
   await lockRun(tx, run.id);
   const pending = await tx.intervention.findMany({ where: { runId: run.id, status: "pending" } });
   if (pending.length === 0) return terminalizeMissing(tx, run, "expired", options);
@@ -864,7 +941,15 @@ export type ResolveInterventionOutcome =
       resume: boolean;
       cancelledRunId?: string;
       seq: number;
+      /** Thread the execution-side events were appended to. */
       threadId: string;
+      /**
+       * Present only when the decision was submitted away from the executing
+       * Thread. The projection event advanced this Thread too, so both have to
+       * be published or the answering user never sees their own card settle.
+       */
+      presentationThreadId?: string;
+      presentationSeq?: number;
       applied: boolean;
     }
   | { outcome: "rejected"; reason: InterventionRejected["reason"] };
@@ -880,6 +965,38 @@ async function viewFor(tx: InterventionTx, row: InterventionRecord): Promise<Int
   return interventionView(row, await readEffectStatus(tx, row.effectId));
 }
 
+async function threadHeadSeq(tx: InterventionTx, threadId: string): Promise<number> {
+  const head = await tx.event.findFirst({
+    where: { threadId },
+    orderBy: { seq: "desc" },
+    select: { seq: true },
+  });
+  return head?.seq ?? 0;
+}
+
+/**
+ * The bound Attempt must still be the Run's current waiting one. Resuming opens a
+ * newer Attempt and `promoteRun` fails every older active Attempt, so a decision
+ * arriving for a superseded Attempt describes an execution that no longer exists
+ * and must not resume anything — the parameters the user approved are gone.
+ */
+async function boundAttemptIsCurrent(
+  tx: InterventionTx,
+  row: InterventionRecord,
+): Promise<boolean> {
+  // Rows that predate the Attempt table carry no binding to compare against.
+  if (row.attemptId === "legacy") return true;
+  const bound = await tx.attempt.findFirst({
+    where: { id: row.attemptId, runId: row.runId },
+    select: { fence: true, status: true },
+  });
+  if (bound?.status !== "waiting_input") return false;
+  const newer = await tx.attempt.count({
+    where: { runId: row.runId, fence: { gt: bound.fence } },
+  });
+  return newer === 0;
+}
+
 export async function resolveInterventionInTransaction(
   tx: InterventionTx,
   input: {
@@ -889,14 +1006,21 @@ export async function resolveInterventionInTransaction(
     answer: string;
     username?: string;
     clientSubmissionId: string;
+    /**
+     * Thread the submission is addressed at. This is the Intervention row's own
+     * anchor, i.e. where the user sees the card — NOT necessarily where the Run
+     * executes.
+     */
     threadId: string;
+    /** Thread of the bound Run, derived server-side from it. Never a client value. */
+    executionThreadId: string;
     runId: string;
   },
   commit: (
     tx: InterventionTx,
   ) => Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null>,
 ): Promise<ResolveInterventionOutcome> {
-  await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+  await lockInterventionThreads(tx, input.executionThreadId, input.threadId);
   await lockRun(tx, input.runId);
   let row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
   if (row) await lockIntervention(tx, row.id);
@@ -937,6 +1061,9 @@ export async function resolveInterventionInTransaction(
       applied: false,
     };
   }
+  if (row && !(await boundAttemptIsCurrent(tx, row))) {
+    return { outcome: "rejected", reason: "conflict" };
+  }
   const committed = await commit(tx);
   if (!committed) {
     const run = await tx.run.findUnique({
@@ -946,7 +1073,7 @@ export async function resolveInterventionInTransaction(
     const messageId = row?.messageId ?? legacyMessageId(input.interventionId);
     const message = messageId
       ? await tx.message.findFirst({
-          where: { id: messageId, threadId: input.threadId },
+          where: { id: messageId, threadId: input.executionThreadId },
           select: { blocks: true },
         })
       : null;
@@ -963,6 +1090,7 @@ export async function resolveInterventionInTransaction(
   const legacyId = row?.id ?? input.interventionId;
   const settled = fresh ?? (await tx.intervention.findUnique({ where: { id: legacyId } }));
   if (!settled) return { outcome: "rejected", reason: "conflict" };
+  const crossThread = input.threadId !== input.executionThreadId;
   return {
     outcome: "accepted",
     intervention: await viewFor(tx, settled),
@@ -970,6 +1098,12 @@ export async function resolveInterventionInTransaction(
     ...(committed.cancelledRunId ? { cancelledRunId: committed.cancelledRunId } : {}),
     seq: committed.seq,
     threadId: committed.threadId,
+    ...(crossThread
+      ? {
+          presentationThreadId: settled.threadId,
+          presentationSeq: await threadHeadSeq(tx, settled.threadId),
+        }
+      : {}),
     applied: true,
   };
 }
