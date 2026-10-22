@@ -391,6 +391,24 @@ describe("run tool selection", () => {
       expect.arrayContaining(["schedule_list", "schedule_cancel"]),
     );
   });
+
+  it("offers message_bot in a group only behind the public collaboration gate", () => {
+    const namesFor = (groupId: string | null, publicCollaborationEnabled: boolean) =>
+      selectBuiltinToolsForRun({
+        graphicalToolsAllowed: false,
+        groupId,
+        trigger: "user",
+        semanticMemoryEnabled: false,
+        messagingChannelRun: false,
+        publicCollaborationEnabled,
+      }).map((tool) => tool.name);
+
+    expect(namesFor("group-1", false)).not.toContain("message_bot");
+    expect(namesFor("group-1", false)).toContain("handoff_to_bot");
+    expect(namesFor("group-1", true)).toContain("message_bot");
+    expect(namesFor("group-1", true)).toContain("handoff_to_bot");
+    expect(namesFor(null, false)).toContain("message_bot");
+  });
 });
 
 describe("recent turn images", () => {
