@@ -60,7 +60,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | B. 群内公开协作 | RT-06 与 RT-07 并行；之后 RT-08、RT-10 | public `message_bot`、mention、公开委派 UI、多 mention | RT-24 |
 | C. 跨群调度 | RT-11 → RT-12 | `message_group`、成员审批、跨会话回流 | RT-19 |
 | D. Task 修订 | RT-13 → RT-14 | instruction log、prompt 迁移、状态转换 | RT-17、RT-20、RT-27 |
-| E. AgentScope 后台 | RT-15 与 RT-13 并行；之后 RT-16 → RT-17 → RT-18 | SDK 探针、后台身份、revision、delivery | RT-19、RT-28 |
+| E. AgentScope 后台 | **暂停**：RT-15 两轮探针后，RT-16 → RT-17 → RT-18 不启动；先验证新 AgentScope 版本的三项最低能力 | SDK 探针、后台身份、revision、delivery | 待定 |
 | F. 群数据与 Web | RT-21 → RT-22；RT-20 可与其并行；之后 RT-23 | 详情、资料库、成员、例行任务、工作页 | RT-30 |
 | G. session 与路由 | RT-25；之后 RT-26 与 RT-27 并行 | admission lease、Runtime checkpoint、确定性 steering | RT-28、RT-24 |
 
@@ -471,6 +471,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 追加验证（2026-10-22）：custom `subagentFactory` 可在 factory 内关闭 flush/offload 并隔离 child session，但失败归因仍被 `AgentSpawnTool` 拍平，且内置 `general-purpose` 仍暴露 mutating 工具；RT-16 继续阻断。详见报告第 7 节。
 
 ### RT-16 建立后台执行身份和注册事务
+
+**状态：暂停（2026-10-22）。** RT-15 两轮探针确认失败归因、内置 `general-purpose` 暴露和 child session native 回传仍未满足。不启动 RT-16；不开启 `background_helper`；不接受文本匹配失败状态；不继续堆 WorkPal 侧后台代码。唯一允许的下一步是验证满足三项最低能力的新 AgentScope 版本，详见 [RT-15 报告第 8 节](RT-15-agentscope-background-probe.md)。
 
 目标：每个 helper 都有独立产品 Task、Run、Attempt 和 runtime task identity，并通过崩溃安全协议启动。
 

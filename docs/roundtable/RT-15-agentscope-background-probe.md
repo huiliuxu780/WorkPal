@@ -239,3 +239,23 @@ JAVA_HOME="$JDK21_HOME" mvn \
 ```
 
 结果：**71 tests，0 failures，0 errors**。其中首次 RT-15 探针 **7/7**、factory 探针 **8/8**、`DelegationSuspensionTest` **3/3**。计划验证器与 node 测试结果见第 5 节同一命令，未因本次追加改变。
+
+## 8. 正式判定与暂停决定（2026-10-22）
+
+两轮证据合并在本报告：第 1–6 节是 declared helper 首次探针，第 7 节是 custom `subagentFactory` 追加探针。两轮都保留原始失败事实，不把 factory 的局部通过写成整体安全。
+
+后台线正式暂停：
+
+- 不启动 RT-16。
+- 不开启 `background_helper`。
+- 不接受文本匹配失败状态；`COMPLETED + Error 文本` 不能作为失败通道。
+- 不接受内置 `general-purpose` 继续携带写工具。
+- 在找到候选 AgentScope 版本之前，不继续堆 WorkPal 侧后台代码。
+
+唯一允许的下一步是寻找满足以下三项最低能力的新 AgentScope 版本，并用两个探针测试类重新验证：
+
+1. child 失败能形成可归因的 `FAILED` 状态，且保留 typed error，不依赖文本匹配。
+2. 注册 custom factory 时能禁用/移除内置 `general-purpose`，或只暴露显式注册的 agent id。
+3. child session 能通过 native 记录或 factory 回调稳定回传，供 WorkPal 持久化。
+
+在这三项验证通过前，RT-16、RT-17、RT-18 均不启动；production suspension 和 `background_helper` 默认关闭保持不变。
