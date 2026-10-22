@@ -157,8 +157,15 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
     timeout: 60_000,
   });
   const transcript = page.getByTestId("transcript");
-  await expect(transcript.getByText("Researcher", { exact: true }).first()).toBeVisible();
-  await expect(transcript.getByText("Research Writer", { exact: true }).first()).toBeVisible();
+  // The previous wait can be satisfied by the user's own message ("gather
+  // sources."), so these two assertions are the real reply wait; give them the
+  // same window as the scripted runtime's response.
+  await expect(transcript.getByText("Researcher", { exact: true }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(transcript.getByText("Research Writer", { exact: true }).first()).toBeVisible({
+    timeout: 60_000,
+  });
   const researcherSpeak = transcript
     .locator("div")
     .filter({ has: page.getByText("Researcher", { exact: true }) })
