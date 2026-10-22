@@ -1,5 +1,5 @@
 import type { Actor } from "@rakazo/contracts";
-import type { PrismaClient } from "@rakazo/db";
+import { CHAT_GROUP_KIND_STANDARD, type PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { querySpaceSearch } from "./search.js";
 
@@ -71,5 +71,41 @@ describe("artifact search batching", () => {
     const { prisma } = fixture(0);
     expect(await querySpaceSearch(prisma as unknown as PrismaClient, actor, "report")).toEqual([]);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("hidden agent_pair exclusion", () => {
+  /** Tagged-template `$queryRaw` calls receive the literal parts, not a Prisma.sql object. */
+  function rawSql(call: unknown[] | undefined): string {
+    return (call?.[0] as string[] | undefined)?.join("?") ?? "";
+  }
+
+  it("keeps pair groups, pair messages and pair files out of search", async () => {
+    const { prisma } = fixture(1);
+    await querySpaceSearch(prisma as unknown as PrismaClient, actor, "report");
+
+    expect(prisma.chatGroup.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ kind: CHAT_GROUP_KIND_STANDARD }),
+      }),
+    );
+
+    // The second artifact batch is the group-scoped one.
+    const groupArtifactQuery = prisma.artifact.findMany.mock.calls[1]?.[0];
+    expect(groupArtifactQuery.where.group).toEqual({ is: { kind: CHAT_GROUP_KIND_STANDARD } });
+
+    // Raw batches: 0-1 artifact messages, 2 bot messages, 3 group messages.
+    const groupMessages = prisma.$queryRaw.mock.calls[3];
+    expect(rawSql(groupMessages)).toContain("g.kind =");
+    expect(groupMessages?.slice(1)).toContain(CHAT_GROUP_KIND_STANDARD);
+  });
+
+  it("leaves the Bot message search alone, since pair threads have no botId", async () => {
+    const { prisma } = fixture(0);
+    await querySpaceSearch(prisma as unknown as PrismaClient, actor, "report");
+
+    const botMessages = rawSql(prisma.$queryRaw.mock.calls[0]);
+    expect(botMessages).toContain('INNER JOIN bots b ON b.id = t."botId"');
+    expect(botMessages).not.toContain("g.kind");
   });
 });
