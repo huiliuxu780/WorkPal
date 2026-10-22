@@ -447,6 +447,7 @@ async function main() {
     },
     home,
     artifacts,
+    roundtableFeatures,
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: async (userId) => {

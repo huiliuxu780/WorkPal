@@ -1,3 +1,5 @@
+import { RoundtableFeatureDisabledError } from "@rakazo/core";
+import { toolEffectIdempotencyKey } from "@rakazo/core/node/approval-effect-key";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -35,6 +37,16 @@ function deps(
     /** Orchestration snapshot of the requester run (role restoration source). */
     requesterOrchestration?: unknown;
     requesterTrigger?: string;
+    /** Source Thread belongs to this group; null/absent keeps the DM path. */
+    sourceGroupId?: string | null;
+    groupMembers?: unknown[];
+    /** Server-resolved roundtable gates passed to dispatch. */
+    roundtableFeatures?: {
+      private_pair: boolean;
+      public_collaboration: boolean;
+      message_group: boolean;
+      background_helper: boolean;
+    };
   } = {},
 ) {
   const enqueue = vi.fn().mockResolvedValue(undefined);
@@ -46,29 +58,93 @@ function deps(
         ? (options.alreadyDelivered ?? null)
         : { blocks: options.hopBlocks ?? [], runId: options.requesterRunId ?? null },
     );
+  const messageFindMany = vi
+    .fn()
+    .mockResolvedValue(options.sentBlocks ? [{ blocks: options.sentBlocks }] : []);
+  const groupMembers = options.groupMembers ?? [
+    {
+      botId: "bot-sender",
+      bot: {
+        id: "bot-sender",
+        name: "Researcher",
+        archivedAt: null,
+        spaceId: "workspace-1",
+        userId: "user-1",
+      },
+    },
+    {
+      botId: "bot-target",
+      bot: {
+        id: "bot-target",
+        name: "Analyst",
+        archivedAt: null,
+        spaceId: "workspace-1",
+        userId: "user-1",
+      },
+    },
+  ];
+  let messageSeq = 0;
+  let taskSeq = 1;
+  let runSeq = 2;
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([{ id: "thread" }]),
     run: {
       findFirst: vi
         .fn()
-        .mockResolvedValue(options.senderRunning === false ? null : { id: "run-1" }),
-      findUnique: vi.fn().mockResolvedValue({ status: "running" }),
-      create: vi.fn().mockResolvedValue({ id: "run-2" }),
+        .mockResolvedValue(
+          options.senderRunning === false
+            ? null
+            : { id: "run-1", orchestration: options.requesterOrchestration ?? null },
+        ),
+      findUnique: vi.fn().mockResolvedValue({
+        status: "running",
+        orchestration: options.requesterOrchestration ?? null,
+        trigger: options.requesterTrigger ?? "user",
+      }),
+      create: vi.fn().mockImplementation(async () => ({ id: `run-${runSeq++}` })),
     },
     bot: {
       findFirst: vi.fn().mockResolvedValue(options.targetArchived ? null : { id: "bot-target" }),
     },
-    task: { create: vi.fn().mockResolvedValue({ id: "task-1" }) },
+    task: {
+      create: vi.fn().mockImplementation(async () => ({ id: `task-${taskSeq++}` })),
+    },
     message: {
       findUnique: messageFindUnique,
-      create: vi.fn().mockResolvedValue({ id: "message-1", seq: 1 }),
+      findMany: messageFindMany,
+      create: vi.fn().mockImplementation(async () => ({
+        id: `message-${messageSeq}`,
+        seq: messageSeq,
+      })),
       update: vi.fn().mockResolvedValue({}),
     },
     event: { create: vi.fn().mockResolvedValue({ seq: 7 }) },
-    thread: { update: vi.fn().mockResolvedValue({}) },
+    thread: {
+      update: vi.fn().mockImplementation(async (args: { data?: Record<string, unknown> }) => {
+        if (args?.data?.nextMessageSeq) {
+          messageSeq += 1;
+          return { nextMessageSeq: messageSeq };
+        }
+        return { nextEventSeq: 7 };
+      }),
+    },
+    chatGroup: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: "group-1",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        archivedAt: null,
+        thread: { id: "thread-sender" },
+        members: groupMembers,
+      }),
+      update: vi.fn().mockResolvedValue({}),
+    },
   };
   let transactionAttempts = 0;
   const prisma = {
+    thread: {
+      findUnique: vi.fn().mockResolvedValue({ groupId: options.sourceGroupId ?? null }),
+    },
     bot: {
       findMany: vi
         .fn()
@@ -80,9 +156,7 @@ function deps(
     },
     message: {
       findUnique: messageFindUnique,
-      findMany: vi
-        .fn()
-        .mockResolvedValue(options.sentBlocks ? [{ blocks: options.sentBlocks }] : []),
+      findMany: messageFindMany,
     },
     run: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -107,10 +181,12 @@ function deps(
     }),
   } as unknown as PrismaClient;
   return {
-    deps: { prisma, events: { notify }, jobs: { enqueue } } as unknown as Pick<
-      ExecutorDeps,
-      "prisma" | "events" | "jobs"
-    >,
+    deps: {
+      prisma,
+      events: { notify },
+      jobs: { enqueue },
+      roundtableFeatures: options.roundtableFeatures,
+    } as unknown as Pick<ExecutorDeps, "prisma" | "events" | "jobs" | "roundtableFeatures">,
     tx,
     enqueue,
     notify,
@@ -149,8 +225,9 @@ describe("messaging another bot", () => {
     expect(harness.notify).toHaveBeenCalledWith("thread-sender", 7);
     expect(harness.tx.message.create).toHaveBeenCalledTimes(2);
     for (const [call] of harness.tx.message.create.mock.calls) {
-      expect((call as { data: { originKind: string; authorUserId: string | null } }).data)
-        .toMatchObject({ originKind: "bot", authorUserId: null });
+      expect(
+        (call as { data: { originKind: string; authorUserId: string | null } }).data,
+      ).toMatchObject({ originKind: "bot", authorUserId: null });
     }
     expect(
       harness.tx.thread.update.mock.calls.filter(
@@ -419,6 +496,237 @@ describe("messaging another bot", () => {
   });
 });
 
+const publicCollaborationEnabled = {
+  private_pair: false,
+  public_collaboration: true,
+  message_group: false,
+  background_helper: false,
+};
+
+const groupMember = (id: string, name: string, archivedAt: Date | null = null) => ({
+  botId: id,
+  bot: {
+    id,
+    name,
+    archivedAt,
+    spaceId: "workspace-1",
+    userId: "user-1",
+  },
+});
+
+describe("public group delegation", () => {
+  it("refuses public delegation while the gate is closed", async () => {
+    const harness = deps({ sourceGroupId: "group-1" });
+
+    await expect(
+      messageBot(harness.deps, run, sender, {
+        bot_id: "bot-target",
+        message: "check the baseline",
+      }),
+    ).rejects.toBeInstanceOf(RoundtableFeatureDisabledError);
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("writes both sender and target facts into the same group Thread", async () => {
+    const harness = deps({
+      sourceGroupId: "group-1",
+      roundtableFeatures: publicCollaborationEnabled,
+    });
+    const sent = await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "check the baseline",
+      intent: "request",
+      deliveryKey: "call-1",
+    });
+
+    expect(sent).toMatchObject({
+      ok: true,
+      botId: "bot-target",
+      targetRunId: "run-2",
+      destination: { kind: "current_group", groupId: "group-1", threadId: "thread-sender" },
+      locator: {
+        kind: "group_message",
+        groupId: "group-1",
+        threadId: "thread-sender",
+        messageId: "message-1",
+      },
+    });
+    expect(harness.tx.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ botId: "bot-target", threadId: "thread-sender" }),
+      }),
+    );
+    expect(harness.tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          botId: "bot-target",
+          threadId: "thread-sender",
+          trigger: "bot_message",
+        }),
+      }),
+    );
+
+    type CreatedMessage = {
+      threadId: string;
+      role: string;
+      botId?: string | null;
+      clientNonce?: string;
+      blocks: Array<Record<string, unknown>>;
+    };
+    const messages = harness.tx.message.create.mock.calls.map(
+      ([call]) => (call as { data: CreatedMessage }).data,
+    );
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({
+      threadId: "thread-sender",
+      role: "bot",
+      botId: "bot-sender",
+    });
+    expect(messages[1]).toMatchObject({
+      threadId: "thread-sender",
+      role: "user",
+      clientNonce: "bot-message:call-1",
+    });
+    expect(messages[0]!.blocks[0]).toMatchObject({
+      kind: "bot_message_sent",
+      toBotId: "bot-target",
+      text: "check the baseline",
+    });
+    expect(messages[1]!.blocks[0]).toMatchObject({
+      kind: "bot_message_received",
+      fromBotId: "bot-sender",
+      returnToMessageId: "message-1",
+    });
+    // The target speaks only from its real support Run; dispatch never fabricates
+    // a confirmation authored by the target.
+    expect(messages.some((message) => message.botId === "bot-target")).toBe(false);
+    expect(harness.tx.message.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ threadId: "thread-target" }),
+      }),
+    );
+    expect(harness.notify).toHaveBeenCalledWith("thread-sender", 7);
+    expect(harness.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a target that is not a current group member", async () => {
+    const harness = deps({
+      sourceGroupId: "group-1",
+      roundtableFeatures: publicCollaborationEnabled,
+      groupMembers: [groupMember("bot-sender", "Researcher")],
+    });
+    const sent = await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "check the baseline",
+    });
+
+    expect(sent).toEqual({ ok: false, error: "target is not a current group member" });
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an archived group member", async () => {
+    const harness = deps({
+      sourceGroupId: "group-1",
+      roundtableFeatures: publicCollaborationEnabled,
+      groupMembers: [
+        groupMember("bot-sender", "Researcher"),
+        groupMember("bot-target", "Analyst", new Date("2026-10-01T00:00:00Z")),
+      ],
+    });
+    const sent = await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "check the baseline",
+    });
+
+    expect(sent).toEqual({ ok: false, error: "Analyst is not available in this group" });
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps per-target deliveries from one source Run independent", async () => {
+    const harness = deps({
+      sourceGroupId: "group-1",
+      roundtableFeatures: publicCollaborationEnabled,
+      groupMembers: [
+        groupMember("bot-sender", "Researcher"),
+        groupMember("bot-target", "Analyst"),
+        groupMember("bot-target-2", "Writer"),
+      ],
+    });
+    const targetIds = ["bot-target", "bot-target-2"];
+    const deliveryKeys = targetIds.map((botId) =>
+      toolEffectIdempotencyKey(run.id, "message_bot", {
+        bot_id: botId,
+        message: "split the work",
+      }),
+    );
+    expect(new Set(deliveryKeys).size).toBe(2);
+
+    const first = await messageBot(harness.deps, run, sender, {
+      bot_id: targetIds[0],
+      message: "split the work",
+      deliveryKey: deliveryKeys[0],
+    });
+    const second = await messageBot(harness.deps, run, sender, {
+      bot_id: targetIds[1],
+      message: "split the work",
+      deliveryKey: deliveryKeys[1],
+    });
+
+    expect(first).toMatchObject({ ok: true, botId: "bot-target", targetRunId: "run-2" });
+    expect(second).toMatchObject({ ok: true, botId: "bot-target-2", targetRunId: "run-3" });
+    expect(harness.tx.task.create).toHaveBeenCalledTimes(2);
+    expect(harness.tx.run.create).toHaveBeenCalledTimes(2);
+    expect(harness.tx.message.create).toHaveBeenCalledTimes(4);
+    const nonces = harness.tx.message.create.mock.calls
+      .map(([call]) => (call as { data: { clientNonce?: string } }).data.clientNonce)
+      .filter((nonce): nonce is string => Boolean(nonce));
+    expect(nonces).toEqual([`bot-message:${deliveryKeys[0]}`, `bot-message:${deliveryKeys[1]}`]);
+  });
+
+  it("replays a recorded public delivery without another Run", async () => {
+    const harness = deps({
+      sourceGroupId: "group-1",
+      roundtableFeatures: publicCollaborationEnabled,
+      alreadyDelivered: {
+        id: "message-inbound",
+        blocks: [
+          {
+            kind: "bot_message_received",
+            fromBotId: "bot-sender",
+            fromBotName: "Researcher",
+            text: "check the baseline",
+            intent: "request",
+            returnToMessageId: "message-public",
+          },
+        ],
+        sourceRuns: [{ id: "run-9", botId: "bot-target", bot: { name: "Analyst" } }],
+      },
+    });
+    const sent = await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "check the baseline",
+      deliveryKey: "call-1",
+    });
+
+    expect(sent).toMatchObject({
+      ok: true,
+      replayed: true,
+      targetRunId: "run-9",
+      locator: {
+        kind: "group_message",
+        groupId: "group-1",
+        threadId: "thread-sender",
+        messageId: "message-public",
+      },
+    });
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+    expect(harness.enqueue).not.toHaveBeenCalled();
+  });
+});
+
 describe("hop lookup", () => {
   it("treats a run a person started as the start of a chain", async () => {
     const prisma = { message: { findUnique: vi.fn() } } as unknown as PrismaClient;
@@ -622,7 +930,13 @@ function readCreatedOrchestration(harness: ReturnType<typeof deps>) {
       orchestration: {
         ownership: { mode: string; ownerBotId: string };
         execution: { interactive: boolean; planning: string };
-        collaboration: { role: string; source: string; fromBotId: string; handoffDepth: number; messageHop: number };
+        collaboration: {
+          role: string;
+          source: string;
+          fromBotId: string;
+          handoffDepth: number;
+          messageHop: number;
+        };
       };
     };
   };
@@ -847,7 +1161,9 @@ describe("collaboration lineage (Product Harness Phase 3)", () => {
     const events = harness.tx.event.create.mock.calls.map(
       ([arg]) => arg as { data: { type: string; payload: Record<string, unknown> } },
     );
-    const requested = events.filter((event) => event.data.type === "thread.collaboration.requested");
+    const requested = events.filter(
+      (event) => event.data.type === "thread.collaboration.requested",
+    );
     expect(requested).toHaveLength(1);
     // A request is the SENDER's activity: it lives in the sender's thread on
     // the sender's run, so the owner's live view shows it without a refresh.
@@ -879,7 +1195,9 @@ describe("collaboration lineage (Product Harness Phase 3)", () => {
       ([arg]) => arg as { data: { type: string } },
     );
     expect(events.some((event) => event.data.type === "thread.collaboration.result")).toBe(true);
-    expect(events.some((event) => event.data.type === "thread.collaboration.requested")).toBe(false);
+    expect(events.some((event) => event.data.type === "thread.collaboration.requested")).toBe(
+      false,
+    );
   });
 
   it("refuses an acknowledgement-only reply from a run woken by a result", async () => {

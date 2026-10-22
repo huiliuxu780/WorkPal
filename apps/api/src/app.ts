@@ -459,6 +459,7 @@ export async function createApp(
     },
     home,
     artifacts,
+    roundtableFeatures: env.roundtableFeatures,
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: async (userId) => {

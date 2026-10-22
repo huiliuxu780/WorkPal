@@ -96,6 +96,8 @@ import {
   renderBotDirectory,
   renderPromptSegment,
   resolveActionApprovalDetail,
+  RoundtableFeatureDisabledError,
+  type RoundtableFeatureGates,
   sandboxCommandTimeoutMs,
   type ToolCallStreak,
   toolRequiresApproval,
@@ -794,6 +796,8 @@ export interface ExecutorDeps {
   cloudAgent?: CloudAgentConnection | null;
   /** Deployment-level Agently mailbox sending. Null/omit means send_email stays uninjected. */
   mail?: AgentlyMailService | null;
+  /** Server-resolved roundtable gates. Absent means every roundtable capability is closed. */
+  roundtableFeatures?: RoundtableFeatureGates;
   /** Optional Auto Review verifier. When omitted, the factory selects from env (llm | jev | scripted). */
   autoReview?: AutoReviewProvider;
   /**
@@ -2041,6 +2045,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             voiceCall,
             mailEnabled: Boolean(deps.mail),
             planningEnabled: turnPolicy.planning.mode === "auto",
+            publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -2135,6 +2140,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               voiceCall,
               mailEnabled: Boolean(deps.mail),
               planningEnabled: turnPolicy.planning.mode === "auto",
+              publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
             }),
             ...(hasMessagingIdentity ? agentConnectionTools : []),
           ];
@@ -4855,26 +4861,53 @@ export function createRunExecutor(deps: ExecutorDeps) {
             );
           }
           if (name === "message_bot") {
-            const sent = await messageBot(
-              deps,
-              { ...run, sourceMessageId: run.sourceMessageId },
-              { id: bot.id, name: bot.name },
-              {
-                bot_id: args.bot_id ? String(args.bot_id) : undefined,
-                confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
-                message: redactSecrets(String(args.message ?? ""), runSecrets),
-                intent: args.intent as
-                  | "request"
-                  | "result"
-                  | "question"
-                  | "status"
-                  | "fyi"
-                  | undefined,
-                deliveryKey: effectKey,
-              },
-            );
+            let sent: Awaited<ReturnType<typeof messageBot>>;
+            try {
+              sent = await messageBot(
+                deps,
+                { ...run, sourceMessageId: run.sourceMessageId },
+                { id: bot.id, name: bot.name },
+                {
+                  bot_id: args.bot_id ? String(args.bot_id) : undefined,
+                  confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
+                  message: redactSecrets(String(args.message ?? ""), runSecrets),
+                  intent: args.intent as
+                    | "request"
+                    | "result"
+                    | "question"
+                    | "status"
+                    | "fyi"
+                    | undefined,
+                  deliveryKey: effectKey,
+                },
+              );
+            } catch (error) {
+              if (error instanceof RoundtableFeatureDisabledError) {
+                return finish({
+                  error: {
+                    code: error.code,
+                    feature: error.feature,
+                    retryable: error.retryable,
+                  },
+                });
+              }
+              throw error;
+            }
             if (!sent.ok) return finish({ error: sent.error });
-            return finish({ ok: true, botId: sent.botId, name: sent.name, note: sent.note });
+            return finish({
+              ok: true,
+              botId: sent.botId,
+              name: sent.name,
+              note: sent.note,
+              ...("targetRunId" in sent
+                ? {
+                    targetRunId: sent.targetRunId,
+                    destination: sent.destination,
+                    locator: sent.locator,
+                  }
+                : {}),
+              ...("replayed" in sent && sent.replayed ? { replayed: true } : {}),
+            });
           }
           if (name === "connect_agent") {
             const result = await connectAgent(
@@ -6721,6 +6754,8 @@ export function selectBuiltinToolsForRun(options: {
   /** send_email exists only when the deployment connected an Agently mailbox. */
   mailEnabled?: boolean;
   planningEnabled?: boolean;
+  /** Opens group message_bot only after destination-aware public dispatch is live. */
+  publicCollaborationEnabled?: boolean;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -6731,6 +6766,7 @@ export function selectBuiltinToolsForRun(options: {
             options.pageBrowserAllowed ?? options.graphicalToolsAllowed,
           ),
           options.groupId,
+          options.publicCollaborationEnabled,
         ),
         options.trigger,
       ),
