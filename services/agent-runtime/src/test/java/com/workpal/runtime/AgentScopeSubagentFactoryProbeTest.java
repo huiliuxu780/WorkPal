@@ -317,6 +317,8 @@ class AgentScopeSubagentFactoryProbeTest {
                     .sessionId("foreign-parent").build();
             assertFalse(parent.getTaskRepository().cancelTask(foreign, foreign.getSessionId(),
                     spawns.getFirst().taskId()), "a foreign parent session must not cancel the child");
+            assertFalse(task.waitForCompletion(500),
+                    "a foreign cancellation must not interrupt or settle the blocked child worker");
             assertEquals(TaskStatus.RUNNING, task.getTaskStatus(), task.getStatus());
 
             assertTrue(parent.getTaskRepository().cancelTask(context, context.getSessionId(),
