@@ -62,6 +62,7 @@ export * from "./response-bytes.js";
 export * from "./retry-policy.js";
 export * from "./roundtable-contracts.js";
 export * from "./roundtable-feature-gates.js";
+export * from "./roundtable-intervention.js";
 export * from "./run-budget.js";
 export * from "./run-state.js";
 export * from "./sandbox-command.js";

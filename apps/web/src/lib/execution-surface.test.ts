@@ -185,6 +185,24 @@ describe("eligibleExecutionRunIds", () => {
     expect(ids.has("run-iv")).toBe(true);
   });
 
+  it("includes a Run that executes in another Thread and projects only its Intervention", () => {
+    // RT-04 / AC20: the answering Thread holds no Run row and no summary for the
+    // executing Run — `loadExecutionSummaries` is Thread-scoped — so the pending
+    // projection is the only signal that can earn the card a surface here.
+    const ids = eligibleExecutionRunIds({
+      ...base,
+      interventions: [intervention({ runId: "run-in-pair-thread" })],
+    });
+    expect(ids.has("run-in-pair-thread")).toBe(true);
+    // Once settled it no longer earns one: a finished foreign execution has no
+    // surface in a Thread that never ran it.
+    const settled = eligibleExecutionRunIds({
+      ...base,
+      interventions: [intervention({ runId: "run-in-pair-thread", status: "answered" })],
+    });
+    expect(settled.has("run-in-pair-thread")).toBe(false);
+  });
+
   it("includes a waiting Run even before its Intervention projection arrives", () => {
     const ids = eligibleExecutionRunIds({
       ...base,

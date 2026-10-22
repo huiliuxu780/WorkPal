@@ -107,6 +107,45 @@ function Harness({
   );
 }
 
+/**
+ * A pending approval whose Run executes in another Thread: its ask message is
+ * never on this page, so the card can only come from the server projection.
+ */
+function pairApproval(): InterventionView {
+  return view({
+    id: "pair-approval",
+    runId: "run-in-pair-thread",
+    attemptId: "attempt-in-pair-thread",
+    messageId: "message-in-pair-thread",
+    presentation: {
+      text: "Send the summary from the pair?",
+      detail: "One email to the requester.",
+    },
+  });
+}
+
+/** Feeds a settled view back into the prop, the way the shell does. */
+function ProjectionHarness({
+  initial,
+  onSubmitted,
+}: {
+  initial: InterventionView[];
+  onSubmitted?: (view: InterventionView) => void;
+}) {
+  const [items, setItems] = useState(initial);
+  return (
+    <InterventionRegion
+      interventions={items}
+      messages={[]}
+      target={{ botId: "bot-1" }}
+      onSettled={(next) => {
+        onSubmitted?.(next);
+        setItems((current) => current.map((item) => (item.id === next.id ? next : item)));
+      }}
+    />
+  );
+}
+
 describe("InterventionRegion", () => {
   beforeEach(() => {
     resolveIntervention.mockReset();
@@ -316,6 +355,100 @@ describe("InterventionRegion", () => {
       expect(region?.textContent).toContain("Paste the API key for the import");
       expect(region?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Saved");
       expect(host.querySelector('input[type="password"]')).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("answers a pending card whose execution lives in another Thread", async () => {
+    // RT-04 / AC20: the Run executes in a Thread the user cannot write to, so its
+    // ask message is never on this page. The card has to be rebuilt from the
+    // projection, stay operable, and submit against the Thread the user is in.
+    resolveIntervention.mockResolvedValue({
+      outcome: "accepted",
+      intervention: view({
+        id: "pair-approval",
+        status: "answered",
+        revision: 2,
+        approval: { effectId: "effect-1", decision: "approved", effectStatus: "approved" },
+      }),
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const settled: InterventionView[] = [];
+    try {
+      await act(async () => {
+        root.render(
+          <ProjectionHarness
+            initial={[pairApproval()]}
+            onSubmitted={(next) => settled.push(next)}
+          />,
+        );
+      });
+      const region = host.querySelector('[role="region"]');
+      expect(region?.textContent).toContain("Send the summary from the pair?");
+      expect(region?.textContent).toContain("One email to the requester.");
+      const allow = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Allow once",
+      );
+      expect(allow).toBeDefined();
+      await act(async () => {
+        allow?.click();
+      });
+      expect(resolveIntervention).toHaveBeenCalledTimes(1);
+      expect(resolveIntervention).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // The submission is addressed at the Thread the user is looking at,
+          // never at the Thread the Run executes in.
+          botId: "bot-1",
+          interventionId: "pair-approval",
+          answer: "allow",
+        }),
+      );
+      const submissionId = resolveIntervention.mock.calls[0]?.[0]?.clientSubmissionId as string;
+      expect(submissionId.length).toBeGreaterThanOrEqual(8);
+      expect(submissionId).not.toContain("allow");
+      expect(settled).toHaveLength(1);
+      expect(host.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Approved",
+      );
+      expect(host.querySelector('[data-testid="intervention-effect"]')?.textContent).toBe(
+        "Effect approved",
+      );
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("reports a decision made elsewhere instead of relying on a disabled button", async () => {
+    resolveIntervention.mockResolvedValue({
+      outcome: "already_handled",
+      intervention: view({
+        id: "pair-approval",
+        status: "answered",
+        revision: 2,
+        approval: { effectId: "effect-1", decision: "denied", effectStatus: "denied" },
+      }),
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => {
+        root.render(<ProjectionHarness initial={[pairApproval()]} />);
+      });
+      const deny = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Deny",
+      );
+      await act(async () => {
+        deny?.click();
+      });
+      const authority = host.querySelector<HTMLElement>('[data-testid="intervention-authority"]');
+      expect(authority?.textContent).toBe("Denied");
+      expect(document.activeElement).toBe(authority);
     } finally {
       await act(async () => root.unmount());
       host.remove();

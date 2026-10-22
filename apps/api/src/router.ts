@@ -142,10 +142,11 @@ import {
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
   promptSegment,
+  RoundtableFeatureDisabledError,
   turnExecutionForSource,
   userTurnCollaboration,
 } from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import type { PrismaClient, ResolveInterventionOutcome, ThreadEvents } from "@rakazo/db";
 import {
   AvatarChangeDenied,
   acknowledgeAvatarFailure,
@@ -2613,16 +2614,34 @@ export function createRouter(deps: RouterDeps) {
       resolveIntervention: authed.threads.resolveIntervention.handler(
         async ({ context, input }) => {
           const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-          const result = await deps.events.resolveIntervention({
-            spaceId: context.actor.spaceId,
-            threadId: target.threadId,
-            interventionId: input.interventionId,
-            clientSubmissionId: input.clientSubmissionId,
-            answeredByUserId: context.actor.userId,
-            answer: input.answer,
-            username: input.username,
-            feedback: input.feedback,
-          });
+          let result: ResolveInterventionOutcome;
+          try {
+            result = await deps.events.resolveIntervention({
+              spaceId: context.actor.spaceId,
+              threadId: target.threadId,
+              interventionId: input.interventionId,
+              clientSubmissionId: input.clientSubmissionId,
+              answeredByUserId: context.actor.userId,
+              answer: input.answer,
+              username: input.username,
+              feedback: input.feedback,
+            });
+          } catch (error) {
+            // Answering away from the executing Thread is a gated capability.
+            // Report the disabled feature itself rather than a stale-card
+            // conflict, so a client can tell "turned off" from "too late".
+            if (error instanceof RoundtableFeatureDisabledError) {
+              throw new ORPCError("FORBIDDEN", {
+                message: error.message,
+                data: {
+                  code: error.code,
+                  feature: error.feature,
+                  retryable: error.retryable,
+                },
+              });
+            }
+            throw error;
+          }
           if (result.outcome === "rejected") {
             if (result.reason === "forbidden") {
               throw new ORPCError("FORBIDDEN", {

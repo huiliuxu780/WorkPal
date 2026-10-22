@@ -37,25 +37,38 @@ export function deriveExecutionStatus(
     pendingInterventionKinds?: readonly ("approval" | "input" | "plan_review")[];
   } = {},
 ): ExecutionStatusView {
-  if (!run) {
-    return {
-      status: "unknown",
-      label: i18n._("Status unknown"),
-      detail: null,
-      needsAttention: false,
-    };
-  }
-  const own = activity.filter((item) => item.runId === run.id);
-  const current = [...own].reverse().find((item) => item.status === "running");
-  const waiting = [...own].reverse().find((item) => item.status === "waiting");
-  const summary = current?.title?.trim() || null;
-  const background = options.confirmedRootBackground === true;
   const view = (
     status: ExecutionDisplayStatus,
     label: string,
     detail: string | null = null,
     needsAttention = false,
   ): ExecutionStatusView => ({ status, label, detail, needsAttention });
+  const kinds = options.pendingInterventionKinds;
+  const waitingView = (detail: string | null): ExecutionStatusView | null => {
+    if (!kinds) return null;
+    // UX-02: a pending plan review is a decision wait with its own label;
+    // it renders on the approval rail (needsAttention, diamond, Handle now).
+    if (kinds.includes("plan_review"))
+      return view("approval", i18n._("Waiting for plan review"), detail, true);
+    if (kinds.includes("approval"))
+      return view("approval", i18n._("Waiting for approval"), detail, true);
+    if (kinds.includes("input"))
+      return view("need_input", i18n._("Waiting for your reply"), detail, true);
+    return null;
+  };
+  if (!run) {
+    // A pending Intervention is proof of a decision wait even without the Run
+    // row, which is exactly the case when the execution lives in another Thread
+    // and only its card is projected here (AC20). The kinds come from the server
+    // projection, so the label matches the one the executing Thread would show
+    // instead of degrading an operable approval to "Status unknown".
+    return waitingView(null) ?? view("unknown", i18n._("Status unknown"));
+  }
+  const own = activity.filter((item) => item.runId === run.id);
+  const current = [...own].reverse().find((item) => item.status === "running");
+  const waiting = [...own].reverse().find((item) => item.status === "waiting");
+  const summary = current?.title?.trim() || null;
+  const background = options.confirmedRootBackground === true;
 
   // Run terminal state wins over a stale waiting or planning activity row.
   if (run.status === "completed")
@@ -73,32 +86,11 @@ export function deriveExecutionStatus(
   if (run.status === "cancelled")
     return view("cancelled", i18n._("Stopped"), background ? i18n._("Background task") : null);
   if (run.status === "waiting_input") {
-    const kinds = options.pendingInterventionKinds;
     if (kinds) {
-      // UX-02: a pending plan review is a decision wait with its own label;
-      // it renders on the approval rail (needsAttention, diamond, Handle now).
-      if (kinds.includes("plan_review"))
-        return view(
-          "approval",
-          i18n._("Waiting for plan review"),
-          waiting?.title?.trim() || null,
-          true,
-        );
-      if (kinds.includes("approval"))
-        return view(
-          "approval",
-          i18n._("Waiting for approval"),
-          waiting?.title?.trim() || null,
-          true,
-        );
-      if (kinds.includes("input"))
-        return view(
-          "need_input",
-          i18n._("Waiting for your reply"),
-          waiting?.title?.trim() || null,
-          true,
-        );
-      return view("unknown", i18n._("Status unknown"), null, true);
+      return (
+        waitingView(waiting?.title?.trim() || null) ??
+        view("unknown", i18n._("Status unknown"), null, true)
+      );
     }
     if (run.waitKind === "approval")
       return view("approval", i18n._("Waiting for approval"), waiting?.title?.trim() || null, true);

@@ -7,6 +7,7 @@ import {
 } from "@rakazo/adapters";
 import type { Actor, Bot } from "@rakazo/contracts";
 import { REPLY_QUOTE_MAX_LENGTH } from "@rakazo/contracts";
+import { RoundtableFeatureDisabledError } from "@rakazo/core";
 import { openScreenCapability } from "@rakazo/core/node/screen-capability";
 import type { PrismaClient } from "@rakazo/db";
 import { createLogger, createTestSink, installLogger } from "@rakazo/logging";
@@ -369,6 +370,124 @@ describe("thread answer delivery", () => {
     expect(enqueue).toHaveBeenCalledOnce();
     expect(sink.events.some((event) => event.message === "thread answer enqueue")).toBe(true);
     installLogger(createLogger({ service: "rakazo-api", level: "off", sinks: [] }));
+  });
+});
+
+describe("origin-aware intervention submission", () => {
+  function fixture(resolveIntervention: ReturnType<typeof vi.fn>) {
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      bot: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "bot-1",
+          spaceId: "workspace-1",
+          thread: { id: "thread-origin" },
+          computer: null,
+        }),
+      },
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { resolveIntervention },
+      jobs: { enqueue },
+      env: {
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@rakazo.test",
+      isDeploymentOwner: true,
+    } satisfies Actor;
+    return { handler: new RPCHandler(createRouter(deps)), actor, enqueue };
+  }
+
+  async function submit(handler: RPCHandler<never>, actor: Actor) {
+    return handler.handle(
+      new Request("http://127.0.0.1/rpc/threads/resolveIntervention", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          json: {
+            botId: "bot-1",
+            interventionId: "intervention-pair",
+            clientSubmissionId: "submission-0001",
+            answer: "allow",
+          },
+        }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+  }
+
+  it("addresses the submission at the visible Thread and resumes the bound Run", async () => {
+    const resolveIntervention = vi.fn().mockResolvedValue({
+      outcome: "accepted",
+      applied: true,
+      resume: true,
+      // The Run executes in a Thread the caller never addressed; only its id is
+      // authoritative for the wake.
+      intervention: {
+        id: "intervention-pair",
+        revision: 2,
+        kind: "approval",
+        status: "answered",
+        spaceId: "workspace-1",
+        threadId: "thread-origin",
+        runId: "run-in-pair-thread",
+        attemptId: "attempt-1",
+        botId: "bot-2",
+        messageId: "message-in-pair-thread",
+        createdAt: "2026-10-12T00:00:00.000Z",
+        requestingActor: { botId: "bot-2" },
+        approval: { effectId: "effect-1", decision: "approved", effectStatus: "approved" },
+      },
+    });
+    const { handler, actor, enqueue } = fixture(resolveIntervention);
+
+    const { response } = await submit(handler, actor);
+
+    expect(response.status).toBe(200);
+    expect(resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spaceId: "workspace-1",
+        threadId: "thread-origin",
+        interventionId: "intervention-pair",
+        answeredByUserId: "user-1",
+      }),
+    );
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "run.continue",
+        payload: { runId: "run-in-pair-thread" },
+      }),
+    );
+  });
+
+  it("reports a disabled roundtable capability instead of a stale-card conflict", async () => {
+    const resolveIntervention = vi
+      .fn()
+      .mockRejectedValue(new RoundtableFeatureDisabledError("private_pair"));
+    const { handler, actor, enqueue } = fixture(resolveIntervention);
+
+    const { response } = await submit(handler, actor);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      json: {
+        code: "FORBIDDEN",
+        message: "Roundtable feature is disabled: private_pair",
+        data: {
+          code: "ROUNDTABLE_FEATURE_DISABLED",
+          feature: "private_pair",
+          retryable: false,
+        },
+      },
+    });
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });
 

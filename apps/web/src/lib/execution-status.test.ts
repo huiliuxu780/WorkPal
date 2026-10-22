@@ -96,4 +96,33 @@ describe("execution display status", () => {
       "Waiting for approval",
     );
   });
+
+  it("keeps an operable wait when only the Intervention is projected here (RT-04)", () => {
+    // The Run executes in another Thread, so this Thread holds no Run row for it —
+    // only the projected card. Degrading to "Status unknown" would hide an
+    // approval the user is expected to decide, and drop it off the attention rail.
+    expect(
+      deriveExecutionStatus(null, [], { pendingInterventionKinds: ["approval"] }),
+    ).toMatchObject({
+      status: "approval",
+      label: "Waiting for approval",
+      detail: null,
+      needsAttention: true,
+    });
+    expect(deriveExecutionStatus(null, [], { pendingInterventionKinds: ["input"] })).toMatchObject({
+      status: "need_input",
+      label: "Waiting for your reply",
+    });
+    expect(
+      deriveExecutionStatus(null, [], { pendingInterventionKinds: ["plan_review"] }).label,
+    ).toBe("Waiting for plan review");
+    // No projection still means nothing can be verified.
+    expect(deriveExecutionStatus(null, activity("planning")).status).toBe("unknown");
+    expect(deriveExecutionStatus(null, [], { pendingInterventionKinds: [] }).status).toBe(
+      "unknown",
+    );
+    expect(deriveExecutionStatus(null, [], { pendingInterventionKinds: [] }).needsAttention).toBe(
+      false,
+    );
+  });
 });
