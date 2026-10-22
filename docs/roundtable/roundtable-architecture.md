@@ -588,16 +588,34 @@ terminal callback 先执行 Attempt-level compare-and-set。只有仍是当前 A
 ### 4.9 group queries
 
 ```ts
+type GroupQuery = { actor: UserActor; groupId: GroupId };
+type GroupPageQuery = { actor: UserActor; groupId: GroupId; cursor?: string; limit: number };
+
+type GroupMembersSummary = {
+  groupId: GroupId;
+  threadId: ThreadId;
+  currentUser: GroupUserMember;
+  agents: readonly GroupAgentMember[];
+  agentCount: number;
+  memberCount: number;
+};
+
 interface GroupQueries {
   listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
-  getWork(input: { actor: UserActor; groupId: GroupId; taskId: TaskId }): Promise<GroupWorkDetail>;
+  getWork(input: GroupWorkQuery): Promise<GroupWorkDetail>;
   listArtifacts(input: GroupPageQuery): Promise<Page<ArtifactSummary>>;
-  listRoutines(input: GroupPageQuery): Promise<Page<GroupRoutineSummary>>;
-  listMembers(input: GroupPageQuery): Promise<Page<GroupMemberSummary>>;
+  listRoutines(input: GroupQuery): Promise<readonly GroupRoutineSummary[]>;
+  listMembers(input: GroupQuery): Promise<GroupMembersSummary>;
 }
 ```
 
-`listRoutines` 查询目标 `threadId`，但 Routine 仍由 `botId` 指定的 Bot 拥有。`listArtifacts` 必须把 group scope 编入分页游标，不能先拉全空间数据再在 Web 过滤。
+群最多只有 6 个 Agent，因此成员和例行任务不做人为分页。Work 和 Artifact 继续分页：`listArtifacts` 必须把 group scope 和冻结的 `asOf` 快照编入游标，不能先拉全空间数据再在 Web 过滤；`ArtifactSummary` 携带 `versionCount`，供右栏的版本操作使用。
+
+`GroupAgentIdentity` 是群胶囊、成员行和例行任务执行者标签共用的 Agent 头像身份：`kind: "agent"`、`botId`、`name`、`color`、`avatarMode`、`avatarCharacter`、`avatarBodyColor`。`GroupAgentMember` 在此基础上增加 `status`。`GroupUserMember` 保持独立：`kind: "user"`、`userId`、`name`、`image`、`avatarStyle`。`agentCount` 不包含当前用户，`memberCount` 恒等于 `agentCount + 1`。
+
+`listRoutines` 查询绑定到目标 `threadId` 的 Routine，但 Routine 仍由具体 `botId` 的 Bot 拥有。每个 `GroupRoutineSummary` 都必须携带 `botId`、`threadId` 和具体的 `executorBot` 身份；不存在没有执行 Agent 的群级 Routine。
+
+`packages/contracts` 负责 RPC/Zod wire schema，`packages/core` 负责带 branded ID 的领域类型和 `GroupQueries` port。两层可以在边界映射，但不得出现语义不同的第二套定义。
 
 ## 5. Ownership
 

@@ -61,6 +61,26 @@ function asBoolean(value: unknown, contract: string, path: string): boolean {
   return value;
 }
 
+function asOneOf<Value extends string>(
+  value: unknown,
+  allowed: readonly Value[],
+  contract: string,
+  path: string,
+): Value {
+  if (typeof value !== "string" || !(allowed as readonly string[]).includes(value)) {
+    invalid(contract, path, `expected one of ${allowed.join(", ")}`);
+  }
+  return value as Value;
+}
+
+function asNullableString(value: unknown, contract: string, path: string): string | null {
+  return value === null ? null : asString(value, contract, path);
+}
+
+function asNullableNonEmptyString(value: unknown, contract: string, path: string): string | null {
+  return value === null ? null : asNonEmptyString(value, contract, path);
+}
+
 function assertAllowedKeys(
   raw: Record<string, unknown>,
   contract: string,
@@ -224,6 +244,11 @@ export type Page<T> = Readonly<{
   nextCursor: string | null;
 }>;
 
+export type GroupQuery = Readonly<{
+  actor: UserActor;
+  groupId: GroupId;
+}>;
+
 export type GroupPageQuery = Readonly<{
   actor: UserActor;
   groupId: GroupId;
@@ -260,25 +285,59 @@ export type GroupWorkDetail = Readonly<{
   instruction: TaskInstructionEnvelope;
 }>;
 
-export type GroupMemberSummary =
-  | Readonly<{
-      kind: "user";
-      userId: UserId;
-      name: string;
-    }>
-  | Readonly<{
-      kind: "bot";
-      botId: BotId;
-      name: string;
-      status: string;
-    }>;
+const GROUP_AGENT_AVATAR_MODES = ["legacy", "character", "upload"] as const;
+const GROUP_AGENT_AVATAR_CHARACTERS = ["dot", "treble", "wave", "bounce"] as const;
+const GROUP_AGENT_AVATAR_BODY_COLORS = [
+  "orange",
+  "blue",
+  "purple",
+  "brown",
+  "pink",
+  "ink",
+] as const;
+const GROUP_USER_AVATAR_STYLES = ["robot", "organic", "bloub"] as const;
 
-/** Read projection for the group panel; groups themselves stay in existing tables. */
-export type GroupDetailSummary = Readonly<{
+export type GroupAgentAvatarMode = (typeof GROUP_AGENT_AVATAR_MODES)[number];
+export type GroupAgentAvatarCharacter = (typeof GROUP_AGENT_AVATAR_CHARACTERS)[number];
+export type GroupAgentAvatarBodyColor = (typeof GROUP_AGENT_AVATAR_BODY_COLORS)[number];
+export type GroupUserAvatarStyle = (typeof GROUP_USER_AVATAR_STYLES)[number];
+
+/** Identity shared by group headers, member rows and routine executor labels. */
+export type GroupAgentIdentity = Readonly<{
+  kind: "agent";
+  botId: BotId;
+  name: string;
+  color: string;
+  avatarMode: GroupAgentAvatarMode;
+  avatarCharacter: GroupAgentAvatarCharacter | null;
+  avatarBodyColor: GroupAgentAvatarBodyColor;
+}>;
+
+export type GroupAgentMember = GroupAgentIdentity &
+  Readonly<{
+    status: string;
+  }>;
+
+export type GroupUserMember = Readonly<{
+  kind: "user";
+  userId: UserId;
+  name: string;
+  image: string | null;
+  avatarStyle: GroupUserAvatarStyle;
+}>;
+
+/**
+ * Groups are capped at six Agents, so members are returned as one unpaged
+ * projection. `agentCount` never includes the current user; `memberCount` is
+ * always `agentCount + 1`.
+ */
+export type GroupMembersSummary = Readonly<{
   groupId: GroupId;
   threadId: ThreadId;
-  name: string;
-  members: readonly GroupMemberSummary[];
+  currentUser: GroupUserMember;
+  agents: readonly GroupAgentMember[];
+  agentCount: number;
+  memberCount: number;
 }>;
 
 export type ArtifactSummary = Readonly<{
@@ -288,26 +347,36 @@ export type ArtifactSummary = Readonly<{
   mimeType: string;
   size: number;
   version: number;
+  versionCount: number;
   createdAt: string;
 }>;
 
+/** Routines stay Bot-owned; the group only scopes which executors are visible. */
 export type GroupRoutineSummary = Readonly<{
   id: string;
   botId: BotId;
   threadId: ThreadId;
   name: string;
+  prompt: string;
   crons: readonly string[];
   timezone: string;
   active: boolean;
+  notify: boolean;
+  webhookEnabled: boolean;
+  githubEnabled: boolean;
+  messageProvider: string | null;
+  lastRunAt: string | null;
   nextRunAt: string | null;
+  createdAt: string;
+  executorBot: GroupAgentIdentity;
 }>;
 
 export interface GroupQueries {
   listWork(input: GroupPageQuery): Promise<Page<GroupWorkItem>>;
   getWork(input: GroupWorkQuery): Promise<GroupWorkDetail>;
   listArtifacts(input: GroupPageQuery): Promise<Page<ArtifactSummary>>;
-  listRoutines(input: GroupPageQuery): Promise<Page<GroupRoutineSummary>>;
-  listMembers(input: GroupPageQuery): Promise<Page<GroupMemberSummary>>;
+  listRoutines(input: GroupQuery): Promise<readonly GroupRoutineSummary[]>;
+  listMembers(input: GroupQuery): Promise<GroupMembersSummary>;
 }
 
 export function parseCollaborationDestination(value: unknown): CollaborationDestination {
@@ -540,6 +609,16 @@ export function parseGroupPageQuery(value: unknown): GroupPageQuery {
   return query;
 }
 
+export function parseGroupQuery(value: unknown): GroupQuery {
+  const contract = "GroupQuery";
+  const raw = asRecord(value, contract, "query");
+  assertAllowedKeys(raw, contract, "", ["actor", "groupId"]);
+  return {
+    actor: parseUserActor(raw.actor),
+    groupId: parseBrandedId(raw.groupId, contract, "groupId"),
+  };
+}
+
 export function parseGroupWorkQuery(value: unknown): GroupWorkQuery {
   const contract = "GroupWorkQuery";
   const raw = asRecord(value, contract, "query");
@@ -615,42 +694,114 @@ export function parseGroupWorkDetail(value: unknown): GroupWorkDetail {
   };
 }
 
-export function parseGroupMemberSummary(value: unknown): GroupMemberSummary {
-  const contract = "GroupMemberSummary";
-  const raw = asRecord(value, contract, "member");
-  const kind = asNonEmptyString(raw.kind, contract, "kind");
-  switch (kind) {
-    case "user": {
-      assertAllowedKeys(raw, contract, "", ["kind", "userId", "name"]);
-      return {
-        kind,
-        userId: parseBrandedId(raw.userId, contract, "userId"),
-        name: asString(raw.name, contract, "name"),
-      };
-    }
-    case "bot": {
-      assertAllowedKeys(raw, contract, "", ["kind", "botId", "name", "status"]);
-      return {
-        kind,
-        botId: parseBrandedId(raw.botId, contract, "botId"),
-        name: asString(raw.name, contract, "name"),
-        status: asString(raw.status, contract, "status"),
-      };
-    }
-    default:
-      return invalid(contract, "kind", `unknown member kind ${JSON.stringify(kind)}`);
+const GROUP_AGENT_IDENTITY_KEYS = [
+  "kind",
+  "botId",
+  "name",
+  "color",
+  "avatarMode",
+  "avatarCharacter",
+  "avatarBodyColor",
+] as const;
+
+function parseGroupAgentIdentityValue(
+  raw: Record<string, unknown>,
+  contract: string,
+  allowed: readonly string[],
+): GroupAgentIdentity {
+  assertAllowedKeys(raw, contract, "", allowed);
+  if (raw.kind !== "agent") invalid(contract, "kind", 'expected "agent"');
+  const avatarMode = asOneOf(raw.avatarMode, GROUP_AGENT_AVATAR_MODES, contract, "avatarMode");
+  const avatarCharacter =
+    raw.avatarCharacter === null
+      ? null
+      : asOneOf(raw.avatarCharacter, GROUP_AGENT_AVATAR_CHARACTERS, contract, "avatarCharacter");
+  if (avatarMode === "character" && avatarCharacter === null) {
+    invalid(contract, "avatarCharacter", "character avatars require an avatarCharacter");
   }
+  if (avatarMode !== "character" && avatarCharacter !== null) {
+    invalid(contract, "avatarCharacter", "only character avatars carry an avatarCharacter");
+  }
+  return {
+    kind: "agent",
+    botId: parseBrandedId(raw.botId, contract, "botId"),
+    name: asString(raw.name, contract, "name"),
+    color: asString(raw.color, contract, "color"),
+    avatarMode,
+    avatarCharacter,
+    avatarBodyColor: asOneOf(
+      raw.avatarBodyColor,
+      GROUP_AGENT_AVATAR_BODY_COLORS,
+      contract,
+      "avatarBodyColor",
+    ),
+  };
 }
 
-export function parseGroupDetailSummary(value: unknown): GroupDetailSummary {
-  const contract = "GroupDetailSummary";
-  const raw = asRecord(value, contract, "detail");
-  if (!Array.isArray(raw.members)) invalid(contract, "members", "expected an array");
+export function parseGroupAgentIdentity(value: unknown): GroupAgentIdentity {
+  const contract = "GroupAgentIdentity";
+  const raw = asRecord(value, contract, "agent");
+  return parseGroupAgentIdentityValue(raw, contract, GROUP_AGENT_IDENTITY_KEYS);
+}
+
+export function parseGroupAgentMember(value: unknown): GroupAgentMember {
+  const contract = "GroupAgentMember";
+  const raw = asRecord(value, contract, "member");
+  const identity = parseGroupAgentIdentityValue(raw, contract, [
+    ...GROUP_AGENT_IDENTITY_KEYS,
+    "status",
+  ]);
+  return { ...identity, status: asString(raw.status, contract, "status") };
+}
+
+export function parseGroupUserMember(value: unknown): GroupUserMember {
+  const contract = "GroupUserMember";
+  const raw = asRecord(value, contract, "member");
+  assertAllowedKeys(raw, contract, "", ["kind", "userId", "name", "image", "avatarStyle"]);
+  if (raw.kind !== "user") invalid(contract, "kind", 'expected "user"');
+  return {
+    kind: "user",
+    userId: parseBrandedId(raw.userId, contract, "userId"),
+    name: asString(raw.name, contract, "name"),
+    image: asNullableString(raw.image, contract, "image"),
+    avatarStyle: asOneOf(raw.avatarStyle, GROUP_USER_AVATAR_STYLES, contract, "avatarStyle"),
+  };
+}
+
+export function parseGroupMembersSummary(value: unknown): GroupMembersSummary {
+  const contract = "GroupMembersSummary";
+  const raw = asRecord(value, contract, "members");
+  assertAllowedKeys(raw, contract, "", [
+    "groupId",
+    "threadId",
+    "currentUser",
+    "agents",
+    "agentCount",
+    "memberCount",
+  ]);
+  if (!Array.isArray(raw.agents)) invalid(contract, "agents", "expected an array");
+  const currentUser = parseGroupUserMember(raw.currentUser);
+  const agents = raw.agents.map((member) => parseGroupAgentMember(member));
+  const agentCount = asInteger(raw.agentCount, contract, "agentCount", 0);
+  const memberCount = asInteger(raw.memberCount, contract, "memberCount", 1);
+  if (agentCount !== agents.length) {
+    invalid(contract, "agentCount", "must equal the number of agents");
+  }
+  if (memberCount !== agentCount + 1) {
+    invalid(contract, "memberCount", "must equal agentCount + 1");
+  }
+  const seen = new Set<string>();
+  agents.forEach((agent, index) => {
+    if (seen.has(agent.botId)) invalid(contract, `agents[${index}].botId`, "duplicate agent");
+    seen.add(agent.botId);
+  });
   return {
     groupId: parseBrandedId(raw.groupId, contract, "groupId"),
     threadId: parseBrandedId(raw.threadId, contract, "threadId"),
-    name: asString(raw.name, contract, "name"),
-    members: raw.members.map((member) => parseGroupMemberSummary(member)),
+    currentUser,
+    agents,
+    agentCount,
+    memberCount,
   };
 }
 
@@ -669,6 +820,7 @@ export function parseArtifactSummary(value: unknown): ArtifactSummary {
     mimeType: asNonEmptyString(raw.mimeType, contract, "mimeType"),
     size: asInteger(raw.size, contract, "size", 0),
     version: asInteger(raw.version, contract, "version", 1),
+    versionCount: asInteger(raw.versionCount, contract, "versionCount", 1),
     createdAt: asNonEmptyString(raw.createdAt, contract, "createdAt"),
   };
 }
@@ -677,19 +829,30 @@ export function parseGroupRoutineSummary(value: unknown): GroupRoutineSummary {
   const contract = "GroupRoutineSummary";
   const raw = asRecord(value, contract, "routine");
   if (!Array.isArray(raw.crons)) invalid(contract, "crons", "expected an array");
-  if (raw.nextRunAt !== null && raw.nextRunAt !== undefined) {
-    if (typeof raw.nextRunAt !== "string") {
-      invalid(contract, "nextRunAt", "expected a string or null");
-    }
+  if (raw.executorBot === undefined) {
+    invalid(contract, "executorBot", "expected an executor agent");
+  }
+  const botId = parseBrandedId<"BotId">(raw.botId, contract, "botId");
+  const executorBot = parseGroupAgentIdentity(raw.executorBot);
+  if (executorBot.botId !== botId) {
+    invalid(contract, "executorBot.botId", "executor must be the routine's bot");
   }
   return {
     id: asNonEmptyString(raw.id, contract, "id"),
-    botId: parseBrandedId(raw.botId, contract, "botId"),
+    botId,
     threadId: parseBrandedId(raw.threadId, contract, "threadId"),
     name: asString(raw.name, contract, "name"),
+    prompt: asString(raw.prompt, contract, "prompt"),
     crons: raw.crons.map((cron, index) => asString(cron, contract, `crons[${index}]`)),
     timezone: asNonEmptyString(raw.timezone, contract, "timezone"),
     active: asBoolean(raw.active, contract, "active"),
-    nextRunAt: typeof raw.nextRunAt === "string" ? raw.nextRunAt : null,
+    notify: asBoolean(raw.notify, contract, "notify"),
+    webhookEnabled: asBoolean(raw.webhookEnabled, contract, "webhookEnabled"),
+    githubEnabled: asBoolean(raw.githubEnabled, contract, "githubEnabled"),
+    messageProvider: asNullableNonEmptyString(raw.messageProvider, contract, "messageProvider"),
+    lastRunAt: asNullableNonEmptyString(raw.lastRunAt, contract, "lastRunAt"),
+    nextRunAt: asNullableNonEmptyString(raw.nextRunAt, contract, "nextRunAt"),
+    createdAt: asNonEmptyString(raw.createdAt, contract, "createdAt"),
+    executorBot,
   };
 }

@@ -13,11 +13,14 @@ import {
   parseCollaborationReceipt,
   parseDeliveryBatchKey,
   parseDestinationLocator,
-  parseGroupDetailSummary,
+  parseGroupAgentIdentity,
+  parseGroupAgentMember,
   parseGroupId,
-  parseGroupMemberSummary,
+  parseGroupMembersSummary,
   parseGroupPageQuery,
+  parseGroupQuery,
   parseGroupRoutineSummary,
+  parseGroupUserMember,
   parseGroupWorkDetail,
   parseGroupWorkItem,
   parseGroupWorkQuery,
@@ -138,6 +141,50 @@ const envelope = {
   revision: 2,
   original: { content: "Compare LCP across releases.", messageId: ids.message },
   amendments: [{ messageId: ids.message, seq: 4, content: "Split by region." }],
+};
+const actor = { kind: "user" as const, userId: ids.user, spaceId: ids.space };
+const agentIdentity = {
+  kind: "agent" as const,
+  botId: ids.bot,
+  name: "Little Blue",
+  color: "#3366ff",
+  avatarMode: "character" as const,
+  avatarCharacter: "dot" as const,
+  avatarBodyColor: "blue" as const,
+};
+const agentMember = { ...agentIdentity, status: "idle" };
+const currentUser = {
+  kind: "user" as const,
+  userId: ids.user,
+  name: "Joy",
+  image: null,
+  avatarStyle: "robot" as const,
+};
+const membersSummary = {
+  groupId: ids.group,
+  threadId: ids.thread,
+  currentUser,
+  agents: [agentMember],
+  agentCount: 1,
+  memberCount: 2,
+};
+const routine = {
+  id: "routine-1",
+  botId: ids.bot,
+  threadId: ids.thread,
+  name: "Morning brief",
+  prompt: "Summarize overnight incident reports.",
+  crons: ["0 9 * * *"],
+  timezone: "Asia/Shanghai",
+  active: true,
+  notify: true,
+  webhookEnabled: false,
+  githubEnabled: false,
+  messageProvider: null,
+  lastRunAt: "2026-10-22T01:00:00.000Z",
+  nextRunAt: "2026-10-23T01:00:00.000Z",
+  createdAt: "2026-10-01T00:00:00.000Z",
+  executorBot: agentIdentity,
 };
 
 describe("roundtable branded ids", () => {
@@ -586,6 +633,18 @@ describe("group read contracts", () => {
     );
   });
 
+  it("parses an unpaged group query and rejects page fields", () => {
+    expect(parseGroupQuery({ actor, groupId: ids.group })).toEqual({
+      actor,
+      groupId: ids.group,
+    });
+    expectContractError(
+      () => parseGroupQuery({ actor, groupId: ids.group, limit: 20 }),
+      "GroupQuery",
+      "",
+    );
+  });
+
   it("rejects a non-user actor", () => {
     expectContractError(
       () =>
@@ -673,37 +732,111 @@ describe("group read contracts", () => {
     expectContractError(() => parseGroupWorkItem(withoutChildren), "GroupWorkItem", "children");
   });
 
-  it("keeps the current user out of the agent member variant", () => {
-    const members = [
-      parseGroupMemberSummary({ kind: "user", userId: ids.user, name: "Joy" }),
-      parseGroupMemberSummary({
-        kind: "bot",
-        botId: ids.bot,
-        name: "Little Blue",
-        status: "active",
-      }),
-    ];
-    expect(
-      parseGroupDetailSummary({
-        groupId: ids.group,
-        threadId: ids.thread,
-        name: "Design review",
-        members,
-      }),
-    ).toEqual({
-      groupId: ids.group,
-      threadId: ids.thread,
-      name: "Design review",
-      members,
-    });
+  it("keeps the current user and agents as separate identities", () => {
+    expect(parseGroupAgentIdentity(agentIdentity)).toEqual(agentIdentity);
+    expect(parseGroupAgentMember(agentMember)).toEqual(agentMember);
+    expect(parseGroupUserMember(currentUser)).toEqual(currentUser);
+    expect(parseGroupMembersSummary(membersSummary)).toEqual(membersSummary);
+  });
+
+  it("counts only agents in agentCount and derives memberCount", () => {
+    const parsed = parseGroupMembersSummary(membersSummary);
+    expect(parsed.currentUser.userId).toBe(ids.user);
+    expect(parsed.agents.map((agent) => agent.botId)).toEqual([ids.bot]);
+    expect(parsed.agentCount).toBe(1);
+    expect(parsed.memberCount).toBe(parsed.agentCount + 1);
+  });
+
+  it("rejects bot member kinds, mismatched counts and duplicate agents", () => {
     expectContractError(
-      () => parseGroupMemberSummary({ kind: "group", groupId: ids.group }),
-      "GroupMemberSummary",
+      () => parseGroupAgentMember({ ...agentMember, kind: "bot" }),
+      "GroupAgentMember",
       "kind",
+    );
+    expectContractError(
+      () => parseGroupMembersSummary({ ...membersSummary, agentCount: 2 }),
+      "GroupMembersSummary",
+      "agentCount",
+    );
+    expectContractError(
+      () => parseGroupMembersSummary({ ...membersSummary, memberCount: 1 }),
+      "GroupMembersSummary",
+      "memberCount",
+    );
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          ...membersSummary,
+          agents: [agentMember, { ...agentMember, name: "Duplicate" }],
+          agentCount: 2,
+          memberCount: 3,
+        }),
+      "GroupMembersSummary",
+      "agents[1].botId",
+    );
+    expectContractError(
+      () => parseGroupMembersSummary({ ...membersSummary, agents: "none" }),
+      "GroupMembersSummary",
+      "agents",
     );
   });
 
-  it("parses artifact and routine summaries", () => {
+  it("rejects avatar identities that do not match their avatar mode", () => {
+    expectContractError(
+      () => parseGroupAgentMember({ ...agentMember, avatarCharacter: null }),
+      "GroupAgentMember",
+      "avatarCharacter",
+    );
+    expectContractError(
+      () => parseGroupAgentMember({ ...agentMember, avatarMode: "legacy" }),
+      "GroupAgentMember",
+      "avatarCharacter",
+    );
+    expectContractError(
+      () => parseGroupUserMember({ ...currentUser, image: 42 }),
+      "GroupUserMember",
+      "image",
+    );
+  });
+
+  it("requires a concrete executor on every group routine", () => {
+    expect(parseGroupRoutineSummary(routine)).toEqual(routine);
+    expect(
+      parseGroupRoutineSummary({
+        ...routine,
+        lastRunAt: null,
+        nextRunAt: null,
+        messageProvider: "slack",
+      }),
+    ).toEqual({
+      ...routine,
+      lastRunAt: null,
+      nextRunAt: null,
+      messageProvider: "slack",
+    });
+    const { executorBot: _executorBot, ...withoutExecutor } = routine;
+    expectContractError(
+      () => parseGroupRoutineSummary(withoutExecutor),
+      "GroupRoutineSummary",
+      "executorBot",
+    );
+    expectContractError(
+      () =>
+        parseGroupRoutineSummary({
+          ...routine,
+          executorBot: { ...agentIdentity, botId: ids.peerBot },
+        }),
+      "GroupRoutineSummary",
+      "executorBot.botId",
+    );
+    expectContractError(
+      () => parseGroupRoutineSummary({ ...routine, active: "yes" }),
+      "GroupRoutineSummary",
+      "active",
+    );
+  });
+
+  it("keeps artifact pagination fields and version count", () => {
     const artifact = {
       id: "artifact-1",
       name: "report.csv",
@@ -711,34 +844,27 @@ describe("group read contracts", () => {
       mimeType: "text/csv",
       size: 42,
       version: 2,
+      versionCount: 3,
       createdAt: "2026-10-22T10:00:00.000Z",
     };
     expect(parseArtifactSummary(artifact)).toEqual(artifact);
+    expect(
+      parseArtifactSummary({
+        ...artifact,
+        botId: ids.bot,
+        groupId: ids.group,
+        runId: ids.run,
+      }),
+    ).toEqual(artifact);
     expectContractError(
       () => parseArtifactSummary({ ...artifact, size: -1 }),
       "ArtifactSummary",
       "size",
     );
-
-    const routine = {
-      id: "routine-1",
-      botId: ids.bot,
-      threadId: ids.thread,
-      name: "Morning brief",
-      crons: ["0 9 * * *"],
-      timezone: "Asia/Shanghai",
-      active: true,
-      nextRunAt: "2026-10-23T01:00:00.000Z",
-    };
-    expect(parseGroupRoutineSummary(routine)).toEqual(routine);
-    expect(parseGroupRoutineSummary({ ...routine, nextRunAt: null })).toEqual({
-      ...routine,
-      nextRunAt: null,
-    });
     expectContractError(
-      () => parseGroupRoutineSummary({ ...routine, active: "yes" }),
-      "GroupRoutineSummary",
-      "active",
+      () => parseArtifactSummary({ ...artifact, versionCount: 0 }),
+      "ArtifactSummary",
+      "versionCount",
     );
   });
 });
