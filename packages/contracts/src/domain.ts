@@ -157,6 +157,44 @@ export type UpdateGroupInput = z.infer<typeof UpdateGroupInput>;
 export const GroupDetailSchema = GroupSchema.extend({
   messages: z.array(ThreadMessageSchema).optional(),
 });
+
+/** Stable agent identity for group headers and routine execution labels. */
+export const GroupAgentIdentitySchema = z.object({
+  kind: z.literal("agent"),
+  botId: Id,
+  name: z.string(),
+  color: z.string(),
+  avatarMode: AvatarModeSchema,
+  avatarCharacter: AvatarCharacterSchema.nullable(),
+  avatarBodyColor: AvatarBodyColorSchema,
+});
+export type GroupAgentIdentity = z.infer<typeof GroupAgentIdentitySchema>;
+
+export const GroupAgentMemberSchema = GroupAgentIdentitySchema.extend({
+  status: z.string(),
+});
+export type GroupAgentMember = z.infer<typeof GroupAgentMemberSchema>;
+
+export const GroupUserMemberSchema = z.object({
+  kind: z.literal("user"),
+  userId: Id,
+  name: z.string(),
+  image: z.string().nullable(),
+  avatarStyle: AvatarStyleSchema,
+});
+export type GroupUserMember = z.infer<typeof GroupUserMemberSchema>;
+
+export const GroupMembersSchema = z.object({
+  groupId: Id,
+  threadId: Id,
+  currentUser: GroupUserMemberSchema,
+  agents: z.array(GroupAgentMemberSchema),
+  /** Agents only: the current user is never counted here. */
+  agentCount: z.number().int().nonnegative(),
+  /** Agents plus the current user, so header counts can include the user. */
+  memberCount: z.number().int().positive(),
+});
+export type GroupMembers = z.infer<typeof GroupMembersSchema>;
 export type GroupDetail = z.infer<typeof GroupDetailSchema>;
 
 export const BotSectionSchema = z.object({
@@ -460,6 +498,13 @@ export const RoutineSchema = z.object({
   createdAt: z.string(),
 });
 export type Routine = z.infer<typeof RoutineSchema>;
+
+/** A routine shown in a group panel still names the Bot that will execute it. */
+export const GroupRoutineSummarySchema = RoutineSchema.extend({
+  threadId: Id,
+  executorBot: GroupAgentIdentitySchema,
+});
+export type GroupRoutineSummary = z.infer<typeof GroupRoutineSummarySchema>;
 
 export const CreateRoutineInput = z
   .object({
@@ -809,6 +854,12 @@ export const ArtifactSchema = z.object({
 });
 
 export type Artifact = z.infer<typeof ArtifactSchema>;
+
+export const ArtifactPageSchema = z.object({
+  items: z.array(ArtifactSchema.extend({ versionCount: z.number().int() })),
+  nextCursor: z.string().nullable(),
+});
+export type ArtifactPage = z.infer<typeof ArtifactPageSchema>;
 
 export const ArtifactVersionSchema = z.object({
   id: Id,

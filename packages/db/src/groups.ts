@@ -170,13 +170,16 @@ const groupTargetInclude = {
           id: true,
           name: true,
           color: true,
+          avatarMode: true,
+          avatarCharacter: true,
+          avatarBodyColor: true,
           runs: activeRunSelection,
         },
       },
     },
-    orderBy: { createdAt: "asc" as const },
+    orderBy: [{ createdAt: "asc" }, { botId: "asc" }],
   },
-} as const;
+} satisfies Prisma.ChatGroupInclude;
 
 type RunTeardownTarget = {
   id: string;
