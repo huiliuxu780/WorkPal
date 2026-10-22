@@ -1,0 +1,1425 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WorkPal 圆桌模式 · 交互原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f8f8f6;
+      --surface: #fff;
+      --sidebar: #f0f0ee;
+      --ink: #1c1c1b;
+      --muted: #777772;
+      --faint: #aaa9a4;
+      --line: #e7e6e1;
+      --soft: #f4f3ef;
+      --green: #22875a;
+      --green-soft: #eaf5ef;
+      --blue: #397fc1;
+      --blue-soft: #edf5fc;
+      --orange: #c8742a;
+      --orange-soft: #fbf1e8;
+      --purple: #7c5bb4;
+      --purple-soft: #f2eef8;
+      --amber: #a96916;
+      --amber-soft: #fcf3df;
+      --red: #c95050;
+      --shadow: 0 18px 44px rgba(31, 31, 27, .07);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app { height: 100vh; display: grid; grid-template-columns: 276px minmax(0, 1fr); }
+    .sidebar { background: var(--sidebar); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 12px 16px; }
+    .side-top { display: flex; align-items: center; justify-content: space-between; padding: 0 9px 16px; }
+    .wordmark { font-weight: 720; letter-spacing: -.02em; display: flex; align-items: center; gap: 9px; }
+    .mark { width: 28px; height: 28px; border-radius: 9px; background: #1d1d1b; display: grid; place-items: center; color: white; font-size: 12px; }
+    .icon-btn { border: 0; background: transparent; width: 32px; height: 32px; border-radius: 10px; cursor: pointer; color: var(--muted); }
+    .icon-btn:hover { background: rgba(0,0,0,.05); color: var(--ink); }
+    .search { height: 36px; background: white; border: 1px solid transparent; border-radius: 999px; color: #96958f; display: flex; align-items: center; gap: 8px; padding: 0 12px; margin-bottom: 17px; }
+    .nav-label { font-size: 11px; color: #9a9993; padding: 0 11px 7px; text-transform: uppercase; letter-spacing: .07em; }
+    .chat-row { width: 100%; border: 0; background: transparent; padding: 10px 10px; border-radius: 16px; display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; text-align: left; cursor: pointer; margin-bottom: 3px; }
+    .chat-row:hover { background: rgba(255,255,255,.55); }
+    .chat-row.active { background: white; box-shadow: 0 1px 1px rgba(0,0,0,.02); }
+    .stack-avatar { width: 36px; height: 36px; position: relative; }
+    .stack-avatar img { width: 27px; height: 27px; position: absolute; filter: drop-shadow(0 1px 1px rgba(0,0,0,.08)); }
+    .stack-avatar img:first-child { left: 0; top: 0; }
+    .stack-avatar img:last-child { right: 0; bottom: 0; }
+    .stack-avatar.single img:first-child { left: 4px; top: 4px; width: 30px; height: 30px; }
+    .stack-avatar.single img:last-child { display: none; }
+    .chat-name { font-weight: 650; font-size: 13.5px; }
+    .chat-sub { color: #9c9b96; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chat-time { color: #a5a49f; font-size: 10.5px; align-self: start; padding-top: 2px; }
+    .side-spacer { flex: 1; }
+    .side-link { display: flex; align-items: center; gap: 11px; padding: 10px 11px; color: #55544f; border-radius: 12px; }
+    .side-link strong { margin-left: auto; color: white; background: var(--ink); font-size: 10px; min-width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; }
+
+    .workspace { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: 64px minmax(0, 1fr); background: var(--surface); }
+    .topbar { border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; padding: 0 22px; }
+    .group-title-button { position: absolute; z-index: 7; top: 13px; left: 50%; transform: translateX(-50%); min-width: 0; height: 44px; border: 1px solid #ebeae6; background: rgba(255,255,255,.97); border-radius: 999px; padding: 4px 17px 4px 7px; display: flex; align-items: center; gap: 10px; cursor: pointer; box-shadow: 0 5px 18px rgba(31,31,27,.09); transition: background .16s ease, box-shadow .16s ease, transform .16s ease; }
+    .group-title-button:hover { background: #fff; box-shadow: 0 7px 22px rgba(31,31,27,.13); transform: translateX(-50%) translateY(-1px); }
+    .group-title-button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    .group-title-button[aria-expanded="true"] { background: #fff; }
+    .capsule-avatar-cluster { width: 57px; height: 34px; position: relative; flex: none; }
+    .capsule-avatar { position: absolute; width: 25px; height: 25px; display: grid; place-items: center; overflow: hidden; border: 1.5px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.13); }
+    .capsule-avatar img { display: block; width: 28px; height: 28px; object-fit: contain; }
+    .capsule-avatar.human { left: 0; top: 0; z-index: 1; width: 22px; height: 22px; background: #f1f1ef; color: #797872; font-size: 8px; }
+    .capsule-avatar.joy { left: 17px; top: 0; z-index: 5; }
+    .capsule-avatar.orange { left: 4px; bottom: 0; z-index: 3; }
+    .capsule-avatar.blue { left: 28px; bottom: 0; z-index: 4; }
+    .capsule-avatar.purple { right: 0; top: 1px; z-index: 2; width: 22px; height: 22px; }
+    .capsule-avatar.orange img, .panel-avatar-agent.orange img { filter: url(#avatar-orange); }
+    .capsule-avatar.blue img, .panel-avatar-agent.blue img { filter: url(#avatar-blue); }
+    .capsule-avatar.purple img, .panel-avatar-agent.purple img { filter: url(#avatar-purple); }
+    .capsule-avatar-cluster.single { width: 33px; }
+    .capsule-avatar-cluster.single .capsule-avatar { display: none; }
+    .capsule-avatar-cluster.single .capsule-avatar.primary-agent { display: grid; left: 2px; top: 1px; width: 31px; height: 31px; }
+    .capsule-avatar-cluster.single .capsule-avatar.primary-agent img { width: 34px; height: 34px; }
+    .title { display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 690; letter-spacing: -.01em; }
+    .top-spacer { flex: 1; }
+    .scenario-picker { height: 36px; border: 1px solid var(--line); background: white; border-radius: 11px; display: flex; align-items: center; gap: 7px; padding: 0 8px 0 10px; color: var(--muted); font-size: 10.5px; }
+    .scenario-picker select { max-width: 208px; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 11.5px; cursor: pointer; }
+    .demo-nav { display: flex; align-items: center; gap: 6px; background: var(--soft); padding: 4px; border-radius: 12px; }
+    .nav-button, .play-button, .work-toggle { height: 32px; border: 1px solid transparent; background: transparent; border-radius: 9px; padding: 0 11px; cursor: pointer; color: #66645f; }
+    .nav-button:hover, .play-button:hover, .work-toggle:hover { background: white; color: var(--ink); }
+    .nav-button:disabled { opacity: .35; cursor: default; }
+    .step-count { min-width: 70px; text-align: center; font-size: 11.5px; color: var(--muted); }
+    .play-button { background: var(--ink); color: white; padding: 0 13px; }
+    .play-button:hover { background: #32322f; color: white; }
+    .work-toggle { border-color: var(--line); background: white; display: flex; align-items: center; gap: 8px; }
+
+    .main { min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) 336px; transition: grid-template-columns .26s ease; }
+    .main.work-hidden { grid-template-columns: minmax(0, 1fr) 0; }
+    .chat { min-width: 0; min-height: 0; overflow: hidden; position: relative; display: grid; grid-template-rows: minmax(0,1fr) auto; }
+    .feed { overflow: auto; padding: 78px max(26px, calc((100% - 760px)/2)) 24px; scroll-behavior: smooth; }
+    .day { text-align: center; color: #aaa9a3; font-size: 11px; margin-bottom: 25px; }
+    .message { display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 10px; margin: 0 0 18px; opacity: 0; transform: translateY(8px); animation: enter .34s ease forwards; }
+    .message.user { display: flex; justify-content: flex-end; }
+    @keyframes enter { to { opacity: 1; transform: translateY(0); } }
+    .avatar { width: 34px; height: 34px; border-radius: 11px; background: #f0efeb; display: grid; place-items: center; overflow: hidden; align-self: start; border: 1px solid #ebeae6; }
+    .avatar img { width: 38px; height: 38px; }
+    .author { font-size: 11.5px; color: var(--muted); margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+    .author .role { color: #adaca6; font-size: 10px; }
+    .author.joy { color: #44433f; }
+    .author.blue { color: var(--blue); }
+    .author.orange { color: var(--orange); }
+    .author.purple { color: var(--purple); }
+    .bubble { display: inline-block; max-width: 650px; background: #f1f0ec; border-radius: 4px 16px 16px 16px; padding: 10px 13px; color: #302f2c; box-shadow: inset 0 0 0 1px rgba(0,0,0,.015); }
+    .bubble p { margin: 0; }
+    .bubble p + p { margin-top: 7px; }
+    .user-bubble { max-width: 620px; background: var(--ink); color: white; padding: 10px 14px; border-radius: 16px 4px 16px 16px; }
+    .mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: -4px; font-weight: 680; padding: 1px 6px 1px 2px; border-radius: 999px; white-space: nowrap; text-decoration: none; transition: filter .15s ease, box-shadow .15s ease; }
+    .mention img { width: 18px; height: 18px; }
+    .mention:hover { filter: brightness(.96); box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+    .mention:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    .mention.blue { color: #286da9; background: #e3eff9; }
+    .mention.orange { color: #a85c1e; background: #f8e9dc; }
+    .mention.purple { color: #654499; background: #ece5f5; }
+    .assignment-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .assignment-chip { border: 1px solid #dcdad4; background: rgba(255,255,255,.65); border-radius: 999px; padding: 4px 8px 4px 6px; display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; color: #65645f; cursor: pointer; }
+    .assignment-chip:hover { background: white; color: var(--ink); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+    .dot.blue { background: var(--blue); }
+    .dot.orange { background: var(--orange); }
+    .dot.purple { background: var(--purple); }
+    .system-line { text-align: center; color: #999892; font-size: 10.5px; margin: 4px 0 18px; opacity: 0; animation: enter .34s ease forwards; }
+    .quote { color: #77756f; border-left: 2px solid #cfcdc5; padding-left: 8px; margin-bottom: 7px; font-size: 12px; }
+    .task-ref { margin: -2px 0 8px; padding-bottom: 7px; border-bottom: 1px solid rgba(255,255,255,.18); display: flex; align-items: center; gap: 7px; color: #c9c8c3; font-size: 10.5px; }
+    .task-ref::before { content: "↳"; color: #8f8e88; }
+    .task-ref strong { color: white; font-weight: 620; }
+    .task-context { margin: -1px 0 8px; padding: 7px 9px; border: 1px solid #dddcd6; border-radius: 9px; background: rgba(255,255,255,.66); color: #74726c; font-size: 10.5px; }
+    .task-context strong { color: #44433f; font-weight: 650; }
+    .task-options { margin-top: 9px; display: grid; gap: 6px; }
+    .task-option { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: white; padding: 8px 10px; color: #44433f; display: flex; justify-content: space-between; gap: 12px; text-align: left; cursor: pointer; font-size: 11px; }
+    .task-option:hover { border-color: #c8c6bf; }
+    .task-option span { color: #999790; font-size: 10px; }
+    .work-inline { margin-top: 9px; border-top: 1px solid #deddd7; padding-top: 8px; display: flex; align-items: center; gap: 8px; color: #74736d; font-size: 11px; }
+    .work-inline .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(34,135,90,.10); }
+    .work-inline .done { color: var(--green); font-weight: 650; }
+    .approval { margin-top: 9px; background: white; border: 1px solid #ead2a3; border-radius: 12px; padding: 11px; min-width: 390px; }
+    .approval-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 12.5px; }
+    .approval-actions { display: flex; gap: 7px; justify-content: flex-end; margin-top: 10px; }
+    .mini-btn { border: 1px solid var(--line); background: white; border-radius: 9px; padding: 5px 9px; cursor: pointer; font-size: 11px; }
+    .mini-btn.primary { background: var(--ink); color: white; border-color: var(--ink); }
+    .result-card { margin-top: 9px; background: white; border: 1px solid #d9e8df; border-radius: 12px; padding: 10px 11px; }
+    .result-card strong { color: var(--green); font-size: 11px; }
+    .result-card ul { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: #55544f; }
+    .result-card a { color: var(--blue); text-decoration: none; }
+    .destination-card { margin-top: 9px; min-width: 410px; max-width: 540px; border: 1px solid #dcdad4; background: white; border-radius: 12px; padding: 10px 11px; }
+    .destination-head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+    .destination-icon { width: 23px; height: 23px; border-radius: 8px; background: var(--ink); color: white; display: grid; place-items: center; font-size: 11px; }
+    .destination-state { margin-left: auto; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 2px 6px; font-size: 9.5px; }
+    .destination-state.error { color: var(--red); background: #fbecec; }
+    .destination-state.wait { color: var(--amber); background: var(--amber-soft); }
+    .destination-text { margin-top: 7px; color: #54534e; font-size: 11.5px; }
+    .destination-meta { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); color: #8d8b85; font-size: 10px; display: flex; justify-content: space-between; gap: 12px; }
+
+    .peer-receipt-row { position: relative; display: flex; justify-content: center; margin: 4px 0 20px; opacity: 0; transform: translateY(8px); animation: enter .34s ease forwards; z-index: 4; }
+    .peer-receipt { border: 0; background: transparent; padding: 5px 8px; display: inline-flex; align-items: center; gap: 7px; color: #77756f; font-size: 12px; cursor: pointer; border-radius: 999px; }
+    .peer-receipt:hover, .peer-receipt[aria-expanded="true"] { color: var(--ink); background: #f5f4f1; }
+    .peer-receipt img { width: 23px; height: 23px; margin-left: -6px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.10)); }
+    .peer-receipt img:first-child { margin-left: 0; }
+    .peer-receipt strong { color: #4f4e49; font-weight: 650; }
+    .peer-receipt .receipt-arrow { color: #aaa8a1; font-size: 12px; margin-left: 1px; transition: transform .16s ease; }
+    .peer-receipt[aria-expanded="true"] .receipt-arrow { transform: rotate(180deg); }
+    .peer-receipt.failed { color: var(--red); }
+    .peer-dropdown { position: absolute; top: calc(100% + 4px); left: 50%; width: min(190px, calc(100vw - 40px)); transform: translateX(-50%) translateY(-5px); border: 1px solid var(--line); border-radius: 14px; background: white; box-shadow: 0 14px 34px rgba(28,28,25,.13); padding: 5px; opacity: 0; pointer-events: none; transition: opacity .16s ease, transform .16s ease; }
+    .peer-dropdown.open { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+
+    .peer-dialog { position: fixed; inset: 0; z-index: 50; background: rgba(20,20,18,.32); display: grid; place-items: center; padding: 16px; opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+    .peer-dialog.open { opacity: 1; pointer-events: auto; }
+    .peer-dialog-card { width: min(960px, calc(100vw - 32px)); height: min(900px, calc(100vh - 32px)); background: #fbfbfa; border: 1px solid rgba(255,255,255,.82); border-radius: 26px; box-shadow: 0 30px 90px rgba(0,0,0,.20); overflow: hidden; display: grid; grid-template-rows: 82px minmax(0,1fr) 88px; transform: translateY(10px) scale(.985); transition: transform .18s ease; }
+    .peer-dialog.open .peer-dialog-card { transform: translateY(0) scale(1); }
+    .peer-dialog-card:focus { outline: none; }
+    .peer-dialog-head { display: flex; align-items: center; justify-content: center; padding: 12px 24px 4px; }
+    .peer-identity { display: inline-flex; align-items: center; gap: 9px; min-height: 42px; padding: 4px 14px 4px 8px; border: 1px solid #e8e7e2; border-radius: 999px; background: white; box-shadow: 0 5px 16px rgba(34,34,30,.08); font-size: 14px; font-weight: 680; }
+    .peer-identity img { width: 30px; height: 30px; }
+    .peer-identity .swap { color: #aaa8a1; font-size: 16px; font-weight: 400; }
+    .peer-dialog-kind { display: none; }
+    .peer-dialog-body { overflow: auto; padding: 24px max(36px, calc((100% - 760px)/2)) 42px; }
+    .peer-history-note { text-align: center; color: #9b9992; font-size: 10px; margin: 0 0 22px; }
+    .peer-message { display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 9px; margin-bottom: 18px; }
+    .peer-message img { width: 30px; height: 30px; }
+    .peer-message .peer-author { color: #8c8a83; font-size: 10.5px; margin-bottom: 4px; }
+    .peer-message .peer-copy { display: inline-block; max-width: 680px; background: #efeee9; border-radius: 4px 14px 14px 14px; padding: 10px 13px; color: #3f3e39; font-size: 12px; }
+    .peer-event { margin: 3px 0 20px 39px; color: #99968f; font-size: 10px; display: flex; align-items: center; gap: 7px; }
+    .peer-event::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+    .peer-dialog-foot { min-height: 88px; padding: 16px 18px 20px; border: 0; background: linear-gradient(to bottom, rgba(251,251,250,0), #fbfbfa 36%); display: flex; align-items: flex-end; justify-content: center; }
+    .peer-readonly { display: none; }
+    .peer-close { margin: 0; border: 0; background: #efefed; color: #353430; height: 44px; padding: 0 24px; border-radius: 999px; cursor: pointer; font-weight: 650; }
+    .peer-close:hover { background: #e6e5e2; }
+    .peer-choice { width: 100%; border: 0; background: white; border-radius: 9px; padding: 7px 8px; display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+    .peer-choice + .peer-choice { margin-top: 2px; }
+    .peer-choice:hover { background: #f5f4f1; }
+    .peer-choice img { width: 24px; height: 24px; }
+    .peer-choice-name { font-size: 11.5px; font-weight: 650; }
+
+    .activity-rail { padding: 0 max(22px, calc((100% - 760px)/2)) 8px; display: flex; flex-wrap: wrap; gap: 7px; }
+    .activity-pill { border: 1px solid var(--line); background: rgba(255,255,255,.96); box-shadow: 0 4px 12px rgba(0,0,0,.035); min-height: 34px; border-radius: 999px; padding: 5px 10px 5px 6px; display: flex; align-items: center; gap: 7px; color: #67655f; font-size: 11px; cursor: pointer; }
+    .activity-pill img { width: 23px; height: 23px; }
+    .activity-pill .spinner { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: blink 1.35s ease-in-out infinite; }
+    @keyframes blink { 50% { opacity: .25; transform: scale(.78); } }
+    .composer-wrap { padding: 0 max(22px, calc((100% - 760px)/2)) 20px; background: linear-gradient(to bottom, rgba(255,255,255,0), #fff 18%); }
+    .composer-target { width: fit-content; max-width: calc(100% - 22px); margin: 0 0 7px 10px; border: 1px solid #dddcd6; background: rgba(255,255,255,.96); border-radius: 999px; padding: 5px 7px 5px 10px; display: flex; align-items: center; gap: 6px; color: #77756f; font-size: 10.5px; box-shadow: 0 4px 12px rgba(0,0,0,.035); }
+    .composer-target[hidden] { display: none; }
+    .composer-target strong { color: #44433f; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .composer-target button { width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--soft); color: #8d8b85; cursor: pointer; }
+    .composer { min-height: 52px; border: 1px solid var(--line); background: white; border-radius: 26px; display: flex; align-items: center; gap: 10px; padding: 7px 9px 7px 12px; box-shadow: 0 6px 20px rgba(0,0,0,.025); }
+    .plus { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--soft); font-size: 19px; color: #888782; cursor: pointer; }
+    .composer input { flex: 1; border: 0; outline: 0; color: var(--ink); min-width: 0; }
+    .composer input::placeholder { color: #aaa9a4; }
+    .send { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--ink); color: white; cursor: pointer; }
+
+    .work-panel { min-width: 0; overflow: hidden; border-left: 1px solid #ecebe7; background: #fff; transition: opacity .2s ease, transform .24s ease; }
+    .work-hidden .work-panel { opacity: 0; pointer-events: none; }
+    .work-panel-inner { width: 336px; height: 100%; display: flex; flex-direction: column; }
+    .entity-panel-head { position: relative; min-height: 124px; padding: 21px 50px 13px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+    .panel-close { position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; border: 1px solid #ebeae6; border-radius: 50%; background: #fbfbfa; color: #5f5d57; cursor: pointer; font-size: 20px; line-height: 1; }
+    .panel-close:hover { background: #f1f0ed; color: var(--ink); }
+    .panel-entity-avatar { width: 88px; height: 60px; position: relative; }
+    .panel-avatar-agent { position: absolute; width: 37px; height: 37px; display: grid; place-items: center; overflow: hidden; background: #fff; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.13); }
+    .panel-avatar-agent img { display: block; width: 42px; height: 42px; object-fit: contain; }
+    .panel-avatar-agent.human { left: 0; top: 0; z-index: 1; width: 32px; height: 32px; background: #f1f1ef; color: #77756f; font-size: 10px; }
+    .panel-avatar-agent.joy { left: 29px; top: 0; z-index: 5; }
+    .panel-avatar-agent.orange { left: 8px; top: 24px; z-index: 3; }
+    .panel-avatar-agent.blue { left: 43px; top: 24px; z-index: 4; }
+    .panel-avatar-agent.purple { right: 0; top: 2px; z-index: 2; width: 31px; height: 31px; }
+    .panel-avatar-agent.purple img { width: 35px; height: 35px; }
+    .panel-entity-avatar.single { width: 48px; height: 48px; }
+    .panel-entity-avatar.single .panel-avatar-agent { display: none; }
+    .panel-entity-avatar.single .panel-avatar-agent.primary-agent { display: grid; left: 0; top: 0; width: 48px; height: 48px; }
+    .panel-entity-avatar.single .panel-avatar-agent.primary-agent img { width: 54px; height: 54px; }
+    .panel-entity-name { width: 245px; margin-top: 10px; padding: 2px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); outline: none; text-align: center; font-size: 16px; font-weight: 700; letter-spacing: -.015em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .panel-entity-name:not([readonly]):hover { background: #f5f4f1; }
+    .panel-entity-name:not([readonly]):focus { background: #efeeeb; box-shadow: inset 0 0 0 1px #deddd8; }
+    .panel-tabs { min-height: 46px; padding: 4px 12px 10px; display: flex; align-items: center; justify-content: center; gap: 2px; border-bottom: 1px solid #ecebe7; }
+    .panel-tab { height: 32px; border: 0; border-radius: 999px; background: transparent; padding: 0 11px; color: #77756f; cursor: pointer; font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; }
+    .panel-tab:hover { color: var(--ink); background: #f4f3f0; }
+    .panel-tab.active { color: var(--ink); background: #efeeeb; font-weight: 650; }
+    .panel-view[hidden] { display: none; }
+    .work-toolbar { min-height: 34px; margin-bottom: 7px; display: flex; align-items: center; }
+    .panel-back { width: 28px; height: 28px; margin-right: 5px; border: 0; border-radius: 9px; background: transparent; color: #55544f; cursor: pointer; font-size: 17px; }
+    .panel-back:hover { background: #efeee9; }
+    .panel-back[hidden] { display: none; }
+    .work-toolbar h2 { font-size: 13px; margin: 0; font-weight: 650; }
+    .work-toolbar span { color: #8d8b84; margin-left: 7px; font-size: 11px; }
+    .panel-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 18px 28px; }
+    .panel-section + .panel-section { margin-top: 23px; }
+    .panel-section-head { margin: 0 2px 8px; color: #8f8d86; font-size: 10px; font-weight: 650; }
+    .panel-copy { margin: 0; padding: 0 2px; color: #5f5d57; font-size: 11px; line-height: 1.65; }
+    .panel-list { border-top: 1px solid #ecebe7; }
+    .panel-row { min-height: 58px; border-bottom: 1px solid #ecebe7; display: flex; align-items: center; gap: 11px; }
+    .member-list { border: 0; display: grid; gap: 4px; }
+    .member-list .panel-row { min-height: 54px; border: 0; border-radius: 10px; padding: 0 2px; }
+    .member-list .panel-row:hover { background: #f7f6f3; }
+    .panel-row-main { min-width: 0; flex: 1; }
+    .panel-row-title { display: block; color: #34332f; font-size: 12.5px; font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .panel-row-meta { display: block; margin-top: 2px; color: #85837c; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .panel-row-action { flex: none; color: #77756f; font-size: 11px; }
+    .panel-row-icon { width: 30px; height: 30px; flex: none; border-radius: 9px; background: #efeee9; display: grid; place-items: center; color: #65635d; font-size: 12px; }
+    .panel-row img { width: 31px; height: 31px; flex: none; }
+    .panel-switch { width: 28px; height: 17px; flex: none; padding: 2px; border-radius: 999px; background: var(--green); }
+    .panel-switch::after { content: ""; display: block; width: 13px; height: 13px; margin-left: auto; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgba(0,0,0,.13); }
+    .panel-add { min-height: 38px; margin-top: 11px; padding: 0 2px; border: 0; background: transparent; color: #595751; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 13px; }
+    .panel-add::before { content: "+"; width: 30px; height: 30px; display: grid; place-items: center; color: #66645e; font-size: 22px; font-weight: 300; }
+    .panel-add:hover { color: var(--ink); }
+    .panel-add:hover::before { background: #f1f0ed; border-radius: 50%; }
+    .library-date { margin: 0 2px 12px; color: #686660; font-size: 13px; font-weight: 620; }
+    .library-card { background: transparent; }
+    .library-entry { width: 100%; min-height: 57px; border: 0; border-radius: 10px; background: transparent; padding: 8px 9px 8px 11px; display: grid; grid-template-columns: 34px minmax(0,1fr) auto 26px; align-items: center; gap: 9px; text-align: left; cursor: pointer; }
+    .library-entry:hover, .library-entry:focus-visible { background: #f7f6f3; outline: 0; }
+    .library-thumb { width: 30px; height: 34px; border: 1px solid #deddd8; border-radius: 5px; background: #fff; display: grid; place-items: center; overflow: hidden; color: #8d8a83; }
+    .library-thumb svg { width: 18px; height: 21px; }
+    .library-thumb.preview { background-color: #f8f8f6; background-image: linear-gradient(#d9d7d0 1px, transparent 1px), linear-gradient(90deg, #e2e0da 1px, transparent 1px); background-size: 7px 7px; }
+    .library-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #2f2e2a; font-size: 12.5px; font-weight: 560; }
+    .library-time { color: #999790; font-size: 10.5px; white-space: nowrap; }
+    .library-more { width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: #8e8c85; cursor: pointer; opacity: 0; transition: opacity .14s ease, background .14s ease; }
+    .library-entry:hover .library-more, .library-entry:focus-within .library-more { opacity: 1; }
+    .library-more:hover, .library-more:focus-visible { background: #ebeae6; outline: 0; }
+    .work-root { background: transparent; padding: 0; }
+    .work-root-title { min-height: 30px; font-size: 13px; font-weight: 680; display: flex; align-items: center; gap: 7px; }
+    .work-root-title .status { margin-left: auto; color: var(--green); background: transparent; padding: 0; font-size: 10.5px; font-weight: 560; }
+    .work-root-title .status.warn { color: var(--amber); background: transparent; }
+    .work-root-title .status.error { color: var(--red); background: transparent; }
+    .work-root-desc { color: #77756f; font-size: 11px; margin-top: 0; }
+    .branch { position: relative; margin: 10px 0 0; padding: 0; border-top: 1px solid #ecebe7; }
+    .branch::before { display: none; }
+    .work-node { position: relative; display: grid; grid-template-columns: 31px minmax(0, 1fr) auto; column-gap: 10px; align-items: start; border: 0; border-bottom: 1px solid #ecebe7; border-radius: 0; background: transparent; padding: 12px 2px; margin: 0; cursor: pointer; transition: background .15s ease; }
+    .work-node:hover { transform: none; background: #faf9f7; }
+    .work-node::before { display: none; }
+    .node-top { display: contents; }
+    .node-top img { grid-column: 1; grid-row: 1 / span 2; width: 29px; height: 29px; }
+    .node-person { grid-column: 2; grid-row: 1; font-size: 12.5px; line-height: 18px; font-weight: 650; }
+    .node-state { grid-column: 3; grid-row: 1 / span 2; align-self: center; margin: 0; font-size: 10.5px; border-radius: 0; padding: 0; color: #77756f; background: transparent; }
+    .node-state.run, .node-state.done { color: var(--green); background: transparent; }
+    .node-state.wait { color: var(--amber); background: transparent; }
+    .node-state.error { color: var(--red); background: transparent; }
+    .node-state.muted { color: #77756f; background: transparent; }
+    .node-task { grid-column: 2; grid-row: 2; min-width: 0; font-size: 11.5px; color: #5f5d57; margin-top: 1px; line-height: 1.45; }
+    .node-meta { grid-column: 2 / 4; color: #85837c; font-size: 10px; margin-top: 6px; display: flex; justify-content: flex-start; }
+    .node-meta > span:first-child { display: none; }
+    .node-update { display: inline-flex; align-items: center; gap: 5px; color: #77756f; }
+    .node-update::before { content: ""; width: 6px; height: 6px; flex: none; border-radius: 50%; background: #aaa8a1; }
+    .node-update.run::before { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+    .node-update.wait::before { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+    .node-update.done::before { background: var(--green); }
+    .node-update.error::before { background: var(--red); }
+    .node-update.muted::before { background: #aaa8a1; }
+    .nested { grid-column: 1 / -1; margin: 9px 0 -12px 39px; padding: 0; border-left: 0; border-top: 1px solid #ecebe7; }
+    .nested .work-node { border-bottom: 0; padding-right: 0; }
+    .empty-state { border: 1px dashed #d7d5ce; border-radius: 13px; padding: 16px; color: #999892; text-align: center; font-size: 11px; }
+    .task-detail[hidden], .work-overview[hidden] { display: none; }
+    .task-detail-hero { padding: 2px 2px 14px; border-bottom: 1px solid var(--line); }
+    .task-detail-title-row { display: flex; align-items: flex-start; gap: 8px; }
+    .task-detail-title { margin: 0; color: #2f2e2a; font-size: 15px; line-height: 1.35; }
+    .task-detail-status { margin-left: auto; flex: none; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 3px 7px; font-size: 9.5px; }
+    .task-detail-status.wait { color: var(--amber); background: var(--amber-soft); }
+    .task-detail-status.error { color: var(--red); background: #fbecec; }
+    .task-detail-status.muted { color: #77756f; background: #efeee9; }
+    .task-detail-owner { margin-top: 10px; display: flex; align-items: center; gap: 7px; color: #73716b; font-size: 10.5px; }
+    .task-detail-owner img { width: 24px; height: 24px; }
+    .task-current { margin-top: 12px; border: 1px solid #deddd7; border-radius: 12px; background: white; padding: 10px 11px; }
+    .task-current-label { color: #97958e; font-size: 9.5px; }
+    .task-current-copy { margin-top: 4px; color: #3f3e39; font-size: 11px; line-height: 1.45; font-weight: 620; }
+    .task-detail-section { margin-top: 18px; }
+    .task-detail-section-title { margin-bottom: 9px; color: #8a8881; font-size: 10px; font-weight: 650; }
+    .revision-list { position: relative; margin-left: 5px; padding-left: 16px; border-left: 1px solid #dcdad4; }
+    .revision-item { position: relative; padding: 0 0 15px; }
+    .revision-item:last-child { padding-bottom: 0; }
+    .revision-item::before { content: ""; position: absolute; left: -20px; top: 4px; width: 7px; height: 7px; border: 2px solid #fbfbf9; border-radius: 50%; background: #aaa8a1; box-shadow: 0 0 0 1px #d1cfc8; }
+    .revision-item.latest::before { background: var(--green); box-shadow: 0 0 0 1px #b8daca; }
+    .revision-meta { display: flex; justify-content: space-between; color: #9c9a93; font-size: 9.5px; }
+    .revision-copy { margin-top: 4px; color: #484742; font-size: 11px; line-height: 1.5; }
+    .effective-brief { border: 1px solid #deddd7; border-radius: 12px; background: white; padding: 10px 11px; color: #55544f; font-size: 10.5px; line-height: 1.55; }
+    .effective-brief strong { display: block; margin-bottom: 4px; color: #34332f; font-size: 11px; }
+    .task-stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 2px 0 14px; }
+    .task-stage { position: relative; min-width: 0; padding-top: 19px; color: #aaa8a1; font-size: 9.5px; line-height: 1.3; }
+    .task-stage::before { content: ""; position: absolute; top: 4px; left: 0; width: 8px; height: 8px; border-radius: 50%; border: 2px solid #c8c6bf; background: #fbfbf9; z-index: 1; }
+    .task-stage:not(:last-child)::after { content: ""; position: absolute; top: 9px; left: 12px; right: 4px; height: 1px; background: #deddd7; }
+    .task-stage.done { color: #696760; }
+    .task-stage.done::before { border-color: var(--green); background: var(--green); }
+    .task-stage.current { color: #353430; font-weight: 650; }
+    .task-stage.current::before { border-color: var(--green); background: #fbfbf9; box-shadow: 0 0 0 4px var(--green-soft); }
+    .task-stage.wait.current::before { border-color: var(--amber); box-shadow: 0 0 0 4px var(--amber-soft); }
+    .task-stage.error.current::before { border-color: var(--red); box-shadow: 0 0 0 4px #fbecec; }
+    .recent-progress { border-left: 2px solid var(--green); padding-left: 9px; color: #55544f; font-size: 10.5px; line-height: 1.5; }
+    .recent-progress.wait { border-color: var(--amber); }
+    .recent-progress.error, .recent-progress.muted { border-color: #aaa8a1; }
+    .recent-progress-time { display: block; margin-top: 3px; color: #9a9891; font-size: 9.5px; }
+    .task-detail-actions { margin-top: 20px; display: grid; grid-template-columns: 1fr auto; gap: 7px; }
+    .task-detail-action { min-height: 36px; border: 1px solid var(--line); border-radius: 11px; background: white; color: #55544f; cursor: pointer; font-size: 11px; }
+    .task-detail-action.primary { background: var(--ink); border-color: var(--ink); color: white; }
+    .task-detail-action:hover { filter: brightness(.97); }
+
+    .toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%) translateY(14px); opacity: 0; pointer-events: none; background: #20201e; color: white; border-radius: 999px; padding: 8px 13px; font-size: 11px; transition: .22s ease; z-index: 20; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    @media (max-width: 1280px) {
+      .app { grid-template-columns: 0 minmax(0, 1fr); }
+      .sidebar { overflow: hidden; padding-left: 0; padding-right: 0; border: 0; }
+      .main { grid-template-columns: minmax(0, 1fr); }
+      .work-panel { position: fixed; inset: 64px 0 0 auto; z-index: 10; width: 336px; box-shadow: -16px 0 40px rgba(31,31,27,.06); }
+      .main.work-hidden .work-panel { transform: translateX(100%); }
+    }
+    @media (max-width: 720px) {
+      .topbar { padding: 0 12px; gap: 8px; }
+      .subtitle { display: none; }
+      .demo-nav { margin-left: auto; }
+      .scenario-picker { position: fixed; left: 12px; bottom: 12px; z-index: 15; box-shadow: var(--shadow); }
+      .scenario-picker span { display: none; }
+      .scenario-picker select { max-width: 190px; }
+      .play-button { display: none; }
+      .step-count { min-width: 48px; }
+      .work-toggle { padding: 0 9px; }
+      .work-toggle { font-size: 0; }
+      .feed { padding-left: 16px; padding-right: 16px; }
+      .group-title-button { max-width: calc(100% - 28px); }
+      .title { max-width: 210px; }
+      .activity-rail, .composer-wrap { padding-left: 14px; padding-right: 14px; }
+      .composer-wrap { padding-bottom: 66px; }
+      .destination-card { min-width: 0; max-width: 100%; }
+      .destination-meta { align-items: flex-start; }
+      .approval { min-width: 0; max-width: 100%; }
+      .peer-dialog { padding: 8px; }
+      .peer-dialog-card { width: calc(100vw - 16px); height: calc(100vh - 16px); border-radius: 20px; grid-template-rows: 74px minmax(0,1fr) 78px; }
+      .peer-identity { min-height: 40px; padding: 4px 12px 4px 7px; font-size: 13px; }
+      .peer-identity img { width: 28px; height: 28px; }
+      .peer-dialog-body { padding-left: 20px; padding-right: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+    <filter id="avatar-orange" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values=".039 0 0 0 .961  0 .459 0 0 .541  0 0 .925 0 .075  0 0 0 1 0"/></filter>
+    <filter id="avatar-blue" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values=".855 0 0 0 .145  0 .467 0 0 .533  0 0 .071 0 .929  0 0 0 1 0"/></filter>
+    <filter id="avatar-purple" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values=".455 0 0 0 .545  0 .639 0 0 .361  0 0 .035 0 .965  0 0 0 1 0"/></filter>
+  </svg>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="side-top"><div class="wordmark"><span class="mark">W</span>WorkPal</div><button class="icon-btn" aria-label="新建">＋</button></div>
+      <div class="search">⌕ <span>搜索</span></div>
+      <div class="nav-label">最近</div>
+      <button class="chat-row active">
+        <span class="stack-avatar" id="activeChatAvatar"><img src="../../avatar/source/final/1-dot.svg"><img src="../../avatar/source/final/2-treble.svg"></span>
+        <span><span class="chat-name" id="activeChatName">新版发布圆桌</span><span class="chat-sub" id="activeChatSub">Joy、小蓝、小橙、小紫</span></span><span class="chat-time">现在</span>
+      </button>
+      <button class="chat-row">
+        <span class="stack-avatar"><img src="../../avatar/source/final/3-wave.svg"><img src="../../avatar/source/final/4-bounce.svg"></span>
+        <span><span class="chat-name">增长复盘</span><span class="chat-sub">小蓝、小紫</span></span><span class="chat-time">昨天</span>
+      </button>
+      <div class="side-spacer"></div>
+      <div class="side-link">▣ <span>后台任务</span><strong id="sideCount">6</strong></div>
+      <div class="side-link">⊞ <span>集成</span></div>
+      <div class="side-link">徐 <span>徐哥</span></div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <span id="phaseLabel" hidden>主持 Agent 接住需求</span>
+        <div class="top-spacer"></div>
+        <label class="scenario-picker"><span>场景</span><select id="scenarioSelect" aria-label="切换主线或分支场景">
+          <option value="main">主故事线 · 8 个阶段</option>
+          <optgroup label="用户介入 · 4">
+            <option value="U-ACTIVE">单独 @ 正在工作的 Agent</option>
+            <option value="U-MULTI">一句话分别 @ 多个 Agent</option>
+            <option value="U-CONFLICT">新指令与原任务冲突</option>
+            <option value="U-STOP">只停止一个工作节点</option>
+          </optgroup>
+          <optgroup label="任务补充 · 4">
+            <option value="A-ACTIVE">几轮后继续补充 Task1</option>
+            <option value="A-BACKGROUND">后台执行时追加分析口径</option>
+            <option value="A-COMPLETED">已完成后追加复核</option>
+            <option value="A-AMBIGUOUS">任务指代不清，先选择</option>
+          </optgroup>
+          <optgroup label="跨会话调度 · 4">
+            <option value="X-GROUP">从 A 单聊派 A 去目标群</option>
+            <option value="X-BOT">从 A 单聊安排 B 干活</option>
+            <option value="X-GROUP-FAIL">A 不在群，申请加入</option>
+            <option value="X-RETURN">目标结果回到来源页面</option>
+          </optgroup>
+          <optgroup label="固定 Agent 对话 · 4">
+            <option value="Q-REVERSE">反向联系仍是同一条对话</option>
+            <option value="Q-MULTI">同时联系 3 个 Agent</option>
+            <option value="Q-ORIGINS">多来源并发不串线</option>
+            <option value="Q-UNAVAILABLE">Agent 停用后历史只读</option>
+          </optgroup>
+          <optgroup label="并发与时序 · 4">
+            <option value="C-MULTI">多个 Agent 同时应答</option>
+            <option value="C-DUAL">同一 Agent 前台发言 + 后台工作</option>
+            <option value="C-ROOTS">同群存在两个独立根任务</option>
+            <option value="C-LATE">旧任务结果晚到，不覆盖新指令</option>
+          </optgroup>
+          <optgroup label="审批与权限 · 4">
+            <option value="P-SCOPED">审批只暂停一个节点</option>
+            <option value="P-ALLOW">允许一次后恢复</option>
+            <option value="P-DENY">拒绝审批但继续讨论</option>
+            <option value="P-STALE">审批期间上下文已变化</option>
+          </optgroup>
+          <optgroup label="异常与恢复 · 4">
+            <option value="F-OFFLINE">目标 Agent 不可用</option>
+            <option value="F-RETRY">后台任务失败后重试</option>
+            <option value="F-DEDUPE">重复投递被幂等抑制</option>
+            <option value="F-PARTIAL">部分失败，主持人仍可收尾</option>
+          </optgroup>
+        </select></label>
+        <div class="demo-nav">
+          <button class="nav-button" id="prevBtn">←</button><span class="step-count" id="stepCount">1 / 8</span><button class="nav-button" id="nextBtn">→</button>
+          <button class="play-button" id="playBtn">自动演示</button>
+        </div>
+        <button class="work-toggle" id="workToggle">工作</button>
+      </header>
+
+      <main class="main" id="main">
+        <section class="chat">
+          <button class="group-title-button" id="groupDetailsButton" aria-label="展开群聊详情" aria-expanded="false">
+            <span class="capsule-avatar-cluster" id="headerAvatar"><span class="capsule-avatar human" aria-label="RiversXu">R</span><span class="capsule-avatar joy primary-agent"><img src="../../avatar/source/final/1-dot.svg" alt="Joy"></span><span class="capsule-avatar orange"><img src="../../avatar/source/final/2-treble.svg" alt="小橙"></span><span class="capsule-avatar blue"><img src="../../avatar/source/final/3-wave.svg" alt="小蓝"></span><span class="capsule-avatar purple"><img src="../../avatar/source/final/4-bounce.svg" alt="小紫"></span></span>
+            <span class="title" id="headerTitle">新版发布圆桌</span>
+          </button>
+          <div class="feed" id="feed"><div class="day">今天 10:24</div></div>
+          <div>
+            <div class="activity-rail" id="activityRail"></div>
+            <div class="composer-wrap">
+              <div class="composer-target" id="composerTarget" hidden><span>补充到</span><strong id="composerTargetName">Task1</strong><button id="composerTargetClose" aria-label="取消关联">×</button></div>
+              <div class="composer"><button class="plus">＋</button><input id="composerInput" placeholder="给新版发布圆桌发消息" aria-label="消息"><button class="send" id="sendBtn">↑</button></div>
+            </div>
+          </div>
+        </section>
+        <aside class="work-panel" aria-label="会话详情">
+          <div class="work-panel-inner">
+            <div class="entity-panel-head">
+              <button class="panel-close" id="panelClose" aria-label="关闭会话详情">×</button>
+              <span class="panel-entity-avatar" id="panelEntityAvatar"><span class="panel-avatar-agent human" aria-label="RiversXu">R</span><span class="panel-avatar-agent joy primary-agent"><img src="../../avatar/source/final/1-dot.svg" alt="Joy"></span><span class="panel-avatar-agent orange"><img src="../../avatar/source/final/2-treble.svg" alt="小橙"></span><span class="panel-avatar-agent blue"><img src="../../avatar/source/final/3-wave.svg" alt="小蓝"></span><span class="panel-avatar-agent purple"><img src="../../avatar/source/final/4-bounce.svg" alt="小紫"></span></span>
+              <input class="panel-entity-name" id="panelEntityName" value="新版发布圆桌" aria-label="群组名称" autocomplete="off" spellcheck="false">
+            </div>
+            <nav class="panel-tabs" id="panelTabs" aria-label="会话详情页签">
+              <button class="panel-tab" data-panel-tab="details">详情</button>
+              <button class="panel-tab active" data-panel-tab="work">工作</button>
+              <button class="panel-tab" data-panel-tab="library">资料库</button>
+              <button class="panel-tab" data-panel-tab="members" id="panelMembersTab">成员</button>
+            </nav>
+            <div class="panel-body">
+              <section class="panel-view" data-panel-view="details" hidden>
+                <div id="groupDetailsContent">
+                  <section class="panel-section"><div class="panel-section-head">群信息</div><p class="panel-copy">周五灰度发布的协作群。Joy 负责主持，小蓝、小橙和小紫按各自专长参与。</p></section>
+                  <section class="panel-section"><div class="panel-section-head">例行任务</div><div class="panel-list">
+                    <div class="panel-row"><span class="panel-row-icon">↻</span><span class="panel-row-main"><span class="panel-row-title">发布日报</span><span class="panel-row-meta">工作日 18:00 · Joy 汇总</span></span><span class="panel-switch" aria-label="已开启"></span></div>
+                    <div class="panel-row"><span class="panel-row-icon">↻</span><span class="panel-row-main"><span class="panel-row-title">上线前风险巡检</span><span class="panel-row-meta">周五 14:00 · 全部成员</span></span><span class="panel-switch" aria-label="已开启"></span></div>
+                  </div><button class="panel-add" data-toast="已打开例行任务设置">设置例行任务</button></section>
+                </div>
+                <div id="agentDetailsContent" hidden>
+                  <section class="panel-section"><div class="panel-section-head">Agent 信息</div><p class="panel-copy" id="agentDetailsCopy">长期对话会保留你和 Agent 的历史。它在其他群里的工作不会混入这里。</p></section>
+                  <section class="panel-section"><div class="panel-section-head">能力</div><div class="panel-list"><div class="panel-row"><span class="panel-row-icon">⌁</span><span class="panel-row-main"><span class="panel-row-title" id="agentCapability">任务协作</span><span class="panel-row-meta">可接收消息并在后台执行工作</span></span></div></div></section>
+                </div>
+              </section>
+              <section class="panel-view" data-panel-view="work">
+                <div class="work-toolbar"><button class="panel-back" id="panelBack" aria-label="返回工作列表" hidden>←</button><h2 id="panelTitle">进行中的工作</h2><span id="panelSummary">尚未拆分</span></div>
+                <div class="work-overview" id="workOverview"><div id="workTree" class="empty-state">Joy 还没有给成员派活</div></div><div class="task-detail" id="taskDetail" hidden></div>
+              </section>
+              <section class="panel-view" data-panel-view="library" hidden>
+                <div class="library-date">今天</div>
+                <div class="library-card" aria-label="今天的资料">
+                  <button class="library-entry" data-toast="已打开发布性能对比.md"><span class="library-thumb"><svg viewBox="0 0 18 21" fill="none" aria-hidden="true"><path d="M3.5 1.5h7l4 4v14H3.5z" stroke="currentColor"/><path d="M10.5 1.5v4h4M6 10h6M6 13h6M6 16h4" stroke="currentColor" stroke-linecap="round"/></svg></span><span class="library-name">发布性能对比.md</span><span class="library-time">刚刚</span><span class="library-more" aria-label="发布性能对比.md 的更多操作">•••</span></button>
+                  <button class="library-entry" data-toast="已打开移动端 A 版预览"><span class="library-thumb preview" aria-hidden="true"></span><span class="library-name">移动端 A 版预览</span><span class="library-time">12 分钟</span><span class="library-more" aria-label="移动端 A 版预览的更多操作">•••</span></button>
+                  <button class="library-entry" data-toast="已打开灰度发布清单.md"><span class="library-thumb"><svg viewBox="0 0 18 21" fill="none" aria-hidden="true"><path d="M3.5 1.5h7l4 4v14H3.5z" stroke="currentColor"/><path d="M10.5 1.5v4h4M6 10h6M6 13h6M6 16h4" stroke="currentColor" stroke-linecap="round"/></svg></span><span class="library-name">灰度发布清单.md</span><span class="library-time">34 分钟</span><span class="library-more" aria-label="灰度发布清单.md 的更多操作">•••</span></button>
+                  <button class="library-entry" data-toast="已打开发布方案总览"><span class="library-thumb preview" aria-hidden="true"></span><span class="library-name">发布方案总览</span><span class="library-time">1 小时</span><span class="library-more" aria-label="发布方案总览的更多操作">•••</span></button>
+                </div>
+              </section>
+              <section class="panel-view" data-panel-view="members" hidden>
+                <div id="groupMembersContent"><section class="panel-section"><div class="panel-section-head">4 个 Agent</div><div class="panel-list member-list">
+                  <div class="panel-row"><img src="../../avatar/source/final/1-dot.svg" alt=""><span class="panel-row-main"><span class="panel-row-title">Joy</span><span class="panel-row-meta">主持 Agent · 在线</span></span></div>
+                  <div class="panel-row"><img src="../../avatar/source/final/3-wave.svg" alt=""><span class="panel-row-main"><span class="panel-row-title">小蓝</span><span class="panel-row-meta">性能 Agent · 后台工作中</span></span></div>
+                  <div class="panel-row"><img src="../../avatar/source/final/2-treble.svg" alt=""><span class="panel-row-main"><span class="panel-row-title">小橙</span><span class="panel-row-meta">设计 Agent · 在线</span></span></div>
+                  <div class="panel-row"><img src="../../avatar/source/final/4-bounce.svg" alt=""><span class="panel-row-main"><span class="panel-row-title">小紫</span><span class="panel-row-meta">审阅 Agent · 在线</span></span></div>
+                </div><button class="panel-add" data-toast="已打开添加成员">添加 Agent</button></section></div>
+                <div id="agentComputerContent" hidden><section class="panel-section"><div class="panel-section-head">电脑</div><div class="panel-list"><div class="panel-row"><span class="panel-row-icon">⌘</span><span class="panel-row-main"><span class="panel-row-title">本机工作区</span><span class="panel-row-meta">按你的授权范围访问</span></span><span class="panel-row-action">查看 ›</span></div></div></section></div>
+              </section>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </section>
+  </div>
+  <div class="toast" id="toast"></div>
+  <div class="peer-dialog" id="peerDialog" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="peerDialogTitle">
+    <div class="peer-dialog-card" id="peerDialogCard" tabindex="-1">
+      <div class="peer-dialog-head">
+        <div class="peer-identity" id="peerDialogTitle"><img src="../../avatar/source/final/1-dot.svg" alt=""><span>Joy</span><span class="swap">↔</span><img src="../../avatar/source/final/3-wave.svg" alt=""><span>小蓝</span></div>
+        <div class="peer-dialog-kind">Agent 间固定对话 · 只读</div>
+      </div>
+      <div class="peer-dialog-body" id="peerDialogBody">
+        <div class="peer-history-note">这段对话不会出现在你的会话列表；Joy 和小蓝下次协作仍会接着这里继续</div>
+        <div class="peer-message"><img src="../../avatar/source/final/3-wave.svg" alt=""><div><div class="peer-author">小蓝 · 昨天 16:42</div><div class="peer-copy">上次的首屏基线已经归档。后续如果再比较发布版本，可以直接沿用同一套口径。</div></div></div>
+        <div class="peer-history-note">今天 10:24</div>
+        <div class="peer-message"><img src="../../avatar/source/final/1-dot.svg" alt=""><div><div class="peer-author">Joy</div><div class="peer-copy">帮我对比最近三次发布的 LCP：列清变化、证据和风险，今天给结论。用户最终要判断这次能不能按时灰度。</div></div></div>
+        <div class="peer-message"><img src="../../avatar/source/final/3-wave.svg" alt=""><div><div class="peer-author">小蓝</div><div class="peer-copy">收到。我沿用上次的统计口径，补齐三次构建和真实用户数据；先在后台跑，结论出来后回你。</div></div></div>
+        <div class="peer-event">小蓝已启动后台工作 · 对比三次发布的 LCP</div>
+        <div class="peer-message"><img src="../../avatar/source/final/1-dot.svg" alt=""><div><div class="peer-author">Joy</div><div class="peer-copy">重点把主图与同步图表包拆开，不要只给均值；如果数据冲突，保留证据并标明置信度。</div></div></div>
+      </div>
+      <div class="peer-dialog-foot"><span class="peer-readonly">你可以查看协作记录，但不能在 Agent 之间的对话里发言。</span><button class="peer-close" id="peerDialogClose">关闭聊天</button></div>
+    </div>
+  </div>
+  <script>
+    const avatar = {
+      joy: "../../avatar/source/final/1-dot.svg",
+      blue: "../../avatar/source/final/3-wave.svg",
+      orange: "../../avatar/source/final/2-treble.svg",
+      purple: "../../avatar/source/final/4-bounce.svg"
+    };
+    const agentMeta = {
+      joy: { name: "Joy", role: "主持 Agent" },
+      blue: { name: "小蓝", role: "性能 Agent" },
+      orange: { name: "小橙", role: "设计 Agent" },
+      purple: { name: "小紫", role: "审阅 Agent" }
+    };
+    const botDirectMessages = {
+      blue: [
+        { who: "blue", name: "小蓝", role: "性能 Agent", html: "上次发布的性能基线和真实用户数据已经归档，后续复核可以继续沿用同一套口径。" },
+        { type: "user", html: "好，保留这套口径。遇到样本不足时单独标出来。" },
+        { who: "blue", name: "小蓝", role: "性能 Agent", html: "明白。我会保留原始数据和置信度，不用均值掩盖地区差异。" }
+      ],
+      orange: [
+        { who: "orange", name: "小橙", role: "设计 Agent", html: "移动端首屏的组件约束和断点规则还在，之后可以继续沿用。" },
+        { type: "user", html: "好，后续方案不要重画品牌骨架。" },
+        { who: "orange", name: "小橙", role: "设计 Agent", html: "收到。我会优先复用现有组件，再说明必要的差异。" }
+      ],
+      purple: [
+        { who: "purple", name: "小紫", role: "审阅 Agent", html: "上次复核留下的证据清单仍然有效，后续只需要补新增项。" },
+        { type: "user", html: "继续保留冲突证据，不要为了结论一致而合并。" },
+        { who: "purple", name: "小紫", role: "审阅 Agent", html: "明白。来源和分歧会分别保留。" }
+      ]
+    };
+    const pairConversation = {
+      blue: {
+        name: "小蓝",
+        old: "上次的首屏基线已经归档。后续如果再比较发布版本，可以直接沿用同一套口径。",
+        request: "帮我对比最近三次发布的 LCP：列清变化、证据和风险，今天给结论。用户最终要判断这次能不能按时灰度。",
+        reply: "收到。我沿用上次的统计口径，补齐三次构建和真实用户数据；先在后台跑，结论出来后回你。",
+        event: "小蓝已启动后台工作 · 对比三次发布的 LCP",
+        followup: "重点把主图与同步图表包拆开，不要只给均值；如果数据冲突，保留证据并标明置信度。"
+      },
+      orange: {
+        name: "小橙",
+        old: "上次移动端首屏的断点规则还在，我会继续沿用同一套组件约束。",
+        request: "单独看移动端风险：别重画品牌骨架，只指出最可能卡住发布的两处。",
+        reply: "收到。我先对照现有组件和两版首屏，把风险与实现成本拆开回你。",
+        event: "小橙已启动后台工作 · 核对移动端方案",
+        followup: "如果需要发布预览，先回来向用户申请一次性权限。"
+      },
+      purple: {
+        name: "小紫",
+        old: "上次复核留下的证据清单仍然有效，后续只补新增项。",
+        request: "复核发布结论的证据缺口，重点看第三方脚本与监控 SDK。",
+        reply: "收到。我只检查证据和因果，不重复跑其他人的完整测试。",
+        event: "小紫已启动后台工作 · 证据复核",
+        followup: "结论有冲突就原样保留，不替任何人抹平。"
+      }
+    };
+
+    const messages = [
+      { step: 0, type: "user", html: "请大家把周五发布方案拆开推进。我要知道性能风险、首屏怎么改，以及最后能不能按时上。" },
+      { step: 0, who: "joy", name: "Joy", role: "主持 Agent", html: "我先把目标和依赖理清，再让最合适的人并行推进。发布标准先按：周五可灰度、首屏不退化、移动端不增加新阻塞。" },
+      { step: 1, who: "joy", name: "Joy", role: "主持 Agent", html: "我先拆成两路。<span class='mention blue'>@小蓝</span> 核对性能基线和回归风险；<span class='mention orange'>@小橙</span> 出两版首屏方案并标实现成本。我继续梳理发布时间线。<div class='assignment-links'><button class='assignment-chip' data-focus='blue'><span class='dot blue'></span>性能基线 · 已派给小蓝</button><button class='assignment-chip' data-focus='orange'><span class='dot orange'></span>首屏方案 · 已派给小橙</button></div>" },
+      { step: 2, who: "blue", name: "小蓝", role: "性能 Agent", html: "收到。我会在后台跑完整基线和最近三次构建对比；先不占住讨论，有确定数据我就回来。<div class='work-inline'><span class='pulse'></span>已启动后台工作 · 跑性能基线</div>" },
+      { step: 2, who: "orange", name: "小橙", role: "设计 Agent", html: "收到。我做桌面和移动端两版，不动现有品牌骨架，并把实现成本一起标出来。<div class='work-inline'><span class='pulse'></span>已启动后台工作 · 首屏方案</div>" },
+      { step: 3, type: "user", html: "小蓝，你先说说现在最可能是哪块？不用等完整报告。" },
+      { step: 3, who: "blue", name: "小蓝", role: "性能 Agent", html: "目前最可疑的是主图和同步图表包，但 trace 还在后台跑，所以我只把它当假设，不当结论。<div class='work-inline'><span class='pulse'></span>后台任务仍在运行 · 2 / 4</div>" },
+      { step: 4, who: "blue", name: "小蓝", role: "性能 Agent", html: "<span class='mention purple'>@小紫</span> 帮我复核一下瀑布图里的第三方阻塞，重点看监控 SDK 是否卡住首屏。<div class='assignment-links'><button class='assignment-chip' data-focus='purple'><span class='dot purple'></span>网络瀑布复核 · 子任务</button></div>" },
+      { step: 4, who: "purple", name: "小紫", role: "审阅 Agent", html: "收到。我只复核证据和因果，不重复跑整套性能测试。<div class='work-inline'><span class='pulse'></span>已启动后台工作 · 复核瀑布图</div>" },
+      { step: 5, type: "user", html: "<span class='mention orange'>@小橙</span> 你先单独把 B 版的移动端断点做出来，完成后直接发群里。其他人按原来的继续。" },
+      { step: 5, who: "orange", name: "小橙", role: "设计 Agent", html: "收到。你的新指令已经进到我这里；我把移动端 B 版另放一个后台任务，原来的 A/B 对比不暂停。<div class='work-inline'><span class='pulse'></span>新增后台工作 · 移动端 B 版断点</div>" },
+      { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "移动端 B 版已经完成。需要发布到预览环境，方便大家实际看断点。<div class='approval'><div class='approval-title'>◌ 允许小橙发布到预览环境？</div><div class='approval-actions'><button class='mini-btn'>拒绝</button><button class='mini-btn primary' id='approveBtn'>允许一次</button></div></div>" },
+      { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "审批只暂停发布；我仍然可以继续讨论：A 版更稳，B 版信息密度更好。" },
+      { step: 7, who: "purple", name: "小紫", role: "审阅 Agent", html: "<div class='quote'>回应小蓝的瀑布图复核</div>监控 SDK 不是主阻塞。它晚于 LCP；真正的同步阻塞来自图表包初始化。" },
+      { step: 7, who: "blue", name: "小蓝", role: "性能 Agent", html: "基线跑完了，结论和小紫的复核一致。<div class='result-card'><strong>性能结果 · 已完成</strong><ul><li>主图增加约 0.6s LCP</li><li>同步图表包增加约 0.4s</li><li>监控 SDK 不是首屏主因</li></ul><a href='#'>打开完整性能报告 →</a></div>" },
+      { step: 7, who: "joy", name: "Joy", role: "主持 Agent", html: "结论可以收敛了：周五仍可灰度。先采用小橙 A 版，今天压缩主图并把图表包改为按需加载；B 版移动端预览作为备选。<p>分工：<span class='mention blue'>@小蓝</span> 验证修复后的指标，<span class='mention orange'>@小橙</span> 提交 A 版资源，<span class='mention purple'>@小紫</span> 做上线前证据复核。</p>" }
+    ];
+
+    const phases = [
+      "主持 Agent 接住需求",
+      "Joy 用工具并行委派 A / B",
+      "成员确认，并把长工作放到后台",
+      "后台 Agent 仍能继续发言",
+      "干活 Agent 再委派子任务",
+      "用户随时插话，并单独 @ 一个 Agent",
+      "审批只暂停一个工作节点",
+      "结果回流，主持 Agent 综合收尾"
+    ];
+
+    const branchScenarios = [
+      {
+        id: "U-ACTIVE", category: "用户介入", title: "单独 @ 正在工作的 Agent", note: "显式 @ 命中小蓝的 active Run，写入 SteeringMessage；后台基线不取消。",
+        messages: [
+          { type: "user", html: "<span class='mention blue'>@小蓝</span> 先补测低端机，桌面端可以晚一点。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，新优先级已经进入我当前的执行。我先补低端机；完整基线仍在后台继续。<div class='work-inline'><span class='pulse'></span>正在回复 · 后台任务未暂停</div>" }
+        ],
+        activity: [{ who: "blue", label: "小蓝已接收 steering · 后台基线继续" }],
+        work: { summary: "2 项同时进行", roots: [{ title: "性能调查", desc: "用户直接指派小蓝", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "补测低端机并立即答复", state: "回复中", className: "run", progress: 56, meta: "你的补充" }, { who: "blue", name: "小蓝", task: "完整性能基线", state: "后台中", className: "run", progress: 63, meta: "后台执行" }] }] }
+      },
+      {
+        id: "U-MULTI", category: "用户介入", title: "一句话分别 @ 多个 Agent", note: "按 mention 后的命令分段，形成两个独立目标 Run，不要求用户额外说“分别”。",
+        messages: [
+          { type: "user", html: "<span class='mention blue'>@小蓝</span> 做性能回归，<span class='mention orange'>@小橙</span> 做移动端视觉验收。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，我负责性能回归。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "收到，我负责移动端视觉验收。" }
+        ],
+        activity: [{ who: "blue", label: "小蓝处理性能回归" }, { who: "orange", label: "小橙处理视觉验收" }],
+        work: { summary: "2 项同时进行", roots: [{ title: "你的多目标指令", desc: "已分别交给两位 Agent", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能回归", state: "进行中", className: "run", progress: 32, meta: "你直接指派" }, { who: "orange", name: "小橙", task: "移动端视觉验收", state: "进行中", className: "run", progress: 28, meta: "你直接指派" }] }] }
+      },
+      {
+        id: "U-CONFLICT", category: "用户介入", title: "新指令与原任务冲突", note: "用户输入权威更高，但 Agent 不静默覆盖；先暴露冲突，再等待选择。",
+        messages: [
+          { type: "user", html: "<span class='mention orange'>@小橙</span> 不做 A 版了，全部切到 B 版；但周五必须上线。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "这和 Joy 原先的“优先稳妥 A 版”冲突，而且 B 版周五上线风险更高。我先暂停最终导出：要按你的新指令切 B，还是保留周五上线优先？" }
+        ],
+        activity: [{ who: "orange", label: "小橙发现目标冲突 · 等你确认" }],
+        work: { summary: "1 项待确认", roots: [{ title: "首屏方案", desc: "旧目标与新指令冲突", status: "等你确认", items: [{ who: "orange", name: "小橙", task: "A / B 最终导出", state: "待确认", className: "wait", progress: 72, meta: "不静默覆盖" }] }] }
+      },
+      {
+        id: "U-STOP", category: "用户介入", title: "只停止一个工作节点", note: "取消命中具体 task；同一 Agent 的其他工作和群聊能力继续。",
+        messages: [
+          { type: "user", html: "<span class='mention orange'>@小橙</span> 停掉移动端 B 版断点，A/B 主方案继续。" },
+          { type: "system", html: "已停止“小橙 · 移动端 B 版断点”；没有取消同一 Agent 的其他工作。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "收到。B 版断点已停，主方案继续，我仍会在群里回报。" }
+        ],
+        activity: [{ who: "orange", label: "小橙主方案继续 · 一个子任务已停止" }],
+        work: { summary: "1 进行中 · 1 已停", roots: [{ title: "首屏方案", desc: "用户精确取消一个节点", status: "进行中", items: [{ who: "orange", name: "小橙", task: "A/B 主方案", state: "后台中", className: "run", progress: 61, meta: "继续" }, { who: "orange", name: "小橙", task: "移动端 B 版断点", state: "已停止", className: "muted", progress: 35, meta: "用户取消" }] }] }
+      },
+      {
+        id: "A-ACTIVE", category: "任务补充", title: "几轮后继续补充 Task1", note: "补充靠结构化 taskId 命中 Task1 的 active Run，不按当前说话人或最近一条消息猜。",
+        messages: [
+          { type: "user", html: "<span class='mention blue'>@小蓝</span> 做 Task1：对比最近三次发布的 LCP，找出主要回退来源。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到。我会把三次构建、真实用户数据和资源瀑布拆开比较。<div class='work-inline'><span class='pulse'></span>Task1 · 三次发布 LCP 对比</div>" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "发布窗口我核过了，周五下午可以留出两小时灰度。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "移动端主图已经补了两档压缩规格，等性能结论回来再定默认档。" },
+          { type: "user", html: "<div class='task-ref'>补充到 <strong>Task1 · 三次发布 LCP 对比</strong></div>再加一个要求：不要只看总体均值，按地区拆开，并标出样本量不足的区域。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "已经补进 Task1，不会落到我正在聊的其他工作里。我会在原对比里增加地区分层和样本量标记，当前取数继续。<div class='work-inline'><span class='pulse'></span>Task1 · 已追加 1 条要求</div>" }
+        ],
+        activity: [{ who: "blue", label: "小蓝继续 Task1 · 已纳入你的补充" }],
+        work: { summary: "Task1 · 补充 1 条", roots: [{ title: "Task1 · 三次发布 LCP 对比", desc: "原要求保留 · 已补充 1 条", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "构建对比 + 地区分层 + 样本量标记", state: "进行中", className: "run", progress: 54, meta: "正在按最新要求执行" }] }] }
+      },
+      {
+        id: "A-BACKGROUND", category: "任务补充", title: "后台执行时追加分析口径", note: "现有 BackgroundAgentTask 不能被直接 steering；补充先持久化，由负责人判断继续合并还是取消旧 attempt。",
+        messages: [
+          { type: "user", html: "<span class='mention blue'>@小蓝</span> 把三次发布的性能原始数据跑一遍。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "Task1 已经放到后台跑，取数完成后我回来给你结论。<div class='work-inline'><span class='pulse'></span>后台中 · 性能原始数据</div>" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "我先继续核发布依赖，不等取数结束。" },
+          { type: "user", html: "<div class='task-ref'>补充到 <strong>Task1 · 性能原始数据</strong></div>结论里把主图和图表包分开，别合成一个前端资源项。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "这条补充不需要重跑取数。我保留当前后台任务，交付时把主图和图表包分开归因；如果你改的是采样范围，我会先说明并重启这一轮。" }
+        ],
+        activity: [{ who: "blue", label: "Task1 后台继续 · 交付口径已更新" }],
+        work: { summary: "后台继续 · 已补充要求", roots: [{ title: "Task1 · 性能原始数据", desc: "第 1 次执行 · 已补充 1 条", status: "后台中", items: [{ who: "blue", name: "小蓝", task: "取数继续；交付时拆分主图与图表包", state: "后台中", className: "run", progress: 67, meta: "现有取数继续" }] }] }
+      },
+      {
+        id: "A-COMPLETED", category: "任务补充", title: "已完成后追加复核", note: "旧结果保持完成；补充在同一个 Task 下创建 follow-up Run，不改写历史，也不创建用户新会话。",
+        messages: [
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "Task1 做完了：这次回退主要来自主图和同步图表包。<div class='result-card'><strong>Task1 · 已完成</strong><ul><li>主图约 +0.6s</li><li>图表包约 +0.4s</li></ul></div>" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "我按这个结论准备了主图压缩版，视觉差异可以接受。" },
+          { type: "user", html: "<div class='task-ref'>补充到 <strong>Task1 · 三次发布 LCP 对比</strong></div>再用付费用户样本复核一次，看看结论会不会变。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "可以。我不会改写上次的完成结果；现在在 Task1 下追加一轮“付费用户样本复核”，完成后把差异单独列给你。<div class='work-inline'><span class='pulse'></span>Task1 · 追加复核进行中</div>" }
+        ],
+        activity: [{ who: "blue", label: "Task1 已追加复核 · 原结果仍保留" }],
+        work: { summary: "1 个原结果 · 1 项追加复核", roots: [{ title: "Task1 · 三次发布 LCP 对比", desc: "原结果保留 · 追加复核进行中", status: "追加复核", items: [{ who: "blue", name: "小蓝", task: "原始全量样本结论", state: "已完成", className: "done", progress: 100, meta: "原结果保留" }, { who: "blue", name: "小蓝", task: "付费用户样本复核", state: "进行中", className: "run", progress: 22, meta: "追加复核" }] }] }
+      },
+      {
+        id: "A-AMBIGUOUS", category: "任务补充", title: "任务指代不清，先选择", note: "自然语言不能唯一命中时停止路由；让用户选择具体 Task，再写 amendment，不能按最近任务猜。",
+        messages: [
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "我这边同时在做“最近三次发布 LCP”和“低端机首屏回归”，两项都还在继续。" },
+          { type: "user", html: "给刚才那个性能任务再补一条：只看 Android。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "我这里有两个可能的任务，不能替你猜。你要把“只看 Android”补到哪一个？<div class='task-options'><button class='task-option' data-branch='A-ACTIVE'><strong>Task1 · 最近三次发布 LCP</strong><span>进行中</span></button><button class='task-option' data-toast='已选择 Task2；真实产品会把补充绑定到 Task2'><strong>Task2 · 低端机首屏回归</strong><span>后台中</span></button></div>" }
+        ],
+        activity: [{ who: "blue", label: "等待你选择具体任务 · 尚未修改任何执行" }],
+        work: { summary: "2 个候选 · 待选择", roots: [{ title: "需要确认补充目标", desc: "“刚才那个性能任务”无法唯一解析", status: "等你选择", items: [{ who: "blue", name: "小蓝", task: "Task1 · 最近三次发布 LCP", state: "进行中", className: "run", progress: 54, meta: "候选 1" }, { who: "blue", name: "小蓝", task: "Task2 · 低端机首屏回归", state: "后台中", className: "run", progress: 38, meta: "候选 2" }] }] }
+      },
+      {
+        id: "X-GROUP", category: "跨会话调度", title: "从 A 单聊派 A 去目标群", note: "用户在 Joy 单聊下令；Joy 进入指定圆桌，读完现场再接手工作。", surface: "dm",
+        messages: [
+          { type: "user", html: "你去新版发布圆桌看看现在讨论到哪了，核对性能风险，并把结论发在群里。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "好，我去圆桌里把前因后果看完整，再接手性能风险这部分。你不用切过去盯，我回来会单独向你汇报。<div class='destination-card'><div class='destination-head'><span class='destination-icon'>#</span><strong>Joy 已进入「新版发布圆桌」</strong><span class='destination-state'>已入席</span></div><div class='destination-text'>正在阅读现场讨论，并接手“性能风险核对”。</div><div class='destination-meta'><span>已接手 · 正在推进</span><span>去现场看看 ↗</span></div></div>" }
+        ],
+        activity: [{ who: "joy", label: "Joy 已入席新版发布圆桌 · 正在接手" }],
+        work: { summary: "1 项跨会话工作", roots: [{ title: "从 Joy 单聊带过去的工作", desc: "现场：新版发布圆桌", status: "进行中", items: [{ who: "joy", name: "Joy", task: "读完群内讨论并核对性能风险", state: "已接手", className: "run", progress: 24, meta: "跨会话调度" }] }] }
+      },
+      {
+        id: "X-BOT", category: "跨会话调度", title: "从 A 单聊安排 B 干活", note: "当前对话只留一条轻回执；点开可查看 Joy ↔ 小蓝的长期固定对话，用户只读且不能介入。", surface: "dm",
+        messages: [
+          { type: "user", html: "你去给小蓝安排个活：把最近三次发布的 LCP 数据做个对比，今天给我结论。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "好，我让小蓝去查。结果回来后，我会按你的问题重新整理。" },
+          { type: "receipt", from: "joy", targets: ["blue"], pair: "blue" }
+        ],
+        activity: [],
+        work: { summary: "1 项已委派", roots: [{ title: "Joy 的用户任务", desc: "来源：Joy 单聊", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "对比最近三次发布的 LCP", state: "已接收", className: "run", progress: 18, meta: "Joy ↔ 小蓝 · 固定对话" }] }] }
+      },
+      {
+        id: "X-GROUP-FAIL", category: "跨会话调度", title: "A 不在群，申请加入", note: "Joy 发现自己尚未入席；只有你具备群成员管理权时，才会出现可执行的加入审批。", surface: "dm",
+        messages: [
+          { type: "user", html: "你去新版发布圆桌看看现在讨论到哪了，核对性能风险。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "我还没在“新版发布圆桌”里。你可以把我拉进去；加入后我会继续刚才的任务，不需要你再说一遍。<div class='approval'><div class='approval-title'>◌ 把 Joy 加入「新版发布圆桌」？</div><div class='destination-text'>加入后，Joy 可以读取群内讨论、在群里发言并推进这次性能风险核对。</div><div class='approval-actions'><button class='mini-btn' data-toast='没有加入群，也没有发送任何消息'>暂不加入</button><button class='mini-btn primary' data-branch='X-GROUP'>加入并继续</button></div></div>" }
+        ],
+        activity: [{ who: "joy", label: "等你决定是否让 Joy 入席" }],
+        work: { summary: "1 项等你确认", roots: [{ title: "前往新版发布圆桌", desc: "尚未加入该群", status: "等你确认", items: [{ who: "joy", name: "Joy", task: "入群后核对性能风险", state: "等待入席", className: "wait", progress: 0, meta: "成员审批" }] }] }
+      },
+      {
+        id: "X-RETURN", category: "跨会话调度", title: "A 回来源单聊汇报结果", note: "圆桌保留完整过程；工作完成后，Joy 回到原单聊，专门按你的目标再汇报一次。", surface: "dm",
+        messages: [
+          { type: "user", html: "去新版发布圆桌核对风险，做完告诉我。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "我从圆桌带回结果了：周五仍然可以灰度，但需要先处理图表包；主图优化可以并行，不构成发布阻塞。<div class='result-card'><strong>给你的结论 · 已完成</strong><ul><li>图表包改为按需加载后，LCP 可回到目标线内</li><li>主图约影响 0.6s，建议今天压缩但不阻塞灰度</li><li>先灰度 10%，上线前由小紫补一次证据复核</li></ul></div><div class='destination-card'><div class='destination-head'><span class='destination-icon'>#</span><strong>结论来自「新版发布圆桌」</strong><span class='destination-state'>已带回</span></div><div class='destination-text'>圆桌里保留了完整证据、成员讨论和后续分工。</div><div class='destination-meta'><span>我已经按你的问题重新整理</span><span>查看现场 ↗</span></div></div>" }
+        ],
+        activity: [{ who: "joy", label: "跨会话工作已完成 · 结果可跳转" }],
+        work: { summary: "1 项已完成", roots: [{ title: "从圆桌带回的结果", desc: "已在 Joy 单聊完成汇报", status: "已完成", items: [{ who: "joy", name: "Joy", task: "核对发布风险并向你汇报", state: "已带回", className: "done", progress: 100, meta: "完整现场可追溯" }] }] }
+      },
+      {
+        id: "Q-REVERSE", category: "固定 Agent 对话", title: "反向联系仍是同一条对话", note: "这次由小蓝联系 Joy；方向变化不会创建第二个 Thread，点击回执仍看到同一份长期历史。", surface: "dm", dmWho: "blue",
+        messages: [
+          { type: "user", html: "你去问 Joy：周五灰度的性能门槛最终定多少，别重复开新讨论。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "好，我直接接着我们原来的对话问他。" },
+          { type: "receipt", from: "blue", targets: ["joy"], pair: "blue", mode: "reverse" }
+        ],
+        activity: [],
+        work: { summary: "1 项已询问", roots: [{ title: "小蓝的用户任务", desc: "Joy 与小蓝继续原来的对话", status: "进行中", items: [{ who: "joy", name: "Joy", task: "确认周五灰度性能门槛", state: "已接收", className: "run", progress: 15, meta: "Joy ↔ 小蓝" }] }] }
+      },
+      {
+        id: "Q-MULTI", category: "固定 Agent 对话", title: "同时联系 3 个 Agent", note: "来源只显示一条聚合回执；点开先选择哪一组双 Agent 对话，底层没有临时四人群。", surface: "dm",
+        messages: [
+          { type: "user", html: "分别问小蓝、小橙、小紫：性能、移动端和证据现在各有什么风险。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "好，我分别去问；每个人的结果回来后我再替你合并。" },
+          { type: "receipt", from: "joy", targets: ["blue", "orange", "purple"] }
+        ],
+        activity: [],
+        work: { summary: "3 项分别进行", roots: [{ title: "Joy 的用户任务", desc: "已分别发给三位 Agent", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能风险", state: "已接收", className: "run", progress: 19, meta: "Joy ↔ 小蓝" }, { who: "orange", name: "小橙", task: "移动端风险", state: "已接收", className: "run", progress: 14, meta: "Joy ↔ 小橙" }, { who: "purple", name: "小紫", task: "证据缺口", state: "已接收", className: "run", progress: 12, meta: "Joy ↔ 小紫" }] }] }
+      },
+      {
+        id: "Q-ORIGINS", category: "固定 Agent 对话", title: "多来源并发不串线", note: "Joy ↔ 小蓝可以同时承接多个来源任务；审批、结果和取消按 sourceThreadId/sourceRunId 精确返回。", surface: "dm",
+        messages: [
+          { type: "user", html: "让小蓝查这次发布的线上 trace，只读就行。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "已经发给小蓝。他同时还在替“增长复盘”查另一组数据，但两项工作不会混在一起。" },
+          { type: "receipt", from: "joy", targets: ["blue"], pair: "blue" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "小蓝需要读取这次发布的线上 trace。这个审批只恢复你在这里发起的任务，不会授权“增长复盘”的另一项工作。<div class='approval'><div class='approval-title'>◌ 允许小蓝只读一次发布 trace？</div><div class='approval-actions'><button class='mini-btn' data-toast='这一个来源任务已拒绝；另一项工作不受影响'>拒绝</button><button class='mini-btn primary' data-toast='只恢复当前来源的 trace 读取'>允许一次</button></div></div>" }
+        ],
+        activity: [{ who: "blue", label: "一个来源等审批 · 另一个来源继续" }],
+        work: { summary: "同一组 Agent · 2 项工作", roots: [{ title: "新版发布", desc: "来自当前 Joy 单聊", status: "等你确认", items: [{ who: "blue", name: "小蓝", task: "读取发布 trace", state: "等你批准", className: "wait", progress: 22, meta: "新版发布" }] }, { title: "增长复盘", desc: "来自另一段用户对话", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "核对增长页 RUM", state: "后台中", className: "run", progress: 63, meta: "增长复盘" }] }] }
+      },
+      {
+        id: "Q-UNAVAILABLE", category: "固定 Agent 对话", title: "Agent 停用后历史只读", note: "旧对话和审计仍可查看，但停用的目标不能接受新工作，来源不能显示为已送达。", surface: "dm",
+        messages: [
+          { type: "user", html: "再让小蓝补一遍移动端数据。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "没有发出去：小蓝已停用，不能接受新的任务。之前的协作记录还在，你仍然可以查看。" },
+          { type: "receipt", from: "joy", targets: ["blue"], pair: "blue", mode: "archived", failed: true }
+        ],
+        activity: [],
+        work: { summary: "1 项未送达", roots: [{ title: "补查移动端数据", desc: "目标 Agent 已停用", status: "失败", items: [{ who: "blue", name: "小蓝", task: "补查移动端数据", state: "未开始", className: "error", progress: 0, meta: "旧记录保留 · 新消息未送达" }] }] }
+      },
+      {
+        id: "C-MULTI", category: "并发与时序", title: "多个 Agent 同时应答", note: "各 Run 独立执行；消息最终按 Thread seq 稳定落库，不使用前端到达顺序推断因果。",
+        messages: [
+          { type: "user", html: "<span class='mention blue'>@小蓝</span> <span class='mention orange'>@小橙</span> 各自给我一句最重要的风险。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "视觉侧最大风险是移动端 B 版信息密度。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "性能侧最大风险是同步图表包阻塞 LCP。" }
+        ],
+        activity: [{ who: "blue", label: "2 个目标 Run 已独立完成" }],
+        work: { summary: "2 项已完成", roots: [{ title: "并行快速判断", desc: "按消息产生顺序展示", status: "已完成", items: [{ who: "orange", name: "小橙", task: "视觉风险一句话", state: "已完成", className: "done", progress: 100, meta: "先返回" }, { who: "blue", name: "小蓝", task: "性能风险一句话", state: "已完成", className: "done", progress: 100, meta: "随后返回" }] }] }
+      },
+      {
+        id: "C-DUAL", category: "并发与时序", title: "同一 Agent 前台发言 + 后台工作", note: "Bot 是持久身份；普通 Run 与 BackgroundAgentTask 是两条车道。",
+        messages: [
+          { type: "user", html: "<span class='mention blue'>@小蓝</span> trace 没跑完也没关系，先告诉我当前假设。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "当前假设是主图和图表包；这是中间判断，不是最终结论。<div class='work-inline'><span class='pulse'></span>后台 trace 仍在运行 · 2 / 4</div>" }
+        ],
+        activity: [{ who: "blue", label: "小蓝正在回复" }, { who: "blue", label: "小蓝后台 trace 仍在运行" }],
+        work: { summary: "同一 Agent · 2 项工作", roots: [{ title: "性能诊断", desc: "即时回复和后台工作同时进行", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "回答当前假设", state: "回复中", className: "run", progress: 80, meta: "即时回复" }, { who: "blue", name: "小蓝", task: "完整 trace", state: "后台中", className: "run", progress: 51, meta: "后台执行" }] }] }
+      },
+      {
+        id: "C-ROOTS", category: "并发与时序", title: "同群存在两个独立根任务", note: "不靠“最近消息”猜归属；每个用户根 Run 有自己的 lineage。",
+        messages: [
+          { type: "user", html: "<span class='mention purple'>@小紫</span> 另外查一下明天客户会的材料，这件事和发布无关。" },
+          { who: "purple", name: "小紫", role: "审阅 Agent", html: "收到。我把它作为独立工作处理，不挂到发布方案下面。" }
+        ],
+        activity: [{ who: "blue", label: "发布方案仍在推进" }, { who: "purple", label: "客户会材料独立进行" }],
+        work: { summary: "2 个独立任务", roots: [{ title: "发布方案拆解", desc: "由 Joy 负责", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "后台中", className: "run", progress: 61, meta: "发布方案" }] }, { title: "客户会材料", desc: "由用户直接指派", status: "进行中", items: [{ who: "purple", name: "小紫", task: "整理明天客户会材料", state: "进行中", className: "run", progress: 18, meta: "客户会材料" }] }] }
+      },
+      {
+        id: "C-LATE", category: "并发与时序", title: "旧任务结果晚到，不覆盖新指令", note: "delivery Run 先读取最新 Thread；旧结果保留证据，但标记已被新目标取代。",
+        messages: [
+          { type: "user", html: "发布目标已经改成下周一；周五的数据只留档，不再用于决策。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "周五基线刚刚完成。我看到目标已经改到下周一，所以只把它作为历史基线回传，不会据此覆盖新计划。" }
+        ],
+        activity: [{ who: "blue", label: "旧结果已归档 · 未覆盖当前目标" }],
+        work: { summary: "1 项历史结果", roots: [{ title: "发布目标：下周一", desc: "最新用户指令生效", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "周五性能基线", state: "仅归档", className: "muted", progress: 100, meta: "stale result" }] }] }
+      },
+      {
+        id: "P-SCOPED", category: "审批与权限", title: "审批只暂停一个节点", note: "Intervention 绑定具体 Run / task；小蓝、小紫和小橙的对话能力不受影响。",
+        messages: [
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "预览已经生成，需要发布权限。<div class='approval'><div class='approval-title'>◌ 允许小橙发布这一次预览？</div><div class='approval-actions'><button class='mini-btn' data-branch='P-DENY'>拒绝</button><button class='mini-btn primary' data-branch='P-ALLOW'>允许一次</button></div></div>" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "审批不影响我：性能基线已经跑到第三组。" }
+        ],
+        activity: [{ who: "orange", label: "小橙一个节点等审批 · 仍可发言" }, { who: "blue", label: "小蓝后台继续" }],
+        work: { summary: "1 项等批准 · 2 项继续", roots: [{ title: "发布方案", desc: "只暂停需要批准的发布操作", status: "进行中", items: [{ who: "orange", name: "小橙", task: "发布移动端预览", state: "等你批准", className: "wait", progress: 84, meta: "需要你的批准" }, { who: "blue", name: "小蓝", task: "性能基线", state: "后台中", className: "run", progress: 69, meta: "继续进行" }, { who: "purple", name: "小紫", task: "证据复核", state: "后台中", className: "run", progress: 42, meta: "继续进行" }] }] }
+      },
+      {
+        id: "P-ALLOW", category: "审批与权限", title: "允许一次后恢复", note: "一次性授权只恢复对应调用；不扩大 Bot 的长期权限或其他资源范围。",
+        messages: [
+          { type: "system", html: "你已允许“小橙发布移动端预览”一次。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "权限已用于这次发布，预览地址已经回到群里；后续发布仍需重新批准。<div class='result-card'><strong>移动端预览 · 已发布</strong><ul><li>授权范围：单次</li><li>其他环境：未授权</li></ul></div>" }
+        ],
+        activity: [{ who: "orange", label: "小橙完成单次授权调用" }],
+        work: { summary: "1 项已完成", roots: [{ title: "移动端预览", desc: "单次授权已消费", status: "已完成", items: [{ who: "orange", name: "小橙", task: "发布预览环境", state: "已完成", className: "done", progress: 100, meta: "allow once" }] }] }
+      },
+      {
+        id: "P-DENY", category: "审批与权限", title: "拒绝审批但继续讨论", note: "拒绝的是危险动作，不是封禁 Agent；它仍能给替代方案。",
+        messages: [
+          { type: "system", html: "你拒绝了“小橙发布移动端预览”。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "明白，我不会发布。可以继续用本地截图比较 A/B，也可以稍后由你手动上传。" }
+        ],
+        activity: [{ who: "orange", label: "发布已停止 · 小橙仍可讨论" }],
+        work: { summary: "1 项被拒绝", roots: [{ title: "移动端预览", desc: "审批拒绝不终止对话", status: "已停止", items: [{ who: "orange", name: "小橙", task: "发布预览环境", state: "已拒绝", className: "muted", progress: 84, meta: "替代方案可用" }] }] }
+      },
+      {
+        id: "P-STALE", category: "审批与权限", title: "审批期间上下文已变化", note: "审批通过不等于继续旧动作；恢复前必须读取新增消息并重新校验参数。",
+        messages: [
+          { type: "user", html: "先别发 B 版，发布目标改成 A 版预览。" },
+          { type: "system", html: "原“发布 B 版”审批已过期，因为目标参数发生变化。" },
+          { who: "orange", name: "小橙", role: "设计 Agent", html: "我不会复用旧批准。A 版发布是新的动作，需要你重新确认。" }
+        ],
+        activity: [{ who: "orange", label: "旧审批已失效 · 等待新确认" }],
+        work: { summary: "1 项需重新批准", roots: [{ title: "预览发布", desc: "目标从 B 改为 A", status: "待更新", items: [{ who: "orange", name: "小橙", task: "发布 A 版预览", state: "待新审批", className: "wait", progress: 80, meta: "旧审批不可复用" }] }] }
+      },
+      {
+        id: "F-OFFLINE", category: "异常与恢复", title: "目标 Agent 不可用", note: "message_bot 明确失败；群里不伪造“收到”，主持人决定换人或重试。",
+        messages: [
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "我准备让 <span class='mention purple'>@小紫</span> 做证据复核。" },
+          { type: "system", html: "未能派给小紫：该 Agent 已被停用，没有创建 support Run。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "小紫当前不可用。我先保留复核缺口，不会把它显示成已接收；可以改派小蓝或等小紫恢复。" }
+        ],
+        activity: [{ who: "joy", label: "委派失败 · 等待改派" }],
+        work: { summary: "1 项未分配", roots: [{ title: "发布方案", desc: "失败透明可见", status: "有阻塞", items: [{ who: "purple", name: "小紫", task: "证据复核", state: "未创建", className: "error", progress: 0, meta: "Agent disabled" }] }] }
+      },
+      {
+        id: "F-RETRY", category: "异常与恢复", title: "后台任务失败后重试", note: "重试是同一任务的 attempt，不创建重复工作，也不重复发送确认消息。",
+        messages: [
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第一轮 trace 因浏览器进程退出失败。我已在相同任务下开始第 2 次尝试，已完成的数据不会重复发布。<div class='work-inline'><span class='pulse'></span>重试中 · attempt 2 / 3</div>" }
+        ],
+        activity: [{ who: "blue", label: "性能基线重试中 · 2 / 3" }],
+        work: { summary: "1 项重试中", roots: [{ title: "性能基线", desc: "保留每一次尝试", status: "重试中", items: [{ who: "blue", name: "小蓝", task: "运行完整 trace", state: "重试 2/3", className: "run", progress: 39, meta: "第 2 次尝试" }] }] }
+      },
+      {
+        id: "F-DEDUPE", category: "异常与恢复", title: "重复投递被幂等抑制", note: "相同 delivery key 只创建一个 target Run；第二次事件只留下审计记录。",
+        messages: [
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "<span class='mention blue'>@小蓝</span> 核对性能基线。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，我开始核对。" },
+          { type: "system", html: "检测到重复投递；已复用现有 Run，没有再次通知小蓝。" }
+        ],
+        activity: [{ who: "blue", label: "小蓝仅有 1 个有效 Run" }],
+        work: { summary: "1 项有效工作", roots: [{ title: "发布方案", desc: "重复请求已自动合并", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "进行中", className: "run", progress: 27, meta: "没有重复执行" }] }] }
+      },
+      {
+        id: "F-PARTIAL", category: "异常与恢复", title: "部分失败，主持人仍可收尾", note: "失败分支保留事实；已有成功结果可以用于有条件结论，不能伪装为全量完成。",
+        messages: [
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "性能基线完成：修复后 LCP 可以达标。" },
+          { type: "system", html: "小紫的第三方证据复核超时，未产生结果。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "现在只能做有条件收尾：性能证据支持周五灰度，但第三方复核缺失。我建议先灰度 10%，并把复核列为上线前阻塞项。" }
+        ],
+        activity: [{ who: "blue", label: "性能结果已完成" }, { who: "purple", label: "证据复核失败" }],
+        work: { summary: "1 成功 · 1 失败", roots: [{ title: "发布方案", desc: "主持人基于部分结果收尾", status: "部分完成", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "已完成", className: "done", progress: 100, meta: "有结果" }, { who: "purple", name: "小紫", task: "第三方证据复核", state: "已超时", className: "error", progress: 48, meta: "无结果" }] }] }
+      }
+    ];
+
+    const query = new URLSearchParams(location.search);
+    const requestedStep = Number(query.get("step") ?? 0);
+    let step = Number.isFinite(requestedStep) ? Math.max(0, Math.min(phases.length - 1, requestedStep)) : 0;
+    let branchId = branchScenarios.some(item => item.id === query.get("branch")) ? query.get("branch") : "main";
+    let botView = Object.hasOwn(agentMeta, query.get("bot")) && query.get("bot") !== "joy" ? query.get("bot") : null;
+    let conversationTitle = "新版发布圆桌";
+    let timer = null;
+    let approved = false;
+    const panelTabNames = ["details", "work", "library", "members"];
+    let panelTab = panelTabNames.includes(query.get("tab")) ? query.get("tab") : "work";
+    let overviewPanelTitle = "进行中的工作";
+    let overviewPanelSummary = "尚未拆分";
+    const feed = document.getElementById("feed");
+    const rail = document.getElementById("activityRail");
+    const tree = document.getElementById("workTree");
+    const main = document.getElementById("main");
+    if (query.get("panel") !== "1") main.classList.add("work-hidden");
+
+    function renderReceipt(message) {
+      const targetAvatars = message.targets.map(target => `<img src="${avatar[target]}" alt="">`).join("");
+      const failedClass = message.failed ? " failed" : "";
+      if (message.targets.length === 1) {
+        const target = message.targets[0];
+        return `<div class="peer-receipt-row"><button class="peer-receipt${failedClass}" data-peer-chat="${message.pair || target}" data-peer-mode="${message.mode || ""}"><span>${message.failed ? "未发送给" : "已发消息给"}</span>${targetAvatars}<strong>${agentMeta[target].name}</strong><span class="receipt-arrow">›</span></button></div>`;
+      }
+      const choices = message.targets.map(target => {
+        const peer = pairConversation[target];
+        return `<button class="peer-choice" data-peer-choice="${target}"><img src="${avatar[target]}" alt=""><span class="peer-choice-name">${peer.name}</span></button>`;
+      }).join("");
+      return `<div class="peer-receipt-row"><button class="peer-receipt" data-receipt-toggle aria-expanded="false"><span>已发消息给</span>${targetAvatars}<strong>${message.targets.length} 个 Agent</strong><span class="receipt-arrow">⌄</span></button><div class="peer-dropdown">${choices}</div></div>`;
+    }
+
+    function renderRichText(html) {
+      return html.replace(/<span class='mention (blue|orange|purple)'>@([^<]+)<\/span>/g, (_, who, name) => `<a class="mention ${who}" href="?bot=${who}" data-bot-link="${who}" aria-label="打开与${name}的对话"><img src="${avatar[who]}" alt=""><span>${name}</span></a>`);
+    }
+
+    function renderMessage(message) {
+      if (message.type === "receipt") return renderReceipt(message);
+      const html = renderRichText(message.html);
+      if (message.type === "user") return `<div class="message user"><div class="user-bubble">${html}</div></div>`;
+      if (message.type === "system") return `<div class="system-line">${html}</div>`;
+      return `<div class="message"><span class="avatar"><img src="${avatar[message.who]}"></span><div><div class="author ${message.who}"><strong>${message.name}</strong><span class="role">${message.role}</span></div><div class="bubble">${html}</div></div></div>`;
+    }
+
+    function selectedBranch() {
+      return branchId === "main" ? null : branchScenarios.find(item => item.id === branchId);
+    }
+
+    function nodeUpdateLabel(state, className) {
+      if (className === "wait") return /批准|确认|选择|入席/.test(state) ? "等待你" : "等待继续";
+      if (className === "done") return "已有结果";
+      if (className === "error") return /超时/.test(state) ? "没有结果" : "未能开始";
+      if (className === "muted") return "已经结束";
+      if (/接收/.test(state)) return "刚刚接收";
+      if (/回复/.test(state)) return "正在回复";
+      if (/重试/.test(state)) return "正在重试";
+      return "刚刚更新";
+    }
+
+    function nodeMeta(meta, state, className) {
+      return `<div class="node-meta"><span>${meta}</span><span class="node-update ${className}">${nodeUpdateLabel(state, className)}</span></div>`;
+    }
+
+    function taskProgressModel(state, className, task, meta, isTask1) {
+      if (isTask1) return {
+        current: "正在核对地区分层与样本量",
+        stages: [["收集材料", "done"], ["核对数据", "current"], ["整理结论", ""]],
+        recent: "已纳入你的补充；发现欧洲区第二次发布样本不足，正在确认影响。",
+        tone: "run"
+      };
+      if (className === "wait") return {
+        current: `${state}，确认后继续`,
+        stages: [["接收任务", "done"], ["等待确认", "current wait"], ["继续工作", ""]],
+        recent: "任务已停在当前阶段，收到你的确认后继续。",
+        tone: "wait"
+      };
+      if (className === "done") return {
+        current: "工作已完成，结果可以查看",
+        stages: [["接收任务", "done"], ["推进工作", "done"], ["交付结果", "done"]],
+        recent: "结果已经交付，相关消息和产物仍可继续查看。",
+        tone: "done"
+      };
+      if (className === "error") return {
+        current: /超时/.test(state) ? "工作已超时，没有产生结果" : "工作未能继续",
+        stages: [["接收任务", "done"], ["推进工作", "current error"], ["交付结果", ""]],
+        recent: /超时/.test(state) ? "等待时间已结束，没有收到结果。" : "任务没有开始或继续，请查看消息中的原因。",
+        tone: "error"
+      };
+      if (className === "muted") return {
+        current: /归档/.test(state) ? "旧结果已归档" : "这项工作已经停止",
+        stages: [["接收任务", "done"], ["推进工作", "current"], ["交付结果", ""]],
+        recent: "这项工作不再继续，已有记录仍然保留。",
+        tone: "muted"
+      };
+      if (/等待接收|未开始/.test(state)) return {
+        current: "等待 Agent 接收任务",
+        stages: [["接收任务", "current"], ["推进工作", ""], ["交付结果", ""]],
+        recent: meta,
+        tone: ""
+      };
+      return {
+        current: task,
+        stages: [["接收任务", "done"], ["推进工作", "current"], ["交付结果", ""]],
+        recent: `${nodeUpdateLabel(state, className)}：${meta}`,
+        tone: "run"
+      };
+    }
+
+    function renderStages(stages) {
+      return `<div class="task-stages">${stages.map(([label, stageClass]) => `<div class="task-stage ${stageClass}">${label}</div>`).join("")}</div>`;
+    }
+
+    function branchWorkState(scenario) {
+      const roots = scenario.work.roots.map(root => {
+        const items = root.items.map(item => `<div class="work-node"><div class="node-top"><img src="${avatar[item.who]}"><span class="node-person">${item.name}</span><span class="node-state ${item.className}">${item.state}</span></div><div class="node-task">${item.task}</div>${nodeMeta(item.meta, item.state, item.className)}</div>`).join("");
+        const statusClass = /失败|阻塞|停止/.test(root.status) ? "error" : /等待|待|重试|部分/.test(root.status) ? "warn" : "";
+        return `<div class="work-root"><div class="work-root-title">${root.title}<span class="status ${statusClass}">${root.status}</span></div><div class="work-root-desc">${root.desc}</div><div class="branch">${items}</div></div>`;
+      }).join("<div style='height:10px'></div>");
+      const count = scenario.work.roots.reduce((sum, root) => sum + root.items.filter(item => item.className === "run" || item.className === "wait").length, 0);
+      return { count, summary: scenario.work.summary, html: roots };
+    }
+
+    function branchActivity(scenario) {
+      return scenario.activity.map(item => `<button class="activity-pill"><img src="${avatar[item.who]}"><span class="spinner"></span>${item.label}</button>`).join("");
+    }
+
+    function workState() {
+      if (step < 1) return { count: 0, summary: "尚未拆分", html: `<div class="empty-state">Joy 还没有给成员派活</div>` };
+      const blueState = step < 2 ? "等待接收" : step < 7 ? "后台中" : "已完成";
+      const orangeState = step < 2 ? "等待接收" : step < 7 ? "后台中" : "已完成";
+      const blueClass = step < 2 ? "" : step < 7 ? "run" : "done";
+      const orangeClass = step < 2 ? "" : step < 7 ? "run" : "done";
+      const purpleClass = step < 7 ? "run" : "done";
+      const purpleState = step < 7 ? "后台中" : "已完成";
+      const purple = step >= 4 ? `<div class="nested"><div class="work-node" data-node="purple"><div class="node-top"><img src="${avatar.purple}"><span class="node-person">小紫</span><span class="node-state ${purpleClass}">${purpleState}</span></div><div class="node-task">复核瀑布图中的第三方阻塞</div>${nodeMeta("小蓝委派", purpleState, purpleClass)}</div></div>` : "";
+      const userDirectedClass = step === 6 && !approved ? "wait" : step < 7 ? "run" : "done";
+      const userDirectedState = step === 6 && !approved ? "等你批准" : step < 7 ? "后台中" : "已完成";
+      const userDirected = step >= 5 ? `<div class="work-node" data-node="orange-direct"><div class="node-top"><img src="${avatar.orange}"><span class="node-person">小橙</span><span class="node-state ${userDirectedClass}">${userDirectedState}</span></div><div class="node-task">移动端 B 版断点</div>${nodeMeta("你直接 @ 指派", userDirectedState, userDirectedClass)}</div>` : "";
+      const active = step < 7 ? (step >= 5 ? 4 : step >= 4 ? 3 : 2) : 0;
+      return {
+        count: active,
+        summary: step < 7 ? `${active} 项进行中` : "4 项已完成",
+        html: `<div class="work-root"><div class="work-root-title">发布方案拆解 <span class="status">${step < 7 ? '进行中' : '已收敛'}</span></div><div class="work-root-desc">负责人 Joy · 周五灰度发布</div><div class="branch"><div class="work-node" data-node="blue"><div class="node-top"><img src="${avatar.blue}"><span class="node-person">小蓝</span><span class="node-state ${blueClass}">${blueState}</span></div><div class="node-task">核对性能基线和回归风险</div>${nodeMeta("Joy 委派", blueState, blueClass)}${purple}</div><div class="work-node" data-node="orange"><div class="node-top"><img src="${avatar.orange}"><span class="node-person">小橙</span><span class="node-state ${orangeClass}">${orangeState}</span></div><div class="node-task">两版首屏方案与实现成本</div>${nodeMeta("Joy 委派", orangeState, orangeClass)}</div>${userDirected}</div></div>`
+      };
+    }
+
+    function activity() {
+      const items = [];
+      if (step === 1) items.push({ who: "blue", label: "小蓝、小橙 正在接收任务" });
+      if (step >= 2 && step < 7) items.push({ who: "blue", label: `小蓝在后台跑基线 · ${step >= 3 ? '2 分钟' : '刚刚'}` });
+      if (step >= 2 && step < 7) items.push({ who: "orange", label: step === 6 && !approved ? "小橙等你批准 · 仍可发言" : step >= 5 ? "小橙后台工作 2 项" : "小橙在后台做方案" });
+      if (step >= 4 && step < 7) items.push({ who: "purple", label: "小紫在后台复核" });
+      if (step === 3) items.unshift({ who: "blue", label: "小蓝正在回复 · 后台工作未暂停" });
+      if (step === 5) items.unshift({ who: "orange", label: "你的 @ 指令已交给小橙 · 原任务未取消" });
+      return items.map(item => `<button class="activity-pill" data-focus="${item.who}"><img src="${avatar[item.who]}"><span class="spinner"></span>${item.label}</button>`).join("");
+    }
+
+    function bindDynamic() {
+      document.querySelectorAll("[data-peer-chat]").forEach(el => el.addEventListener("click", event => {
+        event.stopPropagation();
+        openPeerDialog(el.dataset.peerChat, el.dataset.peerMode);
+      }));
+      document.querySelectorAll("[data-receipt-toggle]").forEach(el => el.addEventListener("click", event => {
+        event.stopPropagation();
+        const dropdown = el.closest(".peer-receipt-row").querySelector(".peer-dropdown");
+        const willOpen = !dropdown.classList.contains("open");
+        closePeerDropdowns();
+        dropdown.classList.toggle("open", willOpen);
+        el.setAttribute("aria-expanded", String(willOpen));
+      }));
+      document.querySelectorAll("[data-peer-choice]").forEach(el => el.addEventListener("click", event => {
+        event.stopPropagation();
+        closePeerDropdowns();
+        openPeerDialog(el.dataset.peerChoice);
+      }));
+      document.querySelectorAll("[data-focus]").forEach(el => el.addEventListener("click", () => {
+        setPanelTab("work");
+        requestAnimationFrame(() => focusNode(el.dataset.focus));
+      }));
+      document.querySelectorAll("[data-bot-link]").forEach(el => el.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        openBotChat(el.dataset.botLink);
+      }));
+      document.querySelectorAll(".work-node").forEach(el => el.addEventListener("click", event => {
+        event.stopPropagation();
+        openTaskDetail(el);
+      }));
+      document.querySelectorAll(".work-root").forEach(el => el.addEventListener("click", event => {
+        if (event.target.closest(".work-node")) return;
+        const firstNode = el.querySelector(".work-node");
+        if (firstNode) openTaskDetail(firstNode);
+      }));
+      document.querySelectorAll("[data-branch]").forEach(el => el.addEventListener("click", event => {
+        event.stopPropagation();
+        branchId = el.dataset.branch;
+        document.getElementById("scenarioSelect").value = branchId;
+        render();
+      }));
+      document.querySelectorAll("[data-toast]").forEach(el => el.addEventListener("click", event => {
+        event.stopPropagation();
+        showToast(el.dataset.toast);
+      }));
+      const approve = document.getElementById("approveBtn");
+      if (approve) approve.addEventListener("click", () => { approved = true; showToast("已允许一次；只恢复小橙的这项工作"); render(); });
+    }
+
+    function peerDialogBody(target, mode) {
+      const peer = pairConversation[target] || pairConversation.blue;
+      const history = `<div class="peer-history-note">这段对话不会出现在你的会话列表；Joy 和${peer.name}下次协作仍会接着这里继续</div><div class="peer-message"><img src="${avatar[target]}" alt=""><div><div class="peer-author">${peer.name} · 昨天 16:42</div><div class="peer-copy">${peer.old}</div></div></div>`;
+      if (mode === "archived") return `<div class="peer-history-note" style="color:var(--red)">${peer.name}已停用 · 新消息不会投递，以下历史继续保留</div>${history}<div class="peer-message"><img src="${avatar.joy}" alt=""><div><div class="peer-author">Joy · 昨天 16:48</div><div class="peer-copy">收到。结果已经带回原来的用户会话，这里保留完整协作证据。</div></div></div>`;
+      if (mode === "reverse") return `${history}<div class="peer-history-note">今天 10:24 · 仍是同一个 Thread</div><div class="peer-message"><img src="${avatar.blue}" alt=""><div><div class="peer-author">小蓝</div><div class="peer-copy">Joy，用户让我确认周五灰度的性能门槛。沿用我们上次的口径，最终阈值是多少？</div></div></div><div class="peer-message"><img src="${avatar.joy}" alt=""><div><div class="peer-author">Joy</div><div class="peer-copy">LCP P75 不高于 2.5 秒，错误率不高于 0.3%。这是同一条发布线，不需要重新建立上下文。</div></div></div><div class="peer-event">方向已反转 · pair Thread 未变化</div>`;
+      return `${history}<div class="peer-history-note">今天 10:24</div><div class="peer-message"><img src="${avatar.joy}" alt=""><div><div class="peer-author">Joy</div><div class="peer-copy">${peer.request}</div></div></div><div class="peer-message"><img src="${avatar[target]}" alt=""><div><div class="peer-author">${peer.name}</div><div class="peer-copy">${peer.reply}</div></div></div><div class="peer-event">${peer.event}</div><div class="peer-message"><img src="${avatar.joy}" alt=""><div><div class="peer-author">Joy</div><div class="peer-copy">${peer.followup}</div></div></div>`;
+    }
+
+    function openPeerDialog(target = "blue", mode = "") {
+      const peer = pairConversation[target] || pairConversation.blue;
+      const dialog = document.getElementById("peerDialog");
+      document.getElementById("peerDialogTitle").innerHTML = `<img src="${avatar.joy}" alt=""><span>Joy</span><span class="swap">↔</span><img src="${avatar[target]}" alt=""><span>${peer.name}</span>`;
+      document.getElementById("peerDialogBody").innerHTML = peerDialogBody(target, mode);
+      dialog.classList.add("open");
+      dialog.setAttribute("aria-hidden", "false");
+      document.getElementById("peerDialogCard").focus();
+    }
+
+    function closePeerDialog() {
+      const dialog = document.getElementById("peerDialog");
+      dialog.classList.remove("open");
+      dialog.setAttribute("aria-hidden", "true");
+    }
+
+    function closePeerDropdowns() {
+      document.querySelectorAll(".peer-dropdown.open").forEach(dropdown => dropdown.classList.remove("open"));
+      document.querySelectorAll("[data-receipt-toggle][aria-expanded='true']").forEach(toggle => toggle.setAttribute("aria-expanded", "false"));
+    }
+
+    function focusNode(name) {
+      const node = document.querySelector(`[data-node="${name}"]`);
+      if (!node) return;
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+      node.animate([{ transform: "translateX(0)" }, { transform: "translateX(4px)", borderColor: "#8e8b82" }, { transform: "translateX(0)" }], { duration: 520 });
+    }
+
+    function syncPanelTab() {
+      const panelOpen = !main.classList.contains("work-hidden");
+      document.querySelectorAll("[data-panel-tab]").forEach(button => {
+        const active = button.dataset.panelTab === panelTab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+      });
+      document.querySelectorAll("[data-panel-view]").forEach(view => {
+        view.hidden = view.dataset.panelView !== panelTab;
+      });
+      document.getElementById("workToggle").setAttribute("aria-expanded", String(panelOpen && panelTab === "work"));
+      const groupDetailsButton = document.getElementById("groupDetailsButton");
+      groupDetailsButton.setAttribute("aria-expanded", String(panelOpen));
+      groupDetailsButton.setAttribute("aria-label", panelOpen ? "收起群聊详情" : "展开群聊详情");
+    }
+
+    function setPanelTab(tab, open = true) {
+      if (!panelTabNames.includes(tab)) return;
+      if (panelTab === "work" && tab !== "work") closeTaskDetail();
+      panelTab = tab;
+      if (open) main.classList.remove("work-hidden");
+      syncPanelTab();
+    }
+
+    function openTaskDetail(node) {
+      const scenario = selectedBranch();
+      const root = node.closest(".work-root");
+      const rootTitle = root?.querySelector(".work-root-title")?.childNodes[0]?.textContent.trim() || "工作详情";
+      const owner = node.querySelector(".node-person")?.textContent.trim() || "Agent";
+      const stateElement = node.querySelector(".node-state");
+      const state = stateElement?.textContent.trim() || "进行中";
+      const stateClass = ["run", "wait", "done", "error", "muted"].find(name => stateElement?.classList.contains(name)) || "";
+      const task = node.querySelector(".node-task")?.textContent.trim() || rootTitle;
+      const meta = node.querySelector(".node-meta span")?.textContent.trim() || "当前工作";
+      const isTask1 = scenario?.id === "A-ACTIVE";
+      const title = isTask1 ? "Task1 · 三次发布 LCP 对比" : rootTitle;
+      const progress = taskProgressModel(state, stateClass, task, meta, isTask1);
+      const revisions = isTask1
+        ? `<div class="revision-list"><div class="revision-item"><div class="revision-meta"><span>原始要求</span><span>10:24</span></div><div class="revision-copy">对比最近三次发布的 LCP，找出主要回退来源。</div></div><div class="revision-item latest"><div class="revision-meta"><span>补充 1</span><span>10:31</span></div><div class="revision-copy">不要只看总体均值；按地区拆开，并标出样本量不足的区域。</div></div></div>`
+        : `<div class="revision-list"><div class="revision-item latest"><div class="revision-meta"><span>当前要求</span><span>本轮</span></div><div class="revision-copy">${task}</div></div></div>`;
+      const effective = isTask1
+        ? "比较三次发布的 LCP 与主要回退来源；同时按地区分层，并标记低样本区域。"
+        : task;
+      document.getElementById("workOverview").hidden = true;
+      const detail = document.getElementById("taskDetail");
+      detail.hidden = false;
+      detail.innerHTML = `<div class="task-detail-hero"><div class="task-detail-title-row"><h3 class="task-detail-title">${title}</h3><span class="task-detail-status ${progress.tone}">${state}</span></div><div class="task-detail-owner"><img src="${node.querySelector('img')?.src || avatar.blue}" alt=""><span>${owner} 负责</span></div><div class="task-current"><div class="task-current-label">当前动作</div><div class="task-current-copy">${progress.current}</div></div></div><section class="task-detail-section"><div class="task-detail-section-title">进展</div>${renderStages(progress.stages)}<div class="recent-progress ${progress.tone}">${progress.recent}<span class="recent-progress-time">刚刚更新</span></div></section><section class="task-detail-section"><div class="task-detail-section-title">当前要求</div><div class="effective-brief"><strong>正在按这些要求执行</strong>${effective}</div></section><section class="task-detail-section"><div class="task-detail-section-title">要求与补充</div>${revisions}</section><div class="task-detail-actions"><button class="task-detail-action primary" id="detailAmend">补充要求</button><button class="task-detail-action" id="detailStop">停止</button></div>`;
+      document.getElementById("panelBack").hidden = false;
+      panelTab = "work";
+      syncPanelTab();
+      document.getElementById("panelTitle").textContent = "任务详情";
+      document.getElementById("panelSummary").textContent = isTask1 ? "补充 1 条" : owner;
+      document.getElementById("detailAmend").addEventListener("click", () => openTaskComposer(title));
+      document.getElementById("detailStop").addEventListener("click", () => showToast(`停止会精确命中“${title}”，不会停止 ${owner} 的其他工作`));
+    }
+
+    function closeTaskDetail() {
+      document.getElementById("workOverview").hidden = false;
+      document.getElementById("taskDetail").hidden = true;
+      document.getElementById("panelBack").hidden = true;
+      document.getElementById("panelTitle").textContent = overviewPanelTitle;
+      document.getElementById("panelSummary").textContent = overviewPanelSummary;
+    }
+
+    function openTaskComposer(title) {
+      closeTaskDetail();
+      document.getElementById("composerTargetName").textContent = title;
+      document.getElementById("composerTarget").hidden = false;
+      const input = document.getElementById("composerInput");
+      input.value = "";
+      input.placeholder = "输入要补充的要求";
+      input.focus();
+    }
+
+    function closeTaskComposer() {
+      document.getElementById("composerTarget").hidden = true;
+      const scenario = selectedBranch();
+      const isDm = Boolean(botView) || scenario?.surface === "dm";
+      const dmAgent = agentMeta[botView || scenario?.dmWho || "joy"];
+      document.getElementById("composerInput").placeholder = isDm ? `给 ${dmAgent.name} 发消息` : `给${conversationTitle}发消息`;
+    }
+
+    function openBotChat(who) {
+      if (!botDirectMessages[who]) return;
+      botView = who;
+      const url = new URL(location.href);
+      url.searchParams.set("bot", who);
+      url.searchParams.delete("detail");
+      url.searchParams.delete("amend");
+      history.pushState({ bot: who }, "", url);
+      main.classList.add("work-hidden");
+      render();
+    }
+
+    function closeBotChat() {
+      botView = null;
+      const url = new URL(location.href);
+      url.searchParams.delete("bot");
+      history.pushState({}, "", url);
+      if (query.get("panel") === "1") main.classList.remove("work-hidden");
+      render();
+    }
+
+    function showToast(text) {
+      const toast = document.getElementById("toast");
+      toast.textContent = text; toast.classList.add("show");
+      clearTimeout(showToast.t); showToast.t = setTimeout(() => toast.classList.remove("show"), 2100);
+    }
+
+    function render() {
+      const scenario = selectedBranch();
+      const branchIndex = scenario ? branchScenarios.indexOf(scenario) : -1;
+      const visibleMessages = botView ? botDirectMessages[botView] : scenario ? scenario.messages : messages.filter(m => m.step <= step);
+      feed.innerHTML = `<div class="day">今天 10:24</div>` + visibleMessages.map(renderMessage).join("");
+      rail.innerHTML = botView ? "" : scenario ? branchActivity(scenario) : activity();
+      const ws = botView ? { count: 0, summary: "", html: "" } : scenario ? branchWorkState(scenario) : workState();
+      tree.className = ws.count === 0 && !scenario && step < 1 ? "empty-state" : "";
+      tree.innerHTML = ws.html;
+      document.getElementById("phaseLabel").textContent = botView ? `${agentMeta[botView].role} · 单聊` : scenario ? `${scenario.category} · ${scenario.title}` : phases[step];
+      document.getElementById("stepCount").textContent = scenario ? `${branchIndex + 1} / ${branchScenarios.length} 分支` : `${step + 1} / ${phases.length}`;
+      document.getElementById("panelSummary").textContent = ws.summary;
+      const isDm = Boolean(botView) || scenario?.surface === "dm";
+      const dmWho = botView || scenario?.dmWho || "joy";
+      const dmAgent = agentMeta[dmWho];
+      document.getElementById("headerTitle").textContent = isDm ? dmAgent.name : conversationTitle;
+      document.getElementById("activeChatName").textContent = isDm ? dmAgent.name : conversationTitle;
+      document.getElementById("activeChatSub").textContent = isDm ? `${dmAgent.role} · 单聊` : "Joy、小蓝、小橙、小紫";
+      document.getElementById("headerAvatar").classList.toggle("single", isDm);
+      document.getElementById("activeChatAvatar").classList.toggle("single", isDm);
+      const headerPrimaryAvatar = document.querySelector("#headerAvatar .primary-agent");
+      headerPrimaryAvatar.className = `capsule-avatar primary-agent ${isDm ? dmWho : "joy"}`;
+      headerPrimaryAvatar.querySelector("img").src = isDm ? avatar[dmWho] : avatar.joy;
+      document.querySelector("#activeChatAvatar img:first-child").src = isDm ? avatar[dmWho] : avatar.joy;
+      const panelAvatar = document.getElementById("panelEntityAvatar");
+      panelAvatar.classList.toggle("single", isDm);
+      const panelPrimaryAvatar = panelAvatar.querySelector(".primary-agent");
+      panelPrimaryAvatar.className = `panel-avatar-agent primary-agent ${isDm ? dmWho : "joy"}`;
+      panelPrimaryAvatar.querySelector("img").src = isDm ? avatar[dmWho] : avatar.joy;
+      const panelEntityName = document.getElementById("panelEntityName");
+      panelEntityName.value = isDm ? dmAgent.name : conversationTitle;
+      panelEntityName.readOnly = isDm;
+      document.getElementById("panelMembersTab").textContent = isDm ? "电脑" : "成员";
+      document.getElementById("groupDetailsContent").hidden = isDm;
+      document.getElementById("agentDetailsContent").hidden = !isDm;
+      document.getElementById("groupMembersContent").hidden = isDm;
+      document.getElementById("agentComputerContent").hidden = !isDm;
+      document.getElementById("agentCapability").textContent = `${dmAgent.role}协作`;
+      document.getElementById("composerInput").placeholder = isDm ? `给 ${dmAgent.name} 发消息` : `给${conversationTitle}发消息`;
+      document.getElementById("panelTitle").textContent = "进行中的工作";
+      overviewPanelTitle = "进行中的工作";
+      overviewPanelSummary = ws.summary;
+      document.getElementById("workOverview").hidden = false;
+      document.getElementById("taskDetail").hidden = true;
+      document.getElementById("panelBack").hidden = true;
+      closeTaskComposer();
+      document.getElementById("prevBtn").disabled = botView ? true : scenario ? branchIndex === 0 : step === 0;
+      document.getElementById("nextBtn").disabled = botView ? true : scenario ? branchIndex === branchScenarios.length - 1 : step === phases.length - 1;
+      document.getElementById("playBtn").textContent = botView ? "返回圆桌" : scenario ? "返回主线" : timer ? "暂停" : "自动演示";
+      if (botView) main.classList.add("work-hidden");
+      document.getElementById("scenarioSelect").value = branchId;
+      syncPanelTab();
+      requestAnimationFrame(() => requestAnimationFrame(() => { feed.scrollTop = feed.scrollHeight; }));
+      setTimeout(() => { feed.scrollTop = feed.scrollHeight; }, 380);
+      bindDynamic();
+    }
+
+    document.getElementById("prevBtn").addEventListener("click", () => {
+      const scenario = selectedBranch();
+      if (scenario) {
+        const index = branchScenarios.indexOf(scenario);
+        if (index > 0) branchId = branchScenarios[index - 1].id;
+      } else if (step > 0) { step--; approved = false; }
+      render();
+    });
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      const scenario = selectedBranch();
+      if (scenario) {
+        const index = branchScenarios.indexOf(scenario);
+        if (index < branchScenarios.length - 1) branchId = branchScenarios[index + 1].id;
+      } else if (step < phases.length - 1) step++;
+      render();
+    });
+    document.getElementById("playBtn").addEventListener("click", () => {
+      if (botView) { closeBotChat(); return; }
+      if (selectedBranch()) { branchId = "main"; render(); return; }
+      if (timer) { clearInterval(timer); timer = null; render(); return; }
+      if (step === phases.length - 1) step = 0;
+      timer = setInterval(() => { if (step >= phases.length - 1) { clearInterval(timer); timer = null; render(); } else { step++; render(); } }, 1800);
+      render();
+    });
+    document.getElementById("groupDetailsButton").addEventListener("click", () => {
+      if (!main.classList.contains("work-hidden")) {
+        main.classList.add("work-hidden");
+        syncPanelTab();
+        return;
+      }
+      setPanelTab("details");
+    });
+    document.getElementById("workToggle").addEventListener("click", () => {
+      if (!main.classList.contains("work-hidden") && panelTab === "work") {
+        main.classList.add("work-hidden");
+        syncPanelTab();
+        return;
+      }
+      setPanelTab("work");
+    });
+    document.getElementById("panelClose").addEventListener("click", () => {
+      main.classList.add("work-hidden");
+      syncPanelTab();
+    });
+    const panelEntityNameInput = document.getElementById("panelEntityName");
+    panelEntityNameInput.addEventListener("focus", event => event.target.select());
+    panelEntityNameInput.addEventListener("blur", event => {
+      if (event.target.readOnly) return;
+      const nextTitle = event.target.value.trim();
+      event.target.value = nextTitle || conversationTitle;
+      if (!nextTitle || nextTitle === conversationTitle) return;
+      conversationTitle = nextTitle;
+      document.getElementById("headerTitle").textContent = conversationTitle;
+      document.getElementById("activeChatName").textContent = conversationTitle;
+      document.getElementById("composerInput").placeholder = `给${conversationTitle}发消息`;
+    });
+    panelEntityNameInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") event.target.blur();
+      if (event.key === "Escape") { event.target.value = conversationTitle; event.target.blur(); }
+    });
+    document.querySelectorAll("[data-panel-tab]").forEach(button => button.addEventListener("click", () => setPanelTab(button.dataset.panelTab)));
+    document.getElementById("panelBack").addEventListener("click", closeTaskDetail);
+    document.getElementById("composerTargetClose").addEventListener("click", closeTaskComposer);
+    document.getElementById("scenarioSelect").addEventListener("change", event => {
+      if (timer) { clearInterval(timer); timer = null; }
+      botView = null;
+      const url = new URL(location.href);
+      url.searchParams.delete("bot");
+      history.replaceState({}, "", url);
+      branchId = event.target.value;
+      render();
+    });
+    document.getElementById("sendBtn").addEventListener("click", () => showToast("原型不连接真实 Agent；消息发送仅展示布局"));
+    document.getElementById("peerDialogClose").addEventListener("click", closePeerDialog);
+    document.getElementById("peerDialog").addEventListener("click", event => { if (event.target.id === "peerDialog") closePeerDialog(); });
+    document.addEventListener("click", event => { if (!event.target.closest(".peer-receipt-row")) closePeerDropdowns(); });
+    document.addEventListener("keydown", event => { if (event.key === "Escape") { closePeerDialog(); closePeerDropdowns(); } });
+    render();
+    if (query.get("detail") === "1") { setPanelTab("work"); document.querySelector(".work-node")?.click(); }
+    if (query.get("amend") === "1") document.getElementById("detailAmend")?.click();
+    if (query.get("peer") === "1") openPeerDialog(query.get("target") || "blue", query.get("mode") || "");
+    if (query.get("menu") === "1") document.querySelector("[data-receipt-toggle]")?.click();
+  </script>
+</body>
+</html>
