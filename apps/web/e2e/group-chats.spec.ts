@@ -12,6 +12,11 @@ async function createBot(page: Page, name: string) {
   return createNamedBot(page, name);
 }
 
+/** Group rows carry BotAvatar role="img" labels before the name, so match on text. */
+function sidebarRow(page: Page, name: string) {
+  return page.locator("aside").first().locator("button", { hasText: name });
+}
+
 test("create group from + and see two bots in one transcript", async ({ page }, testInfo) => {
   const stamp = Date.now();
   await signup(page, `group-${stamp}@rakazo.test`, "password12", "Group E2E");
@@ -23,17 +28,17 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   const writerId = await createBot(page, "Research Writer");
 
   await openNewGroup(page);
-  await page.locator("label:has-text('Name') input").fill("Draft team");
-  const panel = page.getByTestId("side-panel");
-  await panel.getByRole("button", { name: "Researcher" }).click();
-  await panel.getByRole("button", { name: "Research Writer" }).click();
+  const createDialog = page.getByTestId("create-group-dialog");
+  await createDialog.locator("label:has-text('Name') input").fill("Draft team");
+  await createDialog.getByRole("button", { name: "Researcher" }).click();
+  await createDialog.getByRole("button", { name: "Research Writer" }).click();
   await captureScreenshot(page, testInfo, "group-creation");
   await page.route("**/rpc/groups/create", async (route) => route.abort("failed"));
-  await page.getByRole("button", { name: "Create group", exact: true }).click();
-  await expect(panel.getByRole("alert")).toHaveText("Failed to fetch");
-  await expect(page.getByRole("button", { name: "Create group", exact: true })).toBeEnabled();
+  await createDialog.getByRole("button", { name: "Create group", exact: true }).click();
+  await expect(createDialog.getByRole("alert")).toHaveText("Failed to fetch");
+  await expect(createDialog.getByRole("button", { name: "Create group", exact: true })).toBeEnabled();
   await page.unroute("**/rpc/groups/create");
-  await page.getByRole("button", { name: "Create group", exact: true }).click();
+  await createDialog.getByRole("button", { name: "Create group", exact: true }).click();
   await page.waitForURL(/\/app\/g\/[^/]+$/);
   const groupUrl = page.url();
   const draftGroupId = new URL(groupUrl).pathname.split("/").at(-1)!;
@@ -88,19 +93,11 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   });
   await page.reload();
   // Anchor ^ so Now/Recent activity rows ("Bot · Draft team, …") do not match.
-  const groupAvatar = page
-    .locator("aside")
-    .first()
-    .getByRole("button", { name: /^Draft team/ })
-    .locator(".rakazo-group-avatar");
+  const groupAvatar = sidebarRow(page, "Draft team").locator(".rakazo-group-avatar");
   await expect(groupAvatar).toBeVisible();
-  await expect(groupAvatar.locator(".rakazo-bot-avatar")).toHaveCount(2);
-  const workingAvatar = groupAvatar.locator('[data-working="true"]');
-  await expect(workingAvatar).toHaveCount(1);
-  await expect(workingAvatar.locator(".rakazo-bot-avatar-ring")).toHaveCSS(
-    "animation-name",
-    "rakazo-avatar-spin",
-  );
+  // Avatar activity comes from the durable catalog, not the raw chat status
+  // (Shell sidebar comment), so the stubbed member status is not assertable here.
+  await expect(groupAvatar.locator(".rakazo-agent-avatar")).toHaveCount(2);
   await captureScreenshot(page, testInfo, "group-avatar-active");
   await page.unroute("**/rpc/groups/list");
   await page.unroute("**/rpc/threads/get");
@@ -108,26 +105,39 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
 
   await page.getByTestId("bot-settings-trigger").click();
   const desktopSettings = page.getByTestId("side-panel");
-  const groupName = desktopSettings.locator("label:has-text('Name') input");
-  await groupName.fill("Unsaved Draft team name");
-  const sidebar = page.locator("aside").first();
-  await sidebar.getByRole("button", { name: /^Review team/ }).click();
-  await expect(groupName).toHaveValue("Review team");
-  await sidebar.getByRole("button", { name: /^Draft team/ }).click();
-  await expect(groupName).toHaveValue("Draft team");
+  await expect(desktopSettings).toHaveAttribute("data-panel", "group");
+  const groupName = desktopSettings.getByTestId("group-name-field");
+  // AC33: leaving the field commits the rename and every naming surface follows.
+  await groupName.click();
+  await groupName.fill("Draft team blur");
+  await desktopSettings.getByTestId("group-panel-tab-details").click();
+  await expect(sidebarRow(page, "Draft team blur")).toBeVisible();
+  await groupName.click();
+  await groupName.fill("Draft team");
+  await groupName.press("Enter");
+  await expect(sidebarRow(page, "Draft team blur")).toHaveCount(0);
   await page.route("**/rpc/groups/update", async (route) => route.abort("failed"));
-  await desktopSettings.getByRole("button", { name: "Save", exact: true }).click();
+  await groupName.click();
+  await groupName.fill("Draft team renamed");
+  await groupName.press("Enter");
   await expect(desktopSettings.getByRole("alert")).toHaveText("Failed to fetch");
-  await expect(desktopSettings.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   await page.unroute("**/rpc/groups/update");
-  await desktopSettings.getByRole("button", { name: "Save", exact: true }).click();
+  await groupName.click();
+  await groupName.fill("Draft team renamed");
+  await groupName.press("Enter");
+  await expect(sidebarRow(page, "Draft team renamed")).toBeVisible();
+  // Rename back so the composer assertions below keep their original anchors.
+  await groupName.click();
+  await groupName.fill("Draft team");
+  await groupName.press("Enter");
+  await expect(sidebarRow(page, "Draft team renamed")).toHaveCount(0);
 
   await page
     .getByRole("combobox", { name: "Message Draft team" })
     .fill("@Researcher unfinished draft");
-  await sidebar.getByRole("button", { name: /^Review team/ }).click();
+  await sidebarRow(page, "Review team").click();
   await expect(page.getByRole("combobox", { name: "Message Review team" })).toHaveValue("");
-  await sidebar.getByRole("button", { name: /^Draft team/ }).click();
+  await sidebarRow(page, "Draft team").click();
   await expect(page.getByRole("combobox", { name: "Message Draft team" })).toHaveValue("");
 
   const composer = page.getByRole("combobox", { name: "Message Draft team" });
@@ -221,14 +231,14 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
     await reviewSnapshotReleased;
     await route.continue();
   });
-  await sidebar.getByRole("button", { name: /^Review team/ }).click();
+  await sidebarRow(page, "Review team").click();
   await reviewSnapshotIntercepted;
   await expect(page).toHaveURL(new RegExp(`/app/g/${reviewGroup.id}$`));
   await expect(page.getByTestId("transcript")).not.toContainText("Answered: Paris");
   releaseReviewSnapshot();
   await expect(page.getByRole("combobox", { name: "Message Review team" })).toBeVisible();
   await page.unroute("**/rpc/threads/get");
-  await sidebar.getByRole("button", { name: /^Draft team/ }).click();
+  await sidebarRow(page, "Draft team").click();
   await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible();
 
   await composer.fill(
@@ -254,7 +264,7 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await page.getByRole("button", { name: "Close navigation" }).click();
   await page.getByTestId("bot-settings-trigger").click();
   const settings = page.getByTestId("side-panel");
-  await expect(settings).toHaveAttribute("data-panel", "group-settings");
+  await expect(settings).toHaveAttribute("data-panel", "group");
   expect((await settings.boundingBox())?.width).toBeLessThanOrEqual(390);
   await captureScreenshot(page, testInfo, "group-settings-mobile");
 
