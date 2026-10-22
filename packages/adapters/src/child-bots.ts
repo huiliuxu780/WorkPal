@@ -15,6 +15,7 @@ import {
   appendEventInTransaction,
   backgroundParentRunIdsExcept,
   backgroundTaskLockTransactionOptions,
+  CHAT_GROUP_KIND_STANDARD,
   cancelChildrenOfCancelledRuns,
   cancelRunsInTransaction,
   computerScopeKey,
@@ -688,8 +689,11 @@ export async function destroyBot(
 }
 
 async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) {
+  // agent_pair groups are excluded from the whole sweep: losing one member is
+  // their normal deactivated state, and dissolving them would destroy pair
+  // history that must stay readable.
   const discovered = await tx.chatGroup.findMany({
-    where: { members: { some: { botId } } },
+    where: { members: { some: { botId } }, kind: CHAT_GROUP_KIND_STANDARD },
     include: {
       members: {
         select: { botId: true, bot: { select: { archivedAt: true } } },
@@ -708,11 +712,12 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
     FROM chat_groups AS groups
     INNER JOIN chat_group_members AS members ON members."groupId" = groups.id
     WHERE members."botId" = ${botId}
+      AND groups.kind = ${CHAT_GROUP_KIND_STANDARD}
     ORDER BY groups.id
     FOR UPDATE OF groups
   `;
   const affectedGroups = await tx.chatGroup.findMany({
-    where: { members: { some: { botId } } },
+    where: { members: { some: { botId } }, kind: CHAT_GROUP_KIND_STANDARD },
     include: {
       members: {
         select: { botId: true, bot: { select: { archivedAt: true } } },
@@ -787,9 +792,11 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
       },
     });
   }
-  if (affectedGroups.length) {
-    await tx.chatGroupMember.deleteMany({ where: { botId } });
-  }
+  // Every membership row must go before the bot row: chat_group_members.botId
+  // is ON DELETE NO ACTION. agent_pair groups are kept for their readable
+  // history, so detachBotFromGroups never reports them; clearing only the
+  // standard groups here would make hard-deleting a pair-only Bot fail.
+  await tx.chatGroupMember.deleteMany({ where: { botId } });
   const groupArtifacts = dissolvedGroupIds.length
     ? await tx.artifact.findMany({
         where: { groupId: { in: dissolvedGroupIds } },

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CHAT_GROUP_KIND_AGENT_PAIR, CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import type { PrismaClient } from "./client.js";
 import { createGroupRepos } from "./groups.js";
 import { IsolationError } from "./scope.js";
@@ -440,5 +441,76 @@ describe("archiveGroup", () => {
     const repos = createGroupRepos(prisma);
     await expect(repos.archiveGroup(actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
     expect(groupUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("hidden agent_pair exclusion", () => {
+  const actor = {
+    spaceId: "workspace-1",
+    userId: "user-1",
+    email: "user@example.test",
+    isDeploymentOwner: false,
+  };
+
+  /** Stands in for the row RT-02 lets exist: a hidden pair group with two Bots. */
+  const pairRow = {
+    id: "group-pair",
+    spaceId: "workspace-1",
+    userId: "user-1",
+    name: "Agent pair",
+    kind: CHAT_GROUP_KIND_AGENT_PAIR,
+    pinned: false,
+    sectionId: null,
+    archivedAt: null,
+    createdAt: new Date("2026-10-22T00:00:00.000Z"),
+    updatedAt: new Date("2026-10-22T00:00:00.000Z"),
+    thread: { id: "thread-pair", unread: true, messages: [] },
+    members: [
+      { bot: { id: "bot-a", name: "Joy", color: "#111", runs: [] } },
+      { bot: { id: "bot-b", name: "小蓝", color: "#222", runs: [] } },
+    ],
+  };
+
+  /** Emulates the database: the pair row is returned unless the caller excluded it. */
+  function honourKind(where: { kind?: string }) {
+    return where.kind === CHAT_GROUP_KIND_STANDARD ? null : pairRow;
+  }
+
+  it("keeps pair groups out of the sidebar list", async () => {
+    const findMany = vi.fn(async ({ where }: { where: { kind?: string } }) => {
+      const row = honourKind(where);
+      return row ? [row] : [];
+    });
+    const repos = createGroupRepos({ chatGroup: { findMany } } as unknown as PrismaClient);
+
+    await expect(repos.listGroups(actor)).resolves.toEqual([]);
+    expect(findMany.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
+  });
+
+  it("keeps pair groups out of cross-space navigation and its unread badge", async () => {
+    const findMany = vi.fn(async ({ where }: { where: { kind?: string } }) => {
+      const row = honourKind(where);
+      return row ? [row] : [];
+    });
+    const repos = createGroupRepos({ chatGroup: { findMany } } as unknown as PrismaClient);
+
+    await expect(repos.listSpaceGroupsForSpaces(actor, ["workspace-1"])).resolves.toEqual([]);
+    expect(findMany.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
+  });
+
+  it("refuses to load a pair group through the normal group read", async () => {
+    const findFirst = vi.fn(async ({ where }: { where: { kind?: string } }) => honourKind(where));
+    const repos = createGroupRepos({ chatGroup: { findFirst } } as unknown as PrismaClient);
+
+    await expect(repos.getGroup(actor, "group-pair")).rejects.toBeInstanceOf(IsolationError);
+    expect(findFirst.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
+  });
+
+  it("refuses to address a pair group as a human send target", async () => {
+    const findFirst = vi.fn(async ({ where }: { where: { kind?: string } }) => honourKind(where));
+    const repos = createGroupRepos({ chatGroup: { findFirst } } as unknown as PrismaClient);
+
+    await expect(repos.getGroupTarget(actor, "group-pair")).rejects.toBeInstanceOf(IsolationError);
+    expect(findFirst.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
   });
 });

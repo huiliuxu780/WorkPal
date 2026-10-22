@@ -7,6 +7,7 @@ import {
   type SpaceGroup,
 } from "@rakazo/contracts";
 import { selectGroupLead } from "@rakazo/core";
+import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import {
   backgroundTaskLockTransactionOptions,
   lockThreadForBackgroundTask,
@@ -137,6 +138,13 @@ async function assertOwnedBots(
     return { botId: bot.id, name: bot.name, color: bot.color };
   });
 }
+
+/**
+ * These repos address user-managed groups only. `agent_pair` groups are a
+ * separate hidden surface with their own read path, so exclusion belongs here
+ * rather than in every caller that must not forget it.
+ */
+const standardGroupScope = { kind: CHAT_GROUP_KIND_STANDARD } as const;
 
 const groupInclude = {
   thread: {
@@ -273,6 +281,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         spaceId: { in: spaceIds },
         userId: actor.userId,
         archivedAt: null,
+        ...standardGroupScope,
       },
       select: {
         id: true,
@@ -307,6 +316,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: options.archived ? { not: null } : null,
+          ...standardGroupScope,
         },
         include: groupInclude,
         orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
@@ -325,6 +335,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           spaceId: actor.spaceId,
           userId: actor.userId,
           ...(options.includeArchived ? {} : { archivedAt: null }),
+          ...standardGroupScope,
         },
         include: groupInclude,
       });
@@ -339,6 +350,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: null,
+          ...standardGroupScope,
         },
         include: groupTargetInclude,
       });
