@@ -60,7 +60,11 @@ import {
   SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
 } from "@rakazo/adapters";
-import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
+import {
+  resolveEncryptionKey,
+  resolveRoundtableFeatureGates,
+  resolveSupervisorToken,
+} from "@rakazo/core";
 import {
   appendEventInTransaction,
   cancelChildrenOfCancelledRuns,
@@ -81,6 +85,8 @@ import { MarkdownMemoryStore } from "@rakazo/memory";
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
 async function main() {
+  // Fail fast on invalid deployment gates; feature entry points consume this later.
+  const roundtableFeatures = resolveRoundtableFeatureGates(process.env);
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
   // Shared by Prisma, the reconciliation leadership lock, and both graphile-worker
@@ -598,7 +604,7 @@ async function main() {
     void stop().finally(() => process.exit(1));
   });
 
-  logger.info("worker ready");
+  logger.info("worker ready", { roundtableFeatures });
 }
 
 main().catch(async (error) => {

@@ -1,3 +1,8 @@
+import {
+  ROUNDTABLE_FEATURE_ENV,
+  ROUNDTABLE_FEATURES,
+  RoundtableFeatureConfigError,
+} from "@rakazo/core";
 import { describe, expect, it } from "vitest";
 import { loadEnv } from "./env.js";
 
@@ -213,5 +218,41 @@ describe("loadEnv", () => {
     expect(loadEnv({ ...base, MCP_ALLOW_PRIVATE_ENDPOINT: "1" }).mcpAllowPrivateEndpoint).toBe(
       false,
     );
+  });
+
+  it("keeps every roundtable gate closed by default", () => {
+    const gates = loadEnv(base).roundtableFeatures;
+    for (const feature of ROUNDTABLE_FEATURES) expect(gates[feature]).toBe(false);
+  });
+
+  it("enables each roundtable gate independently", () => {
+    for (const enabled of ROUNDTABLE_FEATURES) {
+      const gates = loadEnv({
+        ...base,
+        [ROUNDTABLE_FEATURE_ENV[enabled]]: "true",
+      }).roundtableFeatures;
+      for (const feature of ROUNDTABLE_FEATURES) {
+        expect(gates[feature], feature).toBe(feature === enabled);
+      }
+    }
+  });
+
+  it("keeps explicitly disabled roundtable gates closed", () => {
+    const gates = loadEnv({
+      ...base,
+      [ROUNDTABLE_FEATURE_ENV.background_helper]: "false",
+    }).roundtableFeatures;
+    expect(gates.background_helper).toBe(false);
+  });
+
+  it("fails API startup on invalid roundtable gate values", () => {
+    for (const value of ["1", "yes", "ture"]) {
+      expect(() =>
+        loadEnv({
+          ...base,
+          [ROUNDTABLE_FEATURE_ENV.message_group]: value,
+        }),
+      ).toThrow(RoundtableFeatureConfigError);
+    }
   });
 });
