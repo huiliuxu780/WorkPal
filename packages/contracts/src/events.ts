@@ -261,8 +261,24 @@ const ChartBlock = z
 export const SecretAskPurpose = z.enum(["otp", "password", "api_key"]);
 export type SecretAskPurpose = z.infer<typeof SecretAskPurpose>;
 
-export const MessageBlock = z.discriminatedUnion("kind", [
+/**
+ * Structured inline identity for a text block. `text` is the plain projection
+ * used by history and quotes; `bot_mention` keeps the stable Bot id so a
+ * renderer can link to the user's long-term chat without parsing `@name`.
+ */
+export const MessageInline = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), text: z.string() }),
+  z.object({ kind: z.literal("bot_mention"), botId: Id, label: z.string().min(1).max(200) }),
+]);
+export type MessageInline = z.infer<typeof MessageInline>;
+
+export const MessageBlock = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("text"),
+    text: z.string(),
+    /** Present only on messages written with typed mention identity. */
+    inlines: z.array(MessageInline).min(1).optional(),
+  }),
   z.object({
     kind: z.literal("card"),
     lines: z.array(z.object({ k: z.string(), v: z.string() })),

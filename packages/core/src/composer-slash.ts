@@ -24,3 +24,38 @@ export function truncateSlashDescription(value: string, max = 72): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max - 1).trimEnd()}…`;
 }
+
+export type ComposerMentionSpan = { botId: string; start: number; end: number };
+
+type ComposerMentionToken = { kind: string; id: string; name: string };
+
+/**
+ * Locate typed mention chips in the prompt that was actually sent. Chips are
+ * serialized as a leading `@name` prefix (after an optional skill line), so
+ * this walks that prefix in order and fails closed when anything drifted —
+ * bare `@name` text elsewhere is never treated as mention identity.
+ */
+export function composerMentionSpans(
+  text: string,
+  mentions: readonly ComposerMentionToken[],
+): ComposerMentionSpan[] {
+  let cursor = 0;
+  if (text.startsWith("/")) {
+    const newline = text.indexOf("\n");
+    if (newline >= 0) cursor = newline + 1;
+  }
+  const spans: ComposerMentionSpan[] = [];
+  for (const mention of mentions) {
+    if (mention.kind === "group" || mention.kind === "routine" || mention.kind === "connector") {
+      continue;
+    }
+    const token = `@${mention.name}`;
+    if (!text.startsWith(token, cursor)) return [];
+    const start = cursor;
+    const end = start + token.length;
+    if (text[end] !== undefined && text[end] !== " ") return [];
+    if (mention.kind === "bot") spans.push({ botId: mention.id, start, end });
+    cursor = text[end] === " " ? end + 1 : end;
+  }
+  return spans;
+}

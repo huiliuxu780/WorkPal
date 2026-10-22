@@ -38,6 +38,7 @@ export * from "./manual-retry-prompt.js";
 export * from "./markdown-plain.js";
 export * from "./mcp.js";
 export * from "./memory-content-safety.js";
+export * from "./message-inlines.js";
 export * from "./message-pages.js";
 export * from "./message-reactions.js";
 export * from "./message-visibility.js";

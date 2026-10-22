@@ -1,7 +1,7 @@
 import { i18n } from "@lingui/core";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown, LinkifiedText } from "@rakazo/chat-ui/web";
+import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
   ActivityItem,
   AgentSkillCatalogEntry,
@@ -145,6 +145,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
+import { MessageText } from "../components/ai/AgentMentionText";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
@@ -2276,6 +2277,7 @@ export function ShellPage() {
             clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
+            mentionSpans: plan.mentionSpans.length ? plan.mentionSpans : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: reroutedToGroup ? undefined : activeReplyTarget?.id,
             replyQuote: reroutedToGroup ? undefined : (activeReplyQuote ?? undefined),
@@ -2286,6 +2288,7 @@ export function ShellPage() {
             clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
+            mentionSpans: plan.mentionSpans.length ? plan.mentionSpans : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: activeReplyTarget?.id,
             replyQuote: activeReplyQuote ?? undefined,
@@ -5252,6 +5255,7 @@ export const Transcript = memo(function Transcript({
                       }
                       memberName={memberName}
                       peerBot={peerBot}
+                      botNameOf={botNameOf}
                       replyPreview={
                         message.replyToMessageId
                           ? messageById.get(message.replyToMessageId)
@@ -6490,6 +6494,7 @@ const MessageView = memo(function MessageView({
   speakerName,
   memberName,
   peerBot,
+  botNameOf,
   replyPreview,
   replyToMessageId,
   onJumpToMessage,
@@ -6512,6 +6517,7 @@ const MessageView = memo(function MessageView({
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
+  botNameOf?: (botId: string) => string | undefined;
   replyPreview?: ThreadMessage;
   replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
@@ -6904,9 +6910,9 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text" && message.role === "user") {
-          // User bubbles stay literal text on web and mobile. Only explicit URLs
-          // and email addresses are links, so a sent address is tappable without
-          // formatting bold or headings.
+          // User bubbles stay literal text on web and mobile. Only structured
+          // mention inlines and explicit URLs are links; a bare `@name` is
+          // never promoted to identity.
           return (
             <div key={i} className="flex w-fit max-w-full justify-end [@media(hover:none)]:w-full">
               <div
@@ -6915,7 +6921,20 @@ const MessageView = memo(function MessageView({
                 className="max-w-full whitespace-pre-wrap wrap-anywhere rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground"
                 dir="auto"
               >
-                <LinkifiedText>{block.text}</LinkifiedText>
+                <MessageText
+                  text={block.text}
+                  inlines={block.inlines}
+                  resolveMention={(mentionedBotId) => {
+                    const name = botNameOf?.(mentionedBotId);
+                    if (!name) return undefined;
+                    return {
+                      name,
+                      color: peerBot(mentionedBotId)?.color ?? FALLBACK_BOT_COLOR,
+                      available: true,
+                    };
+                  }}
+                  onOpenMention={onOpenBot}
+                />
               </div>
             </div>
           );

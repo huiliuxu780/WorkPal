@@ -152,6 +152,12 @@ const structuredMentionTarget = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("connector"), id: Id }),
 ]);
 
+const mentionSpan = z.object({
+  botId: Id,
+  start: z.number().int().nonnegative(),
+  end: z.number().int().positive(),
+});
+
 const threadSendInput = threadTarget
   .safeExtend({
     text: z.string().optional(),
@@ -161,12 +167,19 @@ const threadSendInput = threadTarget
       .array(z.union([Id, structuredMentionTarget]))
       .max(64)
       .optional(),
+    /**
+     * Character ranges of typed bot mention chips inside `text`. The server
+     * stores the identity as structured message inlines; it never derives
+     * mention links from bare `@name` text.
+     */
+    mentionSpans: z.array(mentionSpan).max(64).optional(),
     replyToMessageId: Id.optional(),
     replyQuote: z.string().trim().min(1).max(REPLY_QUOTE_MAX_LENGTH).optional(),
     clientNonce: z.string().min(1).max(200).optional(),
   })
   .superRefine((input, ctx) => {
     const text = input.text?.trim() ?? "";
+    const rawText = input.text ?? "";
     const artifactIds = input.artifactIds ?? [];
     if (!text && artifactIds.length === 0) {
       ctx.addIssue({
@@ -181,6 +194,62 @@ const threadSendInput = threadTarget
         message: "replyQuote requires replyToMessageId",
         path: ["replyQuote"],
       });
+    }
+    const typedBotIds = new Set(
+      (input.mentions ?? []).flatMap((mention) =>
+        typeof mention === "string" ? [mention] : mention.kind === "bot" ? [mention.id] : [],
+      ),
+    );
+    const seenBotIds = new Set<string>();
+    let previousEnd = 0;
+    for (const [index, span] of (input.mentionSpans ?? []).entries()) {
+      const path = ["mentionSpans", index];
+      if (span.end <= span.start) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan end must be greater than start",
+          path,
+        });
+        continue;
+      }
+      if (span.start < previousEnd) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpans must be ordered and non-overlapping",
+          path,
+        });
+      }
+      previousEnd = span.end;
+      if (span.end > rawText.length) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must stay inside text",
+          path,
+        });
+        continue;
+      }
+      if (rawText[span.start] !== "@") {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must start at an @ token",
+          path,
+        });
+      }
+      if (!typedBotIds.has(span.botId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must reference a typed bot mention",
+          path,
+        });
+      }
+      if (seenBotIds.has(span.botId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan bot is duplicated",
+          path,
+        });
+      }
+      seenBotIds.add(span.botId);
     }
   });
 
@@ -527,9 +596,7 @@ export const appContract = {
         .output(MemoryFactMutationResultSchema),
     },
     factEvidence: {
-      list: oc
-        .input(MemoryFactEvidenceListInputSchema)
-        .output(z.array(MemoryFactEvidenceSchema)),
+      list: oc.input(MemoryFactEvidenceListInputSchema).output(z.array(MemoryFactEvidenceSchema)),
     },
     summary: {
       get: oc.input(MemorySummaryGetInputSchema).output(MemorySummarySchema),

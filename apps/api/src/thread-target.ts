@@ -23,6 +23,7 @@ import {
   ACTIVITY_EVENT_TYPES,
   type ActivityItem,
   type ActivityRunContext,
+  buildMentionInlines,
   buildRunOrchestration,
   callIdFromClientNonce,
   type GroupRouterReasonCode,
@@ -199,6 +200,7 @@ function steersUserMessage(run: { status: string; trigger?: string | null }) {
 }
 
 type MentionTargetInput = string | { kind: "bot" | "group" | "routine" | "connector"; id: string };
+type MentionSpanInput = { botId: string; start: number; end: number };
 
 function splitMentionTargets(mentions: MentionTargetInput[] | undefined) {
   const botMentionIds = new Set<string>();
@@ -221,6 +223,39 @@ function splitMentionTargets(mentions: MentionTargetInput[] | undefined) {
     routineMentionIds: [...routineMentionIds],
     connectorMentionIds: [...connectorMentionIds],
   };
+}
+
+/** Persist only spans that belong to a typed Bot chip and a visible Bot. */
+function mentionInlinesForSend(
+  input: { text?: string; mentions?: MentionTargetInput[]; mentionSpans?: MentionSpanInput[] },
+  linkableBotIds: ReadonlySet<string>,
+) {
+  const spans = input.mentionSpans ?? [];
+  if (!input.text || spans.length === 0 || linkableBotIds.size === 0) return undefined;
+  const typedBotIds = new Set(splitMentionTargets(input.mentions).botMentionIds);
+  const allowed = new Set([...linkableBotIds].filter((botId) => typedBotIds.has(botId)));
+  if (allowed.size === 0) return undefined;
+  return buildMentionInlines({ text: input.text, spans, linkableBotIds: allowed });
+}
+
+async function botThreadMentionLinkableIds(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  input: { mentions?: MentionTargetInput[]; mentionSpans?: MentionSpanInput[] },
+) {
+  if ((input.mentionSpans ?? []).length === 0) return new Set<string>();
+  const typedBotIds = splitMentionTargets(input.mentions).botMentionIds;
+  if (typedBotIds.length === 0) return new Set<string>();
+  const bots = await tx.bot.findMany({
+    where: {
+      id: { in: typedBotIds },
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      archivedAt: null,
+    },
+    select: { id: true },
+  });
+  return new Set(bots.map((bot) => bot.id));
 }
 
 async function resolveOwnedConnectorDisplayNames(
@@ -989,6 +1024,7 @@ export async function sendThreadMessage(
     text?: string;
     artifactIds?: string[];
     mentions?: MentionTargetInput[];
+    mentionSpans?: MentionSpanInput[];
     replyToMessageId?: string;
     replyQuote?: string;
     clientNonce?: string;
@@ -1074,7 +1110,11 @@ export async function sendThreadMessage(
           actor,
           mentionTargets.connectorMentionIds,
         );
-        const blocks = buildUserMessageBlocks(input.text, attachmentBlocks);
+        const mentionInlines = mentionInlinesForSend(
+          input,
+          await botThreadMentionLinkableIds(tx, actor, input),
+        );
+        const blocks = buildUserMessageBlocks(input.text, attachmentBlocks, mentionInlines);
         const message = await createThreadMessageInTransaction(tx, {
           threadId: target.threadId,
           role: "user",
@@ -1256,7 +1296,11 @@ export async function sendThreadMessage(
         actor,
         mentionTargets.connectorMentionIds,
       );
-      const blocks = buildUserMessageBlocks(input.text, attachmentBlocks);
+      const mentionInlines = mentionInlinesForSend(
+        input,
+        new Set(mentionTargets.botMentionIds.filter((botId) => memberBotIds.includes(botId))),
+      );
+      const blocks = buildUserMessageBlocks(input.text, attachmentBlocks, mentionInlines);
       const message = await createThreadMessageInTransaction(tx, {
         threadId: target.threadId,
         role: "user",
