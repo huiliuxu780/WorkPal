@@ -207,6 +207,7 @@ import { getLogger } from "@rakazo/logging";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { aiConsentStatus, allowAiConsent } from "./ai-consent.js";
+import { CURRENT_USER_AVATAR_STYLE } from "./avatar-style.js";
 import {
   ArtifactListCursorError,
   createOwnedArtifact,
@@ -6281,9 +6282,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     computerHost: computerHostFor(setup.settings?.computerHost, deps.env.sandboxProvider),
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
-    // Bloub is the only avatar style; stored robot/organic values are legacy
-    // rows from before the migration and are normalized on read.
-    avatarStyle: "bloub" as const,
+    avatarStyle: CURRENT_USER_AVATAR_STYLE,
   };
 }
 

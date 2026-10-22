@@ -409,7 +409,7 @@ describePostgres("group-scoped queries (PostgreSQL)", () => {
       userId: owner.userId,
       name: "Rivers",
       image: null,
-      avatarStyle: "organic",
+      avatarStyle: "bloub",
     });
     expect(members.agents.map((agent) => agent.botId)).toEqual([group.botA.id, group.botB.id]);
     expect(members.agentCount).toBe(2);

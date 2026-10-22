@@ -254,7 +254,7 @@ describe("GroupQueries.listMembers", () => {
 
     expect(userFindFirst).toHaveBeenCalledWith({
       where: { id: actor.userId },
-      select: { id: true, name: true, image: true, avatarStyle: true },
+      select: { id: true, name: true, image: true },
     });
     expect(result).toEqual({
       groupId: "group-1",
@@ -264,7 +264,7 @@ describe("GroupQueries.listMembers", () => {
         userId: "user-1",
         name: "Rivers",
         image: null,
-        avatarStyle: "organic",
+        avatarStyle: "bloub",
       },
       agents: [
         {

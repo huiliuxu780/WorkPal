@@ -283,7 +283,7 @@ describe("group-scoped query RPC contract", () => {
           userId: "user-1",
           name: "Rivers",
           image: null,
-          avatarStyle: "organic",
+          avatarStyle: "bloub",
         },
         agents: [
           {

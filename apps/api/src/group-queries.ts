@@ -9,6 +9,7 @@ import {
 } from "@rakazo/core";
 import { createGroupRepos, IsolationError, type PrismaClient } from "@rakazo/db";
 import { listGroupArtifactSummaries } from "./artifacts.js";
+import { CURRENT_USER_AVATAR_STYLE } from "./avatar-style.js";
 import { mapRoutine } from "./routines.js";
 
 type GroupTarget = Awaited<ReturnType<ReturnType<typeof createGroupRepos>["getGroupTarget"]>>;
@@ -74,7 +75,7 @@ async function listGroupMembers(
   const threadId = requireGroupThread(group);
   const user = await deps.prisma.user.findFirst({
     where: { id: query.actor.userId },
-    select: { id: true, name: true, image: true, avatarStyle: true },
+    select: { id: true, name: true, image: true },
   });
   if (!user) throw new IsolationError();
 
@@ -91,7 +92,7 @@ async function listGroupMembers(
       userId: user.id,
       name: user.name,
       image: user.image,
-      avatarStyle: user.avatarStyle,
+      avatarStyle: CURRENT_USER_AVATAR_STYLE,
     },
     agents,
     agentCount: agents.length,
