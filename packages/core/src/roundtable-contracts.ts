@@ -1,3 +1,5 @@
+import { GROUP_MEMBER_MAX } from "@rakazo/contracts";
+
 export type BrandedId<Name extends string> = string & { readonly __brand: Name };
 
 export type UserId = BrandedId<"UserId">;
@@ -71,6 +73,18 @@ function asInteger(
 function asBoolean(value: unknown, contract: string, path: string): boolean {
   if (typeof value !== "boolean") invalid(contract, path, "expected a boolean");
   return value;
+}
+
+function asNullableMessageProvider(
+  value: unknown,
+  contract: string,
+  path: string,
+): string | null {
+  const parsed = asNullableNonEmptyString(value, contract, path);
+  if (parsed !== null && (parsed.length > 50 || !/^[a-z0-9._-]+$/i.test(parsed))) {
+    invalid(contract, path, "expected 1-50 letters, digits, dots, underscores or hyphens");
+  }
+  return parsed;
 }
 
 function asOneOf<Value extends string>(
@@ -508,9 +522,13 @@ export function parseTaskInstructionEnvelope(value: unknown): TaskInstructionEnv
       content: asString(amendment.content, contract, `${path}.content`),
     };
   });
+  const revision = asInteger(raw.revision, contract, "revision", 1);
+  if (revision !== amendments.length + 1) {
+    invalid(contract, "revision", "must equal the original revision plus all amendments");
+  }
   return {
     taskId: parseBrandedId(raw.taskId, contract, "taskId"),
-    revision: asInteger(raw.revision, contract, "revision", 1),
+    revision,
     original,
     amendments,
   };
@@ -818,7 +836,10 @@ export function parseGroupMembersSummary(value: unknown): GroupMembersSummary {
   if (!Array.isArray(raw.agents)) invalid(contract, "agents", "expected an array");
   const currentUser = parseGroupUserMember(raw.currentUser);
   const agents = raw.agents.map((member) => parseGroupAgentMember(member));
-  const agentCount = asInteger(raw.agentCount, contract, "agentCount", 0);
+  const agentCount = asInteger(raw.agentCount, contract, "agentCount", 0, GROUP_MEMBER_MAX);
+  if (agents.length > GROUP_MEMBER_MAX) {
+    invalid(contract, "agents", `must contain at most ${GROUP_MEMBER_MAX} agents`);
+  }
   const memberCount = asInteger(raw.memberCount, contract, "memberCount", 1);
   if (agentCount !== agents.length) {
     invalid(contract, "agentCount", "must equal the number of agents");
@@ -886,7 +907,7 @@ export function parseGroupRoutineSummary(value: unknown): GroupRoutineSummary {
     notify: asBoolean(raw.notify, contract, "notify"),
     webhookEnabled: asBoolean(raw.webhookEnabled, contract, "webhookEnabled"),
     githubEnabled: asBoolean(raw.githubEnabled, contract, "githubEnabled"),
-    messageProvider: asNullableNonEmptyString(raw.messageProvider, contract, "messageProvider"),
+    messageProvider: asNullableMessageProvider(raw.messageProvider, contract, "messageProvider"),
     lastRunAt: asNullableNonEmptyString(raw.lastRunAt, contract, "lastRunAt"),
     nextRunAt: asNullableNonEmptyString(raw.nextRunAt, contract, "nextRunAt"),
     createdAt: asNonEmptyString(raw.createdAt, contract, "createdAt"),

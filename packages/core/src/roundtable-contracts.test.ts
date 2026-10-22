@@ -393,6 +393,11 @@ describe("TaskInstructionEnvelope", () => {
       "revision",
     );
     expectContractError(
+      () => parseTaskInstructionEnvelope({ ...envelope, revision: 3 }),
+      "TaskInstructionEnvelope",
+      "revision",
+    );
+    expectContractError(
       () =>
         parseTaskInstructionEnvelope({
           ...envelope,
@@ -826,6 +831,26 @@ describe("group read contracts", () => {
     );
   });
 
+  it("rejects a group summary above the six-Agent product cap", () => {
+    const agents = Array.from({ length: 7 }, (_, index) => ({
+      ...agentMember,
+      botId: parseBotId(`bot-${index + 1}`),
+    }));
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          groupId: ids.group,
+          threadId: ids.thread,
+          currentUser,
+          agents,
+          agentCount: agents.length,
+          memberCount: agents.length + 1,
+        }),
+      "GroupMembersSummary",
+      "agentCount",
+    );
+  });
+
   it("rejects avatar identities that do not match their avatar mode", () => {
     expectContractError(
       () => parseGroupAgentMember({ ...agentMember, avatarCharacter: null }),
@@ -878,6 +903,16 @@ describe("group read contracts", () => {
       () => parseGroupRoutineSummary({ ...routine, active: "yes" }),
       "GroupRoutineSummary",
       "active",
+    );
+    expectContractError(
+      () => parseGroupRoutineSummary({ ...routine, messageProvider: "slack\ninvalid" }),
+      "GroupRoutineSummary",
+      "messageProvider",
+    );
+    expectContractError(
+      () => parseGroupRoutineSummary({ ...routine, messageProvider: "x".repeat(51) }),
+      "GroupRoutineSummary",
+      "messageProvider",
     );
   });
 
