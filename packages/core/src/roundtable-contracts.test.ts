@@ -634,6 +634,16 @@ describe("group read contracts", () => {
       "GroupPageQuery",
       "limit",
     );
+    expectContractError(
+      () =>
+        parseGroupPageQuery({
+          actor: { kind: "user", userId: ids.user, spaceId: ids.space },
+          groupId: ids.group,
+          limit: 61,
+        }),
+      "GroupPageQuery",
+      "limit",
+    );
   });
 
   it("parses an unpaged group query and rejects page fields", () => {
@@ -728,6 +738,16 @@ describe("group read contracts", () => {
         instruction: envelope,
       }),
     ).toEqual({ groupId: ids.group, work: item, instruction: envelope });
+    expectContractError(
+      () =>
+        parseGroupWorkDetail({
+          groupId: ids.group,
+          work: item,
+          instruction: { ...envelope, taskId: parseTaskId("task-other") },
+        }),
+      "GroupWorkDetail",
+      "instruction.taskId",
+    );
   });
 
   it("rejects a work item without a children array", () => {
@@ -891,6 +911,12 @@ describe("group read contracts", () => {
     );
     const { botId: _botId, ...withoutBotId } = artifact;
     expectContractError(() => parseArtifactSummary(withoutBotId), "ArtifactSummary", "botId");
+    const { description: _description, ...withoutDescription } = artifact;
+    expectContractError(
+      () => parseArtifactSummary(withoutDescription),
+      "ArtifactSummary",
+      "description",
+    );
     expectContractError(
       () => parseArtifactSummary({ ...artifact, size: -1 }),
       "ArtifactSummary",

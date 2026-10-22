@@ -201,13 +201,19 @@ type MessageInline =
   | { kind: "text"; text: string }
   | { kind: "bot_mention"; botId: BotId; label: string };
 
+type CollaborationReceiptTarget =
+  | { kind: "bot"; botId: BotId }
+  | { kind: "group"; groupId: GroupId; threadId: ThreadId };
+
 type CollaborationReceipt = {
   kind: "collaboration_receipt";
-  targetBotId: BotId;
-  destination: DestinationLocator;
+  target: CollaborationReceiptTarget;
   state: "sent" | "failed" | "completed" | "cancelled";
+  destination: DestinationLocator | null;
 };
 ```
+
+成功投递的回执必须携带与 target 一致的 locator；失败回执的 destination 必须为 null。群目标不得用 Bot ID 代替 Group ID。
 
 Agent mention 不使用 Markdown 渲染后的字符 offset。旧纯文本消息继续显示，但不会被反解析成工具调用、Run 或可导航身份。
 

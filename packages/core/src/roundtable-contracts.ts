@@ -49,9 +49,21 @@ function asNonEmptyString(value: unknown, contract: string, path: string): strin
   return parsed;
 }
 
-function asInteger(value: unknown, contract: string, path: string, minimum: number): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum) {
-    invalid(contract, path, `expected an integer >= ${minimum}`);
+function asInteger(
+  value: unknown,
+  contract: string,
+  path: string,
+  minimum: number,
+  maximum?: number,
+): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < minimum ||
+    (maximum !== undefined && value > maximum)
+  ) {
+    const range = maximum === undefined ? `>= ${minimum}` : `between ${minimum} and ${maximum}`;
+    invalid(contract, path, `expected an integer ${range}`);
   }
   return value;
 }
@@ -620,7 +632,7 @@ export function parseGroupPageQuery(value: unknown): GroupPageQuery {
   } = {
     actor: parseUserActor(raw.actor),
     groupId: parseBrandedId(raw.groupId, contract, "groupId"),
-    limit: asInteger(raw.limit, contract, "limit", 1),
+    limit: asInteger(raw.limit, contract, "limit", 1, 60),
   };
   if (raw.cursor !== undefined) {
     query.cursor = asNonEmptyString(raw.cursor, contract, "cursor");
@@ -706,10 +718,15 @@ export function parseGroupWorkItem(value: unknown): GroupWorkItem {
 export function parseGroupWorkDetail(value: unknown): GroupWorkDetail {
   const contract = "GroupWorkDetail";
   const raw = asRecord(value, contract, "detail");
+  const work = parseGroupWorkItem(raw.work);
+  const instruction = parseTaskInstructionEnvelope(raw.instruction);
+  if (work.taskId !== instruction.taskId) {
+    invalid(contract, "instruction.taskId", "must match work.taskId");
+  }
   return {
     groupId: parseBrandedId(raw.groupId, contract, "groupId"),
-    work: parseGroupWorkItem(raw.work),
-    instruction: parseTaskInstructionEnvelope(raw.instruction),
+    work,
+    instruction,
   };
 }
 
@@ -827,10 +844,8 @@ export function parseGroupMembersSummary(value: unknown): GroupMembersSummary {
 export function parseArtifactSummary(value: unknown): ArtifactSummary {
   const contract = "ArtifactSummary";
   const raw = asRecord(value, contract, "artifact");
-  if (raw.description !== null && raw.description !== undefined) {
-    if (typeof raw.description !== "string") {
-      invalid(contract, "description", "expected a string or null");
-    }
+  if (raw.description !== null && typeof raw.description !== "string") {
+    invalid(contract, "description", "expected a string or null");
   }
   return {
     id: asNonEmptyString(raw.id, contract, "id"),
@@ -838,7 +853,7 @@ export function parseArtifactSummary(value: unknown): ArtifactSummary {
     groupId: parseNullableBrandedId<"GroupId">(raw.groupId, contract, "groupId"),
     runId: parseNullableBrandedId<"RunId">(raw.runId, contract, "runId"),
     name: asString(raw.name, contract, "name"),
-    description: typeof raw.description === "string" ? raw.description : null,
+    description: raw.description,
     mimeType: asNonEmptyString(raw.mimeType, contract, "mimeType"),
     size: asInteger(raw.size, contract, "size", 0),
     version: asInteger(raw.version, contract, "version", 1),
