@@ -30,8 +30,7 @@ import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   IsolationError,
-  lockOwnedGroup,
-  lockThreadForBackgroundTask,
+  lockOwnedStandardGroupThread,
   type PrismaClient,
   touchGroupUpdatedAt,
   withTransactionRetry,
@@ -573,13 +572,11 @@ async function messageBotInCurrentGroup(
   let committed: PublicGroupCommit;
   const deliverPublicGroup = () =>
     deps.prisma.$transaction(async (tx) => {
-      // Thread row first, then the group row: clear/send and updateGroup lock
-      // in that order, so claiming the group first would deadlock (40P01).
-      if (!(await lockThreadForBackgroundTask(tx, run.threadId))) {
-        return { ok: false as const, error: "group is no longer available" };
-      }
       try {
-        await lockOwnedGroup(tx, run, groupId);
+        await lockOwnedStandardGroupThread(tx, run, {
+          groupId,
+          threadId: run.threadId,
+        });
       } catch (error) {
         if (error instanceof IsolationError) {
           return { ok: false as const, error: "group is no longer available" };

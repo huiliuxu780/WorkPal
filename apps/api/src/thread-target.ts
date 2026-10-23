@@ -1,5 +1,10 @@
 import { ORPCError } from "@orpc/server";
-import { type JobPublisher, runContinueJob, runJobKey, type SandboxProvider } from "@rakazo/adapter-kit";
+import {
+  type JobPublisher,
+  runContinueJob,
+  runJobKey,
+  type SandboxProvider,
+} from "@rakazo/adapter-kit";
 import {
   type BackgroundCancelIdentity,
   cancelComputerRunWork,
@@ -51,13 +56,13 @@ import {
   ExecutionActivityCursorError,
   expireComputerExecutionLeases,
   IsolationError,
-  loadExecutionSnapshot,
-  loadExecutionSummaries,
-  loadInterventionViews,
   loadCurrentRunPlans,
   loadCurrentRunSteps,
   loadCurrentRunTodos,
-  lockOwnedGroup,
+  loadExecutionSnapshot,
+  loadExecutionSummaries,
+  loadInterventionViews,
+  lockOwnedStandardGroupThread,
   type Prisma,
   type PrismaClient,
   type ThreadEvents,
@@ -449,14 +454,15 @@ async function lockAndLoadGroupMembers(
   actor: Actor,
   target: Extract<ThreadTarget, { kind: "group" }>,
 ) {
-  await lockOwnedGroup(tx, actor, target.groupId);
+  const locked = await lockOwnedStandardGroupThread(tx, actor, {
+    groupId: target.groupId,
+    threadId: target.threadId,
+  });
   const group = await tx.chatGroup.findFirst({
     where: {
-      id: target.groupId,
-      spaceId: actor.spaceId,
-      userId: actor.userId,
+      id: locked.groupId,
       archivedAt: null,
-      thread: { id: target.threadId },
+      thread: { id: locked.threadId },
     },
     include: {
       members: {
@@ -468,7 +474,7 @@ async function lockAndLoadGroupMembers(
   });
   if (!group || group.members.length < GROUP_MEMBER_MIN) throw new IsolationError();
   return {
-    leadBotId: group.leadBotId,
+    leadBotId: locked.leadBotId,
     members: group.members.map((member) => ({
       botId: member.bot.id,
       name: member.bot.name,
@@ -819,12 +825,10 @@ export async function threadSnapshot(
     const plans = await loadCurrentRunPlans(tx, target.threadId);
     const steps = await loadCurrentRunSteps(tx, target.threadId);
     const todos = await loadCurrentRunTodos(tx, target.threadId);
-    const interventions = await loadInterventionViews(
-      tx,
-      target.threadId,
-      messagePage.messages,
-      [...activeRuns.map((run) => run.id), ...recentTerminals.map((run) => run.id)],
-    );
+    const interventions = await loadInterventionViews(tx, target.threadId, messagePage.messages, [
+      ...activeRuns.map((run) => run.id),
+      ...recentTerminals.map((run) => run.id),
+    ]);
     const executions = await loadExecutionSummaries(tx, {
       threadId: target.threadId,
       spaceId: target.spaceId,
@@ -904,7 +908,9 @@ export async function threadMessagePage(
       input.includePeerReceipts,
     );
     const runIds = [
-      ...new Set(page.messages.map((message) => message.runId).filter((id): id is string => Boolean(id))),
+      ...new Set(
+        page.messages.map((message) => message.runId).filter((id): id is string => Boolean(id)),
+      ),
     ];
     const executions =
       runIds.length > 0
@@ -1497,7 +1503,14 @@ export async function reactToThreadMessage(
   },
 ) {
   return deps.prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR UPDATE`;
+    if (target.kind === "group") {
+      await lockOwnedStandardGroupThread(tx, actor, {
+        groupId: target.groupId,
+        threadId: target.threadId,
+      });
+    } else {
+      await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR UPDATE`;
+    }
     const parent = await tx.message.findFirst({
       where: { id: input.messageId, threadId: target.threadId },
       select: { id: true },

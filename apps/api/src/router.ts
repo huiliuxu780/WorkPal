@@ -184,7 +184,7 @@ import {
   loadBotAvatarStates,
   loadExecutionSnapshot,
   loadRunActivityPage,
-  lockOwnedGroup,
+  lockOwnedStandardGroupThread,
   ManualRetryDenied,
   newestModelCredentialOrder,
   newestVoiceCredentialOrder,
@@ -208,7 +208,6 @@ import { getLogger } from "@rakazo/logging";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { aiConsentStatus, allowAiConsent } from "./ai-consent.js";
-import { CURRENT_USER_AVATAR_STYLE } from "./avatar-style.js";
 import {
   ArtifactListCursorError,
   createOwnedArtifact,
@@ -219,6 +218,7 @@ import {
   listArtifactVersions,
   listSpaceArtifacts,
 } from "./artifacts.js";
+import { CURRENT_USER_AVATAR_STYLE } from "./avatar-style.js";
 import {
   appendAvatarUpdatedEvent,
   botProfileLabelsChanged,
@@ -2332,7 +2332,10 @@ export function createRouter(deps: RouterDeps) {
             });
             if (existing) return null;
           }
-          await lockOwnedGroup(tx, context.actor, target.groupId);
+          const lockedGroup = await lockOwnedStandardGroupThread(tx, context.actor, {
+            groupId: target.groupId,
+            threadId: target.threadId,
+          });
           const group = await tx.chatGroup.findFirst({
             where: {
               id: target.groupId,
@@ -2354,7 +2357,7 @@ export function createRouter(deps: RouterDeps) {
           const turnOwner = await resolveGroupTurnOwner({
             tx,
             groupId: target.groupId,
-            leadBotId: group.leadBotId,
+            leadBotId: lockedGroup.leadBotId,
             members: group.members.map((member) => ({
               botId: member.bot.id,
               name: member.bot.name,
@@ -2381,7 +2384,7 @@ export function createRouter(deps: RouterDeps) {
               orderBy: { createdAt: "desc" },
               select: { botId: true },
             });
-            const leadBotId = group.leadBotId;
+            const leadBotId = lockedGroup.leadBotId;
             botId =
               previous?.botId ??
               (leadBotId && turnOwner.ownerBotIds.includes(leadBotId)

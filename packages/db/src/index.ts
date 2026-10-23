@@ -14,6 +14,7 @@ export * from "./events.js";
 export * from "./execution-history.js";
 export * from "./execution-revocations.js";
 export * from "./external-conversations.js";
+export * from "./group-thread-locks.js";
 export * from "./groups.js";
 export * from "./interventions.js";
 export * from "./manual-retry.js";
