@@ -32,6 +32,7 @@ import {
   turnPolicyFromRun,
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
+import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
@@ -56,6 +57,7 @@ import {
   createThreadMessageInTransaction,
   RunHistoryWriteError,
 } from "./messages.js";
+import { IsolationError } from "./scope.js";
 import { withTransactionRetry } from "./transaction-retry.js";
 
 const EVENT_BATCH_SIZE = 200;
@@ -410,6 +412,20 @@ export async function clearThread(
   realtime?: RealtimeFanout,
 ): Promise<ClearThreadResult> {
   const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    if (input.groupId) {
+      // Clear is a standard-group mutation even though it is addressed by thread:
+      // the groupId path updates chat_groups and reaches every message/run below.
+      const group = await tx.chatGroup.findFirst({
+        where: {
+          id: input.groupId,
+          spaceId: input.spaceId,
+          kind: CHAT_GROUP_KIND_STANDARD,
+          thread: { id: input.threadId },
+        },
+        select: { id: true },
+      });
+      if (!group) throw new IsolationError();
+    }
     const thread = await tx.thread.update({
       where: {
         id: input.threadId,

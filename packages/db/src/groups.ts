@@ -369,6 +369,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           data: {
             spaceId: actor.spaceId,
             userId: actor.userId,
+            kind: CHAT_GROUP_KIND_STANDARD,
             name: input.name.trim(),
             // Product Harness: creation order becomes the initial lead —
             // explicit fallback metadata, not the routing algorithm.
@@ -412,6 +413,7 @@ export function createGroupRepos(prisma: PrismaClient) {
             spaceId: actor.spaceId,
             userId: actor.userId,
             archivedAt: null,
+            ...standardGroupScope,
           },
           include: {
             members: { select: { botId: true, bot: { select: { archivedAt: true } } } },
@@ -525,6 +527,7 @@ export function createGroupRepos(prisma: PrismaClient) {
             id: groupId,
             spaceId: actor.spaceId,
             userId: actor.userId,
+            ...standardGroupScope,
           },
           select: { archivedAt: true, thread: { select: { id: true } } },
         });
@@ -599,7 +602,12 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async restoreGroup(actor: Actor, groupId: string) {
       const restored = await prisma.chatGroup.updateMany({
-        where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
+        where: {
+          id: groupId,
+          spaceId: actor.spaceId,
+          userId: actor.userId,
+          ...standardGroupScope,
+        },
         data: { archivedAt: null },
       });
       if (restored.count !== 1) throw new IsolationError();
@@ -608,8 +616,14 @@ export function createGroupRepos(prisma: PrismaClient) {
     async removeGroup(actor: Actor, groupId: string) {
       const removed = await prisma.$transaction(async (tx) => {
         const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
-        const group = await tx.chatGroup.findUnique({
-          where: { id: groupId },
+        const group = await tx.chatGroup.findFirst({
+          where: {
+            id: groupId,
+            spaceId: actor.spaceId,
+            userId: actor.userId,
+            ...standardGroupScope,
+            thread: { id: threadId },
+          },
           select: {
             artifacts: { select: { storageKey: true } },
             members: { orderBy: { createdAt: "asc" }, take: 1, select: { botId: true } },
@@ -690,7 +704,12 @@ async function lockGroupThreadThenOwner(
   groupId: string,
 ): Promise<string> {
   const preview = await tx.chatGroup.findFirst({
-    where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
+    where: {
+      id: groupId,
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      ...standardGroupScope,
+    },
     select: { thread: { select: { id: true } } },
   });
   if (!preview?.thread) throw new IsolationError();
@@ -700,6 +719,7 @@ async function lockGroupThreadThenOwner(
   return preview.thread.id;
 }
 
+/** Locks a user-managed group; agent_pair rows are outside this scope. */
 export async function lockOwnedGroup(
   prisma: Pick<Prisma.TransactionClient, "$queryRaw">,
   actor: Pick<Actor, "spaceId" | "userId">,
@@ -711,6 +731,7 @@ export async function lockOwnedGroup(
     WHERE id = ${groupId}
       AND "spaceId" = ${actor.spaceId}
       AND "userId" = ${actor.userId}
+      AND "kind" = ${CHAT_GROUP_KIND_STANDARD}
     FOR UPDATE
   `;
   if (locked.length !== 1) throw new IsolationError();
@@ -720,8 +741,9 @@ export async function touchGroupUpdatedAt(
   prisma: Pick<Prisma.TransactionClient, "chatGroup">,
   groupId: string,
 ) {
-  await prisma.chatGroup.update({
-    where: { id: groupId },
+  const touched = await prisma.chatGroup.updateMany({
+    where: { id: groupId, ...standardGroupScope },
     data: { updatedAt: new Date() },
   });
+  if (touched.count !== 1) throw new IsolationError();
 }

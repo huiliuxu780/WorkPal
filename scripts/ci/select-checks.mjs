@@ -18,6 +18,7 @@ export const CHECK_JOBS = [
   "docs",
   "web",
   "backend",
+  "db-postgres",
   "agentscope",
   "worker-chain",
   "agent-runtime-image",
@@ -248,7 +249,7 @@ export function classifyPath(file) {
     anyStem(p, WORKER_DB_STEMS)
   ) {
     return {
-      jobs: ["backend", "worker-chain"],
+      jobs: ["backend", "worker-chain", "db-postgres"],
       reason: "Worker process, lease, outbox, or Graphile handoff",
       webE2e: [],
     };
@@ -329,7 +330,7 @@ export function classifyPath(file) {
 
   if (isUnder(p, "packages/db")) {
     return {
-      jobs: ["backend", "agentscope"],
+      jobs: ["backend", "agentscope", "db-postgres"],
       reason: "database access layer used by API, Worker, and journeys",
       webE2e: [],
     };

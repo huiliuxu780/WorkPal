@@ -12,7 +12,16 @@ const packagesDbDir = path.resolve(here, "..");
 
 export type IsolatedPostgresDatabase = {
   db: ReturnType<typeof createDb>;
+  databaseUrl: string;
   drop: () => Promise<void>;
+};
+
+export type IsolatedPostgresDatabaseOptions = {
+  /**
+   * false leaves the clone empty so a test can apply migration files itself
+   * (upgrade/backfill coverage). Defaults to a clone of the migrated template.
+   */
+  migrated?: boolean;
 };
 
 type MigrationState = {
@@ -28,15 +37,17 @@ type MigrationState = {
  */
 export async function createIsolatedPostgresDatabase(
   label: string,
+  options: IsolatedPostgresDatabaseOptions = {},
 ): Promise<IsolatedPostgresDatabase> {
   const sourceUrl = process.env.DATABASE_URL;
   if (!sourceUrl?.startsWith("postgres")) {
     throw new Error("DATABASE_URL must be a postgres connection string");
   }
+  const migrated = options.migrated !== false;
   const migrations = migrationState();
   const templateName = `wp_tpl_${migrations.hash}`;
   const clone = cloneName(migrations.hash, label);
-  assertDisposable(templateName, sourceUrl);
+  if (migrated) assertDisposable(templateName, sourceUrl);
   assertDisposable(clone, sourceUrl);
 
   const admin = new Client({
@@ -48,12 +59,16 @@ export async function createIsolatedPostgresDatabase(
   });
   let created = false;
   try {
-    await admin.query("SELECT pg_advisory_lock($1::bigint)", [ADVISORY_LOCK_KEY]);
-    await ensureTemplate(admin, sourceUrl, templateName, migrations);
-    await terminateBackends(admin, templateName);
-    await admin.query(
-      `CREATE DATABASE ${quoteIdent(clone)} TEMPLATE ${quoteIdent(templateName)}`,
-    );
+    if (migrated) {
+      await admin.query("SELECT pg_advisory_lock($1::bigint)", [ADVISORY_LOCK_KEY]);
+      await ensureTemplate(admin, sourceUrl, templateName, migrations);
+      await terminateBackends(admin, templateName);
+      await admin.query(
+        `CREATE DATABASE ${quoteIdent(clone)} TEMPLATE ${quoteIdent(templateName)}`,
+      );
+    } else {
+      await admin.query(`CREATE DATABASE ${quoteIdent(clone)}`);
+    }
     created = true;
   } finally {
     await admin.query("SELECT pg_advisory_unlock($1::bigint)", [ADVISORY_LOCK_KEY]).catch(() => undefined);
@@ -67,6 +82,7 @@ export async function createIsolatedPostgresDatabase(
     });
     return {
       db,
+      databaseUrl,
       async drop() {
         await db.prisma.$disconnect().catch(() => undefined);
         await db.pool.end().catch(() => undefined);

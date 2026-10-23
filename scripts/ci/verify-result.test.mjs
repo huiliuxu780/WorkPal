@@ -6,6 +6,7 @@ const successJobs = {
   docs: "success",
   web: "skipped",
   backend: "skipped",
+  "db-postgres": "skipped",
   "runtime-jar": "skipped",
   agentscope: "skipped",
   "worker-chain": "skipped",
@@ -70,6 +71,27 @@ describe("verifyResult", () => {
       selectChecksOutcome: "success",
       selectResult: { selected: ["docs"] },
       jobResults: successJobs,
+    });
+    assert.equal(verdict.ok, true);
+  });
+
+  it("fails when the selected db-postgres job was skipped or failed", () => {
+    for (const outcome of ["skipped", "failure", "cancelled"]) {
+      const verdict = verifyResult({
+        selectChecksOutcome: "success",
+        selectResult: { selected: ["docs", "db-postgres"] },
+        jobResults: { ...successJobs, "db-postgres": outcome },
+      });
+      assert.equal(verdict.ok, false, outcome);
+      assert.match(verdict.message, /db-postgres/);
+    }
+  });
+
+  it("allows an unselected db-postgres job to be skipped", () => {
+    const verdict = verifyResult({
+      selectChecksOutcome: "success",
+      selectResult: { selected: ["docs"] },
+      jobResults: { ...successJobs, "db-postgres": "skipped" },
     });
     assert.equal(verdict.ok, true);
   });
