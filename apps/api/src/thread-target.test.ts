@@ -1423,12 +1423,14 @@ describe("sendThreadMessage", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue({
           id: "group-1",
+          thread: { id: "thread-1" },
           members: [
             { bot: { id: "bot-a", name: "Alpha", color: null } },
             { bot: { id: "bot-b", name: "Beta", color: null } },
           ],
         }),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const prisma = {
@@ -1837,12 +1839,14 @@ describe("sendThreadMessage", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue({
           id: "group-1",
+          thread: { id: "thread-1" },
           members: [
             { bot: { id: "bot-a", name: "Alpha", color: null } },
             { bot: { id: "bot-b", name: "Beta", color: null } },
           ],
         }),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
     };
@@ -2018,12 +2022,14 @@ describe("sendThreadMessage", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue({
           id: "group-1",
+          thread: { id: "thread-1" },
           members: [
             { bot: { id: "bot-a", name: "Alpha", color: null } },
             { bot: { id: "bot-b", name: "Beta", color: null } },
           ],
         }),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const prisma = {
@@ -2217,12 +2223,14 @@ describe("sendThreadMessage", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue({
           id: "group-1",
+          thread: { id: "thread-1" },
           members: [
             { bot: { id: "bot-a", name: "Alpha", color: null } },
             { bot: { id: "bot-b", name: "Beta", color: null } },
           ],
         }),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
     };
@@ -2973,12 +2981,14 @@ describe("sendThreadMessage", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue({
           id: "group-1",
+          thread: { id: "thread-1" },
           members: [
             { bot: { id: "bot-a", name: "Alpha", color: null } },
             { bot: { id: "bot-b", name: "Beta", color: null } },
           ],
         }),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
     };
@@ -3508,12 +3518,14 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue({
           id: "group-1",
+          thread: { id: "thread-1" },
           leadBotId: options.leadBotId === undefined ? null : options.leadBotId,
           members: options.members.map((member) => ({
             bot: { id: member.id, name: member.name, color: null },
           })),
         }),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     let first = true;

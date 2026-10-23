@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CHAT_GROUP_KIND_AGENT_PAIR, CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import type { PrismaClient } from "./client.js";
-import { createGroupRepos, lockOwnedGroup, touchGroupUpdatedAt } from "./groups.js";
+import { lockOwnedGroup, touchGroupUpdatedAt } from "./group-thread-locks.js";
+import { createGroupRepos } from "./groups.js";
 import { IsolationError } from "./scope.js";
 
 describe("listSpaceGroupsForSpaces", () => {
@@ -71,6 +72,7 @@ describe("archiveGroup", () => {
   };
   let queryRaw: ReturnType<typeof vi.fn>;
   let findFirst: ReturnType<typeof vi.fn>;
+  let findUnique: ReturnType<typeof vi.fn>;
   let findManyRuns: ReturnType<typeof vi.fn>;
   let findManyComputers: ReturnType<typeof vi.fn>;
   let runUpdateMany: ReturnType<typeof vi.fn>;
@@ -85,6 +87,7 @@ describe("archiveGroup", () => {
 
   beforeEach(() => {
     queryRaw = vi.fn().mockResolvedValue([{ id: "group-1" }]);
+    findUnique = vi.fn().mockResolvedValue({ thread: { id: "thread-1" } });
     findFirst = vi.fn().mockResolvedValue({ thread: { id: "thread-1" } });
     findManyRuns = vi.fn().mockResolvedValue([
       { id: "run-1", taskId: "task-1" },
@@ -220,7 +223,7 @@ describe("archiveGroup", () => {
     groupUpdate = vi.fn();
     const tx = {
       $queryRaw: queryRaw,
-      chatGroup: { findFirst, update: groupUpdate },
+      chatGroup: { findFirst, findUnique, update: groupUpdate },
       run: {
         findMany: findManyRuns,
         updateMany: vi.fn(),
@@ -523,8 +526,9 @@ describe("hidden agent_pair exclusion", () => {
       count: where.kind === CHAT_GROUP_KIND_STANDARD && where.id !== "group-pair" ? 1 : 0,
     }));
     const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([]),
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       chatGroup: {
+        findUnique: vi.fn(async () => ({ thread: { id: "thread-1" } })),
         findFirst,
         update: groupUpdate,
         updateMany: groupUpdateMany,

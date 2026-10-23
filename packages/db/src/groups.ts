@@ -8,13 +8,12 @@ import {
 } from "@rakazo/contracts";
 import { selectGroupLead } from "@rakazo/core";
 import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
-import {
-  backgroundTaskLockTransactionOptions,
-  lockThreadForBackgroundTask,
-} from "./background-task-registration.js";
+import { backgroundTaskLockTransactionOptions } from "./background-task-registration.js";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
-import { cancelRunsInTransaction, type CancelledRunRow } from "./cancel-runs.js";
+import { type CancelledRunRow, cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
+import { expireComputerExecutionLeases } from "./computers.js";
+import { appendEventInTransaction } from "./events.js";
 import {
   backgroundParentRunIdsExcept,
   findLiveBackgroundTasks,
@@ -22,8 +21,7 @@ import {
   recordBackgroundRevocations,
   recordRunAbortRevocations,
 } from "./execution-revocations.js";
-import { expireComputerExecutionLeases } from "./computers.js";
-import { appendEventInTransaction } from "./events.js";
+import { lockOwnedStandardGroupThreadByGroupId } from "./group-thread-locks.js";
 import { IsolationError } from "./scope.js";
 import { lockSpaceForContentCreation } from "./spaces.js";
 import { activeRunSelection, activeRunStatuses, previewFromBlocks } from "./thread-listing.js";
@@ -406,7 +404,7 @@ export function createGroupRepos(prisma: PrismaClient) {
     ): Promise<{ group: Group; cancelledRunIds: string[]; backgroundParentRunIds: string[] }> {
       const members = input.botIds ? await assertOwnedBots(prisma, actor, input.botIds) : undefined;
       const updated = await prisma.$transaction(async (tx) => {
-        const threadId = await lockGroupThreadThenOwner(tx, actor, input.groupId);
+        const { threadId } = await lockOwnedStandardGroupThreadByGroupId(tx, actor, input.groupId);
         const current = await tx.chatGroup.findFirst({
           where: {
             id: input.groupId,
@@ -521,7 +519,9 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async archiveGroup(actor: Actor, groupId: string) {
       const archived = await prisma.$transaction(async (tx) => {
-        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
+        const { threadId } = await lockOwnedStandardGroupThreadByGroupId(tx, actor, groupId, {
+          allowArchived: true,
+        });
         const current = await tx.chatGroup.findFirst({
           where: {
             id: groupId,
@@ -615,7 +615,9 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async removeGroup(actor: Actor, groupId: string) {
       const removed = await prisma.$transaction(async (tx) => {
-        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
+        const { threadId } = await lockOwnedStandardGroupThreadByGroupId(tx, actor, groupId, {
+          allowArchived: true,
+        });
         const group = await tx.chatGroup.findFirst({
           where: {
             id: groupId,
@@ -692,58 +694,4 @@ async function appendCancelledRunEvents(
       payload: { reason },
     });
   }
-}
-
-/**
- * Thread row first, then the group row. Clear and Send already lock the thread
- * before they update the group, so the opposite order deadlocks.
- */
-async function lockGroupThreadThenOwner(
-  tx: Prisma.TransactionClient,
-  actor: Pick<Actor, "spaceId" | "userId">,
-  groupId: string,
-): Promise<string> {
-  const preview = await tx.chatGroup.findFirst({
-    where: {
-      id: groupId,
-      spaceId: actor.spaceId,
-      userId: actor.userId,
-      ...standardGroupScope,
-    },
-    select: { thread: { select: { id: true } } },
-  });
-  if (!preview?.thread) throw new IsolationError();
-  const locked = await lockThreadForBackgroundTask(tx, preview.thread.id);
-  if (!locked) throw new IsolationError();
-  await lockOwnedGroup(tx, actor, groupId);
-  return preview.thread.id;
-}
-
-/** Locks a user-managed group; agent_pair rows are outside this scope. */
-export async function lockOwnedGroup(
-  prisma: Pick<Prisma.TransactionClient, "$queryRaw">,
-  actor: Pick<Actor, "spaceId" | "userId">,
-  groupId: string,
-) {
-  const locked = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id
-    FROM chat_groups
-    WHERE id = ${groupId}
-      AND "spaceId" = ${actor.spaceId}
-      AND "userId" = ${actor.userId}
-      AND "kind" = ${CHAT_GROUP_KIND_STANDARD}
-    FOR UPDATE
-  `;
-  if (locked.length !== 1) throw new IsolationError();
-}
-
-export async function touchGroupUpdatedAt(
-  prisma: Pick<Prisma.TransactionClient, "chatGroup">,
-  groupId: string,
-) {
-  const touched = await prisma.chatGroup.updateMany({
-    where: { id: groupId, ...standardGroupScope },
-    data: { updatedAt: new Date() },
-  });
-  if (touched.count !== 1) throw new IsolationError();
 }

@@ -3192,6 +3192,7 @@ describe("groups.archive", () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
       chatGroup: {
+        findUnique: vi.fn().mockResolvedValue({ thread: { id: "thread-1" } }),
         findFirst: vi.fn().mockResolvedValue({
           archivedAt,
           thread: { id: "thread-1" },
@@ -3388,6 +3389,7 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue(groupRow),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const prisma = {
@@ -3508,6 +3510,7 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue(groupRow),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const prisma = {

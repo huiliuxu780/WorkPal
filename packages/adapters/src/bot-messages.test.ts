@@ -133,11 +133,13 @@ function deps(
         id: "group-1",
         spaceId: "workspace-1",
         userId: "user-1",
+        kind: "standard",
         archivedAt: null,
         thread: { id: "thread-sender" },
         members: groupMembers,
       }),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
   let transactionAttempts = 0;
