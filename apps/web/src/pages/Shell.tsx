@@ -150,6 +150,7 @@ import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { MessageText } from "../components/ai/AgentMentionText";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -214,6 +215,7 @@ import {
   revokePendingAttachmentPreviews,
 } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
+import { projectPublicDelegations } from "../lib/public-collaboration";
 import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
@@ -5002,6 +5004,13 @@ export const Transcript = memo(function Transcript({
     onRefresh,
   });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
+  const publicDelegations = useMemo(
+    () =>
+      "groupId" in artifactTarget
+        ? projectPublicDelegations(reactionView.visibleMessages, { runs, executions, activity })
+        : null,
+    [activity, artifactTarget, executions, reactionView.visibleMessages, runs],
+  );
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -5258,6 +5267,43 @@ export const Transcript = memo(function Transcript({
             );
           }
           const message = item.message;
+          const publicDelegation = publicDelegations?.groupsByFirstMessageId.get(message.id);
+          if (publicDelegation) {
+            const remainingMessageIds = publicDelegation.messageIds.slice(1);
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                <div
+                  data-message-id={message.id}
+                  className="group/message relative flex justify-start hover:z-20"
+                >
+                  <PublicDelegationMessage
+                    group={publicDelegation}
+                    onOpenMention={onOpenBot}
+                    resolveBot={(botId) => {
+                      const name = botNameOf?.(botId);
+                      if (!name) return undefined;
+                      return {
+                        name,
+                        color: peerBot(botId)?.color,
+                        available: true,
+                      };
+                    }}
+                  />
+                </div>
+                {renderExecutions(message.id)}
+                {remainingMessageIds.map((messageId) => (
+                  <Fragment key={messageId}>
+                    {renderExecutions(`before:${messageId}`)}
+                    {renderExecutions(messageId)}
+                  </Fragment>
+                ))}
+              </Fragment>
+            );
+          }
+          if (publicDelegations?.hiddenMessageIds.has(message.id)) {
+            return null;
+          }
           const suppressAsk = coveredAsks.has(message.id);
           const visibleBlocks = suppressAsk
             ? message.blocks.filter((block) => block.kind !== "ask")

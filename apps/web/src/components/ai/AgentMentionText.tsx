@@ -56,7 +56,7 @@ export function AgentMentionText({
         inline.kind === "text" ? (
           <LinkifiedText key={`text:${index}`}>{inline.text}</LinkifiedText>
         ) : (
-          <AgentMentionLink
+          <AgentMention
             key={`mention:${inline.botId}:${index}`}
             botId={inline.botId}
             fallbackLabel={inline.label}
@@ -69,7 +69,7 @@ export function AgentMentionText({
   );
 }
 
-function AgentMentionLink({
+export function AgentMention({
   botId,
   fallbackLabel,
   identity,
