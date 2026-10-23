@@ -81,6 +81,7 @@ import {
 import { SERVICE_NAMES } from "@rakazo/logging";
 import { createRootLogger } from "@rakazo/logging/axiom";
 import { MarkdownMemoryStore } from "@rakazo/memory";
+import { reconcileSessionAdmissions } from "./session-admission-reconciler.js";
 
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
@@ -306,6 +307,20 @@ async function main() {
   const artifacts = new LocalArtifactStore(dataDir);
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;
   const jobs: JobPublisher = inMemoryJobs ?? new GraphileJobPublisher(pool);
+  const admissionSweep =
+    runtime instanceof AgentScopeAgentRuntime
+      ? setInterval(() => {
+          void reconcileSessionAdmissions(prisma, jobs).catch((error) =>
+            logger.error("session admission reconciliation", error),
+          );
+        }, 10_000)
+      : null;
+  admissionSweep?.unref?.();
+  if (admissionSweep) {
+    void reconcileSessionAdmissions(prisma, jobs).catch((error) =>
+      logger.error("session admission reconciliation", error),
+    );
+  }
   const reconcileWaitingRuns = async () => {
     const expired = await expireWaitingRuns(prisma);
     const descendantIds = await listDescendantRunIds(
@@ -574,6 +589,7 @@ async function main() {
     clearInterval(cancellationSweep);
     clearInterval(childCancellationSweep);
     clearInterval(budgetSweep);
+    if (admissionSweep) clearInterval(admissionSweep);
     if (memoryOutboxSweep) clearInterval(memoryOutboxSweep);
     if (memoryScanSweep) clearInterval(memoryScanSweep);
     try {

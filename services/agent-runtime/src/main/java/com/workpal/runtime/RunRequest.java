@@ -31,7 +31,21 @@ public record RunRequest(
         TurnPolicy turnPolicy,
         Collaboration collaborationContext,
         List<String> excludeDeliveredTaskIds,
-        Boolean suppressNativeTaskReminders) {
+        Boolean suppressNativeTaskReminders,
+        SessionAdmission sessionAdmission) {
+
+    public RunRequest(String botId, String threadId, String runId, String executionScope,
+            String sourceMessageId, Identity identity, String prompt, String productName,
+            String instructions, List<HistoryMessage> history, List<InputImage> currentTurnImages,
+            List<SkillDefinition> skills, List<ToolDefinition> tools, ToolBridge toolBridge,
+            RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration,
+            String resumeAnswer, TurnPolicy turnPolicy, Collaboration collaborationContext,
+            List<String> excludeDeliveredTaskIds, Boolean suppressNativeTaskReminders) {
+        this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
+                instructions, history, currentTurnImages, skills, tools, toolBridge, model,
+                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, turnPolicy,
+                collaborationContext, excludeDeliveredTaskIds, suppressNativeTaskReminders, null);
+    }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
             String sourceMessageId, Identity identity, String prompt, String productName,
@@ -42,7 +56,7 @@ public record RunRequest(
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
                 allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, turnPolicy,
-                collaborationContext, null, null);
+                collaborationContext, null, null, null);
     }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
@@ -52,7 +66,7 @@ public record RunRequest(
             RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null, null, null, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null, null, null, null, null);
     }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
@@ -63,7 +77,7 @@ public record RunRequest(
             String resumeAnswer) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null, null, null, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null, null, null, null, null);
     }
 
     /**
@@ -105,6 +119,11 @@ public record RunRequest(
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Collaboration(String role, String fromBotName, Boolean receivingOutcome) {}
+
+    /** Durable backend proof authorizing one stateful chat execution. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record SessionAdmission(String sessionKey, String executionId, String attemptId,
+            Long fence, String suspensionKey) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Identity(String userId, String spaceId, String botId, String threadId, String runId) {}
@@ -269,6 +288,14 @@ public record RunRequest(
     public String scope() { return executionScope == null ? "chat" : executionScope; }
     public boolean isChat() { return "chat".equals(scope()); }
     public int generation() { return sessionGeneration == null ? 0 : sessionGeneration; }
+
+    public RunRequest withSessionAdmission(SessionAdmission admission) {
+        return new RunRequest(botId, threadId, runId, executionScope, sourceMessageId, identity,
+                prompt, productName, instructions, history, currentTurnImages, skills, tools,
+                toolBridge, model, allowSilentEmpty, emptyResponseText, sessionGeneration,
+                resumeAnswer, turnPolicy, collaborationContext, excludeDeliveredTaskIds,
+                suppressNativeTaskReminders, admission);
+    }
 
     /** Planning capability: chat scope only, unless the policy disables it. */
     public boolean planningAllowed() {

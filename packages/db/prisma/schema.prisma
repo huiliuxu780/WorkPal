@@ -686,6 +686,7 @@ model Run {
   plan                 RunPlan?
   steps                RunStep[]
   todos                RunTodo[]
+  sessionAdmissionRequests AgentSessionAdmissionRequest[]
   /// Direct predecessor of a manual retry (new Run). Unique so one hop has one successor.
   retryOfRunId         String?          @unique
   retryOfRun           Run?             @relation("RunManualRetry", fields: [retryOfRunId], references: [id], onDelete: Restrict)
@@ -945,6 +946,59 @@ model Attempt {
 
   @@unique([runId, fence])
   @@map("attempts")
+}
+
+/// One durable ownership row for one AgentScope chat session. This is not the
+/// Run claim lease and not the computer execution lease.
+model AgentSessionAdmission {
+  sessionKey          String   @id
+  userId              String
+  spaceId             String
+  botId               String
+  threadId            String
+  threadGeneration    Int
+  scope               String   @default("chat")
+  state               String   @default("available")
+  ownerRunId          String?
+  ownerAttemptId      String?
+  ownerExecutionId    String?
+  ownerRunLeaseOwner  String?
+  ownerRunLeaseFence  Int?
+  fence               Int      @default(0)
+  suspensionKey       String?  @unique
+  acquiredAt          DateTime?
+  expiresAt           DateTime?
+  heartbeatAt         DateTime?
+  executionPreparedAt DateTime?
+  runtimeStartedAt    DateTime?
+  lastReleaseReason   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  requests            AgentSessionAdmissionRequest[]
+
+  @@unique([userId, spaceId, botId, threadId, threadGeneration, scope])
+  @@index([state, expiresAt])
+  @@index([ownerRunId])
+  @@map("agent_session_admissions")
+}
+
+/// Durable FIFO requests. PostgreSQL assigns position while holding the
+/// session row lock, so process scheduling cannot reorder an established queue.
+model AgentSessionAdmissionRequest {
+  position    BigInt   @id @default(autoincrement())
+  sessionKey  String
+  admission   AgentSessionAdmission @relation(fields: [sessionKey], references: [sessionKey], onDelete: Cascade)
+  runId       String
+  run         Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  executionId String   @unique
+  state       String   @default("queued")
+  queuedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sessionKey, state, position])
+  @@index([state, position])
+  @@index([runId])
+  @@map("agent_session_admission_requests")
 }
 
 // Deliberately independent of chat/user cascades: the worker must still be able

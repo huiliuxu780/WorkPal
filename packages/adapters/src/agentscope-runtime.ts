@@ -23,6 +23,13 @@ export class AgentScopeTransientError extends Error {
   }
 }
 
+export class AgentScopeSessionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentScopeSessionConflictError";
+  }
+}
+
 function transientWireError(message: string): AgentScopeTransientError | null {
   if (/\b(?:timeout|timed out)\b/i.test(message)) {
     return new AgentScopeTransientError("llm_timeout", message);
@@ -644,6 +651,7 @@ function serializableRequest(
     botId: request.botId,
     threadId: request.threadId,
     runId: request.runId,
+    sessionAdmission: request.sessionAdmission,
     executionScope: request.executionScope ?? "chat",
     // Product Harness Turn Policy: flattened to the runtime wire shape; the
     // runtime enforces it and never re-derives it.
@@ -914,6 +922,11 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       }
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 1_000);
+        if (response.status === 409) {
+          throw new AgentScopeSessionConflictError(
+            `AgentScope session conflict: ${detail || "active runtime session"}`,
+          );
+        }
         if (response.status >= 500) {
           throw new AgentScopeTransientError(
             "provider_5xx",

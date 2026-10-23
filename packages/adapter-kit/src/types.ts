@@ -454,6 +454,17 @@ export interface AgentRunRequest {
   botId: string;
   threadId: string;
   runId: string;
+  /**
+   * Durable backend admission proof for a stateful AgentScope chat execution.
+   * Auxiliary scopes are intentionally outside the chat admission resource.
+   */
+  sessionAdmission?: {
+    sessionKey: string;
+    executionId: string;
+    attemptId: string;
+    fence: number;
+    suspensionKey: string;
+  };
   sourceMessageId?: string | null;
   /**
    * Backend-selected auxiliary executions are stateless and do not share the

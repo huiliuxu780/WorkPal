@@ -29,6 +29,11 @@
       "development": "./src/node/manual-retry-match.ts",
       "default": "./src/node/manual-retry-match.ts"
     },
+    "./node/session-admission": {
+      "types": "./src/node/session-admission.ts",
+      "development": "./src/node/session-admission.ts",
+      "default": "./src/node/session-admission.ts"
+    },
     "./node/screen-proxy-response": {
       "types": "./src/node/screen-proxy-response.ts",
       "development": "./src/node/screen-proxy-response.ts",
