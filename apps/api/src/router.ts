@@ -167,6 +167,7 @@ import {
   createRepos,
   createSpaceForMember,
   createThreadMessageInTransaction,
+  createThreadPolicy,
   defaultModelCredentialCandidates,
   deleteEmptySpaceForMember,
   deleteUnreferencedCredentialSecret,
@@ -792,6 +793,19 @@ export function createRouter(deps: RouterDeps) {
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
   const groupRepos = createGroupRepos(deps.prisma);
+  const threadPolicy = createThreadPolicy(deps.prisma);
+  const resolveHumanWritableThreadTarget = async (
+    actor: Actor,
+    input: { botId?: string; groupId?: string },
+  ) => {
+    const target = await resolveThreadTarget(deps.prisma, actor, input);
+    await threadPolicy.assertResolvedHumanCanWrite({
+      actor,
+      threadId: target.threadId,
+      classification: target.kind,
+    });
+    return target;
+  };
   const groupPanelQueries = createGroupPanelQueries(deps);
   const turnRouting =
     deps.turnRouting ??
@@ -2122,6 +2136,25 @@ export function createRouter(deps: RouterDeps) {
       }),
     },
     threads: {
+      pairMessages: authed.threads.pairMessages.handler(async ({ context, input }) => {
+        try {
+          return await threadPolicy.readPairMessages({
+            actor: context.actor,
+            originLocator: {
+              sourceReceiptMessageId: input.sourceReceiptMessageId,
+              pairThreadId: input.locator.pairThreadId,
+              messageId: input.locator.messageId,
+            },
+            before: input.before,
+            limit: input.limit,
+          });
+        } catch (error) {
+          if (error instanceof IsolationError) {
+            throw new ORPCError("NOT_FOUND", { message: "Pair history was not found." });
+          }
+          throw error;
+        }
+      }),
       head: authed.threads.head.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         return threadHead(deps.prisma, target);
@@ -2183,14 +2216,14 @@ export function createRouter(deps: RouterDeps) {
         if ((await modelSetup(deps, context.actor)).needsModel) {
           throw new ORPCError("BAD_REQUEST", { message: "Connect a model to start a run." });
         }
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         if (target.kind === "bot") {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
         }
         return sendThreadMessage({ ...deps, turnRouting }, context.actor, target, input);
       }),
       amendTask: authed.threads.amendTask.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         let appended: Awaited<ReturnType<typeof appendTaskAmendment>>;
         try {
           appended = await (deps.appendTaskAmendment ?? appendTaskAmendment)(deps.prisma, {
@@ -2230,7 +2263,7 @@ export function createRouter(deps: RouterDeps) {
         };
       }),
       react: authed.threads.react.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         const result = await reactToThreadMessage(deps, context.actor, target, input);
         if (result.eventSeq != null) {
           await deps.events.notify(target.threadId, result.eventSeq).catch((error) => {
@@ -2240,7 +2273,7 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       stop: authed.threads.stop.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         const { cancelledRunIds } = await stopThreadRuns(deps, context.actor, target);
         await revokeNativeCancellation(deps, cancelledRunIds);
         await cancelDescendantsNow(deps, cancelledRunIds);
@@ -2248,7 +2281,7 @@ export function createRouter(deps: RouterDeps) {
       }),
       cancelBackgroundTask: authed.threads.cancelBackgroundTask.handler(
         async ({ context, input }) => {
-          const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+          const target = await resolveHumanWritableThreadTarget(context.actor, input);
           if (target.kind !== "bot" || !deps.cancelRuntimeBackgroundTask) {
             throw new ORPCError("BAD_REQUEST", {
               message: "Background task cancellation is unavailable.",
@@ -2279,7 +2312,7 @@ export function createRouter(deps: RouterDeps) {
         },
       ),
       clear: authed.threads.clear.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         const contextBotId = target.kind === "bot" ? target.botId : target.memberBotIds[0];
         if (!contextBotId) throw new IsolationError();
         const { cancelledRunIds, historyCompactionGeneration } = await deps.events.clearThread({
@@ -2333,7 +2366,7 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       followUp: authed.threads.followUp.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         if (target.kind === "bot") {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
           const sent = await deps.events.sendUserMessage({
@@ -2619,7 +2652,7 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       answer: authed.threads.answer.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         let answered = false;
         try {
           answered = await deps.events.answerRunInput({
@@ -2661,7 +2694,7 @@ export function createRouter(deps: RouterDeps) {
       }),
       resolveIntervention: authed.threads.resolveIntervention.handler(
         async ({ context, input }) => {
-          const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+          const target = await resolveHumanWritableThreadTarget(context.actor, input);
           let result: ResolveInterventionOutcome;
           try {
             result = await deps.events.resolveIntervention({
@@ -2720,12 +2753,12 @@ export function createRouter(deps: RouterDeps) {
         },
       ),
       markRead: authed.threads.markRead.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         await setThreadUnreadState(deps.prisma, context.actor, target, false);
         return { ok: true as const };
       }),
       markUnread: authed.threads.markUnread.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         await setThreadUnreadState(deps.prisma, context.actor, target, true);
         return { ok: true as const };
       }),

@@ -61,6 +61,7 @@ import {
   ModelConnectInputSchema,
   ModelCredentialSchema,
   ModelOAuthBeginSchema,
+  PairThreadMessagePageSchema,
   REPLY_QUOTE_MAX_LENGTH,
   ReorderBotsInput,
   RoutineSchema,
@@ -423,6 +424,20 @@ export const appContract = {
       .output(BotSectionSchema),
   },
   threads: {
+    pairMessages: oc
+      .input(
+        z.object({
+          sourceReceiptMessageId: Id,
+          locator: z.object({
+            kind: z.literal("pair_message"),
+            pairThreadId: Id,
+            messageId: Id,
+          }),
+          before: Id.optional(),
+          limit: z.number().int().min(1).max(100).default(50),
+        }),
+      )
+      .output(PairThreadMessagePageSchema),
     head: oc.input(threadTarget).output(
       z.object({
         threadId: Id,
