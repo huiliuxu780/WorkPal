@@ -41,6 +41,7 @@ import {
   type ComposerMention,
   clampMentionHighlightIndex,
   cronFromPreset,
+  GROUP_MENTION_CLARIFICATION_CODE,
   groupBotsForSidebar,
   groupVoiceChats,
   inferAttachmentMimeType,
@@ -49,6 +50,7 @@ import {
   isRunTerminalEvent,
   isToolActivityBlock,
   mentionChipKey,
+  mentionStillInPrompt,
   mergeExecutionsByRun,
   nestRosterByParent,
   plainTextFromMarkdown,
@@ -62,6 +64,7 @@ import {
   searchHitThreadTarget,
   serializeComposerPrompt,
   speechFromBlocks,
+  stripMentionToken,
   truncateSlashDescription,
   userVisibleMessages,
   withLiveStreamingProgress,
@@ -775,8 +778,7 @@ export function ShellPage() {
   const notifiedBrowserEvents = useRef(new Set<string>());
   const pendingBrowserNotifications = useRef(new Map<string, PendingBrowserNotification>());
   const computerVisible = useRef(false);
-  computerVisible.current =
-    (panel === "settings" && settingsTab === "computer") || computerOpen;
+  computerVisible.current = (panel === "settings" && settingsTab === "computer") || computerOpen;
   const autoSpoken = useRef<string | null>(null);
   const autoSpokenBotId = useRef<string | null>(null);
 
@@ -2237,6 +2239,13 @@ export function ShellPage() {
           cancelFocusPrompt();
         }
       };
+      const sendErrorMessage = (error: unknown) => {
+        const code = (error as { data?: { code?: unknown } } | null)?.data?.code;
+        if (code === GROUP_MENTION_CLARIFICATION_CODE) {
+          return t`I couldn't split this message into reliable tasks. Clarify which Bot should do what.`;
+        }
+        return error instanceof Error ? error.message : t`Failed to send message`;
+      };
       try {
         if (plan.shouldRunRoutines) {
           const sendNonce = newClientNonce();
@@ -2337,11 +2346,11 @@ export function ShellPage() {
         else if (botTarget) await refreshThreadRef.current(botTarget);
       } catch (error) {
         if (reroutedToGroup && groupTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(sendErrorMessage(error));
         } else if (groupTarget && activeGroupId.current === groupTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(sendErrorMessage(error));
         } else if (botTarget && activeBotId.current === botTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(sendErrorMessage(error));
         }
       } finally {
         sendingRef.current = false;
@@ -2730,9 +2739,11 @@ export function ShellPage() {
 
   useEffect(() => {
     const heartbeatBotId = computerBot?.id ?? active?.id;
-    if ((!(panel === "settings" && settingsTab === "computer") && !computerOpen) ||
+    if (
+      (!(panel === "settings" && settingsTab === "computer") && !computerOpen) ||
       !heartbeatBotId ||
-      computer?.state !== "running")
+      computer?.state !== "running"
+    )
       return;
     const ping = () =>
       void rpc.computer.heartbeat({ botId: heartbeatBotId }).catch(() => undefined);
@@ -3475,84 +3486,84 @@ export function ShellPage() {
           ) : null}
         </div>
         <div className="mx-3 mb-2 flex items-center gap-2">
-        <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <PopoverTrigger
-            data-testid="user-menu-trigger"
-            aria-label={userName}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-[12px] text-foreground/75 hover:bg-sidebar-accent"
-          >
-            {initials}
-          </PopoverTrigger>
-          {menuOpen ? (
-            <PopoverContent
-              side="top"
-              align="start"
-              className="w-[calc(316px-1.5rem)] max-w-[calc(100vw-3rem)] gap-0 p-1 data-closed:animate-none"
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <PopoverTrigger
+              data-testid="user-menu-trigger"
+              aria-label={userName}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-[12px] text-foreground/75 hover:bg-sidebar-accent"
             >
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setMobileSidebarOpen(false);
-                  navigate("/app/artifacts");
-                }}
+              {initials}
+            </PopoverTrigger>
+            {menuOpen ? (
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-[calc(316px-1.5rem)] max-w-[calc(100vw-3rem)] gap-0 p-1 data-closed:animate-none"
               >
-                <FolderOpen className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Artifacts</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                aria-label={t`Settings`}
-                onClick={() => {
-                  setMenuOpen(false);
-                  openSettings("general");
-                }}
-              >
-                <Settings className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Settings</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                aria-label={t`Usage`}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void loadUsage(usageState.range);
-                  openSettings("usage");
-                }}
-              >
-                <Gauge className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Usage</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                onClick={() =>
-                  void authClient.signOut().then(() => {
-                    clearSpaceSelection();
-                    navigate("/");
-                  })
-                }
-              >
-                <LogOut className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Log out</Trans>
-              </Button>
-            </PopoverContent>
-          ) : null}
-        </Popover>
-        <button
-          type="button"
-          onClick={() => setPluginsOpen(true)}
-          data-testid="integrations-entry"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-sidebar-border px-3 py-1.5 text-[12.5px] text-foreground/80 hover:bg-sidebar-accent"
-        >
-          <LayoutGrid size={13} strokeWidth={1.8} className="shrink-0" />
-          <span className="truncate">
-            <Trans>Integrations</Trans>
-          </span>
-        </button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setMobileSidebarOpen(false);
+                    navigate("/app/artifacts");
+                  }}
+                >
+                  <FolderOpen className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Artifacts</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  aria-label={t`Settings`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openSettings("general");
+                  }}
+                >
+                  <Settings className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Settings</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  aria-label={t`Usage`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void loadUsage(usageState.range);
+                    openSettings("usage");
+                  }}
+                >
+                  <Gauge className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Usage</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  onClick={() =>
+                    void authClient.signOut().then(() => {
+                      clearSpaceSelection();
+                      navigate("/");
+                    })
+                  }
+                >
+                  <LogOut className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Log out</Trans>
+                </Button>
+              </PopoverContent>
+            ) : null}
+          </Popover>
+          <button
+            type="button"
+            onClick={() => setPluginsOpen(true)}
+            data-testid="integrations-entry"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-sidebar-border px-3 py-1.5 text-[12.5px] text-foreground/80 hover:bg-sidebar-accent"
+          >
+            <LayoutGrid size={13} strokeWidth={1.8} className="shrink-0" />
+            <span className="truncate">
+              <Trans>Integrations</Trans>
+            </span>
+          </button>
         </div>
       </aside>
 
@@ -3602,236 +3613,236 @@ export function ShellPage() {
         />
       )}
 
-        <main
-          aria-hidden={mobileSidebarOpen || undefined}
-          inert={mobileSidebarOpen}
-          className="relative flex min-w-0 flex-1 flex-col bg-background"
-        >
-          {/* Window drag region formerly provided by the conversation header. */}
-          <div className="app-drag pointer-events-none absolute inset-x-0 top-0 h-12" aria-hidden="true" />
-          {(active || activeGroup) && !mobileSidebarOpen ? (
-            <div className="pointer-events-none absolute inset-x-0 top-2.5 z-40 flex items-start justify-center px-3">
-              <div className="app-no-drag pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
-                {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-                <button
-                  type="button"
-                  aria-label={t`Open navigation`}
-                  onClick={() => setMobileSidebarOpen(true)}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-                >
-                  <Menu size={19} strokeWidth={1.7} />
-                </button>
-                {botsSidebarCollapsed ? (
-                  <button
-                    type="button"
-                    data-testid="restore-bots-sidebar"
-                    aria-label={t`Show bots`}
-                    title={t`Show bots`}
-                    onClick={() => setBotsSidebarCollapsedPref(false)}
-                    className="hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
-                  >
-                    <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
-                  </button>
-                ) : null}
-              </div>
-              {/* One control only: avatar, name and run status share a single
-                  click that opens or closes the Bot panel (UX-03 F5). */}
+      <main
+        aria-hidden={mobileSidebarOpen || undefined}
+        inert={mobileSidebarOpen}
+        className="relative flex min-w-0 flex-1 flex-col bg-background"
+      >
+        {/* Window drag region formerly provided by the conversation header. */}
+        <div
+          className="app-drag pointer-events-none absolute inset-x-0 top-0 h-12"
+          aria-hidden="true"
+        />
+        {(active || activeGroup) && !mobileSidebarOpen ? (
+          <div className="pointer-events-none absolute inset-x-0 top-2.5 z-40 flex items-start justify-center px-3">
+            <div className="app-no-drag pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
+              {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
               <button
                 type="button"
-                data-testid="bot-settings-trigger"
-                aria-expanded={inGroup ? panel === "group" : undefined}
-                title={inGroup ? t`Open group details` : t`Open bot settings`}
-                aria-label={
-                  inGroup
-                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                    : (active?.name ?? t`Select a bot`)
-                }
-                onClick={() => {
-                  if (inGroup) {
-                    setGroupTab("details");
-                    setPanel(panel === "group" ? null : "group");
-                    return;
-                  }
-                  setPanel(panel === "settings" ? null : "settings");
-                }}
-                className="app-no-drag pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
+                aria-label={t`Open navigation`}
+                onClick={() => setMobileSidebarOpen(true)}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
               >
-                {inGroup ? (
-                  groupPanel.members ? (
-                    <GroupIdentityCluster members={groupPanel.members} variant="capsule" />
-                  ) : (
-                    <GroupAvatar
-                      members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                      size={26}
-                    />
-                  )
-                ) : active ? (
-                  <BotAvatar
-                    color={active.color}
-                    identity={active.id}
-                    size={26}
-                    status={activeBotLiveStatus}
-                  />
-                ) : null}
-                <span
-                  className="max-w-[150px] truncate text-[13px] font-medium text-foreground"
-                  dir="auto"
-                >
-                  {inGroup
-                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                    : (active?.name ?? t`Select a bot`)}
-                </span>
-                {!inGroup && active && panelRun ? (
-                  <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-                    <span
-                      className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
-                      style={
-                        isRunActive(panelRun.status)
-                          ? { animation: "rkPulse 1.2s ease-in-out infinite" }
-                          : undefined
-                      }
-                      aria-hidden="true"
-                    />
-                    <span className={runStatusTextClass(panelRun.status)}>
-                      {runStatusLabel(panelRun.status)}
-                    </span>
-                  </span>
-                ) : null}
+                <Menu size={19} strokeWidth={1.7} />
               </button>
+              {botsSidebarCollapsed ? (
+                <button
+                  type="button"
+                  data-testid="restore-bots-sidebar"
+                  aria-label={t`Show bots`}
+                  title={t`Show bots`}
+                  onClick={() => setBotsSidebarCollapsedPref(false)}
+                  className="hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                >
+                  <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                </button>
+              ) : null}
             </div>
-          ) : null}
-          {!active && !activeGroup && initialBotsLoaded ? (
-            <div className="grid flex-1 place-items-center">
-              <Button onClick={() => setPanel("create")}>
-                <Plus size={16} aria-hidden="true" />
-                <Trans>Create new Bot</Trans>
-              </Button>
-            </div>
-          ) : (
-            <Transcript
-              key={activeSnapshot?.threadId}
-              scrollRef={messageScroll}
-              reservePillBand={Boolean(active || activeGroup)}
-              scrollRequest={scrollRequest}
-              onScrollRequestHandled={clearScrollRequest}
-              artifactTarget={transcriptArtifactTarget}
-              messages={transcriptMessages}
-              plans={activeSnapshot?.plans}
-              steps={activeSnapshot?.steps}
-              todos={activeSnapshot?.todos}
-              runs={[
-                ...(activeSnapshot?.run ? [activeSnapshot.run] : []),
-                ...(activeSnapshot?.activeRuns ?? []),
-                ...(activeSnapshot?.recentRuns ?? []),
-              ]}
-              activeRunIds={currentRuns
-                .filter((run) => isRunActive(run.status))
-                .map((run) => run.id)}
-              showToolActivity={showToolActivity}
-              olderCursor={activeSnapshot?.olderCursor ?? null}
-              loadingOlder={loadingOlder}
-              interventions={activeSnapshot?.interventions}
-              threadId={activeSnapshot?.threadId ?? ""}
-              executions={activeSnapshot?.executions}
-              running={transcriptRunning}
-              activity={inlineActivity}
-              backgroundTasks={backgroundActivity}
-              onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
-              showActivityAvatars={inGroup}
-              activityBotColors={activityBotColors}
-              onLoadOlder={loadOlder}
-              onOpenBot={openBot}
-              onAnswer={answerMessage}
-              onReply={(message) => {
-                setReplyTarget(message);
-                setReplyQuote(null);
-              }}
-              onQuote={(message, quote) => {
-                setReplyTarget(message);
-                setReplyQuote(quote);
-              }}
-              onReact={reactToMessage}
-              onJumpToMessage={jumpToReplyMessage}
-              onOpenPeerMessages={(peer) => {
-                setPeerConversation(peer);
-              }}
-              memberName={resolveTranscriptMemberName}
-              botNameOf={resolveTranscriptBotDisplayName}
-              peerBot={resolveTranscriptBot}
-              onRefresh={refreshActiveThread}
-              onBotChanged={refreshBots}
-              onAddRoutine={addSkillRoutine}
-              voiceReady={Boolean(voiceStatus?.ready)}
-              speakingMessageId={speakingMessageId}
-              onSpeak={speakMessage}
-              onOpenComputer={onOpenComputer}
-            />
-          )}
-          {recordingSkill ? (
-            <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-              <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
-            </div>
-          ) : null}
-          {active || activeGroup ? (
-            <Composer
-              key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
-              activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
-              running={composerRunning}
-              disabled={Boolean(recordingSkill)}
-              pendingAttachments={activePendingAttachments}
-              attachmentNotice={attachmentNotice}
-              sendError={sendError}
-              runError={displayedRunError}
-              runErrorId={displayedRunErrorId}
-              onRunErrorPresented={handleRunErrorPresented}
-              onDismissError={dismissComposerError}
-              sending={sending}
-              fileInputRef={fileInputRef}
-              onAttachmentPick={onAttachmentPick}
-              onRemoveAttachment={removeAttachment}
-              onSend={sendMessage}
-              onStop={stopRun}
-              onVoice={
-                !inGroup && active
-                  ? () => {
-                      if (!voiceStatus?.ready) {
-                        openSettings("voice");
-                        return;
-                      }
-                      startCall({
-                        botId: active.id,
-                        botName: active.name,
-                        botColor: active.color,
-                        transcribe: Boolean(voiceStatus?.transcribe),
-                      });
-                    }
-                  : undefined
+            {/* One control only: avatar, name and run status share a single
+                  click that opens or closes the Bot panel (UX-03 F5). */}
+            <button
+              type="button"
+              data-testid="bot-settings-trigger"
+              aria-expanded={inGroup ? panel === "group" : undefined}
+              title={inGroup ? t`Open group details` : t`Open bot settings`}
+              aria-label={
+                inGroup
+                  ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                  : (active?.name ?? t`Select a bot`)
               }
-              replyTarget={activeReplyTarget}
-              replyQuote={activeReplyQuote}
-              replyTargetName={replyTargetName}
-              onClearReply={clearReply}
-              mentionTargets={composerMentionTargets}
-              agentSkills={agentSkills}
-              onSlashOpen={refreshAgentSkills}
-              onSlashAction={(action) => {
-                if (action === "chat-settings") {
-                  setPanel(inGroup ? "group-settings" : "settings");
+              onClick={() => {
+                if (inGroup) {
+                  setGroupTab("details");
+                  setPanel(panel === "group" ? null : "group");
                   return;
                 }
-                if (action === "settings-general") {
-                  openSettings("general");
-                  return;
-                }
-                if (action === "settings-usage") {
-                  void loadUsage(usageState.range);
-                  openSettings("usage");
-                }
+                setPanel(panel === "settings" ? null : "settings");
               }}
-            />
-          ) : null}
-        </main>
-
+              className="app-no-drag pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
+            >
+              {inGroup ? (
+                groupPanel.members ? (
+                  <GroupIdentityCluster members={groupPanel.members} variant="capsule" />
+                ) : (
+                  <GroupAvatar
+                    members={activeSnapshot?.members ?? activeGroup?.members ?? []}
+                    size={26}
+                  />
+                )
+              ) : active ? (
+                <BotAvatar
+                  color={active.color}
+                  identity={active.id}
+                  size={26}
+                  status={activeBotLiveStatus}
+                />
+              ) : null}
+              <span
+                className="max-w-[150px] truncate text-[13px] font-medium text-foreground"
+                dir="auto"
+              >
+                {inGroup
+                  ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                  : (active?.name ?? t`Select a bot`)}
+              </span>
+              {!inGroup && active && panelRun ? (
+                <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                  <span
+                    className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
+                    style={
+                      isRunActive(panelRun.status)
+                        ? { animation: "rkPulse 1.2s ease-in-out infinite" }
+                        : undefined
+                    }
+                    aria-hidden="true"
+                  />
+                  <span className={runStatusTextClass(panelRun.status)}>
+                    {runStatusLabel(panelRun.status)}
+                  </span>
+                </span>
+              ) : null}
+            </button>
+          </div>
+        ) : null}
+        {!active && !activeGroup && initialBotsLoaded ? (
+          <div className="grid flex-1 place-items-center">
+            <Button onClick={() => setPanel("create")}>
+              <Plus size={16} aria-hidden="true" />
+              <Trans>Create new Bot</Trans>
+            </Button>
+          </div>
+        ) : (
+          <Transcript
+            key={activeSnapshot?.threadId}
+            scrollRef={messageScroll}
+            reservePillBand={Boolean(active || activeGroup)}
+            scrollRequest={scrollRequest}
+            onScrollRequestHandled={clearScrollRequest}
+            artifactTarget={transcriptArtifactTarget}
+            messages={transcriptMessages}
+            plans={activeSnapshot?.plans}
+            steps={activeSnapshot?.steps}
+            todos={activeSnapshot?.todos}
+            runs={[
+              ...(activeSnapshot?.run ? [activeSnapshot.run] : []),
+              ...(activeSnapshot?.activeRuns ?? []),
+              ...(activeSnapshot?.recentRuns ?? []),
+            ]}
+            activeRunIds={currentRuns.filter((run) => isRunActive(run.status)).map((run) => run.id)}
+            showToolActivity={showToolActivity}
+            olderCursor={activeSnapshot?.olderCursor ?? null}
+            loadingOlder={loadingOlder}
+            interventions={activeSnapshot?.interventions}
+            threadId={activeSnapshot?.threadId ?? ""}
+            executions={activeSnapshot?.executions}
+            running={transcriptRunning}
+            activity={inlineActivity}
+            backgroundTasks={backgroundActivity}
+            onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
+            showActivityAvatars={inGroup}
+            activityBotColors={activityBotColors}
+            onLoadOlder={loadOlder}
+            onOpenBot={openBot}
+            onAnswer={answerMessage}
+            onReply={(message) => {
+              setReplyTarget(message);
+              setReplyQuote(null);
+            }}
+            onQuote={(message, quote) => {
+              setReplyTarget(message);
+              setReplyQuote(quote);
+            }}
+            onReact={reactToMessage}
+            onJumpToMessage={jumpToReplyMessage}
+            onOpenPeerMessages={(peer) => {
+              setPeerConversation(peer);
+            }}
+            memberName={resolveTranscriptMemberName}
+            botNameOf={resolveTranscriptBotDisplayName}
+            peerBot={resolveTranscriptBot}
+            onRefresh={refreshActiveThread}
+            onBotChanged={refreshBots}
+            onAddRoutine={addSkillRoutine}
+            voiceReady={Boolean(voiceStatus?.ready)}
+            speakingMessageId={speakingMessageId}
+            onSpeak={speakMessage}
+            onOpenComputer={onOpenComputer}
+          />
+        )}
+        {recordingSkill ? (
+          <div className="px-6 pb-2 text-center text-[13px] text-destructive">
+            <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
+          </div>
+        ) : null}
+        {active || activeGroup ? (
+          <Composer
+            key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+            activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
+            running={composerRunning}
+            disabled={Boolean(recordingSkill)}
+            pendingAttachments={activePendingAttachments}
+            attachmentNotice={attachmentNotice}
+            sendError={sendError}
+            runError={displayedRunError}
+            runErrorId={displayedRunErrorId}
+            onRunErrorPresented={handleRunErrorPresented}
+            onDismissError={dismissComposerError}
+            sending={sending}
+            fileInputRef={fileInputRef}
+            onAttachmentPick={onAttachmentPick}
+            onRemoveAttachment={removeAttachment}
+            onSend={sendMessage}
+            onStop={stopRun}
+            onVoice={
+              !inGroup && active
+                ? () => {
+                    if (!voiceStatus?.ready) {
+                      openSettings("voice");
+                      return;
+                    }
+                    startCall({
+                      botId: active.id,
+                      botName: active.name,
+                      botColor: active.color,
+                      transcribe: Boolean(voiceStatus?.transcribe),
+                    });
+                  }
+                : undefined
+            }
+            replyTarget={activeReplyTarget}
+            replyQuote={activeReplyQuote}
+            replyTargetName={replyTargetName}
+            onClearReply={clearReply}
+            mentionTargets={composerMentionTargets}
+            agentSkills={agentSkills}
+            onSlashOpen={refreshAgentSkills}
+            onSlashAction={(action) => {
+              if (action === "chat-settings") {
+                setPanel(inGroup ? "group-settings" : "settings");
+                return;
+              }
+              if (action === "settings-general") {
+                openSettings("general");
+                return;
+              }
+              if (action === "settings-usage") {
+                void loadUsage(usageState.range);
+                openSettings("usage");
+              }
+            }}
+          />
+        ) : null}
+      </main>
 
       <CallCard onSettings={() => openSettings("voice")} />
 
@@ -4006,7 +4017,9 @@ export function ShellPage() {
                         </div>
                       ) : computer?.kind === "desktop" ? (
                         <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80" />
-                      ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
+                      ) : computer?.state === "running" &&
+                        embeddedScreenUrl &&
+                        !computerScreenError ? (
                         <iframe
                           title={t`Bot screen preview`}
                           src={embeddedScreenUrl}
@@ -4047,8 +4060,7 @@ export function ShellPage() {
                     <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
                       {t`${active.name}'s screen`}
                     </p>
-                    {!computerOpen &&
-                    computerPanelNeedsMaintenance(computer?.state, booting) ? (
+                    {!computerOpen && computerPanelNeedsMaintenance(computer?.state, booting) ? (
                       <ComputerMaintenanceActions
                         botId={active.id}
                         computer={computer}
@@ -4143,9 +4155,9 @@ export function ShellPage() {
                 running={runningRoutine}
                 error={routineError}
                 onBack={() => {
-                    setPanel("settings");
-                    setSettingsTab("detail");
-                  }}
+                  setPanel("settings");
+                  setSettingsTab("detail");
+                }}
                 onClose={() => setPanel(null)}
                 onEnsureWebhook={async () => {
                   await ensureWebhookSecret(active.id);
@@ -5619,6 +5631,9 @@ const Composer = memo(function Composer({
 
   function updateDraft(value: string) {
     setDraft(value);
+    setSelectedMentions((current) =>
+      current.filter((mention) => mentionStillInPrompt(value, mention)),
+    );
     const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
     // `/` only at the start of the draft so forced skills expand (`Use skill:` / `/Name` prefix).
@@ -5633,7 +5648,7 @@ const Composer = memo(function Composer({
   }
 
   function insertMention(mention: ComposerMention) {
-    setDraft((current) => current.replace(/@([\w-]*)$/, ""));
+    setDraft((current) => current.replace(/@([\w-]*)$/, `@${mention.name} `));
     setMentionQuery(null);
     setMentionHighlightIndex(0);
     setSelectedMentions((current) =>
@@ -5658,7 +5673,9 @@ const Composer = memo(function Composer({
 
   function removeLastChip() {
     if (selectedMentions.length > 0) {
+      const last = selectedMentions[selectedMentions.length - 1];
       setSelectedMentions((current) => current.slice(0, -1));
+      if (last) setDraft((current) => stripMentionToken(current, last.name));
       return;
     }
     if (selectedSkill) setSelectedSkill(null);
@@ -6072,13 +6089,14 @@ const Composer = memo(function Composer({
               <button
                 type="button"
                 aria-label={t`Remove mention ${mention.name}`}
-                onClick={() =>
+                onClick={() => {
                   setSelectedMentions((current) =>
                     current.filter(
                       (selected) => mentionChipKey(selected) !== mentionChipKey(mention),
                     ),
-                  )
-                }
+                  );
+                  setDraft((current) => stripMentionToken(current, mention.name));
+                }}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X size={12} strokeWidth={2} />

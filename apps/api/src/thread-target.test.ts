@@ -3507,6 +3507,17 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
       steeringMessage: { create: vi.fn() },
+      artifact: {
+        findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+          where.id.in.map((id) => ({
+            id,
+            name: "file.txt",
+            mimeType: "text/plain",
+            size: 12,
+            storageKey: `storage-${id}`,
+          })),
+        ),
+      },
       event: {
         create: vi.fn().mockResolvedValue({
           id: "event-1",
@@ -3558,6 +3569,7 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
     harness: ReturnType<typeof groupSendHarness>,
     input: {
       text?: string;
+      artifactIds?: string[];
       mentions?: Array<string | { kind: "bot" | "group" | "routine" | "connector"; id: string }>;
       mentionSpans?: Array<{ botId: string; start: number; end: number }>;
       replyToMessageId?: string;
@@ -3582,6 +3594,23 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       .map(([arg]) => arg as { data: { type: string; payload: Record<string, unknown> } })
       .filter((arg) => arg.data.type === "thread.turn.routed")
       .map((arg) => arg.data.payload);
+  }
+
+  function spanAt(
+    text: string,
+    token: string,
+    botId: string,
+    from = 0,
+  ): { botId: string; start: number; end: number } {
+    const start = text.indexOf(token, from);
+    if (start < 0) throw new Error(`missing ${token} after ${from}`);
+    return { botId, start, end: start + token.length };
+  }
+
+  function taskPrompts(harness: ReturnType<typeof groupSendHarness>) {
+    return harness.tx.task.create.mock.calls.map(
+      ([arg]) => (arg as { data: { prompt: string } }).data.prompt,
+    );
   }
 
   it("gives an explicitly mentioned turn to that bot alone, without routing", async () => {
@@ -3963,30 +3992,32 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       ],
       leadBotId: "bot-a",
     });
+    const text = "我之前和 @Gamma 聊过，@Beta 请审查";
+    const first = spanAt(text, "@Gamma", "bot-c");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
 
-    await sendGroup(harness, {
-      text: "@Gamma @Beta review",
+    const result = await sendGroup(harness, {
+      text,
       mentions: [
-        { kind: "bot", id: "bot-gamma" },
+        { kind: "bot", id: "bot-c" },
         { kind: "bot", id: "bot-b" },
       ],
-      mentionSpans: [
-        { botId: "bot-gamma", start: 0, end: 6 },
-        { botId: "bot-b", start: 7, end: 12 },
-      ],
+      mentionSpans: [first, second],
       clientNonce: "n-mention-nonmember",
     });
 
+    expect(result.runIds).toEqual(["run-bot-b"]);
+    expect(harness.createdRuns.map((run) => run.botId)).toEqual(["bot-b"]);
     expect(harness.tx.message.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         blocks: [
           {
             kind: "text",
-            text: "@Gamma @Beta review",
+            text,
             inlines: [
-              { kind: "text", text: "@Gamma " },
+              { kind: "text", text: "我之前和 @Gamma 聊过，" },
               { kind: "bot_mention", botId: "bot-b", label: "Beta" },
-              { kind: "text", text: " review" },
+              { kind: "text", text: " 请审查" },
             ],
           },
         ],
@@ -4013,5 +4044,428 @@ describe("sendThreadMessage group turn ownership (Product Harness Phase 1)", () 
       data: { blocks: unknown[] };
     };
     expect(createCall.data.blocks).toEqual([{ kind: "text", text: "@Beta review this" }]);
+  });
+
+  it("keeps steering an active single target on the typed-span path", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      activeRuns: [
+        {
+          id: "run-active",
+          taskId: "task-active",
+          botId: "bot-b",
+          status: "running",
+          trigger: "user",
+        },
+      ],
+    });
+    const text = "@Beta review this";
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [{ kind: "bot", id: "bot-b" }],
+      mentionSpans: [spanAt(text, "@Beta", "bot-b")],
+      clientNonce: "n-span-single-active",
+    });
+
+    expect(result.runIds).toEqual(["run-active"]);
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.steeringMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ botId: "bot-b", runId: "run-active" }),
+    });
+  });
+
+  it("creates one Run for a typed-span single owner", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@Beta review this";
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [{ kind: "bot", id: "bot-b" }],
+      mentionSpans: [spanAt(text, "@Beta", "bot-b")],
+      clientNonce: "n-span-single",
+    });
+
+    expect(result.runIds).toEqual(["run-bot-b"]);
+    expect(harness.createdRuns).toHaveLength(1);
+    expect(harness.createdRuns[0]).toMatchObject({
+      botId: "bot-b",
+      orchestration: {
+        routing: { kind: "explicit_mention" },
+        ownership: { mode: "owner", ownerBotId: "bot-b" },
+        responseMode: "single",
+      },
+    });
+    expect(taskPrompts(harness)).toEqual([text]);
+  });
+
+  it("creates one independent Run per shared multi target", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@Alpha 和 @Beta 一起审查 X";
+    const first = spanAt(text, "@Alpha", "bot-a");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [
+        { kind: "bot", id: "bot-a" },
+        { kind: "bot", id: "bot-b" },
+      ],
+      mentionSpans: [first, second],
+      clientNonce: "n-span-shared",
+    });
+
+    expect(result.runIds.sort()).toEqual(["run-bot-a", "run-bot-b"]);
+    expect(harness.createdRuns).toHaveLength(2);
+    for (const run of harness.createdRuns) {
+      expect(run).toMatchObject({
+        orchestration: {
+          routing: { kind: "explicit_multi" },
+          responseMode: "multi",
+        },
+      });
+    }
+    expect(taskPrompts(harness)).toEqual(["一起审查 X", "一起审查 X"]);
+    expect(routedEventCalls(harness.tx)).toEqual([
+      {
+        messageId: "msg-1",
+        ownerBotId: "bot-a",
+        ownerBotIds: ["bot-a", "bot-b"],
+        routeKind: "explicit_multi",
+        responseMode: "multi",
+      },
+    ]);
+  });
+
+  it("keeps @everyone broadcast semantics when typed spans are present", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@everyone @Beta review";
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [{ kind: "bot", id: "bot-b" }],
+      mentionSpans: [spanAt(text, "@Beta", "bot-b")],
+      clientNonce: "n-span-everyone",
+    });
+
+    expect(result.runIds.sort()).toEqual(["run-bot-a", "run-bot-b"]);
+    expect(harness.createdRuns).toHaveLength(2);
+    for (const run of harness.createdRuns) {
+      expect(run).toMatchObject({
+        orchestration: {
+          routing: { kind: "explicit_multi" },
+          responseMode: "multi",
+        },
+      });
+    }
+    expect(taskPrompts(harness)).toEqual([text, text]);
+  });
+
+  it("creates one independent Run per segmented target with its own prompt", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@Alpha 做 X，@Beta 做 Y";
+    const first = spanAt(text, "@Alpha", "bot-a");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [
+        { kind: "bot", id: "bot-a" },
+        { kind: "bot", id: "bot-b" },
+      ],
+      mentionSpans: [first, second],
+      clientNonce: "n-span-segmented",
+    });
+
+    expect(result.runIds.sort()).toEqual(["run-bot-a", "run-bot-b"]);
+    expect(harness.createdRuns.map((run) => run.botId)).toEqual(["bot-a", "bot-b"]);
+    expect(taskPrompts(harness)).toEqual(["做 X", "做 Y"]);
+    expect(taskPrompts(harness)[0]).not.toContain("做 Y");
+    expect(taskPrompts(harness)[1]).not.toContain("做 X");
+    expect(harness.tx.run.create).toHaveBeenCalledTimes(2);
+    // Display dedup/links stay separate from execution segmentation: the one
+    // persisted user message still links both typed mentions.
+    const createCall = harness.tx.message.create.mock.calls[0]?.[0] as {
+      data: { blocks: Array<{ inlines?: Array<{ kind: string; botId?: string }> }> };
+    };
+    expect(
+      createCall.data.blocks[0]?.inlines
+        ?.filter((inline) => inline.kind === "bot_mention")
+        .map((inline) => inline.botId),
+    ).toEqual(["bot-a", "bot-b"]);
+  });
+
+  it("lets an explicit typed task override the reply target", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      reply: { id: "parent", role: "bot", botId: "bot-a" },
+    });
+    const text = "@Beta 做 X";
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [{ kind: "bot", id: "bot-b" }],
+      mentionSpans: [spanAt(text, "@Beta", "bot-b")],
+      replyToMessageId: "parent",
+      clientNonce: "n-span-reply",
+    });
+
+    expect(result.runIds).toEqual(["run-bot-b"]);
+    expect(harness.createdRuns.map((run) => run.botId)).toEqual(["bot-b"]);
+  });
+
+  it("does not create a mention-triggered Run for an ordinary reference", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      reply: { id: "parent", role: "bot", botId: "bot-b" },
+    });
+    const text = "我刚才和 @Alpha 讨论过";
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [{ kind: "bot", id: "bot-a" }],
+      mentionSpans: [spanAt(text, "@Alpha", "bot-a")],
+      replyToMessageId: "parent",
+      clientNonce: "n-span-ordinary",
+    });
+
+    expect(result.runIds).toEqual(["run-bot-b"]);
+    expect(harness.createdRuns).toHaveLength(1);
+    expect(harness.createdRuns[0]).toMatchObject({
+      botId: "bot-b",
+      orchestration: { routing: { kind: "reply_target" } },
+    });
+    expect(harness.createdRuns.some((run) => run.botId === "bot-a")).toBe(false);
+  });
+
+  it("rejects ambiguous interleaved instructions with zero Task/Run", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@Alpha 做 X @Beta 做 Y";
+    const first = spanAt(text, "@Alpha", "bot-a");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
+
+    await expect(
+      sendGroup(harness, {
+        text,
+        mentions: [
+          { kind: "bot", id: "bot-a" },
+          { kind: "bot", id: "bot-b" },
+        ],
+        mentionSpans: [first, second],
+        clientNonce: "n-span-ambiguous",
+      }),
+    ).rejects.toMatchObject({
+      code: "UNPROCESSABLE_CONTENT",
+      data: {
+        code: "GROUP_MENTION_CLARIFICATION_REQUIRED",
+        reasonCode: "ambiguous_attribution",
+      },
+    });
+
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+    expect(harness.tx.message.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unauthorized target without partially dispatching the rest", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@Gamma 做 X，@Beta 做 Y";
+    const first = spanAt(text, "@Gamma", "bot-c");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
+
+    await expect(
+      sendGroup(harness, {
+        text,
+        mentions: [
+          { kind: "bot", id: "bot-c" },
+          { kind: "bot", id: "bot-b" },
+        ],
+        mentionSpans: [first, second],
+        clientNonce: "n-span-unauthorized",
+      }),
+    ).rejects.toMatchObject({
+      code: "UNPROCESSABLE_CONTENT",
+      data: {
+        code: "GROUP_MENTION_CLARIFICATION_REQUIRED",
+        reasonCode: "target_not_authorized",
+        mentionBotIds: ["bot-c"],
+      },
+    });
+
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects attachments on segmented dispatch with zero Task/Run", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@Alpha 做 X，@Beta 做 Y";
+    const first = spanAt(text, "@Alpha", "bot-a");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
+
+    await expect(
+      sendGroup(harness, {
+        text,
+        artifactIds: ["artifact-1"],
+        mentions: [
+          { kind: "bot", id: "bot-a" },
+          { kind: "bot", id: "bot-b" },
+        ],
+        mentionSpans: [first, second],
+        clientNonce: "n-span-attachment",
+      }),
+    ).rejects.toMatchObject({
+      code: "UNPROCESSABLE_CONTENT",
+      data: {
+        code: "GROUP_MENTION_CLARIFICATION_REQUIRED",
+        reasonCode: "attachments_not_attributable",
+      },
+    });
+
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("shares attachments across a shared multi dispatch", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@Alpha 和 @Beta 一起看这个";
+    const first = spanAt(text, "@Alpha", "bot-a");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
+
+    await sendGroup(harness, {
+      text,
+      artifactIds: ["artifact-1"],
+      mentions: [
+        { kind: "bot", id: "bot-a" },
+        { kind: "bot", id: "bot-b" },
+      ],
+      mentionSpans: [first, second],
+      clientNonce: "n-span-shared-attachment",
+    });
+
+    const prompts = taskPrompts(harness);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toBe(prompts[1]);
+    expect(prompts[0]).toContain("一起看这个");
+    expect(prompts[0]).toContain('User attached file "file.txt"');
+  });
+
+  it("rejects a multi dispatch while a target is busy", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "Alpha" },
+        { id: "bot-b", name: "Beta" },
+      ],
+      leadBotId: "bot-a",
+      activeRuns: [
+        { id: "run-busy", taskId: "task-busy", botId: "bot-a", status: "running", trigger: "user" },
+      ],
+    });
+    const text = "@Alpha 做 X，@Beta 做 Y";
+    const first = spanAt(text, "@Alpha", "bot-a");
+    const second = spanAt(text, "@Beta", "bot-b", first.end);
+
+    await expect(
+      sendGroup(harness, {
+        text,
+        mentions: [
+          { kind: "bot", id: "bot-a" },
+          { kind: "bot", id: "bot-b" },
+        ],
+        mentionSpans: [first, second],
+        clientNonce: "n-span-busy",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      data: { code: "GROUP_MULTI_TARGET_BUSY", botIds: ["bot-a"] },
+    });
+
+    expect(harness.tx.task.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("segments Chinese instructions with UTF-16 spans", async () => {
+    const harness = groupSendHarness({
+      members: [
+        { id: "bot-a", name: "阿尔法" },
+        { id: "bot-b", name: "贝塔" },
+      ],
+      leadBotId: "bot-a",
+    });
+    const text = "@阿尔法 做甲；@贝塔 做乙";
+    const first = spanAt(text, "@阿尔法", "bot-a");
+    const second = spanAt(text, "@贝塔", "bot-b", first.end);
+
+    const result = await sendGroup(harness, {
+      text,
+      mentions: [
+        { kind: "bot", id: "bot-a" },
+        { kind: "bot", id: "bot-b" },
+      ],
+      mentionSpans: [first, second],
+      clientNonce: "n-span-chinese",
+    });
+
+    expect(result.runIds.sort()).toEqual(["run-bot-a", "run-bot-b"]);
+    expect(taskPrompts(harness)).toEqual(["做甲", "做乙"]);
   });
 });

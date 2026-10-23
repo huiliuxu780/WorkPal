@@ -27,6 +27,11 @@ export function parseMentionNames(text: string): string[] {
   return [...names];
 }
 
+/**
+ * Legacy target resolution for sends that carry no typed `mentionSpans`.
+ * New dispatch must use `segmentGroupMentionTasks`, which derives identity only
+ * from structured spans and Bot ids; bare `@name` text is never authorization.
+ */
 export function resolveGroupTargetBotIds(input: {
   text: string;
   members: GroupMemberRef[];

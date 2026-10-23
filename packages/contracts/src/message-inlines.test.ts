@@ -94,4 +94,74 @@ describe("message mention contract", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("rejects a Bot repeated across non-overlapping spans", () => {
+    expect(
+      sendInput.safeParse({
+        groupId: "group-1",
+        text: "@Beta @Beta review this",
+        mentions: [{ kind: "bot", id: "bot-b" }],
+        mentionSpans: [
+          { botId: "bot-b", start: 0, end: 5 },
+          { botId: "bot-b", start: 6, end: 11 },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects spans that are out of order", () => {
+    expect(
+      sendInput.safeParse({
+        groupId: "group-1",
+        text: "@Beta @Gamma review",
+        mentions: [
+          { kind: "bot", id: "bot-b" },
+          { kind: "bot", id: "bot-g" },
+        ],
+        mentionSpans: [
+          { botId: "bot-g", start: 6, end: 12 },
+          { botId: "bot-b", start: 0, end: 5 },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("uses UTF-16 offsets around emoji", () => {
+    // "😀" occupies two UTF-16 units, so the @ token starts at index 3.
+    expect(
+      sendInput.safeParse({
+        groupId: "group-1",
+        text: "😀 @Beta review this",
+        mentions: [{ kind: "bot", id: "bot-b" }],
+        mentionSpans: [{ botId: "bot-b", start: 3, end: 8 }],
+      }).success,
+    ).toBe(true);
+    expect(
+      sendInput.safeParse({
+        groupId: "group-1",
+        text: "😀 @Beta review this",
+        mentions: [{ kind: "bot", id: "bot-b" }],
+        mentionSpans: [{ botId: "bot-b", start: 1, end: 8 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a span that splits a UTF-16 surrogate pair", () => {
+    expect(
+      sendInput.safeParse({
+        groupId: "group-1",
+        text: "@Beta😀 review this",
+        mentions: [{ kind: "bot", id: "bot-b" }],
+        mentionSpans: [{ botId: "bot-b", start: 0, end: 6 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      sendInput.safeParse({
+        groupId: "group-1",
+        text: "@Beta😀 review this",
+        mentions: [{ kind: "bot", id: "bot-b" }],
+        mentionSpans: [{ botId: "bot-b", start: 0, end: 7 }],
+      }).success,
+    ).toBe(true);
+  });
 });

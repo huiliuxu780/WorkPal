@@ -31,6 +31,7 @@ export * from "./execution-snapshot.js";
 export * from "./farewell.js";
 export * from "./featured-connectors.js";
 export * from "./group-mentions.js";
+export * from "./group-task-segmentation.js";
 export * from "./http-response.js";
 export * from "./intervention-match.js";
 export * from "./manual-retry.js";
