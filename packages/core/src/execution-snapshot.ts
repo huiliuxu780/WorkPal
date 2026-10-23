@@ -89,6 +89,8 @@ export type ExecutionSummaryFacts = {
   activityTruncated?: boolean;
   retryOfRunId?: string | null;
   retrySuccessorRunId?: string | null;
+  followUpOfRunId?: string | null;
+  followUpSuccessorRunId?: string | null;
   manualRetry?: ExecutionSummary["manualRetry"];
 };
 
@@ -182,6 +184,10 @@ export function buildExecutionSummary(facts: ExecutionSummaryFacts): ExecutionSu
     ...(incomplete.length > 0 ? { incompleteSections: incomplete } : {}),
     ...(facts.retryOfRunId ? { retryOfRunId: facts.retryOfRunId } : {}),
     ...(facts.retrySuccessorRunId ? { retrySuccessorRunId: facts.retrySuccessorRunId } : {}),
+    ...(facts.followUpOfRunId ? { followUpOfRunId: facts.followUpOfRunId } : {}),
+    ...(facts.followUpSuccessorRunId
+      ? { followUpSuccessorRunId: facts.followUpSuccessorRunId }
+      : {}),
     ...(facts.manualRetry ? { manualRetry: facts.manualRetry } : {}),
   });
 }
