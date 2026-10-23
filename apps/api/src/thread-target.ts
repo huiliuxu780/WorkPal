@@ -32,6 +32,10 @@ import {
   buildRunOrchestration,
   callIdFromClientNonce,
   type GroupRouterReasonCode,
+  type GroupTaskSegmentation,
+  GROUP_MENTION_CLARIFICATION_CODE,
+  GROUP_MULTI_TARGET_BUSY_CODE,
+  hasMentionToken,
   isActive,
   isConversationalRun,
   projectActivity,
@@ -40,6 +44,7 @@ import {
   resolveExplicitTurnOwner,
   runFailureError,
   selectGroupLead,
+  segmentGroupMentionTasks,
   turnExecutionForSource,
   userTurnCollaboration,
 } from "@rakazo/core";
@@ -241,6 +246,24 @@ function mentionInlinesForSend(
   const allowed = new Set([...linkableBotIds].filter((botId) => typedBotIds.has(botId)));
   if (allowed.size === 0) return undefined;
   return buildMentionInlines({ text: input.text, spans, linkableBotIds: allowed });
+}
+
+function groupMentionClarificationError(
+  outcome: Extract<GroupTaskSegmentation, { kind: "clarification_required" }>,
+) {
+  return new ORPCError("UNPROCESSABLE_CONTENT", {
+    message:
+      "I couldn't split this group message into reliable tasks. Clarify which Bot should do what and send again.",
+    data: {
+      code: GROUP_MENTION_CLARIFICATION_CODE,
+      reasonCode: outcome.reasonCode,
+      mentionBotIds: [...outcome.mentionBotIds],
+    },
+  });
+}
+
+function withSegmentationPrefix(prefix: string | undefined, instruction: string) {
+  return prefix ? `${prefix}\n${instruction}` : instruction;
 }
 
 async function botThreadMentionLinkableIds(
@@ -1058,7 +1081,12 @@ export async function sendThreadMessage(
             groupId: target.groupId,
             threadId: target.threadId,
             text: input.text ?? "",
-            explicitMentionIds: splitMentionTargets(input.mentions).botMentionIds,
+            // Typed spans are the only dispatch signal on that path; do not
+            // feed chip ids to the router before segmentation has run.
+            explicitMentionIds:
+              (input.mentionSpans?.length ?? 0) > 0
+                ? []
+                : splitMentionTargets(input.mentions).botMentionIds,
             replyToMessageId: input.replyToMessageId,
           })
           .catch((error) => {
@@ -1277,19 +1305,107 @@ export async function sendThreadMessage(
       const { leadBotId, members } = await lockAndLoadGroupMembers(tx, actor, target);
       const memberBotIds = members.map((member) => member.botId);
       const mentionTargets = splitMentionTargets(input.mentions);
-      // Product Harness ownership precedence over locked membership:
-      // explicit mention > reply target > pre-computed router owner > group lead.
-      const turnOwner = await resolveGroupTurnOwner({
-        tx,
-        groupId: target.groupId,
-        leadBotId,
-        members,
-        text: input.text ?? "",
-        explicitMentionIds: mentionTargets.botMentionIds,
-        replyAuthorBotId,
-        preRouting,
-      });
-      const targetBotIds = turnOwner.ownerBotIds;
+      // @everyone is a group broadcast keyword, not a typed Bot identity. Its
+      // legacy all-member path adds every member before any name matching, so
+      // no bare Bot name drives dispatch on that branch.
+      const everyoneBroadcast = hasMentionToken(input.text ?? "", "everyone");
+      const segmentation =
+        (input.mentionSpans?.length ?? 0) > 0 && !everyoneBroadcast
+          ? segmentGroupMentionTasks({
+              text: input.text ?? "",
+              spans: input.mentionSpans ?? [],
+              typedBotIds: mentionTargets.botMentionIds,
+              members: members.map((member) => ({ id: member.botId, name: member.name })),
+              replyTargetBotId: replyAuthorBotId ?? null,
+              hasAttachments: (input.artifactIds?.length ?? 0) > 0,
+            })
+          : null;
+
+      let turnOwner: ResolvedTurnOwner & { reasonCode?: GroupRouterReasonCode };
+      let dispatchTargets: Array<{ botId: string; instruction: string }>;
+      let multiDispatch = false;
+
+      if (!segmentation) {
+        // Legacy unstructured sends keep the existing text-mention precedence.
+        // Typed-span sends never reach this branch.
+        turnOwner = await resolveGroupTurnOwner({
+          tx,
+          groupId: target.groupId,
+          leadBotId,
+          members,
+          text: input.text ?? "",
+          explicitMentionIds: mentionTargets.botMentionIds,
+          replyAuthorBotId,
+          preRouting,
+        });
+        dispatchTargets = turnOwner.ownerBotIds.map((botId) => ({
+          botId,
+          instruction: input.text ?? "",
+        }));
+      } else if (segmentation.kind === "clarification_required") {
+        throw groupMentionClarificationError(segmentation);
+      } else if (segmentation.kind === "single_owner") {
+        turnOwner = {
+          kind: "explicit_mention",
+          ownerBotIds: [segmentation.ownerBotId],
+          responseMode: "single",
+        };
+        dispatchTargets = [
+          { botId: segmentation.ownerBotId, instruction: segmentation.instruction },
+        ];
+      } else if (segmentation.kind === "shared_multi") {
+        turnOwner = {
+          kind: "explicit_multi",
+          ownerBotIds: [...segmentation.ownerBotIds],
+          responseMode: "multi",
+        };
+        const instruction = withSegmentationPrefix(segmentation.prefix, segmentation.instruction);
+        dispatchTargets = segmentation.ownerBotIds.map((botId) => ({
+          botId,
+          instruction,
+        }));
+        multiDispatch = true;
+      } else if (segmentation.kind === "segmented_multi") {
+        turnOwner = {
+          kind: "explicit_multi",
+          ownerBotIds: segmentation.segments.map((segment) => segment.botId),
+          responseMode: "multi",
+        };
+        dispatchTargets = segmentation.segments.map((segment) => ({
+          botId: segment.botId,
+          instruction: withSegmentationPrefix(segmentation.prefix, segment.instruction),
+        }));
+        multiDispatch = true;
+      } else if (segmentation.kind === "ordinary_mention") {
+        // A reference mention is never a dispatch signal. Keep reply/router/lead
+        // precedence, and pass no text mentions so bare @name cannot wake a Bot
+        // on this path.
+        turnOwner = await resolveGroupTurnOwner({
+          tx,
+          groupId: target.groupId,
+          leadBotId,
+          members,
+          text: "",
+          explicitMentionIds: [],
+          replyAuthorBotId,
+          preRouting,
+        });
+        dispatchTargets = turnOwner.ownerBotIds.map((botId) => ({
+          botId,
+          instruction: input.text ?? "",
+        }));
+      } else {
+        const exhaustive: never = segmentation;
+        throw new Error(`Unhandled group mention segmentation: ${JSON.stringify(exhaustive)}`);
+      }
+
+      const targetBotIds = dispatchTargets.map((target) => target.botId);
+      if (targetBotIds.length === 0) {
+        throw new IsolationError("Group send did not resolve a target");
+      }
+      if (targetBotIds.some((botId) => !memberBotIds.includes(botId))) {
+        throw new IsolationError("Group send resolved a non-member target");
+      }
       const { blocks: attachmentBlocks, artifacts } = await resolveGroupSendAttachments(
         { prisma: tx },
         actor,
@@ -1327,6 +1443,17 @@ export async function sendThreadMessage(
       });
       const activeByBotId = new Map<string, (typeof activeRuns)[number]>();
       const answeredByBotId = new Map<string, Array<(typeof activeRuns)[number]>>();
+      if (multiDispatch && activeRuns.length > 0) {
+        // Independent per-target Runs and per-target instructions cannot be
+        // delivered through steering, and overlapping execution is not safe.
+        throw new ORPCError("CONFLICT", {
+          message: "Finish or answer the active run before dispatching multiple tasks.",
+          data: {
+            code: GROUP_MULTI_TARGET_BUSY_CODE,
+            botIds: [...new Set(activeRuns.map((run) => run.botId))],
+          },
+        });
+      }
       const conversationalBotIds = new Set(
         activeRuns.filter(steersUserMessage).map((run) => run.botId),
       );
@@ -1366,7 +1493,11 @@ export async function sendThreadMessage(
         }
       }
       const runs: Array<{ id: string; taskId: string; botId: string; status: string }> = [];
+      const instructionByBotId = new Map(
+        dispatchTargets.map((target) => [target.botId, target.instruction] as const),
+      );
       for (const botId of targetBotIds) {
+        const instruction = instructionByBotId.get(botId) ?? input.text ?? "";
         const answered = answeredByBotId.get(botId);
         if (answered) {
           runs.push(...answered);
@@ -1391,7 +1522,7 @@ export async function sendThreadMessage(
             botId,
             threadId: target.threadId,
             userId: actor.userId,
-            prompt: buildSendPrompt(input.text, artifacts, connectorNames),
+            prompt: buildSendPrompt(instruction, artifacts, connectorNames),
             status: "queued",
           },
         });

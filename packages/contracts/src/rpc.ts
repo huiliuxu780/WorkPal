@@ -238,6 +238,15 @@ const threadSendInput = threadTarget
           path,
         });
       }
+      const lastUnit = rawText.charCodeAt(span.end - 1);
+      const nextUnit = rawText.charCodeAt(span.end);
+      if (lastUnit >= 0xd800 && lastUnit <= 0xdbff && nextUnit >= 0xdc00 && nextUnit <= 0xdfff) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must not split a UTF-16 surrogate pair",
+          path,
+        });
+      }
       if (!typedBotIds.has(span.botId)) {
         ctx.addIssue({
           code: "custom",
@@ -439,6 +448,11 @@ export const appContract = {
     subscribe: oc
       .input(threadTarget.safeExtend({ cursor: z.number().int().min(-1) }))
       .output(eventIterator(ProductEventSchema)),
+    /**
+     * Group sends with typed spans reject ambiguous attribution with
+     * `UNPROCESSABLE_CONTENT` and `data.code = "GROUP_MENTION_CLARIFICATION_REQUIRED"`.
+     * No Task/Run is created; clients must branch on the code, not the message.
+     */
     send: oc.input(threadSendInput).output(
       z.object({
         taskId: Id,
