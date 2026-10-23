@@ -11,6 +11,7 @@ import {
   resolveIntervention,
 } from "./events.js";
 import { createManualRetryRun } from "./manual-retry.js";
+import { createThreadMessage } from "./messages.js";
 import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
@@ -172,6 +173,15 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
         source: "explicit",
       },
     });
+    const messageEvent = await prisma.event.findFirstOrThrow({
+      where: { threadId, type: "thread.message.created" },
+    });
+    expect(messageEvent.payload).toMatchObject({
+      messageId: result.messageId,
+      role: "user",
+      blocks: [{ kind: "text", text: "Only the tests changed." }],
+    });
+    expect(messageEvent.seq).toBeLessThan(event.seq);
   });
 
   it("replays the same nonce and keeps same-text/different-nonce revisions distinct", async () => {
@@ -203,6 +213,23 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
     });
     expect(historical?.revision).toBe(2);
     expect(historical?.amendments.map((item) => item.seq)).toEqual([1]);
+  });
+
+  it("rejects a nonce already owned by different user content", async () => {
+    const { task, threadId } = await newTask("Original instructions", "nonce-conflict");
+    await createThreadMessage(prisma, {
+      threadId,
+      role: "user",
+      originKind: "human_web",
+      authorUserId: id,
+      blocks: [{ kind: "text", text: "Different content" }],
+      clientNonce: "nonce-conflict",
+    });
+    await expect(
+      append({ task, threadId }, "Requested amendment", "nonce-conflict"),
+    ).rejects.toMatchObject({ reason: "conflict" });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).revision).toBe(1);
+    expect(await prisma.event.count({ where: { threadId, type: "task.amended" } })).toBe(0);
   });
 
   it("serializes concurrent appends into continuous server revisions", async () => {
@@ -325,7 +352,7 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
     expect(await prisma.event.count({ where: { threadId } })).toBe(0);
   });
 
-  it("records consumedRevision per execution and rereads the latest on resume", async () => {
+  it("pins one Run to its first consumed revision across technical resumes", async () => {
     const { task, botId, threadId } = await newTask("Run original", "run");
     const run = await prisma.run.create({
       data: {
@@ -357,13 +384,11 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
       leaseOwner: "worker-1",
       leaseFence: 1,
     });
-    expect(resumed?.ref.consumedRevision).toBe(2);
-    expect(resumed?.envelope.revision).toBe(2);
-    expect(resumed?.envelope.amendments.map((item) => item.content)).toEqual([
-      "Second instruction",
-    ]);
+    expect(resumed?.ref.consumedRevision).toBe(1);
+    expect(resumed?.envelope.revision).toBe(1);
+    expect(resumed?.envelope.amendments).toEqual([]);
     expect((await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).consumedRevision).toBe(
-      2,
+      1,
     );
 
     await append({ task, threadId }, "Third instruction", "resume-2");

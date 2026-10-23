@@ -108,6 +108,13 @@ type MessageRow = {
   blocks: unknown;
 };
 
+type ResolvedMessageRow = MessageRow & {
+  originKind: string;
+  authorUserId: string | null;
+};
+
+type ResolvedAmendmentMessage = { message: ResolvedMessageRow; created: boolean };
+
 const TASK_SELECT = {
   id: true,
   spaceId: true,
@@ -187,14 +194,14 @@ async function resolveAmendmentMessage(
   tx: Prisma.TransactionClient,
   input: AppendTaskAmendmentInput,
   source: TaskAmendmentSource,
-): Promise<MessageRow> {
+): Promise<ResolvedAmendmentMessage> {
   if (input.messageId) {
     const message = await tx.message.findFirst({
       where: { id: input.messageId, threadId: input.threadId, role: "user" },
-      select: { id: true, role: true, blocks: true },
+      select: { id: true, role: true, originKind: true, authorUserId: true, blocks: true },
     });
     if (!message) throw new TaskAmendmentRejected("not_found");
-    return message;
+    return { message, created: false };
   }
   if (source !== "explicit") {
     throw new TaskAmendmentRejected("invalid", "An answered ask must append its user Message");
@@ -206,12 +213,25 @@ async function resolveAmendmentMessage(
     where: {
       threadId_clientNonce: { threadId: input.threadId, clientNonce: input.clientNonce },
     },
-    select: { id: true, role: true, blocks: true },
+    select: { id: true, role: true, originKind: true, authorUserId: true, blocks: true },
   });
-  if (existing) return existing;
   const content = input.content?.trim();
   if (!content) throw new TaskAmendmentRejected("invalid", "An amendment cannot be empty");
-  return createThreadMessageInTransaction(tx, {
+  if (existing) {
+    const existingContent = amendmentContent(existing);
+    if (
+      existing.originKind !== "human_web" ||
+      existing.authorUserId !== input.actorUserId ||
+      existingContent !== content
+    ) {
+      throw new TaskAmendmentRejected(
+        "conflict",
+        "This client nonce belongs to a different Message",
+      );
+    }
+    return { message: existing, created: false };
+  }
+  const message = await createThreadMessageInTransaction(tx, {
     threadId: input.threadId,
     role: "user",
     originKind: "human_web",
@@ -219,6 +239,7 @@ async function resolveAmendmentMessage(
     blocks: [{ kind: "text", text: content }],
     clientNonce: input.clientNonce,
   });
+  return { message, created: true };
 }
 
 async function readEnvelopeWithTask(
@@ -340,7 +361,8 @@ export async function appendTaskAmendmentInTransaction(
   // the current envelope before writing so an append cannot resurrect a partial
   // instruction history.
   const current = await readEnvelopeWithTask(tx, task);
-  const message = await resolveAmendmentMessage(tx, input, source);
+  const resolvedMessage = await resolveAmendmentMessage(tx, input, source);
+  const message = resolvedMessage.message;
   const existing = await tx.event.findFirst({
     where: { threadId: input.threadId, type: "task.amended", causationId: message.id },
     select: { id: true, seq: true, payload: true },
@@ -362,6 +384,15 @@ export async function appendTaskAmendmentInTransaction(
 
   const derived = amendmentContent(message);
   if (!derived.trim()) throw new TaskAmendmentRejected("invalid", "An amendment cannot be empty");
+  if (resolvedMessage.created) {
+    await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: task.botId,
+      type: "thread.message.created",
+      payload: { messageId: message.id, role: "user", blocks: message.blocks },
+    });
+  }
   const nextRevision = task.revision + 1;
   const amendmentSeq = nextRevision - 1;
   const updated = await tx.task.updateMany({
@@ -450,6 +481,7 @@ export async function readTaskInstructionsForRun(
         status: true,
         leaseOwner: true,
         leaseFence: true,
+        consumedRevision: true,
       },
     });
     if (
@@ -464,15 +496,18 @@ export async function readTaskInstructionsForRun(
       where: { id: run.taskId },
       select: TASK_SELECT,
     });
-    const envelope = await readEnvelopeWithTask(tx, task, task.revision);
+    const consumedRevision = run.consumedRevision ?? task.revision;
+    const envelope = await readEnvelopeWithTask(tx, task, consumedRevision);
     const ref: RunInstructionRef = {
       taskId: task.id,
-      consumedRevision: task.revision,
+      consumedRevision,
     };
-    await tx.run.update({
-      where: { id: run.id },
-      data: { consumedRevision: ref.consumedRevision },
-    });
+    if (run.consumedRevision === null) {
+      await tx.run.update({
+        where: { id: run.id },
+        data: { consumedRevision: ref.consumedRevision },
+      });
+    }
     return { envelope, ref };
   });
 }
