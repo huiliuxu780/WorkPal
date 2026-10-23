@@ -251,6 +251,15 @@ function fixture({
   });
   const executor = createRunExecutor({
     prisma,
+    taskInstructions: async () => ({
+      envelope: {
+        taskId: run.taskId,
+        revision: 1,
+        original: { content: prompt },
+        amendments: [],
+      },
+      ref: { taskId: run.taskId, consumedRevision: 1 },
+    }),
     runtime: { describe: () => ({ capabilities: { scripted: false } }), run: runtimeRun },
     connector: {
       discoverTools: async () => discoverTools(),

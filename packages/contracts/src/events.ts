@@ -61,6 +61,7 @@ export const ProductEventType = z.enum([
   "run.cancelled",
   "run.retried",
   "run.manual_retry_requested",
+  "task.amended",
   "budget.exceeded",
   "delivery.created",
   "delivery.sent",
@@ -158,6 +159,22 @@ export const ProductEventPayloadSchemas = {
     taskId: Id,
     actorUserId: Id,
   }),
+  "task.amended": z
+    .object({
+      taskId: Id,
+      messageId: Id,
+      /** Server-assigned amendment sequence within the Task. */
+      seq: z.number().int().positive(),
+      /** Task aggregate revision after this amendment: seq + 1. */
+      revision: z.number().int().positive(),
+      actorUserId: Id.optional(),
+      source: z.enum(["explicit", "ask_answer", "choice_answer"]),
+    })
+    .strict()
+    .refine((payload) => payload.revision === payload.seq + 1, {
+      message: "revision must equal the original revision plus this amendment",
+      path: ["revision"],
+    }),
   "effect.reconciled": z.union([
     z.object({
       executionId: z.string().min(1),

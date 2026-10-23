@@ -461,6 +461,27 @@ export const appContract = {
         runIds: z.array(Id).optional(),
       }),
     ),
+    /**
+     * Append a natural-language revision to an explicit Task. The user Message,
+     * Task revision and task.amended Event commit together; no Run is started.
+     */
+    amendTask: oc
+      .input(
+        threadTarget.safeExtend({
+          targetTaskId: Id,
+          text: z.string().trim().min(1).max(100_000),
+          clientNonce: z.string().min(1).max(200),
+        }),
+      )
+      .output(
+        z.object({
+          taskId: Id,
+          messageId: Id,
+          revision: z.number().int().nonnegative(),
+          seq: z.number().int().nonnegative(),
+          replayed: z.boolean(),
+        }),
+      ),
     react: oc
       .input(
         threadTarget.safeExtend({

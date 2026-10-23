@@ -58,6 +58,7 @@ import {
   RunHistoryWriteError,
 } from "./messages.js";
 import { IsolationError } from "./scope.js";
+import { appendTaskAmendmentInTransaction } from "./task-instructions.js";
 import { withTransactionRetry } from "./transaction-retry.js";
 
 const EVENT_BATCH_SIZE = 200;
@@ -253,28 +254,6 @@ function manualRetryEffectIdFromCheckpoint(checkpoint: string | null | undefined
   }
 }
 
-function resumeChoiceLabel(
-  selected: { id: string; label: string },
-  checkpoint: string | null | undefined,
-): string {
-  if (!checkpoint) return selected.label;
-  try {
-    const parsed = JSON.parse(checkpoint) as {
-      kind?: string;
-      actions?: Array<{ id?: unknown; label?: unknown }>;
-    };
-    if (parsed.kind !== CHOICE_ASK_CHECKPOINT_KIND || !Array.isArray(parsed.actions)) {
-      return selected.label;
-    }
-    const offered = parsed.actions.find((action) => action.id === selected.id);
-    return typeof offered?.label === "string" && offered.label.length > 0
-      ? offered.label
-      : selected.label;
-  } catch {
-    return selected.label;
-  }
-}
-
 export interface PauseRunForTakeover {
   spaceId: string;
   threadId: string;
@@ -300,6 +279,12 @@ export interface AnswerRunInput {
   presentationThreadId?: string;
   runId: string;
   messageId: string;
+  /**
+   * User Message created by the send flow that carried this answer. When set,
+   * the amendment reuses it; when absent, commitAnswerRunInput appends a user
+   * Message in the same transaction. The mutable Bot ask card is never a source.
+   */
+  answerMessageId?: string;
   answeredByUserId: string;
   answer: string;
   /** Only for a login card; `answer` carries its password. */
@@ -461,6 +446,11 @@ export async function clearThread(
         executionLeaseExpiresAt: null,
       },
     });
+    // Clearing is destructive for Task instructions too: amendment Messages
+    // and task.amended Events disappear while Task.revision stays. Such a Task
+    // fails closed on envelope reads and is fenced from retry by
+    // executionEventCeilings (`thread_cleared`); it is never resumed from a
+    // silently truncated instruction.
     await tx.message.deleteMany({ where: { threadId: input.threadId } });
     await tx.event.deleteMany({ where: { threadId: input.threadId } });
     // ME-01 M5: clearing a thread does not delete confirmed memories, but it
@@ -1154,20 +1144,18 @@ export async function commitAnswerRunInput(
         ...(pendingAsk.credential ? { result: { credentialSaved: pendingAsk.credential } } : {}),
       },
     });
-  } else if (!budgetAsk && !retryEffectId) {
-    const resumeLabel = selectedChoice
-      ? resumeChoiceLabel(selectedChoice, run.checkpoint)
-      : undefined;
-    const task = await tx.task.updateMany({
-      where: { runs: { some: { id: input.runId } } },
-      data: {
-        prompt: selectedChoice
-          ? `Selected choice ${selectedChoice.id}: ${resumeLabel}`
-          : input.answer,
-      },
-    });
-    if (task.count !== 1) throw new Error("Run task was not available to answer");
   }
+
+  // Ordinary text and choice answers revise the Task instruction log. Approval,
+  // secret, budget and manual-retry decisions stay control facts and never
+  // become natural-language amendments. Only an append-only user Message is a
+  // body source; Task.prompt is never rewritten.
+  const amendmentSource =
+    !approvalAsk && !secretAsk && !budgetAsk && !retryEffectId
+      ? selectedChoice
+        ? ("choice_answer" as const)
+        : ("ask_answer" as const)
+      : null;
 
   const blocks = parsed.data.map((block) =>
     block === pendingAsk
@@ -1179,6 +1167,48 @@ export async function commitAnswerRunInput(
       : block,
   );
   await tx.message.update({ where: { id: message.id }, data: { blocks } });
+  if (amendmentSource) {
+    // The amendment body is always an append-only user Message. The send flow
+    // already created one; the legacy answer entry did not, so append it here.
+    // The Bot ask card is only a presentation surface and is never the source.
+    const amendmentText =
+      amendmentSource === "choice_answer" && selectedChoice
+        ? `Selected choice ${selectedChoice.id}: ${selectedChoice.label}`
+        : input.answer;
+    const answerMessage = input.answerMessageId
+      ? null
+      : await createThreadMessageInTransaction(tx, {
+          threadId: input.threadId,
+          role: "user",
+          originKind: "human_web",
+          authorUserId: input.answeredByUserId,
+          blocks: [{ kind: "text", text: amendmentText }],
+          botId: run.botId,
+          runId: input.runId,
+          ...(input.clientSubmissionId ? { clientNonce: input.clientSubmissionId } : {}),
+        });
+    if (answerMessage) {
+      await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: run.botId,
+        type: "thread.message.created",
+        runId: input.runId,
+        payload: { messageId: answerMessage.id, role: "user", blocks: answerMessage.blocks },
+      });
+    }
+    await appendTaskAmendmentInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      actorUserId: input.answeredByUserId,
+      targetTaskId: run.taskId,
+      messageId: answerMessage?.id ?? input.answerMessageId,
+      source: amendmentSource,
+      // The Run lock above already authorized this answer. Group members keep
+      // the existing ability to answer a Bot's ask without owning the Task.
+      requireTaskOwner: false,
+    });
+  }
   const updated = await appendEventInTransaction(tx, {
     spaceId: input.spaceId,
     threadId: input.threadId,
@@ -1386,6 +1416,8 @@ export async function answerSingleOrdinaryTextInTransaction(
     threadId: string;
     answeredByUserId: string;
     answer: string;
+    /** User Message already persisted by the send flow; reused as the amendment body. */
+    answerMessageId?: string;
     runIds: readonly string[];
   },
 ): Promise<{ threadId: string; seq: number; runId: string } | null> {
@@ -1399,6 +1431,7 @@ export async function answerSingleOrdinaryTextInTransaction(
     threadId: input.threadId,
     runId: target.runId,
     messageId: target.messageId,
+    ...(input.answerMessageId ? { answerMessageId: input.answerMessageId } : {}),
     answeredByUserId: input.answeredByUserId,
     answer,
   });

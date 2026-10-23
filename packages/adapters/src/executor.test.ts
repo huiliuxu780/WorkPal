@@ -2044,6 +2044,15 @@ description: Prepare standup notes
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,
+      taskInstructions: async () => ({
+        envelope: {
+          taskId: "task-1",
+          revision: 1,
+          original: { content: "hello" },
+          amendments: [],
+        },
+        ref: { taskId: "task-1", consumedRevision: 1 },
+      }),
       runtime: {
         describe: () => ({ capabilities: { scripted: false } }),
         run: runtimeRun,

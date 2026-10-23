@@ -71,12 +71,13 @@ import {
   collaborationFromOrchestration,
   connectorKindFromToolName,
   containsSecret,
-  estimatePromptTokens,
   createStreamingRedactor,
   endsSentence,
+  estimatePromptTokens,
   expandSkillReferencesInPrompt,
   formatSkillRunPrompt,
   formatSkillsCatalogInstruction,
+  formatTaskInstructionEnvelope,
   humanizeToolName,
   inferAttachmentMimeType,
   isCallClientNonce,
@@ -92,12 +93,12 @@ import {
   planActionGate,
   promptInvokesSkill,
   promptSegment,
+  RoundtableFeatureDisabledError,
+  type RoundtableFeatureGates,
   redactSecrets,
   renderBotDirectory,
   renderPromptSegment,
   resolveActionApprovalDetail,
-  RoundtableFeatureDisabledError,
-  type RoundtableFeatureGates,
   sandboxCommandTimeoutMs,
   type ToolCallStreak,
   toolRequiresApproval,
@@ -148,6 +149,8 @@ import {
   promoteLeasedRunWithAttempt,
   publishRunStep,
   publishRunTodo,
+  type RunTaskInstructions,
+  readTaskInstructionsForRun,
   reconcileAttemptFenceConflict,
   recordLegacyNativePlanDecision,
   registerBackgroundTaskProjection,
@@ -156,15 +159,16 @@ import {
   SpaceLimitError,
   scheduleAutomaticRunRetry,
   submitDraftForReview,
+  TaskInstructionIntegrityError,
   type ThreadEvents,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import {
   deleteFactAsActor,
   FactNotFoundError,
+  type FactServiceDeps,
   recallFactsForActor,
   recordMemoryFromRun,
-  type FactServiceDeps,
 } from "@rakazo/memory";
 import { parse as parseShellCommand } from "shell-quote";
 import {
@@ -246,6 +250,17 @@ import { executeCloudAgentTool } from "./cloud-agent-service.js";
 import { validCloudAgentArgs } from "./cloud-agent-tools.js";
 import { selectCloudAgentTools } from "./cloud-agent-tools-select.js";
 import {
+  availableHistoryBudgetTokens,
+  type CompactionMargins,
+  type CompactionMode,
+  compactionModeForTurn,
+  DEFAULT_COMPACTION_MARGINS,
+  decideCompactionTrigger,
+  detectContextOverflow,
+  ensureHistoryCompacted,
+  estimateRequestTokens,
+} from "./compaction-mode.js";
+import {
   collectLogIds,
   mergeConnectedPlugins,
   needsLivePluginSync,
@@ -278,8 +293,8 @@ import { resolveDeploymentModel } from "./deployment-model.js";
 import { handoffToGroupBot, loadGroupContext } from "./group-handoff.js";
 import {
   COMPACTION_BATCH_SIZE,
-  compactHistory,
   type CompactHistoryDeps,
+  compactHistory,
   formatCompactedSummary,
   formatRecalledMemory,
   HISTORY_WINDOW_SIZE,
@@ -289,17 +304,6 @@ import {
   selectCompactedHistory,
   shouldEnqueueCompaction,
 } from "./history-compaction.js";
-import {
-  availableHistoryBudgetTokens,
-  compactionModeForTurn,
-  DEFAULT_COMPACTION_MARGINS,
-  decideCompactionTrigger,
-  detectContextOverflow,
-  ensureHistoryCompacted,
-  estimateRequestTokens,
-  type CompactionMargins,
-  type CompactionMode,
-} from "./compaction-mode.js";
 import {
   assertConnectorToolArgs,
   CATALOG_EXECUTE,
@@ -322,10 +326,10 @@ import { loadAgentMemoryContext } from "./memory-context.js";
 import {
   assembleMemoryInjection,
   loadMemoryInjectionInputs,
+  type MemoryInjectionInputs,
   MIGRATION_MEMORY_BUDGETS,
   POST_MIGRATION_MEMORY_BUDGETS,
   scaleMemoryBudgetsToWindow,
-  type MemoryInjectionInputs,
 } from "./memory-injection.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
 import {
@@ -754,6 +758,11 @@ export interface ExecutorDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
   runtime: AgentRuntime;
+  /** Test seam for the Task instruction envelope; production reads PostgreSQL. */
+  taskInstructions?: (
+    prisma: PrismaClient,
+    input: { runId: string; leaseOwner: string; leaseFence: number },
+  ) => Promise<RunTaskInstructions | null>;
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
@@ -1606,6 +1615,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
 
       const runSecrets = [...deps.secrets];
       try {
+        // Read the envelope only after this worker owns the Run lease and has
+        // opened its Attempt. The recorded revision is the exact input the
+        // model below consumes; later amendments cannot rewrite it mid-flight.
+        const instructions = await (deps.taskInstructions ?? readTaskInstructionsForRun)(
+          deps.prisma,
+          { runId, leaseOwner: workerId, leaseFence: fence },
+        );
+        if (!instructions) return;
+        const instructionText = formatTaskInstructionEnvelope(instructions.envelope);
         const sourceBlocks =
           run.trigger === "messaging" && run.sourceMessageId
             ? ((
@@ -1622,7 +1640,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
           thread,
           messages,
           peerMessage,
-          task,
           storedConnections,
           defaultCredential,
           settings,
@@ -1640,7 +1657,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
           run.trigger === "bot_message"
             ? loadBotMessageContext(deps.prisma, run.sourceMessageId)
             : Promise.resolve(undefined),
-          deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId } }),
           deps.prisma.connection.findMany({
             where: { userId: run.userId, spaceId: run.spaceId },
             select: {
@@ -1803,7 +1819,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           thread.historyCompactedUpToSeq != null
             ? semanticMemory.recall(
                 {
-                  query: task.prompt,
+                  query: instructionText,
                   scope: memoryScope,
                   botId: bot.id,
                   historyGeneration: thread.historyCompactionGeneration,
@@ -2242,7 +2258,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         let handedOff = false;
         let progressRedactor = createStreamingRedactor(runSecrets);
         const scripted = deps.runtime.describe().capabilities.scripted;
-        const script = scripted ? inferScript(task.prompt, takeoverResume?.checkpoint) : undefined;
+        const script = scripted
+          ? inferScript(instructionText, takeoverResume?.checkpoint)
+          : undefined;
         const flushProgress = async () => {
           if (scripted || !pendingProgress) return;
           await deps.events.append({
@@ -2803,7 +2821,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 toolName: name,
                 connectorKind,
                 args: redactToolArgsForReview(args, runSecrets),
-                userTask: redactSecrets(task.prompt, runSecrets),
+                userTask: redactSecrets(instructionText, runSecrets),
                 botDescription: redactSecrets(
                   `${bot.name}: ${bot.title}\n${bot.description}`,
                   runSecrets,
@@ -3510,9 +3528,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               runId,
               text: String(args.content ?? ""),
               scopeKind: "bot",
-              ...(typeof args.source_quote === "string"
-                ? { sourceQuote: args.source_quote }
-                : {}),
+              ...(typeof args.source_quote === "string" ? { sourceQuote: args.source_quote } : {}),
             });
             if (result.status === "invalid") {
               return finish({
@@ -4153,9 +4169,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               runId,
               text: String(args.content ?? ""),
               scopeKind: "bot",
-              ...(typeof args.source_quote === "string"
-                ? { sourceQuote: args.source_quote }
-                : {}),
+              ...(typeof args.source_quote === "string" ? { sourceQuote: args.source_quote } : {}),
             });
             if (result.status === "invalid") {
               return finish({
@@ -5043,7 +5057,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
           currentTurnImages,
         );
         const taskPrompt = expandSkillReferencesInPrompt(
-          [task.prompt, attachedFilesPrompt, missingImagesInstruction].filter(Boolean).join("\n\n"),
+          [instructionText, attachedFilesPrompt, missingImagesInstruction]
+            .filter(Boolean)
+            .join("\n\n"),
           agentSkills,
         );
         const invokedSkill = savedSkills.find((skill) =>
@@ -5062,7 +5078,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         );
         const replyContext = await loadReplyContext(deps.prisma, thread.id, run.sourceMessageId);
         const retryFraming = run.retryOfRunId
-          ? manualRetryPromptPrefix(task.prompt, retryChain)
+          ? manualRetryPromptPrefix(instructionText, retryChain)
           : undefined;
         const prompt = [
           retryFraming,
@@ -5171,7 +5187,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               legacyImportedDocumentIds: injectionInputs.readModel.legacyImportedDocumentIds,
             },
             budgets,
-            { taskText: task.prompt },
+            { taskText: instructionText },
           );
           memoryContext = assembled.content;
           getLogger().info("memory.injection assembled", {
@@ -6378,9 +6394,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 runtime: deps.runtime,
                 jobs: deps.jobs,
                 memoryProviders: deps.memoryProviders,
-                ...(deps.deploymentModelKey
-                  ? { deploymentModelKey: deps.deploymentModelKey }
-                  : {}),
+                ...(deps.deploymentModelKey ? { deploymentModelKey: deps.deploymentModelKey } : {}),
                 memoryDigestKey: deps.memoryDigestKey,
                 ...(pin ? { pinnedModel: pin } : {}),
                 resolvePinnedModel: resolvePinnedModelIdentity,
@@ -6401,8 +6415,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         nextMessageSeq: true,
                       },
                     }),
-                  enqueueBackground: () =>
-                    deps.jobs.enqueue(historyCompactJob(thread.id, pin)),
+                  enqueueBackground: () => deps.jobs.enqueue(historyCompactJob(thread.id, pin)),
                   compactOnce: () => compactHistory(compactDeps, thread.id),
                 },
                 mode,
@@ -6511,6 +6524,23 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
         }
       } catch (setupError) {
+        if (setupError instanceof TaskInstructionIntegrityError) {
+          // A cleared Thread removed the amendment log. Requeueing cannot
+          // repair it, so fail the Run with the real reason instead.
+          await deps.events.finalizeRun({
+            spaceId: run.spaceId,
+            threadId: run.threadId,
+            botId: run.botId,
+            runId,
+            taskId: run.taskId,
+            attemptId: attempt.id,
+            leaseOwner: workerId,
+            leaseFence: fence,
+            outcome: "failed",
+            error: redactSecrets(setupError.message, runSecrets),
+          });
+          return;
+        }
         const computerBusy = setupError instanceof ComputerBusyError;
         const retryForever = computerBusy || isTooManyDatabaseConnections(setupError);
         // undici collapses every network failure to "fetch failed"; the cause names the
