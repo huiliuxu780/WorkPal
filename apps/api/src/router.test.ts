@@ -10,6 +10,7 @@ import { REPLY_QUOTE_MAX_LENGTH } from "@rakazo/contracts";
 import { RoundtableFeatureDisabledError } from "@rakazo/core";
 import { openScreenCapability } from "@rakazo/core/node/screen-capability";
 import type { PrismaClient } from "@rakazo/db";
+import { TaskAmendmentRejected, TaskInstructionIntegrityError } from "@rakazo/db";
 import { createLogger, createTestSink, installLogger } from "@rakazo/logging";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRouter, enqueueBotIntroRun, type RouterDeps } from "./router.js";
@@ -3565,5 +3566,140 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
     expect(routed).toEqual([
       expect.objectContaining({ ownerBotId: "bot-first", responseMode: "single" }),
     ]);
+  });
+});
+
+describe("task amendment route", () => {
+  function fixture(appendTaskAmendment: ReturnType<typeof vi.fn>) {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      bot: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "bot-1",
+          thread: { id: "thread-1" },
+          computer: null,
+        }),
+      },
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { notify },
+      appendTaskAmendment: appendTaskAmendment as unknown as RouterDeps["appendTaskAmendment"],
+      jobs: { enqueue: vi.fn() },
+      env: {
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@rakazo.test",
+      isDeploymentOwner: true,
+    } satisfies Actor;
+    const handler = new RPCHandler(createRouter(deps));
+    const submit = (input: Record<string, unknown>) =>
+      handler.handle(
+        new Request("http://127.0.0.1/rpc/threads/amendTask", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: { botId: "bot-1", ...input } }),
+        }),
+        { prefix: "/rpc", context: { actor } },
+      );
+    return { appendTaskAmendment, notify, submit };
+  }
+
+  it("forwards an explicit targetTaskId and reports the new revision", async () => {
+    const appendTaskAmendment = vi.fn().mockResolvedValue({
+      envelope: {
+        taskId: "task-1",
+        revision: 2,
+        original: { content: "Original task" },
+        amendments: [{ messageId: "message-1", seq: 1, content: "Also add tests." }],
+      },
+      ref: { taskId: "task-1", consumedRevision: 2 },
+      messageId: "message-1",
+      seq: 1,
+      eventSeq: 7,
+      replayed: false,
+    });
+    const { notify, submit } = fixture(appendTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "Also add tests.",
+      clientNonce: "amend-1",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: {
+        taskId: "task-1",
+        messageId: "message-1",
+        revision: 2,
+        seq: 1,
+        replayed: false,
+      },
+    });
+    expect(appendTaskAmendment).toHaveBeenCalledWith(expect.anything(), {
+      spaceId: "workspace-1",
+      threadId: "thread-1",
+      actorUserId: "user-1",
+      targetTaskId: "task-1",
+      content: "Also add tests.",
+      clientNonce: "amend-1",
+    });
+    expect(notify).toHaveBeenCalledWith("thread-1", 7);
+  });
+
+  it("rejects a request without an explicit targetTaskId before writing", async () => {
+    const appendTaskAmendment = vi.fn();
+    const { submit } = fixture(appendTaskAmendment);
+    const { response } = await submit({ text: "Ambiguous amendment", clientNonce: "amend-2" });
+    expect(response.status).toBe(400);
+    expect(appendTaskAmendment).not.toHaveBeenCalled();
+  });
+
+  it("maps a foreign or missing Task to 404 without leaking it", async () => {
+    const appendTaskAmendment = vi.fn().mockRejectedValue(new TaskAmendmentRejected("not_found"));
+    const { submit } = fixture(appendTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-foreign",
+      text: "Foreign amendment",
+      clientNonce: "amend-3",
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("maps a Message already bound to another Task to 409", async () => {
+    const appendTaskAmendment = vi.fn().mockRejectedValue(new TaskAmendmentRejected("conflict"));
+    const { submit } = fixture(appendTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "Conflicting amendment",
+      clientNonce: "amend-4",
+    });
+    expect(response.status).toBe(409);
+  });
+
+  it("refuses to amend a Task whose instruction history was cleared", async () => {
+    const appendTaskAmendment = vi
+      .fn()
+      .mockRejectedValue(new TaskInstructionIntegrityError("task-1", 2, 0));
+    const { submit } = fixture(appendTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "After clear",
+      clientNonce: "amend-5",
+    });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({
+        message: "This task's instruction history is no longer available.",
+      }),
+    });
   });
 });

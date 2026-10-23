@@ -615,7 +615,10 @@ model Task {
   threadId  String
   thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
   userId    String
+  /// Original task instruction. Never overwritten by later natural-language answers.
   prompt    String
+  /// Aggregate revision of the instruction envelope. 1 = original only.
+  revision  Int      @default(1)
   status    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -635,6 +638,8 @@ model Run {
   thread               Thread           @relation(fields: [threadId], references: [id], onDelete: Cascade)
   taskId               String
   task                 Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// Task instruction revision this execution reads at lease acquisition. null = pre-envelope Run.
+  consumedRevision     Int?
   userId               String
   status               String
   waitKind             String?

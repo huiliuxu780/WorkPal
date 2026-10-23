@@ -1180,6 +1180,7 @@ export async function sendThreadMessage(
             threadId: target.threadId,
             answeredByUserId: actor.userId,
             answer: answerText,
+            answerMessageId: message.id,
             runIds: waitingRuns.map((run) => run.id),
           });
           const primary = answeredOne
@@ -1470,6 +1471,7 @@ export async function sendThreadMessage(
           threadId: target.threadId,
           answeredByUserId: actor.userId,
           answer: answerText,
+          answerMessageId: message.id,
           runIds: waitingRuns.map((run) => run.id),
         });
         const matched = answeredOne

@@ -151,6 +151,7 @@ import {
   AvatarChangeDenied,
   acknowledgeAvatarFailure,
   appendEventInTransaction,
+  appendTaskAmendment,
   avatarChangeView,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
@@ -201,6 +202,8 @@ import {
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
   summarizeModelUsage,
+  TaskAmendmentRejected,
+  TaskInstructionIntegrityError,
   touchGroupUpdatedAt,
   undoBotAvatarChangeInTransaction,
 } from "@rakazo/db";
@@ -563,6 +566,8 @@ export interface RouterDeps {
   cloudAgent?: CloudAgentConnection | null;
   prisma: PrismaClient;
   events: ThreadEvents;
+  /** Test seam for the Task instruction log; production uses the db service. */
+  appendTaskAmendment?: typeof appendTaskAmendment;
   auth: Auth;
   jobs: JobPublisher;
   sandbox: SandboxProvider;
@@ -2183,6 +2188,46 @@ export function createRouter(deps: RouterDeps) {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
         }
         return sendThreadMessage({ ...deps, turnRouting }, context.actor, target, input);
+      }),
+      amendTask: authed.threads.amendTask.handler(async ({ context, input }) => {
+        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        let appended: Awaited<ReturnType<typeof appendTaskAmendment>>;
+        try {
+          appended = await (deps.appendTaskAmendment ?? appendTaskAmendment)(deps.prisma, {
+            spaceId: context.actor.spaceId,
+            threadId: target.threadId,
+            actorUserId: context.actor.userId,
+            targetTaskId: input.targetTaskId,
+            content: input.text,
+            clientNonce: input.clientNonce,
+          });
+        } catch (error) {
+          if (error instanceof TaskAmendmentRejected) {
+            if (error.reason === "conflict") {
+              throw new ORPCError("CONFLICT", {
+                message: "This amendment conflicts with an existing task revision.",
+              });
+            }
+            // Missing, foreign-space and foreign-user Tasks are indistinguishable.
+            throw new ORPCError("NOT_FOUND", { message: "Task was not found." });
+          }
+          if (error instanceof TaskInstructionIntegrityError) {
+            throw new ORPCError("CONFLICT", {
+              message: "This task's instruction history is no longer available.",
+            });
+          }
+          throw error;
+        }
+        await deps.events.notify(target.threadId, appended.eventSeq).catch((error) => {
+          getLogger().error("task amendment realtime notification", error);
+        });
+        return {
+          taskId: appended.ref.taskId,
+          messageId: appended.messageId,
+          revision: appended.ref.consumedRevision,
+          seq: appended.seq,
+          replayed: appended.replayed,
+        };
       }),
       react: authed.threads.react.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);

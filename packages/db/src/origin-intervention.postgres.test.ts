@@ -18,6 +18,7 @@ import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
 } from "./postgres-test-database.js";
+import { readTaskInstructionEnvelope } from "./task-instructions.js";
 import { expireWaitingRunInTransaction, WAIT_TIMEOUT_MS } from "./wait-timeouts.js";
 
 const describePostgres =
@@ -358,9 +359,24 @@ describePostgres("origin-aware intervention (PostgreSQL)", () => {
     expect(await prisma.run.findUniqueOrThrow({ where: { id: target.run.id } })).toMatchObject({
       status: "queued",
     });
-    // The supplement reaches the bound Task of the executing Run.
+    // The supplement reaches the bound Task of the executing Run as an amendment;
+    // the original instruction is never overwritten.
     expect(await prisma.task.findUniqueOrThrow({ where: { id: target.task.id } })).toMatchObject({
-      prompt: "v2.1",
+      prompt: "Wait",
+      revision: 2,
+    });
+    const answerMessage = await prisma.message.findFirstOrThrow({
+      where: { threadId: pairThreadId, runId: target.run.id, role: "user" },
+    });
+    expect(answerMessage).toMatchObject({
+      originKind: "human_web",
+      authorUserId: id,
+      blocks: [{ kind: "text", text: "v2.1" }],
+    });
+    expect(await readTaskInstructionEnvelope(prisma, { taskId: target.task.id })).toMatchObject({
+      revision: 2,
+      original: { content: "Wait" },
+      amendments: [{ messageId: answerMessage.id, seq: 1, content: "v2.1" }],
     });
     const ask = await prisma.message.findUniqueOrThrow({ where: { id: row.messageId } });
     expect(ask.threadId).toBe(pairThreadId);

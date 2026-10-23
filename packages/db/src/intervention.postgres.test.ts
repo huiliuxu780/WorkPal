@@ -16,6 +16,7 @@ import {
   type IsolatedPostgresDatabase,
 } from "./postgres-test-database.js";
 import { applyPlanSubmission, submitDraftForReview } from "./run-plans.js";
+import { readTaskInstructionEnvelope } from "./task-instructions.js";
 import {
   expireWaitingRunInTransaction,
   expireWaitingRuns,
@@ -260,6 +261,19 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       where: { runId: textRun.run.id, type: "intervention.resolved" },
     });
     expect(JSON.stringify(textEvent.payload)).not.toContain("Paris");
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: textRun.task.id } })).toMatchObject({
+      prompt: "Wait",
+      revision: 2,
+    });
+    const textAnswer = await prisma.message.findFirstOrThrow({
+      where: { threadId, runId: textRun.run.id, role: "user" },
+    });
+    expect(textAnswer.blocks).toEqual([{ kind: "text", text: "Paris" }]);
+    expect(await readTaskInstructionEnvelope(prisma, { taskId: textRun.task.id })).toMatchObject({
+      revision: 2,
+      original: { content: "Wait" },
+      amendments: [{ messageId: textAnswer.id, seq: 1, content: "Paris" }],
+    });
 
     const choiceRun = await runningRun();
     expect(
@@ -290,9 +304,23 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     ).toMatchObject({ outcome: "accepted" });
     expect(await prisma.task.findUniqueOrThrow({ where: { id: choiceRun.task.id } })).toMatchObject(
       {
-        prompt: "Selected choice city-lyon: Lyon",
+        prompt: "Wait",
+        revision: 2,
       },
     );
+    const choiceAnswer = await prisma.message.findFirstOrThrow({
+      where: { threadId, runId: choiceRun.run.id, role: "user" },
+    });
+    expect(choiceAnswer.blocks).toEqual([
+      { kind: "text", text: "Selected choice city-lyon: Lyon" },
+    ]);
+    expect(await readTaskInstructionEnvelope(prisma, { taskId: choiceRun.task.id })).toMatchObject({
+      revision: 2,
+      original: { content: "Wait" },
+      amendments: [
+        { messageId: choiceAnswer.id, seq: 1, content: "Selected choice city-lyon: Lyon" },
+      ],
+    });
     expect(
       await resolveIntervention(prisma, {
         spaceId: id,
@@ -363,6 +391,11 @@ describePostgres("intervention contract (PostgreSQL)", () => {
       expect(
         JSON.stringify(accepted.outcome === "accepted" ? accepted.intervention : {}),
       ).not.toContain(SECRET);
+      // Approval decisions are control facts, never natural-language amendments.
+      expect(await readTaskInstructionEnvelope(prisma, { taskId: task.id })).toMatchObject({
+        revision: 1,
+        amendments: [],
+      });
       return { run, task, effect };
     }
 
