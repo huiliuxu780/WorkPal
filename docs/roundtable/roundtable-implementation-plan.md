@@ -678,7 +678,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 - single owner、reply target、explicit mention 和 explicit multi 测试。
 - active Task steering、后台旁路和新目标加入测试。
-- Agent 拒绝、阶段进展、结论冲突和部分失败消息规范；文案对齐原型分支的实际渲染（U-ACTIVE、C-MULTI、F-OFFLINE、F-RETRY、F-PARTIAL）。原型聊天区文案中的 Run / attempt / steering / support Run 术语去留由审计裁决 D1（docs/roundtable/audits/ui-prototype-conformance.md）决定；裁决前新增文案不得引入这些实现术语。
+- Agent 拒绝、阶段进展、结论冲突和部分失败消息规范；文案对齐原型分支的实际渲染（U-ACTIVE、C-MULTI、F-OFFLINE、F-RETRY、F-PARTIAL）。D1 裁决（A，2026-10-24）：聊天区不出现 Run、attempt、steering、support Run 等实现术语，DESIGN.md 禁令已扩展至聊天区、原型已按裁决修订；实现文案遵循修订后的原型。
 - handoff 与 `message_bot(intent=...)` 边界测试。
 - 来源 owner 的跨会话二次汇报。
 

@@ -659,7 +659,7 @@
           { type: "user", html: "<span class='mention blue'>@小蓝</span> 先补测低端机，桌面端可以晚一点。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，新优先级已经进入我当前的执行。我先补低端机；完整基线仍在后台继续。<div class='work-inline'><span class='pulse'></span>正在回复 · 后台任务未暂停</div>" }
         ],
-        activity: [{ who: "blue", label: "小蓝已接收 steering · 后台基线继续" }],
+        activity: [{ who: "blue", label: "小蓝已接收你的新指令 · 后台基线继续" }],
         work: { summary: "2 项同时进行", roots: [{ title: "性能调查", desc: "用户直接指派小蓝", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "补测低端机并立即答复", state: "回复中", className: "run", progress: 56, meta: "你的补充" }, { who: "blue", name: "小蓝", task: "完整性能基线", state: "后台中", className: "run", progress: 63, meta: "后台执行" }] }] }
       },
       {
@@ -822,7 +822,7 @@
           { who: "orange", name: "小橙", role: "设计 Agent", html: "视觉侧最大风险是移动端 B 版信息密度。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "性能侧最大风险是同步图表包阻塞 LCP。" }
         ],
-        activity: [{ who: "blue", label: "2 个目标 Run 已独立完成" }],
+        activity: [{ who: "blue", label: "2 项任务已独立完成" }],
         work: { summary: "2 项已完成", roots: [{ title: "并行快速判断", desc: "按消息产生顺序展示", status: "已完成", items: [{ who: "orange", name: "小橙", task: "视觉风险一句话", state: "已完成", className: "done", progress: 100, meta: "先返回" }, { who: "blue", name: "小蓝", task: "性能风险一句话", state: "已完成", className: "done", progress: 100, meta: "随后返回" }] }] }
       },
       {
@@ -893,7 +893,7 @@
         id: "F-OFFLINE", category: "异常与恢复", title: "目标 Agent 不可用", note: "message_bot 明确失败；群里不伪造“收到”，主持人决定换人或重试。",
         messages: [
           { who: "joy", name: "Joy", role: "主持 Agent", html: "我准备让 <span class='mention purple'>@小紫</span> 做证据复核。" },
-          { type: "system", html: "未能派给小紫：该 Agent 已被停用，没有创建 support Run。" },
+          { type: "system", html: "未能派给小紫：该 Agent 已被停用，没有开始这项工作。" },
           { who: "joy", name: "Joy", role: "主持 Agent", html: "小紫当前不可用。我先保留复核缺口，不会把它显示成已接收；可以改派小蓝或等小紫恢复。" }
         ],
         activity: [{ who: "joy", label: "委派失败 · 等待改派" }],
@@ -902,7 +902,7 @@
       {
         id: "F-RETRY", category: "异常与恢复", title: "后台任务失败后重试", note: "重试是同一任务的 attempt，不创建重复工作，也不重复发送确认消息。",
         messages: [
-          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第一轮 trace 因浏览器进程退出失败。我已在相同任务下开始第 2 次尝试，已完成的数据不会重复发布。<div class='work-inline'><span class='pulse'></span>重试中 · attempt 2 / 3</div>" }
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第一轮 trace 因浏览器进程退出失败。我已在相同任务下开始第 2 次尝试，已完成的数据不会重复发布。<div class='work-inline'><span class='pulse'></span>重试中 · 第 2 / 3 次尝试</div>" }
         ],
         activity: [{ who: "blue", label: "性能基线重试中 · 2 / 3" }],
         work: { summary: "1 项重试中", roots: [{ title: "性能基线", desc: "保留每一次尝试", status: "重试中", items: [{ who: "blue", name: "小蓝", task: "运行完整 trace", state: "重试 2/3", className: "run", progress: 39, meta: "第 2 次尝试" }] }] }
@@ -912,9 +912,9 @@
         messages: [
           { who: "joy", name: "Joy", role: "主持 Agent", html: "<span class='mention blue'>@小蓝</span> 核对性能基线。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，我开始核对。" },
-          { type: "system", html: "检测到重复投递；已复用现有 Run，没有再次通知小蓝。" }
+          { type: "system", html: "检测到重复投递；沿用首次派活，没有再次通知小蓝。" }
         ],
-        activity: [{ who: "blue", label: "小蓝仅有 1 个有效 Run" }],
+        activity: [{ who: "blue", label: "小蓝只有 1 项有效任务" }],
         work: { summary: "1 项有效工作", roots: [{ title: "发布方案", desc: "重复请求已自动合并", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "进行中", className: "run", progress: 27, meta: "没有重复执行" }] }] }
       },
       {

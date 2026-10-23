@@ -62,7 +62,7 @@
 
 | 分支 | 关键渲染 | 状态文案样本 |
 | --- | --- | --- |
-| U-ACTIVE | steering 确认消息 + 状态行 | 「正在回复 · 后台任务未暂停」；胶囊「小蓝已接收 **steering** · 后台基线继续」（D1） |
+| U-ACTIVE | 新指令确认消息 + 状态行 | 「正在回复 · 后台任务未暂停」；胶囊「小蓝已接收你的新指令 · 后台基线继续」 |
 | U-MULTI | 一句话两目标各自确认 | 「收到，我负责性能回归。」 |
 | U-CONFLICT | Agent 主动说明冲突并提问 | 「我暂停最终导出……要按你的新指令切 B，还是保留周五上线优先？」 |
 | U-STOP | 系统状态行 + Agent 确认 | 「已停止“小橙 · 移动端 B 版断点”；没有取消同一 Agent 的其他工作。」 |
@@ -78,7 +78,7 @@
 | Q-MULTI | 聚合回执可展开 | 「已发消息给 ３头像 3 个 Agent ⌄」→ 原行下方头像+名字名单 |
 | Q-ORIGINS | 同 pair 多来源审批隔离说明 | 「这个审批只恢复你在这里发起的任务……」 |
 | Q-UNAVAILABLE | 红色失败回执 | 「未发送给 小蓝 ›」；「没有发出去：小蓝已停用……之前的协作记录还在」 |
-| C-MULTI | 两个独立回复 | 胶囊「2 个目标 **Run** 已独立完成」（D1） |
+| C-MULTI | 两个独立回复 | 胶囊「2 项任务已独立完成」 |
 | C-DUAL | 前台回复 + 后台并存 | 「当前假设是……不是最终结论」「后台 trace 仍在运行 · 2 / 4」 |
 | C-ROOTS | 两个独立根任务胶囊 | 「发布方案仍在推进」「客户材料独立进行」 |
 | C-LATE | 旧结果归档 | 「旧结果已归档 · 未覆盖当前目标」 |
@@ -86,9 +86,9 @@
 | P-ALLOW | 授权结果卡 | 「移动端预览 · 已发布／授权范围：单次／其他环境：未授权」 |
 | P-DENY | 拒绝后继续讨论 | 「发布已停止 · 小橙仍可讨论」 |
 | P-STALE | 旧审批失效 | 「旧审批已失效 · 等待新确认」 |
-| F-OFFLINE | 失败系统行 | 「未能派给小紫：该 Agent 已被停用，**没有创建 support Run**。」（D1）；胶囊「委派失败 · 等待改派」 |
-| F-RETRY | 重试状态行 | 「重试中 · **attempt** 2 / 3」（D1） |
-| F-DEDUPE | 幂等系统行 | 「检测到重复投递；**已复用现有 Run**……」（D1）；胶囊「小蓝仅有 1 个有效 **Run**」（D1） |
+| F-OFFLINE | 失败系统行 | 「未能派给小紫：该 Agent 已被停用，没有开始这项工作。」；胶囊「委派失败 · 等待改派」 |
+| F-RETRY | 重试状态行 | 「重试中 · 第 2 / 3 次尝试」 |
+| F-DEDUPE | 幂等系统行 | 「检测到重复投递；沿用首次派活，没有再次通知小蓝。」；胶囊「小蓝只有 1 项有效任务」 |
 | F-PARTIAL | 有条件收尾 | 「性能结果已完成」「证据复核失败」双胶囊 |
 
 ### 4.3 交互与响应式
@@ -179,12 +179,13 @@
 - **为什么**：两个高优先级来源真实冲突，按任务书不得自行选边。
 - **正确行为**：见 §7 D1（方案 A：独立原型修订 PR 扩展禁令并改写 6 处；方案 B：原型逐字文案为权威）。裁决前 RT-24 不得新增含这些术语的文案（计划已加该约束）。
 - **归属**：用户裁决 D1；RT-24 按裁决执行。
+- **裁决（D1=A，2026-10-24）**：维持禁令并扩展到聊天区。原型 6 处文案已改写为用户语言，DESIGN.md 新增聊天区文案边界条款（stacked PR `codex/rt-d1-prototype-copy-revision`），RT-24 按修订后原型实现。
 
 ### CF-05 · P2 · missing-requirement
 - **当前事实**：main 侧边栏无「后台任务」入口（CAP-01 已退役旧 Task Center）；RT-00～RT-30 无任务负责该 surface。
 - **原型证据**：prototype:main-stage-1 侧边栏「后台任务 6」；DESIGN L20；PRD §9.3。
 - **位置**：实施计划 §4（覆盖缺口）。
-- **正确行为**：新增 FIX-SIDEBAR-G（读取与群内「工作」同一投影）；计数徽标按 D2 裁决。RT-30 全链验收前需落位。
+- **正确行为**：新增 FIX-SIDEBAR-G（读取与群内「工作」同一投影）；计数徽标按 D2=B 保留（单一口径后台任务数）。RT-30 全链验收前需落位。
 - **归属**：FIX-SIDEBAR-G（新任务）。
 
 ### CF-06 · P3 · missing-requirement
@@ -218,24 +219,24 @@
 - **当前事实**：原型顶栏「工作」直达按钮在 main 无对应物；RT-22 只交付页签。
 - **正确行为**：顶部窄入口随 FIX-GROUP-C/RT-23 落地，直达工作页签、不显示数量。
 
-## 7. Blocking decisions（待用户裁决，本 PR 不选边）
+## 7. Blocking decisions（已裁决 2026-10-24）
 
-| ID | 问题 | 方案 A | 方案 B | 阻塞 |
-| --- | --- | --- | --- | --- |
-| D1 | 原型聊天区 6 处文案中的 Run / attempt / steering / support Run 是否保留（CF-04） | 独立原型修订 PR：把 DESIGN L24 术语禁令扩展到聊天区并改写 6 处文案；RT-24 按新文案实现 | 维持原型逐字文案为权威；RT-24 照抄，任务书冲突类型让步 | RT-24 文案规范；FIX-MSG-A 失败文案 |
-| D2 | 侧边栏「后台任务」入口是否显示计数徽标（CF-05） | 不显示（与 DESIGN L14「计数口径不同会制造错误确定性」理由一致） | 显示（按原型现状） | FIX-SIDEBAR-G |
+| ID | 问题 | 裁决 | 落点 |
+| --- | --- | --- | --- |
+| D1 | 原型聊天区 6 处文案中的 Run / attempt / steering / support Run 是否保留（CF-04） | **A：维持禁令并扩展到聊天区** | 原型 6 处文案改写为用户语言、DESIGN.md 新增聊天区文案边界条款（stacked PR）；RT-24 按修订后原型实现 |
+| D2 | 侧边栏「后台任务」入口是否显示计数徽标（CF-05） | **B：保留徽标** | 口径定义为「运行中的后台任务数」——单一口径客观计数（PRD O07「后台仍有 N 项」先例），不属于 L14 针对混合口径工作入口的禁令；FIX-SIDEBAR-G 按此实现 |
 
 ## 8. 后续修复任务清单（按可独立合入的 surface 拆分）
 
 | 任务 | Surface | 依赖 | 文件范围 | 原型引用 | 验收与截图 |
 | --- | --- | --- | --- | --- | --- |
-| **FIX-MSG-A** 群消息与公开委派（RT-08 重开） | 群聊消息/回执 | RT-06 ✓、RT-07 ✓、D1（失败文案） | `PublicDelegationMessage.tsx`、`public-collaboration.ts`、`Shell.tsx:6779` 分支、`group-chats.spec.ts` | main-stage-2/3、branch-F-OFFLINE、DESIGN L8/23/24 | 无执行状态枚举；公开协作不打开 peer 视图；失败为「未发送给 X」红行；键盘+390px 不溢出；重放 stage-2/3 截图对比 |
+| **FIX-MSG-A** 群消息与公开委派（RT-08 重开） | 群聊消息/回执 | RT-06 ✓、RT-07 ✓、D1=A ✓ | `PublicDelegationMessage.tsx`、`public-collaboration.ts`、`Shell.tsx:6779` 分支、`group-chats.spec.ts` | main-stage-2/3、branch-F-OFFLINE、DESIGN L8/23/24 | 无执行状态枚举；公开协作不打开 peer 视图；失败为「未发送给 X」红行；键盘+390px 不溢出；重放 stage-2/3 截图对比 |
 | **FIX-PAIR-B** private receipt 与 pair 浮窗（RT-09） | receipt/浮窗 | RT-05（依赖 #118、#110） | receipt 行组件、pair 浮窗组件、`Shell.tsx` 回执路径 | branch-X-BOT/Q-MULTI/Q-UNAVAILABLE、interaction:pair-float/receipt-expanded、DESIGN L8/10/11 | 单行轻回执；展开名单；只读浮窗（身份胶囊+唯一关闭）；不进侧边栏；停用 Bot「未发送给 X」；三态截图对比 |
 | **FIX-GROUP-C** 群详情基础页（RT-22 后续） | 右栏/顶栏 | RT-22 ✓ | `group-panel.tsx`、`Shell.tsx` 顶栏 | interaction:rail-library/members、main-stage-1、DESIGN L14/19 | 资料库行悬停操作；成员状态语义澄清（CF-07）；顶部工作直达无数量；悬停态截图 |
 | **FIX-WORK-D** 工作页与 Task 详情（RT-23） | 右栏工作/详情/composer | #117、RT-20（依赖 RT-18 链）、RT-22 ✓ | `group-panel.tsx` work 面板、task chip 组件 | interaction:work-tab/task-detail/amend-chip、branch-A-COMPLETED、DESIGN L15/22/24 | 原位详情无二层抽屉；「追加复核」按原型（CF-03 落点）；补充要求回 composer 带 chip；无百分比；三态截图对比 |
-| **FIX-APPROVE-E** 审批、失败和恢复投影（RT-12/24/28 面 + 存量文案） | 审批卡/消息/胶囊/ExecutionCard | RT-12、RT-24、RT-28、D1 | `agentscope-runtime.ts:909`、`ExecutionCard.tsx`、状态消息渲染 | main-stage-7、branch-P-*/X-GROUP-FAIL/F-* | 审批卡内嵌消息流（拒绝/允许一次/加入并继续）；授权范围卡；失败恢复文案按 D1；清除「AgentScope」字样（CF-08）；四态截图 |
+| **FIX-APPROVE-E** 审批、失败和恢复投影（RT-12/24/28 面 + 存量文案） | 审批卡/消息/胶囊/ExecutionCard | RT-12、RT-24、RT-28、D1=A ✓ | `agentscope-runtime.ts:909`、`ExecutionCard.tsx`、状态消息渲染 | main-stage-7、branch-P-*/X-GROUP-FAIL/F-* | 审批卡内嵌消息流（拒绝/允许一次/加入并继续）；授权范围卡；失败恢复文案遵循 D1=A 的修订后原型；清除「AgentScope」字样（CF-08）；四态截图 |
 | **FIX-GLOBAL-F** 响应式与键盘行为 | 全局 | A–E | e2e specs | interaction:narrow-*、DESIGN L12 | 窄屏覆盖层；胶囊/药丸直达工作页签；页签键盘导航；430px 截图两张 |
-| **FIX-SIDEBAR-G** 侧边栏后台任务中心（新） | sidebar | D2、RT-20 | `Shell.tsx` 侧边栏 | main-stage-1、DESIGN L20、PRD §9.3 | 跨会话工作入口；与群内「工作」同一投影；计数按 D2；侧边栏截图对比 |
+| **FIX-SIDEBAR-G** 侧边栏后台任务中心（新） | sidebar | D2=B ✓、RT-20 | `Shell.tsx` 侧边栏 | main-stage-1、DESIGN L20、PRD §9.3 | 跨会话工作入口；与群内「工作」同一投影；徽标为单一口径后台任务数（D2=B）；侧边栏截图对比 |
 
 拆分原则：每个 FIX 任务可独立合入（对应一个 PR），不互相夹带；A/B 是 UI 重建，C/D/E 增量修补，F 是收尾验收，G 需先裁决 D2。在审计合入前：RT-08、RT-14 的 UI 部分保持暂停；RT-03、RT-25 只做后端且不得引入任何新界面语义。
 
@@ -260,7 +261,15 @@
 - 31 个 RT 全部有分类与裁决：§5 + JSON `tasks`（验证器强制无遗漏）。
 - 8 个主阶段与 28 个分支全部有实际渲染证据：`evidence/prototype/`（JSON `evidenceManifest`，验证器强制引用可解析）。
 - 当前 main 与未来任务定义都被覆盖：§5「main 实测」+ 计划修订 + 在途 PR 审视。
-- 每个确认冲突都能落到明确修复任务：CF-01→FIX-MSG-A、CF-02→FIX-MSG-A、CF-03→FIX-WORK-D、CF-05→FIX-SIDEBAR-G、CF-06/07/12→FIX-GROUP-C、CF-08→FIX-APPROVE-E、CF-10/11→本 PR 计划修订、CF-04→D1 裁决。
+- 每个确认冲突都能落到明确修复任务：CF-01→FIX-MSG-A、CF-02→FIX-MSG-A、CF-03→FIX-WORK-D、CF-05→FIX-SIDEBAR-G、CF-06/07/12→FIX-GROUP-C、CF-08→FIX-APPROVE-E、CF-10/11→本 PR 计划修订、CF-04→D1=A 已裁决（原型修订 stacked PR 落地）。
 - 实施计划已消除冲突性要求：§9 修订清单。
 - 验证器与测试通过：`node docs/roundtable/verify-ui-conformance.mjs`、`node --test docs/roundtable/verify-ui-conformance.test.mjs`；原计划验证器继续通过（31 任务/39 AC/96 场景）。
 - PR 只包含审计材料、任务定义修订和验证器；未改 prototype/index.html 与 DESIGN.md；未顺手重做生产 UI。
+
+## 11. 裁决落地记录（stacked PR，2026-10-24）
+
+D1=A、D2=B 裁决后，在审计分支之上叠加 `codex/rt-d1-prototype-copy-revision` 落地：
+
+1. `prototype/index.html`：改写 6 处聊天区文案——U-ACTIVE 胶囊「小蓝已接收你的新指令 · 后台基线继续」、C-MULTI 胶囊「2 项任务已独立完成」、F-OFFLINE「……没有开始这项工作。」、F-RETRY「重试中 · 第 2 / 3 次尝试」、F-DEDUPE「沿用首次派活……」/「小蓝只有 1 项有效任务」；受影响的 5 张分支证据截图已重拍覆盖（源码 `note` 注释字段从不渲染，不属聊天区文案，未改）。
+2. `prototype/DESIGN.md`：新增「聊天区文案边界」条款（术语禁令扩展至聊天区，批处理/重试允许客观计数）与「侧边栏徽标口径」条款（D2=B 单一口径后台任务数）。
+3. 实施计划 RT-24 行改为已裁决表述；JSON 中 D1/D2 → resolved、CF-04 blocks 解除、FIX 依赖更新；验证器 RT-24 检查模式同步。
