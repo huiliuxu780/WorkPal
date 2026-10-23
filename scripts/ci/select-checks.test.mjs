@@ -424,12 +424,13 @@ describe("workflow contract", () => {
     );
   });
 
-  it("runs the agent-pair constraint suite against a real postgres service", () => {
+  it("runs every DB postgres suite against a real postgres service", () => {
     const block = yaml.split("\n  db-postgres:")[1]?.split("\n  runtime-jar:")[0] ?? "";
     assert.match(block, /image: postgres:16/);
     assert.match(block, /VERIFY_DATABASE: "1"/);
     assert.match(block, /pnpm --filter @rakazo\/db exec prisma migrate deploy/);
-    assert.match(block, /agent-pairs\.postgres\.test\.ts/);
+    assert.match(block, /packages\/db\/src\/\*\.postgres\.test\.ts/);
+    assert.match(block, /--no-file-parallelism/);
     assert.match(yaml, /RESULT_DB_POSTGRES: \$\{\{\s*needs\.db-postgres\.result\s*\}\}/);
   });
 });

@@ -164,7 +164,10 @@ jobs:
       - uses: ./.github/actions/setup-pnpm
       - run: pnpm --filter @rakazo/db generate
       - run: pnpm --filter @rakazo/db exec prisma migrate deploy
-      - run: pnpm exec vitest run packages/db/src/agent-pairs.postgres.test.ts
+      # The selector deliberately maps every packages/db source change here.
+      # Keep the verification equally broad so an unrelated DB regression
+      # cannot pass by exercising only the agent-pair constraint suite.
+      - run: pnpm exec vitest run --no-file-parallelism packages/db/src/*.postgres.test.ts
 
   runtime-jar:
     name: runtime-jar
