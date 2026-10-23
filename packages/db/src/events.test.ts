@@ -2755,7 +2755,10 @@ describe("clearThread", () => {
           type: "thread.cleared",
         }),
       },
-      chatGroup: { update: vi.fn() },
+      chatGroup: {
+        update: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue({ id: "group-1" }),
+      },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),

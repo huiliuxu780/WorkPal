@@ -12,6 +12,7 @@ const RESULT_ENV = {
   docs: "RESULT_DOCS",
   web: "RESULT_WEB",
   backend: "RESULT_BACKEND",
+  "db-postgres": "RESULT_DB_POSTGRES",
   "runtime-jar": "RESULT_RUNTIME_JAR",
   agentscope: "RESULT_AGENTSCOPE",
   "worker-chain": "RESULT_WORKER_CHAIN",

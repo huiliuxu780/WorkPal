@@ -155,6 +155,24 @@ describe("classifyPath", () => {
     }
   });
 
+  it("selects the real-postgres constraint job for database and migration changes", () => {
+    for (const file of [
+      "packages/db/src/groups.ts",
+      "packages/db/src/agent-pairs.ts",
+      "packages/db/src/agent-pairs.postgres.test.ts",
+      "packages/db/src/postgres-test-database.ts",
+      "packages/db/src/cancel-runs.ts",
+    ]) {
+      assert.ok(classifyPath(file).jobs.includes("db-postgres"), file);
+    }
+    assert.ok(classifyPath("packages/db/prisma/schema.prisma").jobs.includes("db-postgres"));
+    assert.ok(
+      classifyPath("packages/db/prisma/migrations/20261022000000_agent_pair_chat_groups/migration.sql")
+        .jobs.includes("db-postgres"),
+    );
+    assert.equal(classifyPath("docs/privacy.md").jobs.includes("db-postgres"), false);
+  });
+
   it("maps TS adapters to backend + agentscope, not worker-chain", () => {
     const result = classifyPath("packages/adapters/src/executor.ts");
     assert.ok(result.jobs.includes("backend"));
@@ -404,6 +422,15 @@ describe("workflow contract", () => {
       yaml,
       /push: \$\{\{\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\s*\}\}/,
     );
+  });
+
+  it("runs the agent-pair constraint suite against a real postgres service", () => {
+    const block = yaml.split("\n  db-postgres:")[1]?.split("\n  runtime-jar:")[0] ?? "";
+    assert.match(block, /image: postgres:16/);
+    assert.match(block, /VERIFY_DATABASE: "1"/);
+    assert.match(block, /pnpm --filter @rakazo\/db exec prisma migrate deploy/);
+    assert.match(block, /agent-pairs\.postgres\.test\.ts/);
+    assert.match(yaml, /RESULT_DB_POSTGRES: \$\{\{\s*needs\.db-postgres\.result\s*\}\}/);
   });
 });
 

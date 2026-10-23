@@ -32,6 +32,7 @@ jobs:
       docs: ${{ steps.select.outputs.docs }}
       web: ${{ steps.select.outputs.web }}
       backend: ${{ steps.select.outputs.backend }}
+      db_postgres: ${{ steps.select.outputs.db_postgres }}
       runtime_jar: ${{ steps.select.outputs.runtime_jar }}
       agentscope: ${{ steps.select.outputs.agentscope }}
       worker_chain: ${{ steps.select.outputs.worker_chain }}
@@ -135,6 +136,35 @@ jobs:
       - run: pnpm --filter @rakazo/testkit check
       - run: pnpm --filter @rakazo/worker test
       - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts packages/adapters/src/scenario-contract.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
+
+  db-postgres:
+    name: db-postgres
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.db_postgres == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: workpal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d workpal_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/workpal_test
+      VERIFY_DATABASE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm --filter @rakazo/db exec prisma migrate deploy
+      - run: pnpm exec vitest run packages/db/src/agent-pairs.postgres.test.ts
 
   runtime-jar:
     name: runtime-jar
@@ -247,6 +277,7 @@ jobs:
       - docs
       - web
       - backend
+      - db-postgres
       - runtime-jar
       - agentscope
       - worker-chain
@@ -264,6 +295,7 @@ jobs:
           RESULT_DOCS: ${{ needs.docs.result }}
           RESULT_WEB: ${{ needs.web.result }}
           RESULT_BACKEND: ${{ needs.backend.result }}
+          RESULT_DB_POSTGRES: ${{ needs.db-postgres.result }}
           RESULT_RUNTIME_JAR: ${{ needs.runtime-jar.result }}
           RESULT_AGENTSCOPE: ${{ needs.agentscope.result }}
           RESULT_WORKER_CHAIN: ${{ needs.worker-chain.result }}

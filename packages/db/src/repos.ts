@@ -17,6 +17,7 @@ import {
   resolveAvatarIdentity,
 } from "@rakazo/contracts";
 import { userVisibleMessages } from "@rakazo/core";
+import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import type { PrismaClient } from "./client.js";
 import { Prisma } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
@@ -221,6 +222,7 @@ export function createRepos(prisma: PrismaClient) {
                 spaceId: actor.spaceId,
                 userId: actor.userId,
                 archivedAt: null,
+                kind: CHAT_GROUP_KIND_STANDARD,
               },
               select: { id: true },
             });
