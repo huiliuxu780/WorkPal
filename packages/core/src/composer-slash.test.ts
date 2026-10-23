@@ -15,16 +15,18 @@ describe("serializeComposerPrompt", () => {
     expect(serializeComposerPrompt("", { name: "Daily standup" }, [])).toBe("/Daily standup");
   });
 
-  it("combines skill, mentions, and draft", () => {
+  it("keeps inline mentions in place after a skill", () => {
     expect(
-      serializeComposerPrompt("check blockers", { name: "Daily standup" }, [
+      serializeComposerPrompt("@Research Writer check blockers", { name: "Daily standup" }, [
         { name: "Research Writer" },
       ]),
     ).toBe("/Daily standup\n@Research Writer check blockers");
   });
 
-  it("prefixes mentions without a skill", () => {
-    expect(serializeComposerPrompt("go", null, [{ name: "everyone" }])).toBe("@everyone go");
+  it("does not move mentions ahead of the draft", () => {
+    expect(serializeComposerPrompt("do X, @Beta do Y", null, [{ name: "Beta" }])).toBe(
+      "do X, @Beta do Y",
+    );
   });
 });
 

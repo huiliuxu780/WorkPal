@@ -298,7 +298,7 @@ describe("resolveComposerSendPlan mention spans", () => {
     expect(plan.mentionSpans).toEqual([{ botId: "b1", start: 10, end: 16 }]);
   });
 
-  it("never infers a span from bare @name text", () => {
+  it("only creates spans for identities selected by the composer", () => {
     expect(
       resolveComposerSendPlan({
         text: "@Alpha check",
@@ -312,7 +312,7 @@ describe("resolveComposerSendPlan mention spans", () => {
         mentions: [{ kind: "bot", id: "b1", name: "Alpha" }],
         hasAttachments: false,
       }).mentionSpans,
-    ).toEqual([]);
+    ).toEqual([{ botId: "b1", start: 6, end: 12 }]);
     expect(
       resolveComposerSendPlan({
         text: "@Alpha check",
@@ -320,5 +320,20 @@ describe("resolveComposerSendPlan mention spans", () => {
         hasAttachments: false,
       }).mentionSpans,
     ).toEqual([]);
+  });
+
+  it("preserves interleaved Bot mention positions for segmented instructions", () => {
+    const plan = resolveComposerSendPlan({
+      text: "@Alpha do X, @Beta do Y",
+      mentions: [
+        { kind: "bot", id: "b1", name: "Alpha" },
+        { kind: "bot", id: "b2", name: "Beta" },
+      ],
+      hasAttachments: false,
+    });
+    expect(plan.mentionSpans).toEqual([
+      { botId: "b1", start: 0, end: 6 },
+      { botId: "b2", start: 13, end: 18 },
+    ]);
   });
 });

@@ -6,17 +6,15 @@ export const SLASH_ACTIONS = [
 
 export type SlashActionId = (typeof SLASH_ACTIONS)[number]["id"];
 
-/** Serialize composer chips + draft into the prompt text sent to the agent. */
+/** Serialize the visible draft into the prompt text sent to the agent. */
 export function serializeComposerPrompt(
   draft: string,
   skill: { name: string } | null,
-  mentions: Array<{ name: string }>,
+  _mentions: Array<{ name: string }>,
 ): string {
   const body = draft.replace(/^\s+/, "");
-  const mentionPrefix = mentions.map((member) => `@${member.name}`).join(" ");
-  const afterSkill = [mentionPrefix, body].filter((part) => part.trim().length > 0).join(" ");
-  if (!skill) return afterSkill.trimEnd();
-  return afterSkill.trim().length > 0 ? `/${skill.name}\n${afterSkill}` : `/${skill.name}`;
+  if (!skill) return body.trimEnd();
+  return body.trim().length > 0 ? `/${skill.name}\n${body}` : `/${skill.name}`;
 }
 
 export function truncateSlashDescription(value: string, max = 72): string {
@@ -30,32 +28,34 @@ export type ComposerMentionSpan = { botId: string; start: number; end: number };
 type ComposerMentionToken = { kind: string; id: string; name: string };
 
 /**
- * Locate typed mention chips in the prompt that was actually sent. Chips are
- * serialized as a leading `@name` prefix (after an optional skill line), so
- * this walks that prefix in order and fails closed when anything drifted —
- * bare `@name` text elsewhere is never treated as mention identity.
+ * Locate mention tokens that the composer associated with typed identities.
+ * Tokens stay in the visible draft, so their positions preserve segmented
+ * instructions such as `@Alpha do X, @Beta do Y`.
  */
 export function composerMentionSpans(
   text: string,
   mentions: readonly ComposerMentionToken[],
 ): ComposerMentionSpan[] {
-  let cursor = 0;
-  if (text.startsWith("/")) {
-    const newline = text.indexOf("\n");
-    if (newline >= 0) cursor = newline + 1;
-  }
   const spans: ComposerMentionSpan[] = [];
+  const claimedStarts = new Set<number>();
   for (const mention of mentions) {
     if (mention.kind === "group" || mention.kind === "routine" || mention.kind === "connector") {
       continue;
     }
     const token = `@${mention.name}`;
-    if (!text.startsWith(token, cursor)) return [];
-    const start = cursor;
+    let start = text.indexOf(token);
+    while (start >= 0) {
+      const before = text[start - 1];
+      const after = text[start + token.length];
+      const boundaryBefore = before === undefined || !/[\p{L}\p{N}_-]/u.test(before);
+      const boundaryAfter = after === undefined || !/[\p{L}\p{N}_-]/u.test(after);
+      if (boundaryBefore && boundaryAfter && !claimedStarts.has(start)) break;
+      start = text.indexOf(token, start + 1);
+    }
+    if (start < 0) continue;
+    claimedStarts.add(start);
     const end = start + token.length;
-    if (text[end] !== undefined && text[end] !== " ") return [];
     if (mention.kind === "bot") spans.push({ botId: mention.id, start, end });
-    cursor = text[end] === " " ? end + 1 : end;
   }
-  return spans;
+  return spans.sort((left, right) => left.start - right.start);
 }

@@ -50,6 +50,7 @@ import {
   isRunTerminalEvent,
   isToolActivityBlock,
   mentionChipKey,
+  mentionStillInPrompt,
   mergeExecutionsByRun,
   nestRosterByParent,
   plainTextFromMarkdown,
@@ -63,6 +64,7 @@ import {
   searchHitThreadTarget,
   serializeComposerPrompt,
   speechFromBlocks,
+  stripMentionToken,
   truncateSlashDescription,
   userVisibleMessages,
   withLiveStreamingProgress,
@@ -5629,6 +5631,9 @@ const Composer = memo(function Composer({
 
   function updateDraft(value: string) {
     setDraft(value);
+    setSelectedMentions((current) =>
+      current.filter((mention) => mentionStillInPrompt(value, mention)),
+    );
     const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
     // `/` only at the start of the draft so forced skills expand (`Use skill:` / `/Name` prefix).
@@ -5643,7 +5648,7 @@ const Composer = memo(function Composer({
   }
 
   function insertMention(mention: ComposerMention) {
-    setDraft((current) => current.replace(/@([\w-]*)$/, ""));
+    setDraft((current) => current.replace(/@([\w-]*)$/, `@${mention.name} `));
     setMentionQuery(null);
     setMentionHighlightIndex(0);
     setSelectedMentions((current) =>
@@ -5668,7 +5673,9 @@ const Composer = memo(function Composer({
 
   function removeLastChip() {
     if (selectedMentions.length > 0) {
+      const last = selectedMentions[selectedMentions.length - 1];
       setSelectedMentions((current) => current.slice(0, -1));
+      if (last) setDraft((current) => stripMentionToken(current, last.name));
       return;
     }
     if (selectedSkill) setSelectedSkill(null);
@@ -6082,13 +6089,14 @@ const Composer = memo(function Composer({
               <button
                 type="button"
                 aria-label={t`Remove mention ${mention.name}`}
-                onClick={() =>
+                onClick={() => {
                   setSelectedMentions((current) =>
                     current.filter(
                       (selected) => mentionChipKey(selected) !== mentionChipKey(mention),
                     ),
-                  )
-                }
+                  );
+                  setDraft((current) => stripMentionToken(current, mention.name));
+                }}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X size={12} strokeWidth={2} />
