@@ -1841,7 +1841,52 @@ export async function stopThreadRuns(
       executionLeaseExpiresAt: null,
     },
   });
-  return { cancelledRunIds: runIds };
+  // RT-05: delegated runs execute in hidden pair Threads, and the source run
+  // may already be completed when the user hits Stop — the active set inside
+  // the transaction above cannot see the delegation. Route Stop through the
+  // persisted origin, one per-run transaction per delegated run (the same
+  // shape as the descendant cascade) so pair-Thread locks are never taken
+  // while this request holds the visible Thread.
+  const delegatedRuns = await deps.prisma.run.findMany({
+    where: {
+      originThreadId: target.threadId,
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      threadId: { not: target.threadId },
+      status: { in: [...ACTIVE_RUN_STATUSES] },
+    },
+    select: { id: true, threadId: true },
+    orderBy: { threadId: "asc" },
+  });
+  const delegatedCancelled: string[] = [];
+  for (const delegated of delegatedRuns) {
+    const cancelled = await deps.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM threads WHERE id = ${delegated.threadId} FOR UPDATE`;
+      const run = await tx.run.findUnique({
+        where: { id: delegated.id },
+        select: { id: true, taskId: true, status: true, threadId: true, spaceId: true, botId: true },
+      });
+      if (!run || !(ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) return null;
+      const settled = await cancelRunsInTransaction(tx, [run], new Date());
+      if (settled.length === 0) return null;
+      await tx.run.update({
+        where: { id: run.id },
+        data: { error: "parent_cancelled" },
+      });
+      await expireComputerExecutionLeases(tx, { runId: run.id });
+      await appendEventInTransaction(tx, {
+        spaceId: run.spaceId,
+        threadId: run.threadId,
+        botId: run.botId,
+        runId: run.id,
+        type: "run.cancelled",
+        payload: { reason: "parent_cancelled" },
+      });
+      return run.id;
+    });
+    if (cancelled) delegatedCancelled.push(cancelled);
+  }
+  return { cancelledRunIds: [...runIds, ...delegatedCancelled] };
 }
 
 export async function setThreadUnreadState(
