@@ -7208,20 +7208,34 @@ export function createRunExecutor(deps: ExecutorDeps) {
       } finally {
         detachShutdown?.();
         clearInterval(heartbeat);
-        // RT-26: a suspended or uncertain attempt releases its chat admission
-        // only after the Runtime proved the shared slot clean/detached and that
-        // proof was acknowledged. Otherwise the RT-25 owner stays recovering.
+        // RT-26: a suspended attempt releases its chat admission only after
+        // the Runtime proved the shared slot clean/detached and that proof was
+        // acknowledged. Only a Run parked on a card may hand the slot back
+        // through its own checkpoint: a Run that ENDED unconfirmed (budget
+        // abort, stream failure) keeps the RT-25 recovering park, because its
+        // Worker-side abort chain may still be settling and the delivery that
+        // follows must queue behind the admission instead of entering a
+        // half-persisted session. A later claim of the same owner may still
+        // release it through the recovery hook with a fresh proof.
         if (admission && !sessionMayRelease && !sessionSettled) {
-          const settled = settleSuspendedSession
-            ? await settleSuspendedSession().catch(() => false)
-            : false;
+          const ended = await deps.prisma.run
+            .findUnique({ where: { id: runId }, select: { status: true } })
+            .catch(() => null);
+          const parkedOnCard =
+            ended?.status === "waiting_input" || ended?.status === "waiting_takeover";
+          const settled =
+            parkedOnCard && settleSuspendedSession
+              ? await settleSuspendedSession().catch(() => false)
+              : false;
           if (!settled && !sessionSettled) {
             await markSessionAdmissionRecovering(
               deps.prisma,
               admission,
-              settleSuspendedSession
-                ? "checkpoint_detach_unconfirmed"
-                : "checkpoint_detach_unavailable",
+              parkedOnCard
+                ? settleSuspendedSession
+                  ? "checkpoint_detach_unconfirmed"
+                  : "checkpoint_detach_unavailable"
+                : "agentscope_runtime_outcome_unconfirmed",
             ).catch(() => undefined);
           }
         }
