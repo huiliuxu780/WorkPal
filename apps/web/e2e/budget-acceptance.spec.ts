@@ -489,6 +489,12 @@ test("routine budget breach fails the Run and queues one delivery behind recover
         { timeout: 20_000 },
       )
       .not.toBeNull();
+    // The fixture call is held open so the enforce below aborts an in-flight
+    // model stream, exactly like the Worker sweep. The abort races the model
+    // request itself, so wait for the hold to engage before rewinding the
+    // attempt clock; otherwise the request may never be sent and the fixture
+    // step can never be consumed.
+    await expect.poll(() => releaseRoutineHold, { timeout: 30_000 }).not.toBeUndefined();
     const fixtureRun = await db.prisma.run.findUniqueOrThrow({ where: { id: runId } });
     expect(fixtureRun.trigger).toBe("routine");
     const userMessagesBefore = await db.prisma.message.count({
