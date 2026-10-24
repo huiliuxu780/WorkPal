@@ -5028,6 +5028,17 @@ export const Transcript = memo(function Transcript({
     () => (inGroupTranscript ? projectPublicDelegations(messages) : null),
     [inGroupTranscript, messages],
   );
+  // Rows merged under a PublicDelegationMessage render their execution anchors
+  // there; an orphan hidden row (a wake with no rendered group) keeps its
+  // anchors at its own transcript position instead.
+  const mergedAnchorMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!publicDelegations) return ids;
+    for (const group of publicDelegations.groupsByFirstMessageId.values()) {
+      for (const messageId of group.messageIds) ids.add(messageId);
+    }
+    return ids;
+  }, [publicDelegations]);
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -5323,6 +5334,7 @@ export const Transcript = memo(function Transcript({
             );
           }
           if (publicDelegations?.hiddenMessageIds.has(message.id)) {
+            if (mergedAnchorMemberIds.has(message.id)) return null;
             return (
               <Fragment key={message.id}>
                 {renderExecutions(`before:${message.id}`)}

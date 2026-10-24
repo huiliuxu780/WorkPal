@@ -112,6 +112,21 @@ describe("public delegation projection", () => {
     expect([...projection.hiddenMessageIds]).toEqual(["in-1"]);
   });
 
+  it("keeps an orphan wake hidden without claiming it for any merge group", () => {
+    // A wake with no preceding outbound (e.g. a resumed turn) is hidden from
+    // the transcript but belongs to no rendered group, so its execution
+    // anchors must render at its own position — the Shell guard that skips
+    // merged-member rows must never drop an orphan like this.
+    const messages = [
+      inbound({ id: "in-orphan", outboundId: "out-missing", targetRunId: "target-orphan" }),
+    ];
+    const projection = projectPublicDelegations(messages);
+    expect([...projection.hiddenMessageIds]).toEqual(["in-orphan"]);
+    for (const group of projection.groupsByFirstMessageId.values()) {
+      expect(group.messageIds).not.toContain("in-orphan");
+    }
+  });
+
   it("merges adjacent same-source deliveries while keeping every target Run separate", () => {
     const messages = [
       outbound({
