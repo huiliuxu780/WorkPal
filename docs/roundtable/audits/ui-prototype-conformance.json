@@ -139,10 +139,11 @@
         "RT-24 输出「Agent 拒绝、阶段进展、结论冲突和部分失败消息规范」（roundtable-implementation-plan.md:675）"
       ],
       "whyConflict": "两个高优先级来源真实冲突：任务规则（本审计任务书）禁止聊天消息出现这些术语，而原型渲染（权威来源 #2）包含它们。按任务规则不得自行选边。",
-      "correctBehavior": "待裁决 D1：方案 A：修改原型/DESIGN 把术语禁令扩展到聊天区，并同步改写上述 6 处文案（需要单独的原型修订 PR，本审计 PR 不改原型）；方案 B：维持原型逐字文案作为唯一权威，任务规则让步。裁决前 RT-24 等文案类任务不得新增含这些术语的文案。",
-      "remediationOwner": "用户裁决（D1）；FIX-APPROVE-E 为文案承载方，RT-24 按裁决执行",
+      "correctBehavior": "D1 已裁决（A）：修改原型/DESIGN 把术语禁令扩展到聊天区，并同步改写上述 6 处文案；裁决前 RT-24 等文案类任务不得新增含这些术语的文案。",
+      "resolution": "D1=A（2026-10-24 用户裁决）：维持禁令并扩展到聊天区。原型 6 处文案已改写为用户语言，DESIGN.md 术语禁令扩展至聊天区（stacked PR codex/rt-d1-prototype-copy-revision）；RT-24 按修订后原型实现。",
+      "remediationOwner": "D1=A 已裁决：原型修订 PR 改写 6 处文案并扩展 DESIGN 禁令；FIX-APPROVE-E 为文案承载方，RT-24 按修订后原型实现",
       "remediationTask": "FIX-APPROVE-E",
-      "blocksDevelopment": true,
+      "blocksDevelopment": false,
       "decisionId": "D1"
     },
     {
@@ -154,7 +155,7 @@
       "prototypeEvidence": "prototype:main-stage-1 —— 侧边栏「后台任务」入口带计数徽标 6；DESIGN.md L20「侧边栏『后台任务』继续是跨会话的全局任务中心」；PRD §9.3「侧边栏全局任务中心展示跨会话工作」。",
       "locations": ["roundtable-implementation-plan.md §4（31 个任务均未覆盖该 surface）"],
       "whyConflict": "原型要求存在、PRD 有产品语义，但实施计划遗漏；RT-30 全链验收时该 surface 无归属。",
-      "correctBehavior": "新增修复任务 FIX-SIDEBAR-G：侧边栏「后台任务」入口（是否显示计数需与 DESIGN L14「工作入口不显示数量」的适用范围一并列裁决 D2），读取与群内「工作」相同的 Task/Run/BackgroundAgentTask 投影。",
+      "correctBehavior": "新增修复任务 FIX-SIDEBAR-G：侧边栏「后台任务」入口（是否显示计数需与 DESIGN L14「工作入口不显示数量」的适用范围按 D2=B 保留单一口径徽标），读取与群内「工作」相同的 Task/Run/BackgroundAgentTask 投影。",
       "remediationOwner": "FIX-SIDEBAR-G（新任务）",
       "remediationTask": "FIX-SIDEBAR-G",
       "blocksDevelopment": false,
@@ -271,7 +272,8 @@
         "A：扩展禁令到聊天区——先出独立原型修订 PR 改写 6 处文案，RT-24 按新文案实现",
         "B：维持原型逐字文案为权威——RT-24 照抄，任务规则让步"
       ],
-      "status": "open",
+      "status": "resolved",
+      "resolution": "A（2026-10-24 用户裁决）：扩展禁令到聊天区。原型 6 处文案已改写，DESIGN.md 新增聊天区文案边界条款（stacked PR codex/rt-d1-prototype-copy-revision）。",
       "blocks": ["CF-04", "RT-24 文案规范"]
     },
     {
@@ -279,7 +281,8 @@
       "title": "侧边栏「后台任务」入口是否显示计数徽标",
       "context": "CF-05：原型侧边栏显示徽标 6；DESIGN.md L14 的「不显示数量」只写明适用于右栏工作入口与页签，理由是 Task/Agent/Run 计数口径不同。侧边栏全局中心是否同样适用需裁决。",
       "options": ["A：同样不显示数量（与 L14 理由一致）", "B：显示后台任务计数（按原型现状）"],
-      "status": "open",
+      "status": "resolved",
+      "resolution": "B（2026-10-24 用户裁决）：保留徽标。口径定义为「运行中的后台任务数」——单一口径的客观计数（PRD O07「后台仍有 N 项」先例），不属于 DESIGN L14 针对混合口径工作入口的禁令范围。",
       "blocks": ["CF-05", "FIX-SIDEBAR-G"]
     }
   ],
@@ -288,7 +291,7 @@
       "taskId": "FIX-MSG-A",
       "title": "群消息与公开委派：重做 RT-08 公开委派渲染并剥离私有回执路径",
       "surface": "group-chat / chat-message / receipt",
-      "dependsOn": ["RT-06（已合入）", "RT-07（已合入）", "D1 裁决（仅失败文案部分）"],
+      "dependsOn": ["RT-06（已合入）", "RT-07（已合入）", "D1 已裁决（A）"],
       "files": [
         "apps/web/src/components/ai/PublicDelegationMessage.tsx",
         "apps/web/src/lib/public-collaboration.ts",
@@ -400,7 +403,7 @@
       "taskId": "FIX-APPROVE-E",
       "title": "审批、失败和恢复投影：RT-12/RT-24/RT-28 UI 面与存量文案修复",
       "surface": "approval-card / chat-message / activity-capsule / execution-card",
-      "dependsOn": ["RT-12（依赖 RT-11）", "RT-24（合流任务）", "RT-28", "D1 裁决"],
+      "dependsOn": ["RT-12（依赖 RT-11）", "RT-24（合流任务）", "RT-28", "D1 已裁决（A）"],
       "files": [
         "packages/adapters/src/agentscope-runtime.ts:909（错误文案）",
         "apps/web/src/components/ai/ExecutionCard.tsx（错误展示）",
@@ -446,12 +449,12 @@
       "taskId": "FIX-SIDEBAR-G",
       "title": "侧边栏「后台任务」全局任务中心（新 surface，含 D2 裁决）",
       "surface": "sidebar",
-      "dependsOn": ["D2 裁决", "RT-20"],
+      "dependsOn": ["D2 已裁决（B）", "RT-20"],
       "files": ["apps/web/src/pages/Shell.tsx（侧边栏入口）"],
       "prototypeRefs": ["prototype:main-stage-1", "DESIGN.md:L20", "PRD §9.3"],
       "acceptance": [
         "侧边栏「后台任务」入口展示跨会话工作，与群内「工作」读取同一投影（不复制状态）",
-        "计数徽标按 D2 裁决处理"
+        "计数徽标按 D2=B：单一口径后台任务数（运行中的后台任务）"
       ],
       "screenshotRequirements": ["与 prototype:main-stage-1 侧边栏对比截图"]
     }

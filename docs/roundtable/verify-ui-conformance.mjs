@@ -367,7 +367,10 @@ export function verifyUiConformance(audit, plan, evidenceRoot, fileExists = exis
       { present: /禁止成为产品文案或 UI 状态标签/ },
       { present: /只允许 RT-20 `GroupWorkState`/ },
     ]);
-    requireChanged("RT-24", [{ present: /裁决 D1/ }, { present: /不得引入这些实现术语/ }]);
+    requireChanged("RT-24", [
+      { present: /D1 裁决（A，2026-10-24）/ },
+      { present: /原型已按裁决修订/ },
+    ]);
     requireChanged("RT-20", [{ present: /只允许 `GroupWorkState`/ }]);
     requireChanged("RT-09", [{ present: /不新增侧边栏会话入口/ }]);
     requireChanged("RT-22", [
