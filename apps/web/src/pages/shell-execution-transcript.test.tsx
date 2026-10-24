@@ -62,7 +62,9 @@ vi.mock("@lingui/react/macro", async () => {
 // execution assembly, not rich text.
 vi.mock("@rakazo/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  LinkifiedText: ({ text }: { text: string }) => <span>{text}</span>,
+  LinkifiedText: ({ children, text }: { children?: ReactNode; text?: string }) => (
+    <span>{children ?? text}</span>
+  ),
 }));
 vi.mock("../lib/rpc", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/rpc")>();
@@ -1349,5 +1351,113 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     });
     expect(host.querySelector('[data-testid="execution-detail-error"]')).toBeNull();
     expect(host.textContent).toContain("FRESH-STEP");
+  });
+});
+
+describe("public group delegation transcript", () => {
+  const publicOutbound: ThreadMessage = {
+    id: "public-out",
+    threadId: THREAD,
+    seq: 11,
+    role: "bot",
+    botId: "bot-sender",
+    runId: "source-run",
+    blocks: [
+      {
+        kind: "bot_message_sent",
+        toBotId: "bot-target",
+        toBotName: "Target old name",
+        text: "Review the public delegation layout.",
+        intent: "request",
+      },
+    ],
+    createdAt: ISO,
+  };
+  const publicWake: ThreadMessage = {
+    id: "public-in",
+    threadId: THREAD,
+    seq: 12,
+    role: "user",
+    runId: "target-run",
+    blocks: [
+      {
+        kind: "bot_message_received",
+        fromBotId: "bot-sender",
+        fromBotName: "Sender old name",
+        text: "Review the public delegation layout.",
+        intent: "request",
+        returnToMessageId: "public-out",
+      },
+    ],
+    createdAt: ISO,
+  };
+  const groupProps: Partial<ComponentProps<typeof Transcript>> = {
+    artifactTarget: { groupId: "group-1" },
+    messages: [publicOutbound, publicWake],
+    runs: [run("target-run", "queued", { botId: "bot-target", trigger: "bot_message" })],
+    botNameOf: (botId) =>
+      ({ "bot-sender": "Sender current name", "bot-target": "Target current name" })[botId],
+    peerBot: () => ({ color: "#3EC5A8" }),
+  };
+
+  const delegationOf = (host: HTMLElement): HTMLElement => {
+    const element = host.querySelector<HTMLElement>('[data-testid="public-delegation"]');
+    if (!element) throw new Error("public delegation missing");
+    return element;
+  };
+
+  it("renders the natural group message and never opens the private pair view", () => {
+    const openBot = vi.fn();
+    const openPair = vi.fn();
+    const host = renderTranscript({
+      ...groupProps,
+      onOpenBot: openBot,
+      onOpenPeerMessages: openPair,
+    });
+    const delegation = delegationOf(host);
+
+    expect(delegation.textContent).toContain("Sender current name");
+    expect(delegation.textContent).toContain("@Target current name");
+    expect(delegation.textContent).toContain("Review the public delegation layout.");
+    expect(delegation.textContent).toContain("Assigned to Target current name");
+    expect(host.querySelectorAll('[data-testid="peer-receipt-chip"]')).toHaveLength(0);
+    // No per-target execution state in chat.
+    expect(delegation.querySelector("[data-status]")).toBeNull();
+    expect(delegation.textContent).not.toContain("queued");
+    expect(delegation.textContent).not.toContain("running");
+    // The internal wake prompt is not shown as the user's own message.
+    expect(host.querySelectorAll('[data-message-id="public-in"]')).toHaveLength(0);
+
+    const mention = delegation.querySelector<HTMLAnchorElement>('[data-testid="agent-mention"]');
+    act(() => {
+      mention?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(openBot).toHaveBeenCalledWith("bot-target");
+    expect(openPair).not.toHaveBeenCalled();
+  });
+
+  it("shows a target confirmation only after its real Run message arrives", () => {
+    const host = renderTranscript(groupProps);
+
+    expect(host.textContent).not.toContain("TARGET-REAL-CONFIRMATION");
+    rerenderTranscript({
+      ...groupProps,
+      messages: [
+        ...groupProps.messages!,
+        {
+          id: "target-response",
+          threadId: THREAD,
+          seq: 13,
+          role: "bot",
+          botId: "bot-target",
+          runId: "target-run",
+          blocks: [{ kind: "text", text: "TARGET-REAL-CONFIRMATION" }],
+          createdAt: ISO,
+        },
+      ],
+    });
+
+    expect(host.textContent).toContain("TARGET-REAL-CONFIRMATION");
+    expect(host.querySelectorAll('[data-testid="public-delegation"]')).toHaveLength(1);
   });
 });
