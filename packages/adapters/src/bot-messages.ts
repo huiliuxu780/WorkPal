@@ -300,7 +300,12 @@ async function messageBotInAgentPair(
           threadId: run.threadId,
           botId: run.botId,
           userId: run.userId,
-          status: writesToOrigin ? { in: ["completed", "failed"] } : "running",
+          // An origin return is the sanctioned reply path for BOTH the terminal
+          // automatic outcome and a live explicit result/status, so the source
+          // may still be running when it answers through the origin.
+          status: writesToOrigin
+            ? { in: ["completed", "failed", "running"] }
+            : "running",
         },
         select: { id: true, orchestration: true },
       });
@@ -1036,7 +1041,12 @@ export async function messageBot(
             threadId: run.threadId,
             botId: run.botId,
             userId: run.userId,
-            status: options?.allowTerminalSource ? { in: ["completed", "failed"] } : "running",
+            // allowTerminalSource covers the sanctioned reply paths: the
+            // terminal automatic outcome and a live explicit result/status,
+            // so a still-running source may answer its requester.
+            status: options?.allowTerminalSource
+              ? { in: ["completed", "failed", "running"] }
+              : "running",
           },
           select: { id: true },
         });
@@ -1369,7 +1379,11 @@ async function messageBotInCurrentGroup(
             threadId: run.threadId,
             botId: run.botId,
             userId: run.userId,
-            status: options?.allowTerminalSource ? { in: ["completed", "failed"] } : "running",
+            // Same sanctioned-reply relaxation as the private paths: a live
+            // explicit result/status answers its requester from a running run.
+            status: options?.allowTerminalSource
+              ? { in: ["completed", "failed", "running"] }
+              : "running",
           },
           select: { id: true, orchestration: true },
         }),

@@ -225,6 +225,36 @@ describe("messaging another bot", () => {
     expect(harness.tx.message.create).toHaveBeenCalled();
   });
 
+  it("lets a sanctioned reply answer from a running source", async () => {
+    const harness = deps();
+    const sent = await messageBot(
+      harness.deps,
+      run,
+      sender,
+      { bot_id: "bot-target", message: "collected", intent: "result" },
+      { allowTerminalSource: true },
+    );
+    expect(sent).toMatchObject({ ok: true });
+    const where = harness.tx.run.findFirst.mock.lastCall?.[0]?.where as {
+      status?: unknown;
+    };
+    expect(where.status).toEqual({
+      in: expect.arrayContaining(["completed", "failed", "running"]),
+    });
+
+    // A plain request keeps the running-only source requirement.
+    const request = deps();
+    await messageBot(request.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "do the thing",
+      intent: "request",
+    });
+    const requestWhere = request.tx.run.findFirst.mock.lastCall?.[0]?.where as {
+      status?: unknown;
+    };
+    expect(requestWhere.status).toBe("running");
+  });
+
   it("rejects an oversized message instead of silently truncating it", async () => {
     const harness = deps();
     const sent = await messageBot(harness.deps, run, sender, {
@@ -719,7 +749,9 @@ describe("automatic outcome return", () => {
     });
     expect(harness.tx.run.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ status: { in: ["completed", "failed"] } }),
+        where: expect.objectContaining({
+          status: { in: ["completed", "failed", "running"] },
+        }),
       }),
     );
     expect(harness.enqueue).toHaveBeenCalledOnce();

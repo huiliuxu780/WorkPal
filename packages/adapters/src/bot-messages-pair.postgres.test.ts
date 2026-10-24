@@ -660,6 +660,228 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     ).not.toBeNull();
   });
 
+  it("returns an explicit live result through the persisted origin while the run is running", async () => {
+    const sourceRun = await newSenderRun();
+    const dispatched = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "collect the numbers",
+      deliveryKey: "rt05-live-result",
+    });
+    if (!dispatched.ok) throw new Error("delivery failed");
+    // Live: the delegated Run claimed and is still working when it answers.
+    const pairRun = await prisma.run.update({
+      where: { id: dispatched.targetRunId },
+      data: { status: "running" },
+    });
+
+    const liveRun = {
+      id: pairRun.id,
+      spaceId,
+      threadId: pairRun.threadId,
+      botId: pairRun.botId,
+      userId: id,
+      sourceMessageId: pairRun.sourceMessageId,
+      originThreadId: pairRun.originThreadId,
+      originRunId: pairRun.originRunId,
+      originMessageId: pairRun.originMessageId,
+    };
+    const replied = await messageBot(
+      deps(),
+      liveRun,
+      researcher,
+      {
+        bot_id: sender.id,
+        message: "The numbers are in.",
+        intent: "result",
+        deliveryKey: "rt05-live-result-reply",
+      },
+      { allowTerminalSource: true },
+    );
+    expect(replied).toMatchObject({ ok: true, botId: sender.id });
+    if (!replied.ok) throw new Error("live explicit result failed");
+
+    // The requester is woken in its own visible Thread with the real answer.
+    const wake = await prisma.message.findFirstOrThrow({
+      where: { threadId: sourceThreadId, clientNonce: "bot-message:rt05-live-result-reply" },
+    });
+    expect(wake.role).toBe("user");
+    expect(wake.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        fromBotId: researcher.id,
+        text: "The numbers are in.",
+        intent: "result",
+      }),
+    ]);
+
+    // Idempotent: the same delivery key replays the recorded reply.
+    const replay = await messageBot(
+      deps(),
+      liveRun,
+      researcher,
+      {
+        bot_id: sender.id,
+        message: "The numbers are in.",
+        intent: "result",
+        deliveryKey: "rt05-live-result-reply",
+      },
+      { allowTerminalSource: true },
+    );
+    expect(replay).toMatchObject({ ok: true, replayed: true });
+    expect(
+      await prisma.message.count({
+        where: { threadId: sourceThreadId, clientNonce: "bot-message:rt05-live-result-reply" },
+      }),
+    ).toBe(1);
+  });
+
+  it("suppresses the automatic outcome return after an explicit live result", async () => {
+    const sourceRun = await newSenderRun();
+    const dispatched = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "draft the summary",
+      deliveryKey: "rt05-live-suppress",
+    });
+    if (!dispatched.ok) throw new Error("delivery failed");
+    const pairRun = await prisma.run.update({
+      where: { id: dispatched.targetRunId },
+      data: { status: "running" },
+    });
+    const replied = await messageBot(
+      deps(),
+      {
+        id: pairRun.id,
+        spaceId,
+        threadId: pairRun.threadId,
+        botId: pairRun.botId,
+        userId: id,
+        sourceMessageId: pairRun.sourceMessageId,
+        originThreadId: pairRun.originThreadId,
+        originRunId: pairRun.originRunId,
+        originMessageId: pairRun.originMessageId,
+      },
+      researcher,
+      {
+        bot_id: sender.id,
+        message: "Summary drafted.",
+        intent: "result",
+        deliveryKey: "rt05-live-suppress-reply",
+      },
+      { allowTerminalSource: true },
+    );
+    expect(replied).toMatchObject({ ok: true });
+
+    await prisma.run.update({
+      where: { id: pairRun.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const returned = await returnBotMessageOutcome(
+      {
+        prisma,
+        events: { notify: vi.fn(async () => undefined) },
+        jobs: { enqueue: vi.fn(async () => undefined) },
+      } as unknown as Parameters<typeof returnBotMessageOutcome>[0],
+      {
+        id: pairRun.id,
+        spaceId,
+        threadId: pairRun.threadId,
+        botId: pairRun.botId,
+        userId: id,
+        sourceMessageId: pairRun.sourceMessageId,
+        orchestration: pairRun.orchestration,
+        originThreadId: pairRun.originThreadId,
+        originRunId: pairRun.originRunId,
+        originMessageId: pairRun.originMessageId,
+      },
+      researcher,
+      "The final wrap-up.",
+    );
+    expect(returned).toBe(true);
+    expect(
+      await prisma.message.count({
+        where: { threadId: sourceThreadId, clientNonce: `bot-message:auto-outcome:${pairRun.id}` },
+      }),
+    ).toBe(0);
+  });
+
+  it("keeps the automatic outcome return after an interim live status", async () => {
+    const sourceRun = await newSenderRun();
+    const dispatched = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "start the export",
+      deliveryKey: "rt05-live-status",
+    });
+    if (!dispatched.ok) throw new Error("delivery failed");
+    const pairRun = await prisma.run.update({
+      where: { id: dispatched.targetRunId },
+      data: { status: "running" },
+    });
+    const liveRun = {
+      id: pairRun.id,
+      spaceId,
+      threadId: pairRun.threadId,
+      botId: pairRun.botId,
+      userId: id,
+      sourceMessageId: pairRun.sourceMessageId,
+      originThreadId: pairRun.originThreadId,
+      originRunId: pairRun.originRunId,
+      originMessageId: pairRun.originMessageId,
+    };
+    const status = await messageBot(
+      deps(),
+      liveRun,
+      researcher,
+      {
+        bot_id: sender.id,
+        message: "Export is halfway through.",
+        intent: "status",
+        deliveryKey: "rt05-live-status-reply",
+      },
+      { allowTerminalSource: true },
+    );
+    expect(status).toMatchObject({ ok: true });
+    const statusWake = await prisma.message.findFirstOrThrow({
+      where: { threadId: sourceThreadId, clientNonce: "bot-message:rt05-live-status-reply" },
+    });
+    expect(statusWake.blocks).toEqual([
+      expect.objectContaining({ kind: "bot_message_received", intent: "status" }),
+    ]);
+
+    // An interim status must not suppress the automatic final return.
+    await prisma.run.update({
+      where: { id: pairRun.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const returned = await returnBotMessageOutcome(
+      {
+        prisma,
+        events: { notify: vi.fn(async () => undefined) },
+        jobs: { enqueue: vi.fn(async () => undefined) },
+      } as unknown as Parameters<typeof returnBotMessageOutcome>[0],
+      {
+        id: pairRun.id,
+        spaceId,
+        threadId: pairRun.threadId,
+        botId: pairRun.botId,
+        userId: id,
+        sourceMessageId: pairRun.sourceMessageId,
+        orchestration: pairRun.orchestration,
+        originThreadId: pairRun.originThreadId,
+        originRunId: pairRun.originRunId,
+        originMessageId: pairRun.originMessageId,
+      },
+      researcher,
+      "The export finished.",
+    );
+    expect(returned).toBe(true);
+    const finalWake = await prisma.message.findFirstOrThrow({
+      where: { threadId: sourceThreadId, clientNonce: `bot-message:auto-outcome:${pairRun.id}` },
+    });
+    expect(finalWake.blocks).toEqual([
+      expect.objectContaining({ kind: "bot_message_received", intent: "result" }),
+    ]);
+  });
+
   it("cancels the delegated Run with its origin and never fabricates a reply", async () => {
     const sourceRun = await newSenderRun();
     const dispatched = await send(sourceRun, {

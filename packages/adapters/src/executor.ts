@@ -5035,6 +5035,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "message_bot") {
             let sent: Awaited<ReturnType<typeof messageBot>>;
+            const toolIntent = args.intent as
+              | "request"
+              | "result"
+              | "question"
+              | "status"
+              | "fyi"
+              | undefined;
             try {
               sent = await messageBot(
                 deps,
@@ -5044,15 +5051,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   bot_id: args.bot_id ? String(args.bot_id) : undefined,
                   confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
                   message: redactSecrets(String(args.message ?? ""), runSecrets),
-                  intent: args.intent as
-                    | "request"
-                    | "result"
-                    | "question"
-                    | "status"
-                    | "fyi"
-                    | undefined,
+                  intent: toolIntent,
                   deliveryKey: effectKey,
                 },
+                // An explicit result/status answers the requester through the
+                // persisted origin while this run is still live; the automatic
+                // outcome return stays the terminal-path complement.
+                toolIntent === "result" || toolIntent === "status"
+                  ? { allowTerminalSource: true }
+                  : undefined,
               );
             } catch (error) {
               if (error instanceof RoundtableFeatureDisabledError) {
