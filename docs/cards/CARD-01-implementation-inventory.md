@@ -43,7 +43,7 @@
 - 独立入口：`ChoiceCard`、`AppConnectCard`、`McpApprovalCard`、Computer 内联卡、`SkillDraftCard`、`CloudAgentCard`。
 - 展示路径：图表、图片/文件、`SandboxedHtmlViewer`、`VoiceChatCard`、旧式 KV `card`。
 - 已有去重：`coveredAsks` / `suppressAsk` 避免气泡 ask 与 Intervention region 双卡。
-- plan review 排序在 `InterventionRegion` 与 `execution-card.ts` 不一致，需在抽 Renderer 前统一。
+- plan review 排序在 `InterventionRegion` 与 `execution-card.ts` 不一致；已冻结为 `PlanReviewView → ActionApprovalView → InputRequestView`，同组 `createdAt ASC → stableId ASC`，由 CARD-01B 统一实现。
 - 不存在整卡 40% opacity 的旧实现；失败/过期卡没有重试。
 - `plan_review` 当前在 `execution-status.ts` 与 approval 同轨显示，UI 仍为独立卡片。
 

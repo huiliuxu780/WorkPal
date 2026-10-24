@@ -180,20 +180,38 @@ with sync_playwright() as p:
         a7 = page.evaluate('''() => {
           const cols = [...document.querySelectorAll('.grid > section.col')];
           const c = cols.find(x => (x.querySelector('.top')?.textContent || '').trim().startsWith('A7'));
-          if (!c) return null;
-          return {text: c.innerText, cards: c.querySelectorAll('.k').length, mcp: Boolean(c.querySelector('#a7-mcp-assignment'))};
+          return c ? {text: c.innerText, cards: c.querySelectorAll('.k').length} : null;
         }''')
-        assert a7 and a7['cards'] == 2 and a7['mcp'], (
+        assert a7 and a7['cards'] == 2, (
             'A7 风险卡缺失：必须同时渲染 app authorization 与真实 connect.mcp_assignment 卡。')
         assert 'connect.app_authorization' in a7['text'], (
             'A7 连接授权映射错误：必须使用独立 connect.app_authorization。')
         assert 'requestApproval(connect)' not in a7['text'], (
             'A7 连接授权映射错误：app authorization 不能使用通用 connect 审批。')
-        for phrase in ('connect.mcp_assignment', 'allowAllTools: true', '全部工具', '高风险'):
-            assert phrase in a7['text'], (
-                f'A7 MCP assignment 风险信息缺失：卡片未显示“{phrase}”。')
-        assert '允许全部工具' in a7['text'], (
-            'A7 MCP assignment 操作错误：主操作必须明确允许全部工具。')
+        mcp = page.evaluate('''() => {
+          const card = document.querySelector('#a7-mcp-assignment');
+          if (!card) return null;
+          const warn = card.querySelector('.warn');
+          return {
+            title: card.querySelector('.h b')?.textContent.trim() || '',
+            text: card.innerText,
+            warn: warn ? warn.innerText : '',
+            actions: [...card.querySelectorAll(':scope > .bt > .btn')].map(b => b.textContent.trim()),
+          };
+        }''')
+        assert mcp, 'A7 风险卡缺失：找不到 #a7-mcp-assignment。'
+        assert 'MCP assignment' in mcp['title'] and '全部工具' in mcp['title'], (
+            'A7 MCP assignment 标题未明确“全部工具”风险。')
+        assert 'connect.mcp_assignment' in mcp['text'], (
+            'A7 MCP assignment 卡内缺少 connect.mcp_assignment 类型标识。')
+        assert mcp['warn'], 'A7 MCP assignment 卡内缺少 .warn 风险块。'
+        for phrase in ('allowAllTools: true', '高风险', '全部工具'):
+            assert phrase in mcp['warn'], (
+                f'A7 MCP assignment 卡内风险块未显示“{phrase}”。')
+        assert '允许全部工具' in mcp['actions'], (
+            'A7 MCP assignment 主操作未明确允许全部工具。')
+        assert len(mcp['actions']) <= 2, (
+            f'A7 MCP assignment 操作超过两个按钮：{mcp["actions"]}')
         a8 = page.evaluate('''() => {
           const cols = [...document.querySelectorAll('.grid > section.col')];
           const c = cols.find(x => (x.querySelector('.top')?.textContent || '').trim().startsWith('A8'));

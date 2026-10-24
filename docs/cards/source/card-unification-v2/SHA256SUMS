@@ -7,7 +7,7 @@ fae21f4db479cc2c6656b892840a7021fa9bbad13f2a99a9e7da117962f05bb0  mockup/cards-h
 3e62404e81d0024a0bc6c3db3a9ed2bc090c1fe76240fe72f8ecc155120ac90c  mockup/cards-hifi-v4/2-treble-orange-s.svg
 43facda4ec7a1542498536da5a91ead0d2ce1ab49b01de1f9970cb152422d9e6  mockup/cards-hifi-v4/3-wave-blue-s.svg
 872a0c3c6bd678a9b7d44faf4349a33ef0d877873e0fa82e0174622bcbf881cb  mockup/cards-hifi-v4/4-bounce-purple-s.svg
-356fdc92604d72ee302c4f35fd52feb2dfe4c69488190e61e04d9f055be6ed92  mockup/cards-hifi-v4/STYLE-SPEC.md
+a3bdc7f0b8e5d0ce948702c3b782cfe5698fa77cda964dbe055b64b552e940a4  mockup/cards-hifi-v4/STYLE-SPEC.md
 23285862e2dc2781a87ccecf223cac8969d37e374c34ea6f8c2efa27ec280e3d  mockup/cards-hifi-v4/a-detail.html
 68e8e71f7bd93d25b72e13bcacfda87e8aee18a6584d0f81dab0e15b362a6e63  mockup/cards-hifi-v4/a.py
 a052c9f38f7ac3568689bc3d8203e5051bffee12be08590031dd9d5274efdbfd  mockup/cards-hifi-v4/architecture.py
@@ -35,4 +35,4 @@ bed743caf23038e19500b9f8b316aa08a8ad4cc4b79c41dc50ec6fe1b75c2409  mockup/cards-h
 0fbf22b73fa389c92f9bc9bcf6fe6f2d8f5eb156ba141acc0e45e99ed3cd6e9f  mockup/cards-hifi-v4/shot-mobile-390.png
 3456b0af7b0887e570110699d1392b36ba7fdcd73cad66d94498d0211d781917  mockup/cards-hifi-v4/shot.py
 5c27f20bf3059161dd7f7b626d73ea5e021d14a28e4c828c9f51db12f21b48c7  mockup/cards-hifi-v4/style.css
-31c59463954d5232c5b7bc4cbf8799ada66d1f124b7a2decb14baf720af551d5  mockup/cards-hifi-v4/verify.py
+b341f8e5509ad305f28b66835e93f713af576b942fc5c7fdd0d786f376d3231f  mockup/cards-hifi-v4/verify.py

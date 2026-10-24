@@ -43,11 +43,11 @@
 - 旧 `card`、`connect` 只提供历史只读降级，合并后不得新增生产者；非法或未实现组合必须明确失败或保持禁用。
 - 增加默认关闭的 `cards_unified_v2` gate（`CARDS_UNIFIED_V2_ENABLED=false`），非法值启动失败。gate 关闭时生产行为不变，开启后才允许新投影；capability 由服务端投影，Web 不读环境变量。
 - 定义 attention DTO/投影契约，覆盖三类 pending 来源和排序键；不在本任务实现有界查询/RPC、Web queue 或卡片渲染。
-- 统一 `InterventionRegion` 与 `execution-card.ts` 对 plan review / approval 的排序事实，避免 Web 层各自定义优先级。
+- 在投影中定义固定排序字段/语义：`PlanReviewView → ActionApprovalView → InputRequestView`，同组 `createdAt ASC → stableId ASC`；不在本任务修改 Web，统一排序由 CARD-01B 实现和测试。
 
 ## 允许修改
 
-- `packages/contracts/` 中 Intervention、event、RPC、snapshot、domain 相关契约与测试
+- `packages/contracts/` 中 Intervention、event、snapshot、domain 相关契约与测试；既有交互 RPC 只可调整 Interaction 投影返回形状，不新增 attention 查询
 - `packages/db/` 中 Intervention 投影与旧消息读时合成
 - `apps/api/` 中 thread snapshot、execution snapshot、router 和适配层
 - 新增 feature gate 所需的后端配置与测试
@@ -72,6 +72,7 @@
 - 旧消息回放 fixture 证明已结算 ask 不会重复生成可操作卡；旧 `card`/`connect` 只读且无新生产者。
 - `SessionControlView` 测试覆盖 `waiting_takeover`、`controlRunId` 匹配、控制租约失效和历史 computer block 无权限作用。
 - attention DTO 测试覆盖三类来源（持久 Intervention、有效 `SessionControlView`、strict pending 业务审批）、排序键、去重键和排除普通 Run/历史/旧 connect；有界查询、排序执行、分页和 Web 渲染由 CARD-01D 验证。
+- Interaction 投影包含固定排序字段/语义 `PlanReviewView → ActionApprovalView → InputRequestView`、同组 `createdAt ASC → stableId ASC`；Web 排序实现由 CARD-01B 验证。
 - 扫描证明无答案、密钥、地址、付款正文或 ExternalEffect 请求/结果泄漏。
 - 对照原型 A13 验证 `PlanReviewView(plan_review)` 没有回到 `requestApproval(tool)`。
 
