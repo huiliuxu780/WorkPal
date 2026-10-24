@@ -93,7 +93,9 @@ export async function loadAllMessages(
   return pages.reverse().flat();
 }
 
-async function withoutPeerRunMessages<T extends { runId: string | null; blocks: Prisma.JsonValue }>(
+async function withoutPeerRunMessages<
+  T extends { runId: string | null; threadId: string; blocks: Prisma.JsonValue },
+>(
   prisma: MessageDb,
   rows: T[],
 ): Promise<T[]> {
@@ -101,20 +103,30 @@ async function withoutPeerRunMessages<T extends { runId: string | null; blocks: 
   if (runIds.length === 0) return rows;
   const peerRuns = await prisma.run.findMany({
     where: { id: { in: runIds }, trigger: "bot_message" },
-    select: { id: true },
+    select: { id: true, threadId: true },
   });
   const peerRunIds = new Set(peerRuns.map((run) => run.id));
+  // RT-05F: a delegated run executes in a hidden pair Thread; a computer-only
+  // row from that run living in ANOTHER Thread is a projected takeover card,
+  // so it passes even though computer-only peer messages are otherwise hidden
+  // execution noise. Every other peer row keeps the kind filter below.
+  const executionThreadByRun = new Map(peerRuns.map((run) => [run.id, run.threadId]));
+  const admittedKinds = (block: MessageBlock) =>
+    block.kind === "bot_message_sent" ||
+    block.kind === "bot_message_received" ||
+    block.kind === "ask" ||
+    block.kind === "text";
   return rows.filter((row) => {
     if (!row.runId || !peerRunIds.has(row.runId)) return true;
-    // Keep peer receipts (chips), ask cards, and the bot's own text reply.
     const blocks = row.blocks as MessageBlock[];
-    return blocks.some(
-      (block) =>
-        block.kind === "bot_message_sent" ||
-        block.kind === "bot_message_received" ||
-        block.kind === "ask" ||
-        block.kind === "text",
-    );
+    if (executionThreadByRun.get(row.runId) !== row.threadId) {
+      return (
+        blocks.some(admittedKinds) ||
+        blocks.some((block) => block.kind === "computer")
+      );
+    }
+    // Keep peer receipts (chips), ask cards, and the bot's own text reply.
+    return blocks.some(admittedKinds);
   });
 }
 
@@ -145,6 +157,10 @@ export function shouldForwardPeerThreadEvent(event: {
     event.type === "run.cancelled" ||
     event.type === "run.waiting_input" ||
     event.type === "computer.takeover.requested" ||
+    // RT-05F: a projected takeover's release must reach the origin stream so
+    // the user's chat stops showing the wait after acting.
+    event.type === "computer.takeover.granted" ||
+    event.type === "computer.takeover.released" ||
     // Phase 4: collaboration activity belongs to the delegating turn's live
     // view; dropping it here would make live and refreshed snapshots diverge.
     event.type === "thread.collaboration.requested" ||
@@ -156,6 +172,9 @@ export function shouldForwardPeerThreadEvent(event: {
     return false;
   }
   const blocks = event.payload.blocks;
+  // A computer block on a peer-run message in THIS Thread's stream is a
+  // projected takeover card (RT-05F): execution-pair noise never reaches the
+  // origin's stream, so admitting it here is precisely the projection.
   return (
     Array.isArray(blocks) &&
     blocks.some(
@@ -166,7 +185,8 @@ export function shouldForwardPeerThreadEvent(event: {
         (block.kind === "bot_message_received" ||
           block.kind === "bot_message_sent" ||
           block.kind === "ask" ||
-          block.kind === "text"),
+          block.kind === "text" ||
+          block.kind === "computer"),
     )
   );
 }

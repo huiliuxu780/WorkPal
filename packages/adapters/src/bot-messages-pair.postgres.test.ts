@@ -4,15 +4,19 @@ import {
   CHAT_GROUP_KIND_AGENT_PAIR,
   cancelChildrenOfCancelledRuns,
   cancelRunsInTransaction,
+  computerHomeKey,
+  computerScopeKey,
   createIsolatedPostgresDatabase,
   createManualRetryRun,
   createThreadMessageInTransaction,
   createThreadPolicy,
   expireWaitingRuns,
+  finalizeComputerControlRelease,
   type IsolatedPostgresDatabase,
   ManualRetryDenied,
   type PrismaClient,
   pauseRunForInput,
+  pauseRunForTakeover,
   resolveIntervention,
 } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -1457,6 +1461,207 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     const orchestration = JSON.stringify(resumedA.orchestration);
     expect(orchestration).toContain('"owner"');
     expect(orchestration).not.toContain('"support"');
+  });
+
+  it("routes a proactive cross-chain result to a new pair instead of upstream", async () => {
+    // A→B→C while C is still working on B's REQUEST: C proactively sends a
+    // result to A. C was not resumed by a child outcome, so this is a new
+    // C↔A private delivery — never the nested origin_outcome return.
+    const sourceRun = await newSenderRun();
+    const toB = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "coordinate the export",
+      deliveryKey: "rt05-proactive-ab",
+    });
+    if (!toB.ok) throw new Error("A→B failed");
+    const runB = await prisma.run.update({
+      where: { id: toB.targetRunId },
+      data: { status: "running" },
+    });
+    const toC = await messageBot(
+      deps(),
+      {
+        id: runB.id,
+        spaceId,
+        threadId: runB.threadId,
+        botId: runB.botId,
+        userId: id,
+        sourceMessageId: runB.sourceMessageId,
+        originThreadId: runB.originThreadId,
+        originRunId: runB.originRunId,
+        originMessageId: runB.originMessageId,
+      },
+      researcher,
+      {
+        bot_id: writer.id,
+        message: "collect the numbers",
+        intent: "request",
+        deliveryKey: "rt05-proactive-bc",
+      },
+    );
+    if (!toC.ok || !("targetRunId" in toC)) throw new Error("B→C failed");
+    const runC = await prisma.run.update({
+      where: { id: toC.targetRunId },
+      data: { status: "running" },
+    });
+
+    // C's explicit result addressed at A: an ordinary C↔A pair delivery.
+    const sent = await messageBot(
+      deps(),
+      {
+        id: runC.id,
+        spaceId,
+        threadId: runC.threadId,
+        botId: runC.botId,
+        userId: id,
+        sourceMessageId: runC.sourceMessageId,
+        originThreadId: runC.originThreadId,
+        originRunId: runC.originRunId,
+        originMessageId: runC.originMessageId,
+      },
+      writer,
+      {
+        bot_id: sender.id,
+        message: "Heads up: the numbers look wrong.",
+        intent: "result",
+        deliveryKey: "rt05-proactive-ca",
+      },
+      { allowTerminalSource: true },
+    );
+    expect(sent).toMatchObject({ ok: true, botId: sender.id });
+    if (!sent.ok) throw new Error("C→A proactive delivery failed");
+
+    // The delivery created a dedicated writer ↔ sender pair; A's visible chat
+    // received no wake for this key (no upstream origin_outcome), and the
+    // B↔C execution pair was not reused.
+    const groups = await pairGroups(writer.id, sender.id);
+    expect(groups).toHaveLength(1);
+    const caThreadId = groups[0]!.thread!.id;
+    expect(caThreadId).not.toBe(runC.threadId);
+    const inbound = await prisma.message.findFirstOrThrow({
+      where: { threadId: caThreadId, clientNonce: "bot-message:rt05-proactive-ca" },
+    });
+    expect(inbound.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        fromBotId: writer.id,
+        intent: "result",
+      }),
+    ]);
+    expect(
+      await prisma.message.count({
+        where: { threadId: sourceThreadId, clientNonce: "bot-message:rt05-proactive-ca" },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.message.count({
+        where: { threadId: runC.threadId, clientNonce: "bot-message:rt05-proactive-ca" },
+      }),
+    ).toBe(0);
+  });
+
+  it("projects a delegated takeover request into the visible origin", async () => {
+    // A delegated run's request_takeover must reach A's chat: the waiting
+    // event lands in the persisted visible origin, while the run and the
+    // computer control stay bound to the hidden execution run.
+    const sourceRun = await newSenderRun();
+    const dispatched = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "drive the browser",
+      deliveryKey: "rt05-takeover",
+    });
+    if (!dispatched.ok) throw new Error("delivery failed");
+    const target = await prisma.run.update({
+      where: { id: dispatched.targetRunId },
+      data: {
+        status: "running",
+        leaseOwner: "worker",
+        leaseFence: 1,
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const attempt = await prisma.attempt.create({
+      data: { runId: target.id, fence: 1, status: "running" },
+    });
+    const computer = await prisma.computer.create({
+      data: {
+        spaceId,
+        userId: id,
+        scope: "team",
+        scopeKey: computerScopeKey("team", spaceId),
+        homeKey: computerHomeKey("team", spaceId),
+        kind: "sandbox",
+      },
+    });
+
+    const origin = await interventionOriginForRun(prisma, target);
+    expect(origin.presentationThreadId).toBe(sourceThreadId);
+
+    expect(
+      await pauseRunForTakeover(prisma, {
+        spaceId,
+        threadId: target.threadId,
+        botId: target.botId,
+        runId: target.id,
+        attemptId: attempt.id,
+        leaseOwner: "worker",
+        leaseFence: 1,
+        reason: "Finish the login on the screen",
+        computerId: computer.id,
+        presentationThreadId: origin.presentationThreadId,
+      }),
+    ).toBe(true);
+
+    // The waiting event and its notification target the user-visible chat.
+    const waitingEvent = await prisma.event.findFirstOrThrow({
+      where: { runId: target.id, type: "computer.takeover.requested" },
+    });
+    expect(waitingEvent.threadId).toBe(sourceThreadId);
+    // The run waits in its hidden execution pair; the computer control is
+    // bound to that execution run, not to anything in the visible chat.
+    const waiting = await prisma.run.findUniqueOrThrow({ where: { id: target.id } });
+    expect(waiting.status).toBe("waiting_takeover");
+    expect(waiting.threadId).toBe(target.threadId);
+    const bound = await prisma.computer.findUniqueOrThrow({ where: { id: computer.id } });
+    expect(bound.controlRunId).toBe(target.id);
+
+    // The user takes control (grant), then finishes: the release must be
+    // projected back into the visible chat, or A keeps showing the wait.
+    await prisma.computer.update({
+      where: { id: computer.id },
+      data: {
+        controlHolder: "user",
+        controlBotId: target.botId,
+        controlLeaseId: "lease-takeover",
+        controlLeaseExpiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    expect(
+      await finalizeComputerControlRelease(
+        prisma,
+        {
+          computerId: computer.id,
+          spaceId,
+          botId: target.botId,
+          leaseId: "lease-takeover",
+          runId: target.id,
+          holder: "bot",
+          reason: "done",
+        },
+        undefined,
+      ),
+    ).toMatchObject({ runId: target.id });
+    const releasedInOrigin = await prisma.event.findFirstOrThrow({
+      where: {
+        threadId: sourceThreadId,
+        runId: target.id,
+        type: "computer.takeover.released",
+      },
+    });
+    expect(releasedInOrigin.payload).toMatchObject({ reason: "done", projected: true });
+    expect(
+      (await prisma.run.findUniqueOrThrow({ where: { id: target.id } })).status,
+    ).toBe("queued");
   });
 
   it("cancels the delegated Run with its origin and never fabricates a reply", async () => {
