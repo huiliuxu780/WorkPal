@@ -668,6 +668,22 @@ public final class RuntimeEngine {
                 input = resumeTools(pendingFromPreviousAttempt, request, bridge, sink, seenSteering, true);
             }
             if (input == null) {
+                // RT-26F (PR #126 review P2 ①): a resume whose restored call pauses again
+                // returns before the merge below, so the block never reaches the native state
+                // through a model call. The executor still confirms this attempt's checkpoint,
+                // whose covered watermark marks these Thread messages consumed — without this
+                // persist they would be lost on every later restore. Append the same merged
+                // block to the restored state and save before returning paused. The normal
+                // (non-null) path is untouched and cannot double-append: the merge there goes
+                // into this turn's model input only, and a later restore sees these messages
+                // below the checkpoint watermark, so the backend never resends them.
+                if (loaded != null && request.resumeCheckpoint() != null
+                        && request.threadContextAfterSuspension() != null
+                        && !request.threadContextAfterSuspension().isEmpty()) {
+                    loaded.contextMutable().add(
+                            threadAfterSuspensionContext(request.threadContextAfterSuspension()));
+                    store.save(userSlot, sessionSlot, "agent_state", loaded);
+                }
                 pausedForResume = true;
                 return;
             }
