@@ -1030,6 +1030,70 @@ model AgentSessionAdmissionRequest {
   @@map("agent_session_admission_requests")
 }
 
+/// RT-26: immutable proof that one native AgentScope session slot belonging to
+/// one Run/Attempt was inspected and isolated before the chat admission could
+/// be released. `detached` means the slot's files were atomically moved into
+/// this checkpoint; `clean` means the slot held no pending native call and was
+/// left for the next owner. Only an acknowledged row may release an owner.
+model AgentSessionCheckpoint {
+  id                    String    @id
+  sessionKey            String
+  runId                 String
+  attemptId             String
+  executionId           String
+  admissionFence        Int
+  suspensionKey         String    @unique
+  threadGeneration      Int
+  /// clean | detached
+  proofKind             String
+  /// sha256 of the inspected native state files (sorted path + bytes).
+  digest                String
+  /// [{ id, name, state }] pending native tool calls at detach time.
+  pendingCalls          Json
+  pendingInterventionId String?
+  /// Thread.nextMessageSeq - 1 captured the moment the slot was detached.
+  coveredMessageSeq     Int?
+  /// recorded | superseded | consumed
+  status                String    @default("recorded")
+  detachedAt            DateTime
+  ackedAt               DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  resumes               AgentSessionCheckpointResume[]
+
+  @@unique([runId, attemptId, admissionFence])
+  @@index([runId, status])
+  @@index([sessionKey, detachedAt])
+  @@map("agent_session_checkpoints")
+}
+
+/// RT-26: one restore attempt of a detached checkpoint under a NEW execution
+/// fence and suspension key. decisionKey makes the persisted decision/answer
+/// idempotent; a crash reuses the same row instead of applying it twice.
+model AgentSessionCheckpointResume {
+  id            String                 @id @default(cuid())
+  checkpointId  String
+  checkpoint    AgentSessionCheckpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+  runId         String
+  attemptId     String
+  executionId   String
+  fence         Int
+  suspensionKey String                 @unique
+  decisionKey   String                 @unique
+  decision      Json?
+  answerDigest  String?
+  /// prepared | restored | consumed
+  status        String                 @default("prepared")
+  restoredAt    DateTime?
+  consumedAt    DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@unique([checkpointId, executionId])
+  @@index([runId, status])
+  @@map("agent_session_checkpoint_resumes")
+}
+
 // Deliberately independent of chat/user cascades: the worker must still be able
 // to cancel remote work after its originating chat or account is deleted.
 // A row's presence means the remote DELETE is still pending. Success, including
@@ -1136,6 +1200,11 @@ model Intervention {
   attemptId        String
   botId            String
   messageId        String
+  /// RT-26: the chat admission fence and suspension key of the Attempt that
+  /// created this pending request. A checkpoint may only claim this request
+  /// when all three execution bindings match.
+  executionFence   Int?
+  suspensionKey    String?
   pendingRunKey    String?   @unique
   expiresAt        DateTime?
   resolvedAt       DateTime?

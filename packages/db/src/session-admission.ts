@@ -634,6 +634,192 @@ export async function requeueExpiredSessionAdmissionWaiter(
   });
 }
 
+/** A Runtime proof that may authorize releasing a suspended owner. */
+export interface SessionCheckpointProofRef {
+  kind: "clean" | "detached";
+  checkpointId: string;
+  digest: string;
+}
+
+export type SuspendedReleaseResult =
+  | { kind: "released"; nextRunId: string | null }
+  | { kind: "stale" }
+  | { kind: "unconfirmed" };
+
+async function checkpointProvesCleanOrDetached(
+  tx: Prisma.TransactionClient,
+  input: {
+    sessionKey: string;
+    runId: string;
+    executionId: string;
+    fence: number;
+    suspensionKey?: string;
+    proof: SessionCheckpointProofRef;
+  },
+): Promise<boolean> {
+  const checkpoint = await tx.agentSessionCheckpoint.findUnique({
+    where: { id: input.proof.checkpointId },
+    select: {
+      sessionKey: true,
+      runId: true,
+      executionId: true,
+      admissionFence: true,
+      suspensionKey: true,
+      proofKind: true,
+      digest: true,
+      status: true,
+      ackedAt: true,
+    },
+  });
+  return Boolean(
+    checkpoint &&
+      checkpoint.sessionKey === input.sessionKey &&
+      checkpoint.runId === input.runId &&
+      checkpoint.executionId === input.executionId &&
+      checkpoint.admissionFence === input.fence &&
+      (input.suspensionKey === undefined || checkpoint.suspensionKey === input.suspensionKey) &&
+      checkpoint.proofKind === input.proof.kind &&
+      checkpoint.digest === input.proof.digest &&
+      checkpoint.status === "recorded" &&
+      checkpoint.ackedAt,
+  );
+}
+
+async function releaseOwnedWithProof(
+  tx: Prisma.TransactionClient,
+  lease: SessionAdmissionLease,
+  proof: SessionCheckpointProofRef,
+  reason: string,
+  now: Date,
+): Promise<SuspendedReleaseResult> {
+  const row = await lockAdmission(tx, lease.sessionKey);
+  if (row.state === "available" && row.ownerRunId === lease.runId) {
+    const next = await firstQueuedRequest(tx, lease.sessionKey);
+    return { kind: "released", nextRunId: next?.runId ?? null };
+  }
+  if (
+    row.state !== "owned" ||
+    row.ownerRunId !== lease.runId ||
+    row.ownerExecutionId !== lease.executionId ||
+    row.fence !== lease.admissionFence
+  ) {
+    return { kind: "stale" };
+  }
+  const proven = await checkpointProvesCleanOrDetached(tx, {
+    sessionKey: lease.sessionKey,
+    runId: lease.runId,
+    executionId: lease.executionId,
+    fence: lease.admissionFence,
+    proof,
+  });
+  if (!proven) return { kind: "unconfirmed" };
+  const updated = await tx.$executeRaw`
+    UPDATE "agent_session_admissions"
+    SET "state" = 'available',
+        "expiresAt" = NULL,
+        "lastReleaseReason" = ${reason},
+        "updatedAt" = ${now}
+    WHERE "sessionKey" = ${lease.sessionKey}
+      AND "state" = 'owned'
+      AND "ownerRunId" = ${lease.runId}
+      AND "ownerExecutionId" = ${lease.executionId}
+      AND "fence" = ${lease.admissionFence}
+  `;
+  if (updated !== 1) return { kind: "stale" };
+  await tx.$executeRaw`
+    UPDATE "agent_session_admission_requests"
+    SET "state" = 'released', "updatedAt" = ${now}
+    WHERE "executionId" = ${lease.executionId} AND "state" = 'owned'
+  `;
+  const next = await firstQueuedRequest(tx, lease.sessionKey);
+  return { kind: "released", nextRunId: next?.runId ?? null };
+}
+
+/**
+ * RT-26: the only release path for a Run that suspended inside AgentScope. It
+ * requires the acknowledged checkpoint proof for the exact owner, execution,
+ * and fence. Timeout, DELETE success, or a missing row is never a proof.
+ */
+export async function releaseSuspendedSessionAdmission(
+  prisma: PrismaClient,
+  lease: SessionAdmissionLease,
+  proof: SessionCheckpointProofRef,
+  now = new Date(),
+): Promise<SuspendedReleaseResult> {
+  return prisma.$transaction((tx) =>
+    releaseOwnedWithProof(tx, lease, proof, "suspended_checkpoint", now),
+  );
+}
+
+/**
+ * RT-26 recovery hook for an RT-25 `recovering` owner: a fresh Runtime proof
+ * obtained by the caller is required, so an unreachable Runtime leaves the
+ * owner absorbing/blocked instead of granting the next Run the session.
+ */
+export async function releaseRecoveredSessionAdmission(
+  prisma: PrismaClient,
+  input: {
+    lease: SessionAdmissionLease;
+    attemptId: string;
+    suspensionKey: string;
+    proof: SessionCheckpointProofRef;
+  },
+  now = new Date(),
+): Promise<SuspendedReleaseResult> {
+  return prisma.$transaction(async (tx) => {
+    const lease = input.lease;
+    const row = await lockAdmission(tx, lease.sessionKey);
+    const exactOwner =
+      row.ownerRunId === lease.runId &&
+      row.ownerExecutionId === lease.executionId &&
+      row.fence === lease.admissionFence;
+    if (row.state === "available") {
+      if (exactOwner) {
+        const next = await firstQueuedRequest(tx, lease.sessionKey);
+        return { kind: "released" as const, nextRunId: next?.runId ?? null };
+      }
+      return { kind: "stale" as const };
+    }
+    if (
+      row.state !== "recovering" ||
+      !exactOwner ||
+      row.ownerAttemptId !== input.attemptId ||
+      row.suspensionKey !== input.suspensionKey
+    ) {
+      return { kind: "stale" as const };
+    }
+    const proven = await checkpointProvesCleanOrDetached(tx, {
+      sessionKey: lease.sessionKey,
+      runId: lease.runId,
+      executionId: lease.executionId,
+      fence: lease.admissionFence,
+      suspensionKey: input.suspensionKey,
+      proof: input.proof,
+    });
+    if (!proven) return { kind: "unconfirmed" as const };
+    const updated = await tx.$executeRaw`
+      UPDATE "agent_session_admissions"
+      SET "state" = 'available',
+          "expiresAt" = NULL,
+          "lastReleaseReason" = 'recovered_checkpoint_proof',
+          "updatedAt" = ${now}
+      WHERE "sessionKey" = ${lease.sessionKey}
+        AND "state" = 'recovering'
+        AND "ownerRunId" = ${lease.runId}
+        AND "ownerExecutionId" = ${lease.executionId}
+        AND "fence" = ${lease.admissionFence}
+    `;
+    if (updated !== 1) return { kind: "stale" as const };
+    await tx.$executeRaw`
+      UPDATE "agent_session_admission_requests"
+      SET "state" = 'released', "updatedAt" = ${now}
+      WHERE "executionId" = ${lease.executionId} AND "state" = 'recovering'
+    `;
+    const next = await firstQueuedRequest(tx, lease.sessionKey);
+    return { kind: "released" as const, nextRunId: next?.runId ?? null };
+  });
+}
+
 export async function listAvailableSessionAdmissionHeads(
   prisma: PrismaClient,
   limit = 100,
