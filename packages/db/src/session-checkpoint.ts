@@ -457,7 +457,12 @@ export async function loadThreadContextAfterCheckpoint(
     where: {
       threadId: input.threadId,
       seq: { gt: input.afterSeq },
-      role: { in: ["user", "assistant"] },
+      // RT-26 review (P2): production bot replies persist with role "bot"
+      // (events.ts), so querying only user/assistant dropped the bot side of an
+      // interleaved turn and the resumed Run saw the user side only. "bot" rows
+      // are normalized to "assistant" below for the runtime contract; every
+      // other role stays excluded.
+      role: { in: ["user", "assistant", "bot"] },
       OR: [{ runId: null }, { runId: { not: input.excludeRunId } }],
     },
     orderBy: { seq: "asc" },
@@ -465,10 +470,14 @@ export async function loadThreadContextAfterCheckpoint(
     select: { seq: true, role: true, blocks: true },
   });
   return rows.flatMap((row) => {
-    if (row.role !== "user" && row.role !== "assistant") return [];
+    if (row.role !== "user" && row.role !== "assistant" && row.role !== "bot") return [];
     const content = messageText(row.blocks);
     if (!content) return [];
-    return [{ seq: row.seq, role: row.role as "user" | "assistant", content }];
+    return [{
+      seq: row.seq,
+      role: row.role === "bot" ? "assistant" as const : row.role as "user" | "assistant",
+      content,
+    }];
   });
 }
 

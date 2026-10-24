@@ -802,4 +802,68 @@ describePostgres("RT-26 AgentScope session checkpoint (PostgreSQL)", () => {
       { seq: 4, role: "assistant", content: "another Run's answer" },
     ]);
   });
+
+  it("includes Run B's persisted bot replies in the resumed context as assistant rows", async () => {
+    // RT-26 review (P2): production bot replies persist with role "bot"
+    // (events.ts), not "assistant". While Run A is suspended, Run B turns on
+    // the same Thread; restoring A must carry B's reply into the merge window
+    // — normalized to "assistant" for the runtime contract — while A's own
+    // traffic stays excluded and the PostgreSQL seq order is preserved.
+    const { bot, thread } = await newDirectSession();
+    const runA = await queuedRun(bot.id, thread.id);
+    const runB = await queuedRun(bot.id, thread.id);
+    await prisma.message.createMany({
+      data: [
+        {
+          threadId: thread.id,
+          seq: 1,
+          role: "user",
+          originKind: "user",
+          blocks: [{ kind: "text", text: "question before the pause" }],
+        },
+        {
+          threadId: thread.id,
+          seq: 2,
+          role: "bot",
+          originKind: "bot",
+          botId: bot.id,
+          runId: runB.id,
+          blocks: [{ kind: "text", text: "Run B reply while A was suspended" }],
+        },
+        {
+          threadId: thread.id,
+          seq: 3,
+          role: "user",
+          originKind: "user",
+          blocks: [{ kind: "text", text: "follow-up from the user" }],
+        },
+        {
+          threadId: thread.id,
+          seq: 4,
+          role: "bot",
+          originKind: "bot",
+          botId: bot.id,
+          runId: runA.id,
+          blocks: [{ kind: "text", text: "Run A's own pause card" }],
+        },
+        {
+          threadId: thread.id,
+          seq: 5,
+          role: "system",
+          originKind: "system",
+          blocks: [{ kind: "text", text: "internal system row" }],
+        },
+      ],
+    });
+    await expect(
+      loadThreadContextAfterCheckpoint(prisma, {
+        threadId: thread.id,
+        afterSeq: 1,
+        excludeRunId: runA.id,
+      }),
+    ).resolves.toEqual([
+      { seq: 2, role: "assistant", content: "Run B reply while A was suspended" },
+      { seq: 3, role: "user", content: "follow-up from the user" },
+    ]);
+  });
 });
