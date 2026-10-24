@@ -863,8 +863,7 @@ export async function messageBot(
       }
     }
     // Legacy chain: no persisted origin, so finish in the requester's own chat.
-  } else {
-    if (gates.private_pair !== true) throw new RoundtableFeatureDisabledError("private_pair");
+  } else if (gates.private_pair === true) {
     const resolved = await resolvePrivateTarget(deps.prisma, run, input);
     if (!resolved.ok) return resolved;
     if (resolved.target.id === sender.id) {
@@ -885,6 +884,9 @@ export async function messageBot(
       { kind: "request", target: resolved.target, pair },
     );
   }
+  // private_pair off: bot-level messaging keeps its pre-roundtable contract —
+  // roster resolution with explicit refusals, delivered into the target's own
+  // chat below. The gate only switches the pair-Thread delivery in.
 
   const candidates = await deps.prisma.bot.findMany({
     where: { spaceId: run.spaceId, userId: run.userId, archivedAt: null },

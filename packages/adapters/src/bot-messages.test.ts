@@ -205,6 +205,26 @@ describe("messaging another bot", () => {
     expect(sent).toEqual({ ok: false, error: "message is required" });
   });
 
+  it("keeps the classic roster refusal while the private_pair gate is closed", async () => {
+    const harness = deps({ bots: [] });
+    const sent = await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-unknown",
+      message: "status update",
+    });
+    expect(sent).toEqual({ ok: false, error: "no bot found with that id or name" });
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+  });
+
+  it("delivers into the target's own chat while the private_pair gate is closed", async () => {
+    const harness = deps();
+    const sent = await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "one-line status update",
+    });
+    expect(sent).toMatchObject({ ok: true, botId: "bot-target", name: "Analyst" });
+    expect(harness.tx.message.create).toHaveBeenCalled();
+  });
+
   it("rejects an oversized message instead of silently truncating it", async () => {
     const harness = deps();
     const sent = await messageBot(harness.deps, run, sender, {
