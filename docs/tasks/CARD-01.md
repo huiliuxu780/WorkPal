@@ -2,6 +2,8 @@
 
 状态：`blocked`
 
+产品决策已于 2026-10-24 确认，见 [CARD-01 卡片统一决策](../cards/CARD-01-decision.md)。剩余阻塞只有原型更新、入库和产品确认。不得使用旧 v4 截图启动生产实现。
+
 ## 目标
 
 把有副作用或需要用户操作的消息卡收敛为统一 Action Card 协议，把无副作用展示收敛为有限的展示组件，并补齐详情视图、待处理提醒、状态、窄屏、深色和无障碍。产品输入声明的完整范围是 27 张卡、7 个详情视图、4 类提醒和 112 条验收。
@@ -21,28 +23,25 @@
 
 可运行原型场景是 `mockup/cards-hifi-v4/index.html`、`cards.html`、`a-detail.html`、`b-alerts.html` 和 `c-states.html`。任何实现任务都必须引用入库后的对应文件和具体场景，并用截图或视觉回归验收。
 
-## 阻塞项
+## 已解决的产品决策
 
-输入还不能授权生产页面修改：
+[CARD-01 卡片统一决策](../cards/CARD-01-decision.md) 已固定协议家族、三层状态所有权、九个开放问题、attention queue 边界、HTML 安全边界和完整交付方式。该决策取代外部 PRD 与 STYLE-SPEC 中冲突的段落。
 
-1. PRD 标为「待评审」，STYLE-SPEC 同时写「已确认」和「徐哥未拍板」。产品状态自相矛盾。
-2. PRD §15.3 仍有 9 个开放问题，包括执行结果唯一来源、群聊回执、table 协议、长消息阈值、安装与授权关系、Web 推送、分享权限、提醒时机和多次编辑保留规则。
-3. PRD R12 规定失败卡没有重试按钮，STYLE-SPEC 的失败态和按钮规则却保留「重试」。
-4. PRD 把 B3 安装与 A7 授权定义为不同 preset，STYLE-SPEC 又把它们合成「一张卡安装并授权」。
-5. PRD A10 用「旧卡 superseded，再出新卡」表达编辑，STYLE-SPEC A1 用同一张卡原地编辑并「保存并发送」。
-6. PRD 的动作按钮上限是 3 个，STYLE-SPEC 是 2 个加一个文字链接。
-7. 窄屏验收分别使用 375px、390px。必须确定测试断点，不得让实现者自行选择。
-8. 原型使用独立 sand 色值。生产实现必须映射到 `@rakazo/ui-tokens`、`@rakazo/ui-web`、`@rakazo/chat-ui` 和 `apps/web/src/components/ai/`，不能复制一套平行 token。
-9. N4 只能使用 Web 能力，例如 Web Notifications 或已存在的 Web Push。此项目不新增移动端应用。
-10. 外部目录尚未以去除本机信息、私有 URL、真实用户数据和密钥的形式入库。任务提示无法稳定引用已确认原型。
+## 剩余阻塞项
+
+外部输入还不能授权生产页面修改：
+
+1. v4 PRD、STYLE-SPEC 和截图尚未按已确认决策更新。旧版本仍保留已被否决的万能 `action`、失败重试、状态合并和 Task Center 式待处理入口。
+2. 原型使用独立 sand 色值。生产实现必须映射到 `@rakazo/ui-tokens`、`@rakazo/ui-web`、`@rakazo/chat-ui` 和 `apps/web/src/components/ai/`，不能复制一套平行 token。
+3. 外部目录尚未以去除本机信息、私有 URL、真实用户数据和密钥的形式入库。任务提示无法稳定引用已确认原型。
 
 ## 解除阻塞
 
-1. 产品负责人逐项裁决上面的冲突和 9 个开放问题，并明确批准 v4 原型。
-2. 将批准后的 PRD、STYLE-SPEC、HTML、CSS、必要脚本和关键截图复制到 `docs/cards/source/card-unification-v2/`。入库版本必须可本地运行，并记录源文件 hash。
-3. 对照当前 `main` 重做协议和组件盘点。外部 `card-unification.md` 基于旧快照，不能直接作为代码事实。
-4. 写一份决策记录，固定状态机、服务端权威事件、权限、兼容期、feature gate、回滚和数据迁移。
-5. 只有完成以上四项后，才能拆分实现任务。每个任务提示必须引用入库原型的场景、视觉约束、允许范围、禁止改动和截图验收方式。
+1. 按 [决策记录](../cards/CARD-01-decision.md) 更新 PRD、STYLE-SPEC、可运行 HTML 和四组截图。
+2. 产品负责人确认更新后的原型。
+3. 将批准后的 PRD、STYLE-SPEC、HTML、CSS、必要脚本和关键截图复制到 `docs/cards/source/card-unification-v2/`。入库版本必须可本地运行，并记录源文件 hash。
+4. 对照当前 `main` 重做协议和组件盘点。外部 `card-unification.md` 基于旧快照，不能直接作为代码事实。
+5. 完成以上四项后再拆实现任务。每个任务提示必须引用入库原型的场景、视觉约束、允许范围、禁止改动和截图验收方式。
 
 ## 不可妥协的边界
 
