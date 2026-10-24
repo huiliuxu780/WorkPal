@@ -6335,10 +6335,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           }
 
+          if (approvalPausePending) return;
           sessionRuntimeCompleted = true;
           sessionMayRelease = true;
 
-          if (approvalPausePending || !leaseValid) return;
+          if (!leaseValid) return;
           approvedEffectReplays.assertDrained();
           pendingProgress += progressRedactor.finish();
           await flushProgress();

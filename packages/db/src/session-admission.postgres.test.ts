@@ -278,6 +278,68 @@ describePostgres("AgentScope chat session admission (PostgreSQL)", () => {
     ).toMatchObject({ state: "recovering", ownerRunId: run.id, fence: lease.admissionFence });
   });
 
+  it("hands a paused session to the same Run without admitting another Run", async () => {
+    const { bot, thread } = await newDirectSession();
+    const owner = await queuedRun(bot.id, thread.id);
+    const waiter = await queuedRun(bot.id, thread.id);
+    const paused = await acquireSessionAdmission(prisma, identity(owner, "paused-owner"));
+    expect(paused.kind).toBe("acquired");
+    if (paused.kind !== "acquired") return;
+    const attempt = await prisma.attempt.create({
+      data: { runId: owner.id, fence: 1, status: "waiting_input" },
+    });
+    expect(
+      await prepareSessionExecution(prisma, {
+        ...paused,
+        attemptId: attempt.id,
+        suspensionKey: "paused-suspension",
+      }),
+    ).toBe(true);
+    await acquireSessionAdmission(prisma, identity(waiter, "paused-waiter"));
+
+    const resumedIdentity = {
+      ...identity(owner, "paused-resume"),
+      runLeaseFence: 2,
+    };
+    const resumed = await acquireSessionAdmission(prisma, resumedIdentity);
+    expect(resumed.kind).toBe("acquired");
+    if (resumed.kind !== "acquired") return;
+    expect(resumed.admissionFence).toBeGreaterThan(paused.admissionFence);
+    expect(await acquireSessionAdmission(prisma, identity(waiter, "paused-waiter"))).toMatchObject({
+      kind: "queued",
+      ownerRunId: owner.id,
+    });
+    expect(await renewSessionAdmission(prisma, paused)).toBe(false);
+    expect(await completeSessionAdmission(prisma, paused)).toMatchObject({ kind: "stale" });
+    expect(await releaseSessionAdmission(prisma, paused)).toMatchObject({ kind: "stale" });
+    expect(await renewSessionAdmission(prisma, resumed)).toBe(true);
+
+    expect(
+      await prisma.agentSessionAdmission.findUniqueOrThrow({
+        where: { sessionKey: resumed.sessionKey },
+      }),
+    ).toMatchObject({
+      state: "owned",
+      ownerRunId: owner.id,
+      ownerExecutionId: resumedIdentity.executionId,
+      ownerRunLeaseFence: 2,
+      ownerAttemptId: null,
+      suspensionKey: null,
+      executionPreparedAt: null,
+      runtimeStartedAt: null,
+    });
+    expect(
+      await prisma.agentSessionAdmissionRequest.findUniqueOrThrow({
+        where: { executionId: paused.executionId },
+      }),
+    ).toMatchObject({ state: "released" });
+    expect(
+      await prisma.agentSessionAdmissionRequest.findUniqueOrThrow({
+        where: { executionId: resumed.executionId },
+      }),
+    ).toMatchObject({ state: "owned" });
+  });
+
   it("makes duplicate scheduling idempotent with one owner and one fence", async () => {
     const { bot, thread } = await newDirectSession();
     const run = await queuedRun(bot.id, thread.id);

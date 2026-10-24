@@ -297,6 +297,48 @@ export async function acquireSessionAdmission(
     if (row.state === "recovering") {
       return { kind: "recovering", sessionKey, ownerRunId: row.ownerRunId };
     }
+    if (row.state === "owned" && row.ownerRunId === input.runId) {
+      const nextFence = row.fence + 1;
+      await tx.$executeRaw`
+        UPDATE "agent_session_admissions"
+        SET "ownerAttemptId" = NULL,
+            "ownerExecutionId" = ${input.executionId},
+            "ownerRunLeaseOwner" = ${input.runLeaseOwner},
+            "ownerRunLeaseFence" = ${input.runLeaseFence},
+            "fence" = ${nextFence},
+            "suspensionKey" = NULL,
+            "acquiredAt" = ${now},
+            "expiresAt" = ${expiresAt},
+            "heartbeatAt" = ${now},
+            "executionPreparedAt" = NULL,
+            "runtimeStartedAt" = NULL,
+            "lastReleaseReason" = NULL,
+            "updatedAt" = ${now}
+        WHERE "sessionKey" = ${sessionKey}
+          AND "state" = 'owned'
+          AND "ownerRunId" = ${input.runId}
+          AND "ownerExecutionId" = ${row.ownerExecutionId}
+          AND "fence" = ${row.fence}
+      `;
+      await tx.$executeRaw`
+        UPDATE "agent_session_admission_requests"
+        SET "state" = 'released', "updatedAt" = ${now}
+        WHERE "executionId" = ${row.ownerExecutionId} AND "state" = 'owned'
+      `;
+      await tx.$executeRaw`
+        UPDATE "agent_session_admission_requests"
+        SET "state" = 'owned', "updatedAt" = ${now}
+        WHERE "executionId" = ${input.executionId} AND "state" = 'queued'
+      `;
+      return {
+        kind: "acquired",
+        sessionKey,
+        runId: input.runId,
+        executionId: input.executionId,
+        admissionFence: nextFence,
+        expiresAt,
+      };
+    }
     if (row.state === "owned") {
       return { kind: "queued", sessionKey, ownerRunId: row.ownerRunId };
     }
