@@ -4,6 +4,8 @@
 
 产品决策已于 2026-10-24 确认，见 [CARD-01 卡片统一决策](../cards/CARD-01-decision.md)。剩余阻塞只有原型更新、入库和产品确认。不得使用旧 v4 截图启动生产实现。
 
+当前可派发的下一步是 [CARD-01P：对齐并验证 v4 可运行原型](./CARD-01P.md)。CARD-01P 只修改外部原型包，不修改生产页面。
+
 ## 目标
 
 把有副作用或需要用户操作的消息卡收敛为统一 Action Card 协议，把无副作用展示收敛为有限的展示组件，并补齐详情视图、待处理提醒、状态、窄屏、深色和无障碍。产品输入声明的完整范围是 27 张卡、7 个详情视图、4 类提醒和 112 条验收。
@@ -37,7 +39,7 @@
 
 ## 解除阻塞
 
-1. 按 [决策记录](../cards/CARD-01-decision.md) 更新 PRD、STYLE-SPEC、可运行 HTML 和四组截图。
+1. 完成 [CARD-01P](./CARD-01P.md)，按 [决策记录](../cards/CARD-01-decision.md) 更新 PRD、STYLE-SPEC、可运行 HTML 和四组截图。
 2. 产品负责人确认更新后的原型。
 3. 将批准后的 PRD、STYLE-SPEC、HTML、CSS、必要脚本和关键截图复制到 `docs/cards/source/card-unification-v2/`。入库版本必须可本地运行，并记录源文件 hash。
 4. 对照当前 `main` 重做协议和组件盘点。外部 `card-unification.md` 基于旧快照，不能直接作为代码事实。
