@@ -200,6 +200,13 @@ export interface PauseRunForInput {
   attemptId: string;
   leaseOwner: string;
   leaseFence: number;
+  /**
+   * RT-26: the chat admission fence and suspension key of the Attempt that
+   * creates this pending request. A later checkpoint may only claim this card
+   * when all three executions bindings match, so one Run cannot answer another.
+   */
+  executionFence?: number;
+  suspensionKey?: string;
   blocks: MessageBlock[];
   /**
    * Unredacted choice actions for resume. Persisted only on the run checkpoint
@@ -1562,6 +1569,8 @@ export async function pauseRunForInput(
       botId: input.botId,
       runId: input.runId,
       attemptId: input.attemptId,
+      executionFence: input.executionFence,
+      suspensionKey: input.suspensionKey,
       messageId,
       blocks: input.blocks,
       waitStartedAt,
