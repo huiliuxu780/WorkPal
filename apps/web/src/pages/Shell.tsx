@@ -3712,6 +3712,23 @@ export function ShellPage() {
                 </span>
               ) : null}
             </button>
+            {inGroup ? (
+              <div className="app-no-drag pointer-events-auto absolute top-0.5 right-3">
+                <button
+                  type="button"
+                  data-testid="group-work-entry"
+                  aria-label={t`Work`}
+                  aria-expanded={panel === "group" && groupTab === "work"}
+                  onClick={() => {
+                    setGroupTab("work");
+                    setPanel("group");
+                  }}
+                  className={`${panel ? "hidden md:flex" : "flex"} h-8 items-center rounded-[9px] border border-border/70 bg-card/85 px-3 text-[12px] font-medium text-muted-foreground shadow-sm backdrop-blur-md hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none`}
+                >
+                  <Trans>Work</Trans>
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {!active && !activeGroup && initialBotsLoaded ? (
