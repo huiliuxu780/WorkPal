@@ -1158,6 +1158,180 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     ]);
   });
 
+  it("hops nested outcomes one requester at a time until the visible Thread", async () => {
+    // A → B(researcher) → C(writer) → D(fixer): each return climbs exactly one
+    // generation — C's outcome wakes B in the A↔B pair, B's outcome wakes A in
+    // the visible chat — and never bounces back down the chain.
+    const fixerBot = await prisma.bot.create({
+      data: { spaceId, userId: id, name: "Fixer", color: "test" },
+    });
+    await prisma.thread.create({ data: { spaceId, userId: id, botId: fixerBot.id } });
+    const fixer = { id: fixerBot.id, name: fixerBot.name };
+
+    const sourceRun = await newSenderRun();
+    const toB = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "own the report",
+      deliveryKey: "rt05-4l-ab",
+    });
+    if (!toB.ok) throw new Error("A→B failed");
+    const runB = await prisma.run.update({
+      where: { id: toB.targetRunId },
+      data: { status: "running" },
+    });
+    const toC = await messageBot(
+      deps(),
+      {
+        id: runB.id,
+        spaceId,
+        threadId: runB.threadId,
+        botId: runB.botId,
+        userId: id,
+        sourceMessageId: runB.sourceMessageId,
+        originThreadId: runB.originThreadId,
+        originRunId: runB.originRunId,
+        originMessageId: runB.originMessageId,
+      },
+      researcher,
+      {
+        bot_id: writer.id,
+        message: "collect the data",
+        intent: "request",
+        deliveryKey: "rt05-4l-bc",
+      },
+    );
+    if (!toC.ok || !("targetRunId" in toC)) throw new Error("B→C failed");
+    const runC = await prisma.run.update({
+      where: { id: toC.targetRunId },
+      data: { status: "running" },
+    });
+    const toD = await messageBot(
+      deps(),
+      {
+        id: runC.id,
+        spaceId,
+        threadId: runC.threadId,
+        botId: runC.botId,
+        userId: id,
+        sourceMessageId: runC.sourceMessageId,
+        originThreadId: runC.originThreadId,
+        originRunId: runC.originRunId,
+        originMessageId: runC.originMessageId,
+      },
+      writer,
+      {
+        bot_id: fixer.id,
+        message: "verify the numbers",
+        intent: "request",
+        deliveryKey: "rt05-4l-cd",
+      },
+    );
+    if (!toD.ok || !("targetRunId" in toD)) throw new Error("C→D failed");
+    const runD = await prisma.run.update({
+      where: { id: toD.targetRunId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+
+    const outcomeDeps = {
+      prisma,
+      events: { notify: vi.fn(async () => undefined) },
+      jobs: { enqueue: vi.fn(async () => undefined) },
+    } as unknown as Parameters<typeof returnBotMessageOutcome>[0];
+    const asRun = (row: {
+      id: string;
+      threadId: string;
+      botId: string;
+      sourceMessageId: string | null;
+      orchestration: unknown;
+      originThreadId: string | null;
+      originRunId: string | null;
+      originMessageId: string | null;
+    }) => ({
+      id: row.id,
+      spaceId,
+      threadId: row.threadId,
+      botId: row.botId,
+      userId: id,
+      sourceMessageId: row.sourceMessageId,
+      orchestration: row.orchestration,
+      originThreadId: row.originThreadId,
+      originRunId: row.originRunId,
+      originMessageId: row.originMessageId,
+    });
+
+    // D returns to C: the wake lands in C's execution pair (B↔C).
+    expect(
+      await returnBotMessageOutcome(outcomeDeps, asRun(runD), fixer, "Numbers verified."),
+    ).toBe(true);
+    const wakeD = await prisma.message.findFirstOrThrow({
+      where: { threadId: runC.threadId, clientNonce: `bot-message:auto-outcome:${runD.id}` },
+    });
+    expect(wakeD.blocks).toEqual([
+      expect.objectContaining({ kind: "bot_message_received", fromBotId: fixer.id }),
+    ]);
+    const resumedC = await prisma.run.findFirstOrThrow({
+      where: { sourceMessageId: wakeD.id },
+    });
+
+    // C resumes and completes: its outcome climbs one generation to B —
+    // delivered into the A↔B pair, never sideways into C's own pair copy.
+    await prisma.run.update({
+      where: { id: resumedC.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    expect(
+      await returnBotMessageOutcome(outcomeDeps, asRun(resumedC), writer, "Data collected."),
+    ).toBe(true);
+    const wakeC = await prisma.message.findFirstOrThrow({
+      where: { threadId: runB.threadId, clientNonce: `bot-message:auto-outcome:${resumedC.id}` },
+    });
+    expect(wakeC.blocks).toEqual([
+      expect.objectContaining({ kind: "bot_message_received", fromBotId: writer.id }),
+    ]);
+    expect(resumedC.originThreadId).toBe(runC.threadId);
+    expect(
+      await prisma.message.count({
+        where: {
+          threadId: resumedC.threadId,
+          clientNonce: `bot-message:auto-outcome:${resumedC.id}`,
+        },
+      }),
+    ).toBe(0);
+    const resumedB = await prisma.run.findFirstOrThrow({
+      where: { sourceMessageId: wakeC.id },
+    });
+    expect(resumedB).toMatchObject({ botId: researcher.id, threadId: runB.threadId });
+
+    // B resumes and completes: its outcome reaches A's visible chat — the end
+    // of the routing (no further hop, no bounce back to C).
+    await prisma.run.update({
+      where: { id: resumedB.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    expect(
+      await returnBotMessageOutcome(outcomeDeps, asRun(resumedB), researcher, "Report owned."),
+    ).toBe(true);
+    const wakeB = await prisma.message.findFirstOrThrow({
+      where: { threadId: sourceThreadId, clientNonce: `bot-message:auto-outcome:${resumedB.id}` },
+    });
+    expect(wakeB.blocks).toEqual([
+      expect.objectContaining({ kind: "bot_message_received", fromBotId: researcher.id }),
+    ]);
+    for (const run of [runD, resumedC, resumedB]) {
+      expect(
+        (await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).botOutcomeReturnedAt,
+      ).not.toBeNull();
+    }
+    expect(
+      await prisma.message.count({
+        where: {
+          threadId: runC.threadId,
+          clientNonce: { startsWith: "bot-message:auto-outcome:" },
+        },
+      }),
+    ).toBe(1);
+  });
+
   it("cancels the delegated Run with its origin and never fabricates a reply", async () => {
     const sourceRun = await newSenderRun();
     const dispatched = await send(sourceRun, {

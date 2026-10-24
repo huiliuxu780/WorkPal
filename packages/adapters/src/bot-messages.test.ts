@@ -765,6 +765,31 @@ describe("automatic outcome return", () => {
     });
   });
 
+  it("marks fyi wakes handled without a reply", async () => {
+    const harness = deps({
+      hopBlocks: [
+        {
+          kind: "bot_message_received",
+          fromBotId: "bot-target",
+          fromBotName: "Coordinator",
+          text: "fyi only",
+          hop: 1,
+          intent: "fyi",
+        },
+      ],
+    });
+    const returned = await returnBotMessageOutcome(
+      harness.deps,
+      { ...run, sourceMessageId: "message-source" },
+      sender,
+      "The answer.",
+    );
+    expect(returned).toBe(true);
+    expect(harness.tx.message.create).not.toHaveBeenCalled();
+    expect(harness.tx.run.create).not.toHaveBeenCalled();
+    expect(harness.enqueue).not.toHaveBeenCalled();
+  });
+
   it("still returns a final result after an interim status update", async () => {
     const harness = deps({
       hopBlocks: [

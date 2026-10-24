@@ -46,7 +46,6 @@ import {
 
 import { getLogger } from "@rakazo/logging";
 import type { ExecutorDeps } from "./executor.js";
-import { resolveVisibleOrigin } from "./run-origin.js";
 
 /**
  * The hop the current run sits at, read back from the message that woke this
@@ -152,6 +151,42 @@ function readRunOrigin(run: PrivateRun): PrivateRunOrigin | null {
   const messageId = run.originMessageId?.trim();
   if (!threadId || !runId || !messageId) return null;
   return { threadId, runId, messageId };
+}
+
+/**
+ * The generation above a result-resumed run. The run's origin names its prior
+ * self (originRunId); that Run's own origin names the requester's Thread and
+ * the requester Run — the outcome goes there, one generation per delivery,
+ * until a parent without an origin means the outcome is already user-visible.
+ */
+async function resolveUpstreamReturn(
+  prisma: PrismaClient,
+  origin: PrivateRunOrigin,
+): Promise<{ targetBotId: string; origin: PrivateRunOrigin } | null> {
+  const parentRun = await prisma.run.findUnique({
+    where: { id: origin.runId },
+    select: {
+      originThreadId: true,
+      originRunId: true,
+      originMessageId: true,
+    },
+  });
+  const parentThread = parentRun?.originThreadId?.trim();
+  const parentOriginRunId = parentRun?.originRunId?.trim();
+  const parentMessageId = parentRun?.originMessageId?.trim();
+  if (!parentRun || !parentThread || !parentOriginRunId || !parentMessageId) return null;
+  // The requester is the Bot of the Run the parent's own origin names: the
+  // parent Run executed in that requester's Thread (a chat or a pair).
+  const parentOriginRun = await prisma.run.findUnique({
+    where: { id: parentOriginRunId },
+    select: { botId: true },
+  });
+  const targetBotId = parentOriginRun?.botId ?? null;
+  if (!targetBotId) return null;
+  return {
+    targetBotId,
+    origin: { threadId: parentThread, runId: parentOriginRunId, messageId: parentMessageId },
+  };
 }
 
 /** A terminal result/status addressed at the bot that woke this run. */
@@ -821,7 +856,11 @@ export async function messageBot(
     intent?: BotMessageIntent;
     deliveryKey?: string;
   },
-  options?: { allowTerminalSource?: boolean },
+  options?: {
+    allowTerminalSource?: boolean;
+    /** Outcome-return callers supply the resolved upstream origin directly. */
+    originOverride?: { threadId: string; runId: string; messageId: string };
+  },
 ) {
   const message = String(input.message ?? "").trim();
   if (!message) return { ok: false as const, error: "message is required" };
@@ -869,7 +908,7 @@ export async function messageBot(
   }
 
   const gates = deps.roundtableFeatures ?? resolveRoundtableFeatureGates({});
-  const origin = readRunOrigin(run);
+  const origin = options?.originOverride ?? readRunOrigin(run);
   const pairContext: PrivateMessageContext = { hop, sourceContext, sourceKind };
   if (options?.allowTerminalSource === true && origin) {
     // A verified origin reply is the only terminal-source exception: the run
@@ -891,27 +930,24 @@ export async function messageBot(
     }
     // Nested delegation: this run was resumed by a child's outcome, so its own
     // source wake carries intent result and the immediate check cannot see the
-    // upstream requester. Walk the origin chain to the first visible Thread;
-    // when the target is that chat's owner bot, return upstream through the
-    // walked origin instead of opening another pair.
+    // requester. The outcome goes one generation up: the requester is the bot
+    // of the parent Run named by this run's origin, and the delivery re-uses
+    // the parent's own origin so the answer keeps hopping until it reaches the
+    // visible Thread. An originOverride caller has already resolved that
+    // upstream; a tool-call reply matches it against the model's target. A
+    // target that is not the requester keeps the ordinary routing below.
     if (intent === "result" || intent === "status") {
-      const upstream = await resolveVisibleOrigin(deps.prisma, origin);
-      if (upstream?.ownerBotId && upstream.ownerBotId === resolved.target.id) {
+      const upstream = options.originOverride
+        ? { targetBotId: resolved.target.id, origin: options.originOverride }
+        : await resolveUpstreamReturn(deps.prisma, origin);
+      if (upstream && upstream.targetBotId === resolved.target.id) {
         return messageBotInAgentPair(
           deps,
           run,
           sender,
           { message, intent, deliveryKey: input.deliveryKey },
           pairContext,
-          {
-            kind: "origin_outcome",
-            origin: {
-              threadId: upstream.sourceThreadId,
-              runId: upstream.sourceRunId,
-              messageId: upstream.sourceMessageId,
-            },
-            target: resolved.target,
-          },
+          { kind: "origin_outcome", origin: upstream.origin, target: resolved.target },
         );
       }
     }
@@ -1807,19 +1843,23 @@ export async function returnBotMessageOutcome(
     return true;
   }
   const sourceIntent = source.intent ?? "request";
-  // The reply target: the immediate waker for request/question sources. A run
-  // resumed by a child's outcome has a result wake as its source — its own
-  // requester lives upstream, found by walking the persisted origin chain to
-  // the first visible Thread. No origin (legacy chain) stays handled silently.
+  // A run resumed by a child's outcome has a result wake as its source — its
+  // own requester lives one generation up, found through its origin chain.
+  // FYI wakes explicitly permit silence, so they stay handled without a reply.
   let replyTargetId = source.fromBotId;
+  let originOverride: { threadId: string; runId: string; messageId: string } | undefined;
   if (sourceIntent === "result" || sourceIntent === "status") {
     const origin = readRunOrigin(run);
-    const upstream = origin ? await resolveVisibleOrigin(deps.prisma, origin) : null;
-    if (!upstream?.ownerBotId) {
+    const upstream = origin ? await resolveUpstreamReturn(deps.prisma, origin) : null;
+    if (!upstream) {
       await markBotOutcomeReturned(deps.prisma, run.id);
       return true;
     }
-    replyTargetId = upstream.ownerBotId;
+    replyTargetId = upstream.targetBotId;
+    originOverride = upstream.origin;
+  } else if (sourceIntent !== "request" && sourceIntent !== "question") {
+    await markBotOutcomeReturned(deps.prisma, run.id);
+    return true;
   }
   const sent = await deps.prisma.message.findMany({
     where: { threadId: run.threadId, runId: run.id },
@@ -1850,7 +1890,7 @@ export async function returnBotMessageOutcome(
       // One key per run so status vs result (executor vs reconciler) cannot double-deliver.
       deliveryKey: `auto-outcome:${run.id}`,
     },
-    { allowTerminalSource: true },
+    { allowTerminalSource: true, ...(originOverride ? { originOverride } : {}) },
   );
   if (outcome.ok) await markBotOutcomeReturned(deps.prisma, run.id);
   return outcome.ok;
