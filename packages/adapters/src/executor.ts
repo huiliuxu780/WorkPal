@@ -5818,9 +5818,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 // entirely — recreate the input request instead; the answer
                 // then resumes through the normal checkpoint path.
                 const pendingCalls = Array.isArray(checkpoint.pendingCalls)
-                  ? (checkpoint.pendingCalls as unknown[])
+                  ? (checkpoint.pendingCalls as Array<{ name?: unknown }>)
                   : [];
-                if (pendingCalls.length > 0 && !intervention) {
+                // Only an ask_user call is a lost INPUT request. A pending
+                // request_takeover (takeover pauses create no Intervention by
+                // design) follows its own release path through the takeover
+                // checkpoint instead of being re-asked as a question.
+                const lostInputRequest =
+                  pendingCalls.length > 0 &&
+                  pendingCalls.some((call) => call?.name === "ask_user");
+                if (lostInputRequest && !intervention) {
                   await workspaceCheckpoint.flush().catch(() => undefined);
                   const origin = await interventionOriginForRun(deps.prisma, run);
                   const paused = await deps.events.pauseRunForInput({
