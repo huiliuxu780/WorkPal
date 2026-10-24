@@ -1863,10 +1863,10 @@ export async function stopThreadRuns(
   const delegatedRuns: Array<{ id: string; threadId: string }> = [];
   const walked = new Set<string>();
   let frontier = delegatedSeeds.map((seed) => seed.id);
-  for (const seed of delegatedSeeds) {
-    walked.add(seed.id);
-  }
-  while (frontier.length > 0 && walked.size < 500) {
+  // Depth-bounded, never seed-count-bounded: a long-lived Thread's completed
+  // historical delegations must not disable the walk to outstanding nested
+  // work. The visited set only guards against a corrupt cyclic chain.
+  for (let depth = 0; depth < 24 && frontier.length > 0; depth += 1) {
     const generation = await deps.prisma.run.findMany({
       where: {
         originRunId: { in: frontier },
