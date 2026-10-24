@@ -5842,6 +5842,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     ],
                   });
                   if (paused) {
+                    // Associate the replacement card with the original
+                    // checkpoint: its answered revision is what authorizes
+                    // the next claim to restore the pending call instead of
+                    // recreating yet another card.
+                    const replacement = await deps.prisma.intervention.findFirst({
+                      where: { runId, status: "pending" },
+                      orderBy: { createdAt: "desc" },
+                      select: { id: true },
+                    });
+                    if (replacement) {
+                      await deps.prisma.agentSessionCheckpoint.updateMany({
+                        where: { id: checkpoint.id, pendingInterventionId: null },
+                        data: { pendingInterventionId: replacement.id },
+                      });
+                    }
                     await notifyRun(deps, run, {
                       kind: "help",
                       title: `${bot.name} needs an answer`,
