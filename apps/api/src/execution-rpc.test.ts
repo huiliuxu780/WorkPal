@@ -36,13 +36,44 @@ function runRow(overrides: Record<string, unknown> = {}) {
 function executionDeps(input: {
   runs?: ReturnType<typeof runRow>[];
   messages?: unknown[];
+  /**
+   * Whether the grouped event scan reports surviving lifecycle events for the
+   * fixture Runs. Production fences terminal Runs whose lifecycle events are
+   * gone (Thread Clear), so a fixture that hides them must surface as 404.
+   */
+  lifecycle?: boolean;
+  /** Simulates a Thread Clear generation when set; absent means never cleared. */
+  clearedGeneration?: number;
 }) {
   const emptyFind = vi.fn().mockResolvedValue([]);
+  const rawQuery = vi.fn(async (pieces: TemplateStringsArray | string) => {
+    const sql = Array.isArray(pieces) ? pieces.join("") : String(pieces);
+    if (sql.includes("FOR SHARE")) return [{ id: "thread-1" }];
+    // The generation scan: only a simulated Clear contributes a generation.
+    if (sql.includes("thread.cleared")) {
+      return input.clearedGeneration === undefined
+        ? []
+        : [{ threadId: "thread-1", generation: input.clearedGeneration }];
+    }
+    // The grouped event-ceiling scan behind rev and the lifecycle fence.
+    if (sql.includes("lifecycleSeq")) {
+      if (input.lifecycle === false) return [];
+      return (input.runs ?? []).map((run) => ({
+        runId: run.id,
+        seq: 5,
+        lifecycleSeq: 5,
+        lastEventAt: run.createdAt,
+      }));
+    }
+    // MIN/MAX bot-message seq per Run (result/anchor heads).
+    if (sql.includes('FROM "messages"')) {
+      const rows = input.messages ?? [];
+      return rows.length ? [{ runId: "run-1", firstSeq: 1, lastSeq: rows.length }] : [];
+    }
+    return [];
+  });
   const tx = {
-    // FOR SHARE lock statement + grouped raw scans: every raw query resolves
-    // to no rows here, so rev stays 0 and the anchors are resolved from the
-    // message rows the detail pass reads directly.
-    $queryRaw: vi.fn().mockResolvedValue([]),
+    $queryRaw: rawQuery,
     run: {
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         (input.runs ?? []).find(
@@ -56,7 +87,18 @@ function executionDeps(input: {
       findUnique: vi.fn(async () => null),
     },
     task: { findMany: emptyFind },
-    message: { findMany: vi.fn().mockResolvedValue(input.messages ?? []), findFirst: vi.fn().mockResolvedValue(null) },
+    message: {
+      // Production reads the bot-message window newest-first; the result head
+      // is the last row after the loader reverses that order back.
+      findMany: vi.fn(async ({ orderBy }: { orderBy?: { seq?: "asc" | "desc" } } = {}) => {
+        const rows = [...((input.messages ?? []) as Array<Record<string, unknown>>)];
+        if (orderBy?.seq === "desc") {
+          rows.sort((a, b) => Number(b.seq ?? 0) - Number(a.seq ?? 0));
+        }
+        return rows;
+      }),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     event: {
       findMany: emptyFind,
       findFirst: vi.fn().mockResolvedValue(null),
@@ -116,9 +158,17 @@ describe("runs.executionSnapshot", () => {
         {
           id: "message-ask",
           runId: "run-1",
+          seq: 1,
+          role: "bot",
           blocks: [{ kind: "ask", text: "City?", status: "answered", answer: "Paris" }],
         },
-        { id: "message-result", runId: "run-1", blocks: [{ kind: "text", text: "Done: Paris" }] },
+        {
+          id: "message-result",
+          runId: "run-1",
+          seq: 2,
+          role: "bot",
+          blocks: [{ kind: "text", text: "Done: Paris" }],
+        },
       ],
     });
     const response = await call(handler, "runs/executionSnapshot", {
@@ -139,6 +189,25 @@ describe("runs.executionSnapshot", () => {
     // The ask card never surfaces as the result.
     expect(snapshot.result?.blocks.every((block) => block.kind !== "ask")).toBe(true);
     expect(snapshot.steps).toEqual({ items: [], truncated: false, total: 0 });
+  });
+
+  it("keeps fencing a cleared terminal Run whose lifecycle events are gone", async () => {
+    // The generation fence is production behavior: after a Thread Clear no
+    // lifecycle event survives for the old generation, so the terminal Run
+    // must stay invisible even though its row still exists.
+    const { handler } = executionDeps({
+      runs: [runRow()],
+      messages: [
+        { id: "message-result", runId: "run-1", blocks: [{ kind: "text", text: "Done: Paris" }] },
+      ],
+      lifecycle: false,
+      clearedGeneration: 7,
+    });
+    const response = await call(handler, "runs/executionSnapshot", {
+      botId: "bot-1",
+      runId: "run-1",
+    });
+    expect(response.status).toBe(404);
   });
 
   it("rejects a Run of another thread or space without leaking existence", async () => {
