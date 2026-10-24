@@ -3643,10 +3643,11 @@ describe("stopThreadRuns", () => {
         // walk then finds C — still running one pair deeper.
         findMany: vi
           .fn()
-          .mockResolvedValueOnce([{ id: "run-b", threadId: "pair-thread-1" }])
+          .mockResolvedValueOnce([
+            { id: "run-b", threadId: "pair-thread-1", status: "completed" },
+          ])
           .mockResolvedValueOnce([{ id: "run-c", threadId: "pair-thread-2", status: "running" }])
           .mockResolvedValue([]),
-        findUnique: vi.fn().mockResolvedValue({ id: "run-b", status: "completed" }),
       },
     } as unknown as PrismaClient;
     const actor = { spaceId: "workspace-1", userId: "user-1" } as Actor;

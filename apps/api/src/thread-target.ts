@@ -1857,7 +1857,7 @@ export async function stopThreadRuns(
       userId: actor.userId,
       threadId: { not: target.threadId },
     },
-    select: { id: true, threadId: true },
+    select: { id: true, threadId: true, status: true },
     orderBy: { threadId: "asc" },
   });
   const delegatedRuns: Array<{ id: string; threadId: string }> = [];
@@ -1887,12 +1887,8 @@ export async function stopThreadRuns(
     }
   }
   for (const seed of delegatedSeeds) {
-    const run = await deps.prisma.run.findUnique({
-      where: { id: seed.id },
-      select: { status: true },
-    });
-    if (run && (ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) {
-      delegatedRuns.push(seed);
+    if ((ACTIVE_RUN_STATUSES as readonly string[]).includes(seed.status)) {
+      delegatedRuns.push({ id: seed.id, threadId: seed.threadId });
     }
   }
   delegatedRuns.sort((left, right) => (left.threadId < right.threadId ? -1 : 1));
