@@ -3574,9 +3574,10 @@ describe("stopThreadRuns", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
-  it("cancels an outstanding delegated run after its source run completed", async () => {
-    // RT-05: the delegated run executes in a hidden pair Thread; the visible
-    // Thread's Stop must still reach it through the persisted origin.
+  it("cancels outstanding delegated work through completed intermediates", async () => {
+    // RT-05: A delegated to B (completed), B delegated to C (running in a
+    // deeper pair Thread). The visible Thread's Stop must traverse B and
+    // reach C through the persisted origin chain.
     const stopTransaction = {
       $queryRaw: vi.fn(),
       thread: { update: vi.fn(async () => ({ nextEventSeq: 1 })) },
@@ -3603,17 +3604,17 @@ describe("stopThreadRuns", () => {
         findUnique: vi
           .fn()
           .mockResolvedValueOnce({
-            id: "run-b",
-            taskId: "task-b",
+            id: "run-c",
+            taskId: "task-c",
             status: "running",
-            threadId: "pair-thread-1",
+            threadId: "pair-thread-2",
             spaceId: "workspace-1",
-            botId: "bot-b",
+            botId: "bot-c",
           })
           // appendEventInTransaction's cancelled-run assertion re-reads the row.
-          .mockResolvedValue({ id: "run-b", status: "cancelled" }),
+          .mockResolvedValue({ id: "run-c", status: "cancelled" }),
         updateManyAndReturn: vi.fn().mockResolvedValue([
-          { id: "run-b", botId: "bot-b", threadId: "pair-thread-1", spaceId: "workspace-1", taskId: "task-b" },
+          { id: "run-c", botId: "bot-c", threadId: "pair-thread-2", spaceId: "workspace-1", taskId: "task-c" },
         ]),
         update: vi.fn().mockResolvedValue({}),
       },
@@ -3638,7 +3639,14 @@ describe("stopThreadRuns", () => {
       },
       computerExecutionLease: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       run: {
-        findMany: vi.fn().mockResolvedValue([{ id: "run-b", threadId: "pair-thread-1" }]),
+        // First generation from the visible Thread: B, already completed. The
+        // walk then finds C — still running one pair deeper.
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([{ id: "run-b", threadId: "pair-thread-1" }])
+          .mockResolvedValueOnce([{ id: "run-c", threadId: "pair-thread-2", status: "running" }])
+          .mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue({ id: "run-b", status: "completed" }),
       },
     } as unknown as PrismaClient;
     const actor = { spaceId: "workspace-1", userId: "user-1" } as Actor;
@@ -3669,17 +3677,17 @@ describe("stopThreadRuns", () => {
         }),
       }),
     );
-    expect(result.cancelledRunIds).toEqual(["run-b"]);
+    expect(result.cancelledRunIds).toEqual(["run-c"]);
     expect(delegatedTransaction.run.update).toHaveBeenCalledWith({
-      where: { id: "run-b" },
+      where: { id: "run-c" },
       data: { error: "parent_cancelled" },
     });
     expect(delegatedTransaction.event.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           type: "run.cancelled",
-          runId: "run-b",
-          threadId: "pair-thread-1",
+          runId: "run-c",
+          threadId: "pair-thread-2",
           payload: { reason: "parent_cancelled" },
         }),
       }),

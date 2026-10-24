@@ -1847,17 +1847,55 @@ export async function stopThreadRuns(
   // persisted origin, one per-run transaction per delegated run (the same
   // shape as the descendant cascade) so pair-Thread locks are never taken
   // while this request holds the visible Thread.
-  const delegatedRuns = await deps.prisma.run.findMany({
+  // Seeds are the first delegation generation from this Thread in ANY state:
+  // completed intermediates still link to the outstanding work below them, so
+  // the walk traverses them and collects only the still-active descendants.
+  const delegatedSeeds = await deps.prisma.run.findMany({
     where: {
       originThreadId: target.threadId,
       spaceId: actor.spaceId,
       userId: actor.userId,
       threadId: { not: target.threadId },
-      status: { in: [...ACTIVE_RUN_STATUSES] },
     },
     select: { id: true, threadId: true },
     orderBy: { threadId: "asc" },
   });
+  const delegatedRuns: Array<{ id: string; threadId: string }> = [];
+  const walked = new Set<string>();
+  let frontier = delegatedSeeds.map((seed) => seed.id);
+  for (const seed of delegatedSeeds) {
+    walked.add(seed.id);
+  }
+  while (frontier.length > 0 && walked.size < 500) {
+    const generation = await deps.prisma.run.findMany({
+      where: {
+        originRunId: { in: frontier },
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+      },
+      select: { id: true, threadId: true, status: true },
+      orderBy: { threadId: "asc" },
+    });
+    frontier = [];
+    for (const run of generation) {
+      if (walked.has(run.id)) continue;
+      walked.add(run.id);
+      frontier.push(run.id);
+      if ((ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) {
+        delegatedRuns.push({ id: run.id, threadId: run.threadId });
+      }
+    }
+  }
+  for (const seed of delegatedSeeds) {
+    const run = await deps.prisma.run.findUnique({
+      where: { id: seed.id },
+      select: { status: true },
+    });
+    if (run && (ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) {
+      delegatedRuns.push(seed);
+    }
+  }
+  delegatedRuns.sort((left, right) => (left.threadId < right.threadId ? -1 : 1));
   const delegatedCancelled: string[] = [];
   for (const delegated of delegatedRuns) {
     const cancelled = await deps.prisma.$transaction(async (tx) => {
