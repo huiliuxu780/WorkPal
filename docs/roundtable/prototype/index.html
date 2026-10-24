@@ -146,6 +146,8 @@
     .work-inline .done { color: var(--green); font-weight: 650; }
     .approval { margin-top: 9px; background: white; border: 1px solid #ead2a3; border-radius: 12px; padding: 11px; min-width: 390px; }
     .approval-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 12.5px; }
+    .approval-scope { margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0e6cf; color: #77756f; font-size: 10.5px; }
+    .approval-scope strong { color: #44433f; font-weight: 650; }
     .approval-actions { display: flex; gap: 7px; justify-content: flex-end; margin-top: 10px; }
     .mini-btn { border: 1px solid var(--line); background: white; border-radius: 9px; padding: 5px 9px; cursor: pointer; font-size: 11px; }
     .mini-btn.primary { background: var(--ink); color: white; border-color: var(--ink); }
@@ -634,7 +636,7 @@
       { step: 4, who: "purple", name: "小紫", role: "审阅 Agent", html: "收到。我只复核证据和因果，不重复跑整套性能测试。<div class='work-inline'><span class='pulse'></span>已启动后台工作 · 复核瀑布图</div>" },
       { step: 5, type: "user", html: "<span class='mention orange'>@小橙</span> 你先单独把 B 版的移动端断点做出来，完成后直接发群里。其他人按原来的继续。" },
       { step: 5, who: "orange", name: "小橙", role: "设计 Agent", html: "收到。你的新指令已经进到我这里；我把移动端 B 版另放一个后台任务，原来的 A/B 对比不暂停。<div class='work-inline'><span class='pulse'></span>新增后台工作 · 移动端 B 版断点</div>" },
-      { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "移动端 B 版已经完成。需要发布到预览环境，方便大家实际看断点。<div class='approval'><div class='approval-title'>◌ 允许小橙发布到预览环境？</div><div class='approval-actions'><button class='mini-btn'>拒绝</button><button class='mini-btn primary' id='approveBtn'>允许一次</button></div></div>" },
+      { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "移动端 B 版已经完成。需要发布到预览环境，方便大家实际看断点。<div class='approval'><div class='approval-title'>◌ 允许小橙发布到预览环境？</div><div class='approval-scope'>授权给 <strong>小橙</strong> · 允许 <strong>发布到预览环境</strong>（仅一次）</div><div class='approval-actions'><button class='mini-btn'>拒绝</button><button class='mini-btn primary' id='approveBtn'>允许一次</button></div></div>" },
       { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "审批只暂停发布；我仍然可以继续讨论：A 版更稳，B 版信息密度更好。" },
       { step: 7, who: "purple", name: "小紫", role: "审阅 Agent", html: "<div class='quote'>回应小蓝的瀑布图复核</div>监控 SDK 不是主阻塞。它晚于 LCP；真正的同步阻塞来自图表包初始化。" },
       { step: 7, who: "blue", name: "小蓝", role: "性能 Agent", html: "基线跑完了，结论和小紫的复核一致。<div class='result-card'><strong>性能结果 · 已完成</strong><ul><li>主图增加约 0.6s LCP</li><li>同步图表包增加约 0.4s</li><li>监控 SDK 不是首屏主因</li></ul><a href='#'>打开完整性能报告 →</a></div>" },
@@ -757,12 +759,13 @@
         work: { summary: "1 项已委派", roots: [{ title: "Joy 的用户任务", desc: "来源：Joy 单聊", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "对比最近三次发布的 LCP", state: "已接收", className: "run", progress: 18, meta: "Joy ↔ 小蓝 · 固定对话" }] }] }
       },
       {
-        id: "X-GROUP-FAIL", category: "跨会话调度", title: "A 不在群，申请加入", note: "Joy 发现自己尚未入席；只有你具备群成员管理权时，才会出现可执行的加入审批；没有权限时明确说明需要管理员处理。", surface: "dm",
+        id: "X-GROUP-FAIL", category: "跨会话调度", title: "A 不在群，申请加入", note: "Joy 发现自己尚未入席；只有你具备群成员管理权时，才会出现可执行的加入审批；没有权限时呈现独立的无权限失败状态，不并入通用失败文案，也不与审批卡混写。", surface: "dm",
         messages: [
           { type: "user", html: "你去新版发布圆桌看看现在讨论到哪了，核对性能风险。" },
-          { who: "joy", name: "Joy", role: "主持 Agent", html: "我还没在“新版发布圆桌”里。你可以把我拉进去；加入后我会继续刚才的任务，不需要你再说一遍。如果你没有成员管理权限，可以请群主或管理员处理。<div class='approval'><div class='approval-title'>◌ 把 Joy 加入「新版发布圆桌」？</div><div class='destination-text'>加入后，Joy 可以读取群内讨论、在群里发言并推进这次性能风险核对。</div><div class='approval-actions'><button class='mini-btn' data-toast='没有加入群，也没有发送任何消息'>暂不加入</button><button class='mini-btn primary' data-branch='X-GROUP'>加入并继续</button></div></div>" }
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "我还没在“新版发布圆桌”里。你可以把我拉进去；加入后我会继续刚才的任务，不需要你再说一遍。<div class='approval'><div class='approval-title'>◌ 把 Joy 加入「新版发布圆桌」？</div><div class='destination-text'>加入后，Joy 可以读取群内讨论、在群里发言并推进这次性能风险核对。</div><div class='approval-actions'><button class='mini-btn' data-toast='没有加入群，也没有发送任何消息'>暂不加入</button><button class='mini-btn primary' data-branch='X-GROUP'>加入并继续</button></div></div>" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "如果你没有成员管理权限，这次加入就不能由你批准，会停在下面这个独立失败状态，需要群主或管理员处理。<div class='destination-card'><div class='destination-head'><span class='destination-icon'>#</span><strong>未能把 Joy 加入「新版发布圆桌」</strong><span class='destination-state error'>无成员管理权限</span></div><div class='destination-text'>你没有成员管理权限，不能批准这次加入；性能风险核对尚未开始。</div><div class='destination-meta'><span>这项工作未开始</span><span>请群主或管理员处理</span></div></div>" }
         ],
-        activity: [{ who: "joy", label: "等你决定是否让 Joy 入席" }],
+        activity: [{ who: "joy", label: "等你决定是否让 Joy 入席" }, { who: "joy", label: "无成员管理权限 · 需要管理员处理" }],
         work: { summary: "1 项等你确认", roots: [{ title: "前往新版发布圆桌", desc: "尚未加入该群", status: "等你确认", items: [{ who: "joy", name: "Joy", task: "入群后核对性能风险", state: "等待入席", className: "wait", progress: 0, meta: "等你决定" }] }] }
       },
       {
@@ -806,10 +809,10 @@
         work: { summary: "同一组 Agent · 2 项工作", roots: [{ title: "新版发布", desc: "来自当前 Joy 单聊", status: "等你确认", items: [{ who: "blue", name: "小蓝", task: "读取发布 trace", state: "等你批准", className: "wait", progress: 22, meta: "新版发布" }] }, { title: "增长复盘", desc: "来自另一段用户对话", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "核对增长页 RUM", state: "后台中", className: "run", progress: 63, meta: "增长复盘" }] }] }
       },
       {
-        id: "Q-UNAVAILABLE", category: "固定 Agent 对话", title: "Agent 停用后历史只读", note: "旧对话和审计仍可查看，但停用的目标不能接受新工作，来源不能显示为已送达。", surface: "dm",
+        id: "Q-UNAVAILABLE", category: "固定 Agent 对话", title: "Agent 停用后历史只读", note: "旧对话和审计仍可查看，但停用的目标不能接受新工作，来源不能显示为已送达；停用是管理态，与连接失败（F-OFFLINE）分开呈现，文案与动作不得混用。", surface: "dm",
         messages: [
           { type: "user", html: "再让小蓝补一遍移动端数据。" },
-          { who: "joy", name: "Joy", role: "主持 Agent", html: "没有发出去：小蓝已停用，不能接受新的任务。之前的协作记录还在，你仍然可以查看。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "没有发出去：小蓝已被停用。这是管理状态，不是连接故障——停用的成员不能接受新任务，重新启用后才会恢复。之前的协作记录还在，你仍然可以查看；要继续派活，请群主或管理员先重新启用小蓝。" },
           { type: "receipt", from: "joy", targets: ["blue"], pair: "blue", mode: "archived", failed: true }
         ],
         activity: [],
@@ -900,12 +903,14 @@
         work: { summary: "1 项未分配", roots: [{ title: "发布方案", desc: "小紫暂时联系不上", status: "有阻塞", items: [{ who: "purple", name: "小紫", task: "证据复核", state: "未开始", className: "error", progress: 0, meta: "暂时联系不上" }] }] }
       },
       {
-        id: "F-RETRY", category: "异常与恢复", title: "后台任务失败后重试", note: "同一项工作自动重试，不新建重复工作，也不重复发送确认消息；只显示客观次数。",
+        id: "F-RETRY", category: "异常与恢复", title: "后台任务失败后重试", note: "同一项工作自动重试，不新建重复工作，也不重复发送确认消息；只显示客观次数；次数用尽后呈现明确终态，不停留在“重试中”。",
         messages: [
-          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第一轮分析因为运行环境中途退出，没有拿到完整结果。我已经在同一项工作里开始第 2 次尝试，前一轮拿到的数据不会重复发布。如果第 3 次仍失败，我会保留已有结果，并告诉你哪一步没完成。<div class='work-inline'><span class='pulse'></span>正在重试 · 第 2 / 3 次</div>" }
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第一轮分析因为运行环境中途退出，没有拿到完整结果。我已经在同一项工作里开始第 2 次尝试，前一轮拿到的数据不会重复发布。如果第 3 次仍失败，我会保留已有结果，并告诉你哪一步没完成。<div class='work-inline'><span class='pulse'></span>正在重试 · 第 2 / 3 次</div>" },
+          { type: "system", html: "第 3 次尝试仍未成功：重试已用尽 · 已停止重试。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第 3 次也没有成功，重试已用尽，我已停止重试，不会一直试下去。已经拿到的部分数据保留在同一项工作里；缺的是完整对比结论。你可以改派其他成员，或等环境恢复后再让我试。" }
         ],
-        activity: [{ who: "blue", label: "性能基线正在重试 · 第 2 / 3 次" }],
-        work: { summary: "1 项重试中", roots: [{ title: "性能基线", desc: "同一项工作保留每次尝试", status: "重试中", items: [{ who: "blue", name: "小蓝", task: "运行完整 trace", state: "重试 2/3", className: "run", progress: 39, meta: "第 2 次尝试" }] }] }
+        activity: [{ who: "blue", label: "性能基线重试已用尽 · 已停止重试" }],
+        work: { summary: "1 项已停止重试", roots: [{ title: "性能基线", desc: "同一项工作保留每次尝试", status: "重试已用尽", items: [{ who: "blue", name: "小蓝", task: "运行完整 trace", state: "已停止重试", className: "error", progress: 39, meta: "重试已用尽 · 保留部分结果" }] }] }
       },
       {
         id: "F-DEDUPE", category: "异常与恢复", title: "重复投递被幂等抑制", note: "相同投递标识只创建一个目标工作；第二次事件只留下审计记录。",
@@ -980,7 +985,7 @@
     function nodeUpdateLabel(state, className) {
       if (className === "wait") return /批准|确认|选择|入席/.test(state) ? "等待你" : "等待继续";
       if (className === "done") return "已有结果";
-      if (className === "error") return /超时/.test(state) ? "没有结果" : "未能开始";
+      if (className === "error") return /超时/.test(state) ? "没有结果" : /用尽|停止/.test(state) ? "已经结束" : "未能开始";
       if (className === "muted") return "已经结束";
       if (/接收/.test(state)) return "刚刚接收";
       if (/回复/.test(state)) return "正在回复";
@@ -1012,9 +1017,9 @@
         tone: "done"
       };
       if (className === "error") return {
-        current: /超时/.test(state) ? "工作已超时，没有产生结果" : "工作未能继续",
+        current: /超时/.test(state) ? "工作已超时，没有产生结果" : /用尽|停止/.test(state) ? "重试已用尽，这项工作已停止" : "工作未能继续",
         stages: [["接收任务", "done"], ["推进工作", "current error"], ["交付结果", ""]],
-        recent: /超时/.test(state) ? "等待时间已结束，没有收到结果。" : "任务没有开始或继续，请查看消息中的原因。",
+        recent: /超时/.test(state) ? "等待时间已结束，没有收到结果。" : /用尽|停止/.test(state) ? "多次尝试都没有完成，已拿到的部分结果保留；你可以改派其他成员，或稍后再试。" : "任务没有开始或继续，请查看消息中的原因。",
         tone: "error"
       };
       if (className === "muted") return {
@@ -1044,7 +1049,7 @@
     function branchWorkState(scenario) {
       const roots = scenario.work.roots.map(root => {
         const items = root.items.map(item => `<div class="work-node"><div class="node-top"><img src="${avatar[item.who]}"><span class="node-person">${item.name}</span><span class="node-state ${item.className}">${item.state}</span></div><div class="node-task">${item.task}</div>${nodeMeta(item.meta, item.state, item.className)}</div>`).join("");
-        const statusClass = /失败|阻塞|停止/.test(root.status) ? "error" : /等待|待|重试|部分/.test(root.status) ? "warn" : "";
+        const statusClass = /失败|阻塞|停止|用尽/.test(root.status) ? "error" : /等待|待|重试|部分/.test(root.status) ? "warn" : "";
         return `<div class="work-root"><div class="work-root-title">${root.title}<span class="status ${statusClass}">${root.status}</span></div><div class="work-root-desc">${root.desc}</div><div class="branch">${items}</div></div>`;
       }).join("<div style='height:10px'></div>");
       const count = scenario.work.roots.reduce((sum, root) => sum + root.items.filter(item => item.className === "run" || item.className === "wait").length, 0);
