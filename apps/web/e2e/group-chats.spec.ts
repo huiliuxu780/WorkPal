@@ -36,7 +36,9 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await page.route("**/rpc/groups/create", async (route) => route.abort("failed"));
   await createDialog.getByRole("button", { name: "Create group", exact: true }).click();
   await expect(createDialog.getByRole("alert")).toHaveText("Failed to fetch");
-  await expect(createDialog.getByRole("button", { name: "Create group", exact: true })).toBeEnabled();
+  await expect(
+    createDialog.getByRole("button", { name: "Create group", exact: true }),
+  ).toBeEnabled();
   await page.unroute("**/rpc/groups/create");
   await createDialog.getByRole("button", { name: "Create group", exact: true }).click();
   await page.waitForURL(/\/app\/g\/[^/]+$/);
@@ -147,20 +149,23 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await expect(
     page.getByTestId("mention-chip").filter({ hasText: "Research Writer" }),
   ).toBeVisible();
-  await composer.fill("turn the sources into a draft. @Res");
+  // Preserve the first structured mention while appending the second. fill()
+  // replaces the draft and intentionally removes mention chips no longer in it.
+  await composer.press("End");
+  await composer.type("turn the sources into a draft. @Res");
   await page.getByRole("option", { name: "@Researcher", exact: true }).click();
   await expect(page.getByTestId("mention-chip").filter({ hasText: "Researcher" })).toBeVisible();
-  await composer.fill(`${await composer.inputValue()}gather sources.`);
+  await composer.press("End");
+  await composer.type("gather sources.");
   await composer.press("Enter");
 
   await expect(page.getByTestId("transcript")).toContainText(/handled|on it|gather/i, {
     timeout: 60_000,
   });
   const transcript = page.getByTestId("transcript");
-  // Product Harness ownership: several explicit mentions without a
-  // separate-answers marker ("one by one", "all weigh in", ...) produce exactly
-  // one response owner — the first mention. Both mentions still persist as
-  // links, so assert those plus the single owner reply.
+  // RT-10 routes the structured mentions server-side. The transcript keeps
+  // both stable Bot identities as links; this Web test does not infer routing
+  // from the rendered text.
   await expect(transcript.getByText("@Research Writer", { exact: true })).toBeVisible();
   await expect(transcript.getByText("@Researcher", { exact: true })).toBeVisible();
   await expect(transcript.getByText("Research Writer", { exact: true }).first()).toBeVisible({
@@ -181,12 +186,130 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   expect(speechRequest.postDataJSON()).toMatchObject({ botId: writerId });
   await captureScreenshot(page, testInfo, "group-transcript");
 
+  if ((await page.getByTestId("side-panel").getAttribute("data-panel")) === "group") {
+    await page.getByTestId("bot-settings-trigger").click();
+  }
+
+  // RT-08: exercise the persisted public message_bot shape directly. The
+  // route adds only Message/Run read facts; it does not fake a target reply.
+  const publicSnapshot = await rpc<{
+    messages: Array<{ seq: number }>;
+    activeRuns?: unknown[];
+    recentRuns?: unknown[];
+    [key: string]: unknown;
+  }>(page, "threads/get", { groupId: draftGroupId });
+  const publicSeq = Math.max(-1, ...publicSnapshot.messages.map((message) => message.seq)) + 1;
+  const sourceRunId = `e2e-public-source-${stamp}`;
+  const targetRunId = `e2e-public-target-${stamp}`;
+  const publicOutboundId = `e2e-public-out-${stamp}`;
+  const publicTargetRun = {
+    id: targetRunId,
+    botId: writerId,
+    threadId: String(publicSnapshot.threadId),
+    taskId: `e2e-public-task-${stamp}`,
+    status: "queued",
+    waitKind: null,
+    trigger: "bot_message",
+    routineId: null,
+    modelProvider: null,
+    modelId: null,
+    error: null,
+    startedAt: null,
+    completedAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  await page.route("**/rpc/threads/get", async (route) => {
+    if (!route.request().postData()?.includes(draftGroupId)) {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        json: {
+          ...publicSnapshot,
+          messages: [
+            ...publicSnapshot.messages,
+            {
+              id: publicOutboundId,
+              threadId: publicSnapshot.threadId,
+              seq: publicSeq,
+              role: "bot",
+              botId: researcherId,
+              runId: sourceRunId,
+              blocks: [
+                {
+                  kind: "bot_message_sent",
+                  toBotId: writerId,
+                  toBotName: "Research Writer old name",
+                  text: "Review the public delegation layout.",
+                  intent: "request",
+                },
+              ],
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: `e2e-public-in-${stamp}`,
+              threadId: publicSnapshot.threadId,
+              seq: publicSeq + 1,
+              role: "user",
+              runId: targetRunId,
+              blocks: [
+                {
+                  kind: "bot_message_received",
+                  fromBotId: researcherId,
+                  fromBotName: "Researcher old name",
+                  text: "Review the public delegation layout.",
+                  intent: "request",
+                  returnToMessageId: publicOutboundId,
+                },
+              ],
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          activeRuns: [...(publicSnapshot.activeRuns ?? []), publicTargetRun],
+        },
+      }),
+    });
+  });
+  await page.reload();
+  const publicDelegation = page.getByTestId("public-delegation");
+  await expect(publicDelegation).toContainText("Researcher");
+  await expect(publicDelegation).toContainText("Review the public delegation layout.");
+  await expect(publicDelegation.getByTestId("public-delegation-target")).toHaveCount(1);
+  await expect(publicDelegation.getByTestId("public-delegation-status")).toHaveAttribute(
+    "data-status",
+    "queued",
+  );
+  await expect(page.getByTestId("peer-conversation-view")).toHaveCount(0);
+  const publicStatus = publicDelegation.getByTestId("public-delegation-status");
+  await publicStatus.focus();
+  await publicStatus.press("Enter");
+  await expect(publicDelegation.getByTestId("public-delegation-status-detail")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const publicBox = await publicDelegation.boundingBox();
+  expect(publicBox?.x).toBeGreaterThanOrEqual(0);
+  expect((publicBox?.x ?? 0) + (publicBox?.width ?? 0)).toBeLessThanOrEqual(390);
+  await expect(publicDelegation.getByText("@Research Writer", { exact: true })).toBeVisible();
+  await captureScreenshot(page, testInfo, "public-delegation-mobile");
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const publicMention = publicDelegation.getByTestId("agent-mention");
+  await publicMention.focus();
+  await publicMention.press("Enter");
+  await page.waitForURL(new RegExp(`/app/${writerId}$`));
+  await expect(page.getByTestId("peer-conversation-view")).toHaveCount(0);
+  await page.unroute("**/rpc/threads/get");
+  await page.goto(groupUrl);
+  await expect(page.getByRole("combobox", { name: "Message Draft team" })).toBeVisible();
+
   await composer.fill("@Res");
   await page.getByRole("option", { name: "@Research Writer", exact: true }).click();
   await expect(
     page.getByTestId("mention-chip").filter({ hasText: "Research Writer" }),
   ).toBeVisible();
-  await composer.fill("ask me which city to use");
+  await composer.press("End");
+  await composer.type("ask me which city to use");
   await composer.press("Enter");
   // threads/get can observe waiting_input before the shell realtime feed paints the ask card.
   await expect
@@ -252,8 +375,11 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await sidebarRow(page, "Draft team").click();
   await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible();
 
-  await composer.fill(
-    "@Researcher write path notes/group-preview.md and attach it to the thread says # Group artifact",
+  await composer.fill("@Res");
+  await page.getByRole("option", { name: "@Researcher", exact: true }).click();
+  await composer.press("End");
+  await composer.type(
+    "write path notes/group-preview.md and attach it to the thread says # Group artifact",
   );
   await composer.press("Enter");
   const groupMarkdown = page.getByRole("button", { name: "Preview group-preview.md" });

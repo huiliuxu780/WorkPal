@@ -1351,3 +1351,102 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(host.textContent).toContain("FRESH-STEP");
   });
 });
+
+describe("public group delegation transcript", () => {
+  const publicOutbound: ThreadMessage = {
+    id: "public-out",
+    threadId: THREAD,
+    seq: 11,
+    role: "bot",
+    botId: "bot-sender",
+    runId: "source-run",
+    blocks: [
+      {
+        kind: "bot_message_sent",
+        toBotId: "bot-target",
+        toBotName: "Target old name",
+        text: "Review the public draft.",
+        intent: "request",
+      },
+    ],
+    createdAt: ISO,
+  };
+  const publicInbound: ThreadMessage = {
+    id: "public-in",
+    threadId: THREAD,
+    seq: 10,
+    role: "user",
+    runId: "target-run",
+    blocks: [
+      {
+        kind: "bot_message_received",
+        fromBotId: "bot-sender",
+        fromBotName: "Sender old name",
+        text: "Review the public draft.",
+        intent: "request",
+        returnToMessageId: "public-out",
+      },
+    ],
+    createdAt: ISO,
+  };
+
+  it("renders public records without opening the private pair UI", () => {
+    const openBot = vi.fn();
+    const openPair = vi.fn();
+    const host = renderTranscript({
+      artifactTarget: { groupId: "group-1" },
+      messages: [publicInbound, publicOutbound],
+      runs: [run("target-run", "queued", { botId: "bot-target", trigger: "bot_message" })],
+      botNameOf: (botId) =>
+        ({ "bot-sender": "Sender current name", "bot-target": "Target current name" })[botId],
+      peerBot: () => ({ color: "#3EC5A8" }),
+      onOpenBot: openBot,
+      onOpenPeerMessages: openPair,
+    });
+
+    expect(host.querySelectorAll('[data-testid="public-delegation"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-testid="peer-receipt-chip"]')).toHaveLength(0);
+    expect(host.textContent).toContain("Sender current name");
+    expect(host.textContent).toContain("Target current name");
+    expect(host.textContent).toContain("Review the public draft.");
+    expect(host.querySelector('[data-status="queued"]')).not.toBeNull();
+
+    const mention = host.querySelector<HTMLAnchorElement>('[data-testid="agent-mention"]');
+    act(() => {
+      mention?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(openBot).toHaveBeenCalledWith("bot-target");
+    expect(openPair).not.toHaveBeenCalled();
+  });
+
+  it("shows target confirmation only after a real target Message arrives", () => {
+    const host = renderTranscript({
+      artifactTarget: { groupId: "group-1" },
+      messages: [publicInbound, publicOutbound],
+      runs: [run("target-run", "running", { botId: "bot-target", trigger: "bot_message" })],
+      botNameOf: (botId) => ({ "bot-sender": "Sender", "bot-target": "Target" })[botId],
+      peerBot: () => ({ color: "#3EC5A8" }),
+    });
+
+    expect(host.textContent).not.toContain("TARGET-REAL-CONFIRMATION");
+    rerenderTranscript({
+      messages: [
+        publicInbound,
+        publicOutbound,
+        {
+          ...message(
+            "target-response",
+            "bot",
+            [{ kind: "text", text: "TARGET-REAL-CONFIRMATION" }],
+            "target-run",
+          ),
+          botId: "bot-target",
+          seq: 12,
+        },
+      ],
+    });
+
+    expect(host.textContent).toContain("TARGET-REAL-CONFIRMATION");
+    expect(host.querySelectorAll('[data-testid="public-delegation"]')).toHaveLength(1);
+  });
+});
