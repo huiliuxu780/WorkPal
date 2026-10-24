@@ -5,6 +5,7 @@ import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentScopeAgentRuntime,
+  type AgentScopeRunRejectedError,
   type AgentScopeSessionConflictError,
   type AgentScopeTransientError,
 } from "./agentscope-runtime.js";
@@ -138,6 +139,26 @@ describe("AgentScopeAgentRuntime", () => {
     } satisfies Partial<AgentScopeSessionConflictError>);
     expect(fixture.requests[0]).toMatchObject({ sessionAdmission: request.sessionAdmission });
   });
+
+  it.each([410, 422])(
+    "classifies Runtime %i as a definitive pre-execution rejection",
+    async (status) => {
+      const fixture = await listen((_request, response) => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end('{"error":"Run rejected before execution"}');
+      });
+      const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+      const drain = async () => {
+        for await (const _event of runtime.run(runRequest(), runContext())) {
+          // drain
+        }
+      };
+
+      await expect(drain()).rejects.toMatchObject({
+        name: "AgentScopeRunRejectedError",
+      } satisfies Partial<AgentScopeRunRejectedError>);
+    },
+  );
 
   it("classifies model timeout events without retrying unrelated model errors", async () => {
     const fixture = await listen((_request, response) => {

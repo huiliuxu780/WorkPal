@@ -30,6 +30,13 @@ export class AgentScopeSessionConflictError extends Error {
   }
 }
 
+export class AgentScopeRunRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentScopeRunRejectedError";
+  }
+}
+
 function transientWireError(message: string): AgentScopeTransientError | null {
   if (/\b(?:timeout|timed out)\b/i.test(message)) {
     return new AgentScopeTransientError("llm_timeout", message);
@@ -933,7 +940,9 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
             `AgentScope service returned ${response.status}: ${detail}`,
           );
         }
-        throw new Error(`AgentScope service returned ${response.status}: ${detail}`);
+        throw new AgentScopeRunRejectedError(
+          `AgentScope service returned ${response.status}: ${detail}`,
+        );
       }
       const instanceId = response.headers.get("x-agent-runtime-instance");
       if (this.serviceInstanceId && instanceId && instanceId !== this.serviceInstanceId) {

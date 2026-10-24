@@ -219,6 +219,22 @@ describePostgres("Run budget enforcement (PostgreSQL)", () => {
     expect(events.at(-1)?.type).toBe("delivery.created");
   });
 
+  it("keeps a durable abort retry when the Runtime abort fails", async () => {
+    const run = await running("routine", 3_601);
+    abort.mockRejectedValueOnce(new Error("abort unavailable"));
+
+    await expect(enforceRunBudgets(deps(), new Date(), run.id)).resolves.toBe(1);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+      status: "failed",
+      error: "budget_exceeded:duration_sec",
+    });
+    expect(
+      await prisma.executionRevocation.findUniqueOrThrow({
+        where: { kind_subjectId: { kind: "run_abort", subjectId: run.id } },
+      }),
+    ).toMatchObject({ runId: run.id, attempts: 1, lastError: "abort unavailable" });
+  });
+
   async function clearActiveRuns() {
     await prisma.run.updateMany({
       where: {

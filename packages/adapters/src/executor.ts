@@ -193,6 +193,7 @@ import {
 import type { AgentlyMailService } from "./agently-mail.js";
 import {
   AgentScopeAgentRuntime,
+  AgentScopeRunRejectedError,
   AgentScopeSessionConflictError,
   AgentScopeTransientError,
 } from "./agentscope-runtime.js";
@@ -2461,6 +2462,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const pauseForSecret = () => {
           approvalPausePending = true;
           return secretPausedToolResult();
+        };
+
+        const retainPausedSessionAdmission = async () => {
+          if (!admission) return;
+          const current = await deps.prisma.run.findUnique({
+            where: { id: runId },
+            select: { status: true },
+          });
+          if (current?.status === "waiting_input") approvalPausePending = true;
         };
 
         /**
@@ -6164,8 +6174,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   new Date(),
                   runId,
                 ))
-              )
+              ) {
+                await retainPausedSessionAdmission();
                 return;
+              }
               pendingToolNames.push(event.name);
               tryFlushPendingTools();
               const loopGuard = advanceToolCallLoopGuard(toolCallStreak, event.name, event.args);
@@ -6319,8 +6331,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   new Date(),
                   runId,
                 ))
-              )
+              ) {
+                await retainPausedSessionAdmission();
                 return;
+              }
             } else if (event.type === "done") {
               if (!assembled && event.text) {
                 if (publishedMidTurnUserMessage || discardedMidTurnNarration) {
@@ -6628,16 +6642,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
             await workspaceCheckpoint.flush().catch(() => undefined);
           }
           if (admission && !sessionMayRelease) {
-            await markSessionAdmissionRecovering(
-              deps.prisma,
-              admission,
-              error instanceof AgentScopeSessionConflictError
-                ? "agentscope_runtime_409"
-                : "agentscope_runtime_outcome_unconfirmed",
-            ).catch((recoveryError) =>
-              getLogger().error("session admission recovery transition failed", recoveryError),
-            );
-            return;
+            if (error instanceof AgentScopeRunRejectedError) {
+              sessionMayRelease = true;
+            } else {
+              await retainPausedSessionAdmission().catch(() => undefined);
+            }
+            if (approvalPausePending) return;
+            if (!sessionMayRelease) {
+              await markSessionAdmissionRecovering(
+                deps.prisma,
+                admission,
+                error instanceof AgentScopeSessionConflictError
+                  ? "agentscope_runtime_409"
+                  : "agentscope_runtime_outcome_unconfirmed",
+              ).catch((recoveryError) =>
+                getLogger().error("session admission recovery transition failed", recoveryError),
+              );
+              return;
+            }
           }
           const message = redactSecrets(
             error instanceof Error ? error.message : String(error),

@@ -79,7 +79,7 @@ describe.skipIf(!process.env.AGENTSCOPE_URL)("history compaction with AgentScope
     const jobs = { enqueue: vi.fn(async () => undefined) };
     const deps = {
       prisma: prisma as unknown as PrismaClient,
-      runtime: new AgentScopeAgentRuntime(),
+      runtime: new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL }),
       jobs,
       memoryProviders,
       memoryDigestKey: "test-digest-key",
