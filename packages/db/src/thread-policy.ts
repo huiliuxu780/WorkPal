@@ -83,10 +83,16 @@ function authorizedPairMessages(input: {
     INNER JOIN runs source_run
       ON source_run.id = origin."sourceRunId"
      AND source_run."threadId" = origin."sourceThreadId"
-     AND source_run."sourceMessageId" = origin."sourceReceiptMessageId"
     INNER JOIN messages source_receipt
       ON source_receipt.id = origin."sourceReceiptMessageId"
      AND source_receipt."threadId" = origin."sourceThreadId"
+     -- The receipt is either the message that started the source Run, or a
+     -- lightweight receipt the source Run itself wrote (RT-05 private-pair
+     -- delivery). Anything else is not provenance.
+     AND (
+       source_run."sourceMessageId" = source_receipt.id
+       OR source_receipt."runId" = source_run.id
+     )
     WHERE origin."pairThreadId" = ${input.pairThreadId}
       AND pair_thread."spaceId" = ${input.actor.spaceId}
       AND pair_thread."userId" = ${input.actor.userId}
@@ -164,17 +170,21 @@ export async function recordAgentPairMessageOrigin(
         OR: [{ groupId: null }, { group: { is: { kind: CHAT_GROUP_KIND_STANDARD } } }],
       },
     },
-    select: { id: true },
+    select: { id: true, runId: true },
   });
   const sourceRun = await db.run.findFirst({
     where: {
       id: input.sourceRunId,
       threadId: input.sourceThreadId,
-      sourceMessageId: input.sourceReceiptMessageId,
     },
-    select: { id: true },
+    select: { id: true, sourceMessageId: true },
   });
   if (!pairMessage || !sourceReceipt || !sourceRun) throw new IsolationError();
+  // Provenance: the receipt either started the source Run, or the source Run
+  // wrote it as a lightweight delivery receipt in its own Thread.
+  if (sourceRun.sourceMessageId !== sourceReceipt.id && sourceRun.id !== sourceReceipt.runId) {
+    throw new IsolationError();
+  }
 
   await db.agentPairMessageOrigin.create({ data: input });
 }

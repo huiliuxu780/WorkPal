@@ -240,6 +240,7 @@ import { createAutoReviewProvider } from "./auto-review-factory.js";
 import { authorizedAvatarRequest, requestedAvatarBodyColor } from "./avatar-change-request.js";
 import { attachedImageArtifactIds, resolveUpdateBotAvatar } from "./bot-avatar.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
+import { interventionOriginForRun } from "./run-origin.js";
 import {
   allowPrivateHttpSecretOrigins,
   findBotSecret,
@@ -2496,6 +2497,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: redactSecrets(item.title, runSecrets),
             })),
           };
+          const planReviewOrigin = await interventionOriginForRun(deps.prisma, run);
           const paused = await deps.events.pauseRunForInput({
             spaceId: run.spaceId,
             threadId: run.threadId,
@@ -2504,6 +2506,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             attemptId: attempt.id,
             leaseOwner: workerId,
             leaseFence: fence,
+            ...planReviewOrigin,
             blocks: [
               {
                 kind: "ask",
@@ -2528,7 +2531,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             title: `${bot.name} needs a plan decision`,
             body: `Plan v${safeContent.contentVersion} is waiting for your review.`,
             botId: bot.id,
-            threadId: thread.id,
+            threadId: planReviewOrigin.presentationThreadId ?? thread.id,
           });
         };
 
@@ -2929,6 +2932,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
+                ...(await interventionOriginForRun(deps.prisma, run)),
                 blocks: [
                   {
                     kind: "ask",
@@ -3134,6 +3138,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return pauseForApproval();
             }
             await workspaceCheckpoint.flush();
+            const approvalOrigin = await interventionOriginForRun(deps.prisma, run);
             const paused = await deps.events.pauseRunForInput({
               spaceId: run.spaceId,
               threadId: run.threadId,
@@ -3142,6 +3147,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               attemptId: attempt.id,
               leaseOwner: workerId,
               leaseFence: fence,
+              ...approvalOrigin,
               blocks: [
                 buildApprovalAskBlock(applied!.effect.id, name, args, runSecrets, {
                   reviewReason,
@@ -3159,7 +3165,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: `${bot.name} needs approval`,
               body: `Review before ${name}`,
               botId: bot.id,
-              threadId: thread.id,
+              threadId: approvalOrigin.presentationThreadId ?? thread.id,
             });
             return pauseForApproval();
           };
@@ -4718,6 +4724,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return pauseForSecret();
             }
             await workspaceCheckpoint.flush();
+            const secretOrigin = await interventionOriginForRun(deps.prisma, run);
             const paused = await deps.events.pauseRunForInput({
               spaceId: run.spaceId,
               threadId: run.threadId,
@@ -4726,6 +4733,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               attemptId: attempt.id,
               leaseOwner: workerId,
               leaseFence: fence,
+              ...secretOrigin,
               blocks: [
                 {
                   kind: "ask",
@@ -4747,7 +4755,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: `${bot.name} needs a code`,
               body: String(args.label ?? "Code"),
               botId: bot.id,
-              threadId: thread.id,
+              threadId: secretOrigin.presentationThreadId ?? thread.id,
             });
             return pauseForSecret();
           }
@@ -5067,8 +5075,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ...("targetRunId" in sent
                 ? {
                     targetRunId: sent.targetRunId,
-                    destination: sent.destination,
-                    locator: sent.locator,
+                    ...("destination" in sent && "locator" in sent
+                      ? { destination: sent.destination, locator: sent.locator }
+                      : {}),
                   }
                 : {}),
               ...("replayed" in sent && sent.replayed ? { replayed: true } : {}),
@@ -6063,6 +6072,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 label: redactSecrets(action.label, runSecrets),
               }));
               await workspaceCheckpoint.flush();
+              const askOrigin = await interventionOriginForRun(deps.prisma, run);
               const paused = await deps.events.pauseRunForInput({
                 spaceId: run.spaceId,
                 threadId: run.threadId,
@@ -6071,6 +6081,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
+                ...askOrigin,
                 blocks: [
                   {
                     kind: "ask",
@@ -6089,7 +6100,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 title: `${bot.name} needs an answer`,
                 body: safeText,
                 botId: bot.id,
-                threadId: thread.id,
+                threadId: askOrigin.presentationThreadId ?? thread.id,
               });
               return;
             } else if (event.type === "takeover") {

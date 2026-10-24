@@ -261,6 +261,11 @@ export function createJobReconciler(
             userId: true,
             sourceMessageId: true,
             orchestration: true,
+            // A delegated Run returns through the origin it persisted, not the
+            // Thread it happens to execute in.
+            originThreadId: true,
+            originRunId: true,
+            originMessageId: true,
             status: true,
             error: true,
             bot: { select: { name: true } },
