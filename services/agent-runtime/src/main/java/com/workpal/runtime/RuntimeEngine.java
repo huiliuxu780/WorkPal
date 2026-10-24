@@ -1187,6 +1187,10 @@ public final class RuntimeEngine {
         String bot = hash(botId);
         deleteTree(stateRoot.resolve(bot).resolve(tenant));
         deleteTree(workspaceRoot.resolve(tenant).resolve(bot));
+        // Suspended runs keep native transcripts and tool arguments in the
+        // checkpoint tree (including displaced snapshots); deletion must
+        // remove those too or the bot's raw conversation data stays on disk.
+        checkpoints.purgeBot(botId);
     }
 
     private static void deleteTree(Path root) throws IOException {

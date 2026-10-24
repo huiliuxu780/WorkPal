@@ -411,6 +411,17 @@ final class SessionCheckpointStore {
         return root.resolve(SessionSlots.hash(botId));
     }
 
+    /** Bot deletion removes the bot's whole checkpoint tree, including displaced snapshots. */
+    void purgeBot(String botId) throws IOException {
+        java.nio.file.Path tree = checkpointRoot(botId);
+        if (!java.nio.file.Files.exists(tree)) return;
+        try (var paths = java.nio.file.Files.walk(tree)) {
+            for (java.nio.file.Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                java.nio.file.Files.delete(path);
+            }
+        }
+    }
+
     private Path checkpointDir(String botId, String checkpointId) {
         return checkpointRoot(botId).resolve(checkpointId);
     }

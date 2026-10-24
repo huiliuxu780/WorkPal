@@ -294,6 +294,21 @@ class SessionCheckpointStoreTest {
         assertEquals(text, RuntimeEngine.threadAfterSuspensionContext(messages).getTextContent());
     }
 
+    @Test void purgeBotRemovesDetachedCheckpointsIncludingDisplaced() throws Exception {
+        String tenant = tenant("user-1", "space-1");
+        String session = session("bot-1", "thread-1", 0);
+        seedState("bot-1", tenant, session, true);
+        SessionCheckpointStore store = store();
+        SessionCheckpointStore.Binding binding =
+                binding("exec-a", "attempt-a", 3, "susp-a", CHECKPOINT_ID);
+        assertEquals("detached", store.inspectAndDetach("bot-1", tenant, session, binding).kind());
+
+        store.purgeBot("bot-1");
+        assertFalse(Files.exists(temp.resolve("checkpoints").resolve(SessionSlots.hash("bot-1"))));
+        // A bot with no checkpoints purges without error.
+        store.purgeBot("bot-unknown");
+    }
+
     @Test void initializationFailureReleasesTheActiveSessionMarker() throws Exception {
         // RT-26 review (P2): the slot's active marker is registered before the
         // checkpoint restore and the initial state load. A failure there must
