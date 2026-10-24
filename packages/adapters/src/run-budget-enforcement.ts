@@ -7,6 +7,7 @@ import {
 } from "@rakazo/core";
 import { type PrismaClient, recordRunAbortRevocations, type ThreadEvents } from "@rakazo/db";
 import { deliverRunAborts } from "./revoke-cancelled-work.js";
+import { interventionOriginForRun } from "./run-origin.js";
 
 /** Independent of the model stream, so a hung model call still reaches its duration limit. */
 export async function enforceRunBudgets(
@@ -76,6 +77,7 @@ export async function enforceRunBudgets(
     const changed = policy.interaction.interactive
       ? await deps.events.pauseRunForInput({
           ...common,
+          ...(await interventionOriginForRun(deps.prisma, run)),
           budgetExceeded: violation,
           blocks: [{
             kind: "ask",
