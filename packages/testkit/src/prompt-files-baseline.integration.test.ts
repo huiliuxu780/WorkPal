@@ -39,6 +39,7 @@ import {
   HISTORY_COMPACTION_INSTRUCTIONS,
 } from "../../adapters/src/history-compaction.js";
 import { buildDeliveryPrompt, type DeliveryRow } from "../../adapters/src/result-delivery.js";
+import { withAgentScopeTestAdmission } from "../../adapters/src/testing/agentscope-session-admission.js";
 import {
   renderTeamChatEngagementPrompt,
   TEAM_CHAT_JUDGE_INSTRUCTIONS,
@@ -332,7 +333,11 @@ describe("AG-04 final-request baseline", () => {
     const before = modelRequests.length;
     for (const request of requests) {
       const events: AgentRuntimeEvent[] = [];
-      for await (const event of runtime.run(request, contextFor(request.runId))) events.push(event);
+      const admitted = withAgentScopeTestAdmission(request, {
+        userId: "user-baseline",
+        spaceId: "space-baseline",
+      });
+      for await (const event of runtime.run(admitted, contextFor(request.runId))) events.push(event);
       const terminal = events.at(-1);
       if (terminal?.type !== "done") {
         throw new Error(`${caseId}: run did not finish cleanly: ${JSON.stringify(terminal)}`);

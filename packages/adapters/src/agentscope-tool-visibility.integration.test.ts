@@ -9,6 +9,7 @@ import type { AgentRunRequest, AgentRuntimeEvent, ConnectorTool } from "@rakazo/
 import { toolsForRetryRun } from "@rakazo/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
+import { withAgentScopeTestAdmission } from "./testing/agentscope-session-admission.js";
 
 // AG-05: TS adapter → real Java jar → local model protocol fixture. Same Run,
 // three model HTTP calls: tool available → revoked → re-authorized with a new
@@ -281,7 +282,9 @@ describe("AgentScope per-call tool visibility", () => {
       },
     };
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(request, context("vis-same-run"))) events.push(event);
+    for await (const event of runtime.run(
+      withAgentScopeTestAdmission(request, { userId: "user-1", spaceId: "space-1" }),
+      context("vis-same-run"))) events.push(event);
     expect(events.at(-1)).toEqual({ type: "done", text: "VIS_FIXTURE_OK" });
     const captured = modelRequests.filter((entry) => entry.model === "vis-same-run");
     expect(captured.length).toBeGreaterThanOrEqual(3);
@@ -337,7 +340,9 @@ describe("AgentScope per-call tool visibility", () => {
     };
     const events: AgentRuntimeEvent[] = [];
     try {
-      for await (const event of runtime.run(request, context("vis-refuse"))) events.push(event);
+      for await (const event of runtime.run(
+      withAgentScopeTestAdmission(request, { userId: "user-1", spaceId: "space-1" }),
+      context("vis-refuse"))) events.push(event);
     } catch (error) {
       expect(String(error)).toMatch(/not allowed/i);
     }
@@ -366,7 +371,9 @@ describe("AgentScope per-call tool visibility", () => {
       },
     };
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(request, context("vis-aux"))) events.push(event);
+    for await (const event of runtime.run(
+      withAgentScopeTestAdmission(request, { userId: "user-1", spaceId: "space-1" }),
+      context("vis-aux"))) events.push(event);
     expect(events.at(-1)?.type).toBe("done");
     const captured = modelRequests.filter((entry) => entry.model === "vis-aux");
     expect(captured.length).toBeGreaterThan(0);
@@ -400,7 +407,9 @@ describe("AgentScope per-call tool visibility", () => {
       },
     };
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(request, context("retry-schema"))) events.push(event);
+    for await (const event of runtime.run(
+      withAgentScopeTestAdmission(request, { userId: "user-1", spaceId: "space-1" }),
+      context("retry-schema"))) events.push(event);
     expect(events.at(-1)).toEqual({ type: "done", text: "RETRY_SCHEMA_OK" });
     const captured = modelRequests.filter((entry) => entry.model === "retry-schema");
     expect(captured.length).toBeGreaterThanOrEqual(3);
@@ -437,7 +446,9 @@ describe("AgentScope per-call tool visibility", () => {
       },
     };
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(request, context("ordinary-schema"))) events.push(event);
+    for await (const event of runtime.run(
+      withAgentScopeTestAdmission(request, { userId: "user-1", spaceId: "space-1" }),
+      context("ordinary-schema"))) events.push(event);
     expect(events.at(-1)).toEqual({ type: "done", text: "RETRY_SCHEMA_OK" });
     const captured = modelRequests.filter((entry) => entry.model === "ordinary-schema");
     expect(captured.length).toBeGreaterThanOrEqual(3);
