@@ -5811,6 +5811,47 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 if (intervention && intervention.status !== "answered") {
                   throw new Error("Checkpoint resumed without an answered pending request");
                 }
+                // Crash window: AgentScope persisted the ask call, but the
+                // worker died before pauseRunForInput created its
+                // Intervention. Restoring now would make resumeTools fall
+                // back to the task prompt as the "answer" and skip the user
+                // entirely — recreate the input request instead; the answer
+                // then resumes through the normal checkpoint path.
+                const pendingCalls = Array.isArray(checkpoint.pendingCalls)
+                  ? (checkpoint.pendingCalls as unknown[])
+                  : [];
+                if (pendingCalls.length > 0 && !intervention) {
+                  await workspaceCheckpoint.flush().catch(() => undefined);
+                  const origin = await interventionOriginForRun(deps.prisma, run);
+                  const paused = await deps.events.pauseRunForInput({
+                    spaceId: run.spaceId,
+                    threadId: run.threadId,
+                    botId: run.botId,
+                    runId,
+                    attemptId: attempt.id,
+                    leaseOwner: workerId,
+                    leaseFence: fence,
+                    ...pauseBinding(),
+                    ...origin,
+                    blocks: [
+                      {
+                        kind: "ask",
+                        text: "The agent was interrupted while asking you a question and the question text was lost. Answer here; the run continues with your reply.",
+                        status: "pending",
+                      },
+                    ],
+                  });
+                  if (paused) {
+                    await notifyRun(deps, run, {
+                      kind: "help",
+                      title: `${bot.name} needs an answer`,
+                      body: "A question from before the interruption is waiting for your reply.",
+                      botId: bot.id,
+                      threadId: origin.presentationThreadId ?? thread.id,
+                    });
+                    return;
+                  }
+                }
                 const decisionKey = intervention
                   ? `${intervention.id}:${intervention.revision}`
                   : `checkpoint:${checkpoint.id}`;
