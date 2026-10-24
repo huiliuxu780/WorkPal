@@ -5871,6 +5871,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
                       botId: bot.id,
                       threadId: origin.presentationThreadId ?? thread.id,
                     });
+                    // PR #126 review P2 ③: this Attempt never entered the
+                    // runtime, so it releases the admission exactly like the
+                    // pre-runtime paths. Leaving the flag false parked the NEW
+                    // admission in recovering under a binding that no Java
+                    // checkpoint can ever prove detached (the manifest belongs
+                    // to the old binding), so answering the card could not
+                    // unblock the session and other Runs were dragged in. The
+                    // checkpoint stays unconsumed and is linked to the
+                    // replacement card through pendingInterventionId, so the
+                    // answer resumes through the normal checkpoint path.
+                    sessionMayRelease = true;
                     return;
                   }
                 }
