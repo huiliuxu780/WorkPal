@@ -11,6 +11,7 @@ import {
   createThreadMessageInTransaction,
   createThreadPolicy,
   expireWaitingRuns,
+  finalizeComputerControlRelease,
   type IsolatedPostgresDatabase,
   ManualRetryDenied,
   type PrismaClient,
@@ -1623,6 +1624,44 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     expect(waiting.threadId).toBe(target.threadId);
     const bound = await prisma.computer.findUniqueOrThrow({ where: { id: computer.id } });
     expect(bound.controlRunId).toBe(target.id);
+
+    // The user takes control (grant), then finishes: the release must be
+    // projected back into the visible chat, or A keeps showing the wait.
+    await prisma.computer.update({
+      where: { id: computer.id },
+      data: {
+        controlHolder: "user",
+        controlBotId: target.botId,
+        controlLeaseId: "lease-takeover",
+        controlLeaseExpiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    expect(
+      await finalizeComputerControlRelease(
+        prisma,
+        {
+          computerId: computer.id,
+          spaceId,
+          botId: target.botId,
+          leaseId: "lease-takeover",
+          runId: target.id,
+          holder: "bot",
+          reason: "done",
+        },
+        undefined,
+      ),
+    ).toMatchObject({ runId: target.id });
+    const releasedInOrigin = await prisma.event.findFirstOrThrow({
+      where: {
+        threadId: sourceThreadId,
+        runId: target.id,
+        type: "computer.takeover.released",
+      },
+    });
+    expect(releasedInOrigin.payload).toMatchObject({ reason: "done", projected: true });
+    expect(
+      (await prisma.run.findUniqueOrThrow({ where: { id: target.id } })).status,
+    ).toBe("queued");
   });
 
   it("cancels the delegated Run with its origin and never fabricates a reply", async () => {

@@ -1839,12 +1839,56 @@ export async function finalizeComputerControlRelease(
         reason: input.reason,
       },
     });
-    return { threadId: event.threadId, seq: event.seq, runId };
+    // RT-05F: a delegated run's takeover was PROJECTED into its visible
+    // origin; the release must reach that Thread too or the user's chat keeps
+    // showing the wait after acting. Walk the persisted origin chain to the
+    // first visible Thread (same rule as the projection).
+    let projected: { threadId: string; seq: number } | null = null;
+    if (input.runId) {
+      let hop = await tx.run.findUnique({
+        where: { id: input.runId },
+        select: { originThreadId: true, originRunId: true },
+      });
+      for (let depth = 0; hop?.originThreadId && hop.originRunId && depth < 8; depth += 1) {
+        const originThread = await tx.thread.findUnique({
+          where: { id: hop.originThreadId },
+          select: { id: true, group: { select: { kind: true } } },
+        });
+        if (!originThread) break;
+        if (originThread.group?.kind !== "agent_pair") {
+          if (originThread.id !== bot.thread.id) {
+            const projectedEvent = await appendEventInTransaction(tx, {
+              spaceId: input.spaceId,
+              threadId: originThread.id,
+              botId: input.botId,
+              runId: runId ?? undefined,
+              type: "computer.takeover.released",
+              payload: {
+                holder: input.holder,
+                leaseId: input.leaseId,
+                reason: input.reason,
+                projected: true,
+              },
+            });
+            projected = { threadId: projectedEvent.threadId, seq: projectedEvent.seq };
+          }
+          break;
+        }
+        hop = await tx.run.findUnique({
+          where: { id: hop.originRunId },
+          select: { originThreadId: true, originRunId: true },
+        });
+      }
+    }
+    return { threadId: event.threadId, seq: event.seq, runId, projected };
   });
 
   if (!committed) return false;
   if (committed.threadId && committed.seq !== null) {
     await notifyRealtime(realtime, committed.threadId, committed.seq);
+  }
+  if (committed.projected) {
+    await notifyRealtime(realtime, committed.projected.threadId, committed.projected.seq);
   }
   return { runId: committed.runId };
 }

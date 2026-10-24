@@ -157,6 +157,10 @@ export function shouldForwardPeerThreadEvent(event: {
     event.type === "run.cancelled" ||
     event.type === "run.waiting_input" ||
     event.type === "computer.takeover.requested" ||
+    // RT-05F: a projected takeover's release must reach the origin stream so
+    // the user's chat stops showing the wait after acting.
+    event.type === "computer.takeover.granted" ||
+    event.type === "computer.takeover.released" ||
     // Phase 4: collaboration activity belongs to the delegating turn's live
     // view; dropping it here would make live and refreshed snapshots diverge.
     event.type === "thread.collaboration.requested" ||
