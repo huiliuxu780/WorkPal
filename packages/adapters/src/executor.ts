@@ -121,12 +121,14 @@ import {
   takeRetryOperationId,
 } from "@rakazo/core/node/manual-retry-match";
 import {
+  acknowledgeSessionCheckpoint,
   acquireSessionAdmission,
   appendEventInTransaction,
   applyPlanSubmission,
   avatarChangeView,
   CHAT_GROUP_KIND_AGENT_PAIR,
   backgroundTaskLockTransactionOptions,
+  beginCheckpointResume,
   changeBotAvatarInTransaction,
   completeSessionAdmission,
   createSpaceForMember,
@@ -136,6 +138,7 @@ import {
   enqueueDeliveryInTransaction,
   findDefaultModelCredential,
   findModelCredential,
+  findResumableCheckpoint,
   getFactForActor,
   InvalidSpaceNameError,
   isTooManyDatabaseConnections,
@@ -143,7 +146,10 @@ import {
   loadCurrentPlanProjection,
   loadPendingPlanReviewRepair,
   loadRunHistoryMessages,
+  loadThreadContextAfterCheckpoint,
   type McpServer,
+  markCheckpointResumeConsumed,
+  markCheckpointResumeRestored,
   markSessionAdmissionRecovering,
   markSessionRuntimeStarted,
   type Prisma,
@@ -158,9 +164,12 @@ import {
   type RunTaskInstructions,
   readTaskInstructionsForRun,
   reconcileAttemptFenceConflict,
+  recordCheckpointProof,
   recordLegacyNativePlanDecision,
   registerBackgroundTaskProjection,
+  releaseRecoveredSessionAdmission,
   releaseSessionAdmission,
+  releaseSuspendedSessionAdmission,
   renewOwnedRunLease,
   renewSessionAdmission,
   requeueExpiredSessionAdmissionWaiter,
@@ -168,6 +177,7 @@ import {
   type SessionAdmissionLease,
   SpaceLimitError,
   scheduleAutomaticRunRetry,
+  sessionCheckpointId,
   submitDraftForReview,
   TaskInstructionIntegrityError,
   type ThreadEvents,
@@ -195,7 +205,6 @@ import type { AgentlyMailService } from "./agently-mail.js";
 import {
   AgentScopeAgentRuntime,
   AgentScopeRunRejectedError,
-  AgentScopeSessionConflictError,
   AgentScopeTransientError,
 } from "./agentscope-runtime.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
@@ -1250,6 +1259,126 @@ export function createRunExecutor(deps: ExecutorDeps) {
     }
   };
 
+  /**
+   * RT-26 recovery hook: an RT-25 `recovering` owner is released only when the
+   * Runtime proves the shared slot clean or detaches it under the SAME attempt,
+   * fence, and suspension key, and that proof is acknowledged by PostgreSQL.
+   * An unreachable Runtime, a missing binding, or a mismatched proof leaves the
+   * owner recovering; elapsed time is never a proof.
+   */
+  const settleRecoveringSessionOwner = async (input: {
+    run: { id: string; userId: string; spaceId: string; botId: string; threadId: string };
+    sessionKey: string;
+    executionId: string;
+    attemptId: string;
+    admissionFence: number;
+    suspensionKey: string;
+    expiresAt: Date | null;
+    threadGeneration: number;
+  }): Promise<boolean> => {
+    const detach = deps.runtime.inspectAndDetach?.bind(deps.runtime);
+    if (!detach) return false;
+    const runId = input.run.id;
+    const checkpointId = sessionCheckpointId({
+      runId,
+      attemptId: input.attemptId,
+      admissionFence: input.admissionFence,
+    });
+    try {
+      const watermark = await deps.prisma.thread.findUnique({
+        where: { id: input.run.threadId },
+        select: { nextMessageSeq: true },
+      });
+      const coveredMessageSeq = Math.max(0, (watermark?.nextMessageSeq ?? 1) - 1);
+      const intervention = await deps.prisma.intervention.findFirst({
+        where: {
+          runId,
+          attemptId: input.attemptId,
+          executionFence: input.admissionFence,
+          suspensionKey: input.suspensionKey,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true },
+      });
+      const claimable =
+        intervention && (intervention.status === "pending" || intervention.status === "answered")
+          ? intervention
+          : null;
+      const proof = await detach({
+        identity: {
+          userId: input.run.userId,
+          spaceId: input.run.spaceId,
+          botId: input.run.botId,
+          threadId: input.run.threadId,
+          runId,
+        },
+        sessionKey: input.sessionKey,
+        sessionGeneration: input.threadGeneration,
+        executionId: input.executionId,
+        attemptId: input.attemptId,
+        fence: input.admissionFence,
+        suspensionKey: input.suspensionKey,
+        checkpointId,
+      });
+      if (proof.checkpointId !== checkpointId) return false;
+      const binding = {
+        sessionKey: input.sessionKey,
+        runId,
+        attemptId: input.attemptId,
+        executionId: input.executionId,
+        admissionFence: input.admissionFence,
+        suspensionKey: input.suspensionKey,
+      };
+      await recordCheckpointProof(deps.prisma, {
+        binding,
+        proof,
+        threadGeneration: input.threadGeneration,
+      });
+      const acknowledged = await acknowledgeSessionCheckpoint(deps.prisma, {
+        binding,
+        proof,
+        pendingInterventionId: claimable?.id ?? null,
+        coveredMessageSeq,
+      });
+      if (!acknowledged) return false;
+      const released = await releaseRecoveredSessionAdmission(deps.prisma, {
+        lease: {
+          kind: "acquired",
+          sessionKey: input.sessionKey,
+          runId,
+          executionId: input.executionId,
+          admissionFence: input.admissionFence,
+          expiresAt: input.expiresAt ?? new Date(),
+        },
+        attemptId: input.attemptId,
+        suspensionKey: input.suspensionKey,
+        proof: {
+          kind: proof.kind,
+          checkpointId: proof.checkpointId,
+          digest: proof.digest,
+        },
+      });
+      if (released.kind !== "released") return false;
+      if (released.nextRunId && released.nextRunId !== runId) {
+        await deps.jobs
+          .enqueue(runContinueJob(released.nextRunId))
+          .catch((error) =>
+            getLogger().error(
+              "recovered session admission successor enqueue failed; reconciler will recover",
+              error,
+            ),
+          );
+      }
+      return true;
+    } catch (error) {
+      getLogger().error(
+        "recovering session admission could not be proven",
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      return false;
+    }
+  };
+
   return {
     resolveConnectedModel,
     resolvePinnedModel: resolvePinnedModelIdentity,
@@ -1465,6 +1594,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const run = await deps.prisma.run.findUnique({ where: { id: runId } });
       if (!run) return;
       if (isTerminal(run.status as RunStatus)) return;
+      // RT-26: only a Run that was actually waiting may consume its own
+      // acknowledged checkpoint. A fresh Run in the same Thread never does.
+      const resumedFromWaiting = run.status === "waiting_input";
       const now = new Date();
       const existingAdmission = usesSessionAdmission
         ? await deps.prisma.agentSessionAdmission.findFirst({
@@ -1472,13 +1604,42 @@ export function createRunExecutor(deps: ExecutorDeps) {
             select: {
               sessionKey: true,
               ownerExecutionId: true,
+              ownerAttemptId: true,
+              suspensionKey: true,
               fence: true,
               expiresAt: true,
               state: true,
             },
           })
         : null;
-      if (existingAdmission?.state === "recovering") return;
+      if (existingAdmission?.state === "recovering") {
+        // RT-26: only a fresh Runtime proof of THIS owner's exact binding may
+        // release the RT-25 recovering state. Without it the session stays
+        // blocked instead of being handed to the next Run on a timeout.
+        if (
+          !existingAdmission.ownerExecutionId ||
+          !existingAdmission.ownerAttemptId ||
+          !existingAdmission.suspensionKey
+        ) {
+          return;
+        }
+        const recoveringThread = await deps.prisma.thread.findFirst({
+          where: { id: run.threadId, spaceId: run.spaceId },
+          select: { historyCompactionGeneration: true },
+        });
+        if (!recoveringThread) return;
+        const released = await settleRecoveringSessionOwner({
+          run,
+          sessionKey: existingAdmission.sessionKey,
+          executionId: existingAdmission.ownerExecutionId,
+          attemptId: existingAdmission.ownerAttemptId,
+          admissionFence: existingAdmission.fence,
+          suspensionKey: existingAdmission.suspensionKey,
+          expiresAt: existingAdmission.expiresAt,
+          threadGeneration: recoveringThread.historyCompactionGeneration,
+        });
+        if (!released) return;
+      }
       if (
         existingAdmission?.state === "owned" &&
         (run.status === "leased" || run.status === "running") &&
@@ -1778,6 +1939,28 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let runAbortController: AbortController | null = null;
       let detachShutdown: (() => void) | undefined;
       let sessionMayRelease = true;
+      let sessionSettled = false;
+      // RT-26: the exact execution binding of the attempt that owns the shared
+      // AgentScope slot. A pause card may only carry this binding, and only this
+      // binding's Runtime proof may release the admission.
+      let executionBinding: { fence: number; suspensionKey: string } | null = null;
+      const pauseBinding = () =>
+        executionBinding
+          ? {
+              executionFence: executionBinding.fence,
+              suspensionKey: executionBinding.suspensionKey,
+            }
+          : {};
+      let settleSuspendedSession: (() => Promise<boolean>) | null = null;
+      let checkpointResume:
+        | {
+            resumeId: string;
+            executionId: string;
+            restored: boolean;
+            resume: NonNullable<AgentRunRequest["resumeCheckpoint"]>;
+            threadContext: NonNullable<AgentRunRequest["threadContextAfterSuspension"]>;
+          }
+        | undefined;
       let sessionRuntimeCompleted = false;
       const heartbeat = setInterval(() => {
         void Promise.all([
@@ -2554,6 +2737,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             leaseOwner: workerId,
             leaseFence: fence,
             ...planReviewOrigin,
+            ...pauseBinding(),
             blocks: [
               {
                 kind: "ask",
@@ -2980,6 +3164,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 leaseOwner: workerId,
                 leaseFence: fence,
                 ...(await interventionOriginForRun(deps.prisma, run)),
+                ...pauseBinding(),
                 blocks: [
                   {
                     kind: "ask",
@@ -3195,6 +3380,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               leaseOwner: workerId,
               leaseFence: fence,
               ...approvalOrigin,
+              ...pauseBinding(),
               blocks: [
                 buildApprovalAskBlock(applied!.effect.id, name, args, runSecrets, {
                   reviewReason,
@@ -4781,6 +4967,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               leaseOwner: workerId,
               leaseFence: fence,
               ...secretOrigin,
+              ...pauseBinding(),
               blocks: [
                 {
                   kind: "ask",
@@ -5599,9 +5786,189 @@ export function createRunExecutor(deps: ExecutorDeps) {
               leaseValid = false;
               return;
             }
+            executionBinding = { fence: admission.admissionFence, suspensionKey };
             // From this point until a normal stream return, only a Runtime clean/detached
             // proof may release the chat admission. RT-25 deliberately has no timeout shortcut.
             sessionMayRelease = false;
+            if (resumedFromWaiting) {
+              // RT-26: restore only THIS Run's acknowledged checkpoint, under
+              // the new execution fence and suspension key of this Attempt.
+              const checkpoint = await findResumableCheckpoint(deps.prisma, {
+                runId,
+                sessionKey: admission.sessionKey,
+                threadGeneration: thread.historyCompactionGeneration,
+              });
+              if (checkpoint) {
+                const intervention = checkpoint.intervention;
+                if (intervention && intervention.status !== "answered") {
+                  throw new Error("Checkpoint resumed without an answered pending request");
+                }
+                const decisionKey = intervention
+                  ? `${intervention.id}:${intervention.revision}`
+                  : `checkpoint:${checkpoint.id}`;
+                const begun = await beginCheckpointResume(deps.prisma, {
+                  checkpointId: checkpoint.id,
+                  runId,
+                  sessionKey: admission.sessionKey,
+                  threadGeneration: thread.historyCompactionGeneration,
+                  resume: {
+                    attemptId: attempt.id,
+                    executionId: admission.executionId,
+                    admissionFence: admission.admissionFence,
+                    suspensionKey,
+                  },
+                  decisionKey,
+                  ...(intervention
+                    ? {
+                        decision: {
+                          interventionId: intervention.id,
+                          status: intervention.status,
+                          decision: intervention.decision,
+                        },
+                      }
+                    : {}),
+                  ...(resumeAnswer === undefined ? {} : { answer: resumeAnswer }),
+                });
+                if (begun.kind === "rejected") {
+                  throw new Error("Checkpoint resume was rejected for this execution");
+                }
+                const threadContext =
+                  checkpoint.coveredMessageSeq === null
+                    ? []
+                    : await loadThreadContextAfterCheckpoint(deps.prisma, {
+                        threadId: thread.id,
+                        afterSeq: checkpoint.coveredMessageSeq,
+                        excludeRunId: runId,
+                      });
+                checkpointResume = {
+                  resumeId: begun.resumeId,
+                  executionId: admission.executionId,
+                  restored: false,
+                  threadContext,
+                  resume: {
+                    checkpointId: checkpoint.id,
+                    digest: checkpoint.digest,
+                    sessionKey: admission.sessionKey,
+                    sourceRunId: checkpoint.runId,
+                    sourceAttemptId: checkpoint.attemptId,
+                    sourceExecutionId: checkpoint.executionId,
+                    sourceFence: checkpoint.admissionFence,
+                    sourceSuspensionKey: checkpoint.suspensionKey,
+                    attemptId: attempt.id,
+                    executionId: admission.executionId,
+                    fence: admission.admissionFence,
+                    suspensionKey,
+                  },
+                };
+              }
+            }
+          }
+          if (admission && suspensionKey) {
+            // RT-26 closure for a suspended attempt. The Runtime proof is
+            // persisted and acknowledged before the admission may be released;
+            // any failure leaves the RT-25 owner absorbing/recovering.
+            settleSuspendedSession = async () => {
+              const detach = deps.runtime.inspectAndDetach?.bind(deps.runtime);
+              if (!detach) return false;
+              try {
+                const state = await deps.prisma.run.findUnique({
+                  where: { id: runId },
+                  select: { status: true },
+                });
+                const waiting =
+                  state?.status === "waiting_input" || state?.status === "waiting_takeover";
+                // RT-26: the pause card must carry this exact attempt, fence, and
+                // suspension key. Answering clears pendingRunKey, so the binding
+                // columns (not the unique pending key) identify the card here.
+                const intervention = await deps.prisma.intervention.findFirst({
+                  where: {
+                    runId,
+                    attemptId: attempt.id,
+                    executionFence: admission.admissionFence,
+                    suspensionKey,
+                  },
+                  orderBy: { createdAt: "desc" },
+                  select: { id: true, status: true },
+                });
+                const claimable =
+                  intervention &&
+                  (intervention.status === "pending" || intervention.status === "answered")
+                    ? intervention
+                    : null;
+                if (waiting && !claimable) {
+                  // The pending card was not created by this execution binding;
+                  // no proof can claim it and the owner stays unconfirmed.
+                  return false;
+                }
+                const watermark = await deps.prisma.thread.findUnique({
+                  where: { id: thread.id },
+                  select: { nextMessageSeq: true },
+                });
+                const coveredMessageSeq = Math.max(0, (watermark?.nextMessageSeq ?? 1) - 1);
+                const checkpointId = sessionCheckpointId({
+                  runId,
+                  attemptId: attempt.id,
+                  admissionFence: admission.admissionFence,
+                });
+                const proof = await detach({
+                  identity: {
+                    userId: run.userId,
+                    spaceId: run.spaceId,
+                    botId: run.botId,
+                    threadId: run.threadId,
+                    runId,
+                  },
+                  sessionKey: admission.sessionKey,
+                  sessionGeneration: thread.historyCompactionGeneration,
+                  executionId: admission.executionId,
+                  attemptId: attempt.id,
+                  fence: admission.admissionFence,
+                  suspensionKey,
+                  checkpointId,
+                });
+                if (proof.checkpointId !== checkpointId) return false;
+                const binding = {
+                  sessionKey: admission.sessionKey,
+                  runId,
+                  attemptId: attempt.id,
+                  executionId: admission.executionId,
+                  admissionFence: admission.admissionFence,
+                  suspensionKey,
+                };
+                await recordCheckpointProof(deps.prisma, {
+                  binding,
+                  proof,
+                  threadGeneration: thread.historyCompactionGeneration,
+                });
+                const acknowledged = await acknowledgeSessionCheckpoint(deps.prisma, {
+                  binding,
+                  proof,
+                  pendingInterventionId: claimable?.id ?? null,
+                  coveredMessageSeq,
+                });
+                if (!acknowledged) return false;
+                const released = await releaseSuspendedSessionAdmission(deps.prisma, admission, {
+                  kind: proof.kind,
+                  checkpointId: proof.checkpointId,
+                  digest: proof.digest,
+                });
+                if (released.kind !== "released") return false;
+                await wakeNextAdmission(released);
+                sessionSettled = true;
+                return true;
+              } catch (error) {
+                await markSessionAdmissionRecovering(
+                  deps.prisma,
+                  admission,
+                  "checkpoint_detach_unconfirmed",
+                ).catch(() => undefined);
+                getLogger().error(
+                  "suspended session checkpoint could not be confirmed",
+                  error instanceof Error ? error : new Error(String(error)),
+                );
+                return false;
+              }
+            };
           }
           const runtimeEvents = deps.runtime.run(
             {
@@ -5618,6 +5985,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                       suspensionKey,
                     }
                   : undefined,
+              resumeCheckpoint: checkpointResume?.resume,
+              threadContextAfterSuspension: checkpointResume?.threadContext,
               sessionGeneration: thread.historyCompactionGeneration,
               excludeDeliveredTaskIds: outboxTasks.flatMap((row) =>
                 row.backgroundTaskId ? [row.backgroundTaskId] : [],
@@ -6038,6 +6407,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
             context,
           );
           for await (const event of withRuntimeCleanup(runtimeEvents, runAbortController)) {
+            if (checkpointResume && !checkpointResume.restored) {
+              // The Runtime produced its first event, so the atomic restore of
+              // the checkpoint under this execution succeeded.
+              await markCheckpointResumeRestored(deps.prisma, {
+                resumeId: checkpointResume.resumeId,
+                executionId: checkpointResume.executionId,
+              }).catch((error) => getLogger().error("checkpoint resume restore ack failed", error));
+              checkpointResume.restored = true;
+            }
             if (approvalPausePending) return;
             if (!leaseValid) return;
             const now = Date.now();
@@ -6123,6 +6501,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 leaseOwner: workerId,
                 leaseFence: fence,
                 ...askOrigin,
+                ...pauseBinding(),
                 blocks: [
                   {
                     kind: "ask",
@@ -6532,6 +6911,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 markUnread: completionMarksUnread(run.trigger, text),
               });
           if (!finalized) return;
+          if (checkpointResume) {
+            await markCheckpointResumeConsumed(deps.prisma, {
+              resumeId: checkpointResume.resumeId,
+              executionId: checkpointResume.executionId,
+            }).catch((error) => getLogger().error("checkpoint resume consume ack failed", error));
+          }
           if (finalized.continuationRunId) {
             await deps.jobs
               .enqueue(runContinueJob(finalized.continuationRunId))
@@ -6708,23 +7093,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (admission && !sessionMayRelease) {
             if (error instanceof AgentScopeRunRejectedError) {
+              // The runtime refused before touching this session, so RT-25's
+              // pre-runtime release is still valid.
               sessionMayRelease = true;
             } else {
               await retainPausedSessionAdmission().catch(() => undefined);
             }
             if (approvalPausePending) return;
-            if (!sessionMayRelease) {
-              await markSessionAdmissionRecovering(
-                deps.prisma,
-                admission,
-                error instanceof AgentScopeSessionConflictError
-                  ? "agentscope_runtime_409"
-                  : "agentscope_runtime_outcome_unconfirmed",
-              ).catch((recoveryError) =>
-                getLogger().error("session admission recovery transition failed", recoveryError),
-              );
-              return;
-            }
+            // Any other uncertain outcome is settled only by the Runtime proof
+            // in the finally block; it marks the owner recovering on failure.
+            if (!sessionMayRelease) return;
           }
           const message = redactSecrets(
             error instanceof Error ? error.message : String(error),
@@ -6887,7 +7265,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
       } finally {
         detachShutdown?.();
         clearInterval(heartbeat);
-        if (admission && sessionMayRelease) {
+        // RT-26: a suspended or uncertain attempt releases its chat admission
+        // only after the Runtime proved the shared slot clean/detached and that
+        // proof was acknowledged. Otherwise the RT-25 owner stays recovering.
+        if (admission && !sessionMayRelease && !sessionSettled) {
+          const settled = settleSuspendedSession
+            ? await settleSuspendedSession().catch(() => false)
+            : false;
+          if (!settled && !sessionSettled) {
+            await markSessionAdmissionRecovering(
+              deps.prisma,
+              admission,
+              settleSuspendedSession
+                ? "checkpoint_detach_unconfirmed"
+                : "checkpoint_detach_unavailable",
+            ).catch(() => undefined);
+          }
+        }
+        if (admission && sessionMayRelease && !sessionSettled) {
           const released = sessionRuntimeCompleted
             ? await completeSessionAdmission(deps.prisma, admission).catch(() => null)
             : await releaseSessionAdmission(deps.prisma, admission).catch(() => null);

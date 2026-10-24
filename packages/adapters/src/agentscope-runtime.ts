@@ -7,6 +7,8 @@ import type {
   AgentRunRequest,
   AgentRuntime,
   AgentRuntimeEvent,
+  AgentSessionCheckpointDetachRequest,
+  AgentSessionCheckpointProof,
   AgentToolCompletion,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
@@ -659,6 +661,8 @@ function serializableRequest(
     threadId: request.threadId,
     runId: request.runId,
     sessionAdmission: request.sessionAdmission,
+    resumeCheckpoint: request.resumeCheckpoint,
+    threadContextAfterSuspension: request.threadContextAfterSuspension,
     executionScope: request.executionScope ?? "chat",
     // Product Harness Turn Policy: flattened to the runtime wire shape; the
     // runtime enforces it and never re-derives it.
@@ -842,6 +846,38 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
     if (response.status === 404) return false;
     if (!response.ok) throw new Error(`AgentScope task cancellation failed (${response.status})`);
     return ((await response.json()) as { cancelled: boolean }).cancelled;
+  }
+
+  async inspectAndDetach(
+    request: AgentSessionCheckpointDetachRequest,
+  ): Promise<AgentSessionCheckpointProof> {
+    const response = await fetch(endpoint(this.baseUrl, "/v1/sessions/inspect-and-detach"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 409) {
+      throw new AgentScopeSessionConflictError(
+        `AgentScope session conflict: ${(await response.text()).slice(0, 1_000)}`,
+      );
+    }
+    if (!response.ok) {
+      throw new Error(`AgentScope pending-state detach failed (${response.status})`);
+    }
+    const proof = (await response.json()) as AgentSessionCheckpointProof;
+    if (
+      !proof ||
+      (proof.kind !== "clean" && proof.kind !== "detached") ||
+      typeof proof.checkpointId !== "string" ||
+      proof.checkpointId !== request.checkpointId ||
+      typeof proof.digest !== "string" ||
+      !/^[0-9a-f]{64}$/.test(proof.digest) ||
+      !Array.isArray(proof.pendingCalls)
+    ) {
+      throw new Error("AgentScope returned a malformed pending-state proof");
+    }
+    return proof;
   }
 
   async abort(runId: string): Promise<void> {
