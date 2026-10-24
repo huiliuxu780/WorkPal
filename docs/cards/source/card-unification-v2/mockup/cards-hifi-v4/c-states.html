@@ -1,0 +1,227 @@
+<!doctype html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><title>WorkPal 卡片 · ④ 状态和环境</title></head><body><a class="back" href="index.html">← 总索引</a><button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false">切换深色</button><main><h1>WorkPal 卡片 · ④ 状态和环境<small>独立状态所有者 · 加载/读取失败 · 390/375px · 深色 · 键盘</small></h1><div class="pgw"><section id="owners"><h2>三个状态所有者 <small>UI 可合成文案，持久状态不合并</small></h2><div class="table-scroll"><table class="tbl"><tr><th>所有者</th><th>回答的问题</th><th>示例</th></tr><tr><td>Intervention</td><td>用户是否仍需回答或决定</td><td>pending / answered / declined / superseded</td></tr><tr><td>Run</td><td>这一轮是否仍在执行</td><td>running / completed / stopped</td></tr><tr><td>ExternalEffect / 业务事务</td><td>外部动作是否执行、结果是否确定</td><td>executing / succeeded / failed / uncertain</td></tr></table></div><div class="row r3"><div class="pad"><b>Run 已结束</b><p class="tx">pending 输入请求仍可回答；保留来源、权限与 expiry。</p></div><div class="pad"><b>外部结果未知</b><p class="tx">运行已停止，发送结果未确认。没有“已作废”，也没有重新执行按钮。</p></div><div class="pad"><b>活动事件边界</b><p class="tx">agent.tool.completed 只表示执行活动；付款、发信、安装与 Routine 以业务事实为准。</p></div></div></section><section id="c1"><h2>C1 · 加载、流式、空与出错 <small>只有读取失败提供“重新加载”，不会重新执行动作</small></h2><div class="stt-wrap"><table class="stt"><tr><th></th><th>加载中</th><th>流式生成中</th><th>内容为空</th><th>出错</th></tr><tr><th>Interaction / Routine</th><td><article class="k a ld " role="group" aria-label="Interaction / Routine，加载中" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">◌</span><b>Interaction / Routine</b><span class="bd ld"><i aria-hidden="true"></i><span>加载中</span></span></div><div class="body"><i class="skl" style="width:90%"></i><i class="skl" style="width:65%"></i><div class="t">快照完整前控件禁用</div></div></article></td><td><article class="k a wait " role="group" aria-label="Interaction / Routine，生成中" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">↻</span><b>Interaction / Routine</b><span class="bd wait"><i aria-hidden="true"></i><span>生成中</span></span></div><div class="body"><div class="s">内容逐步出现；尚未形成可处理请求。</div><div class="bar"><i></i></div></div></article></td><td><article class="k a  " role="group" aria-label="Interaction / Routine，空内容" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">□</span><b>Interaction / Routine</b><span class="bd "><i aria-hidden="true"></i><span>空内容</span></span></div><div class="body"><div class="emp">没有可展示的数据</div></div></article></td><td><article class="k a fail " role="group" aria-label="Interaction / Routine，读取失败" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">!</span><b>Interaction / Routine</b><span class="bd fail"><i aria-hidden="true"></i><span>读取失败</span></span></div><div class="body"><div class="s">读取服务端状态失败，尚未得知最新展示状态。</div></div></article></td></tr><tr><th>DisplayBlock</th><td><article class="k a ld " role="group" aria-label="DisplayBlock，加载中" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">◌</span><b>DisplayBlock</b><span class="bd ld"><i aria-hidden="true"></i><span>加载中</span></span></div><div class="body"><i class="skl" style="width:90%"></i><i class="skl" style="width:65%"></i><div class="t">快照完整前控件禁用</div></div></article></td><td><article class="k a wait " role="group" aria-label="DisplayBlock，生成中" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">↻</span><b>DisplayBlock</b><span class="bd wait"><i aria-hidden="true"></i><span>生成中</span></span></div><div class="body"><div class="s">内容逐步出现；尚未形成可处理请求。</div><div class="bar"><i></i></div></div></article></td><td><article class="k a  " role="group" aria-label="DisplayBlock，空内容" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">□</span><b>DisplayBlock</b><span class="bd "><i aria-hidden="true"></i><span>空内容</span></span></div><div class="body"><div class="emp">没有可展示的数据</div></div></article></td><td><article class="k a fail " role="group" aria-label="DisplayBlock，内容无效" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">!</span><b>DisplayBlock</b><span class="bd fail"><i aria-hidden="true"></i><span>内容无效</span></span></div><div class="body"><div class="s">内容定义无效，未执行任何动作。</div></div></article></td></tr></table></div><h3>可操作的读取失败场景</h3><div class="pad"><article class="k a fail " id="reload-card" role="group" aria-label="Routine 展示状态，读取失败" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">!</span><b>Routine 展示状态</b><span class="bd fail"><i aria-hidden="true"></i><span>读取失败</span></span></div><div class="body"><div class="s">读取服务端状态失败，尚未得知最新展示状态。</div><div id="reload-content" class="t" aria-live="polite"></div><div id="reload-count" class="t"></div></div><div class="source">只重新读取展示状态；不调用 Routine 变更或任何外部动作</div><div class="bt"><button type="button" class="btn " data-reload>重新加载</button></div></article><p class="note">本地确定性演示：只更新展示状态，动作执行次数保持 0。按钮独立于横向滚动表格，窄屏也可操作。</p></div></section><section id="mobile"><h2>C2 · 390px 窄屏主画面 <small>另跑 375px 文档溢出回归</small></h2><div class="row r3m"><div class="mph"><div class="mst"><span>11:16</span><span>Web 原型</span></div><div class="mtb"><span>‹</span><b>小紫</b><span class="cnt">2</span></div><div class="chat"><div class="u">告诉示例联系人评审改期</div><div class="m"><img src="4-bounce-purple-s.svg" alt=""><div class="w"><div class="n">小紫</div><article class="k a wait " role="group" aria-label="邮件草稿 · r2，待发送" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">✉</span><b>邮件草稿 · r2</b><span class="bd wait"><i aria-hidden="true"></i><span>待发送</span></span></div><div class="body"><div class="mail mc"><div class="to"><span>收件人</span>review@example.com</div><div class="sj">评审改期到周五 15:00</div><p class="clip">最终发送前显示完整正文与 fingerprint。</p></div></div><div class="source">来源 Bot：小紫 · Task：评审协调</div><div class="bt"><button type="button" class="btn " >查看 / 编辑</button><button type="button" class="btn p" >审阅发送</button></div></article></div></div><div class="m"><img src="1-dot-ink-s.svg" alt=""><div class="w"><div class="n">墨</div><article class="k a wait " role="group" aria-label="运行构建命令，等待本人决定" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">⌘</span><b>运行构建命令</b><span class="bd wait"><i aria-hidden="true"></i><span>等待本人决定</span></span></div><div class="body"><div class="s">按钮在窄屏可换行，不截断、不遮挡。</div></div><div class="bt"><button type="button" class="btn l" >拒绝</button><button type="button" class="btn p" >允许一次</button></div></article></div></div></div><div class="mip">发消息…</div></div><div class="pad tx"><b>响应式规则</b><p>主验收 viewport 为 390px；375px 额外验证 document.documentElement.scrollWidth 不超过 viewport。</p><p>按钮最小高度 44px，允许换行；标题与来源可换行，详情使用可用宽度。</p><p>结构化表格只在自身容器横向滚动，不撑宽文档。</p></div></div></section><section id="dark"><h2>C3 · 深色与状态可读性 <small>页面右上可实际切换主题</small></h2><div class="dark-demo"><section class="win " aria-label="WorkPal 深色语义示例"><div class="wt"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>WorkPal <span>深色语义示例</span></div><div class="wb"><div class="chat"><div class="m"><img src="4-bounce-purple-s.svg" alt=""><div class="w"><div class="n">小紫</div><article class="k a wait " role="group" aria-label="邮件草稿 · r2，待发送" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">✉</span><b>邮件草稿 · r2</b><span class="bd wait"><i aria-hidden="true"></i><span>待发送</span></span></div><div class="body"><div class="mail mc"><div class="to"><span>收件人</span>review@example.com</div><div class="sj">评审改期到周五 15:00</div><p class="clip">最终发送前显示完整正文与 fingerprint。</p></div></div><div class="source">来源 Bot：小紫 · Task：评审协调</div><div class="bt"><button type="button" class="btn " >查看 / 编辑</button><button type="button" class="btn p" >审阅发送</button></div></article></div></div><div class="m"><img src="2-treble-orange-s.svg" alt=""><div class="w"><div class="n">小橙</div><article class="k a ok " role="group" aria-label="已保存选择，已回答" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">✓</span><b>已保存选择</b><span class="bd ok"><i aria-hidden="true"></i><span>已回答</span></span></div><div class="body"><div class="s">终态正文保持完整可读，使用 ✓ 图标、文字和颜色共同表达。</div></div></article></div></div><div class="m"><img src="3-wave-blue-s.svg" alt=""><div class="w"><div class="n">小蓝</div><article class="k a fail " role="group" aria-label="授权失败，授权失败" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">⬡</span><b>授权失败</b><span class="bd fail"><i aria-hidden="true"></i><span>授权失败</span></span></div><div class="body"><div class="s">安装已完成；授权失败独立显示。正文不降低整块透明度。</div></div></article></div></div><div class="m"><img src="1-dot-ink-s.svg" alt=""><div class="w"><div class="n">墨</div><article class="k a exp " role="group" aria-label="输入请求，已过期" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">◷</span><b>输入请求</b><span class="bd exp"><i aria-hidden="true"></i><span>已过期</span></span></div><div class="body"><div class="s">原问题与来源仍可读；没有重新执行入口。</div></div></article></div></div></div></div></section></div></section><section id="terminal"><h2>终态与未知结果 <small>正文不淡化 · 无重新执行按钮</small></h2><div class="grid"><div class="pad"><article class="k a rej " role="group" aria-label="外发草稿，已拒绝" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">✉</span><b>外发草稿</b><span class="bd rej"><i aria-hidden="true"></i><span>已拒绝</span></span></div><div class="body"><div class="s">正文和收件人保持可读；未发送。</div></div></article></div><div class="pad"><article class="k a fail " role="group" aria-label="授权连接，授权失败" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">⬡</span><b>授权连接</b><span class="bd fail"><i aria-hidden="true"></i><span>授权失败</span></span></div><div class="body"><div class="s">安装已完成；授权事务失败。</div></div></article></div><div class="pad"><article class="k a fail " role="group" aria-label="外发结果，Run：已停止 · Effect：uncertain" tabindex="-1"><div class="h"><span class="ic" aria-hidden="true">↗</span><b>外发结果</b><span class="bd fail"><i aria-hidden="true"></i><span>Run：已停止 · Effect：uncertain</span></span></div><div class="body"><div class="s"><b>运行已停止，发送结果未确认</b></div><div class="t">不要假设未发送，也不要自动再次发送。</div></div></article></div></div></section><section id="keyboard"><h2>C4 · 键盘与无障碍 <small>文字、图标或形状和颜色共同表达状态</small></h2><div class="row"><div class="pad"><b>可聚焦示例</b><button type="button" class="btn">次按钮</button><button type="button" class="btn p">主按钮</button><p class="t">Tab 到此按钮后按 Enter 才触发；页面没有全局发送或批准监听。</p></div><div class="pad"><b>减少动态效果</b><p class="tx">遵循 prefers-reduced-motion；焦点使用 :focus-visible 外描边。所有状态都有文本，失败使用方形/叹号，过期使用空心环。</p></div></div><div class="table-scroll"><table class="tbl"><tr><th>按键/能力</th><th>作用域</th><th>行为</th></tr><tr><td>Tab / Shift+Tab</td><td>页面与对话框</td><td>按 DOM 顺序浏览控件；原生 dialog 约束焦点。</td></tr><tr><td>Enter / Space</td><td>当前聚焦控件</td><td>只触发该控件；没有全局 consequential 快捷键。</td></tr><tr><td>Esc</td><td>最上层</td><td>关闭 dialog、面板或 queue；不等于拒绝或取消。</td></tr><tr><td>焦点恢复</td><td>关闭后</td><td>返回触发入口；来源 Interaction 可被聚焦。</td></tr><tr><td>状态播报</td><td>aria-live="polite"</td><td>revision、queue、安装与重新加载结果可被读出。</td></tr></table></div></section></div></main><script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  let lastTrigger = null;
+  const showDialog = (id, trigger) => {
+    const d = document.getElementById(id);
+    if (!d) return;
+    lastTrigger = trigger || document.activeElement;
+    d._trigger = lastTrigger;
+    if (!d.open) d.showModal();
+  };
+  const closeDialog = d => {
+    if (!d) return;
+    d.close();
+    const t = d._trigger;
+    if (t && t.isConnected) t.focus();
+  };
+  document.addEventListener('click', e => {
+    const open = e.target.closest('[data-open]');
+    if (open) showDialog(open.dataset.open, open);
+    const close = e.target.closest('[data-close]');
+    if (close) {
+      const d = close.closest('dialog');
+      if (d) requestDraftClose(d); else {
+        const p = close.closest('[data-panel]');
+        if (p) { p.hidden = true; close._trigger?.focus(); }
+      }
+    }
+    const po = e.target.closest('[data-panel-open]');
+    if (po) {
+      const p = document.getElementById(po.dataset.panelOpen);
+      if (p) { p.hidden = false; p.querySelector('button')?.focus(); p._trigger = po; }
+    }
+  });
+  $$('dialog').forEach(d => {
+    d.addEventListener('click', e => { if (e.target === d && !d.classList.contains('draft')) requestDraftClose(d); });
+    d.addEventListener('cancel', e => { e.preventDefault(); requestDraftClose(d); });
+    d.addEventListener('close', () => d._trigger?.focus());
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || $('dialog[open]')) return;
+    const panels = $$('[data-panel]:not([hidden])');
+    const p = panels.at(-1);
+    if (p) { p.hidden = true; p._trigger?.focus(); }
+  });
+  $$('[data-theme-toggle]').forEach(b => b.addEventListener('click', () => {
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    b.setAttribute('aria-pressed', String(dark));
+    b.textContent = dark ? '切换浅色' : '切换深色';
+  }));
+  const queue = $('#attention-queue');
+  $('[data-queue-open]')?.addEventListener('click', e => {
+    queue.hidden = !queue.hidden;
+    e.currentTarget.setAttribute('aria-expanded', String(!queue.hidden));
+    if (!queue.hidden) queue.querySelector('button')?.focus();
+  });
+  const updateQueueCount = () => {
+    const n = $$('.pr[data-queue-for]', queue).filter(x => !x.hidden).length;
+    $$('[data-queue-count]').forEach(x => x.textContent = n);
+    $('#queue-empty').hidden = n !== 0;
+  };
+  $$('[data-queue-jump]').forEach(b => b.addEventListener('click', () => {
+    const target = document.getElementById(b.dataset.queueJump);
+    queue.hidden = true;
+    $('[data-queue-open]')?.setAttribute('aria-expanded', 'false');
+    target?.scrollIntoView({block: 'center'});
+    target?.focus();
+    target?.classList.add('hl2');
+    setTimeout(() => target?.classList.remove('hl2'), 1200);
+  }));
+  $$('[data-resolve]').forEach(b => b.addEventListener('click', () => {
+    const card = document.getElementById(b.dataset.resolve);
+    if (!card || card.dataset.resolved) return;
+    card.dataset.resolved = 'true';
+    card.className = 'k a ok';
+    const badge = $('.bd', card);
+    badge.className = 'bd ok';
+    $('.bd span', card).textContent = b.dataset.resultLabel || '已决定 · 等待执行结果';
+    $('.bt', card)?.remove();
+    const r = document.createElement('div');
+    r.className = 'res';
+    r.textContent = '本地演示：只记录 Intervention 决定，外部结果仍以 ExternalEffect 或业务事务为准。';
+    card.append(r);
+    const item = $(`[data-queue-for="${card.id}"]`);
+    if (item) item.hidden = true;
+    updateQueueCount();
+  }));
+  if (queue) updateQueueCount();
+
+  const draft = $('#draft-dialog');
+  const revisions = [{id: 'r1', to: 'review@example.com', subject: '评审改期到周五 15:00', body: '周五评审改到 15:00，地点不变。请带一页 Q3 结论，议程见附件。', status: 'pending'}];
+  let draftMode = 'view';
+  let editBaseline = '';
+  const fingerprint = s => {
+    let h = 2166136261;
+    for (const ch of s) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619); }
+    return 'fp-' + (h >>> 0).toString(16).padStart(8, '0');
+  };
+  const latest = () => revisions.at(-1);
+  const content = r => `${r.to}\n${r.subject}\n${r.body}`;
+  const fill = (id, value) => { const n = document.getElementById(id); if (n) n.textContent = value; };
+  function renderDraft(mode = 'view') {
+    if (!draft) return;
+    draftMode = mode;
+    const r = latest();
+    ['view', 'edit', 'confirm'].forEach(x => $(`#draft-${x}`).hidden = x !== mode);
+    fill('draft-mode-label', mode === 'edit' ? '编辑中 · 新 revision 尚未保存' : mode === 'confirm' ? '最终发送确认' : `待发送 · ${r.id}`);
+    if (mode === 'edit') {
+      $('#draft-to-input').value = r.to;
+      $('#draft-subject-input').value = r.subject;
+      $('#draft-body-input').value = r.body;
+      editBaseline = content(r);
+      $('#draft-to-input').focus();
+    } else if (mode === 'confirm') {
+      fill('confirm-to', r.to); fill('confirm-subject', r.subject); fill('confirm-body', r.body);
+      fill('confirm-revision', r.id); fill('confirm-fingerprint', fingerprint(content(r)));
+      $('#draft-send').focus();
+    } else {
+      fill('draft-to', r.to); fill('draft-subject', r.subject); fill('draft-body', r.body);
+      fill('draft-fingerprint', fingerprint(content(r)));
+    }
+    fill('draft-revisions', revisions.map(x => `${x.id} · ${x.status} · ${fingerprint(content(x))}`).join('\n'));
+    fill('draft-live-revision', `${r.id} · ${fingerprint(content(r))}`);
+    $('.bd span', $('#a10-card')).textContent = `待发送 · ${r.id}`;
+  }
+  function requestDraftClose(d) {
+    if (d !== draft || draftMode !== 'edit') { closeDialog(d); return; }
+    const candidate = {to: $('#draft-to-input').value, subject: $('#draft-subject-input').value, body: $('#draft-body-input').value};
+    if (content(candidate) !== editBaseline) showDialog('draft-discard', document.activeElement);
+    else closeDialog(d);
+  }
+  window.requestDraftClose = requestDraftClose;
+  $('[data-draft-edit]')?.addEventListener('click', () => renderDraft('edit'));
+  $('[data-draft-cancel-edit]')?.addEventListener('click', () => renderDraft('view'));
+  $('[data-draft-save]')?.addEventListener('click', () => {
+    const previous = latest();
+    const candidate = {to: $('#draft-to-input').value.trim(), subject: $('#draft-subject-input').value.trim(), body: $('#draft-body-input').value.trim()};
+    if (!candidate.to || !candidate.subject || !candidate.body) { $('#draft-validation').hidden = false; return; }
+    $('#draft-validation').hidden = true;
+    previous.status = 'superseded';
+    revisions.push({...candidate, id: `r${revisions.length + 1}`, status: 'pending'});
+    renderDraft('view');
+    fill('draft-outcome', `本地演示：已保存不可变 ${latest().id}；${previous.id} 保留为 superseded，待处理入口仅指向 ${latest().id}。`);
+  });
+  $('[data-draft-prepare]')?.addEventListener('click', () => renderDraft('confirm'));
+  $('[data-draft-back]')?.addEventListener('click', () => renderDraft('view'));
+  $('#draft-send')?.addEventListener('click', () => {
+    const r = latest(), fp = fingerprint(content(r));
+    fill('draft-outcome', `本地演示：发送决定已绑定 ${r.id} / ${fp}；尚未执行外部发送，等待 ExternalEffect 或业务事务结果。`);
+    const card = $('#a10-card');
+    card.className = 'k a wait';
+    $('.bd', card).className = 'bd wait';
+    $('.bd span', card).textContent = '已决定 · 等待发送结果';
+    $('#a10-card .bt')?.remove();
+    closeDialog(draft);
+  });
+  $('#draft-discard [data-discard-continue]')?.addEventListener('click', e => closeDialog(e.currentTarget.closest('dialog')));
+  $('#draft-discard [data-discard-confirm]')?.addEventListener('click', e => {
+    closeDialog(e.currentTarget.closest('dialog')); closeDialog(draft); renderDraft('view');
+  });
+  $$('[data-open="draft-dialog"]').forEach(b => b.addEventListener('click', () => renderDraft(b.dataset.draftConfirm ? 'confirm' : 'view')));
+  if (draft) renderDraft();
+
+  $('#save-selection')?.addEventListener('click', () => {
+    const card = $('#a12-select');
+    const selected = $('input[name="demo-card"]:checked');
+    const address = $('input[name="demo-address"]:checked');
+    if (!selected || !address) return;
+    fill('selection-result', `已选择 ${selected.dataset.label} 与 ${address.dataset.label}；此步骤没有付款。`);
+    card.className = 'k a ok';
+    $('.bd', card).className = 'bd ok'; $('.bd span', card).textContent = '已选择';
+    $('#save-selection').disabled = true;
+    $('#payment-approval').hidden = false;
+    $('#payment-approval').scrollIntoView({block: 'nearest'});
+  });
+  $$('[data-payment-decision]').forEach(b => b.addEventListener('click', () => {
+    const approved = b.dataset.paymentDecision === 'approve';
+    const card = $('#payment-approval');
+    card.className = approved ? 'k a wait' : 'k a rej';
+    $('.bd', card).className = approved ? 'bd wait' : 'bd rej';
+    $('.bd span', card).textContent = approved ? '已批准 · 等待付款结果' : '已拒绝';
+    fill('payment-result', approved ? '本地演示：已记录付款决定；未扣款。结果须由 ExternalEffect 或支付业务事务确认。' : '本地演示：已记录拒绝；未发起付款。');
+    $('#payment-approval .bt')?.remove();
+  }));
+
+  const install = $('#install-demo');
+  $('[data-install-secondary]')?.addEventListener('click', () => {
+    fill('install-audit', install.dataset.stage === 'auth' ? '本地演示：已记录暂不授权；安装结果保持独立且不回滚。' : '本地演示：已记录暂不安装。');
+  });
+  $('[data-install-primary]')?.addEventListener('click', e => {
+    if (install.dataset.stage === 'pending') {
+      install.dataset.stage = 'auth';
+      fill('install-step', '✓ 已安装'); $('#install-step').className = 'step ok';
+      fill('auth-step', '● 待授权'); $('#auth-step').className = 'step wait';
+      fill('install-badge', '安装完成 · 待授权');
+      fill('install-audit', '本地演示：安装事务 install-demo-01 已完成；授权是另一个后端动作，尚未开始。');
+      e.currentTarget.textContent = '授权'; $('[data-install-secondary]').textContent = '暂不授权';
+    } else if (install.dataset.stage === 'auth') {
+      install.dataset.stage = 'decided';
+      fill('auth-step', '✓ 已记录授权决定'); $('#auth-step').className = 'step ok';
+      fill('install-badge', '等待连接结果');
+      fill('install-audit', '本地演示：授权决定已记录；未宣称已连接，等待 ExternalEffect 或连接业务事务。');
+      $('#install-demo .bt')?.remove();
+    }
+  });
+  $('[data-reload]')?.addEventListener('click', () => {
+    const card = $('#reload-card');
+    card.className = 'k a ok';
+    $('.bd', card).className = 'bd ok'; $('.bd span', card).textContent = '读取完成';
+    fill('reload-content', '已重新读取展示状态：Routine 当前为启用。未执行、暂停或恢复任何动作。');
+    fill('reload-count', '本地确定性演示：读取次数 1；动作执行次数 0。');
+    $('[data-reload]').disabled = true;
+  });
+  $$('[data-share-kind]').forEach(r => r.addEventListener('change', () => {
+    $('#public-share-rules').hidden = r.value !== 'public' || !r.checked;
+  }));
+  $('[data-share-record]')?.addEventListener('click', () => {
+    const kind = $('input[name="share-kind"]:checked')?.value || 'space';
+    fill('share-result', kind === 'public'
+      ? '本地演示：公开只读分享需单独确认； expiry=2026-10-31T15:00:00Z；撤销入口保持可用。未创建真实链接。'
+      : '本地演示：默认仅限 Space 内且要求登录。未创建真实链接。');
+  });
+})();
+
+</script></body></html>

@@ -1,10 +1,10 @@
 # CARD-01 卡片统一与拓展
 
-状态：`blocked`
+状态：`not-started`
 
-产品决策已于 2026-10-24 确认，见 [CARD-01 卡片统一决策](../cards/CARD-01-decision.md)。剩余阻塞只有原型更新、入库和产品确认。不得使用旧 v4 截图启动生产实现。
+产品决策已于 2026-10-24 确认，见 [CARD-01 卡片统一决策](../cards/CARD-01-decision.md)。可运行原型已于同日批准并去敏入库，生产实现拆为 CARD-01A–E，尚未开始。总 feature gate 必须默认关闭，验收全绿后才由产品负责人决定是否开启。
 
-当前可派发的下一步是 [CARD-01P：对齐并验证 v4 可运行原型](./CARD-01P.md)。CARD-01P 只修改外部原型包，不修改生产页面。
+原型批准不等于授权直接修改生产页面；任何实现都必须引用入库原型、保持现有视觉语言，并按任务边界交付。
 
 ## 目标
 
@@ -12,38 +12,39 @@
 
 这是一个产品范围，不是单个 PR。确认后可以按协议、后端投影、兼容迁移和 Web 呈现拆成可审查的提交，但同一个 feature gate 在完整验收通过前不得部分开放。
 
-## 当前输入
+## 已批准输入
 
-外部输入目录为 `WorkPal-cards-delivery`。本任务只记录版本，不把本机绝对路径写进仓库。
+批准后的去敏原型位于 [`docs/cards/source/card-unification-v2`](../cards/source/card-unification-v2/README.md)。入口与关键证据以该目录为准；源文件完整性由 `SHA256SUMS` 校验。
 
-| 文件 | SHA-256 |
-| --- | --- |
-| `card-requirements.md` | `2ed90642b1543d7487ae83b58add5645dbafeb2ac80167a577a2ea89b3ec2e48` |
-| `card-unification.md` | `5a962f2930f4bc8d645493a7d05f4ffcdb94422991f49682517f0923a5863e2b` |
-| `card-unification.html` | `2edfc517301116b69a17170cbb7a51601c3f06c5060e009f24eaf75640d82f75` |
-| `mockup/cards-hifi-v4/STYLE-SPEC.md` | `40da4e925d67b21d36d01e0bd767390ac2f3e4da74e8dd855be244b110c33024` |
+- PRD：`card-requirements.md`
+- 统一说明：`card-unification.md`
+- 可运行页面：`mockup/cards-hifi-v4/index.html`、`cards.html`、`a-detail.html`、`b-alerts.html`、`c-states.html`
+- 视觉规范：`mockup/cards-hifi-v4/STYLE-SPEC.md`
+- 生产盘点：[CARD-01 实现盘点](../cards/CARD-01-implementation-inventory.md)，基线 `main @ 37bb38a`
 
-可运行原型场景是 `mockup/cards-hifi-v4/index.html`、`cards.html`、`a-detail.html`、`b-alerts.html` 和 `c-states.html`。任何实现任务都必须引用入库后的对应文件和具体场景，并用截图或视觉回归验收。
+任何实现任务都必须引用这些文件中的具体场景，并用对应截图或视觉回归验收。
 
 ## 已解决的产品决策
 
-[CARD-01 卡片统一决策](../cards/CARD-01-decision.md) 已固定协议家族、三层状态所有权、九个开放问题、attention queue 边界、HTML 安全边界和完整交付方式。该决策取代外部 PRD 与 STYLE-SPEC 中冲突的段落。
+[CARD-01 卡片统一决策](../cards/CARD-01-decision.md) 已固定协议家族、三层状态所有权、九个开放问题、attention queue 边界、HTML 安全边界和完整交付方式。该决策取代旧 PRD 与 STYLE-SPEC 中冲突的段落。
 
-## 剩余阻塞项
+## 生产实现拆分
 
-外部输入还不能授权生产页面修改：
+1. [CARD-01A：严格协议、服务端投影与旧消息适配](./CARD-01A.md)
+2. [CARD-01B：核心 Interaction 与 Card Shell](./CARD-01B.md)
+3. [CARD-01C：DisplayBlock、详情视图与安全 HTML](./CARD-01C.md)
+4. [CARD-01D：Attention queue 与 Web 通知](./CARD-01D.md)
+5. [CARD-01E：无障碍、旧消息回放、视觉回归与总 Gate](./CARD-01E.md)
 
-1. v4 PRD、STYLE-SPEC 和截图尚未按已确认决策更新。旧版本仍保留已被否决的万能 `action`、失败重试、状态合并和 Task Center 式待处理入口。
-2. 原型使用独立 sand 色值。生产实现必须映射到 `@rakazo/ui-tokens`、`@rakazo/ui-web`、`@rakazo/chat-ui` 和 `apps/web/src/components/ai/`，不能复制一套平行 token。
-3. 外部目录尚未以去除本机信息、私有 URL、真实用户数据和密钥的形式入库。任务提示无法稳定引用已确认原型。
+开工前必须由产品负责人确认 CARD-01A 的契约映射，包括 `SessionControlView` 数据源、`skill_draft`/`mcp_approval` 归类、旧块兼容期限、attention queue 边界和总 gate 名称。实现者不得自行补设计。
 
-## 解除阻塞
+## 执行顺序
 
-1. 完成 [CARD-01P](./CARD-01P.md)，按 [决策记录](../cards/CARD-01-decision.md) 更新 PRD、STYLE-SPEC、可运行 HTML 和四组截图。
-2. 产品负责人确认更新后的原型。
-3. 将批准后的 PRD、STYLE-SPEC、HTML、CSS、必要脚本和关键截图复制到 `docs/cards/source/card-unification-v2/`。入库版本必须可本地运行，并记录源文件 hash。
-4. 对照当前 `main` 重做协议和组件盘点。外部 `card-unification.md` 基于旧快照，不能直接作为代码事实。
-5. 完成以上四项后再拆实现任务。每个任务提示必须引用入库原型的场景、视觉约束、允许范围、禁止改动和截图验收方式。
+- CARD-01A 先完成契约、投影和默认关闭的 gate。
+- CARD-01B 与 CARD-01C 可在 A 后并行。
+- CARD-01D 依赖 A 和 B。
+- CARD-01E 依赖 A–D，负责完整验收和 gate 开/关证据。
+- 所有部分通过前不得部分开启总 gate；未实现 variant 必须明确失败或保持禁用。
 
 ## 不可妥协的边界
 

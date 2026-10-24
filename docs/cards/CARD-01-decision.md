@@ -32,6 +32,7 @@ Web 从服务端投影渲染这些类型。Web 不从可选字段组合、工具
 type InteractionView =
 	| InputRequestView
 	| ActionApprovalView
+	| PlanReviewView
 	| SessionControlView;
 
 type DisplayBlock =
@@ -45,6 +46,8 @@ type DisplayBlock =
 	| PageLinkBlock
 	| VoiceMessageBlock;
 ```
+
+`PlanReviewView` 对应现有独立的 `plan_review` Intervention。批准一个计划版本只结束该计划版本的审阅，不批准任何工具调用、连接器或凭据，也不进入 `requestApproval(tool)` 的授权链。
 
 每个 `InteractionView` 共享身份、来源、presentation revision 和安全展示字段。每个成员使用自己的严格 payload。新增成员时，TypeScript 和 Zod 的穷尽检查必须指出所有未处理的投影与渲染位置。
 
@@ -136,6 +139,8 @@ HTML 中不能出现批准、付款、发送、删除或授权控件。任何副
 拒绝。它保留重复状态、重复权限检查和迁移成本。
 
 ## 剩余门槛
+
+状态：第 1–4 项已于 2026-10-24 完成，批准原型入库于 `docs/cards/source/card-unification-v2/`；第 5 项已拆为 CARD-01A–E，生产实现尚未开始。
 
 1. 根据本决策更新 v4 PRD、STYLE-SPEC、HTML、CSS 和生成脚本。
 2. 重新生成 cards、detail、alerts 和 states 四组截图。旧截图不再是验收基准。

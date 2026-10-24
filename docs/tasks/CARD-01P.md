@@ -1,6 +1,6 @@
 # CARD-01P 对齐并验证 v4 可运行原型
 
-状态：`not-started`
+状态：`done`
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
@@ -161,3 +161,9 @@ showContent(markdown | table | chart | collection | media | html | task_status |
 6. 尚未解决的问题。不要把缺口写成已经完成。
 
 任务完成的标准是“产品负责人可以检查并批准更新后的原型”。任务完成不代表 CARD-01 可以开始生产实现。
+
+## 完成记录
+
+2026-10-24 完成并通过两轮产品验收。A13 已修正为独立 `PlanReviewView`（`plan_review`），不进入工具授权链；`verify.py` 增至 14 项，其中两项直接检查 A13 的渲染语义和文档兼容映射，独立定向变异可将该断言转红。
+
+批准后的去敏源已入库到 [`docs/cards/source/card-unification-v2`](../cards/source/card-unification-v2/README.md)。入库副本从仓库内重新生成后 HTML 哈希稳定，真实浏览器验收 14/14，390px 与 375px 无横向溢出。已知非阻断项：原接手人的完整 13/14 变异日志未随交付保存，评审侧已用独立定向变异补证。
