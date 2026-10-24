@@ -294,8 +294,50 @@ class SessionCheckpointStoreTest {
         assertEquals(text, RuntimeEngine.threadAfterSuspensionContext(messages).getTextContent());
     }
 
-    @Test void engineBindsTheSlotOwnerAndRejectsAnotherBinding() throws Exception {
+    @Test void initializationFailureReleasesTheActiveSessionMarker() throws Exception {
+        // RT-26 review (P2): the slot's active marker is registered before the
+        // checkpoint restore and the initial state load. A failure there must
+        // not leave the marker behind — every later detach probe would 409 on
+        // "still active" and the admission would stay recovering forever.
         HttpServer model = emptyModel();
+        try {
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"),
+                    temp.resolve("workspace"));
+            RunRequest.Identity identity = new RunRequest.Identity(
+                    "user-1", "space-1", "bot-1", "thread-1", "run-a");
+            String sessionKey = "agentscope:chat:v1:" + SessionSlots.hash("user-1\0space-1") + ":"
+                    + SessionSlots.hash("bot-1\0thread-1\0" + 0);
+            RunRequest.SessionAdmission admission = new RunRequest.SessionAdmission(
+                    sessionKey, "exec-a2", "attempt-a2", 4L, "susp-a2");
+            // A resume binding whose checkpoint has no durable manifest fails
+            // during restoration — after the marker was registered.
+            RunRequest.CheckpointResume brokenResume = new RunRequest.CheckpointResume(
+                    "ckpt_missing01", "d".repeat(64), sessionKey, "run-a", "attempt-a",
+                    "exec-a", 3L, "susp-a", "attempt-a2", "exec-a2", 4L, "susp-a2");
+            RunRequest failing = request(model.getAddress().getPort(), identity, admission,
+                    brokenResume);
+            assertThrows(SessionCheckpointStore.Conflict.class,
+                    () -> engine.execute(failing, event -> {}));
+
+            // The settle path's detach probe for the failed execution binding no
+            // longer sees the slot as active and proves it clean.
+            Map<String, Object> probe = engine.inspectAndDetach("runtime-1", identity, sessionKey,
+                    0, "exec-a2", "attempt-a2", 4L, "susp-a2", "ckpt_aaaaaaa1");
+            assertEquals("clean", probe.get("kind"), probe.toString());
+
+            // And a subsequent Run on the same slot is not blocked either.
+            RunRequest next = request(model.getAddress().getPort(), identity,
+                    new RunRequest.SessionAdmission(sessionKey, "exec-b", "attempt-b", 5L,
+                            "susp-b"), null);
+            List<Map<String, Object>> events = new ArrayList<>();
+            engine.execute(next, events::add);
+            assertEquals("done", events.getLast().get("type"), events.toString());
+        } finally {
+            model.stop(0);
+        }
+    }
+
+    @Test void engineBindsTheSlotOwnerAndRejectsAnotherBinding() throws Exception {        HttpServer model = emptyModel();
         try {
             RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
             RunRequest.Identity identity = new RunRequest.Identity(
@@ -328,12 +370,17 @@ class SessionCheckpointStoreTest {
 
     private RunRequest request(int port, RunRequest.Identity identity,
             RunRequest.SessionAdmission admission) {
+        return request(port, identity, admission, null);
+    }
+
+    private RunRequest request(int port, RunRequest.Identity identity,
+            RunRequest.SessionAdmission admission, RunRequest.CheckpointResume resume) {
         return new RunRequest("bot-1", "thread-1", identity.runId(), "chat", "message-1",
                 identity, "Say hello.", "WorkPal", "Reply concisely.", List.of(), List.of(),
                 List.of(), List.of(), null,
                 new RunRequest.RunModel("local", "fixture", "test-key",
                         "http://127.0.0.1:" + port + "/v1", false, 200, 8192, null, null),
-                false, null, 0, null, null, null, null, null, admission, null, null);
+                false, null, 0, null, null, null, null, null, admission, resume, null);
     }
 
     private static HttpServer emptyModel() throws Exception {

@@ -318,8 +318,8 @@ public final class RuntimeEngine {
     public Map<String, Object> inspectAndDetach(String instanceId, RunRequest.Identity identity,
             String sessionKey, int generation, String executionId, String attemptId, long fence,
             String suspensionKey, String checkpointId) throws IOException {
-        SessionOwner owner = requireOwner(identity, sessionKey, executionId, attemptId, fence,
-                suspensionKey);
+        SessionOwner owner = requireOwner(identity, sessionKey, generation, executionId,
+                attemptId, fence, suspensionKey, checkpointId);
         if (activeSessionSlots.contains(sessionKey)) {
             throw new SessionCheckpointStore.Conflict("Run is still active in the shared session");
         }
@@ -343,10 +343,25 @@ public final class RuntimeEngine {
         return proof.wire(instanceId);
     }
 
+    /**
+     * RT-26 review (P1): resolve the slot owner for a detach probe. When this
+     * process holds no in-memory owner for the slot — a Runtime restart between
+     * persisting/detaching the pending state and the admission release empties
+     * {@code sessionOwners} — the owner is re-adopted from the durable
+     * checkpoint manifest ({@link #adoptRestartedOwner}) so the recovery path
+     * can proceed instead of 409-ing before the manifest is ever consulted.
+     * A live owner with a different binding, or an unadoptable binding, stays a
+     * hard conflict.
+     */
     private SessionOwner requireOwner(RunRequest.Identity identity, String sessionKey,
-            String executionId, String attemptId, long fence, String suspensionKey)
-            throws SessionCheckpointStore.Conflict {
+            int generation, String executionId, String attemptId, long fence,
+            String suspensionKey, String checkpointId)
+            throws SessionCheckpointStore.Conflict, IOException {
         SessionOwner owner = sessionOwners.get(sessionKey);
+        if (owner == null) {
+            owner = adoptRestartedOwner(identity, sessionKey, generation, executionId, attemptId,
+                    fence, suspensionKey, checkpointId);
+        }
         if (owner == null || !owner.identity().equals(identity)
                 || !owner.executionId().equals(executionId)
                 || !owner.attemptId().equals(attemptId)
@@ -356,6 +371,38 @@ public final class RuntimeEngine {
                     "Shared session is not owned by this execution binding");
         }
         return owner;
+    }
+
+    /**
+     * Re-adopt the slot owner from the durable checkpoint manifest after a
+     * process restart. The manifest is the persisted ownership binding: it is
+     * adopted only when the presented binding matches it field-for-field
+     * (checkpoint id, session key, run, attempt, execution, fence and
+     * suspension key). A different run, a different fence or suspension key, a
+     * missing manifest, or a malformed binding is never adoptable — ownership
+     * that was never durably proven stays unconfirmed. The digest continues to
+     * be enforced by the manifest itself and by the PostgreSQL ack flow.
+     */
+    private SessionOwner adoptRestartedOwner(RunRequest.Identity identity, String sessionKey,
+            int generation, String executionId, String attemptId, long fence,
+            String suspensionKey, String checkpointId) throws IOException {
+        SessionCheckpointStore.Binding binding = new SessionCheckpointStore.Binding(sessionKey,
+                identity.runId(), executionId, attemptId, fence, suspensionKey, checkpointId);
+        try {
+            if (!checkpoints.manifestBinds(identity.botId(), binding)) return null;
+        } catch (IllegalArgumentException malformed) {
+            // Keep the ownership conflict the previous binding check produced.
+            return null;
+        }
+        String tenant = hash(identity.userId() + "\u0000" + identity.spaceId());
+        String session = hash(identity.botId() + "\u0000" + identity.threadId() + "\u0000"
+                + generation);
+        SessionOwner adopted = new SessionOwner(sessionKey, identity, executionId, attemptId,
+                fence, suspensionKey, tenant, session);
+        // putIfAbsent: a concurrent admission may have registered a live owner
+        // meanwhile; the caller then re-checks that owner's binding instead.
+        SessionOwner raced = sessionOwners.putIfAbsent(sessionKey, adopted);
+        return raced == null ? adopted : raced;
     }
 
     public void execute(RunRequest request, EventSink sink) throws Exception {
@@ -386,14 +433,25 @@ public final class RuntimeEngine {
                     request.sessionAdmission().suspensionKey(), tenant, sessionSlot));
             activeSessionSlots.add(admissionSessionKey);
         }
+        // RT-26 review (P2): everything after the marker registration runs inside
+        // the cleanup scope. A checkpoint restore or initial state load that
+        // throws must still remove the active marker — otherwise every later
+        // detach probe sees this slot as active (409) and the RT-25 admission
+        // stays recovering even after the transient failure has passed.
+        ToolBridgeClient bridge = null;
+        AtomicInteger spawnBudget = null;
+        boolean pausedForResume = false;
+        boolean temporaryDeliveryRepository = false;
+        TaskRepository deliveryRepository = null;
+        RunningAgent active = null;
+        try {
         if (request.resumeCheckpoint() != null) {
             // Restores only this Run's acknowledged checkpoint, under the new
             // execution fence and suspension key validated by RunRequest.
             checkpoints.restore(request.botId(), tenant, sessionSlot,
                     request.resumeCheckpoint(), request.runId());
         }
-        AtomicInteger spawnBudget = spawnBudgets.computeIfAbsent(sessionSlot, key -> new AtomicInteger());
-        boolean pausedForResume = false;
+        spawnBudget = spawnBudgets.computeIfAbsent(sessionSlot, key -> new AtomicInteger());
         AgentState loaded = store.get(userSlot, sessionSlot, "agent_state", AgentState.class).orElse(null);
         boolean fresh = loaded == null;
         List<ToolUseBlock> pendingFromPreviousAttempt = pendingToolCalls(loaded);
@@ -438,7 +496,7 @@ public final class RuntimeEngine {
             }
         }
         RuntimeContext context = RuntimeContext.builder().userId(userSlot).sessionId(sessionSlot).build();
-        ToolBridgeClient bridge = new ToolBridgeClient(json, request);
+        bridge = new ToolBridgeClient(json, request);
         Set<String> pausedToolCalls = ConcurrentHashMap.newKeySet();
         Toolkit toolkit = new Toolkit();
         var permissions = PermissionContextState.builder().mode(PermissionMode.DEFAULT);
@@ -553,8 +611,8 @@ public final class RuntimeEngine {
             builder.skillRepository(new RequestSkillRepository(request.skills()));
         }
         HarnessAgent agent = builder.build();
-        TaskRepository deliveryRepository = agent.getTaskRepository();
-        boolean temporaryDeliveryRepository = deliveryRepository == null;
+        deliveryRepository = agent.getTaskRepository();
+        temporaryDeliveryRepository = deliveryRepository == null;
         if (temporaryDeliveryRepository) {
             deliveryRepository = new WorkspaceTaskRepository(agent.getWorkspaceManager(), hash(request.botId()));
         }
@@ -583,9 +641,8 @@ public final class RuntimeEngine {
         // AgentScope restores the previous session's permission context from durable state.
         // The backend's per-run allow-list must replace it before every call, including resume.
         agent.getDelegate().replacePermissionContext(userSlot, sessionSlot, permissions.build());
-        RunningAgent active = new RunningAgent(agent, context, Disposables.swap());
+        active = new RunningAgent(agent, context, Disposables.swap());
         running.put(request.runId(), active);
-        try {
         Set<String> seenSteering = new HashSet<>();
         String prompt = request.prompt();
         List<RunRequest.InputImage> currentImages = new ArrayList<>(request.currentTurnImages() == null
@@ -694,13 +751,17 @@ public final class RuntimeEngine {
         }
         throw new IllegalStateException("AgentScope exceeded the external tool resume limit");
         } finally {
-            bridge.closeForeground();
-            running.remove(request.runId(), active);
+            if (bridge != null) bridge.closeForeground();
+            if (active != null) running.remove(request.runId(), active);
             if (admissionSessionKey != null) activeSessionSlots.remove(admissionSessionKey);
-            if (temporaryDeliveryRepository) deliveryRepository.shutdown();
+            if (temporaryDeliveryRepository && deliveryRepository != null) {
+                deliveryRepository.shutdown();
+            }
             // Terminal attempts release the shared helper budget; a paused run
             // keeps it so the resume cannot spawn a fresh maxChildren batch.
-            if (!pausedForResume) spawnBudgets.remove(sessionSlot, spawnBudget);
+            if (!pausedForResume && spawnBudget != null) {
+                spawnBudgets.remove(sessionSlot, spawnBudget);
+            }
             if (spawnBudgets.size() > 8192) spawnBudgets.clear();
         }
     }

@@ -250,6 +250,23 @@ final class SessionCheckpointStore {
     }
 
     /**
+     * RT-26 restart recovery: is the durable manifest bound to this exact
+     * execution binding? The manifest is the persisted ownership binding of the
+     * slot, so an exact match (checkpoint id, session key, run, attempt,
+     * execution, fence and suspension key) lets a restarted Runtime re-adopt
+     * the owner it lost. Any mismatch — another run, another fence, another
+     * suspension key, or no manifest at all — is not adoptable and stays a
+     * conflict.
+     */
+    boolean manifestBinds(String botId, Binding binding) throws IOException {
+        binding.validate();
+        synchronized (lock) {
+            Manifest manifest = readManifest(manifestPath(botId, binding.checkpointId()));
+            return manifest != null && manifest.matches(binding);
+        }
+    }
+
+    /**
      * Restore a detached checkpoint for THIS Run under a new execution binding.
      * The source binding, digest, and target Run are verified against the
      * manifest; a different Run can never consume another Run's checkpoint.
