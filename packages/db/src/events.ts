@@ -265,6 +265,12 @@ export interface PauseRunForTakeover {
   reason: string;
   /** Computer that should expose the pending takeover to the UI via controlRunId. */
   computerId: string;
+  /**
+   * RT-05F: user-visible Thread a delegated run's takeover request must be
+   * presented in. The run keeps waiting in its execution Thread; the waiting
+   * event and realtime wake go where the user can see them.
+   */
+  presentationThreadId?: string;
 }
 
 export interface AnswerRunInput {
@@ -1740,7 +1746,7 @@ export async function pauseRunForTakeover(
 
     const waitingEvent = await appendEventInTransaction(tx, {
       spaceId: input.spaceId,
-      threadId: input.threadId,
+      threadId: input.presentationThreadId ?? input.threadId,
       botId: input.botId,
       type: "computer.takeover.requested",
       runId: input.runId,

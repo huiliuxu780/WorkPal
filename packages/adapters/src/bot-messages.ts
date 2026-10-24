@@ -932,9 +932,13 @@ export async function messageBot(
     // of the parent Run named by this run's origin, and the delivery re-uses
     // the parent's own origin so the answer keeps hopping until it reaches the
     // visible Thread. An originOverride caller has already resolved that
-    // upstream; a tool-call reply matches it against the model's target. A
-    // target that is not the requester keeps the ordinary routing below.
-    if (intent === "result" || intent === "status") {
+    // upstream; a tool-call reply matches it against the model's target. Only
+    // an outcome-resumed run may climb: a request-woken run sending a
+    // result/status to a bot up the chain is a proactive message and follows
+    // the ordinary pair path below.
+    const outcomeResumed =
+      sourceContext?.intent === "result" || sourceContext?.intent === "status";
+    if ((intent === "result" || intent === "status") && (outcomeResumed || options.originOverride)) {
       const upstream = options.originOverride
         ? { targetBotId: resolved.target.id, origin: options.originOverride }
         : await resolveUpstreamReturn(deps.prisma, origin, sender.id);

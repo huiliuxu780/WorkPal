@@ -6166,9 +6166,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 hasStreamedText = false;
                 pendingProgress = "";
               }
-              await publishMessage(deps, run, "bot", [
-                { kind: "computer", state: "Needs you", text: safeReason },
-              ]);
+              // RT-05F: a delegated run executes in a hidden pair Thread; the
+              // takeover request must reach the persisted visible origin while
+              // the run and its computer lease stay bound to the execution.
+              const takeoverOrigin = await interventionOriginForRun(deps.prisma, run);
+              await publishMessage(
+                deps,
+                run,
+                "bot",
+                [{ kind: "computer", state: "Needs you", text: safeReason }],
+                undefined,
+                undefined,
+                takeoverOrigin.presentationThreadId,
+              );
               await workspaceCheckpoint.flush();
               if (!(await holdComputerExecutionLeaseForTakeover(deps.prisma, computerLease))) {
                 throw new Error("Computer lease expired before takeover");
@@ -6183,6 +6193,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 leaseFence: fence,
                 reason: safeReason,
                 computerId: storedComputer.id,
+                ...(takeoverOrigin.presentationThreadId
+                  ? { presentationThreadId: takeoverOrigin.presentationThreadId }
+                  : {}),
               });
               if (!paused) return;
               retainComputerLease = true;
@@ -6191,7 +6204,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 title: `${bot.name} needs you on the screen`,
                 body: safeReason,
                 botId: bot.id,
-                threadId: thread.id,
+                threadId: takeoverOrigin.presentationThreadId ?? thread.id,
               });
               return;
             } else if (event.type === "tool") {
@@ -7464,13 +7477,25 @@ async function publishMessage(
   blocks: MessageBlock[],
   markUnread?: boolean,
   clientNonce?: string,
+  /** Project this message into a user-visible Thread instead of the run's execution Thread. */
+  presentationThreadId?: string,
 ) {
   const committed = await deps.prisma.$transaction((tx) =>
-    persistMessageInTransaction(tx, run, role, blocks, markUnread, clientNonce),
+    persistMessageInTransaction(
+      tx,
+      run,
+      role,
+      blocks,
+      markUnread,
+      clientNonce,
+      presentationThreadId,
+    ),
   );
-  await deps.events.notify(run.threadId, committed.eventSeq).catch((error) => {
-    getLogger().error("thread message realtime notification", error);
-  });
+  await deps.events
+    .notify(presentationThreadId ?? run.threadId, committed.eventSeq)
+    .catch((error) => {
+      getLogger().error("thread message realtime notification", error);
+    });
   return committed.message;
 }
 
@@ -7481,9 +7506,11 @@ async function persistMessageInTransaction(
   blocks: MessageBlock[],
   markUnread?: boolean,
   clientNonce?: string,
+  presentationThreadId?: string,
 ) {
+  const threadId = presentationThreadId ?? run.threadId;
   const message = await createThreadMessageInTransaction(tx, {
-    threadId: run.threadId,
+    threadId,
     role,
     originKind: role === "bot" ? "bot" : "system",
     blocks,
@@ -7494,7 +7521,7 @@ async function persistMessageInTransaction(
   });
   const event = await appendEventInTransaction(tx, {
     spaceId: run.spaceId,
-    threadId: run.threadId,
+    threadId,
     botId: run.botId,
     type: "thread.message.created",
     runId: run.id,
