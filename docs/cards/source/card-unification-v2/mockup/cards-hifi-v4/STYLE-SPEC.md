@@ -83,7 +83,7 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 
 计划审阅的 pending 状态由 Intervention 的 `plan_review` kind 投影。批准计划只结束该计划版本的审阅，不改变任何工具授权、连接器或 ExternalEffect；后续工具与连接器必须各自出现审批。
 
-同一 interaction region 的组顺序固定为 `PlanReviewView → ActionApprovalView → InputRequestView`；同组按 `createdAt ASC → stableId ASC`。计划审阅先于工具审批是因为它约束整个 Run 的后续执行。`SessionControlView` 保持专用入口，不混入该排序。
+同一 interaction region 的排序固定为：所有 pending 卡排在 terminal 卡之前；pending 内按 `PlanReviewView → ActionApprovalView → InputRequestView`，同类型按 `createdAt ASC → stableId ASC`；terminal 历史不按类型抢优先级，只按 `createdAt ASC → stableId ASC`。类型优先级不能把已结算的旧 PlanReviewView 抬到当前待审批或待输入之前。`SessionControlView` 保持专用入口，不混入该排序。
 
 失败、过期、拒绝、完成和未知结果的正文保持正常可读。禁止 `.rej .body`、`.void .body`、`.exp .body`、`.done .body` 等整块 40% opacity 表达。
 

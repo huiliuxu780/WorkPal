@@ -91,7 +91,14 @@ Run 结束不会自动终止所有 Interaction。生命周期由 Intervention �
 10. `SessionControlView` 只从 Run、执行租约和 Computer 控制租约派生，不新增持久 Intervention。`takeover` 来自 `waiting_takeover`；`return` 要求 `Computer.controlRunId === run.id` 且用户控制租约仍有效。历史 `computer` block 只能展示，不能充当权限或当前状态来源。
 11. 外部连接授权拆为 `connect.app_authorization`（来自 `app_connect`）和 `connect.mcp_assignment`（来自 `mcp_approval`）。两者使用不同严格 payload，并显示各自业务范围；不得共用一个可选字段对象。
 12. 旧 `card` 和 `connect` 在 CARD-01A 合并后禁止新增生产者，历史记录长期只读回放。移除必须另立迁移任务，完成历史 backfill 并证明库内无旧形态后才能删除解码器；CARD-01 不负责移除。
-13. 同一 interaction region 的组顺序固定为 `PlanReviewView → ActionApprovalView → InputRequestView`；同组按 `createdAt ASC → stableId ASC`。计划审阅先于工具审批是因为它约束整个 Run 的后续执行，普通输入最后。`SessionControlView` 保持专用入口，不混入该排序。CARD-01A 只定义排序字段/语义，CARD-01B 统一 Web 实现和测试。
+13. 同一 interaction region 的排序固定为：
+    1. 所有 pending 卡排在 terminal 卡之前。
+    2. pending 内按 `PlanReviewView → ActionApprovalView → InputRequestView`。
+    3. terminal 历史不按类型抢优先级，只按 `createdAt ASC → stableId ASC`。
+    4. 同一 pending 类型内按 `createdAt ASC → stableId ASC`。
+    5. `SessionControlView` 保持专用入口，不混入该排序。
+
+    类型优先级只适用于 pending 卡，不能把已结算的旧 PlanReviewView 抬到当前待审批或待输入之前。计划审阅先于工具审批，是因为它约束整个 Run 的后续执行；普通输入最后。CARD-01A 只定义排序字段/语义，CARD-01B 统一 Web 实现和测试。
 
 ## 九个开放问题的决定
 

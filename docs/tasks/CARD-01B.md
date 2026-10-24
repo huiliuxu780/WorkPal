@@ -34,7 +34,7 @@
 - 关闭详情、面板或弹窗不等于拒绝、取消或结算。
 - 失败、过期和结果未知不提供重试；只有读取失败提供“重新加载”，且不重新执行动作。
 - 不再用整卡 40% opacity 表达终态；状态同时使用文字和图标/形状，不只靠颜色。
-- 统一 `InterventionRegion` 与 `execution-card.ts` 的 interaction 排序：`PlanReviewView → ActionApprovalView → InputRequestView`，同组 `createdAt ASC → stableId ASC`；不得保留两套优先级。
+- 统一 `InterventionRegion` 与 `execution-card.ts` 的 interaction 排序：所有 pending 卡先于 terminal；pending 内 `PlanReviewView → ActionApprovalView → InputRequestView`，同类型按 `createdAt ASC → stableId ASC`；terminal 历史不按类型抢优先级，只按 `createdAt ASC → stableId ASC`。不得保留两套优先级。
 - 替换现有 `AskCard`/`InterventionRegion`/`PlanReviewCard` 的重复 surface，保留 `coveredAsks` 去重目标。
 
 ## 允许修改
@@ -61,7 +61,8 @@
 - A12 在选择完成前不出现付款审批；付款审批是独立决定。
 - A13 的 DOM 和文案不存在 `requestApproval(tool)`；计划批准与工具授权在测试中互斥。
 - A7 同时出现 `connect.app_authorization` 与 `connect.mcp_assignment`；MCP 卡显示 `allowAllTools: true` 风险、服务器范围和操作，操作上限仍为两个按钮加一个文字入口。
-- `InterventionRegion`、`execution-card.ts` 和共享 renderer 使用同一排序：plan review → approval → input；同组按 `createdAt` 升序、再按 `stableId`，并有冲突用例证明两套旧实现已被统一。
+- `InterventionRegion`、`execution-card.ts` 和共享 renderer 使用同一排序：pending 领先 terminal；pending 内 plan review → approval → input；同类型和 terminal 历史均按 `createdAt` 升序、再按 `stableId`。
+- 冲突用例覆盖 `answered PlanReviewView + pending ActionApprovalView/InputRequestView`：region 中 pending approval/input 必须排在已结算的计划审阅之前，execution-card headline 也必须指向 pending 卡。
 - B3 安装完成才进入授权；安装失败与授权失败可区分。
 - A9/B1 的接管、交还不改变 Run/Interaction 的权威状态。
 - 每卡按钮不超过两个、文字入口不超过一个；失败/过期/未知没有重试。
