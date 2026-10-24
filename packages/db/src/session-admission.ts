@@ -297,7 +297,12 @@ export async function acquireSessionAdmission(
     if (row.state === "recovering") {
       return { kind: "recovering", sessionKey, ownerRunId: row.ownerRunId };
     }
-    if (row.state === "owned" && row.ownerRunId === input.runId) {
+    if (
+      row.state === "owned" &&
+      row.ownerRunId === input.runId &&
+      row.ownerRunLeaseFence !== null &&
+      input.runLeaseFence > row.ownerRunLeaseFence
+    ) {
       const nextFence = row.fence + 1;
       await tx.$executeRaw`
         UPDATE "agent_session_admissions"

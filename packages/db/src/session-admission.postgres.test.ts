@@ -309,6 +309,10 @@ describePostgres("AgentScope chat session admission (PostgreSQL)", () => {
       kind: "queued",
       ownerRunId: owner.id,
     });
+    expect(await acquireSessionAdmission(prisma, identity(owner, "paused-owner"))).toMatchObject({
+      kind: "queued",
+      ownerRunId: owner.id,
+    });
     expect(await renewSessionAdmission(prisma, paused)).toBe(false);
     expect(await completeSessionAdmission(prisma, paused)).toMatchObject({ kind: "stale" });
     expect(await releaseSessionAdmission(prisma, paused)).toMatchObject({ kind: "stale" });
