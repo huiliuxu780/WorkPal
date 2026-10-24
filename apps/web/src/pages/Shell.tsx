@@ -5031,13 +5031,18 @@ export const Transcript = memo(function Transcript({
   // Rows merged under a PublicDelegationMessage render their execution anchors
   // there; an orphan hidden row (a wake with no rendered group) keeps its
   // anchors at its own transcript position instead.
-  const mergedAnchorMemberIds = useMemo(() => {
+  const { mergedAnchorMemberIds, memberToGroupFirst } = useMemo(() => {
     const ids = new Set<string>();
-    if (!publicDelegations) return ids;
-    for (const group of publicDelegations.groupsByFirstMessageId.values()) {
-      for (const messageId of group.messageIds) ids.add(messageId);
+    const firstOfMember = new Map<string, string>();
+    if (publicDelegations) {
+      for (const group of publicDelegations.groupsByFirstMessageId.values()) {
+        for (const messageId of group.messageIds) {
+          ids.add(messageId);
+          firstOfMember.set(messageId, group.firstMessageId);
+        }
+      }
     }
-    return ids;
+    return { mergedAnchorMemberIds: ids, memberToGroupFirst: firstOfMember };
   }, [publicDelegations]);
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
@@ -5172,8 +5177,16 @@ export const Transcript = memo(function Transcript({
   useLayoutEffect(() => {
     if (!scrollRequest || scrolledJump.current === scrollRequest.nonce) return;
     const element = scrollRef.current;
+    // A merged delegation member (paired wake or later outbound) has no row
+    // of its own; scroll to its visible group bubble instead so search hits
+    // on those ids land on the rendered delegation.
+    const groupFirstId = publicDelegations?.hiddenMessageIds.has(scrollRequest.messageId)
+      ? memberToGroupFirst.get(scrollRequest.messageId)
+      : undefined;
     const row = element?.querySelector(
-      `[data-message-id="${CSS.escape(scrollRequest.messageId)}"]`,
+      `[data-message-id="${CSS.escape(
+        groupFirstId ?? scrollRequest.messageId,
+      )}"]`,
     );
     if (!element || !row) return;
     scrolledJump.current = scrollRequest.nonce;
@@ -5185,7 +5198,15 @@ export const Transcript = memo(function Transcript({
     jumpScrollTimer.current = window.setTimeout(endJumpScroll, 2_000);
     row.scrollIntoView({ behavior: "smooth", block: "center" });
     onScrollRequestHandled();
-  }, [messages, scrollRequest, scrollRef, endJumpScroll, onScrollRequestHandled]);
+  }, [
+    messages,
+    scrollRequest,
+    scrollRef,
+    endJumpScroll,
+    onScrollRequestHandled,
+    publicDelegations,
+    memberToGroupFirst,
+  ]);
 
   useLayoutEffect(() => {
     if (following.current) snapToEnd();
@@ -5334,6 +5355,8 @@ export const Transcript = memo(function Transcript({
             );
           }
           if (publicDelegations?.hiddenMessageIds.has(message.id)) {
+            // Merged members render no row of their own; the scroll effect
+            // maps their ids onto the group bubble below.
             if (mergedAnchorMemberIds.has(message.id)) return null;
             return (
               <Fragment key={message.id}>
