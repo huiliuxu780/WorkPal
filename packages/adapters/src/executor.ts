@@ -125,6 +125,7 @@ import {
   appendEventInTransaction,
   applyPlanSubmission,
   avatarChangeView,
+  CHAT_GROUP_KIND_AGENT_PAIR,
   backgroundTaskLockTransactionOptions,
   changeBotAvatarInTransaction,
   completeSessionAdmission,
@@ -761,6 +762,47 @@ export function isProtectedComputerLifecycleCommand(command: string): boolean {
 
 /** Cap the roster so a large Space cannot flood the prompt. */
 const BOT_DIRECTORY_LIMIT = 40;
+
+/**
+ * The teammate directory a run's prompt carries. Hidden in standard groups
+ * (the roster there is the group context), kept in DMs, and kept in pair
+ * Threads too: a delegated run needs to discover further teammates (B → C)
+ * through the same user/Space-scoped roster a DM sees.
+ */
+export async function teammateDirectoryForThread(
+  prisma: PrismaClient,
+  input: {
+    thread: { groupId: string | null; group?: { kind: string | null } | null };
+    botId: string;
+    spaceId: string;
+    userId: string;
+  },
+): Promise<string | undefined> {
+  if (input.thread.groupId && input.thread.group?.kind !== CHAT_GROUP_KIND_AGENT_PAIR) {
+    return undefined;
+  }
+  return renderBotDirectory(
+    (
+      await prisma.bot.findMany({
+        where: {
+          spaceId: input.spaceId,
+          userId: input.userId,
+          archivedAt: null,
+          id: { not: input.botId },
+          thread: { isNot: null },
+        },
+        select: { id: true, name: true, title: true, description: true },
+        orderBy: { createdAt: "asc" },
+        take: BOT_DIRECTORY_LIMIT,
+      })
+    ).map((peer) => ({
+      id: peer.id,
+      name: peer.name,
+      title: peer.title,
+      description: peer.description,
+    })),
+  );
+}
 const MISSING_MODEL_MESSAGE = "Connect a model in Settings before running bots.";
 /** Consecutive non-busy setup failures tolerated before the run fails with the real reason. */
 const MAX_SETUP_FAILURES = 5;
@@ -5423,29 +5465,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           : history;
         const runtimeHistory = [...historicalContext, ...historyWithImages];
         // Without a roster a bot only knows the bots it spawned itself.
-        const botDirectory = thread.groupId
-          ? undefined
-          : renderBotDirectory(
-              (
-                await deps.prisma.bot.findMany({
-                  where: {
-                    spaceId: run.spaceId,
-                    userId: run.userId,
-                    archivedAt: null,
-                    id: { not: bot.id },
-                    thread: { isNot: null },
-                  },
-                  select: { id: true, name: true, title: true, description: true },
-                  orderBy: { createdAt: "asc" },
-                  take: BOT_DIRECTORY_LIMIT,
-                })
-              ).map((peer) => ({
-                id: peer.id,
-                name: peer.name,
-                title: peer.title,
-                description: peer.description,
-              })),
-            );
+        const botDirectory = await teammateDirectoryForThread(deps.prisma, {
+          thread,
+          botId: bot.id,
+          spaceId: run.spaceId,
+          userId: run.userId,
+        });
 
         if (heldForTakeover) {
           const releasedCheckpoint = takeoverCheckpointOf(
