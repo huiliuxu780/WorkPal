@@ -4,6 +4,8 @@ import type {
   AgentRunRequest,
   AgentRuntimeCapabilities,
   AgentRuntimeEvent,
+  AgentSessionCheckpointDetachRequest,
+  AgentSessionCheckpointProof,
   ArtifactPut,
   AutoReviewCapabilities,
   AutoReviewRequest,
@@ -243,6 +245,14 @@ export interface AgentRuntime {
     context?: Partial<AdapterContext>,
   ): AsyncIterable<AgentRuntimeEvent>;
   abort(runId: string): Promise<void>;
+  /**
+   * RT-26: inspect the shared session slot and atomically detach its pending
+   * native state. Implementations that cannot prove a clean/detached slot must
+   * omit this method; callers then keep the RT-25 recovering behavior.
+   */
+  inspectAndDetach?(
+    request: AgentSessionCheckpointDetachRequest,
+  ): Promise<AgentSessionCheckpointProof>;
 }
 
 export interface ModelProvider {
