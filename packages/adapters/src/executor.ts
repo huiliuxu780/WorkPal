@@ -5317,14 +5317,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
           });
           return;
         }
-        const answeredAskMessages = scripted
-          ? []
-          : await deps.prisma.message.findMany({
-              where: { runId, role: "bot" },
-              orderBy: { seq: "desc" },
-              take: 8,
-              select: { blocks: true },
-            });
+        // FIX-127: every runtime learns the latest answered ask of this Run.
+        // The scripted runtime previously replayed its fixture from turn 0 and
+        // could not consume the answer, so a resumed waiting_input Run asked
+        // the same question again instead of continuing like the persisted-
+        // state Runtime (which resolves the pending ask_user call with the
+        // answer as a SUCCESS tool result).
+        const answeredAskMessages = await deps.prisma.message.findMany({
+          where: { runId, role: "bot" },
+          orderBy: { seq: "desc" },
+          take: 8,
+          select: { blocks: true },
+        });
         let resumeAnswer: string | undefined;
         let foundAsk = false;
         for (const message of answeredAskMessages) {

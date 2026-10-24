@@ -328,6 +328,26 @@ export function classifyPath(file) {
     };
   }
 
+  // FIX-127: the Task instruction envelope pins what a resumed Run re-reads
+  // after an answered ask, and the executor's ask/resume path (including the
+  // scripted fixtures it plays back) decides whether the resumed Run asks
+  // again or continues. Those regressions are only caught by the Execution
+  // Card ask flow, so they must select it (issue #127 CI blind spot).
+  if (
+    stemMatch(p, "packages/db/src/task-instructions") ||
+    stemMatch(p, "packages/adapters/src/executor") ||
+    stemMatch(p, "packages/adapters/src/scripted-runtime")
+  ) {
+    const jobs = stemMatch(p, "packages/db/src/task-instructions")
+      ? ["backend", "agentscope", "db-postgres", "web"]
+      : ["backend", "agentscope", "web"];
+    return {
+      jobs,
+      reason: "answered-ask resume path drives the Execution Card ask flow",
+      webE2e: EXECUTION_WEB_E2E,
+    };
+  }
+
   if (isUnder(p, "packages/db")) {
     return {
       jobs: ["backend", "agentscope", "db-postgres"],
