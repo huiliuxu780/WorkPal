@@ -564,6 +564,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - Agent 被移出群时的授权撤销和 Run 终止。
 - 加入后的 Thread 可读范围和 private pair 独立性。
 - 资源授权、tenant 和一次性批准检查。
+- [EFFECT-01](../tasks/EFFECT-01.md) 的 ExternalEffect 执行权栅栏。effect claim 必须与 Run `status`、`leaseOwner`、`leaseFence` 和 lease 到期检查原子完成。
+- [CANCEL-01](../tasks/CANCEL-01.md) 的类型化取消原因和委派取消回报。除用户明确点「停止」外，受托 Run 的取消必须返回一次安全原因。
 
 验收：
 
@@ -572,8 +574,10 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 移出群不影响同 workspace private pair。
 - 取消一个 child 不停止目标群其他根任务。
 - 资源权限不沿委派链继承。
+- Run 被取消或 Worker 丢失 lease 后，旧 Worker 不能领取 ExternalEffect，也不能写入可信的 `agent.tool.called` 事实。
+- `bot_message` Run 因移出群、教学、归档或删除而取消时，来源方只收到一次取消结果。去重沿用 `auto-outcome:<runId>`。
 
-依赖：RT-04、RT-05、RT-06、RT-12、RT-18。
+依赖：RT-04、RT-05、RT-06、RT-12、RT-18、EFFECT-01、CANCEL-01。
 
 覆盖：AC07、AC14。场景 U08、X08、C04、P06、F02、M01、M02、M03、M04、M05、M06、M08、O06。
 
@@ -681,14 +685,17 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - Agent 拒绝、阶段进展、结论冲突和部分失败消息规范；文案对齐原型分支的实际渲染（U-ACTIVE、C-MULTI、F-OFFLINE、F-RETRY、F-PARTIAL）。D1 裁决（A，2026-10-24）：聊天区不出现 Run、attempt、steering、support Run 等实现术语，DESIGN.md 禁令已扩展至聊天区、原型已按裁决修订；实现文案遵循修订后的原型。
 - handoff 与 `message_bot(intent=...)` 边界测试。
 - 来源 owner 的跨会话二次汇报。
+- 方案 A 的明确回归：点名新 Agent 不取消已排队的其他 Agent。方案 B 不是缺陷修复；若以后改选 B，必须先确认取消提示和恢复原型。
+- 非手动取消的状态消息使用白名单原因，不显示 Run、Attempt、lease、fence 或 steering 等实现术语。
 
 验收：
 
 - 普通消息只选一个 owner。
-- 点名新 Agent 不取消当前说话者或后台任务。
+- 点名新 Agent 不取消当前说话者、已排队回复或后台任务。这一条固定为方案 A。
 - 用户补充只 steering 明确命中的 Task。
 - 冲突结果保留来源和证据。
 - 结束根任务只取消它的后代。
+- 受托 Agent 的 Run 被非手动取消时，来源 owner 收到一次可理解的取消说明；用户明确点「停止」仍遵守 CANCEL-01 的例外。
 
 依赖：RT-08、RT-10、RT-11、RT-18、RT-19、RT-20、RT-27。
 
@@ -756,6 +763,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 新独立 Run 与 RT-25 admission queue 的接入。
 - Task amendment 与普通新任务的分流。
 - 不依赖数据库返回顺序的候选排序和拒绝规则。
+- 取消后的 steering disposition：可继续工作的 Bot 释放消息并创建至多一个 continuation；已移出群、归档或删除的 Bot 不获得新 Run，用户收到「未处理」说明。
 
 验收：
 
@@ -764,6 +772,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 跨会话新任务不进入无关 active Run；明确 Task 补充只命中对应 Run。
 - 数据库查询顺序不能决定 steering 目标。
 - 同 Bot、同 Thread 的独立 Run 通过 RT-25 排队，不把 Runtime 409 标成失败。
+- 等待超时、计划拒绝和预算取消不会把 steering 留在 terminal Run 上。用户 Stop 仍删除该 Run 的 steering。
+- 重复取消、reconciler sweep 和 Worker 重启不会重复创建 continuation。
 
 依赖：RT-11、RT-14、RT-25。
 
@@ -829,6 +839,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 96 个原子场景的测试结果。
 - pair 并发创建、重复投递、Runtime 重启、session owner 过期回收、网络乱序、审批/输入等待不阻塞聊天、审批过期和迟到结果的故障测试。
 - gate 灰度顺序、回滚条件和审计查询。
+- [VERIFY-01](../tasks/VERIFY-01.md) 的补充报告：子 Run 级联取消、`waiting_takeover`、multi-dispatch、多条和多渠道 steering、真实时钟边界，以及同一 Bot 同一 session 的并发复核。
+- EFFECT-01 和 CANCEL-01 的进程级故障测试。测试覆盖 stale Worker、post-stop abort 失败、取消 outcome 去重和 continuation 去重。
 
 验收：
 
@@ -837,8 +849,10 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - `pnpm test:integration` 和圆桌定向 E2E 通过。
 - 关闭任一 gate 后，相关入口明确禁用，已有记录仍可读。
 - diff 不包含密钥、真实用户数据、私有 URL 或本机身份信息。
+- 形式化结果区分「已确认缺陷」「模型可达风险」和「未覆盖」。报告不能把没有实机复现的 S1/S2 写成生产事故。
+- 插话方案 A 在生产链测试中成立。X 已排队时再点名 Y，不会静默取消 X；每条消息仍只有一个负责 Agent。
 
-依赖：RT-02、RT-03、RT-04、RT-05、RT-06、RT-07、RT-08、RT-09、RT-10、RT-11、RT-12、RT-13、RT-14、RT-15、RT-16、RT-17、RT-18、RT-19、RT-20、RT-21、RT-22、RT-23、RT-24、RT-25、RT-26、RT-27、RT-28、RT-29。
+依赖：RT-02、RT-03、RT-04、RT-05、RT-06、RT-07、RT-08、RT-09、RT-10、RT-11、RT-12、RT-13、RT-14、RT-15、RT-16、RT-17、RT-18、RT-19、RT-20、RT-21、RT-22、RT-23、RT-24、RT-25、RT-26、RT-27、RT-28、RT-29、EFFECT-01、CANCEL-01、VERIFY-01。
 
 验证覆盖：AC01、AC02、AC03、AC04、AC05、AC06、AC07、AC08、AC09、AC10、AC11、AC12、AC13、AC14、AC15、AC16、AC17、AC18、AC19、AC20、AC21、AC22、AC23、AC24、AC25、AC26、AC27、AC28、AC29、AC30、AC31、AC32、AC33、AC34、AC35、AC36、AC37、AC38、AC39。场景 U01、U02、U03、U04、U05、U06、U07、U08、A01、A02、A03、A04、A05、A06、A07、A08、R01、R02、R03、R04、R05、R06、R07、R08、D01、D02、D03、D04、D05、D06、D07、D08、X01、X02、X03、X04、X05、X06、X07、X08、C01、C02、C03、C04、C05、C06、C07、C08、B01、B02、B03、B04、B05、B06、B07、B08、P01、P02、P03、P04、P05、P06、P07、P08、F01、F02、F03、F04、F05、F06、F07、F08、M01、M02、M03、M04、M05、M06、M07、M08、Q01、Q02、Q03、Q04、Q05、Q06、Q07、Q08、O01、O02、O03、O04、O05、O06、O07、O08。
 
