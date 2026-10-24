@@ -42,12 +42,12 @@ col('A5 · requestInput(choice)', scene('群聊选择 · 不依赖孤立“A”'
 col('A6 · requestApproval(tool)', scene('创建空间 · 本人决定', [
     M('墨', K('wait', '+', '创建“Q3 评审”Space', '等待本人决定', '<dl class="kv"><dt>用途</dt><dd>汇总评审材料</dd><dt>成员</dt><dd>3 位演示成员</dd></dl>', B(('l', '取消'), ('p', '创建')), source='来源 Bot：墨 · Task：评审准备 · ExternalEffect：创建后单独记录')),
 ]))
-col('A7 · requestApproval(connect)', scene('授权 · 与安装分离', [
-    M('小蓝', K('wait', '⬡', '授权 Notion 连接', '等待本人授权', '<dl class="kv"><dt>范围</dt><dd>读写所选页面</dd><dt>前提</dt><dd>连接器已安装</dd></dl>', B(('l', '暂不'), ('p', '授权')), source='来源 Bot：小蓝 · Task：会议同步 · 授权 Intervention：connect-demo-07')),
-    note('OAuth 窗口关闭但未完成时保持 pending，不记为外部失败。')
+col('A7 · requestApproval(connect.app_authorization)', scene('授权 · app authorization 与安装分离', [
+    M('小蓝', K('wait', '⬡', '授权 Notion 连接', '等待本人授权', '<dl class="kv"><dt>范围</dt><dd>读写所选页面</dd><dt>前提</dt><dd>连接器已安装</dd></dl>', B(('l', '暂不'), ('p', '授权')), ident='a7-app-auth', source='来源 Bot：小蓝 · Task：会议同步 · app_connect → connect.app_authorization')),
+    note('OAuth 窗口关闭但未完成时保持 pending，不记为外部失败。MCP assignment 是独立的 connect.mcp_assignment。')
 ]))
-col('A8 · requestApproval(tool)', scene('保存技能 · 内容快照', [
-    M('小紫', K('wait', 'S', '保存技能“周报整理”', '等待本人决定', '<div class="s">目标：把本周记录整理成周报。保存绑定当前内容快照。</div>', B(('l', '丢弃'), ('p', '保存')), source='来源 Bot：小紫 · Task：技能教学 · revision：skill-r1')),
+col('A8 · requestApproval(skill_save)', scene('保存技能 · 业务事务', [
+    M('小紫', K('wait', 'S', '保存技能“周报整理”', '等待本人决定', '<div class="s">目标：把本周记录整理成周报。保存绑定当前内容快照。</div><div class="t">保存权威：TaughtSkill 业务事务，不是工具执行。</div>', B(('l', '丢弃'), ('p', '保存')), ident='a8-skill-save', source='来源 Bot：小紫 · Task：技能教学 · skill_draft → requestApproval(skill_save) · revision：skill-r1')),
 ]))
 col('A9 · requestSessionControl(takeover)', scene('接管电脑 · 只暂停当前 Bot', [
     M('小橙', K('wait', '▭', '需要你完成验证码', '等待接管', '<div class="s">打开桌面后由你操作；不收集密码或验证码。</div>', B(('l', '不做了'), ('p', '打开桌面')), source='来源 Bot：小橙 · Task：车票预订 · session：takeover-demo-09')),
@@ -128,8 +128,8 @@ col('B7 · inline reference', scene('消息内跳转 · 不是卡片', [
     note('引用只负责定位与可见性校验，不携带执行权限。')
 ]))
 
-protocol = 'type InteractionView =\n  | InputRequestView      requestInput(question | choice | form | secret | saved_item)\n  | ActionApprovalView    requestApproval(tool | payment | outbound | routine | install | connect)\n  | PlanReviewView        plan_review · 计划版本审阅，独立成员\n  | SessionControlView    requestSessionControl(takeover | return)\nshowContent(markdown | table | chart | collection | media | html | task_status | page | voice)'
-body = '<div class="ann"><b>CARD-01 目标协议（示意，不是现有生产 API）</b><div class="protocol">' + protocol + '</div><ul><li>统一 Card Shell，不统一业务 payload。27 个产品场景完整保留；B6 是消息操作，B7 是 inline reference。</li><li>plan_review 是独立成员：批准计划版本不批准任何工具调用、连接器或凭据。</li><li>Intervention、Run、ExternalEffect 分别拥有状态。画面中的状态切换均为本地确定性演示。</li></ul></div><div class="grid">' + ''.join(cols) + '</div>'
+protocol = 'type InteractionView =\n  | InputRequestView      requestInput(question | choice | form | secret | saved_item)\n  | ActionApprovalView    requestApproval(tool | payment | outbound | routine | install | skill_save | connect.app_authorization | connect.mcp_assignment)\n  | PlanReviewView        plan_review · 计划版本审阅，独立成员\n  | SessionControlView    requestSessionControl(takeover | return)\nshowContent(markdown | table | chart | collection | media | html | task_status | page | voice)'
+body = '<div class="ann"><b>CARD-01 目标协议（示意，不是现有生产 API）</b><div class="protocol">' + protocol + '</div><ul><li>统一 Card Shell，不统一业务 payload。27 个产品场景完整保留；B6 是消息操作，B7 是 inline reference。</li><li>plan_review 是独立成员：批准计划版本不批准任何工具调用、连接器或凭据。</li><li>skill_save 的权威是 TaughtSkill 业务事务；MCP assignment 使用独立 payload 并展示 allowAllTools 风险。</li><li>Intervention、Run、ExternalEffect 分别拥有状态。画面中的状态切换均为本地确定性演示。</li></ul></div><div class="grid">' + ''.join(cols) + '</div>'
 page('cards.html', 'WorkPal 卡片 · ① 27 个产品场景', '13 个 A 类 + 7 个 D 类 + 7 个 B 类 · 390px 主验收 · 全部内容来自生成脚本', body)
 
 if __name__ == '__main__':

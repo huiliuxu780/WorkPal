@@ -177,6 +177,27 @@ with sync_playwright() as p:
     def structure_and_buttons():
         open_page('cards')
         assert page.locator('.grid > section.col').count() == 27
+        a7 = page.evaluate('''() => {
+          const cols = [...document.querySelectorAll('.grid > section.col')];
+          const c = cols.find(x => (x.querySelector('.top')?.textContent || '').trim().startsWith('A7'));
+          return c ? c.innerText : null;
+        }''')
+        assert a7 and 'connect.app_authorization' in a7, (
+            'A7 连接授权映射错误：必须使用独立 connect.app_authorization。')
+        assert 'requestApproval(connect)' not in a7, (
+            'A7 连接授权映射错误：app authorization 不能使用通用 connect 审批。')
+        a8 = page.evaluate('''() => {
+          const cols = [...document.querySelectorAll('.grid > section.col')];
+          const c = cols.find(x => (x.querySelector('.top')?.textContent || '').trim().startsWith('A8'));
+          return c ? c.innerText : null;
+        }''')
+        assert a8 and 'requestApproval(skill_save)' in a8 and 'TaughtSkill' in a8, (
+            'A8 技能保存映射错误：必须使用 requestApproval(skill_save)，权威是 TaughtSkill 业务事务。')
+        assert 'requestApproval(tool)' not in a8, (
+            'A8 技能保存映射错误：保存技能不是工具审批。')
+        protocol_text = page.locator('.ann').inner_text()
+        assert 'connect.mcp_assignment' in protocol_text and 'skill_save' in protocol_text, (
+            '目标协议缺少 connect.mcp_assignment 或 skill_save 独立成员。')
         open_page('a-detail')
         assert page.locator('section[id^="v"]').count() == 7
         open_page('b-alerts')
@@ -189,7 +210,7 @@ with sync_playwright() as p:
             assert not forbidden, f'{name}: {forbidden}'
             opacities = page.locator('.k.rej .body,.k.void .body,.k.exp .body,.k.done .body,.k.fail .body').evaluate_all('(ns) => [...new Set(ns.map(n => getComputedStyle(n).opacity))]')
             assert all(x == '1' for x in opacities), f'{name}: {opacities}'
-        return '27/7/4 scenes; button limits; no forbidden action labels; terminal body opacity 1'
+        return '27/7/4 scenes; A7/A8 strict approval variants; button limits; no forbidden action labels; terminal body opacity 1'
 
     record('Scene counts, button limits, terminal readability', structure_and_buttons)
 
@@ -259,11 +280,39 @@ with sync_playwright() as p:
             assert 'requestApproval' not in row, (
                 'card-unification.html: 旧 ask 计划审阅映射落到 requestApproval，属于工具审批误归类。')
         for name in ('card-requirements.md', 'card-unification.md', 'STYLE-SPEC.md', 'architecture.py'):
+            text = texts[name]
+            for phrase in ('skill_save', 'connect.app_authorization', 'connect.mcp_assignment'):
+                assert phrase in text, (
+                    f'{name}: 审批变体不完整，缺少 {phrase}。')
+            for line in text.splitlines():
+                if 'skill_draft' in line:
+                    assert 'skill_save' in line and 'requestApproval(tool)' not in line, (
+                        f'{name}: skill_draft 仍被映射为工具审批：{line.strip()}')
+                if 'app_connect' in line:
+                    assert 'connect.app_authorization' in line, (
+                        f'{name}: app_connect 未映射到独立 connect.app_authorization：{line.strip()}')
+                if 'mcp_approval' in line:
+                    assert 'connect.mcp_assignment' in line, (
+                        f'{name}: mcp_approval 未映射到独立 connect.mcp_assignment：{line.strip()}')
+                if '保存技能' in line and 'requestApproval(tool)' in line:
+                    raise AssertionError(
+                        f'{name}: A8 被错误归为工具审批：保存技能与 requestApproval(tool) 出现在同一行：{line.strip()}')
+        html = texts['card-unification.html']
+        for token, target in (
+            ('skill_draft', 'skill_save'),
+            ('app_connect', 'connect.app_authorization'),
+            ('mcp_approval', 'connect.mcp_assignment'),
+        ):
+            rows = [r for r in re.findall(r'<tr><td>.*?</td><td>.*?</td></tr>', html) if token in r]
+            assert rows, f'card-unification.html: 缺少 {token} 兼容映射行'
+            assert all(target in row for row in rows), (
+                f'card-unification.html: {token} 未映射到独立 {target}')
+        for name in ('card-requirements.md', 'card-unification.md', 'STYLE-SPEC.md', 'architecture.py'):
             for line in texts[name].splitlines():
                 if '计划审阅' in line and 'requestApproval(tool)' in line:
                     raise AssertionError(
                         f'{name}: A13 被错误归为工具审批，计划审阅与 requestApproval(tool) 出现在同一行：{line.strip()}')
-        return 'docs and generated HTML keep PlanReviewView independent; ask plan_review mapping is not tool approval'
+        return 'docs and generated HTML keep plan_review, skill_save and connect variants independent; legacy mappings are strict'
 
     record('A13 independent PlanReviewView across documents and compat mapping', a13_docs_and_mapping)
 

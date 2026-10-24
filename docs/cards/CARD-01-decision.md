@@ -1,6 +1,6 @@
 # CARD-01 卡片统一决策
 
-状态：产品决策已确认，2026-10-24。生产实现仍等待更新后的可运行原型入库和确认。
+状态：产品决策已确认，2026-10-24。可运行原型已批准入库；生产实现未开始，总 gate 默认关闭。
 
 ## 用户要完成什么
 
@@ -10,12 +10,15 @@
 
 ```text
 requestInput(question | choice | form | secret | saved_item)
-requestApproval(tool | payment | outbound | routine | install | connect)
+requestApproval(tool | payment | outbound | routine | install | skill_save | connect.app_authorization | connect.mcp_assignment)
 requestSessionControl(takeover | return)
 showContent(markdown | table | chart | collection | media | html | task_status | page | voice)
 ```
 
 Web 从服务端投影渲染这些类型。Web 不从可选字段组合、工具日志或文本内容猜类型、权限和状态。
+
+- `skill_save` 对应 TaughtSkill 业务事务，不是一次工具执行；保存决定不得经过工具授权链。
+- `connect.app_authorization` 与 `connect.mcp_assignment` 必须是不同的严格 payload。MCP assignment 当前会写入 `allowAllTools: true`，审批卡必须展示该风险范围。
 
 ## 已核实的现状
 
@@ -85,6 +88,9 @@ Run 结束不会自动终止所有 Interaction。生命周期由 Intervention �
 7. 失败、过期和结果未知状态不提供重新执行按钮。读取失败可以提供「重新加载」，该操作只重新读取服务端状态。
 8. 终态内容必须保持可读。禁止用固定 40% opacity 降低整张卡。状态使用文字、图标或形状和颜色共同表达。
 9. N4 仅使用 Web Notification 或仓库已有的 Web Push。CARD-01 不新增原生移动端。
+10. `SessionControlView` 只从 Run、执行租约和 Computer 控制租约派生，不新增持久 Intervention。`takeover` 来自 `waiting_takeover`；`return` 要求 `Computer.controlRunId === run.id` 且用户控制租约仍有效。历史 `computer` block 只能展示，不能充当权限或当前状态来源。
+11. 外部连接授权拆为 `connect.app_authorization`（来自 `app_connect`）和 `connect.mcp_assignment`（来自 `mcp_approval`）。两者使用不同严格 payload，并显示各自业务范围；不得共用一个可选字段对象。
+12. 旧 `card` 和 `connect` 在 CARD-01A 合并后禁止新增生产者，历史记录长期只读回放。移除必须另立迁移任务，完成历史 backfill 并证明库内无旧形态后才能删除解码器；CARD-01 不负责移除。
 
 ## 九个开放问题的决定
 
@@ -103,6 +109,10 @@ Run 结束不会自动终止所有 Interaction。生命周期由 Intervention �
 ## 待处理不是第二个 Task Center
 
 N1 是 attention queue，只列当前用户必须处理的 pending Interaction。它不显示普通运行、后台工作、完成历史或执行详情。处理完成后条目立即消失。点击条目只返回来源消息。
+
+数据边界是当前 actor 有权访问的线程中，所有仍需本人处理的 Interaction 投影：持久 Intervention、当前有效的 `SessionControlView`，以及完成严格映射后的 pending 业务审批。普通 Run、Run 历史、后台任务和旧 `connect` 回放不进入。
+
+排序固定为 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC`。条目按 `interactionId + revision` 去重并分页；过期、结算或失去权限后立即移除。
 
 已有工作列表和 Task 详情继续由 Roundtable 的工作投影负责。CARD-01 不恢复已删除的 Task Center 路由和数据模型。
 
@@ -123,6 +133,8 @@ HTML 中不能出现批准、付款、发送、删除或授权控件。任何副
 5. 无障碍、窄屏、深色、旧消息回放和视觉回归。
 
 所有部分通过后才开启总 gate。未实现的 variant 返回明确错误或保持禁用，不能显示模拟成功。
+
+总 gate 的内部 key 固定为 `cards_unified_v2`，环境变量为 `CARDS_UNIFIED_V2_ENABLED`，默认 `false`，非法值必须使启动失败。服务端统一解析 gate 并向 Web 投影能力；Web 不得自行读取另一套环境变量。gate 关闭时旧 API 和页面行为保持不变，不得复用 Roundtable 的四项 gate。
 
 ## 未选择的方案
 

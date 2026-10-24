@@ -63,15 +63,16 @@
 - 视觉验收目前是 opt-in PNG 输出，没有 `toHaveScreenshot` 基线。
 - 现有 feature gate 只有 roundtable 四项，与 CARD-01 无关；CARD-01 需要一个独立总 gate，默认关闭。
 
-## 开工前必须冻结的映射
+## 已冻结映射
 
-以下缺口不能由实现者临时发挥：
+2026-10-24 产品负责人已确认，实现不得另行发挥：
 
-1. `SessionControlView` 使用现有 Run `waiting_takeover` / computer 状态的派生视图，还是新增持久 Intervention。若新增持久实体，必须另立决策和迁移任务。
-2. `skill_draft` 与 `mcp_approval` 按批准原型映射为严格审批交互还是保留现有独立交易卡；不得把它们静默塞进 `DisplayBlock`，也不得用一个通用 `action` 兜底。
-3. 旧 `card`、`connect` 的只读兼容范围和移除期限；不得新增生产者。
-4. attention queue 的数据边界和排序；只列当前用户 pending Interaction，不读 Run 历史。
-5. 总 feature gate 的命名、默认值和配置落点。
+1. `SessionControlView` 从 Run、执行租约和 Computer 控制租约派生，不新增持久 Intervention。`takeover` 来自 `waiting_takeover`；`return` 要求 `Computer.controlRunId === run.id` 且用户控制租约仍有效。历史 `computer` block 只展示，不提供权限或当前状态。
+2. `app_connect → requestApproval(connect.app_authorization)`；`mcp_approval → requestApproval(connect.mcp_assignment)`。两者使用不同 strict payload，MCP 必须展示 `allowAllTools: true` 的风险范围。
+3. `skill_draft → requestApproval(skill_save)`；权威事务是 TaughtSkill 保存，不是工具执行。
+4. 旧 `card`、`connect` 合并后禁止新增生产者，历史记录长期只读。移除必须另立迁移任务，完成 backfill 并证明库内无旧形态后才能删除解码器；CARD-01 不负责移除。
+5. attention queue 范围为当前 actor 有权访问线程中仍需本人处理的 Interaction：持久 Intervention、当前有效 `SessionControlView`、严格映射后的 pending 业务审批。排除普通 Run、Run 历史、后台任务和旧 `connect` 回放。排序 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC`，按 `interactionId + revision` 去重并分页。
+6. 总 gate 使用 `cards_unified_v2` / `CARDS_UNIFIED_V2_ENABLED`，默认 `false`，非法值启动失败。服务端解析并向 Web 投影能力；Web 不读环境变量。gate 关闭时旧行为不变，不复用 roundtable gate。
 
 ## 建议切片
 

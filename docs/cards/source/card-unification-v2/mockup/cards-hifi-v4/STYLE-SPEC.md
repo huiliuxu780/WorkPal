@@ -9,7 +9,7 @@
 ```ts
 type InteractionView =
 	| InputRequestView        // requestInput(question | choice | form | secret | saved_item)
-	| ActionApprovalView      // requestApproval(tool | payment | outbound | routine | install | connect)
+	| ActionApprovalView      // requestApproval(tool | payment | outbound | routine | install | skill_save | connect.app_authorization | connect.mcp_assignment)
 	| PlanReviewView          // plan_review：计划版本审阅，独立成员
 	| SessionControlView      // requestSessionControl(takeover | return)
 
@@ -87,6 +87,24 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 
 ## 6. 关键场景
 
+### A7 连接授权
+
+- `app_connect` 使用 `connect.app_authorization`；`mcp_approval` 使用 `connect.mcp_assignment`，两者视觉可复用 Shell，但 payload、业务范围和审计不同。
+- MCP assignment 必须显示 `allowAllTools: true` 的实际风险范围，不能只写“授权连接”。
+- OAuth 窗口关闭但未完成时保持 pending；与安装、技能保存分开。
+
+### A8 技能保存
+
+- 使用 `requestApproval(skill_save)`，不得写成工具审批。
+- 保存的权威是 TaughtSkill 业务事务；不是一次工具执行，也不产生工具授权。
+- 保存绑定当前内容快照；播放/查看 playbook 不改变消息。
+
+### A9 / B1 接管与交还
+
+- `SessionControlView` 只从 Run、执行租约和 Computer 控制租约派生，不新增持久 Intervention。
+- `takeover` 来自 `waiting_takeover`；`return` 要求 `Computer.controlRunId === run.id` 且用户控制租约仍有效。
+- 历史 `computer` block 只能展示，不能充当权限或当前状态来源。
+
 ### A10 外发草稿
 
 - 对话卡显示摘要、最新 revision 和来源；同卡/同详情进入编辑。
@@ -116,9 +134,10 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 
 ### N1 Attention queue
 
-- 轻量列表，只含当前用户必须处理的 pending Interaction。
+- 轻量列表，只含当前 actor 有权访问线程中仍需本人处理的 Interaction 投影：持久 Intervention、当前有效 `SessionControlView` 和严格映射后的 pending 业务审批。
+- 不显示运行历史、完成历史、普通后台工作、旧 `connect` 回放或执行详情。
+- 排序为 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC`；按 `interactionId + revision` 去重并分页。
 - 点击只跳回来源；处理后立即消失。
-- 不显示运行历史、完成历史、普通后台工作或执行详情。
 
 ### D2 / D6 / V2
 

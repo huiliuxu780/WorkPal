@@ -21,7 +21,7 @@
 ```ts
 type InteractionView =
 	| InputRequestView        // requestInput(question | choice | form | secret | saved_item)
-	| ActionApprovalView      // requestApproval(tool | payment | outbound | routine | install | connect)
+	| ActionApprovalView      // requestApproval(tool | payment | outbound | routine | install | skill_save | connect.app_authorization | connect.mcp_assignment)
 	| PlanReviewView          // plan_review：计划版本审阅，独立成员
 	| SessionControlView      // requestSessionControl(takeover | return)
 
@@ -32,7 +32,9 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 
 `PlanReviewView` 对应当前生产契约中独立的 `plan_review` Intervention kind，展示与决定都不经过工具授权链：**批准一个计划版本不批准任何工具调用、连接器或凭据**。后续工具、连接器与付款仍需各自审批。
 
-**当前兼容输入**只包括旧消息和现有服务端投影可明确适配的 `ask`、`choice`、`app_connect`、`mcp_approval`、`connect`、`skill_draft`、`computer`、`text`、`card`、`chart`、`image`、`file`、`subagent`、`cloud_agent`、`child_bot` 等。适配集中在服务端投影或前端 API 层；旧快照不作为当前代码事实。旧 `ask` 的计划审阅变体适配到独立 `PlanReviewView`（`plan_review`），不归入输入请求或动作审批。未识别或非法组合必须拒绝渲染为可操作卡。
+**当前兼容输入**只包括旧消息和现有服务端投影可明确适配的 `ask`、`choice`、`app_connect`、`mcp_approval`、`connect`、`skill_draft`、`computer`、`text`、`card`、`chart`、`image`、`file`、`subagent`、`cloud_agent`、`child_bot` 等。适配集中在服务端投影或前端 API 适配层；旧快照不作为当前代码事实。旧 `ask` 的计划审阅变体适配到独立 `PlanReviewView`（`plan_review`），不归入输入请求或动作审批。`app_connect` 映射到 `connect.app_authorization`，`mcp_approval` 映射到 `connect.mcp_assignment`，两者使用不同严格 payload；MCP assignment 必须展示 `allowAllTools: true` 的实际风险范围。`skill_draft` 映射到 `requestApproval(skill_save)`，权威事务是 TaughtSkill 保存，不是工具执行。未识别或非法组合必须拒绝渲染为可操作卡。
+
+旧 `card` 和 `connect` 只做历史只读回放；CARD-01A 合并后禁止新增生产者。移除必须另立迁移任务，完成历史数据 backfill 并证明库内无旧形态后才能删除解码器，CARD-01 不负责移除。
 
 ## 3. 状态、权威事实与权限
 
@@ -73,8 +75,8 @@ UI 可合成用户文案，但不能合成持久状态。Run 结束不自动作�
 | A4 | 提问 · `requestInput(question)` | 回答绑定 Bot、Task/reply target；完成后显示非敏感答案摘要。 |
 | A5 | 选择 · `requestInput(choice)` | 选中与提交清晰；答案以 resolution 为准，不接受孤立“A”作为群回复凭据。 |
 | A6 | 建空间 · `requestApproval(tool)` | 本人确认；创建成功后链接来自业务事务。 |
-| A7 | 授权 · `requestApproval(connect)` | app/MCP 共用 Shell、严格 payload；OAuth 关闭且未完成时保持 pending；与安装独立。 |
-| A8 | 保存技能 · `requestApproval(tool)` | 可查看 playbook；保存绑定当前内容快照。 |
+| A7 | 授权 · `requestApproval(connect.app_authorization)` | 来自 `app_connect`；与 MCP assignment 使用不同严格 payload；OAuth 关闭且未完成时保持 pending；与安装独立。 |
+| A8 | 保存技能 · `requestApproval(skill_save)` | 可查看 playbook；保存绑定当前内容快照；权威事务是 TaughtSkill 保存，不是工具执行。 |
 | A9 | 接管电脑 · `requestSessionControl(takeover)` | 主按钮“打开桌面”；只暂停对应 Bot；群聊引导本人到可操作上下文。 |
 | A10 | 外发草稿 · `requestApproval(outbound)` | 同卡编辑；不可变 revision；最新 pending 才可发送；决定绑定 fingerprint；收件人与正文必须与确认页一致。 |
 | A11 | 表单 · `requestInput(form)` | 必填就地校验；敏感支付/密钥不混入；完成后只显示非敏感摘要。 |
@@ -199,6 +201,7 @@ UI 可合成用户文案，但不能合成持久状态。Run 结束不自动作�
 - A10 编辑、保存 revision、最新 pending、fingerprint 和最终确认内容一致。
 - A13 是独立 `PlanReviewView`（`plan_review`），未归入工具审批；批准计划不批准任何工具调用、连接器或凭据。
 - A12 与付款审批为两个连续场景；安装与授权独立。
+- A8 使用 `requestApproval(skill_save)`，权威是 TaughtSkill 保存；`app_connect` 与 `mcp_approval` 分别使用 `connect.app_authorization` 和 `connect.mcp_assignment`，不共用 payload。
 - queue 跳回来源并在处理后移除条目。
 - 读取失败只重新加载；失败、过期与未知结果无重新执行。
 - Run、Intervention、ExternalEffect 不合并；工具完成事件不冒充外部成功。

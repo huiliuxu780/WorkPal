@@ -11,7 +11,7 @@
 ```ts
 type InteractionView =
 	| InputRequestView        // requestInput(question | choice | form | secret | saved_item)
-	| ActionApprovalView      // requestApproval(tool | payment | outbound | routine | install | connect)
+	| ActionApprovalView      // requestApproval(tool | payment | outbound | routine | install | skill_save | connect.app_authorization | connect.mcp_assignment)
 	| PlanReviewView          // plan_review：计划版本审阅，独立成员
 	| SessionControlView      // requestSessionControl(takeover | return)
 
@@ -33,8 +33,10 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 | `ask` 的审批、建空间变体 | `requestApproval(tool)`，以严格业务 payload 区分 |
 | `ask` 的计划审阅变体 | 独立 `PlanReviewView`（`plan_review`）；只决定计划版本，批准计划不批准任何工具调用、连接器或凭据 |
 | `choice` | `requestInput(choice)` |
-| `app_connect`、`mcp_approval`、旧 `connect` | `requestApproval(connect)`；旧块只读回放 |
-| `skill_draft` | `requestApproval(tool)` 的技能保存 payload |
+| `app_connect` | `requestApproval(connect.app_authorization)`；使用 app authorization 严格 payload |
+| `mcp_approval` | `requestApproval(connect.mcp_assignment)`；使用独立 payload，并展示 `allowAllTools: true` 的实际风险范围 |
+| 旧 `connect` | 只读回放，不新增生产者；移除需另立迁移任务 |
+| `skill_draft` | `requestApproval(skill_save)`；权威事务是 TaughtSkill 保存，不是工具执行 |
 | `computer` 接管与交还 | `requestSessionControl(takeover | return)` |
 | `text` | `showContent(markdown)` |
 | `card`、结果列表 | `showContent(collection)` |
@@ -73,8 +75,8 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 | A4 提问 | `requestInput(question)` | 群聊绑定 Bot 与 Task 或 reply target |
 | A5 选择 | `requestInput(choice)` | 不依赖孤立的“A”或“可以” |
 | A6 建空间 | `requestApproval(tool)` | 创建结果以业务事务为准 |
-| A7 授权 | `requestApproval(connect)` | 与安装分离；OAuth 未完成不等于授权失败 |
-| A8 保存技能 | `requestApproval(tool)` | 保存绑定内容快照 |
+| A7 授权 | `requestApproval(connect.app_authorization)` | 与 MCP assignment 分离；与安装分离；OAuth 未完成不等于授权失败 |
+| A8 保存技能 | `requestApproval(skill_save)` | 保存绑定内容快照；权威是 TaughtSkill 业务事务，不是工具执行 |
 | A9 接管电脑 | `requestSessionControl(takeover)` | 主入口“打开桌面” |
 | A10 外发草稿 | `requestApproval(outbound)` | 同卡编辑、不可变 revision、发送绑定 fingerprint |
 | A11 表单 | `requestInput(form)` | 敏感支付与密钥不混入普通表单 |

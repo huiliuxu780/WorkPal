@@ -36,7 +36,7 @@
 4. [CARD-01D：Attention queue 与 Web 通知](./CARD-01D.md)
 5. [CARD-01E：无障碍、旧消息回放、视觉回归与总 Gate](./CARD-01E.md)
 
-开工前必须由产品负责人确认 CARD-01A 的契约映射，包括 `SessionControlView` 数据源、`skill_draft`/`mcp_approval` 归类、旧块兼容期限、attention queue 边界和总 gate 名称。实现者不得自行补设计。
+五项契约映射已于 2026-10-24 确认，详细规则在 [CARD-01A 的开工前冻结](./CARD-01A.md#开工前冻结)。实现者不得自行补设计；发现冲突必须停止并报告。
 
 ## 执行顺序
 

@@ -19,23 +19,29 @@
 
 ## 开工前冻结
 
-先提交一页契约映射，产品负责人确认后才能写实现：
+以下规则已由产品负责人确认，直接作为开工条件；实现发现冲突时必须停止并报告，不得自行改设计：
 
-1. `SessionControlView` 的数据源。默认使用现有 Run `waiting_takeover` 与 computer 状态派生，不新增持久 Intervention；若必须新增持久实体，停止并另立迁移决策。
-2. `skill_draft`、`mcp_approval`、`app_connect` 按批准原型映射为严格审批交互，不从 `DisplayBlock` 绕行，也不保留通用 `action` 兜底。
-3. 旧 `card`、`connect` 只读兼容，不再产生新消息，并记录移除期限。
-4. attention queue 只读当前用户 pending Interaction，不读 Run 历史。
-5. 总 gate 建议名 `cards_unified_v2`，默认 `false`；不得复用 roundtable 四项 gate。
+1. `SessionControlView` 只从 Run、执行租约和 Computer 控制租约派生，不新增持久 Intervention。`takeover` 来自 `waiting_takeover`；`return` 要求 `Computer.controlRunId === run.id` 且用户控制租约仍有效。历史 `computer` block 只能展示，不能充当权限或当前状态来源。
+2. 旧块使用三个不同严格成员：
+   - `app_connect → connect.app_authorization`
+   - `mcp_approval → connect.mcp_assignment`，且必须展示当前 `allowAllTools: true` 的风险范围
+   - `skill_draft → requestApproval(skill_save)`，权威事务是 TaughtSkill 保存，不是工具执行
+   三者都不得退化为通用 `requestApproval(tool)`、其他审批变体或 `DisplayBlock`。
+3. 旧 `card`、`connect` 在 CARD-01A 合并后禁止新增生产者；历史记录长期只读回放。移除必须另立迁移任务，完成历史数据 backfill 并证明库内无旧形态后才能删除解码器；CARD-01 不负责移除。
+4. attention queue 的数据边界是当前 actor 有权访问的线程中，所有仍需本人处理的 Interaction 投影：持久 Intervention、当前有效的 `SessionControlView`，以及完成严格映射后的 pending 业务审批。排除普通 Run、Run 历史、后台任务和旧 `connect` 回放。排序冻结为 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC`，按 `interactionId + revision` 去重并分页。
+5. 总 gate 内部 key 为 `cards_unified_v2`，环境变量为 `CARDS_UNIFIED_V2_ENABLED`，默认 `false`，非法值启动失败。服务端统一解析并向 Web 投影能力；Web 不得读取另一套环境变量。不得复用 roundtable 四项 gate。
 
 ## 实施范围
 
 - 在 `packages/contracts` 新增判别联合 `InteractionView`：`InputRequestView | ActionApprovalView | PlanReviewView | SessionControlView`，以及有限 `DisplayBlock`。
+- `ActionApprovalView` 使用不同严格 payload：`tool`、`payment`、`outbound`、`routine`、`install`、`skill_save`、`connect.app_authorization`、`connect.mcp_assignment`。`skill_save` 的权威是 TaughtSkill 业务事务；MCP assignment 必须显示 `allowAllTools: true` 的实际风险范围。
+- `SessionControlView` 从 `waiting_takeover`、执行租约和 Computer `controlRunId`/控制租约派生；`return` 必须同时校验 Run 与用户控制租约。不新增持久 Intervention。
 - 保持现有 `InterventionKindSchema`、`InterventionViewSchema` 和事件载荷为线上兼容 wire；不得直接改 kind 枚举破坏旧客户端或事件重放。
 - `PlanReviewView` 对应独立 `plan_review`，永远不带 `approval.effectId`；批准计划不批准工具、连接器或凭据。
 - 每个成员使用 strict schema；`presentation` 不携带答案明文、密钥或 ExternalEffect 请求/结果。
 - 在服务端补齐从现有 Intervention、message block 和业务事实到新投影的适配。旧 `ask` 与 `legacy_<messageId>` 继续读时合成，不 backfill。
-- 旧 `card`、`connect` 只提供只读降级；非法或未实现组合必须明确失败或保持禁用。
-- 增加默认关闭的 `cards_unified_v2` 总 gate；gate 关闭时生产行为不变，开启后才允许新投影。
+- 旧 `card`、`connect` 只提供历史只读降级，合并后不得新增生产者；非法或未实现组合必须明确失败或保持禁用。
+- 增加默认关闭的 `cards_unified_v2` gate（`CARDS_UNIFIED_V2_ENABLED=false`），非法值启动失败。gate 关闭时生产行为不变，开启后才允许新投影；capability 由服务端投影，Web 不读环境变量。
 - 统一 `InterventionRegion` 与 `execution-card.ts` 对 plan review / approval 的排序事实，避免 Web 层各自定义优先级。
 
 ## 允许修改
@@ -57,9 +63,12 @@
 ## 验收
 
 - 契约单测证明四类成员穷尽、strict、非法组合被拒绝，`plan_review` 与 effect 互斥。
+- `ActionApprovalView` 测试证明 `skill_save`、`connect.app_authorization`、`connect.mcp_assignment` 是不同 payload；A8 不出现 `requestApproval(tool)`，MCP 卡显示 `allowAllTools: true` 的风险范围。
 - DB/Postgres 测试覆盖 pending、terminal、legacy ask、跨线程来源、revision 和 plan review。
-- API 测试证明 gate 关闭时旧响应不变；开启后投影包含可寻址来源和安全字段。
-- 旧消息回放 fixture 证明已结算 ask 不会重复生成可操作卡。
+- API 测试证明 gate 关闭时旧响应不变；开启后投影包含可寻址来源和安全字段；gate 非法值启动失败。
+- 旧消息回放 fixture 证明已结算 ask 不会重复生成可操作卡；旧 `card`/`connect` 只读且无新生产者。
+- `SessionControlView` 测试覆盖 `waiting_takeover`、`controlRunId` 匹配、控制租约失效和历史 computer block 无权限作用。
+- attention queue 查询测试覆盖权限范围、排除普通 Run/历史/旧 connect、`expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC` 排序、`interactionId + revision` 去重和分页。
 - 扫描证明无答案、密钥、地址、付款正文或 ExternalEffect 请求/结果泄漏。
 - 对照原型 A13 验证 `PlanReviewView(plan_review)` 没有回到 `requestApproval(tool)`。
 

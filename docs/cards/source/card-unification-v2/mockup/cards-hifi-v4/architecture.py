@@ -2,7 +2,7 @@ from pathlib import Path
 
 families = [
     ('InputRequestView', 'requestInput(question · choice · form · secret · saved_item)', '用户补充输入；Intervention resolution 是事实来源。'),
-    ('ActionApprovalView', 'requestApproval(tool · payment · outbound · routine · install · connect)', '本人作出决定；外部结果由 ExternalEffect 或业务事务确认。'),
+    ('ActionApprovalView', 'requestApproval(tool · payment · outbound · routine · install · skill_save · connect.app_authorization · connect.mcp_assignment)', '本人作出决定；外部结果由 ExternalEffect 或业务事务确认。skill_save 的权威是 TaughtSkill 保存。'),
     ('PlanReviewView', 'plan_review：计划版本审阅', '独立成员，不进入工具授权链；批准计划版本不批准任何工具调用、连接器或凭据。'),
     ('SessionControlView', 'requestSessionControl(takeover · return)', '接管与交还桌面；只表达会话控制权。'),
     ('DisplayBlock', 'showContent(markdown · table · chart · collection · media · html · task_status · page · voice)', '只读展示；副作用必须另发审批。'),
@@ -14,8 +14,10 @@ mappings = [
     ('ask：审批 / 建空间', 'ActionApprovalView（requestApproval(tool)），以严格业务 payload 区分'),
     ('ask：计划审阅', 'PlanReviewView（plan_review）· 独立成员，只决定计划版本'),
     ('choice', 'requestInput(choice)'),
-    ('app_connect / mcp_approval / connect', 'requestApproval(connect)；旧块只读回放'),
-    ('skill_draft', 'requestApproval(tool) 的技能保存 payload'),
+    ('app_connect', 'ActionApprovalView（requestApproval(connect.app_authorization)）· 独立严格 payload'),
+    ('mcp_approval', 'ActionApprovalView（requestApproval(connect.mcp_assignment)）· 展示 allowAllTools 风险'),
+    ('旧 connect', '只读回放，不新增生产者；移除需另立迁移任务'),
+    ('skill_draft', 'ActionApprovalView（requestApproval(skill_save)）；权威是 TaughtSkill 业务事务'),
     ('computer', 'requestSessionControl(takeover · return)'),
     ('text / card / chart / image / file', 'showContent(markdown / collection / chart / media)'),
     ('subagent / cloud_agent / child_bot', 'showContent(task_status)'),

@@ -167,3 +167,5 @@ showContent(markdown | table | chart | collection | media | html | task_status |
 2026-10-24 完成并通过两轮产品验收。A13 已修正为独立 `PlanReviewView`（`plan_review`），不进入工具授权链；`verify.py` 增至 14 项，其中两项直接检查 A13 的渲染语义和文档兼容映射，独立定向变异可将该断言转红。
 
 批准后的去敏源已入库到 [`docs/cards/source/card-unification-v2`](../cards/source/card-unification-v2/README.md)。入库副本从仓库内重新生成后 HTML 哈希稳定，真实浏览器验收 14/14，390px 与 375px 无横向溢出。已知非阻断项：原接手人的完整 13/14 变异日志未随交付保存，评审侧已用独立定向变异补证。
+
+2026-10-24 后续协议修订：A8 改为 `requestApproval(skill_save)`（TaughtSkill 业务事务），A7 拆分为 `connect.app_authorization` 与 `connect.mcp_assignment`；新增 A7/A8 语义断言并复跑 14/14，定向变异可将 A8 断言转红。原型仍为已批准设计基线。

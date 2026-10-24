@@ -56,7 +56,7 @@ python3 verify.py
 python3 shot.py
 ```
 
-`verify.py` 使用真实浏览器检查导航、七条核心路径、A10 revision/fingerprint、A12 两步付款、B3 安装与授权、attention queue、只读重新加载、A13 独立计划审阅、390/375px、深色状态和文档语义映射。
+`verify.py` 使用真实浏览器检查导航、七条核心路径、A10 revision/fingerprint、A12 两步付款、B3 安装与授权、attention queue、只读重新加载、A13 独立计划审阅、A7/A8 严格审批变体、390/375px、深色状态和文档语义映射。
 
 本次入库验收：
 
@@ -65,6 +65,7 @@ python3 shot.py
 - `gen.py` 与 `architecture.py` 重跑前后，Python 源文件和生成 HTML 的 SHA-256 一致。
 - 从入库源重新生成关键截图后，连续两次截图运行的哈希一致。
 - `verify.py` 的 A13 断言要求独立 `PlanReviewView`/`plan_review`，并拒绝 `requestApproval(tool)` 归类。
+- A8 使用 `requestApproval(skill_save)`，权威是 TaughtSkill 保存；A7 的 `app_connect` 与 `mcp_approval` 分别使用 `connect.app_authorization` 和 `connect.mcp_assignment`，断言拒绝通用审批归类。
 
 已知非阻断项：上一轮接手人的完整 13/14 变异日志未随交付保存；评审侧已用独立定向变异证明该断言能捕获回退。本轮未声称完整 WCAG 合规。
 
