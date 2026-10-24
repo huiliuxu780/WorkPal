@@ -158,35 +158,56 @@ function readRunOrigin(run: PrivateRun): PrivateRunOrigin | null {
  * self (originRunId); that Run's own origin names the requester's Thread and
  * the requester Run — the outcome goes there, one generation per delivery,
  * until a parent without an origin means the outcome is already user-visible.
+ * A bot that delegated, was resumed, and delegated again chains several of its
+ * own runs; those same-bot ancestors are skipped so the target is always a
+ * different bot's run.
  */
 async function resolveUpstreamReturn(
   prisma: PrismaClient,
   origin: PrivateRunOrigin,
+  returningBotId: string,
 ): Promise<{ targetBotId: string; origin: PrivateRunOrigin } | null> {
-  const parentRun = await prisma.run.findUnique({
-    where: { id: origin.runId },
-    select: {
-      originThreadId: true,
-      originRunId: true,
-      originMessageId: true,
-    },
-  });
-  const parentThread = parentRun?.originThreadId?.trim();
-  const parentOriginRunId = parentRun?.originRunId?.trim();
-  const parentMessageId = parentRun?.originMessageId?.trim();
-  if (!parentRun || !parentThread || !parentOriginRunId || !parentMessageId) return null;
-  // The requester is the Bot of the Run the parent's own origin names: the
-  // parent Run executed in that requester's Thread (a chat or a pair).
-  const parentOriginRun = await prisma.run.findUnique({
-    where: { id: parentOriginRunId },
-    select: { botId: true },
-  });
-  const targetBotId = parentOriginRun?.botId ?? null;
-  if (!targetBotId) return null;
-  return {
-    targetBotId,
-    origin: { threadId: parentThread, runId: parentOriginRunId, messageId: parentMessageId },
-  };
+  let parentId: string | null = origin.runId;
+  for (let depth = 0; parentId && depth < 8; depth += 1) {
+    const parentRun: {
+      originThreadId: string | null;
+      originRunId: string | null;
+      originMessageId: string | null;
+    } | null = await prisma.run.findUnique({
+      where: { id: parentId },
+      select: {
+        originThreadId: true,
+        originRunId: true,
+        originMessageId: true,
+      },
+    });
+    const parentThread: string | null = parentRun?.originThreadId?.trim() ?? null;
+    const parentOriginRunId: string | null = parentRun?.originRunId?.trim() ?? null;
+    const parentMessageId: string | null = parentRun?.originMessageId?.trim() ?? null;
+    if (!parentRun || !parentThread || !parentOriginRunId || !parentMessageId) return null;
+    // The requester is the Bot of the Run the parent's own origin names: the
+    // parent Run executed in that requester's Thread (a chat or a pair).
+    const parentOriginRun = await prisma.run.findUnique({
+      where: { id: parentOriginRunId },
+      select: { botId: true },
+    });
+    const targetBotId = parentOriginRun?.botId ?? null;
+    if (!targetBotId) return null;
+    if (targetBotId !== returningBotId) {
+      return {
+        targetBotId,
+        origin: {
+          threadId: parentThread,
+          runId: parentOriginRunId,
+          messageId: parentMessageId,
+        },
+      };
+    }
+    // The named requester is this same bot's earlier run (sequential
+    // re-delegation): climb another generation before delivering.
+    parentId = parentOriginRunId;
+  }
+  return null;
 }
 
 /** A terminal result/status addressed at the bot that woke this run. */
@@ -501,34 +522,11 @@ async function messageBotInAgentPair(
       let resumptionRole: CollaborationRole = "support";
       let resumptionExecution: OrchestrationExecutionV1 = turnExecutionForSource("bot_message");
       let resumptionDepth: number | null = null;
-      if (writesToOrigin && context.sourceContext?.returnToMessageId) {
-        const outbound = await tx.message.findUnique({
-          where: { id: context.sourceContext.returnToMessageId },
-          select: { runId: true },
-        });
-        const requesterRun = outbound?.runId
-          ? await tx.run.findUnique({
-              where: { id: outbound.runId },
-              select: { orchestration: true, trigger: true },
-            })
-          : null;
-        if (requesterRun) {
-          const snapshot = parseRunOrchestration(requesterRun.orchestration);
-          resumptionRole =
-            snapshot?.collaboration?.role ??
-            snapshot?.ownership.mode ??
-            (turnPolicySourceForTrigger(requesterRun.trigger) === "bot_message"
-              ? "support"
-              : "owner");
-          resumptionExecution =
-            snapshot?.execution ??
-            turnExecutionForSource(resumptionRole === "support" ? "bot_message" : "chat");
-          resumptionDepth = snapshot?.collaboration?.handoffDepth ?? null;
-        }
-      } else if (writesToOrigin && origin) {
-        // A nested upstream return carries no request receipt in its immediate
-        // source (the wake was a child's result): the requester's role lives on
-        // the walked origin's source Run.
+      if (writesToOrigin && origin) {
+        // The delivery origin names the recipient's own prior Run. Its
+        // persisted policy is what the recipient resumes with — for a nested
+        // return the immediate source receipt points at the child's outbound
+        // (wrong policy), so the resolved origin is the only correct source.
         const requesterRun = await tx.run.findUnique({
           where: { id: origin.runId },
           select: { orchestration: true, trigger: true },
@@ -939,7 +937,7 @@ export async function messageBot(
     if (intent === "result" || intent === "status") {
       const upstream = options.originOverride
         ? { targetBotId: resolved.target.id, origin: options.originOverride }
-        : await resolveUpstreamReturn(deps.prisma, origin);
+        : await resolveUpstreamReturn(deps.prisma, origin, sender.id);
       if (upstream && upstream.targetBotId === resolved.target.id) {
         return messageBotInAgentPair(
           deps,
@@ -1850,7 +1848,9 @@ export async function returnBotMessageOutcome(
   let originOverride: { threadId: string; runId: string; messageId: string } | undefined;
   if (sourceIntent === "result" || sourceIntent === "status") {
     const origin = readRunOrigin(run);
-    const upstream = origin ? await resolveUpstreamReturn(deps.prisma, origin) : null;
+    const upstream = origin
+      ? await resolveUpstreamReturn(deps.prisma, origin, run.botId)
+      : null;
     if (!upstream) {
       await markBotOutcomeReturned(deps.prisma, run.id);
       return true;

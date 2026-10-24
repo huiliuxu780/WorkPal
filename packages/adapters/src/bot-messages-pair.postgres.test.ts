@@ -1332,6 +1332,133 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     ).toBe(1);
   });
 
+  it("skips same-bot resumptions and restores the recipient's policy", async () => {
+    // A → B, B → C, C returns (B resumes), B re-delegates to C again, C
+    // returns (B resumes once more). B's final outcome must skip its own
+    // earlier runs and reach A in the visible chat, with A's resumed Run
+    // keeping the owner policy — not C's support policy.
+    const sourceRun = await newSenderRun();
+    const toB = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "iterate the draft",
+      deliveryKey: "rt05-seq-ab",
+    });
+    if (!toB.ok) throw new Error("A→B failed");
+    const asRun = (row: {
+      id: string;
+      threadId: string;
+      botId: string;
+      sourceMessageId: string | null;
+      orchestration: unknown;
+      originThreadId: string | null;
+      originRunId: string | null;
+      originMessageId: string | null;
+    }) => ({
+      id: row.id,
+      spaceId,
+      threadId: row.threadId,
+      botId: row.botId,
+      userId: id,
+      sourceMessageId: row.sourceMessageId,
+      orchestration: row.orchestration,
+      originThreadId: row.originThreadId,
+      originRunId: row.originRunId,
+      originMessageId: row.originMessageId,
+    });
+    const outcomeDeps = {
+      prisma,
+      events: { notify: vi.fn(async () => undefined) },
+      jobs: { enqueue: vi.fn(async () => undefined) },
+    } as unknown as Parameters<typeof returnBotMessageOutcome>[0];
+    const delegateFrom = async (
+      run: Awaited<ReturnType<typeof prisma.run.findUniqueOrThrow>>,
+      targetBotId: string,
+      key: string,
+    ) => {
+      const sent = await messageBot(
+        deps(),
+        asRun(run),
+        { id: run.botId, name: run.botId === researcher.id ? "Researcher" : "Writer" },
+        { bot_id: targetBotId, message: "another pass", intent: "request", deliveryKey: key },
+      );
+      if (!sent.ok || !("targetRunId" in sent)) throw new Error(`delegation failed: ${key}`);
+      return sent.targetRunId;
+    };
+
+    const runB1 = await prisma.run.update({
+      where: { id: toB.targetRunId },
+      data: { status: "running" },
+    });
+    const child1 = await delegateFrom(runB1, writer.id, "rt05-seq-b1c");
+    const child1Run = await prisma.run.update({
+      where: { id: child1 },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    expect(
+      await returnBotMessageOutcome(
+        outcomeDeps,
+        asRun(child1Run),
+        writer,
+        "First pass done.",
+      ),
+    ).toBe(true);
+    const b2 = await prisma.run.findFirstOrThrow({
+      where: { botId: researcher.id, trigger: "bot_message" },
+      orderBy: { createdAt: "desc" },
+    });
+    await prisma.run.update({ where: { id: b2.id }, data: { status: "running" } });
+
+    const child2 = await delegateFrom(b2, writer.id, "rt05-seq-b2c");
+    const child2Run = await prisma.run.update({
+      where: { id: child2 },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    expect(
+      await returnBotMessageOutcome(
+        outcomeDeps,
+        asRun(child2Run),
+        writer,
+        "Second pass done.",
+      ),
+    ).toBe(true);
+    const b3 = await prisma.run.findFirstOrThrow({
+      where: { botId: researcher.id, trigger: "bot_message" },
+      orderBy: { createdAt: "desc" },
+    });
+    await prisma.run.update({
+      where: { id: b3.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+
+    // B's final outcome skips B's own resumption chain and reaches A.
+    expect(
+      await returnBotMessageOutcome(outcomeDeps, asRun(b3), researcher, "Draft iterated."),
+    ).toBe(true);
+    const wake = await prisma.message.findFirstOrThrow({
+      where: { threadId: sourceThreadId, clientNonce: `bot-message:auto-outcome:${b3.id}` },
+    });
+    expect(wake.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        fromBotId: researcher.id,
+        intent: "result",
+      }),
+    ]);
+    expect(
+      (await prisma.run.findUniqueOrThrow({ where: { id: b3.id } })).botOutcomeReturnedAt,
+    ).not.toBeNull();
+
+    // A's resumed Run keeps the requester's owner policy, not C's support.
+    const resumedA = await prisma.run.findFirstOrThrow({
+      where: { sourceMessageId: wake.id },
+    });
+    expect(resumedA.botId).toBe(sender.id);
+    expect(resumedA.threadId).toBe(sourceThreadId);
+    const orchestration = JSON.stringify(resumedA.orchestration);
+    expect(orchestration).toContain('"owner"');
+    expect(orchestration).not.toContain('"support"');
+  });
+
   it("cancels the delegated Run with its origin and never fabricates a reply", async () => {
     const sourceRun = await newSenderRun();
     const dispatched = await send(sourceRun, {
