@@ -1029,6 +1029,30 @@ export const ThreadMessagePageSchema = z.object({
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
 
+/**
+ * Human projection of an Agent pair message. Physical Thread sequence numbers
+ * stay private because gaps would reveal messages from unauthorized origins.
+ */
+export const PairThreadMessageSchema = ThreadMessageSchema.omit({ threadId: true, seq: true });
+export type PairThreadMessage = z.infer<typeof PairThreadMessageSchema>;
+
+export const PairThreadMessagePageSchema = z.object({
+  pairThreadId: Id,
+  messages: z.array(PairThreadMessageSchema),
+  totalCount: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+  /** Opaque stable cursor: the oldest visible message id on this page. */
+  olderCursor: Id.nullable(),
+  /** Zero-based position inside the actor's authorized projection only. */
+  target: z
+    .object({
+      messageId: Id,
+      visibleIndex: z.number().int().nonnegative(),
+    })
+    .nullable(),
+});
+export type PairThreadMessagePage = z.infer<typeof PairThreadMessagePageSchema>;
+
 export type { ActivityItem, ActivityKind, ActivityStatus } from "./activity.js";
 // The Activity projection lives in its own module so the ExecutionSnapshot
 // schemas can reuse it without importing this file (no runtime import cycle).

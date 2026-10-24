@@ -15,6 +15,10 @@ import type { Prisma, PrismaClient } from "./client.js";
 import { appendEventInTransaction } from "./events.js";
 import { executionEventCeilings } from "./execution-history.js";
 import { IsolationError } from "./scope.js";
+import {
+  readTaskInstructionEnvelopeInTransaction,
+  TaskInstructionIntegrityError,
+} from "./task-instructions.js";
 
 const GROUP_MEMBER_MIN = 2;
 
@@ -335,6 +339,21 @@ export async function createManualRetryRun(
         return outputFor(input.runId, existingSuccessor, target, true);
       }
 
+      let instructions: Awaited<ReturnType<typeof readTaskInstructionEnvelopeInTransaction>>;
+      try {
+        instructions = await readTaskInstructionEnvelopeInTransaction(tx, {
+          taskId: latest.taskId,
+          spaceId: latest.spaceId,
+          threadId: latest.threadId,
+        });
+      } catch (error) {
+        if (error instanceof TaskInstructionIntegrityError) {
+          throw new ManualRetryDenied("thread_cleared");
+        }
+        throw error;
+      }
+      if (!instructions) throw new ManualRetryDenied("not_found");
+
       const created = await tx.run.create({
         data: {
           spaceId: latest.spaceId,
@@ -343,6 +362,9 @@ export async function createManualRetryRun(
           taskId: latest.taskId,
           userId: latest.userId,
           status: "queued",
+          // A manual retry executes the instruction revision the user chose to
+          // retry. Later amendments are steering, not silent input drift.
+          consumedRevision: instructions.revision,
           trigger: latest.trigger,
           sourceMessageId: latest.sourceMessageId,
           routineId: latest.routineId,

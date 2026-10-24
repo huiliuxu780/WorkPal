@@ -215,6 +215,10 @@ describe("isOneShotRoutineCron", () => {
 });
 
 describe("schedule tool persistence", () => {
+  const writableThread = () => ({
+    thread: { findFirst: vi.fn(async () => ({ id: "thread-1" })) },
+  });
+
   it("creates routines with routine.created and enqueues wakeup", async () => {
     const append = vi.fn(async () => undefined);
     const enqueue = vi.fn(async () => undefined);
@@ -224,7 +228,7 @@ describe("schedule tool persistence", () => {
       nextRunAt: args.data.nextRunAt,
     }));
     const deps = {
-      prisma: { routine: { create } },
+      prisma: { ...writableThread(), routine: { create } },
       events: { append },
       jobs: { enqueue, cancel: vi.fn(async () => undefined) },
     } as unknown as Parameters<typeof createScheduleFromTool>[0];
@@ -262,6 +266,7 @@ describe("schedule tool persistence", () => {
     const remove = vi.fn(async () => undefined);
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -299,6 +304,7 @@ describe("schedule tool persistence", () => {
     const remove = vi.fn(async () => undefined);
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -336,6 +342,7 @@ describe("schedule tool persistence", () => {
     const update = vi.fn(async () => undefined);
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -378,6 +385,7 @@ describe("schedule tool persistence", () => {
   it("propagates when enqueue rollback cannot deactivate", async () => {
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -413,6 +421,31 @@ describe("schedule tool persistence", () => {
         schedule: { every: 1, unit: "minutes" },
       }),
     ).rejects.toThrow("deactivate failed");
+  });
+
+  it("refuses to bind a Routine to an agent_pair thread", async () => {
+    const create = vi.fn();
+    const deps = {
+      prisma: {
+        thread: { findFirst: vi.fn(async () => null) },
+        routine: { create },
+      },
+      events: { append: vi.fn() },
+      jobs: { enqueue: vi.fn(), cancel: vi.fn() },
+    } as unknown as Parameters<typeof createScheduleFromTool>[0];
+
+    await expect(
+      createScheduleFromTool(deps, {
+        spaceId: "ws-1",
+        botId: "bot-1",
+        userId: "user-1",
+        threadId: "pair-thread-1",
+        name: "Pair schedule",
+        prompt: "Do not create this",
+        schedule: { every: 1, unit: "minutes" },
+      }),
+    ).resolves.toEqual({ error: "Schedules cannot be bound to this thread." });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("scopes group list and cancel to the current thread without narrowing DMs", async () => {

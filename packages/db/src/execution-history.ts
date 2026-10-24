@@ -162,6 +162,7 @@ export type SummaryRunRow = {
   createdAt: Date;
   snapshotRev: number;
   retryOfRunId?: string | null;
+  followUpOfRunId?: string | null;
 };
 
 /** Latest `thread.cleared` seq per Thread in one grouped pass (absent = 0). */
@@ -228,13 +229,23 @@ export async function buildExecutionSummariesForRuns(
   if (present.length === 0) return [];
   const scopedIds = present.map((run) => run.id);
   const successorRows = await db.run.findMany({
-    where: { retryOfRunId: { in: scopedIds } },
-    select: { id: true, retryOfRunId: true, status: true },
+    where: {
+      OR: [{ retryOfRunId: { in: scopedIds } }, { followUpOfRunId: { in: scopedIds } }],
+    },
+    select: { id: true, retryOfRunId: true, followUpOfRunId: true, status: true },
   });
-  const successorByPredecessor = new Map<string, { id: string; status: string }>();
+  const retrySuccessorByPredecessor = new Map<string, { id: string; status: string }>();
+  const followUpSuccessorByPredecessor = new Map<string, { id: string; status: string }>();
   for (const row of successorRows) {
-    if (!row.retryOfRunId) continue;
-    successorByPredecessor.set(row.retryOfRunId, { id: row.id, status: row.status });
+    if (row.retryOfRunId) {
+      retrySuccessorByPredecessor.set(row.retryOfRunId, { id: row.id, status: row.status });
+    }
+    if (row.followUpOfRunId) {
+      followUpSuccessorByPredecessor.set(row.followUpOfRunId, {
+        id: row.id,
+        status: row.status,
+      });
+    }
   }
   const taskIds = [...new Set(present.map((run) => run.taskId))];
   const sourceIds = present
@@ -377,12 +388,14 @@ export async function buildExecutionSummariesForRuns(
       artifactsTotal,
       anchorMessageId: anchorMessage?.id ?? null,
       retryOfRunId: run.retryOfRunId ?? null,
-      retrySuccessorRunId: successorByPredecessor.get(run.id)?.id ?? null,
+      retrySuccessorRunId: retrySuccessorByPredecessor.get(run.id)?.id ?? null,
+      followUpOfRunId: run.followUpOfRunId ?? null,
+      followUpSuccessorRunId: followUpSuccessorByPredecessor.get(run.id)?.id ?? null,
       manualRetry: projectManualRetryEligibility({
         status: run.status,
         trigger: run.trigger,
         orchestration: run.orchestration,
-        successorStatus: successorByPredecessor.get(run.id)?.status ?? null,
+        successorStatus: retrySuccessorByPredecessor.get(run.id)?.status ?? null,
       }),
     };
     summaries.push(buildExecutionSummary(facts));
@@ -422,6 +435,7 @@ export async function loadExecutionSummaries(
       createdAt: true,
       snapshotRev: true,
       retryOfRunId: true,
+      followUpOfRunId: true,
     },
   });
   return buildExecutionSummariesForRuns(db, { spaceId: input.spaceId, runs });

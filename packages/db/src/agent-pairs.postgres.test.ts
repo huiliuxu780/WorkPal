@@ -31,6 +31,7 @@ import {
 } from "./postgres-test-database.js";
 import { createRepos } from "./repos.js";
 import { IsolationError } from "./scope.js";
+import { createThreadPolicy, recordAgentPairMessageOrigin } from "./thread-policy.js";
 
 const PAIR_MIGRATION = "20261022000000_agent_pair_chat_groups";
 const migrationsDir = path.resolve(
@@ -223,6 +224,83 @@ describePostgres("agent pair identity (PostgreSQL)", () => {
       },
     });
     return { message, task, run };
+  }
+
+  async function seedOrigin(input: {
+    workspace: Workspace;
+    sourceUserId: UserId;
+    botId: BotId;
+    label: string;
+  }) {
+    const sourceThread = await prisma.thread.create({
+      data: {
+        spaceId: input.workspace.spaceId,
+        userId: input.sourceUserId,
+        botId: input.botId,
+      },
+    });
+    const receipt = await prisma.message.create({
+      data: {
+        threadId: sourceThread.id,
+        seq: 1,
+        role: "bot",
+        originKind: "bot",
+        botId: input.botId,
+        blocks: [{ kind: "text", text: `receipt ${input.label}` }],
+      },
+    });
+    const task = await prisma.task.create({
+      data: {
+        spaceId: input.workspace.spaceId,
+        botId: input.botId,
+        threadId: sourceThread.id,
+        userId: input.sourceUserId,
+        prompt: `source ${input.label}`,
+        status: "completed",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: input.workspace.spaceId,
+        botId: input.botId,
+        threadId: sourceThread.id,
+        taskId: task.id,
+        userId: input.sourceUserId,
+        status: "completed",
+        trigger: "user",
+        sourceMessageId: receipt.id,
+      },
+    });
+    return { sourceThread, receipt, run };
+  }
+
+  async function seedOriginatedPairMessage(input: {
+    pair: AgentPair;
+    botId: BotId;
+    seq: number;
+    text: string;
+    origin: Awaited<ReturnType<typeof seedOrigin>>;
+    replyToMessageId?: string;
+  }) {
+    const message = await prisma.message.create({
+      data: {
+        threadId: input.pair.threadId,
+        seq: input.seq,
+        role: "bot",
+        originKind: "bot",
+        botId: input.botId,
+        blocks: [{ kind: "text", text: input.text }],
+        replyToMessageId: input.replyToMessageId,
+      },
+    });
+    await recordAgentPairMessageOrigin(prisma, {
+      messageId: message.id,
+      pairThreadId: input.pair.threadId,
+      sourceThreadId: input.origin.sourceThread.id,
+      sourceRunId: input.origin.run.id,
+      sourceReceiptMessageId: input.origin.receipt.id,
+    });
+    return message;
   }
 
   async function pairSnapshot(groupId: string) {
@@ -618,6 +696,257 @@ describePostgres("agent pair identity (PostgreSQL)", () => {
     }
 
     expect(await pairSnapshot(pair.groupId)).toEqual(before);
+  });
+
+  it("filters pair pagination, location and counts by each message origin", async () => {
+    const { workspace, pair, botAId, botBId } = await newPair();
+    const intruder = await addUserToSpace(
+      workspace,
+      `ap-origin-intruder-${randomUUID().slice(0, 8)}`,
+    );
+    const allowed = await seedOrigin({
+      workspace,
+      sourceUserId: workspace.userId,
+      botId: botAId,
+      label: "allowed",
+    });
+    const denied = await seedOrigin({
+      workspace,
+      sourceUserId: parseUserId(intruder.userId),
+      botId: botBId,
+      label: "denied",
+    });
+    const visibleOne = await seedOriginatedPairMessage({
+      pair,
+      botId: botAId,
+      seq: 1,
+      text: "visible one",
+      origin: allowed,
+    });
+    await seedOriginatedPairMessage({
+      pair,
+      botId: botBId,
+      seq: 2,
+      text: "hidden one",
+      origin: denied,
+    });
+    const visibleTwo = await seedOriginatedPairMessage({
+      pair,
+      botId: botBId,
+      seq: 3,
+      text: "visible two",
+      origin: allowed,
+      replyToMessageId: visibleOne.id,
+    });
+    const hiddenTwo = await seedOriginatedPairMessage({
+      pair,
+      botId: botAId,
+      seq: 4,
+      text: "hidden two",
+      origin: denied,
+    });
+    const visibleThree = await seedOriginatedPairMessage({
+      pair,
+      botId: botAId,
+      seq: 5,
+      text: "visible three",
+      origin: allowed,
+      replyToMessageId: hiddenTwo.id,
+    });
+
+    const policy = createThreadPolicy(prisma);
+    const originLocator = {
+      sourceReceiptMessageId: allowed.receipt.id,
+      pairThreadId: pair.threadId,
+      messageId: visibleThree.id,
+    };
+    const first = await policy.readPairMessages({
+      actor: actorFor(workspace),
+      originLocator,
+      limit: 2,
+    });
+    expect(first).toMatchObject({
+      pairThreadId: pair.threadId,
+      totalCount: 3,
+      hasMore: true,
+      olderCursor: visibleTwo.id,
+      target: { messageId: visibleThree.id, visibleIndex: 2 },
+    });
+    expect(first.messages.map((message) => message.id)).toEqual([visibleTwo.id, visibleThree.id]);
+    expect(first.messages.map((message) => message.blocks[0])).toEqual([
+      { kind: "text", text: "visible two" },
+      { kind: "text", text: "visible three" },
+    ]);
+    expect(first.messages[0]?.replyToMessageId).toBe(visibleOne.id);
+    expect(first.messages[1]).not.toHaveProperty("replyToMessageId");
+    expect(first.messages.every((message) => !("seq" in message))).toBe(true);
+
+    const older = await policy.readPairMessages({
+      actor: actorFor(workspace),
+      originLocator,
+      before: first.olderCursor ?? undefined,
+      limit: 2,
+    });
+    expect(older).toMatchObject({
+      totalCount: 3,
+      hasMore: false,
+      olderCursor: null,
+      target: null,
+    });
+    expect(older.messages.map((message) => message.id)).toEqual([visibleOne.id]);
+  });
+
+  it("requires the authorized receipt, target and cursor without revealing which value failed", async () => {
+    const { workspace, pair, botAId, botBId } = await newPair();
+    const intruder = await addUserToSpace(
+      workspace,
+      `ap-locator-intruder-${randomUUID().slice(0, 8)}`,
+    );
+    const allowed = await seedOrigin({
+      workspace,
+      sourceUserId: workspace.userId,
+      botId: botAId,
+      label: "allowed-locator",
+    });
+    const denied = await seedOrigin({
+      workspace,
+      sourceUserId: parseUserId(intruder.userId),
+      botId: botBId,
+      label: "denied-locator",
+    });
+    const allowedMessage = await seedOriginatedPairMessage({
+      pair,
+      botId: botAId,
+      seq: 1,
+      text: "allowed target",
+      origin: allowed,
+    });
+    const deniedMessage = await seedOriginatedPairMessage({
+      pair,
+      botId: botBId,
+      seq: 2,
+      text: "denied target",
+      origin: denied,
+    });
+    const policy = createThreadPolicy(prisma);
+    const base = {
+      actor: actorFor(workspace),
+      originLocator: {
+        sourceReceiptMessageId: allowed.receipt.id,
+        pairThreadId: pair.threadId,
+        messageId: allowedMessage.id,
+      },
+      limit: 20,
+    };
+
+    const failures = [
+      policy.readPairMessages({
+        ...base,
+        originLocator: { ...base.originLocator, pairThreadId: randomUUID() },
+      }),
+      policy.readPairMessages({
+        ...base,
+        originLocator: {
+          ...base.originLocator,
+          sourceReceiptMessageId: denied.receipt.id,
+          messageId: deniedMessage.id,
+        },
+      }),
+      policy.readPairMessages({
+        ...base,
+        originLocator: { ...base.originLocator, messageId: randomUUID() },
+      }),
+      policy.readPairMessages({ ...base, before: deniedMessage.id }),
+      policy.readPairMessages({
+        ...base,
+        actor: intruder,
+      }),
+      policy.readPairMessages({
+        ...base,
+        actor: intruder,
+        originLocator: {
+          ...base.originLocator,
+          sourceReceiptMessageId: denied.receipt.id,
+          messageId: deniedMessage.id,
+        },
+      }),
+    ];
+    const rejected = await Promise.all(failures.map((promise) => failure(promise)));
+    expect(new Set(rejected.map((item) => `${item.name}:${item.message}`))).toEqual(
+      new Set(["IsolationError:Resource not found"]),
+    );
+  });
+
+  it("keeps readable history across rename and soft delete without giving it to a replacement Bot", async () => {
+    const { workspace, pair, botAId, botBId } = await newPair();
+    const origin = await seedOrigin({
+      workspace,
+      sourceUserId: workspace.userId,
+      botId: botAId,
+      label: "lifecycle",
+    });
+    const message = await seedOriginatedPairMessage({
+      pair,
+      botId: botBId,
+      seq: 1,
+      text: "durable history",
+      origin,
+    });
+    const policy = createThreadPolicy(prisma);
+    const read = () =>
+      policy.readPairMessages({
+        actor: actorFor(workspace),
+        originLocator: {
+          sourceReceiptMessageId: origin.receipt.id,
+          pairThreadId: pair.threadId,
+          messageId: message.id,
+        },
+        limit: 20,
+      });
+
+    await prisma.bot.update({ where: { id: botAId }, data: { name: "Renamed Agent" } });
+    await prisma.bot.update({ where: { id: botBId }, data: { archivedAt: new Date() } });
+    await expect(read()).resolves.toMatchObject({ totalCount: 1 });
+
+    const replacement = await prisma.bot.create({
+      data: {
+        spaceId: workspace.spaceId,
+        userId: workspace.userId,
+        name: "Replacement Agent",
+        color: "test",
+      },
+    });
+    const replacementPair = await createAgentPairRepository(prisma, OPEN_GATES).getOrCreate({
+      spaceId: workspace.spaceId,
+      userId: workspace.userId,
+      botAId,
+      botBId: parseBotId(replacement.id),
+    });
+    expect(replacementPair.threadId).not.toBe(pair.threadId);
+    await expect(
+      policy.readPairMessages({
+        actor: actorFor(workspace),
+        originLocator: {
+          sourceReceiptMessageId: origin.receipt.id,
+          pairThreadId: replacementPair.threadId,
+          messageId: message.id,
+        },
+        limit: 20,
+      }),
+    ).rejects.toBeInstanceOf(IsolationError);
+  });
+
+  it("rejects direct human writes and Routine binding for a pair thread", async () => {
+    const { workspace, pair } = await newPair();
+    const policy = createThreadPolicy(prisma);
+
+    await expect(
+      policy.assertHumanCanWrite({ actor: actorFor(workspace), threadId: pair.threadId }),
+    ).rejects.toBeInstanceOf(IsolationError);
+    await expect(policy.assertRoutineBindingAllowed(pair.threadId)).rejects.toBeInstanceOf(
+      IsolationError,
+    );
+    await expect(policy.classify(pair.threadId)).resolves.toBe("agent_pair");
   });
 
   it("keeps the other groupId write entries away from a pair", async () => {

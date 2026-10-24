@@ -10,16 +10,20 @@ import {
   pauseRunForInput,
   resolveIntervention,
 } from "./events.js";
+import { loadExecutionSummaries } from "./execution-history.js";
 import { createManualRetryRun } from "./manual-retry.js";
 import { createThreadMessage } from "./messages.js";
 import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
 } from "./postgres-test-database.js";
+import { promoteLeasedRunWithAttempt } from "./promote-run.js";
 import {
   appendTaskAmendment,
+  applyTaskAmendment,
   readTaskInstructionEnvelope,
   readTaskInstructionsForRun,
+  readTaskInstructionView,
   TaskAmendmentRejected,
   TaskInstructionIntegrityError,
 } from "./task-instructions.js";
@@ -121,6 +125,52 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
       content,
       clientNonce,
     });
+  }
+
+  function apply(
+    target: { task: { id: string }; threadId: string },
+    content: string,
+    clientNonce: string = randomUUID(),
+  ) {
+    return applyTaskAmendment(prisma, {
+      spaceId: id,
+      threadId: target.threadId,
+      actorUserId: id,
+      targetTaskId: target.task.id,
+      content,
+      clientNonce,
+    });
+  }
+
+  async function taskRun(status: string, label: string, consumedRevision: number | null = null) {
+    const target = await newTask(`${label} original`, label);
+    if (status === "completed" || status === "failed" || status === "cancelled") {
+      await prisma.task.update({ where: { id: target.task.id }, data: { status } });
+    }
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        taskId: target.task.id,
+        status,
+        trigger: "user",
+        consumedRevision,
+        ...(status === "running"
+          ? {
+              leaseOwner: "worker",
+              leaseFence: 1,
+              leaseExpiresAt: new Date(Date.now() + 60_000),
+              startedAt: new Date(),
+            }
+          : {}),
+        ...(status === "completed" || status === "failed" || status === "cancelled"
+          ? { completedAt: new Date() }
+          : {}),
+      },
+    });
+    return { ...target, run };
   }
 
   it("reads an unamended Task as revision 1 with only the original", async () => {
@@ -254,6 +304,265 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
     expect(await prisma.message.count({ where: { threadId, role: "user" } })).toBe(8);
   });
 
+  it("steers only the bound active Run even when the same Bot has another Run", async () => {
+    const target = await taskRun("running", "active-target", 1);
+    const otherTask = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        prompt: "Unrelated work",
+        status: "queued",
+      },
+    });
+    const otherRun = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        taskId: otherTask.id,
+        status: "running",
+        trigger: "user",
+        consumedRevision: 1,
+        leaseOwner: "other-worker",
+        leaseFence: 1,
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    const result = await apply(target, "Review only the target Run.", "active-target-nonce");
+    expect(result.application).toEqual({
+      kind: "active_steering",
+      targetRunId: target.run.id,
+    });
+    expect(await prisma.steeringMessage.count({ where: { runId: target.run.id } })).toBe(1);
+    expect(await prisma.steeringMessage.count({ where: { runId: otherRun.id } })).toBe(0);
+    expect(
+      await prisma.message.findUniqueOrThrow({ where: { id: result.messageId } }),
+    ).toMatchObject({ runId: target.run.id, botId: target.botId });
+    const replay = await apply(target, "Review only the target Run.", "active-target-nonce");
+    expect(replay).toMatchObject({
+      replayed: true,
+      application: { kind: "active_steering", targetRunId: target.run.id },
+    });
+    expect(await prisma.steeringMessage.count({ where: { runId: target.run.id } })).toBe(1);
+  });
+
+  it("updates a queued Task without creating a competing Run and leases the latest revision", async () => {
+    const target = await taskRun("queued", "queued-target");
+    const result = await apply(target, "Include the new acceptance case.", "queued-target-nonce");
+    expect(result.application).toEqual({
+      kind: "queued_update_only",
+      targetRunId: target.run.id,
+    });
+    expect(await prisma.run.count({ where: { taskId: target.task.id } })).toBe(1);
+    expect(await prisma.steeringMessage.count({ where: { runId: target.run.id } })).toBe(0);
+
+    await prisma.run.update({
+      where: { id: target.run.id },
+      data: {
+        status: "leased",
+        leaseOwner: "queued-worker",
+        leaseFence: 1,
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await expect(
+      promoteLeasedRunWithAttempt(prisma, {
+        runId: target.run.id,
+        leaseOwner: "queued-worker",
+        leaseFence: 1,
+        startedAt: new Date(),
+      }),
+    ).resolves.toEqual(expect.objectContaining({ fence: 1 }));
+    const instructions = await readTaskInstructionsForRun(prisma, {
+      runId: target.run.id,
+      leaseOwner: "queued-worker",
+      leaseFence: 1,
+    });
+    expect(instructions?.ref.consumedRevision).toBe(2);
+    expect(instructions?.envelope.amendments.map((item) => item.content)).toEqual([
+      "Include the new acceptance case.",
+    ]);
+  });
+
+  it("serializes amendment against lease as either old-plus-steering or the new envelope", async () => {
+    const target = await taskRun("queued", "lease-race");
+    const [applied, consumed] = await Promise.all([
+      apply(target, "Race-safe requirement.", "lease-race-nonce"),
+      (async () => {
+        await prisma.run.updateMany({
+          where: { id: target.run.id, status: "queued" },
+          data: {
+            status: "leased",
+            leaseOwner: "race-worker",
+            leaseFence: 1,
+            leaseExpiresAt: new Date(Date.now() + 60_000),
+          },
+        });
+        await promoteLeasedRunWithAttempt(prisma, {
+          runId: target.run.id,
+          leaseOwner: "race-worker",
+          leaseFence: 1,
+          startedAt: new Date(),
+        });
+        return readTaskInstructionsForRun(prisma, {
+          runId: target.run.id,
+          leaseOwner: "race-worker",
+          leaseFence: 1,
+        });
+      })(),
+    ]);
+    expect(consumed).not.toBeNull();
+    expect(consumed?.envelope.revision).toBe(consumed?.ref.consumedRevision);
+    const steeringCount = await prisma.steeringMessage.count({ where: { runId: target.run.id } });
+    if (consumed?.ref.consumedRevision === 1) {
+      expect(applied.application.kind).toBe("active_steering");
+      expect(steeringCount).toBe(1);
+      expect(consumed.envelope.amendments).toEqual([]);
+    } else {
+      expect(consumed?.ref.consumedRevision).toBe(2);
+      expect(applied.application.kind).toBe("queued_update_only");
+      expect(steeringCount).toBe(0);
+      expect(consumed?.envelope.amendments.map((item) => item.content)).toEqual([
+        "Race-safe requirement.",
+      ]);
+    }
+  });
+
+  it("keeps a completed result and creates one idempotent amendment follow-up", async () => {
+    const target = await taskRun("completed", "completed-target", 1);
+    const resultMessage = await createThreadMessage(prisma, {
+      threadId: target.threadId,
+      role: "bot",
+      originKind: "bot",
+      botId: target.botId,
+      runId: target.run.id,
+      blocks: [{ kind: "text", text: "Original committed result" }],
+    });
+    await prisma.$transaction((tx) =>
+      appendEventInTransaction(tx, {
+        spaceId: id,
+        threadId: target.threadId,
+        botId: target.botId,
+        runId: target.run.id,
+        type: "run.completed",
+        payload: {},
+      }),
+    );
+
+    const results = await Promise.all([
+      apply(target, "Re-check the conclusion.", "completed-follow-up-nonce"),
+      apply(target, "Re-check the conclusion.", "completed-follow-up-nonce"),
+    ]);
+    expect(results.filter((result) => result.replayed)).toHaveLength(1);
+    const applications = results.map((result) => result.application);
+    expect(new Set(applications.map((item) => JSON.stringify(item))).size).toBe(1);
+    const application = applications[0];
+    if (application?.kind !== "completed_follow_up") {
+      throw new Error("expected follow-up");
+    }
+    expect(application.kind).toBe("completed_follow_up");
+    expect(await prisma.run.count({ where: { taskId: target.task.id } })).toBe(2);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: target.run.id } })).toMatchObject({
+      status: "completed",
+    });
+    expect(
+      await prisma.message.findUniqueOrThrow({ where: { id: resultMessage.id } }),
+    ).toMatchObject({
+      runId: target.run.id,
+      blocks: [{ kind: "text", text: "Original committed result" }],
+    });
+    expect(
+      await prisma.run.findUniqueOrThrow({ where: { id: application.followUpRunId } }),
+    ).toMatchObject({
+      status: "queued",
+      taskId: target.task.id,
+      followUpOfRunId: target.run.id,
+      consumedRevision: null,
+    });
+
+    const view = await readTaskInstructionView(prisma, {
+      taskId: target.task.id,
+      spaceId: id,
+      threadId: target.threadId,
+    });
+    expect(view?.instructions).toMatchObject({
+      original: { content: "completed-target original" },
+      revision: 2,
+      amendments: [expect.objectContaining({ content: "Re-check the conclusion." })],
+    });
+    expect(view?.runs).toEqual([
+      expect.objectContaining({
+        runId: target.run.id,
+        lineage: { kind: "original" },
+        result: expect.objectContaining({ messageId: resultMessage.id }),
+      }),
+      expect.objectContaining({
+        runId: application.followUpRunId,
+        lineage: { kind: "amendment_follow_up", predecessorRunId: target.run.id },
+      }),
+    ]);
+    const summaries = await loadExecutionSummaries(prisma, {
+      threadId: target.threadId,
+      spaceId: id,
+      runIds: [target.run.id, application.followUpRunId],
+    });
+    expect(summaries.find((summary) => summary.runId === target.run.id)).toMatchObject({
+      followUpSuccessorRunId: application.followUpRunId,
+      outcome: "Original committed result",
+    });
+    expect(summaries.find((summary) => summary.runId === application.followUpRunId)).toMatchObject({
+      followUpOfRunId: target.run.id,
+    });
+  });
+
+  it("records failed and cancelled amendments until explicit manual retry", async () => {
+    for (const status of ["failed", "cancelled"] as const) {
+      const target = await taskRun(status, `${status}-record-only`, 1);
+      await prisma.$transaction((tx) =>
+        appendEventInTransaction(tx, {
+          spaceId: id,
+          threadId: target.threadId,
+          botId: target.botId,
+          runId: target.run.id,
+          type: status === "failed" ? "run.failed" : "run.cancelled",
+          payload: status === "failed" ? { error: "test failure" } : { reason: "test cancel" },
+        }),
+      );
+      const amended = await apply(
+        target,
+        `Recorded after ${status}.`,
+        `${status}-record-only-nonce`,
+      );
+      expect(amended.application).toEqual({
+        kind: `${status}_record_only`,
+        targetRunId: target.run.id,
+        requiresExplicitRetry: true,
+      });
+      expect(await prisma.run.count({ where: { taskId: target.task.id } })).toBe(1);
+      expect(await prisma.task.findUniqueOrThrow({ where: { id: target.task.id } })).toMatchObject({
+        status,
+        revision: 2,
+      });
+
+      const retry = await createManualRetryRun(prisma, {
+        spaceId: id,
+        userId: id,
+        runId: target.run.id,
+        clientNonce: `${status}-explicit-retry`,
+      });
+      expect(retry.replayed).toBe(false);
+      expect(await prisma.run.findUniqueOrThrow({ where: { id: retry.runId } })).toMatchObject({
+        status: "queued",
+        retryOfRunId: target.run.id,
+        consumedRevision: 2,
+      });
+    }
+  });
+
   it("writes nothing for a foreign user, foreign space, or missing Task", async () => {
     const { task, threadId } = await newTask("Private original", "forbidden");
     const beforeMessages = await prisma.message.count({ where: { threadId } });
@@ -350,6 +659,71 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
     expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).revision).toBe(1);
     expect(await prisma.message.count({ where: { threadId } })).toBe(0);
     expect(await prisma.event.count({ where: { threadId } })).toBe(0);
+  });
+
+  it("retries a serialization failure without duplicating revision or steering", async () => {
+    const target = await taskRun("running", "transaction-retry", 1);
+    await prisma.$executeRawUnsafe('CREATE SEQUENCE "rt14_task_amendment_retry_seq"');
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION retry_task_amended_once() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.type = 'task.amended'
+           AND nextval('rt14_task_amendment_retry_seq') = 1 THEN
+          RAISE EXCEPTION 'retry task amendment once' USING ERRCODE = '40001';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER retry_task_amended_once_trigger
+      BEFORE INSERT ON events
+      FOR EACH ROW EXECUTE FUNCTION retry_task_amended_once();
+    `);
+    let result: Awaited<ReturnType<typeof apply>> | undefined;
+    try {
+      result = await apply(target, "Survive one transaction retry.", "transaction-retry-nonce");
+    } finally {
+      await prisma.$executeRawUnsafe(
+        "DROP TRIGGER IF EXISTS retry_task_amended_once_trigger ON events",
+      );
+      await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS retry_task_amended_once() CASCADE");
+      await prisma.$executeRawUnsafe('DROP SEQUENCE IF EXISTS "rt14_task_amendment_retry_seq"');
+    }
+    expect(result?.replayed).toBe(false);
+    expect(await prisma.message.count({ where: { threadId: target.threadId, role: "user" } })).toBe(
+      1,
+    );
+    expect(
+      await prisma.event.count({ where: { threadId: target.threadId, type: "task.amended" } }),
+    ).toBe(1);
+    expect(await prisma.steeringMessage.count({ where: { runId: target.run.id } })).toBe(1);
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: target.task.id } })).toMatchObject({
+      revision: 2,
+    });
+  });
+
+  it("fails closed when a Task has competing unlinked Run heads", async () => {
+    const target = await taskRun("queued", "ambiguous-lineage");
+    await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        taskId: target.task.id,
+        status: "queued",
+        trigger: "user",
+      },
+    });
+    await expect(
+      apply(target, "Must not guess a Run.", "ambiguous-lineage-nonce"),
+    ).rejects.toMatchObject({ reason: "conflict" });
+    expect(await prisma.message.count({ where: { threadId: target.threadId } })).toBe(0);
+    expect(await prisma.event.count({ where: { threadId: target.threadId } })).toBe(0);
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: target.task.id } })).toMatchObject({
+      revision: 1,
+    });
   });
 
   it("pins one Run to its first consumed revision across technical resumes", async () => {
@@ -662,6 +1036,9 @@ describePostgres("Task instruction envelope (PostgreSQL)", () => {
     await expect(append({ task, threadId }, "After clear", "clear-2")).rejects.toBeInstanceOf(
       TaskInstructionIntegrityError,
     );
+    await expect(
+      apply({ task, threadId }, "State-aware after clear", "clear-3"),
+    ).rejects.toBeInstanceOf(TaskInstructionIntegrityError);
     expect(await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({
       prompt: "Original before clear",
       revision: 2,

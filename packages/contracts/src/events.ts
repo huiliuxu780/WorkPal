@@ -100,6 +100,27 @@ export const ProductEventType = z.enum([
 ]);
 export type ProductEventType = z.infer<typeof ProductEventType>;
 
+export const TaskAmendmentApplicationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("active_steering"), targetRunId: Id }),
+  z.strictObject({ kind: z.literal("queued_update_only"), targetRunId: Id }),
+  z.strictObject({
+    kind: z.literal("completed_follow_up"),
+    targetRunId: Id,
+    followUpRunId: Id,
+  }),
+  z.strictObject({
+    kind: z.literal("failed_record_only"),
+    targetRunId: Id,
+    requiresExplicitRetry: z.literal(true),
+  }),
+  z.strictObject({
+    kind: z.literal("cancelled_record_only"),
+    targetRunId: Id,
+    requiresExplicitRetry: z.literal(true),
+  }),
+]);
+export type TaskAmendmentApplication = z.infer<typeof TaskAmendmentApplicationSchema>;
+
 /** Event.id remains the durable eventId; these fields can be read by older clients. */
 export const EventEnvelopeMeta = z.object({
   eventId: Id,
@@ -169,6 +190,8 @@ export const ProductEventPayloadSchemas = {
       revision: z.number().int().positive(),
       actorUserId: Id.optional(),
       source: z.enum(["explicit", "ask_answer", "choice_answer"]),
+      /** RT-14 application result. Older RT-13 events legitimately omit it. */
+      application: TaskAmendmentApplicationSchema.optional(),
     })
     .strict()
     .refine((payload) => payload.revision === payload.seq + 1, {

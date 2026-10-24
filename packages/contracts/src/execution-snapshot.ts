@@ -94,6 +94,10 @@ export const ExecutionSummarySchema = z.strictObject({
   retryOfRunId: Id.optional(),
   /** Direct successor created by a later manual retry; omitted when none exists. */
   retrySuccessorRunId: Id.optional(),
+  /** Completed Run this amendment follow-up reviews; omitted for other Runs. */
+  followUpOfRunId: Id.optional(),
+  /** Follow-up created by a later amendment; omitted when none exists. */
+  followUpSuccessorRunId: Id.optional(),
   /** Whether the actor may request a manual retry of this Run. */
   manualRetry: z
     .strictObject({

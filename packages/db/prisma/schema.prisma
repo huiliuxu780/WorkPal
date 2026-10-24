@@ -546,6 +546,8 @@ model Thread {
   routines                    Routine[]
   compactionRevisions         ThreadCompactionRevision[]
   extractionCursor            MemoryExtractionCursor?
+  pairMessageOrigins          AgentPairMessageOrigin[] @relation("AgentPairOriginPairThread")
+  sourcePairMessageOrigins    AgentPairMessageOrigin[] @relation("AgentPairOriginSourceThread")
 
   @@index([spaceId])
   @@map("threads")
@@ -572,6 +574,8 @@ model Message {
   sourceRuns            Run[]             @relation("RunSourceMessage")
   externalTranscriptFor  ExternalMessage?
   steeringMessages SteeringMessage[]
+  pairOrigin       AgentPairMessageOrigin?  @relation("AgentPairOriginMessage")
+  pairReceiptOrigins AgentPairMessageOrigin[] @relation("AgentPairOriginReceipt")
   createdAt        DateTime  @default(now())
 
   @@unique([threadId, seq])
@@ -580,6 +584,25 @@ model Message {
   @@index([replyToMessageId])
   @@index([runId, seq])
   @@map("messages")
+}
+
+model AgentPairMessageOrigin {
+  messageId               String   @id
+  message                 Message  @relation("AgentPairOriginMessage", fields: [messageId], references: [id], onDelete: Cascade)
+  pairThreadId            String
+  pairThread              Thread   @relation("AgentPairOriginPairThread", fields: [pairThreadId], references: [id], onDelete: Cascade)
+  sourceThreadId          String
+  sourceThread            Thread   @relation("AgentPairOriginSourceThread", fields: [sourceThreadId], references: [id], onDelete: Cascade)
+  sourceRunId             String
+  sourceRun               Run      @relation(fields: [sourceRunId], references: [id], onDelete: Cascade)
+  sourceReceiptMessageId  String
+  sourceReceiptMessage    Message  @relation("AgentPairOriginReceipt", fields: [sourceReceiptMessageId], references: [id], onDelete: Cascade)
+  createdAt               DateTime @default(now())
+
+  @@index([pairThreadId, sourceThreadId])
+  @@index([sourceReceiptMessageId, pairThreadId])
+  @@index([sourceRunId])
+  @@map("agent_pair_message_origins")
 }
 
 model Event {
@@ -687,10 +710,15 @@ model Run {
   steps                RunStep[]
   todos                RunTodo[]
   sessionAdmissionRequests AgentSessionAdmissionRequest[]
+  pairMessageOrigins   AgentPairMessageOrigin[]
   /// Direct predecessor of a manual retry (new Run). Unique so one hop has one successor.
   retryOfRunId         String?          @unique
   retryOfRun           Run?             @relation("RunManualRetry", fields: [retryOfRunId], references: [id], onDelete: Restrict)
   manualRetrySuccessor Run?             @relation("RunManualRetry")
+  /// Completed Run reviewed again because a later Task amendment requested it.
+  followUpOfRunId      String?          @unique
+  followUpOfRun        Run?             @relation("RunTaskAmendmentFollowUp", fields: [followUpOfRunId], references: [id], onDelete: Restrict)
+  amendmentFollowUp    Run?             @relation("RunTaskAmendmentFollowUp")
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
@@ -702,6 +730,7 @@ model Run {
   @@index([trigger, status, teamChatMirroredAt, updatedAt])
   @@index([spaceId, botId])
   @@index([sourceMessageId])
+  @@index([taskId, createdAt, id])
   @@index([threadId, status, createdAt])
   @@index([routineId])
   @@map("runs")

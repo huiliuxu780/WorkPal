@@ -137,6 +137,18 @@ describe("buildExecutionSummary", () => {
     expect(summary.retrySuccessorRunId).toBe("run-2");
     expect(summary.manualRetry).toEqual({ allowed: false, reason: "already_active" });
   });
+
+  it("carries amendment follow-up lineage separately from retry lineage", () => {
+    const summary = buildExecutionSummary(
+      facts({
+        followUpOfRunId: "run-original",
+        followUpSuccessorRunId: "run-review",
+      }),
+    );
+    expect(summary.followUpOfRunId).toBe("run-original");
+    expect(summary.followUpSuccessorRunId).toBe("run-review");
+    expect(summary.retryOfRunId).toBeUndefined();
+  });
 });
 
 describe("executionEntryFor", () => {

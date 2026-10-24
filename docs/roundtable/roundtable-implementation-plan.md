@@ -180,7 +180,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 - list、read、write、react、archive、member mutation 和 Routine binding 规则。
 - receipt locator 驱动、逐条按 origin source Thread 授权的只读接口。
-- 服务端列表、搜索、群选择器和未读过滤。
+- 服务端排除行为：`agent_pair` 从所有普通列表、搜索、群选择器候选和未读统计的查询结果中排除。这是查询契约，不新增任何页面、入口或界面元素；对应 UI 表面归 RT-09 与 RT-22。
 - 停用和软删除后的历史读取规则。
 
 验收：
@@ -294,8 +294,9 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 - 公开委派正文、发送者和目标 mention。
 - 同一 source Run 相邻调用的视觉合并。
-- 独立投递状态和失败状态。
+- 语义化派发痕迹与失败呈现（对齐原型主故事线第 2 阶段的「已派给 / 未发送给」药丸）；不得展示 `queued`、`running`、`completed` 等执行状态枚举，也不得渲染逐目标状态机；每个目标的真实进度只出现在 RT-20 与 RT-23 的工作投影中。
 - 公开消息的键盘与窄屏行为。
+- 群 Thread 内的协作 block 不复用私下 peer 回执 UI，也不打开 pair 对话视图（公开委派留在群 Thread，见 DESIGN.md「群内公开 `@Agent` 仍留在群 Thread，不与私下对话混用」）。
 
 验收：
 
@@ -318,6 +319,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 多目标 receipt 紧凑 Agent 名单。
 - 全尺寸只读浮窗和 A、双向关系、B 组合胶囊。
 - 消息定位和更早历史加载。
+- receipt 与浮窗不新增侧边栏会话入口；pair 历史只能从来源 receipt 进入（DESIGN.md「该对话不进入侧边栏」）。
 
 验收：
 
@@ -363,6 +365,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 来源 receipt、目标消息、独立 Task 和 owner Run 的原子事务。
 - 目标 Run 先保持 queued，并通过抽象的 session admission 请求执行资格。
 - 来源状态更新和目标 Thread locator。
+- 来源单聊回显卡对齐原型「从 A 单聊派 A 去目标群」分支（已入群 / 已接手 · 正在推进 / 去现场看看），不显示内部状态术语。
 
 验收：
 
@@ -438,7 +441,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 - steering 不进入同一 Agent 的其他 Run。
 - queued Task 不创建竞争 Run。
-- completed Task 保留旧结果并显示“追加复核”。
+- completed Task 保留旧结果，follow-up Run 事实供 UI 呈现“追加复核”；展示位置与结构归 RT-23，必须复刻原型“已完成后追加复核”分支的状态行与任务详情结构，RT-14 本身不实现任何展示。
 - failed 或 cancelled Task 不因补充自动复活。
 
 依赖：RT-13。
@@ -591,6 +594,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - API 不返回虚构百分比。
 - 同一 Agent 的普通 Run 和后台工作可以同时存在。
 - 部分完成、等待、失败和取消有不同状态。
+- 用户可见的工作状态词表只允许 `GroupWorkState`（queued、working、waiting、failed、done、cancelled）及其语义文案；lease、fence、attempt、revision、hop 等内部语义不得进入该投影。
 
 依赖：RT-14、RT-18。
 
@@ -629,6 +633,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 群名单击编辑、失焦或 Enter 保存和 Esc 取消。
 - 详情、资料库和成员页。
 - 无框新增入口、无成员行边框和无资料整组外框。
+- 资料库行的悬停更多操作入口（DESIGN.md「每行只保留缩略图、名称、更新时间和悬停更多操作」）。
+- 顶部「工作」窄入口的挂点：只直达工作页签，不显示数量。
 
 验收：
 
@@ -672,7 +678,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 - single owner、reply target、explicit mention 和 explicit multi 测试。
 - active Task steering、后台旁路和新目标加入测试。
-- Agent 拒绝、阶段进展、结论冲突和部分失败消息规范。
+- Agent 拒绝、阶段进展、结论冲突和部分失败消息规范；文案对齐原型分支的实际渲染（U-ACTIVE、C-MULTI、F-OFFLINE、F-RETRY、F-PARTIAL）。D1 裁决（A，2026-10-24）：聊天区不出现 Run、attempt、steering、support Run 等实现术语，DESIGN.md 禁令已扩展至聊天区、原型已按裁决修订；实现文案遵循修订后的原型。
 - handoff 与 `message_bot(intent=...)` 边界测试。
 - 来源 owner 的跨会话二次汇报。
 
@@ -700,6 +706,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - queued Run 的公平唤醒、fenced release 和 recovering 状态。
 - Runtime 409 到 queued 状态的转换，不把 Run 标为失败。
 - dedicated computer 与 chat admission 相互独立的租约规则。
+- 边界：`queued`、lease、fence、409、`recovering` 全部是内部执行语义，只出现在 API/DB/Runtime 测试与日志中，禁止成为产品文案或 UI 状态标签；用户可见投影只允许 RT-20 `GroupWorkState` 的语义状态。
 
 验收：
 

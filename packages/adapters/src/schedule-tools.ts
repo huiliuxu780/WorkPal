@@ -7,7 +7,12 @@ import {
   nextCronDate,
   ONCE_ROUTINE_CRON,
 } from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import {
+  createThreadPolicy,
+  IsolationError,
+  type PrismaClient,
+  type ThreadEvents,
+} from "@rakazo/db";
 
 export { isOneShotRoutineCron, ONCE_ROUTINE_CRON };
 
@@ -222,6 +227,15 @@ export async function createScheduleFromTool(
   const timezone = String(input.timezone ?? "UTC");
   const resolved = resolveScheduleTiming(input.schedule, timezone);
   if (!resolved.ok) return { error: resolved.error };
+
+  try {
+    await createThreadPolicy(deps.prisma).assertRoutineBindingAllowed(input.threadId);
+  } catch (error) {
+    if (error instanceof IsolationError) {
+      return { error: "Schedules cannot be bound to this thread." };
+    }
+    throw error;
+  }
 
   const row = await deps.prisma.routine.create({
     data: {
