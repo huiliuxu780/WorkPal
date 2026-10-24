@@ -46,6 +46,7 @@ import {
 
 import { getLogger } from "@rakazo/logging";
 import type { ExecutorDeps } from "./executor.js";
+import { resolveVisibleOrigin } from "./run-origin.js";
 
 /**
  * The hop the current run sits at, read back from the message that woke this
@@ -489,6 +490,27 @@ async function messageBotInAgentPair(
             turnExecutionForSource(resumptionRole === "support" ? "bot_message" : "chat");
           resumptionDepth = snapshot?.collaboration?.handoffDepth ?? null;
         }
+      } else if (writesToOrigin && origin) {
+        // A nested upstream return carries no request receipt in its immediate
+        // source (the wake was a child's result): the requester's role lives on
+        // the walked origin's source Run.
+        const requesterRun = await tx.run.findUnique({
+          where: { id: origin.runId },
+          select: { orchestration: true, trigger: true },
+        });
+        if (requesterRun) {
+          const snapshot = parseRunOrchestration(requesterRun.orchestration);
+          resumptionRole =
+            snapshot?.collaboration?.role ??
+            snapshot?.ownership.mode ??
+            (turnPolicySourceForTrigger(requesterRun.trigger) === "bot_message"
+              ? "support"
+              : "owner");
+          resumptionExecution =
+            snapshot?.execution ??
+            turnExecutionForSource(resumptionRole === "support" ? "bot_message" : "chat");
+          resumptionDepth = snapshot?.collaboration?.handoffDepth ?? null;
+        }
       }
 
       const wakePrompt = buildBotMessageWakePrompt({
@@ -866,6 +888,32 @@ export async function messageBot(
         pairContext,
         { kind: "origin_outcome", origin, target: resolved.target },
       );
+    }
+    // Nested delegation: this run was resumed by a child's outcome, so its own
+    // source wake carries intent result and the immediate check cannot see the
+    // upstream requester. Walk the origin chain to the first visible Thread;
+    // when the target is that chat's owner bot, return upstream through the
+    // walked origin instead of opening another pair.
+    if (intent === "result" || intent === "status") {
+      const upstream = await resolveVisibleOrigin(deps.prisma, origin);
+      if (upstream?.ownerBotId && upstream.ownerBotId === resolved.target.id) {
+        return messageBotInAgentPair(
+          deps,
+          run,
+          sender,
+          { message, intent, deliveryKey: input.deliveryKey },
+          pairContext,
+          {
+            kind: "origin_outcome",
+            origin: {
+              threadId: upstream.sourceThreadId,
+              runId: upstream.sourceRunId,
+              messageId: upstream.sourceMessageId,
+            },
+            target: resolved.target,
+          },
+        );
+      }
     }
   }
   if (gates.private_pair === true) {
@@ -1759,9 +1807,19 @@ export async function returnBotMessageOutcome(
     return true;
   }
   const sourceIntent = source.intent ?? "request";
-  if (sourceIntent !== "request" && sourceIntent !== "question") {
-    await markBotOutcomeReturned(deps.prisma, run.id);
-    return true;
+  // The reply target: the immediate waker for request/question sources. A run
+  // resumed by a child's outcome has a result wake as its source — its own
+  // requester lives upstream, found by walking the persisted origin chain to
+  // the first visible Thread. No origin (legacy chain) stays handled silently.
+  let replyTargetId = source.fromBotId;
+  if (sourceIntent === "result" || sourceIntent === "status") {
+    const origin = readRunOrigin(run);
+    const upstream = origin ? await resolveVisibleOrigin(deps.prisma, origin) : null;
+    if (!upstream?.ownerBotId) {
+      await markBotOutcomeReturned(deps.prisma, run.id);
+      return true;
+    }
+    replyTargetId = upstream.ownerBotId;
   }
   const sent = await deps.prisma.message.findMany({
     where: { threadId: run.threadId, runId: run.id },
@@ -1773,7 +1831,7 @@ export async function returnBotMessageOutcome(
     (Array.isArray(message.blocks) ? (message.blocks as MessageBlock[]) : []).some(
       (block) =>
         block.kind === "bot_message_sent" &&
-        block.toBotId === source.fromBotId &&
+        block.toBotId === replyTargetId &&
         block.intent === "result",
     ),
   );
@@ -1786,7 +1844,7 @@ export async function returnBotMessageOutcome(
     run,
     sender,
     {
-      bot_id: source.fromBotId,
+      bot_id: replyTargetId,
       message: clampBotMessage(text),
       intent,
       // One key per run so status vs result (executor vs reconciler) cannot double-deliver.

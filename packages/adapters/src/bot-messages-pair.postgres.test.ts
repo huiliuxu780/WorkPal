@@ -988,6 +988,176 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     ]);
   });
 
+  /** A → B → C: deliver, delegate, and return C's outcome to resume B. */
+  async function nestedChain(deliveryKey: string) {
+    const sourceRun = await newSenderRun();
+    const toB = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "produce the report",
+      deliveryKey: `${deliveryKey}-ab`,
+    });
+    if (!toB.ok) throw new Error("A→B delivery failed");
+    const runB = await prisma.run.update({
+      where: { id: toB.targetRunId },
+      data: { status: "running" },
+    });
+    const toC = await messageBot(
+      deps(),
+      {
+        id: runB.id,
+        spaceId,
+        threadId: runB.threadId,
+        botId: runB.botId,
+        userId: id,
+        sourceMessageId: runB.sourceMessageId,
+        originThreadId: runB.originThreadId,
+        originRunId: runB.originRunId,
+        originMessageId: runB.originMessageId,
+      },
+      researcher,
+      {
+        bot_id: writer.id,
+        message: "collect the appendix",
+        intent: "request",
+        deliveryKey: `${deliveryKey}-bc`,
+      },
+    );
+    if (!toC.ok || !("targetRunId" in toC)) throw new Error("B→C delivery failed");
+    const runC = await prisma.run.update({
+      where: { id: toC.targetRunId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    // C returns: B resumes in the A↔B pair Thread with the nested origin.
+    const returned = await returnBotMessageOutcome(
+      {
+        prisma,
+        events: { notify: vi.fn(async () => undefined) },
+        jobs: { enqueue: vi.fn(async () => undefined) },
+      } as unknown as Parameters<typeof returnBotMessageOutcome>[0],
+      {
+        id: runC.id,
+        spaceId,
+        threadId: runC.threadId,
+        botId: runC.botId,
+        userId: id,
+        sourceMessageId: runC.sourceMessageId,
+        orchestration: runC.orchestration,
+        originThreadId: runC.originThreadId,
+        originRunId: runC.originRunId,
+        originMessageId: runC.originMessageId,
+      },
+      writer,
+      "Appendix collected.",
+    );
+    expect(returned).toBe(true);
+    const resumedB = await prisma.run.findFirstOrThrow({
+      where: { sourceMessageId: { not: null }, botId: researcher.id, trigger: "bot_message" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(resumedB).toMatchObject({
+      threadId: runB.threadId,
+      originThreadId: runB.threadId,
+      originRunId: runB.id,
+    });
+    return { sourceRun, runB, runC, resumedB };
+  }
+
+  it("returns a nested run's explicit result to the original visible Thread", async () => {
+    const { runB, resumedB } = await nestedChain("rt05-nested-explicit");
+    const liveResumed = await prisma.run.update({
+      where: { id: resumedB.id },
+      data: { status: "running" },
+    });
+
+    const replied = await messageBot(
+      deps(),
+      {
+        id: liveResumed.id,
+        spaceId,
+        threadId: liveResumed.threadId,
+        botId: liveResumed.botId,
+        userId: id,
+        sourceMessageId: liveResumed.sourceMessageId,
+        originThreadId: liveResumed.originThreadId,
+        originRunId: liveResumed.originRunId,
+        originMessageId: liveResumed.originMessageId,
+      },
+      researcher,
+      {
+        bot_id: sender.id,
+        message: "The report is ready: growth is flat.",
+        intent: "result",
+        deliveryKey: "rt05-nested-explicit-reply",
+      },
+      { allowTerminalSource: true },
+    );
+    expect(replied).toMatchObject({ ok: true, botId: sender.id });
+    if (!replied.ok) throw new Error("nested explicit result failed");
+
+    // The answer lands in A's visible chat — walked through the nested origin
+    // — not as another pair-side delivery.
+    const wake = await prisma.message.findFirstOrThrow({
+      where: { threadId: sourceThreadId, clientNonce: "bot-message:rt05-nested-explicit-reply" },
+    });
+    expect(wake.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        fromBotId: researcher.id,
+        text: "The report is ready: growth is flat.",
+        intent: "result",
+      }),
+    ]);
+    expect(await pairGroups(sender.id, researcher.id)).toHaveLength(1);
+    // The pair-side copy carries the explicit result for later suppression.
+    const pairCopy = await prisma.message.findFirstOrThrow({
+      where: { threadId: runB.threadId, runId: liveResumed.id, role: "bot" },
+    });
+    expect(pairCopy.blocks).toEqual([
+      expect.objectContaining({ kind: "bot_message_sent", intent: "result" }),
+    ]);
+  });
+
+  it("returns a nested run's automatic outcome to the original visible Thread", async () => {
+    const { resumedB } = await nestedChain("rt05-nested-auto");
+    await prisma.run.update({
+      where: { id: resumedB.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const returned = await returnBotMessageOutcome(
+      {
+        prisma,
+        events: { notify: vi.fn(async () => undefined) },
+        jobs: { enqueue: vi.fn(async () => undefined) },
+      } as unknown as Parameters<typeof returnBotMessageOutcome>[0],
+      {
+        id: resumedB.id,
+        spaceId,
+        threadId: resumedB.threadId,
+        botId: resumedB.botId,
+        userId: id,
+        sourceMessageId: resumedB.sourceMessageId,
+        orchestration: resumedB.orchestration,
+        originThreadId: resumedB.originThreadId,
+        originRunId: resumedB.originRunId,
+        originMessageId: resumedB.originMessageId,
+      },
+      researcher,
+      "The final report body.",
+    );
+    expect(returned).toBe(true);
+    const wake = await prisma.message.findFirstOrThrow({
+      where: { threadId: sourceThreadId, clientNonce: `bot-message:auto-outcome:${resumedB.id}` },
+    });
+    expect(wake.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        fromBotId: researcher.id,
+        text: "The final report body.",
+        intent: "result",
+      }),
+    ]);
+  });
+
   it("cancels the delegated Run with its origin and never fabricates a reply", async () => {
     const sourceRun = await newSenderRun();
     const dispatched = await send(sourceRun, {
