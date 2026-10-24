@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { AgentScopeAgentRuntime } from "../../../packages/adapters/src/agentscope-runtime.js";
+import { deliverRunAborts } from "../../../packages/adapters/src/revoke-cancelled-work.js";
 import { enforceRunBudgets } from "../../../packages/adapters/src/run-budget-enforcement.js";
 import { createDb, createThreadEvents } from "../../../packages/db/src/index.js";
 import { startModelEmulator } from "../../../packages/testkit/src/model-emulator.js";
@@ -75,14 +76,14 @@ async function switchToTaskModel(page: Page, botId: string, apiKey: string, task
  * (retryPendingRunAborts). The held model stream fixture needs the same
  * retry before another Run may use the Java session slot.
  */
-async function releaseNativeRun(runId: string) {
-  const url = process.env.AGENTSCOPE_URL ?? "";
+async function releaseNativeRun(db: Db, runId: string) {
+  const runtime = new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL ?? "" });
   for (let attempt = 0; attempt < 8; attempt++) {
-    const response = await fetch(`${url}/v1/runs/${runId}`, { method: "DELETE" }).catch(() => null);
-    if (response && (response.status === 200 || response.status === 404)) return response.status;
+    const result = await deliverRunAborts(db.prisma, (id) => runtime.abort(id), [runId]);
+    if (result.revoked.includes(runId)) return;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
-  return -1;
+  throw new Error(`Runtime abort was not confirmed for ${runId}`);
 }
 
 async function waitRunRunning(page: Page, db: Db, botId: string) {
@@ -179,7 +180,7 @@ test("token budget breach lets the owner raise the budget and the same Run finis
     // End the held model stream so the Java session slot frees deterministically
     // before the owner resumes the same Run (the Worker's abort retry alone races).
     releaseTokenHold?.();
-    await releaseNativeRun(runId);
+    await releaseNativeRun(db, runId);
     const intervention = await db.prisma.intervention.findFirstOrThrow({ where: { runId } });
     expect(await db.prisma.run.findUnique({ where: { id: runId }, select: { status: true } }))
       .toMatchObject({ status: "waiting_input" });
@@ -428,7 +429,7 @@ test("tool-call budget breach narrows scope through the unified cancellation pat
   }
 });
 
-test("routine budget breach fails the Run and proactively delivers one summary", async ({
+test("routine budget breach fails the Run and queues one delivery behind recovering admission", async ({
   page,
 }) => {
   test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
@@ -451,18 +452,6 @@ test("routine budget breach fails the Run and proactively delivers one summary",
             expect(JSON.stringify(request.messages)).toContain("ROUTINE_BUDGET_FIXTURE");
           },
           response: { type: "hold", onOpen: (release) => { releaseRoutineHold = release; } },
-        },
-        {
-          expect(request) {
-            expect(JSON.stringify(request.messages)).toContain(
-              "Write one concise user-facing update",
-            );
-            expect(JSON.stringify(request.messages)).toContain("budget_exceeded:duration_sec");
-          },
-          response: {
-            type: "text",
-            text: "The scheduled fixture run failed on its duration budget.",
-          },
         },
       ],
     });
@@ -537,27 +526,22 @@ test("routine budget breach fails the Run and proactively delivers one summary",
       "run.failed",
       "delivery.created",
     ]);
-    // Free the Java session slot before the delivery Run needs the Thread.
+    // Free the Java session slot after the Worker persisted its abort retry.
+    // RT-25 retains chat admission until RT-26 supplies clean/detached proof,
+    // so the delivery Run must remain queued instead of entering the session.
     releaseRoutineHold?.();
-    await releaseNativeRun(runId);
+    await releaseNativeRun(db, runId);
 
-    // The outbox merge window plus the production dispatch sweep deliver one
-    // summary Run and one message to the main Thread without any user input.
     await expect
       .poll(
         async () =>
           db.prisma.run.findFirst({
             where: { threadId: thread.id, trigger: "delivery" },
-            select: { id: true, status: true },
+            select: { id: true, status: true, leaseOwner: true },
           }),
         { timeout: 120_000 },
       )
-      .toMatchObject({ status: "completed" });
-    await expect(
-      page
-        .getByTestId("transcript")
-        .getByText("The scheduled fixture run failed on its duration budget."),
-    ).toBeVisible({ timeout: 60_000 });
+      .toMatchObject({ status: "queued", leaseOwner: null });
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "user" } })).toBe(
       userMessagesBefore,
     );
@@ -565,29 +549,38 @@ test("routine budget breach fails the Run and proactively delivers one summary",
     const deliveryRun = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
+    expect(deliveryRun).toMatchObject({ status: "queued", leaseOwner: null, error: null });
     const record = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
     expect(record.deliveryRunId).toBe(deliveryRun.id);
-    expect(record.status).toBe("sent");
-    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(1);
+    expect(record.status).toBe("claimed");
+    expect(record.deliveredAt).toBeNull();
+    expect(
+      await db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),
+    ).toMatchObject({ state: "recovering", ownerRunId: runId });
+    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
+      1,
+    );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
+    ).toBe(0);
     const summaries = await db.prisma.message.findMany({
       where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
     });
-    expect(summaries).toHaveLength(1);
+    expect(summaries).toHaveLength(0);
 
-    // Repeated Worker scheduling neither redelivers nor forks a second summary.
+    // Repeated Worker scheduling neither releases admission nor forks a Run.
     await page.waitForTimeout(12_000);
-    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(1);
+    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
+      1,
+    );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(1);
+    ).toBe(0);
     task.assertComplete();
   } finally {
     await task?.close();

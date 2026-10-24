@@ -33,6 +33,7 @@ export * from "./run-plans.js";
 export * from "./run-steps.js";
 export * from "./run-todos.js";
 export * from "./scope.js";
+export * from "./session-admission.js";
 export * from "./spaces.js";
 export * from "./task-instructions.js";
 export * from "./thread-policy.js";

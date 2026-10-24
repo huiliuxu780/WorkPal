@@ -13,6 +13,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
+import { withAgentScopeTestAdmission } from "./testing/agentscope-session-admission.js";
 
 // AG-06 acceptance #1/#2/#4 at the real boundary: TS adapter -> Java runtime
 // jar -> local OpenAI-compatible fixture. Proves the fixed <content-trust-rules>
@@ -238,7 +239,11 @@ describe("AgentScope untrusted content boundary (AG-06)", () => {
 
   const consume = async (input: AgentRunRequest) => {
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(input, context(input.runId))) events.push(event);
+    const request = withAgentScopeTestAdmission(input, {
+      userId: "user-ag06",
+      spaceId: "space-ag06",
+    });
+    for await (const event of runtime.run(request, context(input.runId))) events.push(event);
     return events;
   };
 

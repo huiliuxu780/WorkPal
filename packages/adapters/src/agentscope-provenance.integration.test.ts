@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentRunRequest } from "@rakazo/adapter-kit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
+import { withAgentScopeTestAdmission } from "./testing/agentscope-session-admission.js";
 
 const serviceDir = fileURLToPath(new URL("../../../services/agent-runtime/", import.meta.url));
 const runtimeJar = join(serviceDir, "target/agent-runtime-0.1.0.jar");
@@ -80,7 +81,8 @@ describe("typed provenance across TS adapter and Java runtime", () => {
   const context = (runId: string) => ({ operationId: runId, traceId: runId, userId: "user-1",
     spaceId: "space-1", botId: "bot-1", runId });
   const run = async (request: AgentRunRequest) => {
-    for await (const _event of runtime.run(request, context(request.runId))) { /* drain */ }
+    const admitted = withAgentScopeTestAdmission(request, { userId: "user-1", spaceId: "space-1" });
+    for await (const _event of runtime.run(admitted, context(request.runId))) { /* drain */ }
   };
 
   it("retains a real message with a forged prefix while replacing and clearing typed application context", async () => {

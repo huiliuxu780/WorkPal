@@ -8,9 +8,13 @@ import { fileURLToPath } from "node:url";
 import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
+import {
+  AgentScopeAgentRuntime,
+  AgentScopeSessionConflictError,
+} from "./agentscope-runtime.js";
 import { runAutoReviewJudge } from "./auto-review.js";
 import { compactHistory } from "./history-compaction.js";
+import { withAgentScopeTestAdmission } from "./testing/agentscope-session-admission.js";
 
 // Real TS consumer -> HTTP adapter -> Java service -> AgentScope Harness. Only the
 // upstream model is a deterministic local protocol fixture; no paid-model claim.
@@ -134,7 +138,8 @@ describe("AgentScope consumer integration", () => {
   });
   const consume = async (input: AgentRunRequest) => {
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(input, context())) events.push(event);
+    const request = withAgentScopeTestAdmission(input, { userId: "user-1", spaceId: "space-1" });
+    for await (const event of runtime.run(request, context())) events.push(event);
     return events;
   };
   const snapshot = async () => {
@@ -167,7 +172,9 @@ describe("AgentScope consumer integration", () => {
     main.executeTool = async () => {
       const activeSnapshot = await snapshot();
       // Main chat still holds its lock while the TS executor asks its LLM judge.
-      await expect(consume(request("competing-chat"))).rejects.toThrow(/409/);
+      await expect(consume(request("competing-chat"))).rejects.toThrow(
+        AgentScopeSessionConflictError,
+      );
       const review = await runAutoReviewJudge({
         runtime,
         checker: { provider: "openai-compatible", model: "review-fixture" },

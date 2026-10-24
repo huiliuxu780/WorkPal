@@ -138,9 +138,14 @@ public final class RuntimeServer {
             reply(exchange, 422, Map.of("error", e instanceof IllegalArgumentException ? e.getMessage() : "Invalid run request"));
             return;
         }
-        String slot = request.identity().userId() + "\u0000" + request.identity().spaceId()
-                + "\u0000" + request.botId() + "\u0000" + request.threadId() + "\u0000" + request.generation()
-                + "\u0000" + request.scope() + (request.isChat() ? "" : "\u0000" + request.runId());
+        if (request.isChat() && !validSessionAdmission(request)) {
+            reply(exchange, 422, Map.of("error", "Valid session admission proof is required"));
+            return;
+        }
+        String slot = request.isChat() ? request.sessionAdmission().sessionKey()
+                : request.identity().userId() + "\u0000" + request.identity().spaceId()
+                    + "\u0000" + request.botId() + "\u0000" + request.threadId() + "\u0000"
+                    + request.generation() + "\u0000" + request.scope() + "\u0000" + request.runId();
         synchronized (stateLifecycle) {
             if (purgedBots.contains(botSlot(request.identity().userId(), request.identity().spaceId(), request.botId()))) {
                 reply(exchange, 410, Map.of("error", "Bot runtime state was purged")); return;
@@ -190,6 +195,16 @@ public final class RuntimeServer {
     private static String safeError(Exception error) {
         // Provider and connector exceptions can contain credential-bearing URLs or headers.
         return "Agent execution failed";
+    }
+
+    private static boolean validSessionAdmission(RunRequest request) {
+        RunRequest.SessionAdmission admission = request.sessionAdmission();
+        return admission != null
+                && SessionAdmissionKey.forChat(request).equals(admission.sessionKey())
+                && !RunRequest.blank(admission.executionId())
+                && !RunRequest.blank(admission.attemptId())
+                && admission.fence() != null && admission.fence() > 0
+                && !RunRequest.blank(admission.suspensionKey());
     }
 
     private static String botSlot(String user, String space, String bot) {

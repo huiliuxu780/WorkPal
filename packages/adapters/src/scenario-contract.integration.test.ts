@@ -49,6 +49,7 @@ import {
 } from "./history-compaction.js";
 import { GROUP_ROUTER_INSTRUCTIONS } from "./product-harness/group-router.js";
 import { buildDeliveryPrompt, type DeliveryRow } from "./result-delivery.js";
+import { withAgentScopeTestAdmission } from "./testing/agentscope-session-admission.js";
 
 // ---------------------------------------------------------------------------
 // AG-03 real-boundary capture layer: TS adapter → Java runtime → local model
@@ -241,7 +242,8 @@ describe("AG-03 scenario contracts at the real model boundary", () => {
 
   const runAndCapture = async (request: AgentRunRequest) => {
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(request, contextFor(request.runId))) events.push(event);
+    const admitted = withAgentScopeTestAdmission(request, { userId: "user-1", spaceId: "space-1" });
+    for await (const event of runtime.run(admitted, contextFor(request.runId))) events.push(event);
     expect(events.at(-1), `${request.runId} did not finish cleanly`).toEqual({
       type: "done",
       text: REPLY_TEXT,

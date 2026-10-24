@@ -894,12 +894,19 @@ class RuntimeIntegrationTest {
         try {
             HttpClient client = HttpClient.newHttpClient();
             URI runs = URI.create("http://127.0.0.1:" + runtime.port() + "/v1/runs");
-            RunRequest input = request(model.getAddress().getPort(), "cancel-1", "user-1", "space-1", List.of(), null);
+            RunRequest input = admitted(request(model.getAddress().getPort(), "cancel-1", "user-1", "space-1", List.of(), null));
             var response = client.sendAsync(HttpRequest.newBuilder(runs)
                     .header("content-type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(input))).build(),
                     HttpResponse.BodyHandlers.ofInputStream());
             assertTrue(modelStarted.await(5, TimeUnit.SECONDS));
+            RunRequest contender = admitted(request(model.getAddress().getPort(), "cancel-2",
+                    "user-1", "space-1", List.of(), null));
+            var conflict = client.send(HttpRequest.newBuilder(runs)
+                    .header("content-type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(contender))).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(409, conflict.statusCode());
             URI cancel = URI.create(runs + "/cancel-1");
             var stopped = client.send(HttpRequest.newBuilder(cancel).DELETE().build(),
                     HttpResponse.BodyHandlers.ofString());
@@ -929,7 +936,7 @@ class RuntimeIntegrationTest {
                             "{\"userId\":\"user-1\",\"spaceId\":\"space-1\",\"botId\":\"bot-1\"}"))
                     .build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, purge.statusCode());
-            RunRequest request = request(12345, "after-purge", "user-1", "space-1", List.of(), null);
+            RunRequest request = admitted(request(12345, "after-purge", "user-1", "space-1", List.of(), null));
             var run = client.send(HttpRequest.newBuilder(base.resolve("/v1/runs"))
                     .header("content-type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(request)))
@@ -1132,6 +1139,12 @@ class RuntimeIntegrationTest {
         });
         server.start();
         return server;
+    }
+
+    private static RunRequest admitted(RunRequest request) {
+        return request.withSessionAdmission(new RunRequest.SessionAdmission(
+                SessionAdmissionKey.forChat(request), request.runId() + ":execution",
+                request.runId() + ":attempt", 1L, request.runId() + ":suspension"));
     }
 
     private static RunRequest request(int port, String runId, String user, String space,

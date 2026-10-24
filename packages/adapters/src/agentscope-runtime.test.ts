@@ -3,7 +3,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentScopeAgentRuntime, type AgentScopeTransientError } from "./agentscope-runtime.js";
+import {
+  AgentScopeAgentRuntime,
+  type AgentScopeRunRejectedError,
+  type AgentScopeSessionConflictError,
+  type AgentScopeTransientError,
+} from "./agentscope-runtime.js";
 
 const servers: ReturnType<typeof createServer>[] = [];
 
@@ -108,6 +113,52 @@ describe("AgentScopeAgentRuntime", () => {
       retryReason: "provider_5xx",
     } satisfies Partial<AgentScopeTransientError>);
   });
+
+  it("classifies Runtime 409 as a session conflict and preserves the admission proof", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(409, { "content-type": "application/json" });
+      response.end('{"error":"Session already has an active run"}');
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const request = runRequest();
+    request.sessionAdmission = {
+      sessionKey: "agentscope:chat:v1:tenant:session",
+      executionId: "execution-1",
+      attemptId: "attempt-1",
+      fence: 7,
+      suspensionKey: "suspension-1",
+    };
+    const drain = async () => {
+      for await (const _event of runtime.run(request, runContext())) {
+        // drain
+      }
+    };
+
+    await expect(drain()).rejects.toMatchObject({
+      name: "AgentScopeSessionConflictError",
+    } satisfies Partial<AgentScopeSessionConflictError>);
+    expect(fixture.requests[0]).toMatchObject({ sessionAdmission: request.sessionAdmission });
+  });
+
+  it.each([410, 422])(
+    "classifies Runtime %i as a definitive pre-execution rejection",
+    async (status) => {
+      const fixture = await listen((_request, response) => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end('{"error":"Run rejected before execution"}');
+      });
+      const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+      const drain = async () => {
+        for await (const _event of runtime.run(runRequest(), runContext())) {
+          // drain
+        }
+      };
+
+      await expect(drain()).rejects.toMatchObject({
+        name: "AgentScopeRunRejectedError",
+      } satisfies Partial<AgentScopeRunRejectedError>);
+    },
+  );
 
   it("classifies model timeout events without retrying unrelated model errors", async () => {
     const fixture = await listen((_request, response) => {

@@ -189,8 +189,8 @@ class DelegationSuspensionTest {
         RuntimeServer runtime = new RuntimeServer("127.0.0.1", 0, temp.resolve("http-runtime"));
         runtime.start();
         try {
-            RunRequest input = permissiveDelegationRequest(model.getAddress().getPort(),
-                    bridge.getAddress().getPort(), "server-suspend-1");
+            RunRequest input = admitted(permissiveDelegationRequest(model.getAddress().getPort(),
+                    bridge.getAddress().getPort(), "server-suspend-1"));
             HttpClient client = HttpClient.newHttpClient();
             URI runs = URI.create("http://127.0.0.1:" + runtime.port() + "/v1/runs");
             HttpResponse<String> response = client.send(HttpRequest.newBuilder(runs)
@@ -221,6 +221,12 @@ class DelegationSuspensionTest {
     }
 
     // ============================ fixtures ============================
+
+    private static RunRequest admitted(RunRequest request) {
+        return request.withSessionAdmission(new RunRequest.SessionAdmission(
+                SessionAdmissionKey.forChat(request), request.runId() + ":execution",
+                request.runId() + ":attempt", 1L, request.runId() + ":suspension"));
+    }
 
     private static RunRequest permissiveDelegationRequest(int modelPort, int bridgePort, String runId) {
         RunRequest.Identity id = new RunRequest.Identity("user-1", "space-1", "bot-1", "thread-1", runId);

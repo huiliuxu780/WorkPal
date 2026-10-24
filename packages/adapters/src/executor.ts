@@ -121,11 +121,13 @@ import {
   takeRetryOperationId,
 } from "@rakazo/core/node/manual-retry-match";
 import {
+  acquireSessionAdmission,
   appendEventInTransaction,
   applyPlanSubmission,
   avatarChangeView,
   backgroundTaskLockTransactionOptions,
   changeBotAvatarInTransaction,
+  completeSessionAdmission,
   createSpaceForMember,
   createThreadMessageInTransaction,
   currentThreadGeneration,
@@ -141,11 +143,14 @@ import {
   loadPendingPlanReviewRepair,
   loadRunHistoryMessages,
   type McpServer,
+  markSessionAdmissionRecovering,
+  markSessionRuntimeStarted,
   type Prisma,
   type PrismaClient,
   parseComputerMode,
   planExecutionGate,
   planReviewRoundForToolExecution,
+  prepareSessionExecution,
   promoteLeasedRunWithAttempt,
   publishRunStep,
   publishRunTodo,
@@ -154,8 +159,12 @@ import {
   reconcileAttemptFenceConflict,
   recordLegacyNativePlanDecision,
   registerBackgroundTaskProjection,
+  releaseSessionAdmission,
   renewOwnedRunLease,
+  renewSessionAdmission,
+  requeueExpiredSessionAdmissionWaiter,
   retireModelCredential,
+  type SessionAdmissionLease,
   SpaceLimitError,
   scheduleAutomaticRunRetry,
   submitDraftForReview,
@@ -182,7 +191,12 @@ import {
   redactAgentCommandResult,
 } from "./agent-environment.js";
 import type { AgentlyMailService } from "./agently-mail.js";
-import { AgentScopeTransientError } from "./agentscope-runtime.js";
+import {
+  AgentScopeAgentRuntime,
+  AgentScopeRunRejectedError,
+  AgentScopeSessionConflictError,
+  AgentScopeTransientError,
+} from "./agentscope-runtime.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
 import {
   approvalPausedToolResult,
@@ -1078,6 +1092,7 @@ export function buildApprovalContinuation(
 }
 
 export function createRunExecutor(deps: ExecutorDeps) {
+  const usesSessionAdmission = deps.runtime instanceof AgentScopeAgentRuntime;
   const web = deps.web ?? createWebProvider();
   const browser = deps.browser ?? createBrowserProvider(undefined, { sandbox: deps.sandbox });
   const cloudAgent = deps.cloudAgent;
@@ -1408,6 +1423,70 @@ export function createRunExecutor(deps: ExecutorDeps) {
       if (!run) return;
       if (isTerminal(run.status as RunStatus)) return;
       const now = new Date();
+      const existingAdmission = usesSessionAdmission
+        ? await deps.prisma.agentSessionAdmission.findFirst({
+            where: { ownerRunId: runId, state: { in: ["owned", "recovering"] } },
+            select: {
+              sessionKey: true,
+              ownerExecutionId: true,
+              fence: true,
+              expiresAt: true,
+              state: true,
+            },
+          })
+        : null;
+      if (existingAdmission?.state === "recovering") return;
+      if (
+        existingAdmission?.state === "owned" &&
+        (run.status === "leased" || run.status === "running") &&
+        run.leaseExpiresAt &&
+        run.leaseExpiresAt <= now &&
+        existingAdmission.ownerExecutionId
+      ) {
+        await markSessionAdmissionRecovering(
+          deps.prisma,
+          {
+            kind: "acquired",
+            sessionKey: existingAdmission.sessionKey,
+            runId,
+            executionId: existingAdmission.ownerExecutionId,
+            admissionFence: existingAdmission.fence,
+            expiresAt: existingAdmission.expiresAt ?? now,
+          },
+          "run_claim_expired_while_session_owned",
+          now,
+        );
+        return;
+      }
+      if (
+        usesSessionAdmission &&
+        run.status === "leased" &&
+        run.leaseOwner &&
+        run.leaseExpiresAt &&
+        run.leaseExpiresAt <= now
+      ) {
+        const executionId = `${runId}:run-lease:${run.leaseFence}`;
+        const queuedAdmission = await deps.prisma.agentSessionAdmissionRequest.findUnique({
+          where: { executionId },
+          select: { sessionKey: true },
+        });
+        if (
+          queuedAdmission &&
+          (await requeueExpiredSessionAdmissionWaiter(
+            deps.prisma,
+            {
+              sessionKey: queuedAdmission.sessionKey,
+              runId,
+              executionId,
+              runLeaseOwner: run.leaseOwner,
+              runLeaseFence: run.leaseFence,
+            },
+            now,
+          ))
+        ) {
+          return;
+        }
+      }
       if (
         run.status === "running" &&
         run.leaseOwner &&
@@ -1557,6 +1636,51 @@ export function createRunExecutor(deps: ExecutorDeps) {
         await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
         return;
       }
+      let admission: SessionAdmissionLease | null = null;
+      if (usesSessionAdmission) {
+        const admissionThread = await deps.prisma.thread.findFirstOrThrow({
+          where: { id: run.threadId, spaceId: run.spaceId },
+          select: { historyCompactionGeneration: true },
+        });
+        const acquired = await acquireSessionAdmission(deps.prisma, {
+          userId: run.userId,
+          spaceId: run.spaceId,
+          botId: run.botId,
+          threadId: run.threadId,
+          threadGeneration: admissionThread.historyCompactionGeneration,
+          runId,
+          executionId: `${runId}:run-lease:${fence}`,
+          runLeaseOwner: workerId,
+          runLeaseFence: fence,
+        });
+        if (acquired.kind !== "acquired") {
+          await writeComputerRunRequeue(
+            deps,
+            runId,
+            workerId,
+            fence,
+            resumeCheckpoint,
+            heldForTakeover,
+          );
+          await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
+          return;
+        }
+        admission = acquired;
+      }
+      const wakeNextAdmission = async (result: {
+        kind: "released" | "stale";
+        nextRunId?: string | null;
+      }) => {
+        if (result.kind !== "released" || !result.nextRunId) return;
+        await deps.jobs
+          .enqueue(runContinueJob(result.nextRunId))
+          .catch((error) =>
+            getLogger().error(
+              "session admission successor enqueue failed; reconciler will recover",
+              error,
+            ),
+          );
+      };
       let attempt: { id: string; fence: number } | null;
       try {
         attempt = await promoteLeasedRunWithAttempt(deps.prisma, {
@@ -1567,6 +1691,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
         });
       } catch (error) {
         if (!isAttemptUniqueViolation(error)) {
+          if (admission) {
+            await releaseSessionAdmission(deps.prisma, admission)
+              .then(wakeNextAdmission)
+              .catch(() => undefined);
+          }
           await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
           throw error;
         }
@@ -1579,12 +1708,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
           startedAt: current.startedAt ?? new Date(),
         });
         if (reconciled.outcome !== "reused") {
+          if (admission) {
+            await releaseSessionAdmission(deps.prisma, admission)
+              .then(wakeNextAdmission)
+              .catch(() => undefined);
+          }
           await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
           return;
         }
         attempt = reconciled.attempt;
       }
       if (!attempt) {
+        if (admission) {
+          await releaseSessionAdmission(deps.prisma, admission)
+            .then(wakeNextAdmission)
+            .catch(() => undefined);
+        }
         await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
         return;
       }
@@ -1595,13 +1734,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let screenRelease: { computer: ComputerRef; context: AdapterContext } | undefined;
       let runAbortController: AbortController | null = null;
       let detachShutdown: (() => void) | undefined;
+      let sessionMayRelease = true;
+      let sessionRuntimeCompleted = false;
       const heartbeat = setInterval(() => {
         void Promise.all([
           renewRunLease(deps, runId, workerId, fence),
           renewComputerExecutionLease(deps.prisma, computerLease),
+          admission ? renewSessionAdmission(deps.prisma, admission) : Promise.resolve(true),
         ])
-          .then(([runRenewed, computerRenewed]) => {
-            if (!runRenewed || !computerRenewed) {
+          .then(([runRenewed, computerRenewed, admissionRenewed]) => {
+            if (!runRenewed || !computerRenewed || !admissionRenewed) {
               leaseValid = false;
               runAbortController?.abort();
             }
@@ -2320,6 +2462,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const pauseForSecret = () => {
           approvalPausePending = true;
           return secretPausedToolResult();
+        };
+
+        const retainPausedSessionAdmission = async () => {
+          if (!admission) return;
+          const current = await deps.prisma.run.findUnique({
+            where: { id: runId },
+            select: { status: true },
+          });
+          if (current?.status === "waiting_input") approvalPausePending = true;
         };
 
         /**
@@ -5383,11 +5534,40 @@ export function createRunExecutor(deps: ExecutorDeps) {
             await failRunBeforeModel(contextOverflow);
             return;
           }
+          const suspensionKey = admission ? randomUUID() : null;
+          if (admission && suspensionKey) {
+            const preparedAdmission = {
+              ...admission,
+              attemptId: attempt.id,
+              suspensionKey,
+            };
+            if (!(await prepareSessionExecution(deps.prisma, preparedAdmission))) {
+              leaseValid = false;
+              return;
+            }
+            if (!(await markSessionRuntimeStarted(deps.prisma, preparedAdmission))) {
+              leaseValid = false;
+              return;
+            }
+            // From this point until a normal stream return, only a Runtime clean/detached
+            // proof may release the chat admission. RT-25 deliberately has no timeout shortcut.
+            sessionMayRelease = false;
+          }
           const runtimeEvents = deps.runtime.run(
             {
               botId: bot.id,
               threadId: thread.id,
               runId,
+              sessionAdmission:
+                admission && suspensionKey
+                  ? {
+                      sessionKey: admission.sessionKey,
+                      executionId: admission.executionId,
+                      attemptId: attempt.id,
+                      fence: admission.admissionFence,
+                      suspensionKey,
+                    }
+                  : undefined,
               sessionGeneration: thread.historyCompactionGeneration,
               excludeDeliveredTaskIds: outboxTasks.flatMap((row) =>
                 row.backgroundTaskId ? [row.backgroundTaskId] : [],
@@ -5994,8 +6174,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   new Date(),
                   runId,
                 ))
-              )
+              ) {
+                await retainPausedSessionAdmission();
                 return;
+              }
               pendingToolNames.push(event.name);
               tryFlushPendingTools();
               const loopGuard = advanceToolCallLoopGuard(toolCallStreak, event.name, event.args);
@@ -6149,8 +6331,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   new Date(),
                   runId,
                 ))
-              )
+              ) {
+                await retainPausedSessionAdmission();
                 return;
+              }
             } else if (event.type === "done") {
               if (!assembled && event.text) {
                 if (publishedMidTurnUserMessage || discardedMidTurnNarration) {
@@ -6165,7 +6349,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           }
 
-          if (approvalPausePending || !leaseValid) return;
+          if (approvalPausePending) return;
+          sessionRuntimeCompleted = true;
+          sessionMayRelease = true;
+
+          if (!leaseValid) return;
           approvedEffectReplays.assertDrained();
           pendingProgress += progressRedactor.finish();
           await flushProgress();
@@ -6453,6 +6641,26 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (!terminalCheckpointComplete) {
             await workspaceCheckpoint.flush().catch(() => undefined);
           }
+          if (admission && !sessionMayRelease) {
+            if (error instanceof AgentScopeRunRejectedError) {
+              sessionMayRelease = true;
+            } else {
+              await retainPausedSessionAdmission().catch(() => undefined);
+            }
+            if (approvalPausePending) return;
+            if (!sessionMayRelease) {
+              await markSessionAdmissionRecovering(
+                deps.prisma,
+                admission,
+                error instanceof AgentScopeSessionConflictError
+                  ? "agentscope_runtime_409"
+                  : "agentscope_runtime_outcome_unconfirmed",
+              ).catch((recoveryError) =>
+                getLogger().error("session admission recovery transition failed", recoveryError),
+              );
+              return;
+            }
+          }
           const message = redactSecrets(
             error instanceof Error ? error.message : String(error),
             runSecrets,
@@ -6614,6 +6822,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
       } finally {
         detachShutdown?.();
         clearInterval(heartbeat);
+        if (admission && sessionMayRelease) {
+          const released = sessionRuntimeCompleted
+            ? await completeSessionAdmission(deps.prisma, admission).catch(() => null)
+            : await releaseSessionAdmission(deps.prisma, admission).catch(() => null);
+          if (released?.kind === "released") await wakeNextAdmission(released);
+        }
         if (!retainComputerLease) {
           if (screenRelease) {
             await deps.sandbox
