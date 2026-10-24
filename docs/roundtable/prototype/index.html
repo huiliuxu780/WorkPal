@@ -146,6 +146,8 @@
     .work-inline .done { color: var(--green); font-weight: 650; }
     .approval { margin-top: 9px; background: white; border: 1px solid #ead2a3; border-radius: 12px; padding: 11px; min-width: 390px; }
     .approval-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 12.5px; }
+    .approval-scope { margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0e6cf; color: #77756f; font-size: 10.5px; }
+    .approval-scope strong { color: #44433f; font-weight: 650; }
     .approval-actions { display: flex; gap: 7px; justify-content: flex-end; margin-top: 10px; }
     .mini-btn { border: 1px solid var(--line); background: white; border-radius: 9px; padding: 5px 9px; cursor: pointer; font-size: 11px; }
     .mini-btn.primary { background: var(--ink); color: white; border-color: var(--ink); }
@@ -634,7 +636,7 @@
       { step: 4, who: "purple", name: "小紫", role: "审阅 Agent", html: "收到。我只复核证据和因果，不重复跑整套性能测试。<div class='work-inline'><span class='pulse'></span>已启动后台工作 · 复核瀑布图</div>" },
       { step: 5, type: "user", html: "<span class='mention orange'>@小橙</span> 你先单独把 B 版的移动端断点做出来，完成后直接发群里。其他人按原来的继续。" },
       { step: 5, who: "orange", name: "小橙", role: "设计 Agent", html: "收到。你的新指令已经进到我这里；我把移动端 B 版另放一个后台任务，原来的 A/B 对比不暂停。<div class='work-inline'><span class='pulse'></span>新增后台工作 · 移动端 B 版断点</div>" },
-      { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "移动端 B 版已经完成。需要发布到预览环境，方便大家实际看断点。<div class='approval'><div class='approval-title'>◌ 允许小橙发布到预览环境？</div><div class='approval-actions'><button class='mini-btn'>拒绝</button><button class='mini-btn primary' id='approveBtn'>允许一次</button></div></div>" },
+      { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "移动端 B 版已经完成。需要发布到预览环境，方便大家实际看断点。<div class='approval'><div class='approval-title'>◌ 允许小橙发布到预览环境？</div><div class='approval-scope'>授权给 <strong>小橙</strong> · 允许 <strong>发布到预览环境</strong>（仅一次）</div><div class='approval-actions'><button class='mini-btn'>拒绝</button><button class='mini-btn primary' id='approveBtn'>允许一次</button></div></div>" },
       { step: 6, who: "orange", name: "小橙", role: "设计 Agent", html: "审批只暂停发布；我仍然可以继续讨论：A 版更稳，B 版信息密度更好。" },
       { step: 7, who: "purple", name: "小紫", role: "审阅 Agent", html: "<div class='quote'>回应小蓝的瀑布图复核</div>监控 SDK 不是主阻塞。它晚于 LCP；真正的同步阻塞来自图表包初始化。" },
       { step: 7, who: "blue", name: "小蓝", role: "性能 Agent", html: "基线跑完了，结论和小紫的复核一致。<div class='result-card'><strong>性能结果 · 已完成</strong><ul><li>主图增加约 0.6s LCP</li><li>同步图表包增加约 0.4s</li><li>监控 SDK 不是首屏主因</li></ul><a href='#'>打开完整性能报告 →</a></div>" },
@@ -654,7 +656,7 @@
 
     const branchScenarios = [
       {
-        id: "U-ACTIVE", category: "用户介入", title: "单独 @ 正在工作的 Agent", note: "显式 @ 命中小蓝的 active Run，写入 SteeringMessage；后台基线不取消。",
+        id: "U-ACTIVE", category: "用户介入", title: "单独 @ 正在工作的 Agent", note: "显式 @ 命中小蓝正在进行的工作，新要求优先进入当前执行；后台基线不取消。",
         messages: [
           { type: "user", html: "<span class='mention blue'>@小蓝</span> 先补测低端机，桌面端可以晚一点。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，新优先级已经进入我当前的执行。我先补低端机；完整基线仍在后台继续。<div class='work-inline'><span class='pulse'></span>正在回复 · 后台任务未暂停</div>" }
@@ -663,7 +665,7 @@
         work: { summary: "2 项同时进行", roots: [{ title: "性能调查", desc: "用户直接指派小蓝", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "补测低端机并立即答复", state: "回复中", className: "run", progress: 56, meta: "你的补充" }, { who: "blue", name: "小蓝", task: "完整性能基线", state: "后台中", className: "run", progress: 63, meta: "后台执行" }] }] }
       },
       {
-        id: "U-MULTI", category: "用户介入", title: "一句话分别 @ 多个 Agent", note: "按 mention 后的命令分段，形成两个独立目标 Run，不要求用户额外说“分别”。",
+        id: "U-MULTI", category: "用户介入", title: "一句话分别 @ 多个 Agent", note: "按 mention 后的命令分段，形成两个独立任务，不要求用户额外说“分别”。",
         messages: [
           { type: "user", html: "<span class='mention blue'>@小蓝</span> 做性能回归，<span class='mention orange'>@小橙</span> 做移动端视觉验收。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，我负责性能回归。" },
@@ -692,7 +694,7 @@
         work: { summary: "1 进行中 · 1 已停", roots: [{ title: "首屏方案", desc: "用户精确取消一个节点", status: "进行中", items: [{ who: "orange", name: "小橙", task: "A/B 主方案", state: "后台中", className: "run", progress: 61, meta: "继续" }, { who: "orange", name: "小橙", task: "移动端 B 版断点", state: "已停止", className: "muted", progress: 35, meta: "用户取消" }] }] }
       },
       {
-        id: "A-ACTIVE", category: "任务补充", title: "几轮后继续补充 Task1", note: "补充靠结构化 taskId 命中 Task1 的 active Run，不按当前说话人或最近一条消息猜。",
+        id: "A-ACTIVE", category: "任务补充", title: "几轮后继续补充 Task1", note: "补充靠结构化 taskId 命中 Task1 正在进行的工作，不按当前说话人或最近一条消息猜。",
         messages: [
           { type: "user", html: "<span class='mention blue'>@小蓝</span> 做 Task1：对比最近三次发布的 LCP，找出主要回退来源。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到。我会把三次构建、真实用户数据和资源瀑布拆开比较。<div class='work-inline'><span class='pulse'></span>Task1 · 三次发布 LCP 对比</div>" },
@@ -705,7 +707,7 @@
         work: { summary: "Task1 · 补充 1 条", roots: [{ title: "Task1 · 三次发布 LCP 对比", desc: "原要求保留 · 已补充 1 条", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "构建对比 + 地区分层 + 样本量标记", state: "进行中", className: "run", progress: 54, meta: "正在按最新要求执行" }] }] }
       },
       {
-        id: "A-BACKGROUND", category: "任务补充", title: "后台执行时追加分析口径", note: "现有 BackgroundAgentTask 不能被直接 steering；补充先持久化，由负责人判断继续合并还是取消旧 attempt。",
+        id: "A-BACKGROUND", category: "任务补充", title: "后台执行时追加分析口径", note: "现有后台工作不能被直接插入新要求；补充先保存，由负责人判断继续合并还是停止旧的一次执行。",
         messages: [
           { type: "user", html: "<span class='mention blue'>@小蓝</span> 把三次发布的性能原始数据跑一遍。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "Task1 已经放到后台跑，取数完成后我回来给你结论。<div class='work-inline'><span class='pulse'></span>后台中 · 性能原始数据</div>" },
@@ -717,7 +719,7 @@
         work: { summary: "后台继续 · 已补充要求", roots: [{ title: "Task1 · 性能原始数据", desc: "第 1 次执行 · 已补充 1 条", status: "后台中", items: [{ who: "blue", name: "小蓝", task: "取数继续；交付时拆分主图与图表包", state: "后台中", className: "run", progress: 67, meta: "现有取数继续" }] }] }
       },
       {
-        id: "A-COMPLETED", category: "任务补充", title: "已完成后追加复核", note: "旧结果保持完成；补充在同一个 Task 下创建 follow-up Run，不改写历史，也不创建用户新会话。",
+        id: "A-COMPLETED", category: "任务补充", title: "已完成后追加复核", note: "旧结果保持完成；补充在同一个 Task 下创建后续工作，不改写历史，也不创建用户新会话。",
         messages: [
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "Task1 做完了：这次回退主要来自主图和同步图表包。<div class='result-card'><strong>Task1 · 已完成</strong><ul><li>主图约 +0.6s</li><li>图表包约 +0.4s</li></ul></div>" },
           { who: "orange", name: "小橙", role: "设计 Agent", html: "我按这个结论准备了主图压缩版，视觉差异可以接受。" },
@@ -757,13 +759,14 @@
         work: { summary: "1 项已委派", roots: [{ title: "Joy 的用户任务", desc: "来源：Joy 单聊", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "对比最近三次发布的 LCP", state: "已接收", className: "run", progress: 18, meta: "Joy ↔ 小蓝 · 固定对话" }] }] }
       },
       {
-        id: "X-GROUP-FAIL", category: "跨会话调度", title: "A 不在群，申请加入", note: "Joy 发现自己尚未入席；只有你具备群成员管理权时，才会出现可执行的加入审批。", surface: "dm",
+        id: "X-GROUP-FAIL", category: "跨会话调度", title: "A 不在群，申请加入", note: "Joy 发现自己尚未入席；只有你具备群成员管理权时，才会出现可执行的加入审批；没有权限时呈现独立的无权限失败状态，不并入通用失败文案，也不与审批卡混写。", surface: "dm",
         messages: [
           { type: "user", html: "你去新版发布圆桌看看现在讨论到哪了，核对性能风险。" },
-          { who: "joy", name: "Joy", role: "主持 Agent", html: "我还没在“新版发布圆桌”里。你可以把我拉进去；加入后我会继续刚才的任务，不需要你再说一遍。<div class='approval'><div class='approval-title'>◌ 把 Joy 加入「新版发布圆桌」？</div><div class='destination-text'>加入后，Joy 可以读取群内讨论、在群里发言并推进这次性能风险核对。</div><div class='approval-actions'><button class='mini-btn' data-toast='没有加入群，也没有发送任何消息'>暂不加入</button><button class='mini-btn primary' data-branch='X-GROUP'>加入并继续</button></div></div>" }
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "我还没在“新版发布圆桌”里。你可以把我拉进去；加入后我会继续刚才的任务，不需要你再说一遍。<div class='approval'><div class='approval-title'>◌ 把 Joy 加入「新版发布圆桌」？</div><div class='destination-text'>加入后，Joy 可以读取群内讨论、在群里发言并推进这次性能风险核对。</div><div class='approval-actions'><button class='mini-btn' data-toast='没有加入群，也没有发送任何消息'>暂不加入</button><button class='mini-btn primary' data-branch='X-GROUP'>加入并继续</button></div></div>" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "如果你没有成员管理权限，这次加入就不能由你批准，会停在下面这个独立失败状态，需要群主或管理员处理。<div class='destination-card'><div class='destination-head'><span class='destination-icon'>#</span><strong>未能把 Joy 加入「新版发布圆桌」</strong><span class='destination-state error'>无成员管理权限</span></div><div class='destination-text'>你没有成员管理权限，不能批准这次加入；性能风险核对尚未开始。</div><div class='destination-meta'><span>这项工作未开始</span><span>请群主或管理员处理</span></div></div>" }
         ],
-        activity: [{ who: "joy", label: "等你决定是否让 Joy 入席" }],
-        work: { summary: "1 项等你确认", roots: [{ title: "前往新版发布圆桌", desc: "尚未加入该群", status: "等你确认", items: [{ who: "joy", name: "Joy", task: "入群后核对性能风险", state: "等待入席", className: "wait", progress: 0, meta: "成员审批" }] }] }
+        activity: [{ who: "joy", label: "等你决定是否让 Joy 入席" }, { who: "joy", label: "无成员管理权限 · 需要管理员处理" }],
+        work: { summary: "1 项等你确认", roots: [{ title: "前往新版发布圆桌", desc: "尚未加入该群", status: "等你确认", items: [{ who: "joy", name: "Joy", task: "入群后核对性能风险", state: "等待入席", className: "wait", progress: 0, meta: "等你决定" }] }] }
       },
       {
         id: "X-RETURN", category: "跨会话调度", title: "A 回来源单聊汇报结果", note: "圆桌保留完整过程；工作完成后，Joy 回到原单聊，专门按你的目标再汇报一次。", surface: "dm",
@@ -795,7 +798,7 @@
         work: { summary: "3 项分别进行", roots: [{ title: "Joy 的用户任务", desc: "已分别发给三位 Agent", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能风险", state: "已接收", className: "run", progress: 19, meta: "Joy ↔ 小蓝" }, { who: "orange", name: "小橙", task: "移动端风险", state: "已接收", className: "run", progress: 14, meta: "Joy ↔ 小橙" }, { who: "purple", name: "小紫", task: "证据缺口", state: "已接收", className: "run", progress: 12, meta: "Joy ↔ 小紫" }] }] }
       },
       {
-        id: "Q-ORIGINS", category: "固定 Agent 对话", title: "多来源并发不串线", note: "Joy ↔ 小蓝可以同时承接多个来源任务；审批、结果和取消按 sourceThreadId/sourceRunId 精确返回。", surface: "dm",
+        id: "Q-ORIGINS", category: "固定 Agent 对话", title: "多来源并发不串线", note: "Joy ↔ 小蓝可以同时承接多个来源任务；审批、结果和取消按来源会话与来源任务精确返回。", surface: "dm",
         messages: [
           { type: "user", html: "让小蓝查这次发布的线上 trace，只读就行。" },
           { who: "joy", name: "Joy", role: "主持 Agent", html: "已经发给小蓝。他同时还在替“增长复盘”查另一组数据，但两项工作不会混在一起。" },
@@ -806,17 +809,17 @@
         work: { summary: "同一组 Agent · 2 项工作", roots: [{ title: "新版发布", desc: "来自当前 Joy 单聊", status: "等你确认", items: [{ who: "blue", name: "小蓝", task: "读取发布 trace", state: "等你批准", className: "wait", progress: 22, meta: "新版发布" }] }, { title: "增长复盘", desc: "来自另一段用户对话", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "核对增长页 RUM", state: "后台中", className: "run", progress: 63, meta: "增长复盘" }] }] }
       },
       {
-        id: "Q-UNAVAILABLE", category: "固定 Agent 对话", title: "Agent 停用后历史只读", note: "旧对话和审计仍可查看，但停用的目标不能接受新工作，来源不能显示为已送达。", surface: "dm",
+        id: "Q-UNAVAILABLE", category: "固定 Agent 对话", title: "Agent 停用后历史只读", note: "旧对话和审计仍可查看，但停用的目标不能接受新工作，来源不能显示为已送达；停用是管理态，与连接失败（F-OFFLINE）分开呈现，文案与动作不得混用。", surface: "dm",
         messages: [
           { type: "user", html: "再让小蓝补一遍移动端数据。" },
-          { who: "joy", name: "Joy", role: "主持 Agent", html: "没有发出去：小蓝已停用，不能接受新的任务。之前的协作记录还在，你仍然可以查看。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "没有发出去：小蓝已被停用。这是管理状态，不是连接故障——停用的成员不能接受新任务，重新启用后才会恢复。之前的协作记录还在，你仍然可以查看；要继续派活，请群主或管理员先重新启用小蓝。" },
           { type: "receipt", from: "joy", targets: ["blue"], pair: "blue", mode: "archived", failed: true }
         ],
         activity: [],
         work: { summary: "1 项未送达", roots: [{ title: "补查移动端数据", desc: "目标 Agent 已停用", status: "失败", items: [{ who: "blue", name: "小蓝", task: "补查移动端数据", state: "未开始", className: "error", progress: 0, meta: "旧记录保留 · 新消息未送达" }] }] }
       },
       {
-        id: "C-MULTI", category: "并发与时序", title: "多个 Agent 同时应答", note: "各 Run 独立执行；消息最终按 Thread seq 稳定落库，不使用前端到达顺序推断因果。",
+        id: "C-MULTI", category: "并发与时序", title: "多个 Agent 同时应答", note: "各任务独立执行；消息最终按会话顺序稳定落库，不使用前端到达顺序推断因果。",
         messages: [
           { type: "user", html: "<span class='mention blue'>@小蓝</span> <span class='mention orange'>@小橙</span> 各自给我一句最重要的风险。" },
           { who: "orange", name: "小橙", role: "设计 Agent", html: "视觉侧最大风险是移动端 B 版信息密度。" },
@@ -826,7 +829,7 @@
         work: { summary: "2 项已完成", roots: [{ title: "并行快速判断", desc: "按消息产生顺序展示", status: "已完成", items: [{ who: "orange", name: "小橙", task: "视觉风险一句话", state: "已完成", className: "done", progress: 100, meta: "先返回" }, { who: "blue", name: "小蓝", task: "性能风险一句话", state: "已完成", className: "done", progress: 100, meta: "随后返回" }] }] }
       },
       {
-        id: "C-DUAL", category: "并发与时序", title: "同一 Agent 前台发言 + 后台工作", note: "Bot 是持久身份；普通 Run 与 BackgroundAgentTask 是两条车道。",
+        id: "C-DUAL", category: "并发与时序", title: "同一 Agent 前台发言 + 后台工作", note: "Bot 是持久身份；普通回复与后台工作是两条车道。",
         messages: [
           { type: "user", html: "<span class='mention blue'>@小蓝</span> trace 没跑完也没关系，先告诉我当前假设。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "当前假设是主图和图表包；这是中间判断，不是最终结论。<div class='work-inline'><span class='pulse'></span>后台 trace 仍在运行 · 2 / 4</div>" }
@@ -835,7 +838,7 @@
         work: { summary: "同一 Agent · 2 项工作", roots: [{ title: "性能诊断", desc: "即时回复和后台工作同时进行", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "回答当前假设", state: "回复中", className: "run", progress: 80, meta: "即时回复" }, { who: "blue", name: "小蓝", task: "完整 trace", state: "后台中", className: "run", progress: 51, meta: "后台执行" }] }] }
       },
       {
-        id: "C-ROOTS", category: "并发与时序", title: "同群存在两个独立根任务", note: "不靠“最近消息”猜归属；每个用户根 Run 有自己的 lineage。",
+        id: "C-ROOTS", category: "并发与时序", title: "同群存在两个独立根任务", note: "不靠“最近消息”猜归属；每个用户根任务有自己的来源。",
         messages: [
           { type: "user", html: "<span class='mention purple'>@小紫</span> 另外查一下明天客户会的材料，这件事和发布无关。" },
           { who: "purple", name: "小紫", role: "审阅 Agent", html: "收到。我把它作为独立工作处理，不挂到发布方案下面。" }
@@ -844,7 +847,7 @@
         work: { summary: "2 个独立任务", roots: [{ title: "发布方案拆解", desc: "由 Joy 负责", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "后台中", className: "run", progress: 61, meta: "发布方案" }] }, { title: "客户会材料", desc: "由用户直接指派", status: "进行中", items: [{ who: "purple", name: "小紫", task: "整理明天客户会材料", state: "进行中", className: "run", progress: 18, meta: "客户会材料" }] }] }
       },
       {
-        id: "C-LATE", category: "并发与时序", title: "旧任务结果晚到，不覆盖新指令", note: "delivery Run 先读取最新 Thread；旧结果保留证据，但标记已被新目标取代。",
+        id: "C-LATE", category: "并发与时序", title: "旧任务结果晚到，不覆盖新指令", note: "晚到的结果先读取最新会话；旧结果保留证据，但标记已被新目标取代。",
         messages: [
           { type: "user", html: "发布目标已经改成下周一；周五的数据只留档，不再用于决策。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "周五基线刚刚完成。我看到目标已经改到下周一，所以只把它作为历史基线回传，不会据此覆盖新计划。" }
@@ -853,7 +856,7 @@
         work: { summary: "1 项历史结果", roots: [{ title: "发布目标：下周一", desc: "最新用户指令生效", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "周五性能基线", state: "仅归档", className: "muted", progress: 100, meta: "stale result" }] }] }
       },
       {
-        id: "P-SCOPED", category: "审批与权限", title: "审批只暂停一个节点", note: "Intervention 绑定具体 Run / task；小蓝、小紫和小橙的对话能力不受影响。",
+        id: "P-SCOPED", category: "审批与权限", title: "审批只暂停一个节点", note: "审批绑定具体工作；小蓝、小紫和小橙的对话能力不受影响。",
         messages: [
           { who: "orange", name: "小橙", role: "设计 Agent", html: "预览已经生成，需要发布权限。<div class='approval'><div class='approval-title'>◌ 允许小橙发布这一次预览？</div><div class='approval-actions'><button class='mini-btn' data-branch='P-DENY'>拒绝</button><button class='mini-btn primary' data-branch='P-ALLOW'>允许一次</button></div></div>" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "审批不影响我：性能基线已经跑到第三组。" }
@@ -890,25 +893,27 @@
         work: { summary: "1 项需重新批准", roots: [{ title: "预览发布", desc: "目标从 B 改为 A", status: "待更新", items: [{ who: "orange", name: "小橙", task: "发布 A 版预览", state: "待新审批", className: "wait", progress: 80, meta: "旧审批不可复用" }] }] }
       },
       {
-        id: "F-OFFLINE", category: "异常与恢复", title: "目标 Agent 不可用", note: "message_bot 明确失败；群里不伪造“收到”，主持人决定换人或重试。",
+        id: "F-OFFLINE", category: "异常与恢复", title: "目标 Agent 不可用", note: "目标 Agent 暂时连接不上时，明确告知没有开始，群里不伪造“收到”；由主持人提出改派或稍后恢复。",
         messages: [
           { who: "joy", name: "Joy", role: "主持 Agent", html: "我准备让 <span class='mention purple'>@小紫</span> 做证据复核。" },
-          { type: "system", html: "未能派给小紫：该 Agent 已被停用，没有开始这项工作。" },
-          { who: "joy", name: "Joy", role: "主持 Agent", html: "小紫当前不可用。我先保留复核缺口，不会把它显示成已接收；可以改派小蓝或等小紫恢复。" }
+          { type: "system", html: "未能派给小紫：暂时连接不上，这项复核没有开始。" },
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "小紫现在暂时联系不上，这不是小紫拒绝了任务。我先保留复核缺口，不会把它显示成已接收；你可以改派小蓝，或等连接恢复后我再继续。" }
         ],
-        activity: [{ who: "joy", label: "委派失败 · 等待改派" }],
-        work: { summary: "1 项未分配", roots: [{ title: "发布方案", desc: "失败透明可见", status: "有阻塞", items: [{ who: "purple", name: "小紫", task: "证据复核", state: "未创建", className: "error", progress: 0, meta: "Agent disabled" }] }] }
+        activity: [{ who: "joy", label: "没能派给小紫 · 等你决定" }],
+        work: { summary: "1 项未分配", roots: [{ title: "发布方案", desc: "小紫暂时联系不上", status: "有阻塞", items: [{ who: "purple", name: "小紫", task: "证据复核", state: "未开始", className: "error", progress: 0, meta: "暂时联系不上" }] }] }
       },
       {
-        id: "F-RETRY", category: "异常与恢复", title: "后台任务失败后重试", note: "重试是同一任务的 attempt，不创建重复工作，也不重复发送确认消息。",
+        id: "F-RETRY", category: "异常与恢复", title: "后台任务失败后重试", note: "同一项工作自动重试，不新建重复工作，也不重复发送确认消息；只显示客观次数；次数用尽后呈现明确终态，不停留在“重试中”。",
         messages: [
-          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第一轮 trace 因浏览器进程退出失败。我已在相同任务下开始第 2 次尝试，已完成的数据不会重复发布。<div class='work-inline'><span class='pulse'></span>重试中 · 第 2 / 3 次尝试</div>" }
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第一轮分析因为运行环境中途退出，没有拿到完整结果。我已经在同一项工作里开始第 2 次尝试，前一轮拿到的数据不会重复发布。如果第 3 次仍失败，我会保留已有结果，并告诉你哪一步没完成。<div class='work-inline'><span class='pulse'></span>正在重试 · 第 2 / 3 次</div>" },
+          { type: "system", html: "第 3 次尝试仍未成功：重试已用尽 · 已停止重试。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "第 3 次也没有成功，重试已用尽，我已停止重试，不会一直试下去。已经拿到的部分数据保留在同一项工作里；缺的是完整对比结论。你可以改派其他成员，或等环境恢复后再让我试。" }
         ],
-        activity: [{ who: "blue", label: "性能基线重试中 · 2 / 3" }],
-        work: { summary: "1 项重试中", roots: [{ title: "性能基线", desc: "保留每一次尝试", status: "重试中", items: [{ who: "blue", name: "小蓝", task: "运行完整 trace", state: "重试 2/3", className: "run", progress: 39, meta: "第 2 次尝试" }] }] }
+        activity: [{ who: "blue", label: "性能基线重试已用尽 · 已停止重试" }],
+        work: { summary: "1 项已停止重试", roots: [{ title: "性能基线", desc: "同一项工作保留每次尝试", status: "重试已用尽", items: [{ who: "blue", name: "小蓝", task: "运行完整 trace", state: "已停止重试", className: "error", progress: 39, meta: "重试已用尽 · 保留部分结果" }] }] }
       },
       {
-        id: "F-DEDUPE", category: "异常与恢复", title: "重复投递被幂等抑制", note: "相同 delivery key 只创建一个 target Run；第二次事件只留下审计记录。",
+        id: "F-DEDUPE", category: "异常与恢复", title: "重复投递被幂等抑制", note: "相同投递标识只创建一个目标工作；第二次事件只留下审计记录。",
         messages: [
           { who: "joy", name: "Joy", role: "主持 Agent", html: "<span class='mention blue'>@小蓝</span> 核对性能基线。" },
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "收到，我开始核对。" },
@@ -918,14 +923,14 @@
         work: { summary: "1 项有效工作", roots: [{ title: "发布方案", desc: "重复请求已自动合并", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "进行中", className: "run", progress: 27, meta: "没有重复执行" }] }] }
       },
       {
-        id: "F-PARTIAL", category: "异常与恢复", title: "部分失败，主持人仍可收尾", note: "失败分支保留事实；已有成功结果可以用于有条件结论，不能伪装为全量完成。",
+        id: "F-PARTIAL", category: "异常与恢复", title: "部分失败，主持人仍可收尾", note: "失败分支保留事实；成功结果可以用于有条件结论，但必须标明缺口，不能显示为全部完成。",
         messages: [
           { who: "blue", name: "小蓝", role: "性能 Agent", html: "性能基线完成：修复后 LCP 可以达标。" },
           { type: "system", html: "小紫的第三方证据复核超时，未产生结果。" },
-          { who: "joy", name: "Joy", role: "主持 Agent", html: "现在只能做有条件收尾：性能证据支持周五灰度，但第三方复核缺失。我建议先灰度 10%，并把复核列为上线前阻塞项。" }
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "现在只能做有条件收尾：性能证据支持周五灰度，但第三方复核缺失。我可以只补做小紫缺失的复核，不需要重跑性能。建议先灰度 10%，并把复核列为上线前阻塞项。" }
         ],
         activity: [{ who: "blue", label: "性能结果已完成" }, { who: "purple", label: "证据复核失败" }],
-        work: { summary: "1 成功 · 1 失败", roots: [{ title: "发布方案", desc: "主持人基于部分结果收尾", status: "部分完成", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "已完成", className: "done", progress: 100, meta: "有结果" }, { who: "purple", name: "小紫", task: "第三方证据复核", state: "已超时", className: "error", progress: 48, meta: "无结果" }] }] }
+        work: { summary: "1 成功 · 1 失败", roots: [{ title: "发布方案", desc: "已有结果可用，复核缺失", status: "部分完成", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "已完成", className: "done", progress: 100, meta: "有结果" }, { who: "purple", name: "小紫", task: "第三方证据复核", state: "已超时", className: "error", progress: 48, meta: "无结果" }] }] }
       }
     ];
 
@@ -980,7 +985,7 @@
     function nodeUpdateLabel(state, className) {
       if (className === "wait") return /批准|确认|选择|入席/.test(state) ? "等待你" : "等待继续";
       if (className === "done") return "已有结果";
-      if (className === "error") return /超时/.test(state) ? "没有结果" : "未能开始";
+      if (className === "error") return /超时/.test(state) ? "没有结果" : /用尽|停止/.test(state) ? "已经结束" : "未能开始";
       if (className === "muted") return "已经结束";
       if (/接收/.test(state)) return "刚刚接收";
       if (/回复/.test(state)) return "正在回复";
@@ -1012,9 +1017,9 @@
         tone: "done"
       };
       if (className === "error") return {
-        current: /超时/.test(state) ? "工作已超时，没有产生结果" : "工作未能继续",
+        current: /超时/.test(state) ? "工作已超时，没有产生结果" : /用尽|停止/.test(state) ? "重试已用尽，这项工作已停止" : "工作未能继续",
         stages: [["接收任务", "done"], ["推进工作", "current error"], ["交付结果", ""]],
-        recent: /超时/.test(state) ? "等待时间已结束，没有收到结果。" : "任务没有开始或继续，请查看消息中的原因。",
+        recent: /超时/.test(state) ? "等待时间已结束，没有收到结果。" : /用尽|停止/.test(state) ? "多次尝试都没有完成，已拿到的部分结果保留；你可以改派其他成员，或稍后再试。" : "任务没有开始或继续，请查看消息中的原因。",
         tone: "error"
       };
       if (className === "muted") return {
@@ -1044,7 +1049,7 @@
     function branchWorkState(scenario) {
       const roots = scenario.work.roots.map(root => {
         const items = root.items.map(item => `<div class="work-node"><div class="node-top"><img src="${avatar[item.who]}"><span class="node-person">${item.name}</span><span class="node-state ${item.className}">${item.state}</span></div><div class="node-task">${item.task}</div>${nodeMeta(item.meta, item.state, item.className)}</div>`).join("");
-        const statusClass = /失败|阻塞|停止/.test(root.status) ? "error" : /等待|待|重试|部分/.test(root.status) ? "warn" : "";
+        const statusClass = /失败|阻塞|停止|用尽/.test(root.status) ? "error" : /等待|待|重试|部分/.test(root.status) ? "warn" : "";
         return `<div class="work-root"><div class="work-root-title">${root.title}<span class="status ${statusClass}">${root.status}</span></div><div class="work-root-desc">${root.desc}</div><div class="branch">${items}</div></div>`;
       }).join("<div style='height:10px'></div>");
       const count = scenario.work.roots.reduce((sum, root) => sum + root.items.filter(item => item.className === "run" || item.className === "wait").length, 0);
