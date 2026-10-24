@@ -125,6 +125,7 @@ import {
   appendEventInTransaction,
   applyPlanSubmission,
   avatarChangeView,
+  CHAT_GROUP_KIND_AGENT_PAIR,
   backgroundTaskLockTransactionOptions,
   changeBotAvatarInTransaction,
   completeSessionAdmission,
@@ -240,6 +241,7 @@ import { createAutoReviewProvider } from "./auto-review-factory.js";
 import { authorizedAvatarRequest, requestedAvatarBodyColor } from "./avatar-change-request.js";
 import { attachedImageArtifactIds, resolveUpdateBotAvatar } from "./bot-avatar.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
+import { interventionOriginForRun } from "./run-origin.js";
 import {
   allowPrivateHttpSecretOrigins,
   findBotSecret,
@@ -760,6 +762,47 @@ export function isProtectedComputerLifecycleCommand(command: string): boolean {
 
 /** Cap the roster so a large Space cannot flood the prompt. */
 const BOT_DIRECTORY_LIMIT = 40;
+
+/**
+ * The teammate directory a run's prompt carries. Hidden in standard groups
+ * (the roster there is the group context), kept in DMs, and kept in pair
+ * Threads too: a delegated run needs to discover further teammates (B → C)
+ * through the same user/Space-scoped roster a DM sees.
+ */
+export async function teammateDirectoryForThread(
+  prisma: PrismaClient,
+  input: {
+    thread: { groupId: string | null; group?: { kind: string | null } | null };
+    botId: string;
+    spaceId: string;
+    userId: string;
+  },
+): Promise<string | undefined> {
+  if (input.thread.groupId && input.thread.group?.kind !== CHAT_GROUP_KIND_AGENT_PAIR) {
+    return undefined;
+  }
+  return renderBotDirectory(
+    (
+      await prisma.bot.findMany({
+        where: {
+          spaceId: input.spaceId,
+          userId: input.userId,
+          archivedAt: null,
+          id: { not: input.botId },
+          thread: { isNot: null },
+        },
+        select: { id: true, name: true, title: true, description: true },
+        orderBy: { createdAt: "asc" },
+        take: BOT_DIRECTORY_LIMIT,
+      })
+    ).map((peer) => ({
+      id: peer.id,
+      name: peer.name,
+      title: peer.title,
+      description: peer.description,
+    })),
+  );
+}
 const MISSING_MODEL_MESSAGE = "Connect a model in Settings before running bots.";
 /** Consecutive non-busy setup failures tolerated before the run fails with the real reason. */
 const MAX_SETUP_FAILURES = 5;
@@ -1794,7 +1837,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
             where: { id: run.botId },
             include: { computer: true },
           }),
-          deps.prisma.thread.findUniqueOrThrow({ where: { id: run.threadId } }),
+          deps.prisma.thread.findUniqueOrThrow({
+            where: { id: run.threadId },
+            include: { group: { select: { kind: true } } },
+          }),
           loadRunHistoryMessages(deps.prisma, run, LEGACY_HISTORY_WINDOW_SIZE, channelId),
           run.trigger === "bot_message"
             ? loadBotMessageContext(deps.prisma, run.sourceMessageId)
@@ -2196,6 +2242,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             graphicalToolsAllowed,
             pageBrowserAllowed,
             groupId: thread.groupId,
+            groupKind: thread.group?.kind ?? null,
             trigger: run.trigger,
             semanticMemoryEnabled,
             cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
@@ -2291,6 +2338,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               graphicalToolsAllowed,
               pageBrowserAllowed,
               groupId: thread.groupId,
+              groupKind: thread.group?.kind ?? null,
               trigger: run.trigger,
               semanticMemoryEnabled,
               cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
@@ -2496,6 +2544,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: redactSecrets(item.title, runSecrets),
             })),
           };
+          const planReviewOrigin = await interventionOriginForRun(deps.prisma, run);
           const paused = await deps.events.pauseRunForInput({
             spaceId: run.spaceId,
             threadId: run.threadId,
@@ -2504,6 +2553,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             attemptId: attempt.id,
             leaseOwner: workerId,
             leaseFence: fence,
+            ...planReviewOrigin,
             blocks: [
               {
                 kind: "ask",
@@ -2528,7 +2578,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             title: `${bot.name} needs a plan decision`,
             body: `Plan v${safeContent.contentVersion} is waiting for your review.`,
             botId: bot.id,
-            threadId: thread.id,
+            threadId: planReviewOrigin.presentationThreadId ?? thread.id,
           });
         };
 
@@ -2929,6 +2979,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
+                ...(await interventionOriginForRun(deps.prisma, run)),
                 blocks: [
                   {
                     kind: "ask",
@@ -3134,6 +3185,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return pauseForApproval();
             }
             await workspaceCheckpoint.flush();
+            const approvalOrigin = await interventionOriginForRun(deps.prisma, run);
             const paused = await deps.events.pauseRunForInput({
               spaceId: run.spaceId,
               threadId: run.threadId,
@@ -3142,6 +3194,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               attemptId: attempt.id,
               leaseOwner: workerId,
               leaseFence: fence,
+              ...approvalOrigin,
               blocks: [
                 buildApprovalAskBlock(applied!.effect.id, name, args, runSecrets, {
                   reviewReason,
@@ -3159,7 +3212,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: `${bot.name} needs approval`,
               body: `Review before ${name}`,
               botId: bot.id,
-              threadId: thread.id,
+              threadId: approvalOrigin.presentationThreadId ?? thread.id,
             });
             return pauseForApproval();
           };
@@ -4718,6 +4771,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return pauseForSecret();
             }
             await workspaceCheckpoint.flush();
+            const secretOrigin = await interventionOriginForRun(deps.prisma, run);
             const paused = await deps.events.pauseRunForInput({
               spaceId: run.spaceId,
               threadId: run.threadId,
@@ -4726,6 +4780,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               attemptId: attempt.id,
               leaseOwner: workerId,
               leaseFence: fence,
+              ...secretOrigin,
               blocks: [
                 {
                   kind: "ask",
@@ -4747,7 +4802,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: `${bot.name} needs a code`,
               body: String(args.label ?? "Code"),
               botId: bot.id,
-              threadId: thread.id,
+              threadId: secretOrigin.presentationThreadId ?? thread.id,
             });
             return pauseForSecret();
           }
@@ -5027,6 +5082,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "message_bot") {
             let sent: Awaited<ReturnType<typeof messageBot>>;
+            const toolIntent = args.intent as
+              | "request"
+              | "result"
+              | "question"
+              | "status"
+              | "fyi"
+              | undefined;
             try {
               sent = await messageBot(
                 deps,
@@ -5036,15 +5098,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   bot_id: args.bot_id ? String(args.bot_id) : undefined,
                   confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
                   message: redactSecrets(String(args.message ?? ""), runSecrets),
-                  intent: args.intent as
-                    | "request"
-                    | "result"
-                    | "question"
-                    | "status"
-                    | "fyi"
-                    | undefined,
+                  intent: toolIntent,
                   deliveryKey: effectKey,
                 },
+                // An explicit result/status answers the requester through the
+                // persisted origin while this run is still live; the automatic
+                // outcome return stays the terminal-path complement.
+                toolIntent === "result" || toolIntent === "status"
+                  ? { allowTerminalSource: true }
+                  : undefined,
               );
             } catch (error) {
               if (error instanceof RoundtableFeatureDisabledError) {
@@ -5067,8 +5129,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ...("targetRunId" in sent
                 ? {
                     targetRunId: sent.targetRunId,
-                    destination: sent.destination,
-                    locator: sent.locator,
+                    ...("destination" in sent && "locator" in sent
+                      ? { destination: sent.destination, locator: sent.locator }
+                      : {}),
                   }
                 : {}),
               ...("replayed" in sent && sent.replayed ? { replayed: true } : {}),
@@ -5402,29 +5465,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           : history;
         const runtimeHistory = [...historicalContext, ...historyWithImages];
         // Without a roster a bot only knows the bots it spawned itself.
-        const botDirectory = thread.groupId
-          ? undefined
-          : renderBotDirectory(
-              (
-                await deps.prisma.bot.findMany({
-                  where: {
-                    spaceId: run.spaceId,
-                    userId: run.userId,
-                    archivedAt: null,
-                    id: { not: bot.id },
-                    thread: { isNot: null },
-                  },
-                  select: { id: true, name: true, title: true, description: true },
-                  orderBy: { createdAt: "asc" },
-                  take: BOT_DIRECTORY_LIMIT,
-                })
-              ).map((peer) => ({
-                id: peer.id,
-                name: peer.name,
-                title: peer.title,
-                description: peer.description,
-              })),
-            );
+        const botDirectory = await teammateDirectoryForThread(deps.prisma, {
+          thread,
+          botId: bot.id,
+          spaceId: run.spaceId,
+          userId: run.userId,
+        });
 
         if (heldForTakeover) {
           const releasedCheckpoint = takeoverCheckpointOf(
@@ -6063,6 +6109,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 label: redactSecrets(action.label, runSecrets),
               }));
               await workspaceCheckpoint.flush();
+              const askOrigin = await interventionOriginForRun(deps.prisma, run);
               const paused = await deps.events.pauseRunForInput({
                 spaceId: run.spaceId,
                 threadId: run.threadId,
@@ -6071,6 +6118,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
+                ...askOrigin,
                 blocks: [
                   {
                     kind: "ask",
@@ -6089,7 +6137,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 title: `${bot.name} needs an answer`,
                 body: safeText,
                 botId: bot.id,
-                threadId: thread.id,
+                threadId: askOrigin.presentationThreadId ?? thread.id,
               });
               return;
             } else if (event.type === "takeover") {
@@ -7000,6 +7048,8 @@ export function selectBuiltinToolsForRun(options: {
   planningEnabled?: boolean;
   /** Opens group message_bot only after destination-aware public dispatch is live. */
   publicCollaborationEnabled?: boolean;
+  /** Pair Threads keep message_bot regardless of the group (public) gate. */
+  groupKind?: string | null;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -7011,6 +7061,7 @@ export function selectBuiltinToolsForRun(options: {
           ),
           options.groupId,
           options.publicCollaborationEnabled,
+          options.groupKind,
         ),
         options.trigger,
       ),

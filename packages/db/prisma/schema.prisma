@@ -689,6 +689,12 @@ model Run {
   clientNonce          String?
   sourceMessageId      String?
   sourceMessage        Message?         @relation("RunSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  /// Private-pair collaboration origin: the user-visible Thread, the Run that
+  /// requested the work, and the lightweight receipt that authorizes result,
+  /// cancel, approval and retry routing. Null for every non-delegated Run.
+  originThreadId       String?
+  originRunId          String?
+  originMessageId      String?
   routineId            String?
   routine              Routine?         @relation(fields: [routineId], references: [id], onDelete: SetNull)
   startedAt            DateTime?
@@ -730,6 +736,7 @@ model Run {
   @@index([trigger, status, teamChatMirroredAt, updatedAt])
   @@index([spaceId, botId])
   @@index([sourceMessageId])
+  @@index([originThreadId, originRunId])
   @@index([taskId, createdAt, id])
   @@index([threadId, status, createdAt])
   @@index([routineId])
