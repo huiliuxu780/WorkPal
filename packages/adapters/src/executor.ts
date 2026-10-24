@@ -1594,9 +1594,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const run = await deps.prisma.run.findUnique({ where: { id: runId } });
       if (!run) return;
       if (isTerminal(run.status as RunStatus)) return;
-      // RT-26: only a Run that was actually waiting may consume its own
-      // acknowledged checkpoint. A fresh Run in the same Thread never does.
-      const resumedFromWaiting = run.status === "waiting_input";
+      // RT-26: only this Run's own unconsumed acknowledged checkpoint may be
+      // resumed, and the checkpoint row (runId + sessionKey + status) is the
+      // authority — not the claim-time status. The answer transaction re-queues
+      // the Run before this claim reads it, so an answer-driven resume arrives
+      // as queued/running, while a crash-recovered pause still reads
+      // waiting_input. A fresh Run has no checkpoint row, so the lookup below
+      // is a no-op for it.
+      const mayResumeCheckpoint =
+        run.status === "waiting_input" ||
+        run.status === "queued" ||
+        run.status === "running";
       const now = new Date();
       const existingAdmission = usesSessionAdmission
         ? await deps.prisma.agentSessionAdmission.findFirst({
@@ -5790,7 +5798,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             // From this point until a normal stream return, only a Runtime clean/detached
             // proof may release the chat admission. RT-25 deliberately has no timeout shortcut.
             sessionMayRelease = false;
-            if (resumedFromWaiting) {
+            if (mayResumeCheckpoint) {
               // RT-26: restore only THIS Run's acknowledged checkpoint, under
               // the new execution fence and suspension key of this Attempt.
               const checkpoint = await findResumableCheckpoint(deps.prisma, {
