@@ -849,26 +849,26 @@ export async function messageBot(
   const gates = deps.roundtableFeatures ?? resolveRoundtableFeatureGates({});
   const origin = readRunOrigin(run);
   const pairContext: PrivateMessageContext = { hop, sourceContext, sourceKind };
-  if (options?.allowTerminalSource) {
-    // A delegated outcome returns through the origin the requester persisted,
-    // never through "the target's chat". Runs without an origin predate the
-    // private-pair delivery and keep their legacy single-chat return path.
-    if (origin) {
-      const resolved = await resolvePrivateTarget(deps.prisma, run, input);
-      if (!resolved.ok) return resolved;
-      if (isOutcomeReturn({ options, intent, sourceContext, target: resolved.target })) {
-        return messageBotInAgentPair(
-          deps,
-          run,
-          sender,
-          { message, intent, deliveryKey: input.deliveryKey },
-          pairContext,
-          { kind: "origin_outcome", origin, target: resolved.target },
-        );
-      }
+  if (options?.allowTerminalSource === true && origin) {
+    // A verified origin reply is the only terminal-source exception: the run
+    // answers the requester through the origin the requester persisted, never
+    // through "the target's chat". Every other result/status — a proactive
+    // send or a reply to a different bot — keeps the ordinary routing below,
+    // so an enabled pair path never leaks into legacy DM delivery.
+    const resolved = await resolvePrivateTarget(deps.prisma, run, input);
+    if (!resolved.ok) return resolved;
+    if (isOutcomeReturn({ options, intent, sourceContext, target: resolved.target })) {
+      return messageBotInAgentPair(
+        deps,
+        run,
+        sender,
+        { message, intent, deliveryKey: input.deliveryKey },
+        pairContext,
+        { kind: "origin_outcome", origin, target: resolved.target },
+      );
     }
-    // Legacy chain: no persisted origin, so finish in the requester's own chat.
-  } else if (gates.private_pair === true) {
+  }
+  if (gates.private_pair === true) {
     const resolved = await resolvePrivateTarget(deps.prisma, run, input);
     if (!resolved.ok) return resolved;
     if (resolved.target.id === sender.id) {
@@ -891,7 +891,8 @@ export async function messageBot(
   }
   // private_pair off: bot-level messaging keeps its pre-roundtable contract —
   // roster resolution with explicit refusals, delivered into the target's own
-  // chat below. The gate only switches the pair-Thread delivery in.
+  // chat below. The gate only switches the pair-Thread delivery in; legacy
+  // chains (no origin) and sanctioned replies keep finishing in the chat.
 
   const candidates = await deps.prisma.bot.findMany({
     where: { spaceId: run.spaceId, userId: run.userId, archivedAt: null },

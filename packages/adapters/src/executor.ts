@@ -1795,7 +1795,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
             where: { id: run.botId },
             include: { computer: true },
           }),
-          deps.prisma.thread.findUniqueOrThrow({ where: { id: run.threadId } }),
+          deps.prisma.thread.findUniqueOrThrow({
+            where: { id: run.threadId },
+            include: { group: { select: { kind: true } } },
+          }),
           loadRunHistoryMessages(deps.prisma, run, LEGACY_HISTORY_WINDOW_SIZE, channelId),
           run.trigger === "bot_message"
             ? loadBotMessageContext(deps.prisma, run.sourceMessageId)
@@ -2197,6 +2200,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             graphicalToolsAllowed,
             pageBrowserAllowed,
             groupId: thread.groupId,
+            groupKind: thread.group?.kind ?? null,
             trigger: run.trigger,
             semanticMemoryEnabled,
             cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
@@ -2292,6 +2296,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               graphicalToolsAllowed,
               pageBrowserAllowed,
               groupId: thread.groupId,
+              groupKind: thread.group?.kind ?? null,
               trigger: run.trigger,
               semanticMemoryEnabled,
               cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
@@ -7018,6 +7023,8 @@ export function selectBuiltinToolsForRun(options: {
   planningEnabled?: boolean;
   /** Opens group message_bot only after destination-aware public dispatch is live. */
   publicCollaborationEnabled?: boolean;
+  /** Pair Threads keep message_bot regardless of the group (public) gate. */
+  groupKind?: string | null;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -7029,6 +7036,7 @@ export function selectBuiltinToolsForRun(options: {
           ),
           options.groupId,
           options.publicCollaborationEnabled,
+          options.groupKind,
         ),
         options.trigger,
       ),

@@ -882,6 +882,112 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     ]);
   });
 
+  it("keeps a proactive result on the pair path while private_pair is enabled", async () => {
+    // A user-started run with no origin sends an explicit result: the
+    // terminal-source exception must not leak it into the target's legacy DM.
+    const run = await newSenderRun();
+    const sent = await messageBot(deps(), run, sender, {
+      bot_id: writer.id,
+      message: "Nightly result: all green.",
+      intent: "result",
+      deliveryKey: "rt05-proactive-result",
+    });
+    expect(sent).toMatchObject({ ok: true, botId: writer.id });
+    if (!sent.ok) throw new Error("proactive result failed");
+
+    // Delivered into the sender ↔ writer pair Thread, not the writer's DM.
+    expect(await prisma.message.count({ where: { threadId: await threadOf(writer.id) } })).toBe(0);
+    const groups = await pairGroups(sender.id, writer.id);
+    expect(groups).toHaveLength(1);
+    const pairThreadId = groups[0]!.thread!.id;
+    const pairMessages = await prisma.message.findMany({
+      where: { threadId: pairThreadId, runId: run.id },
+      orderBy: { seq: "asc" },
+    });
+    expect(pairMessages.map((message) => message.role)).toEqual(["bot"]);
+    expect(pairMessages[0]!.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_sent",
+        toBotId: writer.id,
+        text: "Nightly result: all green.",
+        intent: "result",
+      }),
+    ]);
+    const inbound = await prisma.message.findFirstOrThrow({
+      where: { threadId: pairThreadId, clientNonce: "bot-message:rt05-proactive-result" },
+    });
+    expect(inbound.role).toBe("user");
+    expect(inbound.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        fromBotId: sender.id,
+        intent: "result",
+      }),
+    ]);
+  });
+
+  it("routes an origin run's reply to a different bot through the pair path", async () => {
+    const sourceRun = await newSenderRun();
+    const dispatched = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "prepare the export",
+      deliveryKey: "rt05-third-bot",
+    });
+    if (!dispatched.ok) throw new Error("delivery failed");
+    const pairRun = await prisma.run.update({
+      where: { id: dispatched.targetRunId },
+      data: { status: "running" },
+    });
+
+    // The delegated run messages a THIRD bot: not a verified origin reply, so
+    // this is a new private delivery into its own pair, never the legacy DM.
+    const sent = await messageBot(
+      deps(),
+      {
+        id: pairRun.id,
+        spaceId,
+        threadId: pairRun.threadId,
+        botId: pairRun.botId,
+        userId: id,
+        sourceMessageId: pairRun.sourceMessageId,
+        originThreadId: pairRun.originThreadId,
+        originRunId: pairRun.originRunId,
+        originMessageId: pairRun.originMessageId,
+      },
+      researcher,
+      {
+        bot_id: writer.id,
+        message: "Need the archive numbers for the export.",
+        intent: "request",
+        deliveryKey: "rt05-third-bot-request",
+      },
+      { allowTerminalSource: true },
+    );
+    expect(sent).toMatchObject({ ok: true, botId: writer.id });
+    if (!sent.ok) throw new Error("third-bot delivery failed");
+
+    // A new researcher ↔ writer pair appeared; the origin Thread got nothing.
+    const groups = await pairGroups(researcher.id, writer.id);
+    expect(groups).toHaveLength(1);
+    const thirdPairThreadId = groups[0]!.thread!.id;
+    expect(thirdPairThreadId).not.toBe(pairRun.threadId);
+    expect(
+      await prisma.message.count({
+        where: { threadId: sourceThreadId, clientNonce: "bot-message:rt05-third-bot-request" },
+      }),
+    ).toBe(0);
+    const inbound = await prisma.message.findFirstOrThrow({
+      where: { threadId: thirdPairThreadId, role: "user" },
+    });
+    expect(inbound.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        fromBotId: researcher.id,
+        intent: "request",
+      }),
+    ]);
+  });
+
   it("cancels the delegated Run with its origin and never fabricates a reply", async () => {
     const sourceRun = await newSenderRun();
     const dispatched = await send(sourceRun, {
