@@ -89,8 +89,8 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 
 ### A7 连接授权
 
-- `app_connect` 使用 `connect.app_authorization`；`mcp_approval` 使用 `connect.mcp_assignment`，两者视觉可复用 Shell，但 payload、业务范围和审计不同。
-- MCP assignment 必须显示 `allowAllTools: true` 的实际风险范围，不能只写“授权连接”。
+- 同一场景展示两张真实卡：`app_connect → connect.app_authorization`；`mcp_approval → connect.mcp_assignment`。视觉可复用 Shell，但 payload、业务范围和审计不同。
+- MCP assignment 的标题、风险说明和主操作都写明“全部工具”；正文必须出现 `allowAllTools: true`。不得只写“授权连接”。
 - OAuth 窗口关闭但未完成时保持 pending；与安装、技能保存分开。
 
 ### A8 技能保存

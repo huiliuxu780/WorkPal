@@ -34,7 +34,7 @@
 ## 实施范围
 
 - 在 `packages/contracts` 新增判别联合 `InteractionView`：`InputRequestView | ActionApprovalView | PlanReviewView | SessionControlView`，以及有限 `DisplayBlock`。
-- `ActionApprovalView` 使用不同严格 payload：`tool`、`payment`、`outbound`、`routine`、`install`、`skill_save`、`connect.app_authorization`、`connect.mcp_assignment`。`skill_save` 的权威是 TaughtSkill 业务事务；MCP assignment 必须显示 `allowAllTools: true` 的实际风险范围。
+- `ActionApprovalView` 使用不同严格 payload：`tool`、`payment`、`outbound`、`routine`、`install`、`skill_save`、`connect.app_authorization`、`connect.mcp_assignment`。`skill_save` 的权威是 TaughtSkill 业务事务；`connect.mcp_assignment` 投影携带 `allowAllTools: true` 的明确风险字段，供 CARD-01B 渲染。
 - `SessionControlView` 从 `waiting_takeover`、执行租约和 Computer `controlRunId`/控制租约派生；`return` 必须同时校验 Run 与用户控制租约。不新增持久 Intervention。
 - 保持现有 `InterventionKindSchema`、`InterventionViewSchema` 和事件载荷为线上兼容 wire；不得直接改 kind 枚举破坏旧客户端或事件重放。
 - `PlanReviewView` 对应独立 `plan_review`，永远不带 `approval.effectId`；批准计划不批准工具、连接器或凭据。
@@ -42,6 +42,7 @@
 - 在服务端补齐从现有 Intervention、message block 和业务事实到新投影的适配。旧 `ask` 与 `legacy_<messageId>` 继续读时合成，不 backfill。
 - 旧 `card`、`connect` 只提供历史只读降级，合并后不得新增生产者；非法或未实现组合必须明确失败或保持禁用。
 - 增加默认关闭的 `cards_unified_v2` gate（`CARDS_UNIFIED_V2_ENABLED=false`），非法值启动失败。gate 关闭时生产行为不变，开启后才允许新投影；capability 由服务端投影，Web 不读环境变量。
+- 定义 attention DTO/投影契约，覆盖三类 pending 来源和排序键；不在本任务实现有界查询/RPC、Web queue 或卡片渲染。
 - 统一 `InterventionRegion` 与 `execution-card.ts` 对 plan review / approval 的排序事实，避免 Web 层各自定义优先级。
 
 ## 允许修改
@@ -55,6 +56,7 @@
 ## 禁止
 
 - 修改 Web 页面视觉或组件结构（由 B/C/D 完成）
+- 实现 attention 有界查询/RPC 或 Web queue（由 CARD-01D 完成）
 - 修改 Run 状态机、ExternalEffect 执行权栅栏、权限模型或结算语义
 - 将 `plan_review` 合入 `approval`
 - backfill 旧消息、恢复 Task Center、或新增通用 `action` block
@@ -63,12 +65,13 @@
 ## 验收
 
 - 契约单测证明四类成员穷尽、strict、非法组合被拒绝，`plan_review` 与 effect 互斥。
-- `ActionApprovalView` 测试证明 `skill_save`、`connect.app_authorization`、`connect.mcp_assignment` 是不同 payload；A8 不出现 `requestApproval(tool)`，MCP 卡显示 `allowAllTools: true` 的风险范围。
+- `ActionApprovalView` 测试证明 `skill_save`、`connect.app_authorization`、`connect.mcp_assignment` 是不同 payload；A8 不出现 `requestApproval(tool)`。
+- MCP assignment 投影必须携带明确的 `allowAllTools: true` 风险字段和 `connect.mcp_assignment` 类型；卡片如何分层展示由 CARD-01B 验收，A 不修改 Web。
 - DB/Postgres 测试覆盖 pending、terminal、legacy ask、跨线程来源、revision 和 plan review。
 - API 测试证明 gate 关闭时旧响应不变；开启后投影包含可寻址来源和安全字段；gate 非法值启动失败。
 - 旧消息回放 fixture 证明已结算 ask 不会重复生成可操作卡；旧 `card`/`connect` 只读且无新生产者。
 - `SessionControlView` 测试覆盖 `waiting_takeover`、`controlRunId` 匹配、控制租约失效和历史 computer block 无权限作用。
-- attention queue 查询测试覆盖权限范围、排除普通 Run/历史/旧 connect、`expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC` 排序、`interactionId + revision` 去重和分页。
+- attention DTO 测试覆盖三类来源（持久 Intervention、有效 `SessionControlView`、strict pending 业务审批）、排序键、去重键和排除普通 Run/历史/旧 connect；有界查询、排序执行、分页和 Web 渲染由 CARD-01D 验证。
 - 扫描证明无答案、密钥、地址、付款正文或 ExternalEffect 请求/结果泄漏。
 - 对照原型 A13 验证 `PlanReviewView(plan_review)` 没有回到 `requestApproval(tool)`。
 

@@ -66,6 +66,7 @@ python3 shot.py
 - 从入库源重新生成关键截图后，连续两次截图运行的哈希一致。
 - `verify.py` 的 A13 断言要求独立 `PlanReviewView`/`plan_review`，并拒绝 `requestApproval(tool)` 归类。
 - A8 使用 `requestApproval(skill_save)`，权威是 TaughtSkill 保存；A7 的 `app_connect` 与 `mcp_approval` 分别使用 `connect.app_authorization` 和 `connect.mcp_assignment`，断言拒绝通用审批归类。
+- A7 含真实 MCP assignment 风险卡，展示 `allowAllTools: true`、服务器范围、风险层级和“允许全部工具”操作；390/375 证据为 `shot-a7-390.png` 与 `shot-a7-375.png`。
 
 已知非阻断项：上一轮接手人的完整 13/14 变异日志未随交付保存；评审侧已用独立定向变异证明该断言能捕获回退。本轮未声称完整 WCAG 合规。
 

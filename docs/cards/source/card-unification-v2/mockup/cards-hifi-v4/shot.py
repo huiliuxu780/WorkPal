@@ -50,8 +50,9 @@ def capture():
             page.emulate_media(reduced_motion='reduce')
             page.goto((ROOT / 'cards.html').as_uri(), wait_until='load')
             page.evaluate('document.fonts.ready')
+            page.locator('section.col:has(#a7-mcp-assignment)').screenshot(path=ROOT / f'shot-a7-{width}.png', animations='disabled', caret='hide')
             page.locator('section.col:has(#a13-plan-review)').screenshot(path=ROOT / f'shot-a13-{width}.png', animations='disabled', caret='hide')
-            print(f'a13-{width}', page.evaluate('document.documentElement.scrollWidth + "x" + document.documentElement.scrollHeight'))
+            print(f'a7-{width}/a13-{width}', page.evaluate('document.documentElement.scrollWidth + "x" + document.documentElement.scrollHeight'))
             page.close()
         architecture = ROOT.parents[1] / 'card-unification.html'
         if not requested and architecture.exists():

@@ -19,8 +19,12 @@
 
 ## 范围
 
-- 增加服务端有界查询/RPC，只返回当前用户可处理且 `pending` 的 Intervention，附带可寻址来源和最小展示字段。
-- 查询不得扫描或暴露 Run 历史、完成记录、普通后台工作或无关 Space。
+- 消费 CARD-01A 定义的 attention DTO，增加服务端有界查询/RPC，只返回当前 actor 有权访问线程中仍需本人处理的 Interaction 投影：
+  - 持久 pending Intervention
+  - 当前有效的派生 `SessionControlView`
+  - 完成严格映射后的 pending 业务审批
+- 查询不得扫描或暴露 Run 历史、完成记录、普通后台工作、旧 `connect` 回放或无关 Space。
+- 排序固定为 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC`；按 `interactionId + revision` 去重并分页。
 - Web 增加轻量 attention queue：条目显示来源 Bot、Task 或 reply target，点击跳回来源 Interaction 并聚焦。
 - 结算后条目立即消失，计数同步；关闭队列不等于处理请求。
 - 未读角标、待处理角标和 @我使用文字、形状与颜色共同区分。
@@ -34,7 +38,7 @@
 ## 允许修改
 
 - `packages/contracts/src/rpc.ts` 及查询 schema
-- `packages/db/` 中新增的有界 pending Intervention 查询
+- `packages/db/` 中新增的有界 attention 查询（三类来源）
 - `apps/api/src/router.ts` 和鉴权/授权适配
 - `apps/web/src/pages/ActivityList.tsx` 或新的轻量 queue 组件
 - `apps/web/src/pages/Shell.tsx` 的入口、计数和来源跳转
@@ -52,7 +56,8 @@
 
 ## 验收
 
-- 只有当前用户的 pending Interaction 进入 queue；answered、expired、cancelled、superseded 和普通 Run 不进入。
+- 三类来源都进入 queue：持久 pending Intervention、当前有效 `SessionControlView`、strict pending 业务审批；answered、expired、cancelled、superseded、普通 Run、Run 历史、后台任务和旧 `connect` 回放不进入。
+- 服务端按 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC` 排序，按 `interactionId + revision` 去重并分页；无权限或失去资格后立即排除。
 - 来源跳转准确，处理后条目和计数同步消失；空队列有明确空态。
 - 群聊来源可按 Bot 和 Task/reply target 寻址，不依赖孤立的“可以”或“A”。
 - 未读、待处理、@我语义在测试中互不混用。

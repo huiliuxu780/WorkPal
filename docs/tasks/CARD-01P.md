@@ -168,4 +168,4 @@ showContent(markdown | table | chart | collection | media | html | task_status |
 
 批准后的去敏源已入库到 [`docs/cards/source/card-unification-v2`](../cards/source/card-unification-v2/README.md)。入库副本从仓库内重新生成后 HTML 哈希稳定，真实浏览器验收 14/14，390px 与 375px 无横向溢出。已知非阻断项：原接手人的完整 13/14 变异日志未随交付保存，评审侧已用独立定向变异补证。
 
-2026-10-24 后续协议修订：A8 改为 `requestApproval(skill_save)`（TaughtSkill 业务事务），A7 拆分为 `connect.app_authorization` 与 `connect.mcp_assignment`；新增 A7/A8 语义断言并复跑 14/14，定向变异可将 A8 断言转红。原型仍为已批准设计基线。
+2026-10-24 后续协议修订：A8 改为 `requestApproval(skill_save)`（TaughtSkill 业务事务），A7 拆分为 `connect.app_authorization` 与 `connect.mcp_assignment`，并增加真实 MCP assignment 风险卡及 390/375 证据；新增 A7/A8 语义断言并复跑 14/14，定向变异可将 A8 断言转红。原型仍为已批准设计基线。

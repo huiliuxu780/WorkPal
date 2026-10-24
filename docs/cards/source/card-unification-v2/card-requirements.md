@@ -75,7 +75,7 @@ UI 可合成用户文案，但不能合成持久状态。Run 结束不自动作�
 | A4 | 提问 · `requestInput(question)` | 回答绑定 Bot、Task/reply target；完成后显示非敏感答案摘要。 |
 | A5 | 选择 · `requestInput(choice)` | 选中与提交清晰；答案以 resolution 为准，不接受孤立“A”作为群回复凭据。 |
 | A6 | 建空间 · `requestApproval(tool)` | 本人确认；创建成功后链接来自业务事务。 |
-| A7 | 授权 · `requestApproval(connect.app_authorization)` | 来自 `app_connect`；与 MCP assignment 使用不同严格 payload；OAuth 关闭且未完成时保持 pending；与安装独立。 |
+| A7 | 连接授权 · `requestApproval(connect.app_authorization)` + `requestApproval(connect.mcp_assignment)` | 同一场景展示两张卡；app authorization 与 MCP assignment 使用不同严格 payload；MCP 卡必须在标题、风险说明和主操作中明确 `allowAllTools: true`；OAuth 未完成保持 pending；与安装独立。 |
 | A8 | 保存技能 · `requestApproval(skill_save)` | 可查看 playbook；保存绑定当前内容快照；权威事务是 TaughtSkill 保存，不是工具执行。 |
 | A9 | 接管电脑 · `requestSessionControl(takeover)` | 主按钮“打开桌面”；只暂停对应 Bot；群聊引导本人到可操作上下文。 |
 | A10 | 外发草稿 · `requestApproval(outbound)` | 同卡编辑；不可变 revision；最新 pending 才可发送；决定绑定 fingerprint；收件人与正文必须与确认页一致。 |

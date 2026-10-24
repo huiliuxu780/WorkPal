@@ -75,7 +75,7 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 | A4 提问 | `requestInput(question)` | 群聊绑定 Bot 与 Task 或 reply target |
 | A5 选择 | `requestInput(choice)` | 不依赖孤立的“A”或“可以” |
 | A6 建空间 | `requestApproval(tool)` | 创建结果以业务事务为准 |
-| A7 授权 | `requestApproval(connect.app_authorization)` | 与 MCP assignment 分离；与安装分离；OAuth 未完成不等于授权失败 |
+| A7 连接授权 | `requestApproval(connect.app_authorization)` + `requestApproval(connect.mcp_assignment)` | 两张独立卡；MCP 必须展示 `allowAllTools: true` 的风险层级和“允许全部工具”操作；与安装分离 |
 | A8 保存技能 | `requestApproval(skill_save)` | 保存绑定内容快照；权威是 TaughtSkill 业务事务，不是工具执行 |
 | A9 接管电脑 | `requestSessionControl(takeover)` | 主入口“打开桌面” |
 | A10 外发草稿 | `requestApproval(outbound)` | 同卡编辑、不可变 revision、发送绑定 fingerprint |

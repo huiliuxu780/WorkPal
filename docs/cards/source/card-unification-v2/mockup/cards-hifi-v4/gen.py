@@ -42,9 +42,10 @@ col('A5 · requestInput(choice)', scene('群聊选择 · 不依赖孤立“A”'
 col('A6 · requestApproval(tool)', scene('创建空间 · 本人决定', [
     M('墨', K('wait', '+', '创建“Q3 评审”Space', '等待本人决定', '<dl class="kv"><dt>用途</dt><dd>汇总评审材料</dd><dt>成员</dt><dd>3 位演示成员</dd></dl>', B(('l', '取消'), ('p', '创建')), source='来源 Bot：墨 · Task：评审准备 · ExternalEffect：创建后单独记录')),
 ]))
-col('A7 · requestApproval(connect.app_authorization)', scene('授权 · app authorization 与安装分离', [
+col('A7 · connect.app_authorization + connect.mcp_assignment', scene('授权 · app 与 MCP 分离', [
     M('小蓝', K('wait', '⬡', '授权 Notion 连接', '等待本人授权', '<dl class="kv"><dt>范围</dt><dd>读写所选页面</dd><dt>前提</dt><dd>连接器已安装</dd></dl>', B(('l', '暂不'), ('p', '授权')), ident='a7-app-auth', source='来源 Bot：小蓝 · Task：会议同步 · app_connect → connect.app_authorization')),
-    note('OAuth 窗口关闭但未完成时保持 pending，不记为外部失败。MCP assignment 是独立的 connect.mcp_assignment。')
+    M('小蓝', K('wait', 'M', 'MCP assignment · 允许全部工具', '等待本人决定', '<dl class="kv"><dt>服务器</dt><dd>示例 MCP · 会议工具</dd><dt>授权范围</dt><dd>该服务器的全部工具</dd></dl><div class="warn" role="note"><b>高风险</b>：allowAllTools: true，Bot 可使用该服务器的全部工具。</div>', B(('l', '拒绝'), ('p', '允许全部工具')), ident='a7-mcp-assignment', source='来源 Bot：小蓝 · Task：会议同步 · mcp_approval → connect.mcp_assignment')),
+    note('app authorization 与 MCP assignment 使用不同严格 payload；MCP 卡必须在标题、风险说明和主操作中明确“全部工具”。')
 ]))
 col('A8 · requestApproval(skill_save)', scene('保存技能 · 业务事务', [
     M('小紫', K('wait', 'S', '保存技能“周报整理”', '等待本人决定', '<div class="s">目标：把本周记录整理成周报。保存绑定当前内容快照。</div><div class="t">保存权威：TaughtSkill 业务事务，不是工具执行。</div>', B(('l', '丢弃'), ('p', '保存')), ident='a8-skill-save', source='来源 Bot：小紫 · Task：技能教学 · skill_draft → requestApproval(skill_save) · revision：skill-r1')),

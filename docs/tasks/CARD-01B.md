@@ -15,15 +15,16 @@
 - [CARD-01 决策](../cards/CARD-01-decision.md)
 - [生产实现盘点](../cards/CARD-01-implementation-inventory.md)
 - [STYLE-SPEC](../cards/source/card-unification-v2/mockup/cards-hifi-v4/STYLE-SPEC.md)
-- 主要场景：`cards.html` A1–A13、B1；`a-detail.html` V1、V5、V6、V7
-- 验收截图：[cards](../cards/source/card-unification-v2/mockup/cards-hifi-v4/shot-cards.png)、[details](../cards/source/card-unification-v2/mockup/cards-hifi-v4/shot-a-detail.png)
+- 主要场景：`cards.html` A1–A13、B1；其中 A7 同时包含 `connect.app_authorization` 与 `connect.mcp_assignment` 两张卡；`a-detail.html` V1、V5、V6、V7
+- 验收截图：[cards](../cards/source/card-unification-v2/mockup/cards-hifi-v4/shot-cards.png)、[details](../cards/source/card-unification-v2/mockup/cards-hifi-v4/shot-a-detail.png)、A7 风险卡 [390px](../cards/source/card-unification-v2/mockup/cards-hifi-v4/shot-a7-390.png) / [375px](../cards/source/card-unification-v2/mockup/cards-hifi-v4/shot-a7-375.png)
 
 ## 范围
 
 - 新增统一 Card Shell 和 Interaction renderer，渲染 `InputRequestView`、`ActionApprovalView`、`PlanReviewView`、`SessionControlView`。
 - 统一来源区：Bot、Task、Run/Step 或明确 reply target；群聊请求必须可寻址。
 - 输入：question、choice、form、secret、saved_item。敏感值只显示脱敏摘要。
-- 审批：tool、payment、outbound、routine、install、connect。外部结果只引用 ExternalEffect 或业务事务，不用 `agent.tool.completed` 冒充成功。
+- 审批：`tool`、`payment`、`outbound`、`routine`、`install`、`skill_save`、`connect.app_authorization`、`connect.mcp_assignment`。外部结果只引用 ExternalEffect 或业务事务，不用 `agent.tool.completed` 冒充成功。
+- A7 必须分别渲染 app authorization 与 MCP assignment。MCP assignment 卡要显示 `allowAllTools: true` 的明确风险标题/说明、服务器范围和对应操作；不得只写“授权连接”，不得共用 app authorization payload。
 - A12 先选择已保存项，完成后再出现独立付款审批。
 - A10 同卡编辑、不可变 revision、fingerprint 绑定发送决定；待处理只显示最新 pending，旧 revision 显示 superseded。
 - B3 安装与授权使用独立状态、失败和审计；允许在 stepper 中组合。
@@ -57,6 +58,7 @@
 - A10 编辑保存后显示 r1 superseded、r2 pending；最终发送内容、revision 和 fingerprint 一致。
 - A12 在选择完成前不出现付款审批；付款审批是独立决定。
 - A13 的 DOM 和文案不存在 `requestApproval(tool)`；计划批准与工具授权在测试中互斥。
+- A7 同时出现 `connect.app_authorization` 与 `connect.mcp_assignment`；MCP 卡显示 `allowAllTools: true` 风险、服务器范围和操作，操作上限仍为两个按钮加一个文字入口。
 - B3 安装完成才进入授权；安装失败与授权失败可区分。
 - A9/B1 的接管、交还不改变 Run/Interaction 的权威状态。
 - 每卡按钮不超过两个、文字入口不超过一个；失败/过期/未知没有重试。

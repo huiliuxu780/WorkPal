@@ -180,12 +180,20 @@ with sync_playwright() as p:
         a7 = page.evaluate('''() => {
           const cols = [...document.querySelectorAll('.grid > section.col')];
           const c = cols.find(x => (x.querySelector('.top')?.textContent || '').trim().startsWith('A7'));
-          return c ? c.innerText : null;
+          if (!c) return null;
+          return {text: c.innerText, cards: c.querySelectorAll('.k').length, mcp: Boolean(c.querySelector('#a7-mcp-assignment'))};
         }''')
-        assert a7 and 'connect.app_authorization' in a7, (
+        assert a7 and a7['cards'] == 2 and a7['mcp'], (
+            'A7 风险卡缺失：必须同时渲染 app authorization 与真实 connect.mcp_assignment 卡。')
+        assert 'connect.app_authorization' in a7['text'], (
             'A7 连接授权映射错误：必须使用独立 connect.app_authorization。')
-        assert 'requestApproval(connect)' not in a7, (
+        assert 'requestApproval(connect)' not in a7['text'], (
             'A7 连接授权映射错误：app authorization 不能使用通用 connect 审批。')
+        for phrase in ('connect.mcp_assignment', 'allowAllTools: true', '全部工具', '高风险'):
+            assert phrase in a7['text'], (
+                f'A7 MCP assignment 风险信息缺失：卡片未显示“{phrase}”。')
+        assert '允许全部工具' in a7['text'], (
+            'A7 MCP assignment 操作错误：主操作必须明确允许全部工具。')
         a8 = page.evaluate('''() => {
           const cols = [...document.querySelectorAll('.grid > section.col')];
           const c = cols.find(x => (x.querySelector('.top')?.textContent || '').trim().startsWith('A8'));
