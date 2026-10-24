@@ -714,6 +714,10 @@ model Run {
   retryOfRunId         String?          @unique
   retryOfRun           Run?             @relation("RunManualRetry", fields: [retryOfRunId], references: [id], onDelete: Restrict)
   manualRetrySuccessor Run?             @relation("RunManualRetry")
+  /// Completed Run reviewed again because a later Task amendment requested it.
+  followUpOfRunId      String?          @unique
+  followUpOfRun        Run?             @relation("RunTaskAmendmentFollowUp", fields: [followUpOfRunId], references: [id], onDelete: Restrict)
+  amendmentFollowUp    Run?             @relation("RunTaskAmendmentFollowUp")
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
@@ -725,6 +729,7 @@ model Run {
   @@index([trigger, status, teamChatMirroredAt, updatedAt])
   @@index([spaceId, botId])
   @@index([sourceMessageId])
+  @@index([taskId, createdAt, id])
   @@index([threadId, status, createdAt])
   @@index([routineId])
   @@map("runs")

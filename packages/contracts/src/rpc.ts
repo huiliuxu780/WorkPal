@@ -91,7 +91,11 @@ import {
   VoiceInfoSchema,
   VoiceStatusSchema,
 } from "./domain.js";
-import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
+import {
+  ComputerCommandSchema,
+  ProductEventSchema,
+  TaskAmendmentApplicationSchema,
+} from "./events.js";
 import {
   ACTIVITY_PAGE_MAX_LIMIT,
   ExecutionActivityPageSchema,
@@ -128,6 +132,7 @@ import {
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
+import { TaskInstructionViewSchema } from "./task-instructions.js";
 
 const botId = z.object({ botId: Id });
 const groupId = z.object({ groupId: Id });
@@ -476,10 +481,7 @@ export const appContract = {
         runIds: z.array(Id).optional(),
       }),
     ),
-    /**
-     * Append a natural-language revision to an explicit Task. The user Message,
-     * Task revision and task.amended Event commit together; no Run is started.
-     */
+    /** Apply a natural-language revision according to the bound Run's state. */
     amendTask: oc
       .input(
         threadTarget.safeExtend({
@@ -495,8 +497,12 @@ export const appContract = {
           revision: z.number().int().nonnegative(),
           seq: z.number().int().nonnegative(),
           replayed: z.boolean(),
+          application: TaskAmendmentApplicationSchema,
         }),
       ),
+    taskInstructions: oc
+      .input(threadTarget.safeExtend({ targetTaskId: Id }))
+      .output(TaskInstructionViewSchema),
     react: oc
       .input(
         threadTarget.safeExtend({

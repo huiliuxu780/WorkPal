@@ -151,7 +151,7 @@ import {
   AvatarChangeDenied,
   acknowledgeAvatarFailure,
   appendEventInTransaction,
-  appendTaskAmendment,
+  applyTaskAmendment,
   avatarChangeView,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
@@ -192,6 +192,7 @@ import {
   newestVoiceCredentialOrder,
   Prisma,
   parseComputerMode,
+  readTaskInstructionView,
   releaseSpaceDeletionClaim,
   renewSpaceDeletionClaim,
   restoreBotUnderComputerQuota,
@@ -567,8 +568,9 @@ export interface RouterDeps {
   cloudAgent?: CloudAgentConnection | null;
   prisma: PrismaClient;
   events: ThreadEvents;
-  /** Test seam for the Task instruction log; production uses the db service. */
-  appendTaskAmendment?: typeof appendTaskAmendment;
+  /** Test seams for RT-14 Task amendment application and its product read model. */
+  applyTaskAmendment?: typeof applyTaskAmendment;
+  readTaskInstructionView?: typeof readTaskInstructionView;
   auth: Auth;
   jobs: JobPublisher;
   sandbox: SandboxProvider;
@@ -2224,9 +2226,9 @@ export function createRouter(deps: RouterDeps) {
       }),
       amendTask: authed.threads.amendTask.handler(async ({ context, input }) => {
         const target = await resolveHumanWritableThreadTarget(context.actor, input);
-        let appended: Awaited<ReturnType<typeof appendTaskAmendment>>;
+        let appended: Awaited<ReturnType<typeof applyTaskAmendment>>;
         try {
-          appended = await (deps.appendTaskAmendment ?? appendTaskAmendment)(deps.prisma, {
+          appended = await (deps.applyTaskAmendment ?? applyTaskAmendment)(deps.prisma, {
             spaceId: context.actor.spaceId,
             threadId: target.threadId,
             actorUserId: context.actor.userId,
@@ -2254,13 +2256,44 @@ export function createRouter(deps: RouterDeps) {
         await deps.events.notify(target.threadId, appended.eventSeq).catch((error) => {
           getLogger().error("task amendment realtime notification", error);
         });
+        if (!appended.replayed && appended.application.kind === "completed_follow_up") {
+          await deps.jobs
+            .enqueue(runContinueJob(appended.application.followUpRunId))
+            .catch((error) => getLogger().error("task amendment follow-up enqueue", error));
+        }
         return {
           taskId: appended.ref.taskId,
           messageId: appended.messageId,
           revision: appended.ref.consumedRevision,
           seq: appended.seq,
           replayed: appended.replayed,
+          application: appended.application,
         };
+      }),
+      taskInstructions: authed.threads.taskInstructions.handler(async ({ context, input }) => {
+        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        try {
+          const view = await (deps.readTaskInstructionView ?? readTaskInstructionView)(
+            deps.prisma,
+            {
+              taskId: input.targetTaskId,
+              spaceId: context.actor.spaceId,
+              threadId: target.threadId,
+            },
+          );
+          if (!view) throw new ORPCError("NOT_FOUND", { message: "Task was not found." });
+          return view;
+        } catch (error) {
+          if (error instanceof TaskInstructionIntegrityError) {
+            throw new ORPCError("CONFLICT", {
+              message: "This task's instruction history is no longer available.",
+            });
+          }
+          if (error instanceof TaskAmendmentRejected) {
+            throw new ORPCError("CONFLICT", { message: "This task cannot be read safely." });
+          }
+          throw error;
+        }
       }),
       react: authed.threads.react.handler(async ({ context, input }) => {
         const target = await resolveHumanWritableThreadTarget(context.actor, input);

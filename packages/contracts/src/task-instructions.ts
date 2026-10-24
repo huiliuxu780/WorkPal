@@ -1,5 +1,6 @@
 import * as z from "zod";
-import { Id } from "./ids.js";
+import { MessageBlock } from "./events.js";
+import { Id, RunStatus, RunTrigger } from "./ids.js";
 
 /** The immutable first instruction a Task was created with. */
 export const TaskInstructionOriginalSchema = z
@@ -67,3 +68,33 @@ export type RunInstructionRef = z.infer<typeof RunInstructionRefSchema>;
 
 export const TaskAmendmentSourceSchema = z.enum(["explicit", "ask_answer", "choice_answer"]);
 export type TaskAmendmentSource = z.infer<typeof TaskAmendmentSourceSchema>;
+
+export const TaskInstructionRunLineageSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("original") }),
+  z.strictObject({ kind: z.literal("manual_retry"), predecessorRunId: Id }),
+  z.strictObject({ kind: z.literal("amendment_follow_up"), predecessorRunId: Id }),
+]);
+export type TaskInstructionRunLineage = z.infer<typeof TaskInstructionRunLineageSchema>;
+
+export const TaskInstructionRunSchema = z.strictObject({
+  runId: Id,
+  status: RunStatus,
+  trigger: RunTrigger,
+  consumedRevision: z.number().int().positive().nullable(),
+  lineage: TaskInstructionRunLineageSchema,
+  result: z
+    .strictObject({
+      messageId: Id,
+      blocks: z.array(MessageBlock),
+      truncated: z.boolean(),
+    })
+    .optional(),
+});
+export type TaskInstructionRun = z.infer<typeof TaskInstructionRunSchema>;
+
+/** Product-safe Task read model. It deliberately omits leases, fences and Attempts. */
+export const TaskInstructionViewSchema = z.strictObject({
+  instructions: TaskInstructionEnvelopeSchema,
+  runs: z.array(TaskInstructionRunSchema),
+});
+export type TaskInstructionView = z.infer<typeof TaskInstructionViewSchema>;
