@@ -342,6 +342,10 @@ export async function insertPausedIntervention(
     botId: string;
     runId: string;
     attemptId: string;
+    /** RT-26: chat admission fence this pending request was created under. */
+    executionFence?: number;
+    /** RT-26: the Attempt's random suspension key. */
+    suspensionKey?: string;
     messageId: string;
     blocks: MessageBlock[];
     waitStartedAt: Date;
@@ -388,6 +392,8 @@ export async function insertPausedIntervention(
       runId: input.runId,
       attemptId: input.attemptId,
       botId: input.botId,
+      executionFence: input.executionFence ?? null,
+      suspensionKey: input.suspensionKey ?? null,
       messageId: input.messageId,
       pendingRunKey: input.runId,
       expiresAt: new Date(input.waitStartedAt.getTime() + INTERVENTION_WAIT_MS),

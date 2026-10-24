@@ -32,7 +32,9 @@ public record RunRequest(
         Collaboration collaborationContext,
         List<String> excludeDeliveredTaskIds,
         Boolean suppressNativeTaskReminders,
-        SessionAdmission sessionAdmission) {
+        SessionAdmission sessionAdmission,
+        CheckpointResume resumeCheckpoint,
+        List<ThreadContextMessage> threadContextAfterSuspension) {
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
             String sourceMessageId, Identity identity, String prompt, String productName,
@@ -44,7 +46,7 @@ public record RunRequest(
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
                 allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, turnPolicy,
-                collaborationContext, excludeDeliveredTaskIds, suppressNativeTaskReminders, null);
+                collaborationContext, excludeDeliveredTaskIds, suppressNativeTaskReminders, null, null, null);
     }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
@@ -56,7 +58,7 @@ public record RunRequest(
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
                 allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, turnPolicy,
-                collaborationContext, null, null, null);
+                collaborationContext, null, null, null, null, null);
     }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
@@ -66,7 +68,7 @@ public record RunRequest(
             RunModel model, Boolean allowSilentEmpty, String emptyResponseText, Integer sessionGeneration) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null, null, null, null, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, null, null, null, null, null, null, null, null);
     }
 
     public RunRequest(String botId, String threadId, String runId, String executionScope,
@@ -77,7 +79,7 @@ public record RunRequest(
             String resumeAnswer) {
         this(botId, threadId, runId, executionScope, sourceMessageId, identity, prompt, productName,
                 instructions, history, currentTurnImages, skills, tools, toolBridge, model,
-                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null, null, null, null, null);
+                allowSilentEmpty, emptyResponseText, sessionGeneration, resumeAnswer, null, null, null, null, null, null, null);
     }
 
     /**
@@ -124,6 +126,21 @@ public record RunRequest(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record SessionAdmission(String sessionKey, String executionId, String attemptId,
             Long fence, String suspensionKey) {}
+
+    /**
+     * RT-26: restore this Run's acknowledged checkpoint. The source binding is
+     * the paused Attempt, the target binding is the NEW execution fence and
+     * suspension key of this restore. The Runtime refuses any mismatch.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CheckpointResume(String checkpointId, String digest, String sessionKey,
+            String sourceRunId, String sourceAttemptId, String sourceExecutionId, Long sourceFence,
+            String sourceSuspensionKey, String attemptId, String executionId, Long fence,
+            String suspensionKey) {}
+
+    /** Trusted Thread messages appended while this Run was suspended. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ThreadContextMessage(Integer seq, String role, String content) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Identity(String userId, String spaceId, String botId, String threadId, String runId) {}
@@ -200,6 +217,38 @@ public record RunRequest(
         }
         if (sessionGeneration != null && sessionGeneration < 0) {
             throw new IllegalArgumentException("Session generation must be non-negative");
+        }
+        if (resumeCheckpoint != null) {
+            if (!isChat() || sessionAdmission == null) {
+                throw new IllegalArgumentException("Checkpoint resume requires a chat session admission");
+            }
+            CheckpointResume resume = resumeCheckpoint;
+            if (blank(resume.checkpointId()) || blank(resume.digest()) || blank(resume.sessionKey())
+                    || blank(resume.sourceAttemptId()) || blank(resume.sourceExecutionId())
+                    || blank(resume.sourceSuspensionKey()) || blank(resume.attemptId())
+                    || blank(resume.executionId()) || blank(resume.suspensionKey())
+                    || resume.sourceFence() == null || resume.sourceFence() <= 0
+                    || resume.fence() == null || resume.fence() <= 0
+                    || !equals(resume.sourceRunId(), runId)
+                    || !equals(resume.sessionKey(), sessionAdmission.sessionKey())
+                    || resume.sourceFence() >= resume.fence()
+                    || resume.sourceSuspensionKey().equals(resume.suspensionKey())) {
+                throw new IllegalArgumentException("Invalid checkpoint resume binding");
+            }
+        }
+        if (threadContextAfterSuspension != null) {
+            if (threadContextAfterSuspension.size() > 100) {
+                throw new IllegalArgumentException("Thread context after suspension is too large");
+            }
+            int previous = -1;
+            for (ThreadContextMessage message : threadContextAfterSuspension) {
+                if (message == null || message.seq() == null || message.seq() <= previous
+                        || !Set.of("user", "assistant").contains(message.role())
+                        || message.content() == null || message.content().length() > 120_000) {
+                    throw new IllegalArgumentException("Invalid thread context after suspension");
+                }
+                previous = message.seq();
+            }
         }
         if (history != null) for (HistoryMessage message : history) {
             if (message == null) throw new IllegalArgumentException("Invalid history message");
@@ -294,7 +343,8 @@ public record RunRequest(
                 prompt, productName, instructions, history, currentTurnImages, skills, tools,
                 toolBridge, model, allowSilentEmpty, emptyResponseText, sessionGeneration,
                 resumeAnswer, turnPolicy, collaborationContext, excludeDeliveredTaskIds,
-                suppressNativeTaskReminders, admission);
+                suppressNativeTaskReminders, admission, resumeCheckpoint,
+                threadContextAfterSuspension);
     }
 
     /** Planning capability: chat scope only, unless the policy disables it. */
