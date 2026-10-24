@@ -1893,6 +1893,12 @@ export async function stopThreadRuns(
   }
   delegatedRuns.sort((left, right) => (left.threadId < right.threadId ? -1 : 1));
   const delegatedCancelled: string[] = [];
+  const delegatedTeardown: Array<{
+    computer: { id: string; homeKey: string; kind: string; providerRef: string | null };
+    botId: string;
+    runId: string;
+    lease: { computerId: string; botId: string; runId: string; fence: number } | null;
+  }> = [];
   for (const delegated of delegatedRuns) {
     const cancelled = await deps.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM threads WHERE id = ${delegated.threadId} FOR UPDATE`;
@@ -1907,7 +1913,6 @@ export async function stopThreadRuns(
         where: { id: run.id },
         data: { error: "parent_cancelled" },
       });
-      await expireComputerExecutionLeases(tx, { runId: run.id });
       await appendEventInTransaction(tx, {
         spaceId: run.spaceId,
         threadId: run.threadId,
@@ -1916,9 +1921,77 @@ export async function stopThreadRuns(
         type: "run.cancelled",
         payload: { reason: "parent_cancelled" },
       });
-      return run.id;
+      // Snapshot teardown coordinates before commit, mirroring the visible
+      // path: once the cancellation is visible, a worker can release the lease
+      // immediately and a later lookup would miss the sandbox work to stop.
+      const lease =
+        (await tx.computerExecutionLease.findFirst({
+          where: { runId: run.id },
+          select: { computerId: true, botId: true, runId: true, fence: true },
+        })) ?? null;
+      const computer = lease
+        ? await tx.computer.findUnique({
+            where: { id: lease.computerId },
+            select: {
+              id: true,
+              homeKey: true,
+              kind: true,
+              providerRef: true,
+              executionBotId: true,
+              executionRunId: true,
+            },
+          })
+        : null;
+      return lease && computer
+        ? { runId: run.id, lease, computer }
+        : { runId: run.id, lease: null, computer: null };
     });
-    if (cancelled) delegatedCancelled.push(cancelled);
+    if (cancelled) {
+      delegatedCancelled.push(cancelled.runId);
+      if (cancelled.lease && cancelled.computer) {
+        delegatedTeardown.push({
+          computer: cancelled.computer,
+          botId: cancelled.lease.botId,
+          runId: cancelled.lease.runId,
+          lease: cancelled.lease,
+        });
+      }
+    }
+  }
+  // Same teardown sequence as the visible path: stop sandbox work first, then
+  // release the leases so a replacement run cannot claim the computer while
+  // cancelled background commands may still be running.
+  await Promise.all(
+    delegatedTeardown.map(async ({ computer, botId, runId, lease }) => {
+      if (!computer.providerRef) return;
+      const context = {
+        operationId: "stop",
+        traceId: "stop",
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+        botId,
+        runId,
+        screenLeaseId: screenLeaseIdForRun(lease, runId),
+        cancelRunWork: true,
+        signal: new AbortController().signal,
+      };
+      const ref = toComputerRef(computer);
+      await cancelComputerRunWork(deps.sandbox, ref, computer.id, runId, context);
+      await deps.sandbox.releaseScreen?.(ref, context).catch(() => undefined);
+    }),
+  );
+  if (delegatedCancelled.length) {
+    await expireComputerExecutionLeases(deps.prisma, {
+      runId: { in: delegatedCancelled },
+    });
+    await deps.prisma.computer.updateMany({
+      where: { executionRunId: { in: delegatedCancelled } },
+      data: {
+        executionRunId: null,
+        executionBotId: null,
+        executionLeaseExpiresAt: null,
+      },
+    });
   }
   return { cancelledRunIds: [...runIds, ...delegatedCancelled] };
 }

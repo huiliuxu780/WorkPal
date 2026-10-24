@@ -3620,7 +3620,24 @@ describe("stopThreadRuns", () => {
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
-      computerExecutionLease: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      computerExecutionLease: {
+        findFirst: vi.fn().mockResolvedValue({
+          computerId: "computer-pair",
+          botId: "bot-c",
+          runId: "run-c",
+          fence: 3,
+        }),
+      },
+      computer: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "computer-pair",
+          homeKey: "home-pair",
+          kind: "fake",
+          providerRef: "computer-pair-ref",
+          executionBotId: null,
+          executionRunId: null,
+        }),
+      },
       event: {
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
           ...data,
@@ -3658,10 +3675,14 @@ describe("stopThreadRuns", () => {
       memberBotIds: ["bot-a"],
     } satisfies ThreadTarget;
 
+    const execute = vi.fn(async function* () {
+      yield { type: "exit", code: 0 };
+    });
+    const releaseScreen = vi.fn().mockResolvedValue(undefined);
     const result = await stopThreadRuns(
       {
         prisma,
-        sandbox: { releaseScreen: vi.fn(), execute: vi.fn() } as unknown as SandboxProvider,
+        sandbox: { releaseScreen, execute } as unknown as SandboxProvider,
         events: { notify: vi.fn().mockResolvedValue(undefined) } as never,
       },
       actor,
@@ -3683,6 +3704,14 @@ describe("stopThreadRuns", () => {
       where: { id: "run-c" },
       data: { error: "parent_cancelled" },
     });
+    // Sandbox work on the delegated run's computer was torn down (cancel +
+    // screen release) before the lease expired.
+    expect(execute).toHaveBeenCalled();
+    expect(releaseScreen).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ cancelRunWork: true, runId: "run-c" }),
+    );
+    expect(prisma.computerExecutionLease.updateMany).toHaveBeenCalled();
     expect(delegatedTransaction.event.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
