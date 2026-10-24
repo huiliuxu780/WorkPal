@@ -37,6 +37,7 @@ public final class RuntimeServer {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/health", this::health);
         server.createContext("/v1/runs", this::runs);
+        server.createContext("/v1/sessions", this::sessions);
         server.createContext("/v1/state/bots", this::botState);
         server.createContext("/v1/background-tasks", this::backgroundTasks);
     }
@@ -205,6 +206,61 @@ public final class RuntimeServer {
                 && !RunRequest.blank(admission.attemptId())
                 && admission.fence() != null && admission.fence() > 0
                 && !RunRequest.blank(admission.suspensionKey());
+    }
+
+    private record SessionRequest(RunRequest.Identity identity, String sessionKey,
+            Integer sessionGeneration, String executionId, String attemptId, Long fence,
+            String suspensionKey, String checkpointId) {}
+
+    private void sessions(HttpExchange exchange) throws IOException {
+        String path = exchange.getRequestURI().getPath();
+        boolean detach = "/v1/sessions/inspect-and-detach".equals(path);
+        if (!"POST".equals(exchange.getRequestMethod())
+                || (!detach && !"/v1/sessions/inspect".equals(path))) {
+            reply(exchange, 404, Map.of("error", "not found"));
+            return;
+        }
+        SessionRequest request;
+        try {
+            byte[] body = exchange.getRequestBody().readNBytes(64 * 1024 + 1);
+            if (body.length > 64 * 1024) throw new IllegalArgumentException("Session request is too large");
+            request = json.readValue(body, SessionRequest.class);
+            if (request == null || request.identity() == null
+                    || RunRequest.blank(request.identity().userId())
+                    || RunRequest.blank(request.identity().spaceId())
+                    || RunRequest.blank(request.identity().botId())
+                    || RunRequest.blank(request.identity().threadId())
+                    || RunRequest.blank(request.identity().runId())
+                    || request.sessionGeneration() == null || request.sessionGeneration() < 0
+                    || request.fence() == null || request.fence() <= 0
+                    || RunRequest.blank(request.sessionKey())
+                    || !request.sessionKey().matches("agentscope:chat:v1:[0-9a-f]{64}:[0-9a-f]{64}")
+                    || RunRequest.blank(request.executionId())
+                    || RunRequest.blank(request.attemptId())
+                    || RunRequest.blank(request.suspensionKey())
+                    || RunRequest.blank(request.checkpointId())
+                    || !request.checkpointId().matches("[A-Za-z0-9_-]{8,120}")) {
+                throw new IllegalArgumentException("Invalid session request");
+            }
+        } catch (Exception error) {
+            reply(exchange, 422, Map.of("error", "Invalid session request"));
+            return;
+        }
+        try {
+            Map<String, Object> proof = detach
+                    ? engine.inspectAndDetach(instanceId, request.identity(), request.sessionKey(),
+                            request.sessionGeneration(), request.executionId(), request.attemptId(),
+                            request.fence(), request.suspensionKey(), request.checkpointId())
+                    : engine.inspectPendingState(instanceId, request.identity(), request.sessionKey(),
+                            request.sessionGeneration(), request.checkpointId(),
+                            request.executionId(), request.attemptId(), request.fence(),
+                            request.suspensionKey());
+            reply(exchange, 200, proof);
+        } catch (SessionCheckpointStore.Conflict conflict) {
+            reply(exchange, 409, Map.of("error", conflict.getMessage()));
+        } catch (Exception error) {
+            reply(exchange, 500, Map.of("error", "Cannot inspect AgentScope session state"));
+        }
     }
 
     private static String botSlot(String user, String space, String bot) {
