@@ -12,7 +12,7 @@
     "WorkPal 现有组件和视觉语言（补足原型未规定细节）",
     "roundtable-implementation-plan.md 与历史任务提示词（派生材料，冲突时修订）"
   ],
-  "scopePrinciple": "96 个原子验收场景不等于 96 个页面状态。原型只裁决 8 段主故事线与 28 个高价值分支的实际渲染；其余场景由 API、Runtime、投影和端到端测试覆盖，不得为覆盖完整而新增 UI（DESIGN.md L4、PRD §13.1、§14）。",
+  "scopePrinciple": "96 个原子验收场景不等于 96 个页面状态。原型只裁决 8 段主故事线与 29 个高价值分支的实际渲染；其余场景由 API、Runtime、投影和端到端测试覆盖，不得为覆盖完整而新增 UI（DESIGN.md L4、PRD §13.1、§14）。",
   "evidenceManifest": {
     "prototypeStates": [
       "prototype:main-stage-1",
@@ -33,6 +33,7 @@
       "prototype:branch-A-AMBIGUOUS",
       "prototype:branch-X-GROUP",
       "prototype:branch-X-BOT",
+      "prototype:branch-X-GROUP-APPROVE",
       "prototype:branch-X-GROUP-FAIL",
       "prototype:branch-X-RETURN",
       "prototype:branch-Q-REVERSE",
@@ -415,6 +416,7 @@
         "prototype:branch-P-ALLOW",
         "prototype:branch-P-DENY",
         "prototype:branch-P-STALE",
+        "prototype:branch-X-GROUP-APPROVE",
         "prototype:branch-X-GROUP-FAIL",
         "prototype:branch-F-OFFLINE",
         "prototype:branch-F-RETRY",
@@ -425,7 +427,7 @@
         "失败/恢复状态行遵循 D1 裁决后的原型文案；不允许出现执行器名称（CF-08：AgentScope 字样清除）",
         "跨会话审批卡（把 A 加入群？）只在来源单聊出现，拒绝/过期不产生目标群消息"
       ],
-      "screenshotRequirements": ["P-SCOPED/P-ALLOW/P-DENY/X-GROUP-FAIL 四态生产截图对比"]
+      "screenshotRequirements": ["P-SCOPED/P-ALLOW/P-DENY/X-GROUP-APPROVE 四态生产截图对比"]
     },
     {
       "taskId": "FIX-GLOBAL-F",
@@ -658,6 +660,7 @@
       "deliveryStatus": "not-started",
       "classification": "ui-projection-contract",
       "prototypeRefs": [
+        "prototype:branch-X-GROUP-APPROVE",
         "prototype:branch-X-GROUP-FAIL",
         "prototype:branch-X-RETURN",
         "DESIGN.md:L7"

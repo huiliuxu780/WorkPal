@@ -119,3 +119,35 @@ roundtable prototype copy verified: 0/7 forbidden terms, 9 required anchors pres
 DESIGN.md 同步补充：停用边界、无权限失败边界、审批授权范围行三条新条款，并在重试、部分完成两条既有边界中追加裁决口径。
 
 裁决后的复核截图（1440px；涉及卡片布局的两处补 390px）存于 `test-report/proto-rulings-screenshots/`（gitignored，随 PR 评论提供绝对路径）。
+
+## 7. 二轮返修：互斥场景拆分与活动胶囊状态点（2026-10-24）
+
+用户审计第一轮落地后提出 4 个问题，本节记录返修。生产代码仍未修改。
+
+### 7.1 D1 阻塞：X-GROUP-FAIL 互斥状态混用
+
+第一轮把「有权限的加入审批卡」和「无权限失败卡」放进同一场景（证据 `test-report/proto-rulings-screenshots/ruling1-X-GROUP-FAIL-390.png`）。二轮拆成两个互斥场景分支，场景选择器均可见：
+
+| 场景 id | 内容 | 活动胶囊 | 工作树 |
+| --- | --- | --- | --- |
+| `X-GROUP-APPROVE`（新） | 只有「把 Joy 加入…」审批卡（暂不加入 / 加入并继续），不出现失败卡 | 等你决定是否让 Joy 入席（等待·中性静态点） | 等你确认（wait） |
+| `X-GROUP-FAIL`（重写） | 只有独立失败卡「无成员管理权限」+ 管理员处理指引（这项工作未开始 / 请群主或管理员处理），不出现审批卡 | 无成员管理权限 · 需要管理员处理（失败·红色静态点） | 失败根状态 + 未开始（error）节点 |
+
+`verify-prototype-copy.mjs` 新增结构性校验 `findScenarioExclusivityErrors`：X-GROUP-FAIL 块内不得出现审批卡标记，X-GROUP-APPROVE 块内必须包含审批卡。`verify-ui-conformance.mjs` 的 BRANCH_IDS 与 `audits/ui-prototype-conformance.json` 的 evidenceManifest 同步加入 `branch-X-GROUP-APPROVE`（28 → 29 分支）；RT-12 与 FIX-APPROVE-E 的原型引用、四态截图要求改指 X-GROUP-APPROVE（审批面）并保留 X-GROUP-FAIL（失败面）。
+
+### 7.2 活动胶囊状态语义
+
+根因与用户定位一致：所有 activity 项由同一渲染函数无条件附加 `.spinner`（固定绿色动点）。二轮改造：
+
+- 渲染函数 `branchActivity` / `activity` 统一经 `activityDotClass(item.status)` 输出 `<span class="dot {status}">`，未知状态回落 running；不在单个场景里硬编码绕过。
+- CSS 按状态类型给点：`.dot.running` 绿色动点（唯一动画）；`.dot.waiting` 中性浅灰静态；`.dot.done` 绿色静态（无动画）；`.dot.error` 红色静态；`.dot.stopped` 深灰静态（终态）。
+- 全部 28 个场景与主线的活动项逐一标注状态类型。三个已裁决场景的修复：F-RETRY「性能基线重试已用尽 · 已停止重试」= stopped（深灰静态，不再是绿点）；F-PARTIAL「证据复核失败」= error（红点）、「性能结果已完成」= done（绿色静态）；F-OFFLINE「没能派给小紫 · 等你决定」= error（红点）。
+- `verify-prototype-copy.mjs` 新增 `findActivityDotErrors`：`.spinner` 不得回归，五个状态点样式必须齐备。
+
+DESIGN.md 新增「活动胶囊状态点」边界条款，并修订覆盖计数（29 分支）与跨会话规则、无权限失败边界的互斥表述。
+
+### 7.3 复核证据与验证
+
+二轮截图（1440×900 与 390×900 各一组）存于 `test-report/proto-rulings-screenshots/`（gitignored，路径随 PR 评论提供）：X-GROUP-APPROVE、X-GROUP-FAIL、F-RETRY（含工作页）、F-PARTIAL、F-OFFLINE、Q-UNAVAILABLE（该场景无活动胶囊，重拍确认视觉未变）。`docs/roundtable/audits/evidence/prototype/` 中受影响的 committed 证据同步重拍，并新增 `branch-X-GROUP-APPROVE.png`。
+
+校验器全过（输出见 PR 评论）：`verify-prototype-copy.mjs`、`verify-ui-conformance.mjs`、`verify-implementation-plan.mjs`、`node --test verify-implementation-plan.test.mjs`、`node --test verify-ui-conformance.test.mjs`。

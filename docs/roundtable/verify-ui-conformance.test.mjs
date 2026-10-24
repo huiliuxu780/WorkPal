@@ -15,8 +15,8 @@ function clone(value) {
 
 test("main story and branch canonical sets are complete", () => {
   assert.equal(MAIN_STAGES.length, 8);
-  assert.equal(BRANCH_IDS.length, 28);
-  assert.equal(new Set(BRANCH_IDS).size, 28);
+  assert.equal(BRANCH_IDS.length, 29);
+  assert.equal(new Set(BRANCH_IDS).size, 29);
 });
 
 test("the committed audit, plan and evidence pass verification", () => {
@@ -122,7 +122,7 @@ test("every non-false-positive conflict must be linked from a task", () => {
   );
 });
 
-test("the evidence manifest must cover all 8 main stages and 28 branches", () => {
+test("the evidence manifest must cover all 8 main stages and 29 branches", () => {
   const mutated = audit();
   mutated.evidenceManifest.prototypeStates = mutated.evidenceManifest.prototypeStates.filter(
     (ref) => ref !== "prototype:branch-F-RETRY",
