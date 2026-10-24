@@ -492,6 +492,240 @@ describe("origin-aware intervention submission", () => {
   });
 });
 
+describe("agent_pair server write boundary", () => {
+  function fixture() {
+    const sideEffects = {
+      messageCreate: vi.fn(),
+      groupUpdate: vi.fn(),
+      groupMemberDelete: vi.fn(),
+      resolveIntervention: vi.fn(),
+    };
+    const tx = {
+      $queryRaw: vi.fn(async () => []),
+      chatGroup: {
+        findUnique: vi.fn(async () => ({ thread: { id: "thread-pair" } })),
+        findFirst: vi.fn(async () => null),
+        update: sideEffects.groupUpdate,
+      },
+      chatGroupMember: { deleteMany: sideEffects.groupMemberDelete },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
+      chatGroup: {
+        findFirst: vi.fn(async () => null),
+        updateMany: sideEffects.groupUpdate,
+      },
+      bot: {
+        findMany: vi.fn(async () => [
+          { id: "bot-a", name: "A", color: "#111" },
+          { id: "bot-b", name: "B", color: "#222" },
+        ]),
+      },
+      message: { create: sideEffects.messageCreate },
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { resolveIntervention: sideEffects.resolveIntervention },
+      env: {
+        agentRuntime: "scripted",
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@example.test",
+      isDeploymentOwner: false,
+    } satisfies Actor;
+    return { handler: new RPCHandler(createRouter(deps)), actor, sideEffects };
+  }
+
+  async function call(
+    handler: RPCHandler<never>,
+    actor: Actor,
+    path: string,
+    body: Record<string, unknown>,
+  ) {
+    const { response } = await handler.handle(
+      new Request(`http://127.0.0.1/rpc/${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: body }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+    return { status: response.status, body: await response.json() };
+  }
+
+  it("rejects send, reaction and pair-local Intervention submission without side effects", async () => {
+    const { handler, actor, sideEffects } = fixture();
+    const attempts = await Promise.all([
+      call(handler, actor, "threads/send", { groupId: "group-pair", text: "human write" }),
+      call(handler, actor, "threads/react", {
+        groupId: "group-pair",
+        messageId: "pair-message",
+        reaction: "👍",
+        clientNonce: "pair-reaction-1",
+      }),
+      call(handler, actor, "threads/resolveIntervention", {
+        groupId: "group-pair",
+        interventionId: "pair-intervention",
+        clientSubmissionId: "pair-submission-1",
+        answer: "allow",
+      }),
+    ]);
+
+    expect(attempts.every((attempt) => attempt.status >= 400)).toBe(true);
+    expect(sideEffects.messageCreate).not.toHaveBeenCalled();
+    expect(sideEffects.resolveIntervention).not.toHaveBeenCalled();
+  });
+
+  it("rejects pair archive and member mutation without changing the group", async () => {
+    const { handler, actor, sideEffects } = fixture();
+    const attempts = await Promise.all([
+      call(handler, actor, "groups/archive", { groupId: "group-pair" }),
+      call(handler, actor, "groups/update", {
+        groupId: "group-pair",
+        botIds: ["bot-a", "bot-b"],
+      }),
+    ]);
+
+    expect(attempts.every((attempt) => attempt.status >= 400)).toBe(true);
+    expect(sideEffects.groupUpdate).not.toHaveBeenCalled();
+    expect(sideEffects.groupMemberDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not accept pairThreadId as a normal or receipt-less read target", async () => {
+    const { handler, actor } = fixture();
+    const directSend = await call(handler, actor, "threads/send", {
+      pairThreadId: "thread-pair",
+      text: "guess",
+    });
+    const directRead = await call(handler, actor, "threads/pairMessages", {
+      pairThreadId: "thread-pair",
+    });
+
+    expect(directSend.status).toBe(400);
+    expect(directRead.status).toBe(400);
+  });
+});
+
+describe("agent_pair receipt read RPC", () => {
+  function fixture(authorized: boolean) {
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce(authorized ? [{ targetSeq: 7, visibleIndex: 0 }] : [])
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([
+        {
+          id: "pair-message-1",
+          seq: 7,
+          role: "bot",
+          blocks: [{ kind: "text", text: "authorized pair history" }],
+          botId: "bot-b",
+          replyToMessageId: null,
+          replyQuote: null,
+          runId: "run-pair-1",
+          clientNonce: null,
+          createdAt: new Date("2026-10-23T01:00:00.000Z"),
+        },
+      ]);
+    const tx = { $queryRaw: queryRaw };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      env: {
+        agentRuntime: "scripted",
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@example.test",
+      isDeploymentOwner: false,
+    } satisfies Actor;
+    return { handler: new RPCHandler(createRouter(deps)), actor, queryRaw };
+  }
+
+  async function read(handler: RPCHandler<never>, actor: Actor) {
+    return handler.handle(
+      new Request("http://127.0.0.1/rpc/threads/pairMessages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          json: {
+            sourceReceiptMessageId: "source-receipt-1",
+            locator: {
+              kind: "pair_message",
+              pairThreadId: "pair-thread-1",
+              messageId: "pair-message-1",
+            },
+            limit: 20,
+          },
+        }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+  }
+
+  it("returns the receipt-authorized projection without physical sequence numbers", async () => {
+    const { handler, actor, queryRaw } = fixture(true);
+    const { response } = await read(handler, actor);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: {
+        pairThreadId: "pair-thread-1",
+        messages: [
+          {
+            id: "pair-message-1",
+            role: "bot",
+            blocks: [{ kind: "text", text: "authorized pair history" }],
+            botId: "bot-b",
+            runId: "run-pair-1",
+            createdAt: "2026-10-23T01:00:00.000Z",
+          },
+        ],
+        totalCount: 1,
+        hasMore: false,
+        olderCursor: null,
+        target: { messageId: "pair-message-1", visibleIndex: 0 },
+      },
+    });
+    expect(queryRaw).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns the same not-found boundary when the origin locator is unauthorized", async () => {
+    const { handler, actor, queryRaw } = fixture(false);
+    const { response } = await read(handler, actor);
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      json: { code: "NOT_FOUND", message: "Pair history was not found." },
+    });
+    expect(queryRaw).toHaveBeenCalledOnce();
+  });
+});
+
 describe("MCP server deletion", () => {
   it("does not fail when a concurrent credential rotation already removed the old secret", async () => {
     const deleteServer = vi.fn().mockResolvedValue({ id: "server-1" });

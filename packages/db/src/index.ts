@@ -35,6 +35,7 @@ export * from "./run-todos.js";
 export * from "./scope.js";
 export * from "./spaces.js";
 export * from "./task-instructions.js";
+export * from "./thread-policy.js";
 export * from "./transaction-retry.js";
 export * from "./usage-stats.js";
 export * from "./voice-credentials.js";
