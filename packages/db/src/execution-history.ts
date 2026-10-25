@@ -167,6 +167,26 @@ export type SummaryRunRow = {
   followUpOfRunId?: string | null;
 };
 
+/** Columns every summary read needs; one shape for window and message reads. */
+const SUMMARY_RUN_SELECT = {
+  id: true,
+  threadId: true,
+  botId: true,
+  taskId: true,
+  status: true,
+  waitKind: true,
+  trigger: true,
+  error: true,
+  orchestration: true,
+  sourceMessageId: true,
+  startedAt: true,
+  completedAt: true,
+  createdAt: true,
+  snapshotRev: true,
+  retryOfRunId: true,
+  followUpOfRunId: true,
+} as const;
+
 /** Latest `thread.cleared` seq per Thread in one grouped pass (absent = 0). */
 export async function currentThreadGenerations(
   db: TxLike,
@@ -368,6 +388,7 @@ export async function buildExecutionSummariesForRuns(
         trigger: run.trigger,
         error: run.error,
         orchestration: run.orchestration,
+        sourceMessageId: run.sourceMessageId,
         startedAt: toIso(run.startedAt),
         completedAt: toIso(run.completedAt),
         createdAt: run.createdAt.toISOString(),
@@ -421,26 +442,63 @@ export async function loadExecutionSummaries(
   if (runIds.length === 0) return [];
   const runs = await db.run.findMany({
     where: { id: { in: runIds }, threadId: input.threadId, spaceId: input.spaceId },
-    select: {
-      id: true,
-      threadId: true,
-      botId: true,
-      taskId: true,
-      status: true,
-      waitKind: true,
-      trigger: true,
-      error: true,
-      orchestration: true,
-      sourceMessageId: true,
-      startedAt: true,
-      completedAt: true,
-      createdAt: true,
-      snapshotRev: true,
-      retryOfRunId: true,
-      followUpOfRunId: true,
-    },
+    select: SUMMARY_RUN_SELECT,
   });
   return buildExecutionSummariesForRuns(db, { spaceId: input.spaceId, runs });
+}
+
+/**
+ * The message → Runs projection (PD-01P): every Run whose durable source is
+ * one of the given history-page messages.
+ *
+ * A user turn can create several Runs (a multi-Bot group dispatch creates one
+ * Run per destination, each with `sourceMessageId` set to the same message),
+ * while the legacy `messages.runId` column only records the first. This reads
+ * the whole page in ONE query — no per-message N+1 — unions the legacy
+ * message→run ids for pre-`sourceMessageId` rows, and relies on the shared
+ * builder for the Thread generation fence, retry eligibility, and all other
+ * summary facts. The Thread+Space scope is applied in the query itself, so a
+ * Run from another Thread or Space can never leak through a shared message id.
+ *
+ * Output order is `Run.createdAt ASC, Run.id ASC` — the database order is
+ * made explicit here so paging, reloads, and query-plan changes project the
+ * same sequence. A Run reachable through both the legacy id and its source
+ * message appears once (the builder dedupes by Run id).
+ */
+export async function loadExecutionSummariesForMessages(
+  db: TxLike,
+  input: {
+    threadId: string;
+    spaceId: string;
+    /** Messages of the loaded history page; each may own 0..N Runs. */
+    messageIds: readonly string[];
+    /** Legacy `Message.runId` links; unioned but never treated as exhaustive. */
+    runIds?: readonly string[];
+  },
+): Promise<ExecutionSummary[]> {
+  const messageIds = [...new Set(input.messageIds)].sort();
+  const runIds = [...new Set(input.runIds ?? [])].sort();
+  if (messageIds.length === 0 && runIds.length === 0) return [];
+  const runs = await db.run.findMany({
+    where: {
+      threadId: input.threadId,
+      spaceId: input.spaceId,
+      OR: [
+        ...(messageIds.length > 0 ? [{ sourceMessageId: { in: messageIds } }] : []),
+        ...(runIds.length > 0 ? [{ id: { in: runIds } }] : []),
+      ],
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: SUMMARY_RUN_SELECT,
+  });
+  const summaries = await buildExecutionSummariesForRuns(db, {
+    spaceId: input.spaceId,
+    runs,
+  });
+  // The builder filters stale/cleared Runs and dedupes; restore its rows to the
+  // stable source order rather than the builder's batching order.
+  const position = new Map(runs.map((run, index) => [run.id, index]));
+  return summaries.sort((a, b) => (position.get(a.runId) ?? 0) - (position.get(b.runId) ?? 0));
 }
 
 /* ------------------------------------------------------------------ */

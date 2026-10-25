@@ -8,6 +8,7 @@ import {
   executionEventCeilings,
   loadExecutionSnapshot,
   loadExecutionSummaries,
+  loadExecutionSummariesForMessages,
   loadRunActivityPage,
 } from "./execution-history.js";
 import { createThreadMessage } from "./messages.js";
@@ -1024,5 +1025,235 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
         cursor: "garbage-value-123456",
       }),
     ).rejects.toBeInstanceOf(ExecutionActivityCursorError);
+  });
+
+  /**
+   * PD-01P: one triggering message owns every Run it created — including the
+   * second and later Bot of a group turn — and the projection must be
+   * identical across pages and reloads while staying inside the authorized
+   * Thread+Space.
+   */
+  describePostgres("message → Runs projection (PD-01P)", () => {
+    let thread: string;
+    let botA: string;
+    let botB: string;
+    let foreignThread: string;
+    let foreignSpaceId: string;
+    let foreignSpaceThread: string;
+    const base = Date.parse("2026-10-20T00:00:00.000Z");
+
+    beforeAll(async () => {
+      const makeBot = async (name: string, spaceId: string = id) =>
+        (
+          await prisma.bot.create({
+            data: { spaceId, userId: id, name, color: "test" },
+          })
+        ).id;
+      // Threads require an owner (`threads_owner_chk`), so each fixture Thread
+      // gets its own anchor Bot; the Runs under test may belong to other Bots.
+      const makeThread = async (spaceId: string = id) =>
+        (
+          await prisma.thread.create({
+            data: {
+              spaceId,
+              userId: id,
+              botId: await makeBot(`anchor ${randomUUID().slice(0, 6)}`, spaceId),
+            },
+          })
+        ).id;
+      botA = await makeBot("PD bot A");
+      botB = await makeBot("PD bot B");
+      thread = await makeThread();
+      foreignThread = await makeThread();
+      foreignSpaceId = `${id}-pd-foreign`;
+      await prisma.space.create({
+        data: { id: foreignSpaceId, organizationId: id, name: "PD foreign space" },
+      });
+      foreignSpaceThread = await makeThread(foreignSpaceId);
+    }, 120_000);
+
+    async function userMessage(targetThread = thread, text = "Kick off both bots") {
+      return createThreadMessage(prisma, {
+        threadId: targetThread,
+        role: "user",
+        blocks: [{ kind: "text", text }],
+      });
+    }
+
+    async function cancelledRun(opts: {
+      botId: string;
+      sourceMessageId?: string;
+      createdAt?: Date;
+      threadId?: string;
+      spaceId?: string;
+      trigger?: string;
+    }) {
+      const spaceId = opts.spaceId ?? id;
+      const runThreadId = opts.threadId ?? thread;
+      const task = await prisma.task.create({
+        data: {
+          spaceId,
+          userId: id,
+          botId: opts.botId,
+          threadId: runThreadId,
+          prompt: "Group turn",
+          status: "cancelled",
+        },
+      });
+      const run = await prisma.run.create({
+        data: {
+          spaceId,
+          userId: id,
+          botId: opts.botId,
+          threadId: runThreadId,
+          taskId: task.id,
+          status: "cancelled",
+          trigger: opts.trigger ?? "user",
+          sourceMessageId: opts.sourceMessageId,
+          createdAt: opts.createdAt ?? new Date(base),
+          completedAt: new Date(base + 60_000),
+        },
+      });
+      await appendEvent(prisma, {
+        spaceId,
+        threadId: runThreadId,
+        botId: opts.botId,
+        runId: run.id,
+        type: "run.cancelled",
+        payload: {},
+      });
+      return run;
+    }
+
+    it("links one message to its Run and keeps the legacy message.runId", async () => {
+      const message = await userMessage(thread, "Single bot turn");
+      const run = await cancelledRun({ botId: botA, sourceMessageId: message.id });
+      await prisma.message.update({ where: { id: message.id }, data: { runId: run.id } });
+
+      const read = () =>
+        loadExecutionSummariesForMessages(prisma, {
+          threadId: thread,
+          spaceId: id,
+          messageIds: [message.id],
+          // `Message.runId` was just set to this Run; the column is reloaded as
+          // the legacy link the page carries.
+          runIds: [run.id],
+        });
+      const page = await read();
+      expect(page.map((item) => item.runId)).toEqual([run.id]);
+      expect(page[0]!.sourceMessageId).toBe(message.id);
+      // Reload reads the same relationship from the same durable facts.
+      await expect(read()).resolves.toEqual(page);
+    });
+
+    it("returns every Run of a multi-Bot message once, ordered by createdAt then id", async () => {
+      const message = await userMessage(thread, "Ask both bots");
+      // Insert the later-created Run first: DB return order must not decide the
+      // projection order.
+      const second = await cancelledRun({
+        botId: botB,
+        sourceMessageId: message.id,
+        createdAt: new Date(base + 2_000),
+      });
+      const first = await cancelledRun({
+        botId: botA,
+        sourceMessageId: message.id,
+        createdAt: new Date(base + 1_000),
+      });
+      // The legacy column names only the first Run; it is not authoritative.
+      await prisma.message.update({ where: { id: message.id }, data: { runId: first.id } });
+
+      const summaries = await loadExecutionSummariesForMessages(prisma, {
+        threadId: thread,
+        spaceId: id,
+        messageIds: [message.id],
+        runIds: [first.id, second.id],
+      });
+      expect(summaries.map((item) => item.runId)).toEqual([first.id, second.id]);
+      expect(summaries.map((item) => item.sourceMessageId)).toEqual([message.id, message.id]);
+      // Both are plain cancelled roots: the no-card second Bot is retryable and
+      // linked back to the original message without `Message.runId`.
+      expect(summaries[1]!.status).toBe("cancelled");
+      expect(summaries[1]!.counts).toBeUndefined();
+      expect(summaries[1]!.manualRetry).toEqual({ allowed: true });
+      expect(summaries[0]!.manualRetry).toEqual({ allowed: true });
+    });
+
+    it("restores every Run when the target message arrives on an older page", async () => {
+      const older = await userMessage(thread, "Older group turn");
+      const olderFirst = await cancelledRun({
+        botId: botA,
+        sourceMessageId: older.id,
+        createdAt: new Date(base + 3_000),
+      });
+      const olderSecond = await cancelledRun({
+        botId: botB,
+        sourceMessageId: older.id,
+        createdAt: new Date(base + 4_000),
+      });
+      await userMessage(thread, "newer turn 1");
+      await userMessage(thread, "newer turn 2");
+
+      // The older page carries only that message and its legacy (first) run id.
+      const page = await loadExecutionSummariesForMessages(prisma, {
+        threadId: thread,
+        spaceId: id,
+        messageIds: [older.id],
+        runIds: [olderFirst.id],
+      });
+      expect(page.map((item) => item.runId)).toEqual([olderFirst.id, olderSecond.id]);
+    });
+
+    it("never leaks Runs from another Thread or Space through a shared message id", async () => {
+      const message = await userMessage(thread, "Scoped turn");
+      const own = await cancelledRun({ botId: botA, sourceMessageId: message.id });
+      const crossThread = await cancelledRun({
+        botId: botB,
+        sourceMessageId: message.id,
+        threadId: foreignThread,
+        createdAt: new Date(base + 1_000),
+      });
+      const crossSpace = await cancelledRun({
+        botId: botB,
+        sourceMessageId: message.id,
+        threadId: foreignSpaceThread,
+        spaceId: foreignSpaceId,
+        createdAt: new Date(base + 2_000),
+      });
+
+      const summaries = await loadExecutionSummariesForMessages(prisma, {
+        threadId: thread,
+        spaceId: id,
+        messageIds: [message.id],
+        runIds: [own.id, crossThread.id, crossSpace.id],
+      });
+      expect(summaries.map((item) => item.runId)).toEqual([own.id]);
+    });
+
+    it("drops cleared Runs instead of leaking their existence through the source link", async () => {
+      const clearableThread = (
+        await prisma.thread.create({ data: { spaceId: id, userId: id, botId: botA } })
+      ).id;
+      const message = await userMessage(clearableThread, "Will be cleared");
+      const run = await cancelledRun({
+        botId: botA,
+        sourceMessageId: message.id,
+        threadId: clearableThread,
+      });
+      const before = await loadExecutionSummariesForMessages(prisma, {
+        threadId: clearableThread,
+        spaceId: id,
+        messageIds: [message.id],
+      });
+      expect(before.map((item) => item.runId)).toEqual([run.id]);
+
+      await clearThread(prisma, { spaceId: id, threadId: clearableThread, botId: botA });
+      const after = await loadExecutionSummariesForMessages(prisma, {
+        threadId: clearableThread,
+        spaceId: id,
+        messageIds: [message.id],
+      });
+      expect(after).toEqual([]);
+    });
   });
 });
