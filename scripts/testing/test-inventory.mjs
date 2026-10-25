@@ -187,6 +187,7 @@ const CLI_SOURCES = [
 const POSTGRES_ONLY = [
   "apps/api/src/group-queries.postgres.test.ts",
   "apps/api/src/group-thread-lock.postgres.test.ts",
+  "apps/api/src/thread-execution-projection.postgres.test.ts",
   "packages/adapters/src/bot-messages-pair.postgres.test.ts",
   "packages/adapters/src/cloud-agent.postgres.test.ts",
   "packages/adapters/src/execution-contract.postgres.test.ts",

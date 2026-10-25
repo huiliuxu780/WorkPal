@@ -70,7 +70,9 @@ import {
   loadCurrentRunPlans,
   loadCurrentRunSteps,
   loadCurrentRunTodos,
+  loadExecutionSnapshot,
   loadExecutionSummaries,
+  loadExecutionSummariesForMessages,
   loadInterventionViews,
   lockOwnedStandardGroupThread,
   type Prisma,
@@ -772,11 +774,15 @@ export async function threadSnapshot(
         );
         // HISTORY-001: per-Run execution summaries over the same bounded
         // window — active Runs, Runs with pending Interventions, and the
-        // recent terminal list. The FOR SHARE fence makes the summaries and
-        // the message page one consistent read.
-        const executions = await loadExecutionSummaries(tx, {
+        // recent terminal list. PD-01P adds every Run whose durable source
+        // message is on this page (multi-Bot group dispatch, older pages), so
+        // the message→Runs projection survives reload without treating
+        // `Message.runId` as exhaustive. The FOR SHARE fence makes the
+        // summaries and the message page one consistent read.
+        const executions = await loadExecutionSummariesForMessages(tx, {
           threadId: target.threadId,
           spaceId: target.spaceId,
+          messageIds: messagePage.messages.map((message) => message.id),
           runIds: [
             ...interventionRunWindow,
             ...(waitingRun ? [waitingRun.id] : []),
@@ -950,9 +956,10 @@ export async function threadSnapshot(
       ...activeRuns.map((run) => run.id),
       ...recentTerminals.map((run) => run.id),
     ]);
-    const executions = await loadExecutionSummaries(tx, {
+    const executions = await loadExecutionSummariesForMessages(tx, {
       threadId: target.threadId,
       spaceId: target.spaceId,
+      messageIds: messagePage.messages.map((message) => message.id),
       runIds: [
         ...activeRuns.map((run) => run.id),
         ...recentTerminals.map((run) => run.id),
@@ -1053,9 +1060,12 @@ export async function threadSnapshot(
 }
 
 /**
- * One history page plus the ExecutionSummaries of the Runs its messages belong
- * to (HISTORY-001): loading an older page restores its executions in the same
- * consistent read, independent of the recent-Run window.
+ * One history page plus the ExecutionSummaries of the Runs its messages
+ * triggered (HISTORY-001 + PD-01P): loading an older page restores every Run
+ * of each message — including the second and later Bot of a group turn — in
+ * the same consistent read, independent of the recent-Run window. The legacy
+ * `Message.runId` link stays in the union for old rows, but it is no longer
+ * the only message→Run path.
  */
 export async function threadMessagePage(
   deps: { prisma: PrismaClient },
@@ -1078,19 +1088,12 @@ export async function threadMessagePage(
       input.includePeerRuns,
       input.includePeerReceipts,
     );
-    const runIds = [
-      ...new Set(
-        page.messages.map((message) => message.runId).filter((id): id is string => Boolean(id)),
-      ),
-    ];
-    const executions =
-      runIds.length > 0
-        ? await loadExecutionSummaries(tx, {
-            threadId: target.threadId,
-            spaceId: target.spaceId,
-            runIds,
-          })
-        : [];
+    const executions = await loadExecutionSummariesForMessages(tx, {
+      threadId: target.threadId,
+      spaceId: target.spaceId,
+      messageIds: page.messages.map((message) => message.id),
+      runIds: page.messages.flatMap((message) => (message.runId ? [message.runId] : [])),
+    });
     return { ...page, executions };
   });
 }
