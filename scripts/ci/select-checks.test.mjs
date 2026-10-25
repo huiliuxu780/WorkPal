@@ -247,6 +247,30 @@ describe("classifyPath", () => {
     assert.match(instructions.webE2eSpec, /execution-card\.spec\.ts/);
   });
 
+  it("selects the worktree resource planner without narrowing harness or compose", () => {
+    for (const file of [
+      "packages/testkit/src/resources/leases.ts",
+      "packages/testkit/src/resources/plan.ts",
+      "packages/testkit/src/resources/doctor-main.ts",
+      "packages/testkit/src/resources/resources.test.ts",
+      "packages/testkit/src/cli/resources/doctor.ts",
+    ]) {
+      const jobs = classifyPath(file).jobs;
+      for (const job of ["harness", "backend", "agentscope"]) {
+        assert.ok(jobs.includes(job), `${file} missing ${job}`);
+      }
+    }
+    for (const file of [
+      "packages/testkit/src/cli/harness.ts",
+      "scripts/dev-workpal.mjs",
+      "infra/compose/docker-compose.yml",
+      "infra/compose/docker-compose.postgres-host.yml",
+    ]) {
+      const jobs = classifyPath(file).jobs;
+      for (const job of CHECK_JOBS) assert.ok(jobs.includes(job), `${file} missing ${job}`);
+    }
+  });
+
   it("forces full for contracts, lockfile, CI, and unknown source", () => {
     for (const file of [
       "packages/contracts/src/index.ts",
@@ -594,7 +618,7 @@ describe("workflow contract", () => {
       /harness_mode == 'full' \|\| needs\.select-checks\.outputs\.harness_mode == 'unit'/,
     );
     assert.match(yaml, /RESULT_HARNESS: \$\{\{\s*needs\.harness\.result\s*\}\}/);
-    assert.match(yaml, /\n      - harness\n/);
+    assert.match(yaml, /\n {6}- harness\n/);
   });
 });
 

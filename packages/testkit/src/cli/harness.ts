@@ -1,12 +1,20 @@
 import { execSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getRequestListener } from "@hono/node-server";
 import { deliveryDispatchJob } from "@rakazo/adapter-kit";
 import { enforceRunBudgets } from "@rakazo/adapters";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 import { createThreadEvents } from "@rakazo/db";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
+import {
+  allocateResources,
+  handoffPorts,
+  releaseResources,
+  requirePort,
+} from "../resources/leases.js";
+import { assertWorkpalE2eDatabaseUrl, taskSlugFrom } from "../resources/plan.js";
 import { startJavaRuntime } from "./java-runtime.js";
 import { runProcess } from "./process.js";
 
@@ -53,21 +61,25 @@ async function main() {
   // when a container runtime is unavailable. Integration suites still need clones.
   const externalDatabaseUrl = process.env.WORKPAL_E2E_DATABASE_URL;
   if (externalDatabaseUrl) {
-    const url = new URL(externalDatabaseUrl);
-    if (integration || !["localhost", "127.0.0.1"].includes(url.hostname) ||
-        !url.pathname.startsWith("/workpal_e2e_")) {
-      throw new Error("WORKPAL_E2E_DATABASE_URL must name a local workpal_e2e_ database in E2E mode");
-    }
+    assertWorkpalE2eDatabaseUrl(externalDatabaseUrl, integration ? "integration" : "e2e");
   }
-  const container = externalDatabaseUrl
-    ? undefined
-    : await new PostgreSqlContainer("postgres:16-alpine").start();
+  // Lease the ports before starting Postgres so a conflict fails closed.
+  const resources = await allocateResources({
+    purpose: "e2e",
+    cwd: process.cwd(),
+    taskSlug: taskSlugFrom(process.argv, process.env),
+    env: process.env,
+  });
+  const apiPort = requirePort(resources, "api");
+  const webPort = requirePort(resources, "web");
+  let container: Awaited<ReturnType<PostgreSqlContainer["start"]>> | undefined;
   let javaRuntime: Awaited<ReturnType<typeof startJavaRuntime>> | undefined;
   let javaRuntimeDirectory: string | undefined;
   try {
+    container = externalDatabaseUrl
+      ? undefined
+      : await new PostgreSqlContainer("postgres:16-alpine").start();
     const databaseUrl = externalDatabaseUrl ?? container!.getConnectionUri();
-    const apiPort = Number(process.env.API_PORT ?? 3110);
-    const webPort = Number(process.env.WEB_PORT ?? 5180);
     const webOrigin = `http://127.0.0.1:${webPort}`;
 
     process.env.DATABASE_URL = databaseUrl;
@@ -189,7 +201,6 @@ async function main() {
       { ComposioEmulator, EmailEmulator, PipedreamConnector, ThirdPartyConnectorEmulator },
       { createApp },
     ] = await Promise.all([import("@rakazo/adapters"), import("../../../../apps/api/src/app.ts")]);
-    const { serve } = await import("@hono/node-server");
     const thirdParties = new ThirdPartyConnectorEmulator();
     const pipedream = new PipedreamConnector(
       {
@@ -233,8 +244,11 @@ async function main() {
     budgetSweep?.unref?.();
     let activeRequests = 0;
     const requestWaiters = new Set<() => void>();
-    const server = serve({
-      fetch: async (request) => {
+    const server = resources.servers.api;
+    if (!server) throw new Error("port:api unassigned");
+    server.on(
+      "request",
+      getRequestListener(async (request) => {
         if (new URL(request.url).pathname === "/__e2e/emails") {
           return Response.json(email.sent, { headers: { "cache-control": "no-store" } });
         }
@@ -248,14 +262,15 @@ async function main() {
             requestWaiters.clear();
           }
         }
-      },
-      port: apiPort,
-      hostname: "127.0.0.1",
-    });
+      }, { hostname: "127.0.0.1" }),
+    );
+    server.ref();
     await waitForHealth(`http://127.0.0.1:${apiPort}/health`, 15_000);
 
     try {
       try {
+        // Vite binds WEB_PORT itself. The lease still reserves the number.
+        await handoffPorts(resources.key, ["web"]);
         await runProcess(
           "pnpm",
           [
@@ -345,6 +360,7 @@ async function main() {
     await javaRuntime?.stop();
     if (javaRuntimeDirectory) await rm(javaRuntimeDirectory, { recursive: true, force: true });
     await container?.stop().catch(() => undefined);
+    await releaseResources(resources).catch(() => undefined);
   }
 }
 

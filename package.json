@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev-workpal.mjs",
+    "agent:doctor": "tsx packages/testkit/src/cli/resources/doctor.ts",
     "dev:app": "cross-env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 turbo dev --filter=@rakazo/api --filter=@rakazo/worker --filter=@rakazo/web --filter=@rakazo/sandbox-supervisor",
     "dev:agentscope": "mvn -q -f services/agent-runtime/pom.xml package -DskipTests && java -jar services/agent-runtime/target/agent-runtime-0.1.0.jar",
     "build": "turbo build",

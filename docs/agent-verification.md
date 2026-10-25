@@ -270,3 +270,25 @@ injection warnings must not be mistaken for compliance with the injection.
 Keep functional criteria deterministic. Add a model judge only for a quality
 that cannot be graded directly, with a versioned rubric and human calibration.
 Do not let a judge override forbidden effects or missing artifacts.
+
+## Worktree resource isolation
+
+`pnpm agent:doctor` prints the current worktree plan: a stable task id, ports,
+Compose project, volume names, database name, data directory label, and lease
+label. It also lists conflicts and stale leases. The task id comes from a
+normalized worktree path or an explicit `--task` slug. Doctor output omits the
+machine user name and absolute paths.
+
+Ports that the API, Playwright, and Compose must know before they bind are
+reserved by a locked lease. The operating system assigns the port while that
+lock is held, so two worktrees do not probe the same port and then race to bind
+it. `pnpm test:e2e` still starts a private Testcontainer unless
+`WORKPAL_E2E_DATABASE_URL` names a local `workpal_e2e_` database that no other
+active lease holds. Integration runs reject that external URL and keep
+per-suite database clones.
+
+Dev Compose reads `COMPOSE_PROJECT_NAME`, `API_HOST_PORT`, `WEB_HOST_PORT`,
+`POSTGRES_HOST_PORT`, and `WORKPAL_COMPOSE_DATA_DIR`. Named volumes are
+project-scoped. `pnpm agent:doctor --compose-down` removes only the current
+project. After a crash, `pnpm agent:doctor` reports that lease as stale and
+`pnpm agent:doctor --recover` clears only the current worktree's stale lease.
