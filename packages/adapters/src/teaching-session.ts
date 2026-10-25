@@ -21,6 +21,7 @@ import {
   IsolationError,
   type Prisma,
   type PrismaClient,
+  settleReleasedSteeringForBot,
   type ThreadEvents,
 } from "@rakazo/db";
 import { revokeScreenControl } from "./computer-control.js";
@@ -229,6 +230,7 @@ async function finalizeTeachingRecording(
         stoppedAt: new Date(),
       },
     });
+    await settleReleasedSteeringForBot(tx, skill.botId);
     // The stopped event must commit with the status flip; appended afterwards it is lost for
     // good when the process dies in between, because retries see a draft and skip it.
     const bot = await tx.bot.findUnique({

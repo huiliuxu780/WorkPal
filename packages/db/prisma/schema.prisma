@@ -678,6 +678,9 @@ model Run {
   modelProvider        String?
   modelId              String?
   error                String?
+  /// Typed cancellation policy. Null on runs that were not cancelled through it.
+  /// Never derived from `error` text.
+  cancelReason         String?
   leaseOwner           String?
   leaseFence           Int              @default(0)
   leaseExpiresAt       DateTime?
@@ -948,6 +951,32 @@ model DeliveryRecord {
   @@index([deliveryRunId])
   @@index([backgroundTaskId])
   @@map("delivery_records")
+}
+
+/// Durable delegation-cancel intent. No foreign keys: bot and run deletion must
+/// not drop the one outcome owed to the requester. `idempotencyKey` is
+/// `auto-outcome:<runId>`.
+model CancelOutcomeOutbox {
+  id               String    @id
+  idempotencyKey   String    @unique
+  runId            String
+  spaceId          String
+  userId           String
+  senderBotId      String
+  senderName       String
+  threadId         String
+  sourceMessageId  String?
+  originThreadId   String?
+  originRunId      String?
+  originMessageId  String?
+  reason           String
+  /// Moved to now after a failed delivery so one stuck row cannot block the batch.
+  lastAttemptAt    DateTime  @default(now())
+  deliveredAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([deliveredAt, reason, lastAttemptAt])
+  @@map("cancel_outcome_outbox")
 }
 
 model SteeringMessage {

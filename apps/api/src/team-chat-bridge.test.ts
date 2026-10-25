@@ -1296,7 +1296,11 @@ describe("team chat bridge", () => {
             run: {
               updateManyAndReturn: runUpdateManyAndReturn,
               findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
+              findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+                args?.where?.trigger ? [] : [],
+              ),
             },
+            steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
             attempt: { updateMany: vi.fn() },
             task: { updateMany: taskUpdateMany },
             thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },

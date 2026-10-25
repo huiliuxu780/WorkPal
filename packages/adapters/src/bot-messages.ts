@@ -290,6 +290,7 @@ async function messageBotInAgentPair(
   input: { message: string; intent: BotMessageIntent; deliveryKey?: string },
   context: PrivateMessageContext,
   mode: PairDeliveryMode,
+  options?: { allowTypedCancel?: boolean },
 ): Promise<
   | {
       ok: true;
@@ -361,8 +362,17 @@ async function messageBotInAgentPair(
           // automatic outcome and a live explicit result/status, so the source
           // may still be running when it answers through the origin.
           status: writesToOrigin
-            ? { in: ["completed", "failed", "running"] }
-            : "running",
+            ? {
+                in: [
+                  "completed",
+                  "failed",
+                  "running",
+                  ...(options?.allowTypedCancel ? (["cancelled"] as const) : []),
+                ],
+              }
+            : options?.allowTypedCancel
+              ? { in: ["running", "cancelled"] }
+              : "running",
         },
         select: { id: true, orchestration: true },
       });
@@ -572,6 +582,7 @@ async function messageBotInAgentPair(
             ? context.sourceContext.returnToMessageId
             : undefined,
         markUnread: false,
+        allowTypedCancel: options?.allowTypedCancel,
       });
       let receiptMessageId = origin?.messageId;
       const receiptBlock: MessageBlock = {
@@ -593,6 +604,7 @@ async function messageBotInAgentPair(
           runId: run.id,
           clientNonce: receiptNonce,
           markUnread: false,
+          allowTypedCancel: options?.allowTypedCancel,
         });
         receiptMessageId = receipt.id;
       }
@@ -635,9 +647,12 @@ async function messageBotInAgentPair(
         },
       });
       const lineage = collaborationFromOrchestration(activeSource.orchestration);
+      // A typed cancel outcome resumes the requester. Its cancelled child cannot
+      // be the wake's parent, or the child sweep and history guard stop it.
+      const wakeParentRunId = options?.allowTypedCancel && origin ? origin.runId : run.id;
       const lineageInput = {
         fromBotId: sender.id,
-        parentRunId: run.id,
+        parentRunId: wakeParentRunId,
         handoffDepth: lineage?.handoffDepth ?? 0,
         messageHop: context.hop,
       };
@@ -645,7 +660,7 @@ async function messageBotInAgentPair(
         ? outcomeResumptionCollaboration({
             role: resumptionRole,
             fromBotId: sender.id,
-            parentRunId: run.id,
+            parentRunId: wakeParentRunId,
             handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
             messageHop: context.hop,
           })
@@ -709,6 +724,7 @@ async function messageBotInAgentPair(
         botId: mode.target.id,
         type: "thread.message.created",
         runId: nextRun.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
       });
       const outboundEvent = await appendEventInTransaction(tx, {
@@ -717,6 +733,7 @@ async function messageBotInAgentPair(
         botId: sender.id,
         type: "thread.message.created",
         runId: run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
       });
       let receiptEventSeq = 0;
@@ -728,6 +745,7 @@ async function messageBotInAgentPair(
             botId: sender.id,
             type: "thread.message.created",
             runId: run.id,
+            allowTypedCancel: options?.allowTypedCancel,
             payload: {
               messageId: receiptMessageId,
               role: "bot",
@@ -745,6 +763,7 @@ async function messageBotInAgentPair(
             ? "thread.collaboration.result"
             : "thread.collaboration.requested",
         runId: writesToOrigin ? nextRun.id : run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: {
           fromBotId: sender.id,
           toBotId: mode.target.id,
@@ -856,6 +875,8 @@ export async function messageBot(
   },
   options?: {
     allowTerminalSource?: boolean;
+    /** Typed cancel outcome only. Does not treat every terminal status as returnable. */
+    allowTypedCancel?: boolean;
     /** Outcome-return callers supply the resolved upstream origin directly. */
     originOverride?: { threadId: string; runId: string; messageId: string };
   },
@@ -924,6 +945,7 @@ export async function messageBot(
         { message, intent, deliveryKey: input.deliveryKey },
         pairContext,
         { kind: "origin_outcome", origin, target: resolved.target },
+        options,
       );
     }
     // Nested delegation: this run was resumed by a child's outcome, so its own
@@ -950,6 +972,7 @@ export async function messageBot(
           { message, intent, deliveryKey: input.deliveryKey },
           pairContext,
           { kind: "origin_outcome", origin: upstream.origin, target: resolved.target },
+          options,
         );
       }
     }
@@ -973,6 +996,7 @@ export async function messageBot(
       { message, intent, deliveryKey: input.deliveryKey },
       pairContext,
       { kind: "request", target: resolved.target, pair },
+      options,
     );
   }
   // private_pair off: bot-level messaging keeps its pre-roundtable contract —
@@ -1131,8 +1155,16 @@ export async function messageBot(
             // allowTerminalSource covers the sanctioned reply paths: the
             // terminal automatic outcome and a live explicit result/status,
             // so a still-running source may answer its requester.
+            // allowTypedCancel adds cancelled only for a typed cancel outcome.
             status: options?.allowTerminalSource
-              ? { in: ["completed", "failed", "running"] }
+              ? {
+                  in: [
+                    "completed",
+                    "failed",
+                    "running",
+                    ...(options.allowTypedCancel ? (["cancelled"] as const) : []),
+                  ],
+                }
               : "running",
           },
           select: { id: true },
@@ -1163,6 +1195,7 @@ export async function messageBot(
           blocks: [outboundBlock],
           botId: run.botId,
           runId: run.id,
+          allowTypedCancel: options?.allowTypedCancel,
         });
         const inboundBlock: MessageBlock = {
           kind: "bot_message_received",
@@ -1197,9 +1230,11 @@ export async function messageBot(
           },
         });
         const lineage = collaborationFromOrchestration(run.orchestration);
+        const wakeParentRunId =
+          options?.allowTypedCancel && run.originRunId ? run.originRunId : run.id;
         const lineageInput = {
           fromBotId: sender.id,
-          parentRunId: run.id,
+          parentRunId: wakeParentRunId,
           handoffDepth: lineage?.handoffDepth ?? 0,
           messageHop: hop,
         };
@@ -1207,7 +1242,7 @@ export async function messageBot(
           ? outcomeResumptionCollaboration({
               role: resumptionRole,
               fromBotId: sender.id,
-              parentRunId: run.id,
+              parentRunId: wakeParentRunId,
               handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
               messageHop: hop,
             })
@@ -1245,6 +1280,7 @@ export async function messageBot(
           botId: target.id,
           type: "thread.message.created",
           runId: nextRun.id,
+          allowTypedCancel: options?.allowTypedCancel,
           payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
         });
         const outboundEvent = await appendEventInTransaction(tx, {
@@ -1253,6 +1289,7 @@ export async function messageBot(
           botId: run.botId,
           type: "thread.message.created",
           runId: run.id,
+          allowTypedCancel: options?.allowTypedCancel,
           payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
         });
         // Structured collaboration events for observability and the Phase 4
@@ -1267,6 +1304,7 @@ export async function messageBot(
           type:
             intent === "result" ? "thread.collaboration.result" : "thread.collaboration.requested",
           runId: returnsToSender ? nextRun.id : run.id,
+          allowTypedCancel: options?.allowTypedCancel,
           payload: {
             fromBotId: sender.id,
             toBotId: target.id,
@@ -1358,6 +1396,7 @@ async function messageBotInCurrentGroup(
     userId: string;
     sourceMessageId?: string | null;
     orchestration?: unknown;
+    originRunId?: string | null;
   },
   sender: { id: string; name: string },
   input: {
@@ -1368,7 +1407,7 @@ async function messageBotInCurrentGroup(
     deliveryKey?: string;
   },
   context: CurrentGroupMessageContext,
-  options?: { allowTerminalSource?: boolean },
+  options?: { allowTerminalSource?: boolean; allowTypedCancel?: boolean },
 ): Promise<
   | (PublicGroupDelivery & {
       ok: true;
@@ -1469,7 +1508,14 @@ async function messageBotInCurrentGroup(
             // Same sanctioned-reply relaxation as the private paths: a live
             // explicit result/status answers its requester from a running run.
             status: options?.allowTerminalSource
-              ? { in: ["completed", "failed", "running"] }
+              ? {
+                  in: [
+                    "completed",
+                    "failed",
+                    "running",
+                    ...(options?.allowTypedCancel ? (["cancelled"] as const) : []),
+                  ],
+                }
               : "running",
           },
           select: { id: true, orchestration: true },
@@ -1642,6 +1688,7 @@ async function messageBotInCurrentGroup(
         blocks: [outboundBlock],
         botId: run.botId,
         runId: run.id,
+        allowTypedCancel: options?.allowTypedCancel,
       });
       const inboundBlock: MessageBlock = {
         kind: "bot_message_received",
@@ -1674,9 +1721,11 @@ async function messageBotInCurrentGroup(
         },
       });
       const lineage = collaborationFromOrchestration(activeSource.orchestration);
+      const wakeParentRunId =
+        options?.allowTypedCancel && run.originRunId ? run.originRunId : run.id;
       const lineageInput = {
         fromBotId: sender.id,
-        parentRunId: run.id,
+        parentRunId: wakeParentRunId,
         handoffDepth: lineage?.handoffDepth ?? 0,
         messageHop: hop,
       };
@@ -1684,7 +1733,7 @@ async function messageBotInCurrentGroup(
         ? outcomeResumptionCollaboration({
             role: resumptionRole,
             fromBotId: sender.id,
-            parentRunId: run.id,
+            parentRunId: wakeParentRunId,
             handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
             messageHop: hop,
           })
@@ -1719,6 +1768,7 @@ async function messageBotInCurrentGroup(
         botId: target.id,
         type: "thread.message.created",
         runId: nextRun.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
       });
       const outboundEvent = await appendEventInTransaction(tx, {
@@ -1727,6 +1777,7 @@ async function messageBotInCurrentGroup(
         botId: run.botId,
         type: "thread.message.created",
         runId: run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
       });
       const collaborationEvent = await appendEventInTransaction(tx, {
@@ -1738,6 +1789,7 @@ async function messageBotInCurrentGroup(
             ? "thread.collaboration.result"
             : "thread.collaboration.requested",
         runId: returnsToSender ? nextRun.id : run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: {
           fromBotId: sender.id,
           toBotId: target.id,
@@ -1837,6 +1889,7 @@ export async function returnBotMessageOutcome(
   sender: { id: string; name: string },
   text: string,
   intent: "result" | "status" = "result",
+  options?: { allowTypedCancel?: boolean },
 ) {
   const source = await loadBotMessageContext(deps.prisma, run.sourceMessageId);
   if (!source) {
@@ -1894,18 +1947,33 @@ export async function returnBotMessageOutcome(
       // One key per run so status vs result (executor vs reconciler) cannot double-deliver.
       deliveryKey: `auto-outcome:${run.id}`,
     },
-    { allowTerminalSource: true, ...(originOverride ? { originOverride } : {}) },
+    {
+      allowTerminalSource: true,
+      ...(options?.allowTypedCancel ? { allowTypedCancel: true } : {}),
+      ...(originOverride ? { originOverride } : {}),
+    },
   );
-  if (outcome.ok) await markBotOutcomeReturned(deps.prisma, run.id);
+  if (outcome.ok) await markBotOutcomeReturned(deps.prisma, run.id, options);
   return outcome.ok;
 }
 
-async function markBotOutcomeReturned(prisma: PrismaClient, runId: string) {
+async function markBotOutcomeReturned(
+  prisma: PrismaClient,
+  runId: string,
+  options?: { allowTypedCancel?: boolean },
+) {
   await prisma.run.updateMany({
     where: {
       id: runId,
-      status: { in: ["completed", "failed"] },
       botOutcomeReturnedAt: null,
+      ...(options?.allowTypedCancel
+        ? {
+            OR: [
+              { status: { in: ["completed", "failed"] } },
+              { status: "cancelled", cancelReason: { not: null } },
+            ],
+          }
+        : { status: { in: ["completed", "failed"] } }),
     },
     data: { botOutcomeReturnedAt: new Date() },
   });

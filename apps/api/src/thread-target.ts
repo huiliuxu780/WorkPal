@@ -53,7 +53,10 @@ import {
   answerSingleOrdinaryTextInTransaction,
   appendEventInTransaction,
   cancelChildrenOfCancelledRuns,
-  cancelRunsInTransaction,
+  applyCancelTerminalPolicy,
+  cancelEventPayload,
+  cancelPolicyFor,
+  supersededCancelPolicy,
   createGroupRepos,
   createRepos,
   createThreadMessageInTransaction,
@@ -420,18 +423,39 @@ export async function cancelSupersededQueuedRuns(
     select: { id: true, taskId: true, threadId: true, spaceId: true, botId: true },
   });
   if (superseded.length === 0) return [];
-  const cancelled = await cancelRunsInTransaction(tx, superseded, new Date());
-  for (const run of cancelled) {
-    await appendEventInTransaction(tx, {
-      spaceId: run.spaceId,
-      threadId: run.threadId,
-      botId: run.botId,
-      runId: run.id,
-      type: "run.cancelled",
-      payload: { reason: "superseded" },
-    });
+  const keep = await tx.run.findMany({
+    where: { id: { in: input.keepRunIds } },
+    select: { id: true, botId: true, threadId: true, status: true },
+  });
+  const active = ["queued", "leased", "running", "waiting_input", "waiting_takeover"];
+  const cancelledIds: string[] = [];
+  const byBot = new Map<string, typeof superseded>();
+  for (const run of superseded) {
+    const group = byBot.get(run.botId) ?? [];
+    group.push(run);
+    byBot.set(run.botId, group);
   }
-  return cancelled.map((run) => run.id);
+  for (const [botId, runs] of byBot) {
+    const replacements = keep.filter(
+      (candidate) =>
+        candidate.botId === botId &&
+        candidate.threadId === input.threadId &&
+        active.includes(candidate.status),
+    );
+    const policy =
+      replacements.length === 1
+        ? supersededCancelPolicy({
+            disposition: "migrate",
+            replacementRunId: replacements[0]!.id,
+          })
+        : supersededCancelPolicy({ disposition: "retain_unhandled" });
+    const settled = await applyCancelTerminalPolicy(tx, runs, new Date(), {
+      policy,
+      replacementRunId: "replacementRunId" in policy ? policy.replacementRunId : undefined,
+    });
+    cancelledIds.push(...settled.rows.map((run) => run.id));
+  }
+  return cancelledIds;
 }
 
 async function finishSupersededCancellation(
@@ -1698,17 +1722,19 @@ export async function stopThreadRuns(
       },
       select: { id: true, taskId: true },
     });
-    const cancelled = await cancelRunsInTransaction(tx, activeRuns, new Date());
+    const settled = await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+      policy: cancelPolicyFor("user_stopped"),
+      appendEvents: false,
+      abandonThreadSteering: {
+        threadId: target.threadId,
+        botIds: target.kind === "bot" ? [target.botId] : target.memberBotIds,
+      },
+    });
+    const cancelled = settled.rows;
     const ids = cancelled.map((run) => run.id);
     await tx.backgroundAgentTask?.updateMany({
       where: { threadId: target.threadId, status: "running" },
       data: { status: "cancelling" },
-    });
-    await tx.steeringMessage.deleteMany({
-      where: {
-        botId: { in: target.kind === "bot" ? [target.botId] : target.memberBotIds },
-        message: { threadId: target.threadId },
-      },
     });
     // Snapshot teardown coordinates before commit. Once cancellation becomes
     // visible, a worker can release its lease / execution columns immediately; a
@@ -1752,7 +1778,7 @@ export async function stopThreadRuns(
         botId: run.botId,
         type: "run.cancelled",
         runId: run.id,
-        payload: {},
+        payload: cancelEventPayload(cancelPolicyFor("user_stopped")),
       });
       eventSeq = event.seq;
     }
@@ -1907,19 +1933,19 @@ export async function stopThreadRuns(
         select: { id: true, taskId: true, status: true, threadId: true, spaceId: true, botId: true },
       });
       if (!run || !(ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) return null;
-      const settled = await cancelRunsInTransaction(tx, [run], new Date());
-      if (settled.length === 0) return null;
-      await tx.run.update({
-        where: { id: run.id },
-        data: { error: "parent_cancelled" },
+      const settled = await applyCancelTerminalPolicy(tx, [run], new Date(), {
+        policy: cancelPolicyFor("parent_cancelled"),
+        cancelOptions: { error: "parent_cancelled" },
+        appendEvents: false,
       });
+      if (settled.rows.length === 0) return null;
       await appendEventInTransaction(tx, {
         spaceId: run.spaceId,
         threadId: run.threadId,
         botId: run.botId,
         runId: run.id,
         type: "run.cancelled",
-        payload: { reason: "parent_cancelled" },
+        payload: cancelEventPayload(cancelPolicyFor("parent_cancelled")),
       });
       // Snapshot teardown coordinates before commit, mirroring the visible
       // path: once the cancellation is visible, a worker can release the lease

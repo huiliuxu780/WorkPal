@@ -3435,7 +3435,9 @@ describe("groups.archive", () => {
         update: groupUpdate,
       },
       run: {
-        findMany: vi.fn().mockResolvedValue([{ id: "run-1", taskId: "task-1" }]),
+        findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+          args?.where?.trigger ? [] : [{ id: "run-1", taskId: "task-1" }],
+        ),
         updateManyAndReturn: vi.fn().mockResolvedValue([
           {
             id: "run-1",
@@ -3449,6 +3451,7 @@ describe("groups.archive", () => {
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
+      steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
       thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
       computerExecutionLease: {
         findMany: vi

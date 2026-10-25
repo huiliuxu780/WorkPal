@@ -476,6 +476,19 @@
             <option value="F-DEDUPE">重复投递被幂等抑制</option>
             <option value="F-PARTIAL">部分失败，主持人仍可收尾</option>
           </optgroup>
+          <optgroup label="取消收尾 · 待确认文案">
+            <option value="K-STOP">用户按下停止</option>
+            <option value="K-WAIT">等待太久后取消</option>
+            <option value="K-PLAN">方案未被采纳</option>
+            <option value="K-BUDGET">预算用尽后取消</option>
+            <option value="K-TEACH">开始教学后取消委托</option>
+            <option value="K-REMOVED">成员离开后消息未处理</option>
+            <option value="K-GROUP">群归档后消息未处理</option>
+            <option value="K-ARCHIVED">Agent 归档后消息未处理</option>
+            <option value="K-DELETED">Agent 删除后消息未处理</option>
+            <option value="K-REPLACE">新工作接上补充</option>
+            <option value="K-RETAIN">没有可接替的工作时未处理</option>
+          </optgroup>
         </select></label>
         <div class="demo-nav">
           <button class="nav-button" id="prevBtn">←</button><span class="step-count" id="stepCount">1 / 8</span><button class="nav-button" id="nextBtn">→</button>
@@ -945,6 +958,104 @@
         ],
         activity: [{ who: "blue", label: "性能结果已完成", status: "done" }, { who: "purple", label: "证据复核失败", status: "error" }],
         work: { summary: "1 成功 · 1 失败", roots: [{ title: "发布方案", desc: "已有结果可用，复核缺失", status: "部分完成", items: [{ who: "blue", name: "小蓝", task: "性能基线", state: "已完成", className: "done", progress: 100, meta: "有结果" }, { who: "purple", name: "小紫", task: "第三方证据复核", state: "已超时", className: "error", progress: 48, meta: "无结果" }] }] }
+      },
+      {
+        id: "K-STOP", category: "取消收尾", title: "用户按下停止", note: "待确认。用户明确停止后，追加的话不再继续，也不自动告诉委托方已取消。",
+        messages: [
+          { type: "user", html: "先停一下。" },
+          { type: "user", html: "等等，再补一句低端机数据。" },
+          { type: "system", html: "已停止。你刚补充的那句话不会再继续处理。" }
+        ],
+        activity: [{ who: "blue", label: "小蓝已停止", status: "stopped" }],
+        work: { summary: "已停止", roots: [{ title: "性能调查", desc: "用户按下停止", status: "已停止", items: [{ who: "blue", name: "小蓝", task: "低端机补测", state: "已停止", className: "muted", progress: 40, meta: "不再继续" }] }] }
+      },
+      {
+        id: "K-WAIT", category: "取消收尾", title: "等待太久后取消", note: "待确认。委托方收到一次取消说明，用户补充的话会在没有其他工作时继续。",
+        messages: [
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "已取消：等太久了，这项委托没有完成。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "我看到你补充的低端机要求，现在接着看。" }
+        ],
+        activity: [{ who: "blue", label: "小蓝继续处理你的补充", status: "running" }],
+        work: { summary: "补充继续", roots: [{ title: "性能调查", desc: "原委托已取消", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "低端机补测", state: "进行中", className: "run", progress: 12, meta: "接着处理" }] }] }
+      },
+      {
+        id: "K-PLAN", category: "取消收尾", title: "方案未被采纳", note: "待确认。方案被拒绝后，委托方收到不同的取消说明。",
+        messages: [
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "已取消：方案没有被采纳，这项委托已结束。" }
+        ],
+        activity: [{ who: "orange", label: "方案未采纳 · 已结束", status: "stopped" }],
+        work: { summary: "已结束", roots: [{ title: "首屏方案", desc: "方案未被采纳", status: "已停止", items: [{ who: "orange", name: "小橙", task: "B 版导出", state: "已停止", className: "muted", progress: 70, meta: "未采纳" }] }] }
+      },
+      {
+        id: "K-BUDGET", category: "取消收尾", title: "预算用尽后取消", note: "待确认。预算取消使用自己的说明，不显示内部原因。",
+        messages: [
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "已取消：已超出预算，这项委托已停止。" }
+        ],
+        activity: [{ who: "blue", label: "预算已用尽 · 已停止", status: "stopped" }],
+        work: { summary: "已停止", roots: [{ title: "性能调查", desc: "预算已用尽", status: "已停止", items: [{ who: "blue", name: "小蓝", task: "完整基线", state: "已停止", className: "muted", progress: 80, meta: "预算" }] }] }
+      },
+      {
+        id: "K-TEACH", category: "取消收尾", title: "开始教学后取消委托", note: "待确认。教学期间不新开工作；教学结束后，仍可工作的成员再处理补充。",
+        messages: [
+          { who: "joy", name: "Joy", role: "主持 Agent", html: "已取消：对方开始教学，这项委托已停下。" },
+          { type: "system", html: "小蓝正在教学。你补充的话会在教学结束后再处理。" }
+        ],
+        activity: [{ who: "blue", label: "小蓝教学中 · 补充稍后处理", status: "waiting" }],
+        work: { summary: "教学中", roots: [{ title: "性能调查", desc: "教学结束后再继续", status: "稍后", items: [{ who: "blue", name: "小蓝", task: "低端机补测", state: "稍后", className: "wait", progress: 20, meta: "教学中" }] }] }
+      },
+      {
+        id: "K-REMOVED", category: "取消收尾", title: "成员离开后消息未处理", note: "待确认。原消息保留，并只出现一次需要重新指定的说明。",
+        messages: [
+          { type: "user", html: "<span class='mention orange'>@小橙</span> 把移动端断点再收一档。" },
+          { type: "system", html: "未处理：小橙已经不在这个群里。这条消息还在，请重新指定一位成员。" }
+        ],
+        activity: [{ who: "orange", label: "小橙已离开 · 消息未处理", status: "error" }],
+        work: { summary: "需要重新指定", roots: [{ title: "首屏方案", desc: "原消息仍在", status: "未处理", items: [{ who: "orange", name: "小橙", task: "移动端断点", state: "未处理", className: "error", progress: 0, meta: "请重新指定" }] }] }
+      },
+      {
+        id: "K-GROUP", category: "取消收尾", title: "群归档后消息未处理", note: "待确认。群不能再继续时，不新开工作。",
+        messages: [
+          { type: "user", html: "把今天的结论发我。" },
+          { type: "system", html: "未处理：这个群已归档。这条消息还在，请重新指定一位成员。" }
+        ],
+        activity: [{ who: "joy", label: "群已归档 · 消息未处理", status: "stopped" }],
+        work: { summary: "需要重新指定", roots: [{ title: "发布结论", desc: "群已归档", status: "未处理", items: [{ who: "joy", name: "Joy", task: "汇总结论", state: "未处理", className: "muted", progress: 0, meta: "请重新指定" }] }] }
+      },
+      {
+        id: "K-ARCHIVED", category: "取消收尾", title: "Agent 归档后消息未处理", note: "待确认。已归档的成员不能再接新工作。",
+        messages: [
+          { type: "user", html: "<span class='mention orange'>@小橙</span> 再出一版间距。" },
+          { type: "system", html: "未处理：小橙已归档。这条消息还在，请重新指定一位成员。" }
+        ],
+        activity: [{ who: "orange", label: "小橙已归档 · 消息未处理", status: "stopped" }],
+        work: { summary: "需要重新指定", roots: [{ title: "首屏方案", desc: "成员已归档", status: "未处理", items: [{ who: "orange", name: "小橙", task: "间距修订", state: "未处理", className: "muted", progress: 0, meta: "请重新指定" }] }] }
+      },
+      {
+        id: "K-DELETED", category: "取消收尾", title: "Agent 删除后消息未处理", note: "待确认。已删除的成员不能再接新工作。",
+        messages: [
+          { type: "user", html: "<span class='mention purple'>@小紫</span> 帮我看一下证据。" },
+          { type: "system", html: "未处理：小紫已删除。这条消息还在，请重新指定一位成员。" }
+        ],
+        activity: [{ who: "purple", label: "小紫已删除 · 消息未处理", status: "error" }],
+        work: { summary: "需要重新指定", roots: [{ title: "证据复核", desc: "成员已删除", status: "未处理", items: [{ who: "purple", name: "小紫", task: "证据复核", state: "未处理", className: "error", progress: 0, meta: "请重新指定" }] }] }
+      },
+      {
+        id: "K-REPLACE", category: "取消收尾", title: "新工作接上补充", note: "待确认。被新工作替换时，补充跟着新工作走，不另外显示未处理。",
+        messages: [
+          { type: "user", html: "改成只看移动端。" },
+          { who: "blue", name: "小蓝", role: "性能 Agent", html: "新的要求已经接上，刚才那条补充也算进去了。" }
+        ],
+        activity: [{ who: "blue", label: "小蓝按新要求继续", status: "running" }],
+        work: { summary: "已接上", roots: [{ title: "性能调查", desc: "补充已并入新工作", status: "进行中", items: [{ who: "blue", name: "小蓝", task: "只看移动端", state: "进行中", className: "run", progress: 18, meta: "含补充" }] }] }
+      },
+      {
+        id: "K-RETAIN", category: "取消收尾", title: "没有可接替的工作时未处理", note: "待确认。不能迁到新工作时，保留原消息并说明未处理。",
+        messages: [
+          { type: "user", html: "把桌面端也补上。" },
+          { type: "system", html: "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。" }
+        ],
+        activity: [{ who: "blue", label: "没有可接替的工作", status: "error" }],
+        work: { summary: "需要重新指定", roots: [{ title: "性能调查", desc: "原消息仍在", status: "未处理", items: [{ who: "blue", name: "小蓝", task: "桌面端补测", state: "未处理", className: "error", progress: 0, meta: "请重新指定" }] }] }
       }
     ];
 

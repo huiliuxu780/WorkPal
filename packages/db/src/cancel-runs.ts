@@ -17,6 +17,8 @@ export type CancelRunsOptions = {
   error?: string;
   attemptError?: string;
   clearCheckpoint?: boolean;
+  /** Typed policy code. Callers must not copy this from `error`. */
+  cancelReason?: string;
   /** Extra predicates, ANDed with the active-status guard, so a raced transition is left alone. */
   match?: Prisma.RunWhereInput;
 };
@@ -61,6 +63,7 @@ export async function cancelRunsInTransaction(
       leaseOwner: null,
       leaseExpiresAt: null,
       ...(options?.error ? { error: options.error } : {}),
+      ...(options?.cancelReason ? { cancelReason: options.cancelReason } : {}),
       ...(options?.clearCheckpoint ? { checkpoint: null } : {}),
     },
     select: { id: true, taskId: true, threadId: true, spaceId: true, botId: true },

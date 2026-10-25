@@ -33,7 +33,6 @@ import {
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
-import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { enqueueDeliveryInTransaction } from "./delivery-records.js";
@@ -73,6 +72,8 @@ export interface AppendEventInput {
   type: ProductEvent["type"];
   payload: Record<string, unknown>;
   runId?: string;
+  /** Typed cancel outcome only. Lets the cancelled owner write its one outcome. */
+  allowTypedCancel?: boolean;
   schemaVersion?: number;
   causationId?: string;
   parentRunId?: string;
@@ -450,7 +451,12 @@ export async function clearThread(
       select: { id: true, taskId: true },
     });
     const now = new Date();
-    const cancelledRuns = await cancelRunsInTransaction(tx, activeRuns, now);
+    const { applyCancelTerminalPolicy, cancelPolicyFor } = await import("./cancel-terminal.js");
+    const cancelled = await applyCancelTerminalPolicy(tx, activeRuns, now, {
+      policy: cancelPolicyFor("thread_cleared"),
+      appendEvents: false,
+    });
+    const cancelledRuns = cancelled.rows;
     const runIds = cancelledRuns.map((run) => run.id);
     await tx.backgroundAgentTask?.updateMany({
       where: { threadId: input.threadId, status: "running" },
@@ -873,27 +879,27 @@ export async function commitAnswerRunInput(
     }
     const now = new Date();
     const reason = selectedChoice.id === "narrow_scope" ? "budget_narrowed" : "budget_cancelled";
-    const cancelledRows = await cancelRunsInTransaction(
+    const { applyCancelTerminalPolicy, cancelPolicyFor } = await import("./cancel-terminal.js");
+    const cancelledRows = await applyCancelTerminalPolicy(
       tx,
       [{ id: input.runId, taskId: run.taskId }],
       now,
       {
-        error: reason,
-        clearCheckpoint: true,
-        match: { status: "waiting_input", waitKind: "input" },
+        policy: cancelPolicyFor(reason),
+        cancelOptions: {
+          error: reason,
+          clearCheckpoint: true,
+          match: { status: "waiting_input", waitKind: "input" },
+        },
       },
     );
-    if (cancelledRows.length !== 1) throw new Error("Budget Run was no longer waiting");
+    if (cancelledRows.rows.length !== 1) throw new Error("Budget Run was no longer waiting");
     await expireComputerExecutionLeases(tx, { runId: input.runId });
-    const cancelled = await appendEventInTransaction(tx, {
-      spaceId: input.spaceId,
+    return {
       threadId: input.threadId,
-      botId: run.botId,
-      type: "run.cancelled",
-      runId: input.runId,
-      payload: { reason },
-    });
-    return { threadId: cancelled.threadId, seq: cancelled.seq, cancelledRunId: input.runId };
+      seq: cancelledRows.eventSeq ?? 0,
+      cancelledRunId: input.runId,
+    };
   }
 
   // UX-02 unified plan review: the decision binds to the exact plan version the
@@ -1004,29 +1010,25 @@ export async function commitAnswerRunInput(
         resolvedByUserId: input.answeredByUserId,
         clientSubmissionId: input.clientSubmissionId,
       });
-      const cancelledRows = await cancelRunsInTransaction(
+      const { applyCancelTerminalPolicy, cancelPolicyFor } = await import("./cancel-terminal.js");
+      const cancelledRows = await applyCancelTerminalPolicy(
         tx,
         [{ id: input.runId, taskId: run.taskId }],
         new Date(),
         {
-          error: "plan_rejected",
-          clearCheckpoint: true,
-          match: { status: "waiting_input", waitKind: "approval" },
+          policy: cancelPolicyFor("plan_rejected"),
+          cancelOptions: {
+            error: "plan_rejected",
+            clearCheckpoint: true,
+            match: { status: "waiting_input", waitKind: "approval" },
+          },
         },
       );
-      if (cancelledRows.length !== 1) throw new Error("Plan review Run was no longer waiting");
+      if (cancelledRows.rows.length !== 1) throw new Error("Plan review Run was no longer waiting");
       await expireComputerExecutionLeases(tx, { runId: input.runId });
-      const cancelled = await appendEventInTransaction(tx, {
-        spaceId: input.spaceId,
-        threadId: input.threadId,
-        botId: run.botId,
-        type: "run.cancelled",
-        runId: input.runId,
-        payload: { reason: "plan_rejected" },
-      });
       return {
-        threadId: cancelled.threadId,
-        seq: cancelled.seq,
+        threadId: input.threadId,
+        seq: cancelledRows.eventSeq ?? 0,
         cancelledRunId: input.runId,
       };
     }
@@ -2137,16 +2139,20 @@ async function finalizeRunOnce(
         data: { runId: null },
       });
     }
-    const continuationRunId = await createSteeringContinuation(tx, input);
+    const continuationRunId = await continueReleasedSteeringInTransaction(tx, input);
     await tx.bot.update({ where: { id: input.botId }, data: { updatedAt: now } });
     return { threadId: lastEvent.threadId, seq: lastSeq, continuationRunId };
   });
 }
 
-async function createSteeringContinuation(
+/** One queued continuation for released steering. Does not acquire session admission. */
+export async function continueReleasedSteeringInTransaction(
   tx: Prisma.TransactionClient,
-  input: FinalizeRunBase,
+  input: { spaceId: string; threadId: string; botId: string },
 ): Promise<string | null> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.botId}), hashtext(${input.threadId}))`;
+  const { botMayContinueConversation } = await import("./cancel-terminal.js");
+  if (!(await botMayContinueConversation(tx, input.botId, input.threadId))) return null;
   const active = await tx.run.findFirst({
     where: {
       threadId: input.threadId,
@@ -2241,7 +2247,9 @@ export async function appendEventInTransaction(
   if (input.type === "run.cancelled") {
     await assertRunIsCancelled(tx, input.runId);
   } else if (input.type !== "thread.artifact") {
-    await assertRunCanWriteHistory(tx, input.runId);
+    await assertRunCanWriteHistory(tx, input.runId, {
+      allowTypedCancel: input.allowTypedCancel,
+    });
   }
   // Unpaired UTF-16 surrogates (e.g. a split emoji high half) are invalid JSON for Postgres.
   const payload = sanitizeJsonValue(input.payload);

@@ -89,10 +89,14 @@ describe("archiveGroup", () => {
     queryRaw = vi.fn().mockResolvedValue([{ id: "group-1" }]);
     findUnique = vi.fn().mockResolvedValue({ thread: { id: "thread-1" } });
     findFirst = vi.fn().mockResolvedValue({ thread: { id: "thread-1" } });
-    findManyRuns = vi.fn().mockResolvedValue([
-      { id: "run-1", taskId: "task-1" },
-      { id: "run-legacy", taskId: "task-legacy" },
-    ]);
+    findManyRuns = vi.fn(async (args?: { where?: { trigger?: string } }) =>
+      args?.where?.trigger
+        ? []
+        : [
+            { id: "run-1", taskId: "task-1" },
+            { id: "run-legacy", taskId: "task-legacy" },
+          ],
+    );
     // computer-1 matches production: the lease is ownership, executionRunId stays unset.
     // computer-legacy is the executionRunId fallback for a run with no lease row.
     // computer-2's executionRunId names a reclaimed run; resume must not follow that column.
@@ -232,6 +236,11 @@ describe("archiveGroup", () => {
       },
       attempt: { updateMany: attemptUpdateMany },
       task: { updateMany: taskUpdateMany },
+      steeringMessage: {
+        findMany: vi.fn().mockResolvedValue([]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
       thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
       computerExecutionLease: { findMany: leaseFindMany, updateMany: leaseUpdateMany },
       computer: { findMany: findManyComputers, updateMany: computerUpdateMany },

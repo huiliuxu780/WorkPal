@@ -36,6 +36,10 @@ function fakePrisma(
     routine: { findMany: vi.fn(async () => routines) },
     computer: { findMany: vi.fn(async () => controls) },
     messagingOutbound: { findFirst: vi.fn(async () => null) },
+    cancelOutcomeOutbox: {
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
   } as unknown as PrismaClient;
 }
 
@@ -82,6 +86,136 @@ describe("createJobReconciler", () => {
       payload: {},
       replaceKey: "messaging.deliver:drain",
     });
+  });
+
+  it("delivers the confirmed typed-cancel sentence once", async () => {
+    const prisma = fakePrisma();
+    vi.mocked(prisma.cancelOutcomeOutbox.findMany).mockResolvedValue([
+      {
+        id: "outcome-1",
+        runId: "run-cancelled",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        senderBotId: "bot-1",
+        senderName: "Researcher",
+        threadId: "thread-1",
+        sourceMessageId: "message-1",
+        originThreadId: null,
+        originRunId: null,
+        originMessageId: null,
+        reason: "wait_timeout",
+      },
+    ] as never);
+    vi.mocked(returnBotMessageOutcome).mockClear();
+    vi.mocked(returnBotMessageOutcome).mockResolvedValue(true);
+    const { jobs } = publisher();
+    const events = { notify: vi.fn() } as unknown as ThreadEvents;
+
+    await createJobReconciler({ prisma, jobs, events }).reconcileOnce();
+
+    expect(returnBotMessageOutcome).toHaveBeenCalledWith(
+      { prisma, jobs, events },
+      {
+        id: "run-cancelled",
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        botId: "bot-1",
+        userId: "user-1",
+        sourceMessageId: "message-1",
+        originThreadId: null,
+        originRunId: null,
+        originMessageId: null,
+      },
+      { id: "bot-1", name: "Researcher" },
+      "已取消：等太久了，这项委托没有完成。",
+      "status",
+      { allowTypedCancel: true },
+    );
+    expect(prisma.cancelOutcomeOutbox.updateMany).toHaveBeenCalledWith({
+      where: { id: "outcome-1", deliveredAt: null },
+      data: { deliveredAt: expect.any(Date) },
+    });
+  });
+
+  it("rotates a failed cancel outcome so it cannot block newer rows", async () => {
+    const prisma = fakePrisma();
+    const rows = [
+      {
+        id: "outcome-old",
+        runId: "run-old",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        senderBotId: "bot-1",
+        senderName: "Researcher",
+        threadId: "thread-1",
+        sourceMessageId: "message-1",
+        originThreadId: null,
+        originRunId: null,
+        originMessageId: null,
+        reason: "wait_timeout",
+        lastAttemptAt: new Date("2026-01-01T00:00:00Z"),
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      },
+      {
+        id: "outcome-new",
+        runId: "run-new",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        senderBotId: "bot-1",
+        senderName: "Researcher",
+        threadId: "thread-1",
+        sourceMessageId: "message-2",
+        originThreadId: null,
+        originRunId: null,
+        originMessageId: null,
+        reason: "wait_timeout",
+        lastAttemptAt: new Date("2026-01-02T00:00:00Z"),
+        createdAt: new Date("2026-01-02T00:00:00Z"),
+      },
+    ];
+    vi.mocked(prisma.cancelOutcomeOutbox.findMany).mockImplementation((async (
+      args: { take?: number } = {},
+    ) => {
+      const ordered = [...rows].sort(
+        (a, b) => a.lastAttemptAt.getTime() - b.lastAttemptAt.getTime(),
+      );
+      return ordered.slice(0, args.take ?? ordered.length);
+    }) as never);
+    vi.mocked(prisma.cancelOutcomeOutbox.updateMany).mockImplementation((async (args: {
+      where?: { id?: string };
+      data?: { lastAttemptAt?: Date };
+    }) => {
+      const row = rows.find((item) => item.id === args.where?.id);
+      if (row && args.data?.lastAttemptAt) row.lastAttemptAt = args.data.lastAttemptAt;
+      return { count: row ? 1 : 0 };
+    }) as never);
+    vi.mocked(returnBotMessageOutcome).mockClear();
+    vi.mocked(returnBotMessageOutcome).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const { jobs } = publisher();
+    const events = { notify: vi.fn() } as unknown as ThreadEvents;
+    const reconciler = createJobReconciler({ prisma, jobs, events }, { batchSize: 1 });
+
+    await reconciler.reconcileOnce();
+    expect(prisma.cancelOutcomeOutbox.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ lastAttemptAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+        take: 1,
+      }),
+    );
+    expect(prisma.cancelOutcomeOutbox.updateMany).toHaveBeenCalledWith({
+      where: { id: "outcome-old", deliveredAt: null },
+      data: { lastAttemptAt: expect.any(Date) },
+    });
+
+    await reconciler.reconcileOnce();
+    expect(returnBotMessageOutcome).toHaveBeenLastCalledWith(
+      { prisma, jobs, events },
+      expect.objectContaining({ id: "run-new" }),
+      { id: "bot-1", name: "Researcher" },
+      "已取消：等太久了，这项委托没有完成。",
+      "status",
+      { allowTypedCancel: true },
+    );
   });
 
   it("restores a completed messaging run that was not durably mirrored", async () => {
@@ -229,6 +363,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: computerFindMany },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
     } as unknown as PrismaClient;
     const { jobs, enqueue } = publisher();
     const reconciler = createJobReconciler({ prisma, jobs }, { batchSize: 2 });
@@ -292,6 +430,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: routineFindMany },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
     } as unknown as PrismaClient;
     const { jobs, enqueue } = publisher();
     const reconciler = createJobReconciler({ prisma, jobs }, { batchSize: 2 });
@@ -364,6 +506,7 @@ describe("createJobReconciler", () => {
   });
 
   it("retries terminal bot outcomes that were not returned", async () => {
+    vi.mocked(returnBotMessageOutcome).mockClear();
     const terminalRun = {
       id: "run-terminal",
       spaceId: "workspace-1",
@@ -389,6 +532,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           { blocks: [{ kind: "text", text: "Finished." }], clientNonce: null },
@@ -454,6 +601,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           {
@@ -505,6 +656,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           {
@@ -556,6 +711,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           {

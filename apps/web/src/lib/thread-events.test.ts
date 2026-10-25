@@ -199,6 +199,38 @@ describe("thread event reduction", () => {
     expect(next?.cursor).toBe(4);
   });
 
+  it("applies a persisted system cancellation notice", () => {
+    const next = reduceThreadSnapshot(
+      snapshot([]),
+      event({
+        type: "thread.message.created",
+        seq: 4,
+        payload: {
+          messageId: "notice-1",
+          role: "system",
+          blocks: [
+            {
+              kind: "text",
+              text: "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。",
+            },
+          ],
+          notice: "steering_unhandled",
+          reason: "superseded",
+        },
+      }),
+    );
+
+    expect(next?.messages.find((message) => message.id === "notice-1")).toMatchObject({
+      role: "system",
+      blocks: [
+        {
+          kind: "text",
+          text: "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。",
+        },
+      ],
+    });
+  });
+
   it("appends a quoted reply carrying its excerpt", () => {
     const initial = snapshot([message("message-1", [{ kind: "text", text: "Done" }], 1)]);
 
