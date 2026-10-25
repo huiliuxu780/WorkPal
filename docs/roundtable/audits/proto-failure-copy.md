@@ -88,10 +88,10 @@ npx --yes playwright@1.63.0 screenshot --viewport-size="430,900" \
 
 ```text
 $ node docs/roundtable/verify-ui-conformance.mjs
-roundtable UI conformance verified: 31 tasks (backend-only 13, direct-ui 5, ui-projection-contract 13), 12 conflicts, 7 remediation tasks, 55 evidence refs
+roundtable UI conformance verified: 31 tasks (backend-only 13, direct-ui 5, ui-projection-contract 13), 12 conflicts, 7 remediation tasks, 56 evidence refs
 
 $ node docs/roundtable/verify-prototype-copy.mjs
-roundtable prototype copy verified: 0/7 forbidden terms, 9 required anchors present
+roundtable prototype copy verified: 0/7 forbidden terms, 11 required anchors present
 ```
 
 ## 5. 需要用户确认的原型缺口
@@ -151,3 +151,9 @@ DESIGN.md 新增「活动胶囊状态点」边界条款，并修订覆盖计数�
 二轮截图（1440×900 与 390×900 各一组）存于 `test-report/proto-rulings-screenshots/`（gitignored，路径随 PR 评论提供）：X-GROUP-APPROVE、X-GROUP-FAIL、F-RETRY（含工作页）、F-PARTIAL、F-OFFLINE、Q-UNAVAILABLE（该场景无活动胶囊，重拍确认视觉未变）。`docs/roundtable/audits/evidence/prototype/` 中受影响的 committed 证据同步重拍，并新增 `branch-X-GROUP-APPROVE.png`。
 
 校验器全过（输出见 PR 评论）：`verify-prototype-copy.mjs`、`verify-ui-conformance.mjs`、`verify-implementation-plan.mjs`、`node --test verify-implementation-plan.test.mjs`、`node --test verify-ui-conformance.test.mjs`。
+
+### 7.4 最终收敛重拍（2026-10-25）
+
+- 发现 `main-stage-7.png` 与 `narrow-main-stage-7.png` 仍是裁决 #5 之前的旧图，缺少授权范围行「授权给 小橙 · 允许 发布到预览环境（仅一次）」。已在最终原型上重拍并替换。
+- 对其余 16 张本 PR 变更截图逐像素复验：在最终原型上以相同视口重拍（等待 1500ms 消除入场动画）后与 committed 证据完全一致。
+- 验证计数更新为最终状态：56 evidence refs、11 required anchors。
