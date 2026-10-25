@@ -25,6 +25,7 @@ export const BRANCH_IDS = [
   "A-AMBIGUOUS",
   "X-GROUP",
   "X-BOT",
+  "X-GROUP-APPROVE",
   "X-GROUP-FAIL",
   "X-RETURN",
   "Q-REVERSE",

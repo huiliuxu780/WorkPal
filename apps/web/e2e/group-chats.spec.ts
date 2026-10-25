@@ -36,7 +36,9 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await page.route("**/rpc/groups/create", async (route) => route.abort("failed"));
   await createDialog.getByRole("button", { name: "Create group", exact: true }).click();
   await expect(createDialog.getByRole("alert")).toHaveText("Failed to fetch");
-  await expect(createDialog.getByRole("button", { name: "Create group", exact: true })).toBeEnabled();
+  await expect(
+    createDialog.getByRole("button", { name: "Create group", exact: true }),
+  ).toBeEnabled();
   await page.unroute("**/rpc/groups/create");
   await createDialog.getByRole("button", { name: "Create group", exact: true }).click();
   await page.waitForURL(/\/app\/g\/[^/]+$/);
@@ -147,7 +149,9 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await expect(
     page.getByTestId("mention-chip").filter({ hasText: "Research Writer" }),
   ).toBeVisible();
-  await composer.fill("turn the sources into a draft. @Res");
+  // Keep the first structured mention in the draft: fill() replaces the whole
+  // value and a mention chip is removed once its token leaves the text.
+  await composer.fill("@Research Writer turn the sources into a draft. @Res");
   await page.getByRole("option", { name: "@Researcher", exact: true }).click();
   await expect(page.getByTestId("mention-chip").filter({ hasText: "Researcher" })).toBeVisible();
   await composer.fill(`${await composer.inputValue()}gather sources.`);
@@ -186,7 +190,11 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await expect(
     page.getByTestId("mention-chip").filter({ hasText: "Research Writer" }),
   ).toBeVisible();
-  await composer.fill("ask me which city to use");
+  // Keep the structured mention: replacing the draft would drop the chip and
+  // the message would be consumed as an answer to the open ask instead of
+  // starting a new Run.
+  await composer.press("End");
+  await composer.type("ask me which city to use");
   await composer.press("Enter");
   // threads/get can observe waiting_input before the shell realtime feed paints the ask card.
   await expect
@@ -252,8 +260,12 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await sidebarRow(page, "Draft team").click();
   await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible();
 
-  await composer.fill(
-    "@Researcher write path notes/group-preview.md and attach it to the thread says # Group artifact",
+  await composer.fill("@Res");
+  await page.getByRole("option", { name: "@Researcher", exact: true }).click();
+  await expect(page.getByTestId("mention-chip").filter({ hasText: "Researcher" })).toBeVisible();
+  await composer.press("End");
+  await composer.type(
+    "write path notes/group-preview.md and attach it to the thread says # Group artifact",
   );
   await composer.press("Enter");
   const groupMarkdown = page.getByRole("button", { name: "Preview group-preview.md" });

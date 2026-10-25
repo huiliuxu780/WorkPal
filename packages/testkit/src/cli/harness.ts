@@ -94,6 +94,12 @@ async function main() {
     process.env.DATA_DIR = path.join(reportDir, "data");
     process.env.SIGNUPS_ENABLED = "true";
     process.env.SIGNUP_ALLOWLIST = "";
+    // The in-process E2E API exercises the gated cross-session handoff when
+    // that spec runs; the production default stays closed. Integration suites
+    // opt in themselves.
+    if (!integration && (!e2eSpec || e2eSpec.includes("message-group.spec.ts"))) {
+      process.env.ROUNDTABLE_MESSAGE_GROUP_ENABLED = "true";
+    }
     process.env.CI = "1";
     if (integration || agentRuntime === "agentscope") {
       javaRuntimeDirectory = await mkdtemp(path.join(reportDir, "runtime-"));

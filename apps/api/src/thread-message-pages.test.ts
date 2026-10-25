@@ -112,6 +112,51 @@ describe("thread message pages", () => {
     expect(page.messages[0]).not.toHaveProperty("authorUserId");
   });
 
+  it("admits a projected peer-run takeover card and keeps execution noise hidden", async () => {
+    // RT-05F: the delegated run executes elsewhere; its projected computer
+    // card lives in THIS thread and must page through, while an identical
+    // computer-only row inside the run own execution thread stays hidden.
+    const findMany = vi.fn(async () => [
+      {
+        id: "message-user",
+        threadId: "thread-1",
+        runId: "run-user",
+        seq: 3,
+        blocks: [{ kind: "text", text: "hello" }],
+        createdAt: new Date("2026-08-16T00:00:03.000Z"),
+      },
+      {
+        id: "message-projected-card",
+        threadId: "thread-1",
+        runId: "run-peer",
+        seq: 2,
+        blocks: [{ kind: "computer", state: "Needs you", text: "Finish the login" }],
+        createdAt: new Date("2026-08-16T00:00:02.000Z"),
+      },
+      {
+        id: "message-execution-noise",
+        threadId: "thread-pair",
+        runId: "run-peer",
+        seq: 1,
+        blocks: [{ kind: "computer", state: "Needs you", text: "hidden pair noise" }],
+        createdAt: new Date("2026-08-16T00:00:01.000Z"),
+      },
+    ]);
+    const prisma = {
+      message: { findMany },
+      run: {
+        findMany: vi.fn(async () => [{ id: "run-peer", threadId: "thread-pair" }]),
+      },
+    } as unknown as PrismaClient;
+
+    const page = await loadMessagePage(prisma, "thread-1", undefined, 3);
+
+    expect([...page.messages.map((message) => message.id)].sort()).toEqual([
+      "message-projected-card",
+      "message-user",
+    ]);
+  });
+
   it("filters peer-run activity when its receipt is outside the loaded page", async () => {
     const findMany = vi.fn(async () => [
       {

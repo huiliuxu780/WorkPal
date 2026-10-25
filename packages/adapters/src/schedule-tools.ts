@@ -8,6 +8,7 @@ import {
   ONCE_ROUTINE_CRON,
 } from "@rakazo/core";
 import {
+  CHAT_GROUP_KIND_AGENT_PAIR,
   createThreadPolicy,
   IsolationError,
   type PrismaClient,
@@ -30,12 +31,22 @@ export function filterBuiltinToolsForThread<T extends { name: string }>(
   tools: T[],
   groupId: string | null | undefined,
   publicCollaborationEnabled = false,
+  groupKind: string | null | undefined = null,
+  messageGroupEnabled = false,
 ): T[] {
   return tools.filter((tool) => {
+    if (tool.name === "message_group") return !groupId && messageGroupEnabled;
     if (!groupId) return tool.name !== "handoff_to_bot";
     // In a group, message_bot is only safe once dispatch posts into the shared
     // Thread instead of the target bot's DM. The server gate owns that rollout.
-    if (tool.name === "message_bot") return publicCollaborationEnabled;
+    if (tool.name === "message_bot") {
+      // A pair Thread only exists through the gated private delivery path, and
+      // the delegated chain finishes there: message_bot is its reply surface
+      // (clarification, interim status, explicit result), so it does not
+      // depend on the independent public-collaboration gate.
+      if (groupKind === CHAT_GROUP_KIND_AGENT_PAIR) return true;
+      return publicCollaborationEnabled;
+    }
     return true;
   });
 }

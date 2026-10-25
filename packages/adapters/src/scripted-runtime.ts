@@ -62,11 +62,23 @@ export class ScriptedAgentRuntime implements AgentRuntime {
         return;
       }
       const script = request.script ?? inferScript(request.prompt, request.resumeFromCheckpoint);
+      // FIX-127 parity with the persisted-state Runtime: a Run resumed after
+      // its ask was answered continues past that ask instead of asking again.
+      // The real Runtime resolves the pending ask_user call with a
+      // "User response: <answer>" SUCCESS tool result and never replays the
+      // turns before it (they already executed in the paused attempt), so
+      // playback starts after the answered ask turn. Turns that follow the ask
+      // keep playing; scripts without an ask turn (approval, secret, takeover
+      // fixtures) replay unchanged because their pauses are tool-driven.
+      const answeredAskIndex =
+        request.resumeAnswer === undefined ? -1 : script.findIndex((turn) => Boolean(turn.ask));
+      const firstTurnIndex = answeredAskIndex >= 0 ? answeredAskIndex + 1 : 0;
       // Per-run call index so repeated tools (e.g. message_agent) get distinct
       // executionIds — delivery keys and effect replays key off this value.
       let toolCallSeq = 0;
-      let turnIndex = 0;
-      for (const turn of script) {
+      let turnIndex = firstTurnIndex;
+      for (let index = firstTurnIndex; index < script.length; index += 1) {
+        const turn = script[index]!;
         if (signal.aborted || controller.signal.aborted) {
           yield { type: "done", text: "stopped" };
           return;
@@ -76,6 +88,16 @@ export class ScriptedAgentRuntime implements AgentRuntime {
         // (the revision flash must not depend on a race).
         if (turnIndex > 0 && /paced tracked plan/i.test(request.prompt)) {
           await abortableDelay(4_000, controller.signal);
+          if (signal.aborted || controller.signal.aborted) {
+            yield { type: "done", text: "stopped" };
+            return;
+          }
+        }
+        // RT-11 fixture: keep the cross-group owner Run visibly in progress long
+        // enough for the source receipt's X-GROUP state to be asserted and
+        // captured before the terminal result reverses it.
+        if (turnIndex === 0 && /check the launch performance risk/i.test(request.prompt)) {
+          await abortableDelay(12_000, controller.signal);
           if (signal.aborted || controller.signal.aborted) {
             yield { type: "done", text: "stopped" };
             return;
@@ -155,6 +177,16 @@ export class ScriptedAgentRuntime implements AgentRuntime {
       // Step path), "todo" publishes only Todos (the 事项清单 fallback path).
       if (/fail this (?:tracked|todo) run/i.test(request.prompt)) {
         throw new Error("Scripted run failure");
+      }
+      if (answeredAskIndex >= 0) {
+        // The persisted-state Runtime hands the model the answer as the
+        // ask_user tool result and the model finishes acknowledging it; the
+        // deterministic analog echoes the answer in the run summary (the same
+        // "done. i handled: …" idiom as summarize()).
+        const answered = `done. i handled: ${request.resumeAnswer ?? ""}`;
+        yield { type: "text", text: answered };
+        yield { type: "done", text: answered };
+        return;
       }
       yield { type: "text", text: "done." };
       yield { type: "done", text: "done." };
@@ -492,6 +524,50 @@ export function inferScript(
       {
         assistant: "running it on my computer.",
         toolCalls: [{ name: "shell", args: { command: shellCommand } }],
+        complete: true,
+      },
+    ];
+  }
+  // Deterministic message_group fixture: a direct-chat request takes new work
+  // to an existing group; the target group Run and the source return Run each
+  // get their own fixed reply so the closed loop is observable end to end.
+  if (lower.includes("group_result")) {
+    return [
+      {
+        assistant:
+          "I brought the result back: Friday can still ship behind a 10% rollout. Lazy-load the chart bundle first; the main image costs about 0.6s and does not block. Purple will re-check the evidence before release.",
+        complete: true,
+      },
+    ];
+  }
+  const groupTarget =
+    /take the performance risk review to the group named\s+["“]?([^"”\n]+?)["”]?\s*[.!?]?\s*$/i.exec(
+      prompt,
+    )?.[1]?.trim();
+  if (groupTarget) {
+    return [
+      {
+        assistant: "going to that room now.",
+        toolCalls: [
+          {
+            name: "message_group",
+            args: {
+              confirm_name: groupTarget,
+              message: "Check the launch performance risk and report back.",
+              intent: "request",
+              topic: "性能风险核对",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ];
+  }
+  if (lower.includes("check the launch performance risk")) {
+    return [
+      {
+        assistant:
+          "Group result: ship Friday behind a 10% rollout after the chart bundle is lazy-loaded. The main image costs about 0.6s and does not block. Purple should re-check the evidence before release.",
         complete: true,
       },
     ];

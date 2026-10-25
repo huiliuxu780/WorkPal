@@ -1,4 +1,5 @@
 import { ONCE_ROUTINE_CRON } from "@rakazo/core";
+import { CHAT_GROUP_KIND_AGENT_PAIR } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   cancelScheduleFromTool,
@@ -134,6 +135,7 @@ describe("filterBuiltinToolsForThread", () => {
   const tools = [
     { name: "handoff_to_bot" },
     { name: "message_bot" },
+    { name: "message_group" },
     { name: "schedule_create" },
     { name: "schedule_list" },
     { name: "schedule_cancel" },
@@ -171,10 +173,38 @@ describe("filterBuiltinToolsForThread", () => {
     ).not.toContain("message_bot");
   });
 
+  it("opens message_group only in a direct chat with its own gate", () => {
+    const names = (groupId: string | null, enabled: boolean) =>
+      filterBuiltinToolsForThread(tools, groupId, false, null, enabled).map((tool) => tool.name);
+    expect(names(null, true)).toContain("message_group");
+    expect(names(null, false)).not.toContain("message_group");
+    expect(names("group-1", true)).not.toContain("message_group");
+    expect(names("pair-1", true)).not.toContain("message_group");
+  });
+
+  it("keeps message_bot in pair threads regardless of the public-collaboration gate", () => {
+    // A pair Thread only exists through the gated private delivery path; the
+    // delegated chain needs message_bot to reply (clarify, interim status,
+    // explicit result), so the independent public gate must not remove it.
+    expect(
+      filterBuiltinToolsForThread(tools, "pair-1", false, CHAT_GROUP_KIND_AGENT_PAIR).map(
+        (tool) => tool.name,
+      ),
+    ).toContain("message_bot");
+    // A standard group keeps the public-gate behavior.
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", false, "standard").map((tool) => tool.name),
+    ).not.toContain("message_bot");
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", true, "standard").map((tool) => tool.name),
+    ).toContain("message_bot");
+  });
+
   it("hides schedule creation from routine runs without removing schedule management", () => {
     expect(filterBuiltinToolsForRun(tools, "routine").map((tool) => tool.name)).toEqual([
       "handoff_to_bot",
       "message_bot",
+      "message_group",
       "schedule_list",
       "schedule_cancel",
       "remember",

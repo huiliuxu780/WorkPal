@@ -4930,3 +4930,83 @@ msgstr "Your rules"
 #: src/pages/Welcome.tsx
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "Your team of always-on agents<0/>that you can give real work to."
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "{botName} has entered “{groupName}”"
+msgstr "{botName} has entered “{groupName}”"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "At the table"
+msgstr "At the table"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Brought back"
+msgstr "Brought back"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Go to the room ↗"
+msgstr "Go to the room ↗"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "I reorganized it around your question"
+msgstr "I reorganized it around your question"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Not completed"
+msgstr "Not completed"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Open the message in {groupName}"
+msgstr "Open the message in {groupName}"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Reading the discussion and taking over “{topic}”."
+msgstr "Reading the discussion and taking over “{topic}”."
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Taken over · In progress"
+msgstr "Taken over · In progress"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The full record is still available"
+msgstr "The full record is still available"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The record is kept for review"
+msgstr "The record is kept for review"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The result came from “{groupName}”"
+msgstr "The result came from “{groupName}”"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The room keeps the full evidence, the discussion, and the follow-up work."
+msgstr "The room keeps the full evidence, the discussion, and the follow-up work."
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "the target room"
+msgstr "the target room"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "this work"
+msgstr "this work"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "This work was cancelled. The room record can still be reviewed."
+msgstr "This work was cancelled. The room record can still be reviewed."
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "This work was not completed. The room record can still be reviewed."
+msgstr "This work was not completed. The room record can still be reviewed."
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "View the room ↗"
+msgstr "View the room ↗"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Work in “{groupName}” was cancelled"
+msgstr "Work in “{groupName}” was cancelled"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Work in “{groupName}” was not completed"
+msgstr "Work in “{groupName}” was not completed"

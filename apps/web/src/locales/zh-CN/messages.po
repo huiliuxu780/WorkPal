@@ -4930,3 +4930,83 @@ msgstr "我的规则"
 #: src/pages/Welcome.tsx
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "你的一支随时在线的 Agent 团队<0/>可以交给它们真正的工作。"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "{botName} has entered “{groupName}”"
+msgstr "{botName} 已进入「{groupName}」"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "At the table"
+msgstr "已入席"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Brought back"
+msgstr "已带回"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Go to the room ↗"
+msgstr "去现场看看 ↗"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "I reorganized it around your question"
+msgstr "我已经按你的问题重新整理"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Not completed"
+msgstr "未完成"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Open the message in {groupName}"
+msgstr "打开 {groupName} 中的消息"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Reading the discussion and taking over “{topic}”."
+msgstr "正在阅读现场讨论，并接手“{topic}”。"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Taken over · In progress"
+msgstr "已接手 · 正在推进"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The full record is still available"
+msgstr "完整现场可追溯"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The record is kept for review"
+msgstr "现场记录保留可查"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The result came from “{groupName}”"
+msgstr "结论来自「{groupName}」"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "The room keeps the full evidence, the discussion, and the follow-up work."
+msgstr "圆桌里保留了完整证据、成员讨论和后续分工。"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "the target room"
+msgstr "目标群"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "this work"
+msgstr "这项工作"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "This work was cancelled. The room record can still be reviewed."
+msgstr "这项工作已取消，现场记录仍可查看。"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "This work was not completed. The room record can still be reviewed."
+msgstr "这项工作没有完成，现场记录仍可查看。"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "View the room ↗"
+msgstr "查看现场 ↗"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Work in “{groupName}” was cancelled"
+msgstr "「{groupName}」中的工作已取消"
+
+#: src/components/ai/GroupDestinationReceipt.tsx
+msgid "Work in “{groupName}” was not completed"
+msgstr "「{groupName}」中的工作未完成"
