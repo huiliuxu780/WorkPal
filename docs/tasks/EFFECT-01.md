@@ -1,6 +1,6 @@
 # EFFECT-01 外部动作执行权栅栏
 
-状态：`not-started`
+状态：`done`
 
 ## 目标
 
@@ -30,3 +30,13 @@
 ## 与现有计划的关系
 
 EFFECT-01 是 [RT-19](../roundtable/roundtable-implementation-plan.md#rt-19-收紧取消成员和资源边界) 的前置安全修复，也是 RT-30 的故障验收项。不要等 Roundtable 全部完成后才处理。
+
+## 交付记录（2026-10-25）
+
+已合并：PR [#134](https://github.com/huiliuxu780/WorkPal/pull/134)，merge commit `4705171`，post-merge main CI [run 40172733328](https://github.com/huiliuxu780/WorkPal/actions/runs/40172733328) 全绿。
+
+- 统一入口 `claimExternalEffectForExecution`：Run 行 `FOR UPDATE` → 按数据库当前时间校验 `status`/`leaseOwner`/`leaseFence`/`leaseExpiresAt` → ExternalEffect 行 `FOR UPDATE` → 再次按 `clock_timestamp()` 校验 → 同事务更新 `executing`。Run 行锁是线性化点；取消、回收、续期与 claim 共享该锁序。
+- `approved` 与 `intended` 共用上述入口；plan record 工具与 `request_secret` 在 review/secret 暂停期间保持 `intended`，恢复时读取持久化决定。`agent.tool.called` 通过同一执行身份栅栏。
+- 验收 1–5 由 22 个真实 PostgreSQL 并发测试覆盖：17 个 claim（含过期 lease、接管后旧 Worker 拒绝、取消、owner/fence 不匹配、effect 归属、双并发恰好一个成功、cancel/reclaim/renew 与 claim 并发、锁等待跨过过期）与 5 个 fenced event 写入；executor 定向测试计数的 provider 调用为：正常 approved 1 次、正常 intended 1 次、stale/过期/取消/接管 0 次、双并发 1 次。
+- 验收 6：CI db-postgres 21 files / 228 tests、backend 189 tests、worker-chain、AgentScope（含 plan approval/resume E2E 11/11）与类型检查全绿。
+- 边界：未修改前端、权限、feature gate 或生产配置；未部署。
