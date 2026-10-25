@@ -445,6 +445,7 @@ describe("GroupQueries.listArtifacts", () => {
         spaceId: actor.spaceId,
         userId: actor.userId,
         archivedAt: null,
+        kind: "standard",
       },
       include: expect.anything(),
     });

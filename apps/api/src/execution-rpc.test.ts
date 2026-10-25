@@ -39,10 +39,23 @@ function executionDeps(input: {
 }) {
   const emptyFind = vi.fn().mockResolvedValue([]);
   const tx = {
-    // FOR SHARE lock statement + grouped raw scans: every raw query resolves
-    // to no rows here, so rev stays 0 and the anchors are resolved from the
-    // message rows the detail pass reads directly.
-    $queryRaw: vi.fn().mockResolvedValue([]),
+    // FOR SHARE lock statement + grouped raw scans. The generation fence keeps
+    // a terminal Run only while a lifecycle event survives, so the ceilings
+    // scan returns one; every other raw query resolves to no rows.
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
+      const sql = strings.join("?");
+      if (sql.includes('"events"') && sql.includes('"lifecycleSeq"')) {
+        return [
+          {
+            runId: "run-1",
+            seq: 12,
+            lifecycleSeq: 12,
+            lastEventAt: new Date("2026-10-12T00:01:00.000Z"),
+          },
+        ];
+      }
+      return [];
+    }),
     run: {
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         (input.runs ?? []).find(
@@ -56,7 +69,28 @@ function executionDeps(input: {
       findUnique: vi.fn(async () => null),
     },
     task: { findMany: emptyFind },
-    message: { findMany: vi.fn().mockResolvedValue(input.messages ?? []), findFirst: vi.fn().mockResolvedValue(null) },
+    message: {
+      findMany: vi.fn(
+        async ({
+          where,
+          orderBy,
+        }: {
+          where?: { role?: string; runId?: string };
+          orderBy?: { seq?: "asc" | "desc" };
+        } = {}) => {
+          let rows = (input.messages ?? []).filter(
+            (row: any) =>
+              (!where?.role || row.role === where.role) &&
+              (!where?.runId || row.runId === where.runId),
+          );
+          if (orderBy?.seq === "desc") {
+            rows = [...rows].sort((a: any, b: any) => Number(b.seq ?? 0) - Number(a.seq ?? 0));
+          }
+          return rows;
+        },
+      ),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     event: {
       findMany: emptyFind,
       findFirst: vi.fn().mockResolvedValue(null),
@@ -116,9 +150,17 @@ describe("runs.executionSnapshot", () => {
         {
           id: "message-ask",
           runId: "run-1",
+          role: "bot",
+          seq: 1,
           blocks: [{ kind: "ask", text: "City?", status: "answered", answer: "Paris" }],
         },
-        { id: "message-result", runId: "run-1", blocks: [{ kind: "text", text: "Done: Paris" }] },
+        {
+          id: "message-result",
+          runId: "run-1",
+          role: "bot",
+          seq: 2,
+          blocks: [{ kind: "text", text: "Done: Paris" }],
+        },
       ],
     });
     const response = await call(handler, "runs/executionSnapshot", {
