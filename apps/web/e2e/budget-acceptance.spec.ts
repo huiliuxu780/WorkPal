@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { AgentScopeAgentRuntime } from "../../../packages/adapters/src/agentscope-runtime.js";
+import { createRunExecutor } from "../../../packages/adapters/src/executor.js";
 import { deliverRunAborts } from "../../../packages/adapters/src/revoke-cancelled-work.js";
 import { enforceRunBudgets } from "../../../packages/adapters/src/run-budget-enforcement.js";
 import { createDb, createThreadEvents } from "../../../packages/db/src/index.js";
@@ -453,6 +454,18 @@ test("routine budget breach fails the Run and queues one delivery behind recover
           },
           response: { type: "hold", onOpen: (release) => { releaseRoutineHold = release; } },
         },
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(
+              "Write one concise user-facing update",
+            );
+            expect(JSON.stringify(request.messages)).toContain("budget_exceeded:duration_sec");
+          },
+          response: {
+            type: "text",
+            text: "The scheduled fixture run failed on its duration budget.",
+          },
+        },
       ],
     });
     await switchToTaskModel(page, botId, apiKey, task);
@@ -538,55 +551,135 @@ test("routine budget breach fails the Run and queues one delivery behind recover
     releaseRoutineHold?.();
     await releaseNativeRun(db, runId);
 
+    // Queue boundary. The dispatch sweep leases the delivery Run for a moment
+    // while admission is still recovering, then requeues it. That lease is not
+    // session entry: running, completed, or delivery.sent fails this poll.
+    // Reproduced on 810a223: the exact queued/null read raced status=leased,
+    // leaseOwner=api.
     await expect
       .poll(
-        async () =>
-          db.prisma.run.findFirst({
+        async () => {
+          const delivery = await db.prisma.run.findFirst({
             where: { threadId: thread.id, trigger: "delivery" },
-            select: { id: true, status: true, leaseOwner: true },
-          }),
+            select: { id: true, status: true },
+          });
+          if (!delivery) return "missing-run";
+          if (
+            delivery.status === "running" ||
+            delivery.status === "completed" ||
+            delivery.status === "failed" ||
+            delivery.status === "cancelled"
+          ) {
+            return delivery.status;
+          }
+          if (delivery.status !== "queued" && delivery.status !== "leased") return delivery.status;
+          const admission = await db.prisma.agentSessionAdmission.findFirst({
+            where: { ownerRunId: runId },
+            select: { state: true, ownerRunId: true },
+          });
+          if (admission?.state !== "recovering" || admission.ownerRunId !== runId) {
+            return `admission:${admission?.state ?? "missing"}`;
+          }
+          const sent = await db.prisma.event.count({
+            where: { threadId: thread.id, type: "delivery.sent" },
+          });
+          if (sent !== 0) return `sent:${sent}`;
+          const record = await db.prisma.deliveryRecord.findFirst({
+            where: { runId },
+            select: { status: true, deliveryRunId: true, deliveredAt: true },
+          });
+          if (
+            record?.status !== "claimed" ||
+            record.deliveryRunId !== delivery.id ||
+            record.deliveredAt
+          ) {
+            return "record-not-held";
+          }
+          const summaries = await db.prisma.message.count({
+            where: { threadId: thread.id, role: "bot", runId: delivery.id },
+          });
+          if (summaries !== 0) return `summaries:${summaries}`;
+          const runs = await db.prisma.run.count({
+            where: { threadId: thread.id, trigger: "delivery" },
+          });
+          if (runs !== 1) return `runs:${runs}`;
+          return "recovering-unsent";
+        },
         { timeout: 120_000 },
       )
-      .toMatchObject({ status: "queued", leaseOwner: null });
+      .toBe("recovering-unsent");
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "user" } })).toBe(
       userMessagesBefore,
     );
-
     const deliveryRun = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
-    expect(deliveryRun).toMatchObject({ status: "queued", leaseOwner: null, error: null });
-    const record = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
-    expect(record.deliveryRunId).toBe(deliveryRun.id);
-    expect(record.status).toBe("claimed");
-    expect(record.deliveredAt).toBeNull();
-    expect(
-      await db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),
-    ).toMatchObject({ state: "recovering", ownerRunId: runId });
-    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
-      1,
-    );
-    expect(
-      await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(0);
-    const summaries = await db.prisma.message.findMany({
-      where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
-    });
-    expect(summaries).toHaveLength(0);
 
-    // Repeated Worker scheduling neither releases admission nor forks a Run.
-    await page.waitForTimeout(12_000);
-    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
-      1,
-    );
+    // Production RT-26 hook: continue the terminal owner. A fresh Runtime
+    // proof releases admission and the in-process delivery sweep continues
+    // the queued Run. The enqueue from this process is not the API queue.
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL ?? "" });
+    const executor = createRunExecutor({
+      prisma: db.prisma,
+      runtime,
+      jobs: {
+        enqueue: async () => undefined,
+        cancel: async () => undefined,
+      },
+      events: createThreadEvents(db.prisma),
+    } as unknown as Parameters<typeof createRunExecutor>[0]);
+    expect(await executor.continueRun(runId, "e2e-budget-recovery")).toBeUndefined();
+    await expect
+      .poll(
+        async () =>
+          (
+            await db.prisma.agentSessionAdmission.findFirst({
+              where: { ownerRunId: runId },
+              select: { state: true },
+            })
+          )?.state ?? "missing",
+        { timeout: 30_000 },
+      )
+      .not.toBe("recovering");
+
+    await expect
+      .poll(
+        async () =>
+          (
+            await db.prisma.run.findFirst({
+              where: { id: deliveryRun.id },
+              select: { status: true },
+            })
+          )?.status ?? "missing",
+        { timeout: 120_000 },
+      )
+      .toBe("completed");
+    await expect(
+      page
+        .getByTestId("transcript")
+        .getByText("The scheduled fixture run failed on its duration budget."),
+    ).toBeVisible({ timeout: 60_000 });
+    const delivered = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
+    expect(delivered.status).toBe("sent");
+    expect(delivered.deliveredAt).not.toBeNull();
+    expect(delivered.deliveryRunId).toBe(deliveryRun.id);
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(0);
+    ).toBe(1);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(0);
+    ).toBe(1);
+    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
+      1,
+    );
+    expect(
+      await db.prisma.run.findUniqueOrThrow({
+        where: { id: runId },
+        select: { status: true, error: true },
+      }),
+    ).toMatchObject({ status: "failed", error: "budget_exceeded:duration_sec" });
     task.assertComplete();
   } finally {
     await task?.close();

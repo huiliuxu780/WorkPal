@@ -524,6 +524,30 @@ describe("GitHub events", () => {
     assert.equal(dispatched.mode, "full");
   });
 
+  it("visual dispatch runs no product jobs while the schedule stays full", () => {
+    const visual = resolveGitHubSelection({
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+      MODE_INPUT: "visual",
+      GITHUB_SHA: "abc",
+    });
+    assert.deepEqual(visual.selected, []);
+    assert.equal(visual.webE2eSpec, "");
+    const scheduled = resolveGitHubSelection({ GITHUB_EVENT_NAME: "schedule", GITHUB_SHA: "abc" });
+    assert.equal(scheduled.mode, "full");
+    assert.equal(scheduled.selected.includes("web"), true);
+  });
+
+  it("keeps budget acceptance on agentscope and execution card on the web job", () => {
+    const budget = selectChecks({ files: ["apps/web/e2e/budget-acceptance.spec.ts"] });
+    assert.equal(budget.selected.includes("agentscope"), true);
+    assert.equal(budget.selected.includes("web"), false);
+    assert.equal(budget.webE2eSpec.includes("budget-acceptance.spec.ts"), false);
+    const card = selectChecks({ files: ["apps/web/e2e/execution-card.spec.ts"] });
+    assert.equal(card.selected.includes("web"), true);
+    assert.equal(card.webE2eSpec.includes("execution-card.spec.ts"), true);
+    assert.equal(card.selected.includes("agentscope"), false);
+  });
+
   it("unreadable PR SHAs throw instead of succeeding as docs", () => {
     assert.throws(
       () =>

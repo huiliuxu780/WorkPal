@@ -1406,6 +1406,50 @@ export function createRunExecutor(deps: ExecutorDeps) {
     }
   };
 
+  /** RT-26 proof for the Run that still owns a recovering chat admission. */
+  const recoverSessionOwner = async (owner: {
+    id: string;
+    userId: string;
+    spaceId: string;
+    botId: string;
+    threadId: string;
+  }): Promise<boolean> => {
+    if (!usesSessionAdmission) return false;
+    const existingAdmission = await deps.prisma.agentSessionAdmission.findFirst({
+      where: { ownerRunId: owner.id, state: "recovering" },
+      select: {
+        sessionKey: true,
+        ownerExecutionId: true,
+        ownerAttemptId: true,
+        suspensionKey: true,
+        fence: true,
+        expiresAt: true,
+      },
+    });
+    if (
+      !existingAdmission?.ownerExecutionId ||
+      !existingAdmission.ownerAttemptId ||
+      !existingAdmission.suspensionKey
+    ) {
+      return false;
+    }
+    const recoveringThread = await deps.prisma.thread.findFirst({
+      where: { id: owner.threadId, spaceId: owner.spaceId },
+      select: { historyCompactionGeneration: true },
+    });
+    if (!recoveringThread) return false;
+    return settleRecoveringSessionOwner({
+      run: owner,
+      sessionKey: existingAdmission.sessionKey,
+      executionId: existingAdmission.ownerExecutionId,
+      attemptId: existingAdmission.ownerAttemptId,
+      admissionFence: existingAdmission.fence,
+      suspensionKey: existingAdmission.suspensionKey,
+      expiresAt: existingAdmission.expiresAt,
+      threadGeneration: recoveringThread.historyCompactionGeneration,
+    });
+  };
+
   return {
     resolveConnectedModel,
     resolvePinnedModel: resolvePinnedModelIdentity,
@@ -1620,7 +1664,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
     async continueRun(runId: string, workerId: string) {
       const run = await deps.prisma.run.findUnique({ where: { id: runId } });
       if (!run) return;
-      if (isTerminal(run.status as RunStatus)) return;
+      // Budget failure and other terminal outcomes keep the RT-25 recovering
+      // park. The delivery Run stays queued until THIS hook acknowledges a
+      // fresh Runtime proof. Returning first left that delivery queued with
+      // no later claim of the terminal owner. The terminal Run is not resumed.
+      if (isTerminal(run.status as RunStatus)) {
+        await recoverSessionOwner(run);
+        return;
+      }
       // RT-26: only this Run's own unconsumed acknowledged checkpoint may be
       // resumed, and the checkpoint row (runId + sessionKey + status) is the
       // authority — not the claim-time status. The answer transaction re-queues

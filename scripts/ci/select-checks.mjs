@@ -513,11 +513,26 @@ function implyRuntimeJar(jobs) {
 }
 
 /**
- * @param {{ files?: string[], mode?: "selective" | "full", forceReason?: string, base?: string, head?: string }} input
+ * @param {{ files?: string[], mode?: "selective" | "full" | "visual", forceReason?: string, base?: string, head?: string }} input
  */
 export function selectChecks(input) {
   const base = input.base ?? null;
   const head = input.head ?? null;
+
+  if (input.mode === "visual") {
+    return buildResult({
+      mode: "selective",
+      files: input.files ?? [],
+      selected: [],
+      reasons: {
+        "*": input.forceReason ?? "daily visual screenshots only",
+      },
+      webE2e: [],
+      base,
+      head,
+      harnessMode: null,
+    });
+  }
 
   if (input.mode === "full") {
     const reason = input.forceReason ?? "full verification requested";
@@ -714,6 +729,15 @@ export function resolveGitHubSelection(
   const event = env.GITHUB_EVENT_NAME ?? env.EVENT_NAME ?? "";
   const modeInput = env.MODE_INPUT || "";
   const sha = env.GITHUB_SHA ?? env.EVENT_AFTER ?? "";
+
+  if (event === "workflow_dispatch" && modeInput === "visual") {
+    return selectChecks({
+      mode: "visual",
+      forceReason: "daily visual screenshots only; the scheduled full verification is unchanged",
+      base: null,
+      head: sha || null,
+    });
+  }
 
   if (
     event === "schedule" ||

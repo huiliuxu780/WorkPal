@@ -84,11 +84,61 @@ the gate. Five confirmed prototype paths and the precise pre-existing
 formatter/import-sort debt list in `biome.json` are temporarily excluded; H3
 owns closing those exclusions.
 
-Default and PR tests never require paid inference. Nightly runs only the web
-tests with emulated providers. Docker topology and browser replay have a manual
-workflow; hosted sandboxes and real-model quality runs require an explicit local
-command. Nightly verification never starts computer sandboxes or requests model
-or sandbox credentials.
+Default and PR tests never require paid inference. Docker topology and browser
+replay have a manual workflow; hosted sandboxes and real-model quality runs
+require an explicit local command. Scheduled CI does not start computer
+sandboxes or request model or sandbox credentials.
+
+## E2E failure evidence
+
+The `web`, `agentscope`, `worker-chain`, and `visual-web` jobs upload
+Playwright evidence when the job fails or is cancelled. The artifact name is
+`playwright-<job>-<commit SHA>-<run attempt>`. It contains:
+
+- `playwright-report/` — HTML report
+- `apps/web/test-results/` — trace, screenshot, and video
+- `test-report/` — harness summary when the run created one
+
+Retention is 7 days. A missing directory warns and is skipped; that upload
+does not turn a failed or cancelled job green. Traces, screenshots, and videos
+are kept on failure (`retain-on-failure` / `only-on-failure` in
+`apps/web/playwright.config.ts`). The HTML report is always written to
+`playwright-report/`.
+
+## Daily visual entry
+
+There is one daily visual entry: the `visual-web` job in
+`.github/workflows/ci.yml`. It runs on the existing `17 3 * * *` schedule and
+on `workflow_dispatch` with `mode=visual`. It does not run on pull requests.
+
+It runs only the scripted specs `ui-appearance.spec.ts` and
+`settings-shell.spec.ts` (`pnpm test:e2e --runtime=scripted`). Those specs
+capture the web screenshots. The job uploads `playwright-report/`,
+`apps/web/test-results/`, and `test-report/` as
+`daily-visual-<commit SHA>-<run attempt>`, retained for 14 days.
+
+The same schedule still runs the existing full CI graph. `mode=visual` does
+not. This entry does not run AgentScope, the worker chain, PostgreSQL suites,
+computer replay, live evals, or hosted sandboxes. The old
+`nightly-verification.yml` workflow called a missing `playwright.yml` and
+never produced screenshots. It was removed after one successful manual
+`mode=visual` run. Historical nightly runs remain on GitHub.
+
+## Budget and execution-card races
+
+`budget-acceptance.spec.ts` keeps the queue boundary and the final delivery
+as separate assertions. While the failed routine Run owns a recovering chat
+admission, the delivery Run may be `queued` or briefly `leased` by the
+dispatch sweep, and no `delivery.sent` event exists. `running` or `completed`
+at that point fails the boundary. `continueRun` on that terminal owner then
+uses the production RT-26 proof. Only after that proof does the test require
+the delivery Run to complete and the summary to be sent once.
+
+`execution-card.spec.ts` waits for the ask card itself instead of reloading
+when the region is briefly absent, and it acknowledges `resolveIntervention`
+before expecting the answered echo. Paging waits for each
+`threads/messages` response. It does not use a fixed sleep, and it does not
+treat a disabled Loading button as the end of history.
 Missing live credentials mean **not run**, not a passing model evaluation.
 
 On 2026-10-08 a local acceptance used the existing encrypted WorkPal DashScope
@@ -217,7 +267,7 @@ uses fresh accounts and services. The runner disables its routines and cancels
 its work before proceeding; cleanup failure leaves remaining trials not run.
 
 Live evaluations run only through an explicit local CLI invocation. They are
-not scheduled by the nightly workflow.
+not part of the daily visual entry or the scheduled full CI graph.
 
 The September 2026 Luna/OpenRouter baseline passed all 15 cases over three
 trials each (45/45) after correcting the harness. The initial run passed 41/45:
