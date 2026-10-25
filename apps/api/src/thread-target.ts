@@ -56,18 +56,18 @@ import {
   applyCancelTerminalPolicy,
   cancelEventPayload,
   cancelPolicyFor,
+  cardMessageFact,
+  projectThreadCardSurface,
   supersededCancelPolicy,
   createGroupRepos,
   createRepos,
   createThreadMessageInTransaction,
   currentThreadGeneration,
-  ExecutionActivityCursorError,
   expireComputerExecutionLeases,
   IsolationError,
   loadCurrentRunPlans,
   loadCurrentRunSteps,
   loadCurrentRunTodos,
-  loadExecutionSnapshot,
   loadExecutionSummaries,
   loadInterventionViews,
   lockOwnedStandardGroupThread,
@@ -636,7 +636,7 @@ export async function threadHead(prisma: PrismaClient, target: ThreadTarget) {
 }
 
 export async function threadSnapshot(
-  deps: { prisma: PrismaClient },
+  deps: { prisma: PrismaClient; cardsUnifiedV2?: boolean },
   target: ThreadTarget,
 ): Promise<ThreadSnapshot> {
   // Lock the thread row so messages, the event cursor, active runs, and live
@@ -774,6 +774,46 @@ export async function threadSnapshot(
             ...interventions.map((view) => view.runId),
           ],
         });
+        const cardSurface = deps.cardsUnifiedV2
+          ? projectThreadCardSurface({
+              spaceId: target.spaceId,
+              threadId: target.threadId,
+              messages: messagePage.messages.map((message) =>
+                cardMessageFact(message, target.spaceId),
+              ),
+              interventions,
+              runs: currentRun
+                ? [
+                    {
+                      id: currentRun.id,
+                      spaceId: currentRun.spaceId,
+                      threadId: currentRun.threadId,
+                      botId: currentRun.botId,
+                      status: currentRun.status,
+                      waitKind: currentRun.waitKind,
+                      createdAt: currentRun.createdAt,
+                      waitStartedAt: currentRun.waitStartedAt,
+                      executionLeaseActive: Boolean(
+                        (currentRun.status === "leased" || currentRun.status === "running") &&
+                          currentRun.leaseOwner &&
+                          (!currentRun.leaseExpiresAt ||
+                            currentRun.leaseExpiresAt.getTime() > Date.now()),
+                      ),
+                    },
+                  ]
+                : [],
+              computer: target.bot.computer
+                ? {
+                    id: target.bot.computer.id,
+                    controlHolder: target.bot.computer.controlHolder,
+                    controlBotId: target.bot.computer.controlBotId,
+                    controlRunId: target.bot.computer.controlRunId,
+                    controlLeaseId: target.bot.computer.controlLeaseId,
+                    controlLeaseExpiresAt: target.bot.computer.controlLeaseExpiresAt,
+                  }
+                : null,
+            })
+          : null;
         return {
           messagePage,
           last,
@@ -786,6 +826,7 @@ export async function threadSnapshot(
           todos,
           interventions,
           executions,
+          cardSurface,
         };
       }),
     ]);
@@ -804,6 +845,13 @@ export async function threadSnapshot(
       todos: core.todos,
       interventions: core.interventions,
       executions: core.executions,
+      ...(core.cardSurface
+        ? {
+            interactionCapabilities: { cardsUnifiedV2: true as const },
+            interactions: core.cardSurface.interactions,
+            displayBlocks: core.cardSurface.displayBlocks,
+          }
+        : {}),
     };
   }
 
@@ -885,6 +933,34 @@ export async function threadSnapshot(
         ...interventions.map((view) => view.runId),
       ],
     });
+    const cardSurface = deps.cardsUnifiedV2
+      ? projectThreadCardSurface({
+          spaceId: target.spaceId,
+          threadId: target.threadId,
+          messages: messagePage.messages.map((message) =>
+            cardMessageFact(message, target.spaceId),
+          ),
+          interventions,
+          runs: activeRuns.map((run) => ({
+            id: run.id,
+            spaceId: run.spaceId,
+            threadId: run.threadId,
+            botId: run.botId,
+            status: run.status,
+            waitKind: run.waitKind,
+            createdAt: run.createdAt,
+            waitStartedAt: run.waitStartedAt,
+            executionLeaseActive: Boolean(
+              (run.status === "leased" || run.status === "running") &&
+                run.leaseOwner &&
+                (!run.leaseExpiresAt || run.leaseExpiresAt.getTime() > Date.now()),
+            ),
+          })),
+          // A group Thread has no single Computer; takeover/return stay on the
+          // member Bot's own entry instead of guessing from member computers.
+          computer: null,
+        })
+      : null;
     return {
       messagePage,
       last,
@@ -898,6 +974,7 @@ export async function threadSnapshot(
       todos,
       interventions,
       executions,
+      cardSurface,
     };
   });
   const primaryActiveRun = pickPrimaryActiveRun(core.activeRuns);
@@ -925,6 +1002,13 @@ export async function threadSnapshot(
     todos: core.todos,
     interventions: core.interventions,
     executions: core.executions,
+    ...(core.cardSurface
+      ? {
+          interactionCapabilities: { cardsUnifiedV2: true as const },
+          interactions: core.cardSurface.interactions,
+          displayBlocks: core.cardSurface.displayBlocks,
+        }
+      : {}),
   };
 }
 

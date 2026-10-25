@@ -4,8 +4,10 @@ import {
   resolveSandboxProvider,
 } from "@rakazo/adapters";
 import {
+  type CardsUnifiedFeatureGate,
   type RoundtableFeatureGates,
   resolveAuthSecret,
+  resolveCardsUnifiedFeatureGate,
   resolveEncryptionKey,
   resolveRoundtableFeatureGates,
   resolveScreenProxySecret,
@@ -18,6 +20,11 @@ export interface AppEnv {
   nodeEnv: string;
   /** Server-only roundtable capability gates; all off unless explicitly enabled. */
   roundtableFeatures: RoundtableFeatureGates;
+  /**
+   * CARD-01 total gate. Independent from the Roundtable gates and off by
+   * default; the API projects the capability to the Web when it is on.
+   */
+  cardsUnifiedFeature: CardsUnifiedFeatureGate;
   desktopStackToken?: string;
   databaseUrl: string;
   realtimeDatabaseUrl: string;
@@ -113,6 +120,7 @@ export interface AppEnv {
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const roundtableFeatures = resolveRoundtableFeatureGates(source);
+  const cardsUnifiedFeature = resolveCardsUnifiedFeatureGate(source);
   const authSecret = resolveAuthSecret(source);
   const sandboxProvider = resolveSandboxProvider(source);
   const cloudAgentProvider = resolveCloudAgentProvider(source);
@@ -122,6 +130,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   return {
     nodeEnv: source.NODE_ENV ?? "",
     roundtableFeatures,
+    cardsUnifiedFeature,
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
     desktopStackToken: optional(source.RAKAZO_DESKTOP_STACK_TOKEN),

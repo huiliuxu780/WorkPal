@@ -235,6 +235,52 @@ describe("reaction messages", () => {
   });
 });
 
+describe("CARD-01 snapshot gate", () => {
+  function fixture() {
+    const tx = {
+      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+      runPlan: { findMany: vi.fn().mockResolvedValue([]) },
+      runStep: { findMany: vi.fn().mockResolvedValue([]) },
+      runTodo: { findMany: vi.fn().mockResolvedValue([]) },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
+      message: { findMany: vi.fn().mockResolvedValue([]) },
+      event: {
+        findFirst: vi.fn().mockResolvedValue({ seq: 0 }),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      run: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+    const target = {
+      kind: "bot",
+      botId: "bot-1",
+      threadId: "thread-1",
+      spaceId: "space-1",
+      bot: { name: "Bot", computer: null },
+    } as ThreadTarget;
+    return { prisma, target };
+  }
+
+  it("leaves the old snapshot shape untouched while the gate is off", async () => {
+    const { prisma, target } = fixture();
+    const snapshot = await threadSnapshot({ prisma }, target);
+    expect(snapshot).not.toHaveProperty("interactionCapabilities");
+    expect(snapshot).not.toHaveProperty("interactions");
+    expect(snapshot).not.toHaveProperty("displayBlocks");
+  });
+
+  it("projects the capability and strict arrays only when the gate is on", async () => {
+    const { prisma, target } = fixture();
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+    expect(snapshot.interactionCapabilities).toEqual({ cardsUnifiedV2: true });
+    expect(snapshot.interactions).toEqual([]);
+    expect(snapshot.displayBlocks).toEqual([]);
+    expect(snapshot).not.toHaveProperty("attention");
+  });
+});
+
 describe("threadSnapshot", () => {
   it("reloads tool-only live messages for an active run", async () => {
     const run = {

@@ -1,4 +1,6 @@
 import {
+  CARDS_UNIFIED_V2_ENV,
+  CardsUnifiedFeatureConfigError,
   ROUNDTABLE_FEATURE_ENV,
   ROUNDTABLE_FEATURES,
   RoundtableFeatureConfigError,
@@ -20,6 +22,32 @@ describe("loadEnv", () => {
     expect(env.wakeupDriver).toBe("graphile");
     expect(env.apiHost).toBe("127.0.0.1");
     expect(env.nodeEnv).toBe("test");
+  });
+
+  it("keeps the CARD-01 gate off by default and independent of Roundtable", () => {
+    expect(loadEnv(base).cardsUnifiedFeature).toEqual({ cardsUnifiedV2: false });
+    expect(
+      loadEnv({
+        ...base,
+        ROUNDTABLE_PRIVATE_PAIR_ENABLED: "true",
+        ROUNDTABLE_MESSAGE_GROUP_ENABLED: "true",
+      }).cardsUnifiedFeature,
+    ).toEqual({ cardsUnifiedV2: false });
+  });
+
+  it("enables the CARD-01 gate only when explicitly true", () => {
+    expect(loadEnv({ ...base, [CARDS_UNIFIED_V2_ENV]: "true" }).cardsUnifiedFeature).toEqual({
+      cardsUnifiedV2: true,
+    });
+    expect(loadEnv({ ...base, [CARDS_UNIFIED_V2_ENV]: "false" }).cardsUnifiedFeature).toEqual({
+      cardsUnifiedV2: false,
+    });
+  });
+
+  it("fails startup for illegal CARD-01 gate values", () => {
+    expect(() => loadEnv({ ...base, [CARDS_UNIFIED_V2_ENV]: "yes" })).toThrow(
+      CardsUnifiedFeatureConfigError,
+    );
   });
 
   it("keeps explicit emulator settings for pnpm test", () => {

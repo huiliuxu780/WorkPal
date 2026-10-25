@@ -192,6 +192,8 @@ import {
   newestVoiceCredentialOrder,
   Prisma,
   parseComputerMode,
+  projectExecutionDisplayBlocks,
+  projectExecutionInteractions,
   readTaskInstructionView,
   releaseSpaceDeletionClaim,
   renewSpaceDeletionClaim,
@@ -566,6 +568,11 @@ function mcpAssignmentDto(row: {
 
 export interface RouterDeps {
   cloudAgent?: CloudAgentConnection | null;
+  /**
+   * CARD-01A total gate. Absent/false keeps every snapshot response exactly as
+   * before; true adds the strict interaction/display projection and capability.
+   */
+  cardsUnifiedV2?: boolean;
   prisma: PrismaClient;
   events: ThreadEvents;
   /** Test seams for RT-14 Task amendment application and its product read model. */
@@ -6036,7 +6043,19 @@ export function createRouter(deps: RouterDeps) {
           });
         });
         if (!snapshot) throw new ORPCError("NOT_FOUND");
-        return snapshot;
+        if (!deps.cardsUnifiedV2) return snapshot;
+        return {
+          ...snapshot,
+          interactionCapabilities: { cardsUnifiedV2: true as const },
+          interactions: projectExecutionInteractions(snapshot.interventions),
+          displayBlocks: snapshot.result
+            ? projectExecutionDisplayBlocks(snapshot.result.blocks, {
+                threadId: target.threadId,
+                messageId: snapshot.result.messageId,
+                runId: snapshot.summary.runId,
+              })
+            : [],
+        };
       }),
       executionActivityPage: authed.runs.executionActivityPage.handler(
         async ({ context, input }) => {

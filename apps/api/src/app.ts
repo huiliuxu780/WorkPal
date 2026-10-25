@@ -527,6 +527,7 @@ export async function createApp(
   const router = createRouter({
     cloudAgent,
     codexCatalog,
+    cardsUnifiedV2: env.cardsUnifiedFeature.cardsUnifiedV2,
     prisma,
     events,
     auth,
