@@ -5332,7 +5332,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
                   message: redactSecrets(String(args.message ?? ""), runSecrets),
                   intent: args.intent ? String(args.intent) : undefined,
-                  topic: args.topic ? String(args.topic) : undefined,
+                  topic: args.topic ? redactSecrets(String(args.topic), runSecrets) : undefined,
                 },
                 { deliveryKey: effectKey },
               );
