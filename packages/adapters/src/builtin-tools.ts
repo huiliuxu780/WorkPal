@@ -1196,7 +1196,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "message_group",
     description:
-      "In your direct chat only: take a new piece of work to one of the user's existing groups. You must already be a member of that group. This posts your request in the group, starts a separate task for you there, and leaves a receipt in the direct chat; the result comes back here separately. It does not add work to an existing task or reuse a running task. Use message_bot for another bot and handoff_to_bot only inside a group.",
+      "In your direct chat only: take a new piece of work to one of the user's existing groups. You must already be a member of that group. This posts your request in the group, starts separate work for you there, and leaves a receipt in the direct chat; the result comes back here separately. It does not attach to existing work or reuse work already in progress. Use message_bot for another bot and handoff_to_bot only inside a group.",
     inputSchema: {
       type: "object",
       properties: {

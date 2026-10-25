@@ -32,7 +32,6 @@ const ERROR_AMBIGUOUS_GROUP = "more than one group has that name; use group_id";
 const ERROR_ARCHIVED_GROUP = "this group is archived";
 const ERROR_NOT_MEMBER = "you are not a member of this group";
 const ERROR_NOT_DIRECT_CHAT = "message_group is only available in your direct chat";
-const ERROR_TARGET_TASK = "message_group cannot target an existing task";
 const ERROR_INTENT = "message_group only supports intent=request";
 const ERROR_MESSAGE = "message is required";
 const ERROR_SOURCE_INACTIVE = "source run is no longer active";
@@ -345,7 +344,7 @@ export async function messageGroup(
       targetRunId: committed.targetRunId,
       receiptMessageId: committed.receiptMessageId,
       locator: committed.locator,
-      note: `Posted this work in ${committed.groupName}. It runs there as a separate task; the result will come back to this chat when it finishes. Continue independent work and do not poll.`,
+      note: `Posted this work in ${committed.groupName}. It proceeds there as separate work; the result will come back to this chat when it finishes. Continue independent work and do not poll.`,
     };
   } catch (error) {
     if (receiptNonce && isUniqueConstraintError(error)) {
@@ -468,7 +467,7 @@ async function replayFromReceipt(
     targetRunId: targetRun.id,
     receiptMessageId: message.id,
     locator: receipt.destination,
-    note: "This delivery already happened; the same target task is still the one that owns the work.",
+    note: "This delivery already happened; the same work is still the one in progress.",
   };
 }
 

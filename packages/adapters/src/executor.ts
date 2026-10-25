@@ -5319,7 +5319,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "message_group") {
             if (args.targetTaskId !== undefined || args.target_task_id !== undefined) {
-              return finish({ error: "message_group cannot target an existing task" });
+              return finish({ error: "message_group cannot attach to existing work" });
             }
             let sent: Awaited<ReturnType<typeof messageGroup>>;
             try {
