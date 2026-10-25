@@ -337,6 +337,61 @@ describe("selectChecks", () => {
     assert.equal(worker.selected.includes("web"), false);
   });
 
+  it("selects the H1 harness for every non-docs change with the right mode", () => {
+    const unit = selectChecks({ files: ["packages/core/src/plain.test.ts"] });
+    assert.ok(unit.selected.includes("harness"));
+    assert.equal(unit.harnessMode, "unit");
+    assert.equal(unit.selected.includes("db-postgres"), false);
+
+    const source = selectChecks({ files: ["apps/api/src/index.ts"] });
+    assert.ok(source.selected.includes("harness"));
+    assert.equal(source.harnessMode, "inventory");
+
+    const docs = selectChecks({ files: ["docs/privacy.md"] });
+    assert.equal(docs.selected.includes("harness"), false);
+    assert.equal(docs.harnessMode, null);
+
+    const docsTest = selectChecks({
+      files: ["docs/roundtable/verify-implementation-plan.test.mjs"],
+    });
+    assert.ok(docsTest.selected.includes("harness"));
+    assert.equal(docsTest.harnessMode, "inventory");
+
+    const infra = selectChecks({ files: ["scripts/testing/test-inventory.mjs"] });
+    assert.equal(infra.harnessMode, "full");
+    assert.ok(infra.selected.includes("harness"));
+    for (const job of CHECK_JOBS) assert.ok(infra.selected.includes(job), job);
+  });
+
+  it("routes changed PostgreSQL tests to db-postgres and the inventory harness", () => {
+    for (const file of [
+      "packages/db/src/run-steps.postgres.test.ts",
+      "packages/adapters/src/run-budget-enforcement.postgres.test.ts",
+      "packages/adapters/src/session-checkpoint-watermark.postgres.test.ts",
+      "packages/testkit/src/messaging.test.ts",
+    ]) {
+      const result = selectChecks({ files: [file] });
+      assert.ok(result.selected.includes("db-postgres"), file);
+      assert.ok(result.selected.includes("harness"), file);
+      assert.equal(result.harnessMode, "inventory", file);
+    }
+
+    const messageGroup = selectChecks({
+      files: ["packages/adapters/src/message-group.postgres.test.ts"],
+    });
+    assert.ok(messageGroup.selected.includes("db-postgres"));
+    assert.ok(messageGroup.selected.includes("web"));
+    assert.match(messageGroup.webE2eSpec, /message-group\.spec\.ts/);
+    assert.ok(messageGroup.selected.includes("harness"));
+  });
+
+  it("keeps an ordinary-suffix Java replay out of unit mode", () => {
+    const result = selectChecks({ files: ["packages/testkit/src/computer-replay.test.ts"] });
+    assert.ok(result.selected.includes("harness"));
+    assert.equal(result.harnessMode, "inventory");
+    assert.ok(result.selected.includes("backend"));
+  });
+
   it("unions multiple classes", () => {
     const result = selectChecks({
       files: ["apps/web/src/App.tsx", "apps/worker/src/index.ts"],
@@ -518,9 +573,29 @@ describe("workflow contract", () => {
     assert.match(block, /image: postgres:16/);
     assert.match(block, /VERIFY_DATABASE: "1"/);
     assert.match(block, /pnpm --filter @rakazo\/db exec prisma migrate deploy/);
-    assert.match(block, /packages\/db\/src\/\*\.postgres\.test\.ts/);
-    assert.match(block, /--no-file-parallelism/);
+    assert.match(block, /pnpm test:postgres/);
+    const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+    assert.match(pkg.scripts["test:postgres"], /run-test-group\.mjs postgres/);
+    const runner = readFileSync(
+      path.join(repoRoot, "scripts/testing/run-test-group.mjs"),
+      "utf8",
+    );
+    assert.match(runner, /--no-file-parallelism/);
     assert.match(yaml, /RESULT_DB_POSTGRES: \$\{\{\s*needs\.db-postgres\.result\s*\}\}/);
+  });
+
+  it("runs the H1 harness gates and requires them in CI result", () => {
+    const block = yaml.split("\n  harness:")[1]?.split("\n  docs:")[0] ?? "";
+    assert.match(block, /pnpm lint/);
+    assert.match(block, /pnpm test:inventory/);
+    assert.match(block, /pnpm test:ci-select/);
+    assert.match(block, /pnpm test:unit/);
+    assert.match(
+      block,
+      /harness_mode == 'full' \|\| needs\.select-checks\.outputs\.harness_mode == 'unit'/,
+    );
+    assert.match(yaml, /RESULT_HARNESS: \$\{\{\s*needs\.harness\.result\s*\}\}/);
+    assert.match(yaml, /\n      - harness\n/);
   });
 });
 

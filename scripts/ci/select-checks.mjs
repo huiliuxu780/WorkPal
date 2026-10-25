@@ -10,12 +10,14 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { testPathTraits } from "../testing/test-inventory.mjs";
 
 export const ZERO_SHA = "0".repeat(40);
 
 /** Jobs a developer can see as selected/skipped. runtime-jar is implied. */
 export const CHECK_JOBS = [
   "docs",
+  "harness",
   "web",
   "backend",
   "db-postgres",
@@ -417,7 +419,7 @@ export function classifyPath(file) {
 }
 
 function full(reason) {
-  return { jobs: [...FULL_JOBS], reason, webE2e: [...DEFAULT_WEB_E2E] };
+  return { full: true, jobs: [...FULL_JOBS], reason, webE2e: [...DEFAULT_WEB_E2E] };
 }
 
 const WEB_E2E_DIR = "apps/web/e2e";
@@ -516,6 +518,7 @@ export function selectChecks(input) {
       webE2e: [...DEFAULT_WEB_E2E],
       base,
       head,
+      harnessMode: "full",
     });
   }
 
@@ -531,6 +534,7 @@ export function selectChecks(input) {
       webE2e: [...DEFAULT_WEB_E2E],
       base,
       head,
+      harnessMode: "full",
     });
   }
 
@@ -538,15 +542,31 @@ export function selectChecks(input) {
   const reasons = {};
   const webE2e = new Set();
   const fileReasons = [];
+  let harnessMode = null;
+  let sawUnitChange = false;
+  let forceHarnessFull = false;
 
   for (const file of files) {
     const classified = classifyPath(file);
-    for (const job of classified.jobs) selected.add(job);
+    const traits = testPathTraits(file);
+    const jobs = [...classified.jobs];
+    if (traits.isPostgres && !jobs.includes("db-postgres")) jobs.push("db-postgres");
+    for (const job of jobs) selected.add(job);
     for (const spec of classified.webE2e) webE2e.add(spec);
-    fileReasons.push({ file, jobs: classified.jobs, reason: classified.reason });
-    if (!reasons[classified.jobs.join("+")]) {
-      reasons[classified.jobs.join("+")] = `${file}: ${classified.reason}`;
+    fileReasons.push({ file, jobs, reason: classified.reason });
+    if (!reasons[jobs.join("+")]) {
+      reasons[jobs.join("+")] = `${file}: ${classified.reason}`;
     }
+    if (classified.full) forceHarnessFull = true;
+    if (traits.isUnit) sawUnitChange = true;
+    const docsOnly = jobs.length === 1 && jobs[0] === "docs";
+    if (!docsOnly || traits.isTest) {
+      selected.add("harness");
+      harnessMode = harnessMode ?? "inventory";
+    }
+  }
+  if (harnessMode) {
+    harnessMode = forceHarnessFull ? "full" : sawUnitChange ? "unit" : "inventory";
   }
 
   return buildResult({
@@ -558,10 +578,11 @@ export function selectChecks(input) {
     base,
     head,
     fileReasons,
+    harnessMode,
   });
 }
 
-function buildResult({ mode, files, selected, reasons, webE2e, base, head, fileReasons }) {
+function buildResult({ mode, files, selected, reasons, webE2e, base, head, fileReasons, harnessMode }) {
   const selectedSet = new Set(implyRuntimeJar(selected));
   const selectedJobs = ALL_JOBS.filter((job) => selectedSet.has(job));
   const skippedJobs = ALL_JOBS.filter((job) => !selectedSet.has(job));
@@ -579,6 +600,7 @@ function buildResult({ mode, files, selected, reasons, webE2e, base, head, fileR
     reasons,
     fileReasons: fileReasons ?? [],
     webE2eSpec,
+    harnessMode: selectedSet.has("harness") ? (harnessMode ?? "inventory") : null,
     flags: Object.fromEntries(ALL_JOBS.map((job) => [job, selectedSet.has(job)])),
   };
   result.summary = formatSummary(result);
@@ -596,6 +618,7 @@ export function formatSummary(result) {
     `- Skipped: ${result.skipped.join(", ") || "(none)"}`,
   ];
   if (result.webE2eSpec) lines.push(`- Focused web E2E: \`${result.webE2eSpec}\``);
+  if (result.harnessMode) lines.push(`- H1 harness mode: \`${result.harnessMode}\``);
   lines.push(``, `### Why`);
   for (const [key, reason] of Object.entries(result.reasons)) {
     lines.push(`- **${key}**: ${reason}`);
@@ -729,6 +752,7 @@ export function writeGitHubOutput(result, env = process.env) {
   const block = [
     ...kv,
     `mode=${result.mode}`,
+    `harness_mode=${result.harnessMode ?? ""}`,
     `web_e2e_spec=${result.webE2eSpec}`,
     `result<<__CI01_RESULT__`,
     JSON.stringify({ mode: result.mode, selected: result.selected, flags: result.flags }),

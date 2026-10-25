@@ -409,6 +409,35 @@ describe("tracked repository", () => {
     }
   });
 
+  it("builds the real unit and group lists from inventory", () => {
+    const unit = unitTestFiles();
+    assert.ok(unit.length > 400, `unit files: ${unit.length}`);
+    assert.ok(unit.some((file) => file.endsWith(".test.tsx")), "jsdom tests are included");
+    assert.equal(unit.includes("packages/testkit/src/computer-replay.test.ts"), false);
+    assert.equal(unit.some((file) => file.endsWith(".postgres.test.ts")), false);
+    assert.equal(unit.some((file) => file.endsWith(".test.mjs")), false);
+
+    const postgres = filesForGroup("postgres");
+    assert.ok(postgres.length >= 44, `postgres files: ${postgres.length}`);
+    for (const file of [
+      "packages/db/src/delivery-records.test.ts",
+      "packages/testkit/src/messaging.test.ts",
+      "packages/testkit/src/mention-targets.test.ts",
+      "packages/testkit/src/runs-list.test.ts",
+    ]) {
+      assert.ok(postgres.includes(file), file);
+    }
+    assert.equal(postgres.includes("packages/testkit/src/computer-replay.test.ts"), false);
+    assert.ok(filesForGroup("process").length >= 18);
+    assert.ok(filesForGroup("ci-self-check").includes("scripts/ci/select-checks.test.mjs"));
+    assert.ok(filesForGroup("ci-self-check").includes("scripts/testing/test-inventory.test.mjs"));
+    assert.ok(
+      filesForGroup("docs-verify").includes(
+        "docs/roundtable/verify-implementation-plan.test.mjs",
+      ),
+    );
+  });
+
   it("uses every declared category and gives every file a real environment", () => {
     const { entries } = result;
     const counts = {};

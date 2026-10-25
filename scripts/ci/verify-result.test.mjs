@@ -4,6 +4,7 @@ import { verifyResult } from "./verify-result.mjs";
 
 const successJobs = {
   docs: "success",
+  harness: "skipped",
   web: "skipped",
   backend: "skipped",
   "db-postgres": "skipped",
@@ -94,5 +95,17 @@ describe("verifyResult", () => {
       jobResults: { ...successJobs, "db-postgres": "skipped" },
     });
     assert.equal(verdict.ok, true);
+  });
+
+  it("fails when the selected harness job was skipped or failed", () => {
+    for (const outcome of ["skipped", "failure", "cancelled", "missing"]) {
+      const verdict = verifyResult({
+        selectChecksOutcome: "success",
+        selectResult: { selected: ["docs", "harness"] },
+        jobResults: { ...successJobs, harness: outcome },
+      });
+      assert.equal(verdict.ok, false, outcome);
+      assert.match(verdict.message, /harness/);
+    }
   });
 });

@@ -10,6 +10,7 @@ import { ALL_JOBS } from "./select-checks.mjs";
 
 const RESULT_ENV = {
   docs: "RESULT_DOCS",
+  harness: "RESULT_HARNESS",
   web: "RESULT_WEB",
   backend: "RESULT_BACKEND",
   "db-postgres": "RESULT_DB_POSTGRES",
