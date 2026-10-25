@@ -121,8 +121,8 @@ The same schedule still runs the existing full CI graph. `mode=visual` does
 not. This entry does not run AgentScope, the worker chain, PostgreSQL suites,
 computer replay, live evals, or hosted sandboxes. The old
 `nightly-verification.yml` workflow called a missing `playwright.yml` and
-never produced screenshots; it stays only until one successful manual
-`mode=visual` run exists, then it is removed.
+never produced screenshots. It was removed after one successful manual
+`mode=visual` run. Historical nightly runs remain on GitHub.
 
 ## Budget and execution-card races
 
