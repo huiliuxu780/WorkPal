@@ -274,16 +274,22 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
       }),
     );
     expect(first.continuationRunIds).toEqual([]);
-    const deferred = await prisma.event.findFirst({
-      where: {
-        threadId,
-        type: "thread.meta",
-        payload: { path: ["notice"], equals: "steering_deferred" },
-      },
+    const deferredMessages = await prisma.message.findMany({
+      where: { threadId, role: "system" },
+      select: { blocks: true },
+    });
+    expect(
+      deferredMessages.some((row) => JSON.stringify(row.blocks).includes("Policy bot正在教学")),
+    ).toBe(true);
+    const deferredEvent = await prisma.event.findFirst({
+      where: { threadId, type: "thread.message.created" },
+      orderBy: { seq: "desc" },
       select: { payload: true },
     });
-    expect(deferred?.payload).toMatchObject({
-      text: "Policy bot正在教学。你补充的话会在教学结束后再处理。",
+    expect(deferredEvent?.payload).toMatchObject({
+      role: "system",
+      notice: "steering_deferred",
+      reason: "teaching_started",
     });
     expect(
       (await prisma.steeringMessage.findUniqueOrThrow({ where: { id: pending.steering.id } }))
@@ -295,15 +301,13 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
     const again = await prisma.$transaction((tx) => settleReleasedSteeringForBot(tx, botId));
     expect(again).toEqual([]);
     expect(await prisma.cancelOutcomeOutbox.count({ where: { runId: run.id } })).toBe(1);
-    expect(
-      await prisma.event.count({
-        where: {
-          threadId,
-          type: "thread.meta",
-          payload: { path: ["notice"], equals: "steering_deferred" },
-        },
-      }),
-    ).toBe(1);
+    const deferredCount = (
+      await prisma.message.findMany({
+        where: { threadId, role: "system" },
+        select: { blocks: true },
+      })
+    ).filter((row) => JSON.stringify(row.blocks).includes("正在教学")).length;
+    expect(deferredCount).toBe(1);
   });
 
   it("keeps the message and does not continue when the bot cannot run", async () => {
@@ -360,21 +364,18 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
     expect(await prisma.run.count({ where: { threadId: groupThread.id, status: "queued" } })).toBe(
       0,
     );
+    const unhandled = await prisma.message.findMany({
+      where: { threadId: groupThread.id, role: "system" },
+      select: { blocks: true },
+    });
     expect(
-      await prisma.event.count({
-        where: { threadId: groupThread.id, type: "thread.meta" },
-      }),
-    ).toBe(1);
-    const unhandled = await prisma.event.findFirst({
-      where: { threadId: groupThread.id, type: "thread.meta" },
-      select: { payload: true },
-    });
-    expect(unhandled?.payload).toMatchObject({
-      notice: "steering_unhandled",
-      reason: "member_removed",
-      text: "未处理：Other已经不在这个群里。这条消息还在，请重新指定一位成员。",
-    });
-    expect(JSON.stringify(unhandled?.payload)).not.toMatch(FORBIDDEN_VISIBLE);
+      unhandled.some((row) =>
+        JSON.stringify(row.blocks).includes(
+          "未处理：Other已经不在这个群里。这条消息还在，请重新指定一位成员。",
+        ),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(unhandled)).not.toMatch(FORBIDDEN_VISIBLE);
     expect(await prisma.cancelOutcomeOutbox.count({ where: { runId: run.id } })).toBe(1);
     const archived = await delegatedRun();
     await steer(archived.id, "archived bot");
@@ -386,18 +387,17 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
       }),
     );
     expect(archivedResult.continuationRunIds).toEqual([]);
-    const archivedNotice = await prisma.event.findFirst({
-      where: {
-        threadId,
-        type: "thread.meta",
-        payload: { path: ["notice"], equals: "steering_unhandled" },
-        AND: [{ payload: { path: ["reason"], equals: "bot_archived" } }],
-      },
-      select: { payload: true },
+    const archivedNotices = await prisma.message.findMany({
+      where: { threadId, role: "system" },
+      select: { blocks: true },
     });
-    expect(archivedNotice?.payload).toMatchObject({
-      text: "未处理：Policy bot已归档。这条消息还在，请重新指定一位成员。",
-    });
+    expect(
+      archivedNotices.some((row) =>
+        JSON.stringify(row.blocks).includes(
+          "未处理：Policy bot已归档。这条消息还在，请重新指定一位成员。",
+        ),
+      ),
+    ).toBe(true);
     await prisma.bot.update({ where: { id: botId }, data: { archivedAt: null } });
     expect(
       JSON.stringify(await prisma.message.findMany({ where: { threadId: groupThread.id } })),
@@ -431,17 +431,17 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
       (await prisma.steeringMessage.findUniqueOrThrow({ where: { id: kept.steering.id } })).runId,
     ).toBe(orphan.id);
     expect(await prisma.run.count({ where: { id: orphan.id, status: "queued" } })).toBe(0);
-    const retainedNotices = await prisma.event.findMany({
-      where: { threadId, type: "thread.meta" },
-      select: { payload: true },
+    const retainedNotices = await prisma.message.findMany({
+      where: { threadId, role: "system" },
+      select: { blocks: true },
     });
-    expect(retainedNotices.map((row) => row.payload)).toContainEqual(
-      expect.objectContaining({
-        notice: "steering_unhandled",
-        reason: "superseded",
-        text: "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。",
-      }),
-    );
+    expect(
+      retainedNotices.some((row) =>
+        JSON.stringify(row.blocks).includes(
+          "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("does not batch direct, group, and channel steering into one continuation", async () => {

@@ -7,6 +7,7 @@ import {
 } from "./cancel-runs.js";
 import type { Prisma } from "./client.js";
 import { appendEventInTransaction, continueReleasedSteeringInTransaction } from "./events.js";
+import { createThreadMessageInTransaction } from "./messages.js";
 
 /**
  * Server-side cancellation policy. Disposition is chosen by this table, never
@@ -381,36 +382,64 @@ async function disposeSteering(
   return continuationRunIds;
 }
 
+async function appendCancelNotice(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    threadId: string;
+    botId: string;
+    notice: "steering_unhandled" | "steering_deferred";
+    reason: CancelReason;
+    text: string;
+  },
+): Promise<void> {
+  const clientNonce = `cancel-notice:${input.notice}:${input.reason}:${input.botId}`;
+  const existing = await tx.message.findUnique({
+    where: {
+      threadId_clientNonce: { threadId: input.threadId, clientNonce },
+    },
+    select: { id: true },
+  });
+  if (existing) return;
+  const blocks = [{ kind: "text" as const, text: input.text }];
+  const message = await createThreadMessageInTransaction(tx, {
+    threadId: input.threadId,
+    role: "system",
+    originKind: "system",
+    botId: input.botId,
+    blocks,
+    clientNonce,
+  });
+  await appendEventInTransaction(tx, {
+    spaceId: input.spaceId,
+    threadId: input.threadId,
+    botId: input.botId,
+    type: "thread.message.created",
+    payload: {
+      messageId: message.id,
+      role: "system",
+      blocks,
+      notice: input.notice,
+      reason: input.reason,
+    },
+  });
+}
+
 async function appendDeferredSteeringNotice(
   tx: Prisma.TransactionClient,
   run: CancelledRunRow,
 ): Promise<void> {
-  const already = await tx.event.findFirst({
-    where: {
-      threadId: run.threadId,
-      type: "thread.meta",
-      payload: { path: ["notice"], equals: "steering_deferred" },
-      AND: [{ payload: { path: ["botId"], equals: run.botId } }],
-    },
-    select: { id: true },
-  });
-  if (already) return;
   const bot = await tx.bot.findUnique({
     where: { id: run.botId },
     select: { name: true },
   });
-  await appendEventInTransaction(tx, {
+  await appendCancelNotice(tx, {
     spaceId: run.spaceId,
     threadId: run.threadId,
     botId: run.botId,
-    type: "thread.meta",
-    payload: {
-      notice: "steering_deferred",
-      reason: "teaching_started",
-      botId: run.botId,
-      runId: run.id,
-      text: confirmedDeferredNoticeText(bot?.name),
-    },
+    notice: "steering_deferred",
+    reason: "teaching_started",
+    text: confirmedDeferredNoticeText(bot?.name),
   });
 }
 
@@ -457,19 +486,6 @@ async function retainUnhandled(
     const key = `${run.threadId}:${run.botId}`;
     if (noticed.has(key)) continue;
     noticed.add(key);
-    const already = await tx.event.findFirst({
-      where: {
-        threadId: run.threadId,
-        type: "thread.meta",
-        payload: { path: ["notice"], equals: "steering_unhandled" },
-        AND: [
-          { payload: { path: ["botId"], equals: run.botId } },
-          { payload: { path: ["reason"], equals: reason } },
-        ],
-      },
-      select: { id: true },
-    });
-    if (already) continue;
     let botName = botNames.get(run.botId);
     if (botName === undefined) {
       const bot = await tx.bot.findUnique({
@@ -480,18 +496,14 @@ async function retainUnhandled(
       botNames.set(run.botId, botName);
     }
     const text = confirmedUnhandledNoticeText(reason, botName);
-    await appendEventInTransaction(tx, {
+    if (!text) continue;
+    await appendCancelNotice(tx, {
       spaceId: run.spaceId,
       threadId: run.threadId,
       botId: run.botId,
-      type: "thread.meta",
-      payload: {
-        notice: "steering_unhandled",
-        reason,
-        botId: run.botId,
-        runId: run.id,
-        ...(text ? { text } : {}),
-      },
+      notice: "steering_unhandled",
+      reason,
+      text,
     });
   }
 }
@@ -562,26 +574,15 @@ export async function settleReleasedSteeringForBot(
     await tx.steeringMessage.deleteMany({
       where: { botId, runId: null, message: { threadId } },
     });
-    const already = await tx.event.findFirst({
-      where: {
-        threadId,
-        type: "thread.meta",
-        payload: { path: ["notice"], equals: "steering_unhandled" },
-        AND: [{ payload: { path: ["botId"], equals: botId } }],
-      },
-      select: { id: true },
-    });
-    if (!already) {
-      await appendEventInTransaction(tx, {
+    const text = confirmedUnhandledNoticeText("superseded");
+    if (text) {
+      await appendCancelNotice(tx, {
         spaceId: thread.spaceId,
         threadId,
         botId,
-        type: "thread.meta",
-        payload: {
-          notice: "steering_unhandled",
-          reason: "teaching_started",
-          botId,
-        },
+        notice: "steering_unhandled",
+        reason: "teaching_started",
+        text,
       });
     }
   }
