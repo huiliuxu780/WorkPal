@@ -647,9 +647,12 @@ async function messageBotInAgentPair(
         },
       });
       const lineage = collaborationFromOrchestration(activeSource.orchestration);
+      // A typed cancel outcome resumes the requester. Its cancelled child cannot
+      // be the wake's parent, or the child sweep and history guard stop it.
+      const wakeParentRunId = options?.allowTypedCancel && origin ? origin.runId : run.id;
       const lineageInput = {
         fromBotId: sender.id,
-        parentRunId: run.id,
+        parentRunId: wakeParentRunId,
         handoffDepth: lineage?.handoffDepth ?? 0,
         messageHop: context.hop,
       };
@@ -657,7 +660,7 @@ async function messageBotInAgentPair(
         ? outcomeResumptionCollaboration({
             role: resumptionRole,
             fromBotId: sender.id,
-            parentRunId: run.id,
+            parentRunId: wakeParentRunId,
             handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
             messageHop: context.hop,
           })
@@ -1227,9 +1230,11 @@ export async function messageBot(
           },
         });
         const lineage = collaborationFromOrchestration(run.orchestration);
+        const wakeParentRunId =
+          options?.allowTypedCancel && run.originRunId ? run.originRunId : run.id;
         const lineageInput = {
           fromBotId: sender.id,
-          parentRunId: run.id,
+          parentRunId: wakeParentRunId,
           handoffDepth: lineage?.handoffDepth ?? 0,
           messageHop: hop,
         };
@@ -1237,7 +1242,7 @@ export async function messageBot(
           ? outcomeResumptionCollaboration({
               role: resumptionRole,
               fromBotId: sender.id,
-              parentRunId: run.id,
+              parentRunId: wakeParentRunId,
               handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
               messageHop: hop,
             })
@@ -1391,6 +1396,7 @@ async function messageBotInCurrentGroup(
     userId: string;
     sourceMessageId?: string | null;
     orchestration?: unknown;
+    originRunId?: string | null;
   },
   sender: { id: string; name: string },
   input: {
@@ -1715,9 +1721,11 @@ async function messageBotInCurrentGroup(
         },
       });
       const lineage = collaborationFromOrchestration(activeSource.orchestration);
+      const wakeParentRunId =
+        options?.allowTypedCancel && run.originRunId ? run.originRunId : run.id;
       const lineageInput = {
         fromBotId: sender.id,
-        parentRunId: run.id,
+        parentRunId: wakeParentRunId,
         handoffDepth: lineage?.handoffDepth ?? 0,
         messageHop: hop,
       };
@@ -1725,7 +1733,7 @@ async function messageBotInCurrentGroup(
         ? outcomeResumptionCollaboration({
             role: resumptionRole,
             fromBotId: sender.id,
-            parentRunId: run.id,
+            parentRunId: wakeParentRunId,
             handoffDepth: resumptionDepth ?? lineageInput.handoffDepth,
             messageHop: hop,
           })

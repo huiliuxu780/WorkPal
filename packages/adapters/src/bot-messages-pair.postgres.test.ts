@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { resolveRoundtableFeatureGates } from "@rakazo/core";
+import { parseRunOrchestration, resolveRoundtableFeatureGates } from "@rakazo/core";
 import {
   CHAT_GROUP_KIND_AGENT_PAIR,
   cancelChildrenOfCancelledRuns,
@@ -630,6 +630,16 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
         intent: "status",
       }),
     ]);
+    const wakeRun = await prisma.run.findUniqueOrThrow({
+      where: { id: wake.runId! },
+      select: { id: true, orchestration: true },
+    });
+    expect(parseRunOrchestration(wakeRun.orchestration)?.collaboration?.parentRunId).toBe(
+      sourceRun.id,
+    );
+    expect(await cancelChildrenOfCancelledRuns(prisma, [pairRun.id])).not.toContainEqual(
+      expect.objectContaining({ id: wakeRun.id }),
+    );
   });
 
   it("returns the result to the origin Thread and reuses the same pair", async () => {
