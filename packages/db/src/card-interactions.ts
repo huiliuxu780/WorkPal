@@ -79,65 +79,79 @@ export interface ThreadCardSurfaceInput {
 
 const ORIGIN_CONTROL_MAX_DEPTH = 8;
 
+const ORIGIN_CONTROL_RUN_SELECT = {
+  id: true,
+  spaceId: true,
+  threadId: true,
+  botId: true,
+  status: true,
+  waitKind: true,
+  createdAt: true,
+  waitStartedAt: true,
+  leaseOwner: true,
+  leaseExpiresAt: true,
+  originThreadId: true,
+  originRunId: true,
+} as const;
+
+type OriginControlCandidate = {
+  id: string;
+  spaceId: string;
+  threadId: string;
+  botId: string;
+  status: string;
+  waitKind: string | null;
+  createdAt: Date;
+  waitStartedAt: Date | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: Date | null;
+  originThreadId: string | null;
+  originRunId: string | null;
+};
+
 /**
  * RT-05F publishes a delegated Run's takeover request into its first visible
  * origin Thread while the Run itself stays bound to a hidden pair Thread, so
  * the thread's headline Run cannot represent it and `computer` message blocks
- * are display-only history. Walk the persisted origin chain the same way
- * `resolveVisibleOrigin` does and return the active Runs whose visible origin
- * is this Thread, already re-based onto the visible Thread. The caller derives
- * SessionControlViews from these facts; only a live takeover request or a
- * user-held return produces a view.
+ * are display-only history. Walk the persisted origin chain and return the
+ * active Runs whose visible origin is this Thread, already re-based onto the
+ * visible Thread. The caller derives SessionControlViews from these facts; only
+ * a live takeover request or a user-held return produces a view.
+ *
+ * Pair Threads are reused across visible origins, so a shared pair Thread is
+ * never sufficient ancestry: every hop below the visible Thread must name an
+ * eligible parent Run from the previous generation, matching the run-level
+ * `originRunId` chain that `resolveVisibleOrigin` follows.
  */
 export async function loadOriginControlFacts(
   tx: Prisma.TransactionClient,
   input: { spaceId: string; threadId: string },
 ): Promise<{ runs: CardRunFact[]; computers: CardComputerFact[] }> {
-  const controlRuns: Array<{
-    id: string;
-    spaceId: string;
-    botId: string;
-    status: string;
-    waitKind: string | null;
-    createdAt: Date;
-    waitStartedAt: Date | null;
-    leaseOwner: string | null;
-    leaseExpiresAt: Date | null;
-  }> = [];
+  const orderBy = [{ createdAt: "asc" as const }, { id: "asc" as const }];
+  let candidates: OriginControlCandidate[] = await tx.run.findMany({
+    where: {
+      spaceId: input.spaceId,
+      originThreadId: input.threadId,
+      originRunId: { not: null },
+      // readOrigin requires the full triple before presenting in an origin.
+      originMessageId: { not: null },
+      // message_group presents its waits in the target group, not the source.
+      trigger: { not: "message_group" },
+    },
+    select: ORIGIN_CONTROL_RUN_SELECT,
+    orderBy,
+  });
+  const controlRuns: OriginControlCandidate[] = [];
   const seenRuns = new Set<string>();
   const seenThreads = new Set<string>([input.threadId]);
-  let originThreadIds = [input.threadId];
-  for (let depth = 0; depth < ORIGIN_CONTROL_MAX_DEPTH && originThreadIds.length > 0; depth += 1) {
-    const runs = await tx.run.findMany({
-      where: {
-        spaceId: input.spaceId,
-        originThreadId: { in: originThreadIds },
-        originRunId: { not: null },
-        // readOrigin requires the full triple before presenting in an origin.
-        originMessageId: { not: null },
-        // message_group presents its waits in the target group, not the source.
-        trigger: { not: "message_group" },
-      },
-      select: {
-        id: true,
-        spaceId: true,
-        threadId: true,
-        botId: true,
-        status: true,
-        waitKind: true,
-        createdAt: true,
-        waitStartedAt: true,
-        leaseOwner: true,
-        leaseExpiresAt: true,
-      },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    });
-    for (const run of runs) {
+  for (let depth = 0; depth < ORIGIN_CONTROL_MAX_DEPTH; depth += 1) {
+    if (candidates.length === 0) break;
+    for (const run of candidates) {
       if (seenRuns.has(run.id)) continue;
       seenRuns.add(run.id);
       if ((ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) controlRuns.push(run);
     }
-    const nextThreadIds = [...new Set(runs.map((run) => run.threadId))].filter(
+    const nextThreadIds = [...new Set(candidates.map((run) => run.threadId))].filter(
       (threadId) => !seenThreads.has(threadId),
     );
     if (nextThreadIds.length === 0) break;
@@ -151,7 +165,24 @@ export async function loadOriginControlFacts(
       },
       select: { id: true },
     });
-    originThreadIds = pairThreads.map((thread) => thread.id);
+    const pairThreadIds = new Set(pairThreads.map((thread) => thread.id));
+    const eligibleParents = candidates.filter((run) => pairThreadIds.has(run.threadId));
+    if (eligibleParents.length === 0) break;
+    const parentThreadById = new Map(eligibleParents.map((run) => [run.id, run.threadId]));
+    const fetched = await tx.run.findMany({
+      where: {
+        spaceId: input.spaceId,
+        originThreadId: { in: [...pairThreadIds] },
+        originRunId: { in: [...parentThreadById.keys()] },
+        originMessageId: { not: null },
+        trigger: { not: "message_group" },
+      },
+      select: ORIGIN_CONTROL_RUN_SELECT,
+      orderBy,
+    });
+    candidates = fetched.filter(
+      (run) => run.originRunId && parentThreadById.get(run.originRunId) === run.originThreadId,
+    );
   }
   if (controlRuns.length === 0) return { runs: [], computers: [] };
   const bots = await tx.bot.findMany({

@@ -413,8 +413,23 @@ describePostgres("CARD-01 card projection (PostgreSQL)", () => {
       where: { id: innerBot.id },
       data: { computerId: computer.id },
     });
-    // Excluded: another visible origin, message_group presentations, archived bots.
+    // Pair Threads are reused across visible origins: a sibling parent from
+    // another visible Thread must not make its child eligible here.
     const otherVisible = await freshThread();
+    const otherParent = await delegatedRun({
+      threadId: outerPairThreadId,
+      botId: outerBot.id,
+      originThreadId: otherVisible.threadId,
+      originRunId: "other-visible-origin",
+      status: "completed",
+    });
+    await delegatedRun({
+      threadId: innerPairThreadId,
+      botId: innerBot.id,
+      originThreadId: outerPairThreadId,
+      originRunId: otherParent.id,
+      status: "waiting_takeover",
+    });
     await delegatedRun({
       threadId: outerPairThreadId,
       botId: outerBot.id,
