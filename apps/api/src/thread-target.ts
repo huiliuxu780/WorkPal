@@ -37,7 +37,7 @@ import {
   GROUP_MULTI_TARGET_BUSY_CODE,
   hasMentionToken,
   isActive,
-  isConversationalRun,
+  isSteerableChatRun,
   decideMessageRoute,
   type MessageRouteRejectCode,
   projectActivity,
@@ -207,19 +207,6 @@ async function loadThreadActivity(
 const RUNS_NEEDING_CONTINUE = new Set(["queued", "waiting_takeover"]);
 
 const STEERABLE_RUN_STATUSES = new Set(["queued", "leased", "running", "waiting_takeover"]);
-/**
- * A routine's, webhook's, or creation intro's turn is its own prompt, not the conversation.
- * A user message that lands while one is busy (not `waiting_input`) is stored as pending
- * steering (no run): that run never claims it, and the continuation started when it finishes
- * answers with the full thread. Starting a second run beside the intro overlaps it on a
- * dedicated computer, where there is no per-bot execution lease, and both can reply.
- * Composer text answers a waiting ask, including a routine or webhook ask, only when no
- * steerable conversational run is active. When one is, the text steers that run and the
- * ask stays on its card.
- */
-function steersUserMessage(run: { status: string; trigger?: string | null }) {
-  return STEERABLE_RUN_STATUSES.has(run.status) && isConversationalRun(run.trigger);
-}
 
 type MentionTargetInput = string | { kind: "bot" | "group" | "routine" | "connector"; id: string };
 type MentionSpanInput = { botId: string; start: number; end: number };
@@ -1802,7 +1789,7 @@ export async function sendThreadMessage(
         ] as const),
       );
       const conversationalBotIds = new Set(
-        activeRuns.filter(steersUserMessage).map((run) => run.botId),
+        activeRuns.filter(isSteerableChatRun).map((run) => run.botId),
       );
       const waitingRuns = activeRuns.filter(
         (run) => run.status === "waiting_input" && !conversationalBotIds.has(run.botId),

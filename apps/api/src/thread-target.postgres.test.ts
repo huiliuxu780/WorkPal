@@ -147,6 +147,29 @@ describePostgres("RT-27 deterministic message routing (PostgreSQL)", () => {
     expect(await prisma.run.count({ where: { threadId: target.threadId } })).toBe(1);
   });
 
+  it("never steers a peer support turn", async () => {
+    const target = await newBotThread("support");
+    const peer = await newRun(target, { status: "running", trigger: "bot_message" });
+    const groupPeer = await newRun(target, { status: "running", trigger: "message_group" });
+
+    const result = await send(targetOf(target), {
+      text: "answer me instead",
+      clientNonce: "rt27-support",
+    });
+
+    expect(result.runId).not.toBe(peer.run.id);
+    expect(result.runId).not.toBe(groupPeer.run.id);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: result.runId! } })).toMatchObject({
+      status: "queued",
+      trigger: "user",
+    });
+    expect(
+      await prisma.steeringMessage.count({
+        where: { runId: { in: [peer.run.id, groupPeer.run.id] } },
+      }),
+    ).toBe(0);
+  });
+
   it("creates its own queued task and run when two runs can take steering", async () => {
     const target = await newBotThread("multiple");
     const { run: running } = await newRun(target, { status: "running" });

@@ -51,11 +51,21 @@ export type MessageRouteDecision =
     }
   | { kind: "reject"; code: MessageRouteRejectCode };
 
+/**
+ * Peer support turns are not the user's conversation, even though they are not
+ * routine/webhook/delivery turns. A user message must not be injected into a
+ * turn another Bot is driving.
+ */
+const NON_STEERABLE_CHAT_TRIGGERS = new Set(["bot_message", "message_group"]);
+
 /** A Run that may take this message as steering: conversation turn, still open. */
 export function isSteerableChatRun(run: { status: string; trigger?: string | null }): boolean {
   const status = RunStatus.safeParse(run.status);
   return (
-    status.success && STEERABLE_RUN_STATUSES.has(status.data) && isConversationalRun(run.trigger)
+    status.success &&
+    STEERABLE_RUN_STATUSES.has(status.data) &&
+    isConversationalRun(run.trigger) &&
+    !NON_STEERABLE_CHAT_TRIGGERS.has(run.trigger ?? "")
   );
 }
 

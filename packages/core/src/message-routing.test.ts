@@ -30,7 +30,7 @@ describe("isSteerableChatRun", () => {
     expect(isSteerableChatRun({ status: "queued", trigger: "user" })).toBe(true);
     expect(isSteerableChatRun({ status: "leased", trigger: "follow_up" })).toBe(true);
     expect(isSteerableChatRun({ status: "running", trigger: "messaging" })).toBe(true);
-    expect(isSteerableChatRun({ status: "waiting_takeover", trigger: "bot_message" })).toBe(true);
+    expect(isSteerableChatRun({ status: "waiting_takeover", trigger: "follow_up" })).toBe(true);
   });
 
   it("rejects waiting asks, terminal Runs, and non-conversational turns", () => {
@@ -42,6 +42,8 @@ describe("isSteerableChatRun", () => {
     expect(isSteerableChatRun({ status: "running", trigger: "webhook" })).toBe(false);
     expect(isSteerableChatRun({ status: "running", trigger: "created" })).toBe(false);
     expect(isSteerableChatRun({ status: "running", trigger: "delivery" })).toBe(false);
+    expect(isSteerableChatRun({ status: "running", trigger: "bot_message" })).toBe(false);
+    expect(isSteerableChatRun({ status: "running", trigger: "message_group" })).toBe(false);
     expect(isSteerableChatRun({ status: "unknown", trigger: "user" })).toBe(false);
   });
 });
@@ -117,6 +119,8 @@ describe("decideMessageRoute", () => {
         candidates: [
           candidate("run-routine", { trigger: "routine" }),
           candidate("run-webhook", { trigger: "webhook" }),
+          candidate("run-support", { trigger: "bot_message" }),
+          candidate("run-message-group", { trigger: "message_group" }),
           candidate("run-waiting", { status: "waiting_input" }),
         ],
       }),
