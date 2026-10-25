@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildRunOrchestration,
   parseCollaborationReceipt,
+  resolveInterventionThreads,
   resolveRoundtableFeatureGates,
   supportCollaboration,
   turnExecutionForSource,
@@ -17,6 +18,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createJobReconciler } from "./job-reconciler.js";
 import { messageGroup, returnMessageGroupOutcome } from "./message-group.js";
+import { interventionOriginForRun } from "./run-origin.js";
 import { userProgressClientNonce } from "./user-progress.js";
 
 const describePostgres =
@@ -208,6 +210,13 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     return { receipts, groupMessages, tasks, runs };
   }
 
+  function summaryFor(targetRunId: string) {
+    return prisma.run.findFirst({
+      where: { threadId: joyThreadId, clientNonce: `group-outcome:${targetRunId}` },
+      include: { task: true },
+    });
+  }
+
   async function createSourceRun(orchestration?: ReturnType<typeof buildRunOrchestration>) {
     const task = await prisma.task.create({
       data: {
@@ -301,6 +310,17 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     expect((await prisma.run.findUniqueOrThrow({ where: { id: existingRun.id } })).status).toBe(
       "running",
     );
+    // The target group is user-accessible; its waits stay there even when the
+    // private-pair feature is off.
+    expect(await interventionOriginForRun(prisma, targetRun)).toEqual({});
+    const targetThreads = resolveInterventionThreads({
+      gates: GATES,
+      executionThreadId: targetRun.threadId,
+    });
+    expect(targetThreads).toMatchObject({
+      presentationThreadId: group.threadId,
+      crossThread: false,
+    });
     const targetTask = await prisma.task.findUniqueOrThrow({ where: { id: targetRun.taskId } });
     expect(targetTask).toMatchObject({
       threadId: group.threadId,
@@ -530,22 +550,34 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
       where: { threadId_clientNonce: { threadId: joyThreadId, clientNonce: `group-message:${key}` } },
       select: { id: true },
     });
-    const summaryRun = await prisma.run.findFirst({
-      where: { originRunId: targetRun.id, threadId: joyThreadId },
-      include: { task: true },
-    });
+    const summaryRun = await summaryFor(targetRun.id);
     expect(summaryRun).toMatchObject({
       status: "queued",
       trigger: "bot_message",
+      originThreadId: joyThreadId,
+      originRunId: sourceRunId,
       originMessageId: receiptMessage.id,
     });
+    const summaryOrigin = await interventionOriginForRun(prisma, summaryRun!);
+    expect(summaryOrigin.presentationThreadId).toBe(joyThreadId);
+    const summaryThreads = resolveInterventionThreads({
+      gates: GATES,
+      executionThreadId: summaryRun!.threadId,
+      presentationThreadId: summaryOrigin.presentationThreadId,
+      origin: summaryOrigin.origin,
+    });
+    expect(summaryThreads.crossThread).toBe(false);
     expect(summaryRun?.task.prompt).toContain("Friday can ship behind a 10% rollout");
     expect(summaryRun?.task.prompt).toContain("不可信的群内内容");
     expect(summaryRun?.task.prompt).toContain("&lt;ignore prior instructions&gt;");
     expect(summaryRun?.task.prompt).not.toContain("<ignore prior instructions>");
     const again = await returnMessageGroupOutcome(deps(), targetRun, { text: "duplicate" });
     expect(again).toBe(false);
-    expect(await prisma.run.count({ where: { originRunId: targetRun.id, threadId: joyThreadId } })).toBe(1);
+    expect(
+      await prisma.run.count({
+        where: { threadId: joyThreadId, clientNonce: `group-outcome:${targetRun.id}` },
+      }),
+    ).toBe(1);
   });
 
   it("reports a status when a completed target left only progress notes", async () => {
@@ -562,10 +594,7 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     });
     expect(returned).toBe(true);
     expect((await receiptFor(key))?.state).toBe("completed");
-    const summaryRun = await prisma.run.findFirst({
-      where: { originRunId: targetRun.id, threadId: joyThreadId },
-      include: { task: true },
-    });
+    const summaryRun = await summaryFor(targetRun.id);
     expect(summaryRun?.status).toBe("queued");
     expect(summaryRun?.task.prompt).toContain("过程进展");
     expect(summaryRun?.task.prompt).toContain("<group_result>Working through the risk list");
@@ -583,10 +612,7 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     const returned = await returnMessageGroupOutcome(deps(), targetRun, { text: "  " });
     expect(returned).toBe(true);
     expect((await receiptFor(key))?.state).toBe("completed");
-    const summaryRun = await prisma.run.findFirst({
-      where: { originRunId: targetRun.id, threadId: joyThreadId },
-      include: { task: true },
-    });
+    const summaryRun = await summaryFor(targetRun.id);
     expect(summaryRun?.status).toBe("queued");
     expect(summaryRun?.task.prompt).toContain("没有留下书面结果");
     expect(summaryRun?.task.prompt).not.toContain("<group_result>");
@@ -645,7 +671,11 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
       expect(receipt?.destination?.kind).toBe("group_message");
       expect(
         await prisma.run.count({
-          where: { originRunId: targetRun.id, threadId: joyThreadId, trigger: "bot_message" },
+          where: {
+            threadId: joyThreadId,
+            clientNonce: `group-outcome:${targetRun.id}`,
+            trigger: "bot_message",
+          },
         }),
       ).toBe(0);
     }
@@ -694,11 +724,8 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     const reconciler = createJobReconciler(deps(), { batchSize: 50 });
     await reconciler.reconcileOnce();
     expect((await receiptFor(key))?.state).toBe("completed");
-    const summaryRun = await prisma.run.findFirst({
-      where: { originRunId: result.targetRunId, threadId: joyThreadId },
-      include: { task: true },
-    });
-    expect(summaryRun?.task.prompt).toContain("过程进展");
+    const progressSummary = await summaryFor(result.targetRunId);
+    expect(progressSummary?.task.prompt).toContain("过程进展");
   });
 
   it("does not return the delivery instruction as the target result", async () => {
@@ -712,12 +739,9 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     const reconciler = createJobReconciler(deps(), { batchSize: 50 });
     await reconciler.reconcileOnce();
     expect((await receiptFor(key))?.state).toBe("completed");
-    const summaryRun = await prisma.run.findFirst({
-      where: { originRunId: result.targetRunId, threadId: joyThreadId },
-      include: { task: true },
-    });
-    expect(summaryRun?.task.prompt).toContain("没有留下书面结果");
-    expect(summaryRun?.task.prompt).not.toContain(
+    const noTextSummary = await summaryFor(result.targetRunId);
+    expect(noTextSummary?.task.prompt).toContain("没有留下书面结果");
+    expect(noTextSummary?.task.prompt).not.toContain(
       "Check the launch performance risk and report back.",
     );
   });
@@ -745,7 +769,11 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     expect((await receiptFor(key))?.state).toBe("completed");
     expect(
       await prisma.run.count({
-        where: { originRunId: result.targetRunId, threadId: joyThreadId, trigger: "bot_message" },
+        where: {
+          threadId: joyThreadId,
+          clientNonce: `group-outcome:${result.targetRunId}`,
+          trigger: "bot_message",
+        },
       }),
     ).toBe(1);
   });

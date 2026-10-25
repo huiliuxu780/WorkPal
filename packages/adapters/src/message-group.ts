@@ -604,7 +604,10 @@ export async function returnMessageGroupOutcome(
             trigger: "bot_message",
             clientNonce: `group-outcome:${run.id}`,
             originThreadId,
-            originRunId: run.id,
+            // The summary writes in the source thread, so its intervention
+            // origin must name a run of that thread. Target lineage remains in
+            // the orchestration parentRunId below.
+            originRunId: originSource.id,
             originMessageId: receiptMessage.id,
             orchestration: buildRunOrchestration({
               kind: "bot_message",
