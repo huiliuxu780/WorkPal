@@ -353,9 +353,15 @@ async function disposeSteering(
   }
   const attached = await tx.steeringMessage.findMany({
     where: { runId: { in: ids } },
-    select: { runId: true },
+    select: { id: true, runId: true },
   });
-  const withSteering = new Set(attached.map((row) => row.runId));
+  const steeringIdsByRun = new Map<string, string[]>();
+  for (const row of attached) {
+    if (!row.runId) continue;
+    const steeringIds = steeringIdsByRun.get(row.runId) ?? [];
+    steeringIds.push(row.id);
+    steeringIdsByRun.set(row.runId, steeringIds);
+  }
   await tx.steeringMessage.updateMany({
     where: { runId: { in: ids } },
     data: { runId: null, claimedAt: null },
@@ -367,7 +373,7 @@ async function disposeSteering(
     if (seen.has(key)) continue;
     seen.add(key);
     if (!(await botMayContinueConversation(tx, run.botId, run.threadId))) {
-      if (policy.reason === "teaching_started" && withSteering.has(run.id)) {
+      if (policy.reason === "teaching_started" && steeringIdsByRun.has(run.id)) {
         await appendDeferredSteeringNotice(tx, run);
       }
       continue;
@@ -382,6 +388,11 @@ async function disposeSteering(
   return continuationRunIds;
 }
 
+/** Retries of one cancellation reuse their steering set; later work gets its own notice. */
+function steeringIdsKey(steeringIds: readonly string[]): string {
+  return [...steeringIds].sort().join(",");
+}
+
 async function appendCancelNotice(
   tx: Prisma.TransactionClient,
   input: {
@@ -390,11 +401,12 @@ async function appendCancelNotice(
     botId: string;
     notice: "steering_unhandled" | "steering_deferred";
     reason: CancelReason;
+    episode: string;
     text: string;
   },
 ): Promise<void> {
   await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
-  const clientNonce = `cancel-notice:${input.notice}:${input.reason}:${input.botId}`;
+  const clientNonce = `cancel-notice:${input.notice}:${input.reason}:${input.botId}:${input.episode}`;
   const existing = await tx.message.findUnique({
     where: {
       threadId_clientNonce: { threadId: input.threadId, clientNonce },
@@ -440,6 +452,7 @@ async function appendDeferredSteeringNotice(
     botId: run.botId,
     notice: "steering_deferred",
     reason: "teaching_started",
+    episode: run.id,
     text: confirmedDeferredNoticeText(bot?.name),
   });
 }
@@ -477,14 +490,24 @@ async function retainUnhandled(
 ): Promise<void> {
   const attached = await tx.steeringMessage.findMany({
     where: { runId: { in: rows.map((run) => run.id) } },
-    select: { runId: true },
+    select: { id: true, runId: true },
   });
-  const withSteering = new Set(attached.map((row) => row.runId));
+  const runKeys = new Map(rows.map((run) => [run.id, `${run.threadId}:${run.botId}`]));
+  const steeringIdsByKey = new Map<string, string[]>();
+  for (const row of attached) {
+    if (!row.runId) continue;
+    const key = runKeys.get(row.runId);
+    if (!key) continue;
+    const steeringIds = steeringIdsByKey.get(key) ?? [];
+    steeringIds.push(row.id);
+    steeringIdsByKey.set(key, steeringIds);
+  }
   const noticed = new Set<string>();
   const botNames = new Map<string, string | null>();
   for (const run of rows) {
-    if (!withSteering.has(run.id)) continue;
     const key = `${run.threadId}:${run.botId}`;
+    const steeringIds = steeringIdsByKey.get(key);
+    if (!steeringIds) continue;
     if (noticed.has(key)) continue;
     noticed.add(key);
     let botName = botNames.get(run.botId);
@@ -504,6 +527,7 @@ async function retainUnhandled(
       botId: run.botId,
       notice: "steering_unhandled",
       reason,
+      episode: steeringIdsKey(steeringIds),
       text,
     });
   }
@@ -556,6 +580,12 @@ export async function settleReleasedSteeringForBot(
     },
   });
   const threadIds = [...new Set(pending.map((row) => row.message.threadId))];
+  const steeringIdsByThread = new Map<string, string[]>();
+  for (const row of pending) {
+    const ids = steeringIdsByThread.get(row.message.threadId) ?? [];
+    ids.push(row.id);
+    steeringIdsByThread.set(row.message.threadId, ids);
+  }
   const continuationRunIds: string[] = [];
   for (const threadId of threadIds) {
     const thread = await tx.thread.findUnique({
@@ -583,6 +613,7 @@ export async function settleReleasedSteeringForBot(
         botId,
         notice: "steering_unhandled",
         reason: "teaching_started",
+        episode: steeringIdsKey(steeringIdsByThread.get(threadId) ?? []),
         text,
       });
     }

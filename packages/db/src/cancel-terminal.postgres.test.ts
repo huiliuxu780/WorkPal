@@ -404,11 +404,11 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
     ).not.toMatch(FORBIDDEN_VISIBLE);
   });
 
-  it("writes one unhandled notice under concurrent cancels for the same bot and thread", async () => {
+  it("writes one unhandled notice per concurrent cancellation episode", async () => {
     const first = await delegatedRun();
     const second = await delegatedRun();
-    await steer(first.id, "first unhandled");
-    await steer(second.id, "second unhandled");
+    const firstSteering = await steer(first.id, "first unhandled");
+    const secondSteering = await steer(second.id, "second unhandled");
     await Promise.all([
       prisma.$transaction((tx) =>
         applyCancelTerminalPolicy(tx, [{ id: first.id, taskId: first.taskId }], new Date(), {
@@ -421,13 +421,74 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
         }),
       ),
     ]);
-    const notices = (
-      await prisma.message.findMany({
-        where: { threadId, role: "system" },
-        select: { blocks: true },
-      })
-    ).filter((row) => JSON.stringify(row.blocks).includes("未处理：Policy bot已经不在这个群里。"));
-    expect(notices).toHaveLength(1);
+    const notices = await prisma.message.findMany({
+      where: {
+        threadId,
+        role: "system",
+        clientNonce: {
+          in: [
+            `cancel-notice:steering_unhandled:member_removed:${botId}:${firstSteering.steering.id}`,
+            `cancel-notice:steering_unhandled:member_removed:${botId}:${secondSteering.steering.id}`,
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    expect(notices).toHaveLength(2);
+  });
+
+  it("does not repeat a notice when the same cancellation is retried", async () => {
+    const run = await delegatedRun();
+    const pending = await steer(run.id, "retry me");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await prisma.$transaction((tx) =>
+        applyCancelTerminalPolicy(tx, [{ id: run.id, taskId: run.taskId }], new Date(), {
+          policy: cancelPolicyFor("member_removed"),
+        }),
+      );
+    }
+    expect(
+      await prisma.message.count({
+        where: {
+          threadId,
+          role: "system",
+          clientNonce: {
+            endsWith: `:${botId}:${pending.steering.id}`,
+          },
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("explains later cancellations even when the reason repeats", async () => {
+    const first = await delegatedRun();
+    const firstSteering = await steer(first.id, "first episode");
+    await prisma.$transaction((tx) =>
+      applyCancelTerminalPolicy(tx, [{ id: first.id, taskId: first.taskId }], new Date(), {
+        policy: cancelPolicyFor("member_removed"),
+      }),
+    );
+    const second = await delegatedRun();
+    const secondSteering = await steer(second.id, "second episode");
+    await prisma.$transaction((tx) =>
+      applyCancelTerminalPolicy(tx, [{ id: second.id, taskId: second.taskId }], new Date(), {
+        policy: cancelPolicyFor("member_removed"),
+      }),
+    );
+    const notices = await prisma.message.findMany({
+      where: {
+        threadId,
+        role: "system",
+        clientNonce: {
+          in: [
+            `cancel-notice:steering_unhandled:member_removed:${botId}:${firstSteering.steering.id}`,
+            `cancel-notice:steering_unhandled:member_removed:${botId}:${secondSteering.steering.id}`,
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    expect(notices).toHaveLength(2);
   });
 
   it("migrates superseded steering onto one replacement and retains otherwise", async () => {
