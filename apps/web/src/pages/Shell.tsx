@@ -7,6 +7,7 @@ import type {
   AgentSkillCatalogEntry,
   Bot,
   BotSection,
+  CollaborationReceiptBlock,
   ComputerMode,
   ComputerReleaseReason,
   ComputerStatus,
@@ -6678,6 +6679,28 @@ function AvatarChangeCard({
   );
 }
 
+function GroupReceiptNavigation({
+  block,
+  botName,
+}: {
+  block: CollaborationReceiptBlock;
+  botName: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <GroupDestinationReceipt
+      block={block}
+      botName={botName}
+      onOpen={({ groupId, messageId }) =>
+        navigate({
+          pathname: `/app/g/${groupId}`,
+          search: `?m=${encodeURIComponent(messageId)}`,
+        })
+      }
+    />
+  );
+}
+
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
@@ -6726,7 +6749,6 @@ const MessageView = memo(function MessageView({
   showToolActivity: boolean;
 }) {
   const { t } = useLingui();
-  const navigate = useNavigate();
   const isNarration =
     message.role === "bot" &&
     message.blocks.length > 0 &&
@@ -6888,16 +6910,10 @@ const MessageView = memo(function MessageView({
         if (block.kind === "collaboration_receipt") {
           if ("groupId" in artifactTarget) return null;
           return (
-            <GroupDestinationReceipt
+            <GroupReceiptNavigation
               key={i}
               block={block}
               botName={message.botId ? (botNameOf?.(message.botId) ?? t`Bot`) : t`Bot`}
-              onOpen={({ groupId, messageId }) =>
-                navigate({
-                  pathname: `/app/g/${groupId}`,
-                  search: `?m=${encodeURIComponent(messageId)}`,
-                })
-              }
             />
           );
         }
