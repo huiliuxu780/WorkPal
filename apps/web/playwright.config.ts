@@ -19,6 +19,7 @@ export default defineConfig({
   timeout: boxSandbox ? 600_000 : realSandbox ? 300_000 : 120_000,
   expect: { timeout: boxSandbox ? 300_000 : realSandbox ? 90_000 : 20_000 },
   reporter: reporters,
+  outputDir: "test-results",
   use: {
     baseURL,
     trace: "retain-on-failure",

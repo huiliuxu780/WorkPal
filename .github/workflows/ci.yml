@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: full runs every current CI check; selective uses this commit's diff against main
+        description: full runs every current CI check; selective uses this commit's diff against main; visual runs only the daily screenshot specs
         type: choice
-        options: [full, selective]
+        options: [full, selective, visual]
         default: full
   schedule:
     - cron: "17 3 * * *"
@@ -132,6 +132,17 @@ jobs:
       - run: pnpm --filter @rakazo/db generate
       - name: Focused web E2E (scripted runtime, no Worker process)
         run: pnpm test:e2e --runtime=scripted --spec="${{ needs.select-checks.outputs.web_e2e_spec }}"
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
 
   backend:
     name: backend
@@ -242,6 +253,17 @@ jobs:
       - run: pnpm test:e2e --runtime=agentscope --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts|capability-rules.spec.ts"
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
 
   worker-chain:
     name: worker-chain
@@ -265,6 +287,52 @@ jobs:
       - run: pnpm test:worker-chain
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
+
+  visual-web:
+    name: Daily web screenshots
+    needs: select-checks
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'visual') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @rakazo/db generate
+      - name: Daily visual specs (scripted runtime)
+        run: pnpm test:e2e --runtime=scripted --spec="ui-appearance.spec.ts|settings-shell.spec.ts"
+      - name: Upload daily visual screenshots and report
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-visual-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
 
   agent-runtime-image:
     name: agent-runtime-image

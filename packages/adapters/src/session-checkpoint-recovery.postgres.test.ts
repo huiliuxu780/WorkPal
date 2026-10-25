@@ -307,6 +307,35 @@ describePostgres("session checkpoint recovery (PostgreSQL)", () => {
     ).not.toMatchObject({ state: "recovering" });
   });
 
+  it("releases a terminal owner's recovering admission without resuming that Run", async () => {
+    const owner = await recoveringOwner();
+    await prisma.run.update({
+      where: { id: owner.run.id },
+      data: { status: "failed", error: "budget_exceeded:duration_sec" },
+    });
+    const checkpointId = sessionCheckpointId({
+      runId: owner.run.id,
+      attemptId: owner.attempt.id,
+      admissionFence: owner.lease.admissionFence,
+    });
+    const runtime = new FakeAgentScopeRuntime(async () => ({
+      kind: "clean",
+      checkpointId,
+      digest: "a".repeat(64),
+      pendingCalls: [],
+    }));
+    await executor(runtime).continueRun(owner.run.id, "worker-terminal");
+
+    const admission = await prisma.agentSessionAdmission.findUniqueOrThrow({
+      where: { sessionKey: owner.lease.sessionKey },
+    });
+    expect(admission.state).not.toBe("recovering");
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: owner.run.id } })).toMatchObject({
+      status: "failed",
+      leaseOwner: null,
+    });
+  });
+
   it("does not release when the Runtime proves a different checkpoint", async () => {
     const owner = await recoveringOwner();
     const runtime = new FakeAgentScopeRuntime(async () => ({
