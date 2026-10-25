@@ -36,6 +36,10 @@ function fakePrisma(
     routine: { findMany: vi.fn(async () => routines) },
     computer: { findMany: vi.fn(async () => controls) },
     messagingOutbound: { findFirst: vi.fn(async () => null) },
+    cancelOutcomeOutbox: {
+      findMany: vi.fn(async () => []),
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
   } as unknown as PrismaClient;
 }
 
@@ -81,6 +85,55 @@ describe("createJobReconciler", () => {
       name: "messaging.deliver",
       payload: {},
       replaceKey: "messaging.deliver:drain",
+    });
+  });
+
+  it("delivers the confirmed typed-cancel sentence once", async () => {
+    const prisma = fakePrisma();
+    vi.mocked(prisma.cancelOutcomeOutbox.findMany).mockResolvedValue([
+      {
+        id: "outcome-1",
+        runId: "run-cancelled",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        senderBotId: "bot-1",
+        senderName: "Researcher",
+        threadId: "thread-1",
+        sourceMessageId: "message-1",
+        originThreadId: null,
+        originRunId: null,
+        originMessageId: null,
+        reason: "wait_timeout",
+      },
+    ] as never);
+    vi.mocked(returnBotMessageOutcome).mockClear();
+    vi.mocked(returnBotMessageOutcome).mockResolvedValue(true);
+    const { jobs } = publisher();
+    const events = { notify: vi.fn() } as unknown as ThreadEvents;
+
+    await createJobReconciler({ prisma, jobs, events }).reconcileOnce();
+
+    expect(returnBotMessageOutcome).toHaveBeenCalledWith(
+      { prisma, jobs, events },
+      {
+        id: "run-cancelled",
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        botId: "bot-1",
+        userId: "user-1",
+        sourceMessageId: "message-1",
+        originThreadId: null,
+        originRunId: null,
+        originMessageId: null,
+      },
+      { id: "bot-1", name: "Researcher" },
+      "已取消：等太久了，这项委托没有完成。",
+      "status",
+      { allowTypedCancel: true },
+    );
+    expect(prisma.cancelOutcomeOutbox.updateMany).toHaveBeenCalledWith({
+      where: { id: "outcome-1", deliveredAt: null },
+      data: { deliveredAt: expect.any(Date) },
     });
   });
 
@@ -229,6 +282,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: computerFindMany },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
     } as unknown as PrismaClient;
     const { jobs, enqueue } = publisher();
     const reconciler = createJobReconciler({ prisma, jobs }, { batchSize: 2 });
@@ -292,6 +349,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: routineFindMany },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
     } as unknown as PrismaClient;
     const { jobs, enqueue } = publisher();
     const reconciler = createJobReconciler({ prisma, jobs }, { batchSize: 2 });
@@ -364,6 +425,7 @@ describe("createJobReconciler", () => {
   });
 
   it("retries terminal bot outcomes that were not returned", async () => {
+    vi.mocked(returnBotMessageOutcome).mockClear();
     const terminalRun = {
       id: "run-terminal",
       spaceId: "workspace-1",
@@ -389,6 +451,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           { blocks: [{ kind: "text", text: "Finished." }], clientNonce: null },
@@ -454,6 +520,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           {
@@ -505,6 +575,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           {
@@ -556,6 +630,10 @@ describe("createJobReconciler", () => {
       routine: { findMany: vi.fn(async () => []) },
       computer: { findMany: vi.fn(async () => []) },
       messagingOutbound: { findFirst: vi.fn(async () => null) },
+      cancelOutcomeOutbox: {
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
       message: {
         findMany: vi.fn(async () => [
           {

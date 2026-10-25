@@ -138,7 +138,9 @@ export function supersededCancelPolicy(
   }
   return {
     reason: "superseded",
-    reportDelegationOutcome: true,
+    // Retain has no replacement run, so the confirmed sentence is the
+    // thread-scoped unhandled notice, not an automatic bot outcome.
+    reportDelegationOutcome: false,
     steering: "retain_unhandled",
   };
 }
@@ -155,16 +157,15 @@ export function cancelEventPayload(
   };
 }
 
-/** Product sentences are held until the prototype copy is confirmed. */
 const CONFIRMED_CANCEL_OUTCOME_TEXT: Record<
   Exclude<CancelReason, "user_stopped">,
   string | null
 > = {
-  wait_timeout: null,
-  plan_rejected: null,
-  budget_cancelled: null,
-  budget_narrowed: null,
-  teaching_started: null,
+  wait_timeout: "已取消：等太久了，这项委托没有完成。",
+  plan_rejected: "已取消：方案没有被采纳，这项委托已结束。",
+  budget_cancelled: "已取消：已超出预算，这项委托已停止。",
+  budget_narrowed: "已取消：已超出预算，这项委托已停止。",
+  teaching_started: "已取消：对方开始教学，这项委托已停下。",
   member_removed: null,
   group_archived: null,
   bot_archived: null,
@@ -172,27 +173,34 @@ const CONFIRMED_CANCEL_OUTCOME_TEXT: Record<
   parent_cancelled: null,
   routine_wake: null,
   thread_cleared: null,
-  superseded: null,
+  superseded: "新的要求已经接上，刚才那条补充也算进去了。",
 };
 
-const CONFIRMED_UNHANDLED_NOTICE_TEXT: Record<
+type UnhandledNoticeReason =
   | "member_removed"
   | "group_archived"
   | "bot_archived"
   | "bot_deleted"
   | "superseded"
   | "parent_cancelled"
-  | "routine_wake",
-  string | null
+  | "routine_wake";
+
+const CONFIRMED_UNHANDLED_NOTICE_TEXT: Record<
+  UnhandledNoticeReason,
+  ((botName: string) => string) | null
 > = {
-  member_removed: null,
-  group_archived: null,
-  bot_archived: null,
-  bot_deleted: null,
-  superseded: null,
+  member_removed: (botName) =>
+    `未处理：${botName}已经不在这个群里。这条消息还在，请重新指定一位成员。`,
+  group_archived: () => "未处理：这个群已归档。这条消息还在，请重新指定一位成员。",
+  bot_archived: (botName) => `未处理：${botName}已归档。这条消息还在，请重新指定一位成员。`,
+  bot_deleted: (botName) => `未处理：${botName}已删除。这条消息还在，请重新指定一位成员。`,
+  superseded: () => "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。",
   parent_cancelled: null,
   routine_wake: null,
 };
+
+const CONFIRMED_DEFERRED_NOTICE_TEXT = (botName: string) =>
+  `${botName}正在教学。你补充的话会在教学结束后再处理。`;
 
 const VISIBLE_CANCEL_TEXT_FORBIDDEN =
   /\blease\b|\bfence\b|\battempt\b|\brevision\b|\bstack\b|\/users\/|\/tmp\/|node_modules|\.ts:\d+|error:/i;
@@ -210,12 +218,22 @@ export function confirmedCancelOutcomeText(reason: string): string | null {
   return text;
 }
 
-export function confirmedUnhandledNoticeText(reason: CancelReason): string | null {
+export function confirmedUnhandledNoticeText(
+  reason: CancelReason,
+  botName?: string | null,
+): string | null {
   if (!(reason in CONFIRMED_UNHANDLED_NOTICE_TEXT)) return null;
-  const text =
+  const template =
     CONFIRMED_UNHANDLED_NOTICE_TEXT[reason as keyof typeof CONFIRMED_UNHANDLED_NOTICE_TEXT];
-  if (text) assertCancelVisibleText(text);
-  return text;
+  if (!template) return null;
+  // The whitelist covers the static sentence, not the bot name from user data.
+  assertCancelVisibleText(template("{bot}"));
+  return template(botName?.trim() || "该成员");
+}
+
+export function confirmedDeferredNoticeText(botName?: string | null): string {
+  assertCancelVisibleText(CONFIRMED_DEFERRED_NOTICE_TEXT("{bot}"));
+  return CONFIRMED_DEFERRED_NOTICE_TEXT(botName?.trim() || "该成员");
 }
 
 export function reasonsReadyForCancelOutcome(): CancelReason[] {
@@ -332,6 +350,11 @@ async function disposeSteering(
     await retainUnhandled(tx, rows, policy.reason);
     return [];
   }
+  const attached = await tx.steeringMessage.findMany({
+    where: { runId: { in: ids } },
+    select: { runId: true },
+  });
+  const withSteering = new Set(attached.map((row) => row.runId));
   await tx.steeringMessage.updateMany({
     where: { runId: { in: ids } },
     data: { runId: null, claimedAt: null },
@@ -342,7 +365,12 @@ async function disposeSteering(
     const key = `${run.threadId}:${run.botId}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (!(await botMayContinueConversation(tx, run.botId, run.threadId))) continue;
+    if (!(await botMayContinueConversation(tx, run.botId, run.threadId))) {
+      if (policy.reason === "teaching_started" && withSteering.has(run.id)) {
+        await appendDeferredSteeringNotice(tx, run);
+      }
+      continue;
+    }
     const continuationRunId = await continueReleasedSteeringInTransaction(tx, {
       spaceId: run.spaceId,
       threadId: run.threadId,
@@ -351,6 +379,39 @@ async function disposeSteering(
     if (continuationRunId) continuationRunIds.push(continuationRunId);
   }
   return continuationRunIds;
+}
+
+async function appendDeferredSteeringNotice(
+  tx: Prisma.TransactionClient,
+  run: CancelledRunRow,
+): Promise<void> {
+  const already = await tx.event.findFirst({
+    where: {
+      threadId: run.threadId,
+      type: "thread.meta",
+      payload: { path: ["notice"], equals: "steering_deferred" },
+      AND: [{ payload: { path: ["botId"], equals: run.botId } }],
+    },
+    select: { id: true },
+  });
+  if (already) return;
+  const bot = await tx.bot.findUnique({
+    where: { id: run.botId },
+    select: { name: true },
+  });
+  await appendEventInTransaction(tx, {
+    spaceId: run.spaceId,
+    threadId: run.threadId,
+    botId: run.botId,
+    type: "thread.meta",
+    payload: {
+      notice: "steering_deferred",
+      reason: "teaching_started",
+      botId: run.botId,
+      runId: run.id,
+      text: confirmedDeferredNoticeText(bot?.name),
+    },
+  });
 }
 
 async function migrateOrRetain(
@@ -390,6 +451,7 @@ async function retainUnhandled(
   });
   const withSteering = new Set(attached.map((row) => row.runId));
   const noticed = new Set<string>();
+  const botNames = new Map<string, string | null>();
   for (const run of rows) {
     if (!withSteering.has(run.id)) continue;
     const key = `${run.threadId}:${run.botId}`;
@@ -400,11 +462,24 @@ async function retainUnhandled(
         threadId: run.threadId,
         type: "thread.meta",
         payload: { path: ["notice"], equals: "steering_unhandled" },
-        AND: [{ payload: { path: ["botId"], equals: run.botId } }],
+        AND: [
+          { payload: { path: ["botId"], equals: run.botId } },
+          { payload: { path: ["reason"], equals: reason } },
+        ],
       },
       select: { id: true },
     });
     if (already) continue;
+    let botName = botNames.get(run.botId);
+    if (botName === undefined) {
+      const bot = await tx.bot.findUnique({
+        where: { id: run.botId },
+        select: { name: true },
+      });
+      botName = bot?.name ?? null;
+      botNames.set(run.botId, botName);
+    }
+    const text = confirmedUnhandledNoticeText(reason, botName);
     await appendEventInTransaction(tx, {
       spaceId: run.spaceId,
       threadId: run.threadId,
@@ -415,10 +490,9 @@ async function retainUnhandled(
         reason,
         botId: run.botId,
         runId: run.id,
+        ...(text ? { text } : {}),
       },
     });
-    // The confirmed sentence is intentionally null until copy review.
-    confirmedUnhandledNoticeText(reason);
   }
 }
 
