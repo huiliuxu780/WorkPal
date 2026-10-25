@@ -169,7 +169,7 @@ describe("InterventionRegion", () => {
       await act(async () => {
         root.render(<Harness initial={[input, view({})]} />);
       });
-      const region = host.querySelector('[role="region"]');
+      const region = host.querySelector('[data-testid="intervention-region"]');
       expect(region?.getAttribute("aria-label")).toBe("需要你处理");
       const ids = [...host.querySelectorAll("[data-intervention-id]")].map((node) =>
         node.getAttribute("data-intervention-id"),
@@ -349,7 +349,7 @@ describe("InterventionRegion", () => {
           />,
         );
       });
-      const region = host.querySelector('[role="region"]');
+      const region = host.querySelector('[data-testid="intervention-region"]');
       expect(region?.getAttribute("aria-label")).toBe("需要你处理");
       expect(region?.querySelector('[data-intervention-id="secret-off-page"]')).not.toBeNull();
       expect(region?.textContent).toContain("Paste the API key for the import");
@@ -387,7 +387,7 @@ describe("InterventionRegion", () => {
           />,
         );
       });
-      const region = host.querySelector('[role="region"]');
+      const region = host.querySelector('[data-testid="intervention-region"]');
       expect(region?.textContent).toContain("Send the summary from the pair?");
       expect(region?.textContent).toContain("One email to the requester.");
       const allow = [...host.querySelectorAll("button")].find(

@@ -144,6 +144,7 @@ describe("team chat engagement judge", () => {
     };
     const runtime = {
       run: async function* () {
+        yield* [];
         throw new Error("AgentScope service returned 422: auxiliary refusal");
       },
     };

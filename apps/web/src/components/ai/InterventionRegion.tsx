@@ -218,7 +218,6 @@ export function InterventionRegion({
   };
   return (
     <section
-      role="region"
       aria-label="需要你处理"
       data-testid="intervention-region"
       className="space-y-2 py-1"

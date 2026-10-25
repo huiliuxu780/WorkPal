@@ -14,7 +14,7 @@
     "dev:agentscope": "mvn -q -f services/agent-runtime/pom.xml package -DskipTests && java -jar services/agent-runtime/target/agent-runtime-0.1.0.jar",
     "build": "turbo build",
     "check": "turbo check",
-    "lint": "biome check .",
+    "lint": "biome lint .agents apps packages scripts services infra vitest.config.ts vitest.unit.config.ts",
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @rakazo/db generate",
     "db:migrate": "pnpm --filter @rakazo/db migrate",

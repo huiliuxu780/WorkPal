@@ -229,7 +229,7 @@ export function UsageSettingsPanel({
       <h3 className="text-[15px] font-medium text-foreground">
         <Trans>Usage</Trans>
       </h3>
-      <div className="mt-3 flex gap-1" role="group" aria-label={t`Usage time range`}>
+      <fieldset className="mt-3 flex min-w-0 gap-1" aria-label={t`Usage time range`}>
         {USAGE_RANGES.map((option) => (
           <button
             key={option}
@@ -246,7 +246,7 @@ export function UsageSettingsPanel({
             {rangeLabel[option]}
           </button>
         ))}
-      </div>
+      </fieldset>
       {loading ? (
         <p className="mt-3 text-[13px] text-muted-foreground/80" data-testid="usage-loading">
           <Trans>Loading usage…</Trans>
