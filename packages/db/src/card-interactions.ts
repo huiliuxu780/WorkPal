@@ -197,7 +197,6 @@ export async function loadOriginControlFacts(
   });
   const controlRuns: OriginControlCandidate[] = [];
   const seenRuns = new Set<string>();
-  const seenThreads = new Set<string>([input.threadId]);
   for (let depth = 0; depth < ORIGIN_CONTROL_MAX_DEPTH; depth += 1) {
     if (candidates.length === 0) break;
     for (const run of candidates) {
@@ -205,11 +204,11 @@ export async function loadOriginControlFacts(
       seenRuns.add(run.id);
       if ((ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) controlRuns.push(run);
     }
-    const nextThreadIds = [...new Set(candidates.map((run) => run.threadId))].filter(
-      (threadId) => !seenThreads.has(threadId),
-    );
+    // Reuse across origins and depths is legitimate: the same pair Thread can
+    // appear in several chains, so traversal is bounded by depth and by the
+    // run-level parent match instead of a global seen-thread set.
+    const nextThreadIds = [...new Set(candidates.map((run) => run.threadId))];
     if (nextThreadIds.length === 0) break;
-    for (const threadId of nextThreadIds) seenThreads.add(threadId);
     // Only a hidden pair Thread continues the chain; a visible ancestor ends it.
     const pairThreads = await tx.thread.findMany({
       where: {
