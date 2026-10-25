@@ -23,8 +23,9 @@ gate and the layered commands below for external environments.
 
 ## Tracked test inventory
 
-`scripts/testing/test-inventory.mjs` enumerates the Git-tracked `*.test.ts` and
-`*.test.tsx` files and assigns each one at least one execution entry:
+`scripts/testing/test-inventory.mjs` enumerates the Git-tracked `*.test.ts`,
+`*.test.tsx`, and `*.test.mjs` files and assigns each one at least one execution
+entry:
 
 | Category | Environment | Entry |
 | --- | --- | --- |
@@ -78,10 +79,10 @@ To add a test:
 4. For a new PostgreSQL file, run `pnpm test:postgres` against a migrated
    database. CI selects `db-postgres` from the same classification.
 
-`pnpm lint` runs Biome lint rules over maintained source; it does not run the
-formatter or import sorting. Frozen prototypes under `docs/` and the legacy
-formatter debt are outside this gate. Run `pnpm format` when intentionally
-reformatting a file.
+`pnpm lint` runs `biome check .`; the formatter and import sorting are part of
+the gate. Five confirmed prototype paths and the precise pre-existing
+formatter/import-sort debt list in `biome.json` are temporarily excluded; H3
+owns closing those exclusions.
 
 Default and PR tests never require paid inference. Nightly runs only the web
 tests with emulated providers. Docker topology and browser replay have a manual

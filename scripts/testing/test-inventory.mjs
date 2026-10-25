@@ -306,10 +306,17 @@ const PROCESS = [
   "packages/testkit/src/playwright-artifact-publication.test.ts",
 ];
 
-const DATABASE_MARKERS = [/\bVERIFY_DATABASE\b/, /process\.env\.DATABASE_URL/, /createIsolatedPostgresDatabase/];
+const DATABASE_MARKERS = [
+  /\bVERIFY_DATABASE\b/,
+  /process\.env\.DATABASE_URL/,
+  /createIsolatedPostgresDatabase/,
+];
 const HARNESS_MARKERS = [/\bVERIFY_DATABASE\b/, /\bAGENTSCOPE_URL\b/];
 const AGENTSCOPE_MARKERS = [/agentscope/i, /AGENT_RUNTIME/];
-const PROCESS_MARKERS = [/from\s+["']node:child_process["']/, /require\s*\(\s*["']node:child_process["']\s*\)/];
+const PROCESS_MARKERS = [
+  /from\s+["']node:child_process["']/,
+  /require\s*\(\s*["']node:child_process["']\s*\)/,
+];
 const JAVA_MARKERS = [/startJavaRuntime\s*\(/, /\bAGENTSCOPE_URL\b/];
 
 function rule(pathValue, categories, options = {}) {
@@ -465,7 +472,8 @@ function nonTypeChildProcessImport(text) {
 
 export function detectExternalHints(text) {
   const hints = [];
-  if (DATABASE_MARKERS.some((marker) => marker.test(text))) hints.push("PostgreSQL (VERIFY_DATABASE/DATABASE_URL)");
+  if (DATABASE_MARKERS.some((marker) => marker.test(text)))
+    hints.push("PostgreSQL (VERIFY_DATABASE/DATABASE_URL)");
   if (JAVA_MARKERS.some((marker) => marker.test(text))) hints.push("Java AgentScope runtime");
   if (/\bVERIFY_PROVIDERS\b|RUN_COMPUTER_E2E|RUN_COMPUTER_REPLAY_DOCKER/.test(text)) {
     hints.push("live provider or Docker replay");
@@ -527,7 +535,9 @@ export function classifyTestFiles(files, options = {}) {
     try {
       text = readText(file);
     } catch (error) {
-      errors.push(`${file}: cannot read test file (${error instanceof Error ? error.message : error})`);
+      errors.push(
+        `${file}: cannot read test file (${error instanceof Error ? error.message : error})`,
+      );
       continue;
     }
 
@@ -562,7 +572,9 @@ export function classifyTestFiles(files, options = {}) {
         path: file,
         categories,
         entryIds,
-        environment: unique(categories.map((category) => CATEGORY_DEFINITIONS[category].environment)),
+        environment: unique(
+          categories.map((category) => CATEGORY_DEFINITIONS[category].environment),
+        ),
         reason: listed.reason || "explicit inventory rule",
         duplicateReason: listed.duplicateReason,
         command: listed.command,
@@ -637,7 +649,9 @@ export function validateEntrypoints(entries, metadata) {
       const match = definition.command.match(/^pnpm ([a-zA-Z0-9:_-]+)/);
       const scriptName = match?.[1];
       if (!scriptName || !metadata.packageScripts.has(scriptName)) {
-        errors.push(`entry '${entryId}' references missing package script '${scriptName ?? "(none)"}'`);
+        errors.push(
+          `entry '${entryId}' references missing package script '${scriptName ?? "(none)"}'`,
+        );
       } else {
         const scriptText = String(metadata.packageScripts.get(scriptName));
         const required =
@@ -686,7 +700,10 @@ export function validateEntrypoints(entries, metadata) {
           errors.push(`${file.path}: entry command does not reference the file`);
         }
       }
-      if (file.categories.some((category) => category.startsWith("unit-")) && definition.command !== "pnpm test:unit") {
+      if (
+        file.categories.some((category) => category.startsWith("unit-")) &&
+        definition.command !== "pnpm test:unit"
+      ) {
         errors.push(`${file.path}: unit test is assigned to a non-unit entry`);
       }
     }
@@ -728,18 +745,14 @@ function loadMetadata(root) {
 export function buildInventory(options = {}) {
   const root = options.root ?? ROOT;
   const files = options.files ?? enumerateTestFiles(root);
-  const readText =
-    options.readText ?? ((file) => readFileSync(path.join(root, file), "utf8"));
+  const readText = options.readText ?? ((file) => readFileSync(path.join(root, file), "utf8"));
   const metadata = options.metadata ?? loadMetadata(root);
   const classified = classifyTestFiles(
     files,
     options.rules ? { readText, rules: options.rules } : { readText },
   );
   const counts = countBy(classified.entries);
-  const errors = [
-    ...classified.errors,
-    ...validateEntrypoints(classified.entries, metadata),
-  ];
+  const errors = [...classified.errors, ...validateEntrypoints(classified.entries, metadata)];
   if (options.requireAllCategories !== false) {
     for (const category of Object.keys(CATEGORY_DEFINITIONS)) {
       if (!counts.categories[category]) {
@@ -761,8 +774,10 @@ function countBy(entries) {
   const entrypoints = {};
   for (const entry of entries) {
     for (const category of entry.categories) categories[category] = (categories[category] ?? 0) + 1;
-    for (const environment of entry.environment) environments[environment] = (environments[environment] ?? 0) + 1;
-    for (const entrypoint of entry.entryIds) entrypoints[entrypoint] = (entrypoints[entrypoint] ?? 0) + 1;
+    for (const environment of entry.environment)
+      environments[environment] = (environments[environment] ?? 0) + 1;
+    for (const entrypoint of entry.entryIds)
+      entrypoints[entrypoint] = (entrypoints[entrypoint] ?? 0) + 1;
   }
   return { categories, environments, entrypoints };
 }

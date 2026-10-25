@@ -33,10 +33,7 @@ function runRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function executionDeps(input: {
-  runs?: ReturnType<typeof runRow>[];
-  messages?: unknown[];
-}) {
+function executionDeps(input: { runs?: ReturnType<typeof runRow>[]; messages?: unknown[] }) {
   const emptyFind = vi.fn().mockResolvedValue([]);
   const tx = {
     // FOR SHARE lock statement + grouped raw scans. The generation fence keeps
@@ -57,10 +54,14 @@ function executionDeps(input: {
       return [];
     }),
     run: {
-      findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
-        (input.runs ?? []).find(
-          (row) => row.id === where.id && row.threadId === where.threadId && row.spaceId === where.spaceId,
-        ) ?? null,
+      findFirst: vi.fn(
+        async ({ where }: { where: Record<string, unknown> }) =>
+          (input.runs ?? []).find(
+            (row) =>
+              row.id === where.id &&
+              row.threadId === where.threadId &&
+              row.spaceId === where.spaceId,
+          ) ?? null,
       ),
       findMany: vi.fn(async ({ where }: { where: { id?: { in?: string[] } } }) =>
         (input.runs ?? []).filter((row) => !where.id?.in || where.id.in.includes(row.id)),
@@ -112,7 +113,13 @@ function executionDeps(input: {
       ...tx.bot,
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         where.spaceId === actor.spaceId && where.userId === actor.userId
-          ? { id: "bot-1", spaceId: "space-1", userId: "user-1", thread: { id: "thread-1" }, computer: null }
+          ? {
+              id: "bot-1",
+              spaceId: "space-1",
+              userId: "user-1",
+              thread: { id: "thread-1" },
+              computer: null,
+            }
           : null,
       ),
     },
@@ -234,7 +241,10 @@ describe("runs.executionActivityPage", () => {
     });
     expect(malformed.ok).toBe(false);
 
-    const first = await call(handler, "runs/executionActivityPage", { botId: "bot-1", runId: "run-1" });
+    const first = await call(handler, "runs/executionActivityPage", {
+      botId: "bot-1",
+      runId: "run-1",
+    });
     expect(first.status).toBe(200);
     await expect(first.json()).resolves.toEqual({
       json: { items: [], olderCursor: null, truncated: false },

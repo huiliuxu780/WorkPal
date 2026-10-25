@@ -217,11 +217,7 @@ export function InterventionRegion({
     );
   };
   return (
-    <section
-      aria-label="需要你处理"
-      data-testid="intervention-region"
-      className="space-y-2 py-1"
-    >
+    <section aria-label="需要你处理" data-testid="intervention-region" className="space-y-2 py-1">
       {planReviews.length > 0 ? (
         <div data-testid="intervention-plan-reviews" className="space-y-2">
           {planReviews.map((view) => (

@@ -582,7 +582,17 @@ export function selectChecks(input) {
   });
 }
 
-function buildResult({ mode, files, selected, reasons, webE2e, base, head, fileReasons, harnessMode }) {
+function buildResult({
+  mode,
+  files,
+  selected,
+  reasons,
+  webE2e,
+  base,
+  head,
+  fileReasons,
+  harnessMode,
+}) {
   const selectedSet = new Set(implyRuntimeJar(selected));
   const selectedJobs = ALL_JOBS.filter((job) => selectedSet.has(job));
   const skippedJobs = ALL_JOBS.filter((job) => !selectedSet.has(job));

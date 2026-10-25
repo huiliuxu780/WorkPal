@@ -271,48 +271,51 @@ export function UsageSettingsPanel({
           </p>
           {usage.byModel.length > 0 ? (
             <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[430px] text-left text-[12.5px]" data-testid="usage-model-table">
-              <thead>
-                <tr className="text-muted-foreground/80">
-                  <th className="py-1 pr-2 font-medium">
-                    <Trans>Model</Trans>
-                  </th>
-                  <th className="py-1 pr-2 font-medium">
-                    <Trans>Calls</Trans>
-                  </th>
-                  <th className="py-1 pr-2 font-medium">
-                    <Trans>Input</Trans>
-                  </th>
-                  <th className="py-1 pr-2 font-medium">
-                    <Trans>Output</Trans>
-                  </th>
-                  <th className="py-1 pr-2 font-medium">
-                    <Trans>Cache read</Trans>
-                  </th>
-                  <th className="py-1 font-medium">
-                    <Trans>Cache write</Trans>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {usage.byModel.map((row) => (
-                  <tr
-                    key={`${row.provider}/${row.model}`}
-                    data-testid="usage-model-row"
-                    className="border-t border-border/60 text-foreground/75"
-                  >
-                    <td className="py-1 pr-2">
-                      {row.provider} · {row.model}
-                    </td>
-                    <td className="py-1 pr-2">{row.calls}</td>
-                    <td className="py-1 pr-2">{row.inputTokens}</td>
-                    <td className="py-1 pr-2">{row.outputTokens}</td>
-                    <td className="py-1 pr-2">{row.cacheReadTokens}</td>
-                    <td className="py-1">{row.cacheWriteTokens}</td>
+              <table
+                className="w-full min-w-[430px] text-left text-[12.5px]"
+                data-testid="usage-model-table"
+              >
+                <thead>
+                  <tr className="text-muted-foreground/80">
+                    <th className="py-1 pr-2 font-medium">
+                      <Trans>Model</Trans>
+                    </th>
+                    <th className="py-1 pr-2 font-medium">
+                      <Trans>Calls</Trans>
+                    </th>
+                    <th className="py-1 pr-2 font-medium">
+                      <Trans>Input</Trans>
+                    </th>
+                    <th className="py-1 pr-2 font-medium">
+                      <Trans>Output</Trans>
+                    </th>
+                    <th className="py-1 pr-2 font-medium">
+                      <Trans>Cache read</Trans>
+                    </th>
+                    <th className="py-1 font-medium">
+                      <Trans>Cache write</Trans>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {usage.byModel.map((row) => (
+                    <tr
+                      key={`${row.provider}/${row.model}`}
+                      data-testid="usage-model-row"
+                      className="border-t border-border/60 text-foreground/75"
+                    >
+                      <td className="py-1 pr-2">
+                        {row.provider} · {row.model}
+                      </td>
+                      <td className="py-1 pr-2">{row.calls}</td>
+                      <td className="py-1 pr-2">{row.inputTokens}</td>
+                      <td className="py-1 pr-2">{row.outputTokens}</td>
+                      <td className="py-1 pr-2">{row.cacheReadTokens}</td>
+                      <td className="py-1">{row.cacheWriteTokens}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <p className="mt-3 text-[12.5px] text-muted-foreground/80">
@@ -322,7 +325,10 @@ export function UsageSettingsPanel({
         </>
       ) : null}
       <p className={`text-[12.5px] text-muted-foreground/80 ${usage ? "mt-2" : "mt-3"}`}>
-        <Trans>Model calls use your connected provider keys. Tokens are shown exactly as each provider reports them.</Trans>
+        <Trans>
+          Model calls use your connected provider keys. Tokens are shown exactly as each provider
+          reports them.
+        </Trans>
       </p>
     </div>
   );

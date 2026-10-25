@@ -167,10 +167,7 @@ describe("team chat engagement judge", () => {
       usageRecord: { create: vi.fn(async () => ({ id: "usage-1" })) },
     };
     const runtime = {
-      run: async function* (
-        _request: unknown,
-        context: { signal?: AbortSignal } | undefined,
-      ) {
+      run: async function* (_request: unknown, context: { signal?: AbortSignal } | undefined) {
         await new Promise<void>((resolve, reject) => {
           const signal = context?.signal;
           if (!signal) return resolve();

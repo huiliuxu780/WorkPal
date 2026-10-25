@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { formatInventorySummary, buildInventory } from "./test-inventory.mjs";
+import { buildInventory, formatInventorySummary } from "./test-inventory.mjs";
 
 const group = process.argv[2];
 if (!group) {

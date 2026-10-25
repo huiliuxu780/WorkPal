@@ -91,7 +91,16 @@ function Harness({
   const [items, setItems] = useState(initial);
   return (
     <>
-      <button type="button" onClick={() => setItems((current) => current.map((item) => item.kind === "approval" ? { ...item, revision: item.revision + 1 } : item))}>
+      <button
+        type="button"
+        onClick={() =>
+          setItems((current) =>
+            current.map((item) =>
+              item.kind === "approval" ? { ...item, revision: item.revision + 1 } : item,
+            ),
+          )
+        }
+      >
         bump approval
       </button>
       <InterventionRegion
@@ -175,11 +184,17 @@ describe("InterventionRegion", () => {
         node.getAttribute("data-intervention-id"),
       );
       expect(ids).toEqual(["intervention-1", "input-1"]);
-      expect(host.querySelector("[data-testid=intervention-approvals]")?.compareDocumentPosition(
-        host.querySelector("[data-testid=intervention-inputs]")!,
-      )).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      const mount = host.querySelector('[data-intervention-id="input-1"]')?.getAttribute("data-mount");
-      const edit = [...host.querySelectorAll("button")].find((button) => button.textContent === "Edit first");
+      expect(
+        host
+          .querySelector("[data-testid=intervention-approvals]")
+          ?.compareDocumentPosition(host.querySelector("[data-testid=intervention-inputs]")!),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      const mount = host
+        .querySelector('[data-intervention-id="input-1"]')
+        ?.getAttribute("data-mount");
+      const edit = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Edit first",
+      );
       await act(async () => {
         edit?.click();
       });
@@ -192,11 +207,19 @@ describe("InterventionRegion", () => {
       });
       expect(field?.value).toBe("Paris");
       await act(async () => {
-        [...host.querySelectorAll("button")].find((button) => button.textContent === "bump approval")?.click();
+        [...host.querySelectorAll("button")]
+          .find((button) => button.textContent === "bump approval")
+          ?.click();
       });
-      expect(host.querySelector('[data-intervention-id="input-1"]')?.getAttribute("data-mount")).toBe(mount);
-      expect(host.querySelector<HTMLInputElement>('input[aria-label="Answer"]')?.value).toBe("Paris");
-      const deny = [...host.querySelectorAll("button")].find((button) => button.textContent === "Deny");
+      expect(
+        host.querySelector('[data-intervention-id="input-1"]')?.getAttribute("data-mount"),
+      ).toBe(mount);
+      expect(host.querySelector<HTMLInputElement>('input[aria-label="Answer"]')?.value).toBe(
+        "Paris",
+      );
+      const deny = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Deny",
+      );
       expect(deny?.tagName).toBe("BUTTON");
       deny?.focus();
       expect(document.activeElement).toBe(deny);
@@ -222,7 +245,9 @@ describe("InterventionRegion", () => {
       await act(async () => {
         root.render(<Harness initial={[view({})]} />);
       });
-      const deny = [...host.querySelectorAll("button")].find((button) => button.textContent === "Deny");
+      const deny = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Deny",
+      );
       await act(async () => {
         deny?.click();
       });
@@ -353,7 +378,9 @@ describe("InterventionRegion", () => {
       expect(region?.getAttribute("aria-label")).toBe("需要你处理");
       expect(region?.querySelector('[data-intervention-id="secret-off-page"]')).not.toBeNull();
       expect(region?.textContent).toContain("Paste the API key for the import");
-      expect(region?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Saved");
+      expect(region?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Saved",
+      );
       expect(host.querySelector('input[type="password"]')).toBeNull();
     } finally {
       await act(async () => root.unmount());
@@ -480,8 +507,12 @@ describe("InterventionRegion", () => {
       });
       const card = host.querySelector('[data-intervention-id="approval-off-page"]');
       expect(card?.textContent).toContain("Send the email to the client?");
-      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Approved");
-      expect(card?.querySelector('[data-testid="intervention-effect"]')?.textContent).toBe("Effect running");
+      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Approved",
+      );
+      expect(card?.querySelector('[data-testid="intervention-effect"]')?.textContent).toBe(
+        "Effect running",
+      );
     } finally {
       await act(async () => root.unmount());
       host.remove();
@@ -514,7 +545,9 @@ describe("InterventionRegion", () => {
         );
       });
       const card = host.querySelector('[data-intervention-id="cancelled-1"]');
-      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Cancelled");
+      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Cancelled",
+      );
       expect(host.querySelector('input[aria-label="Answer"]')).toBeNull();
     } finally {
       await act(async () => root.unmount());

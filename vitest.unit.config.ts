@@ -13,9 +13,6 @@ export default defineConfig({
   test: {
     ...base.test,
     include: files,
-    setupFiles: [
-      "./scripts/testing/unit-test-env.ts",
-      ...(base.test?.setupFiles ?? []),
-    ],
+    setupFiles: ["./scripts/testing/unit-test-env.ts", ...(base.test?.setupFiles ?? [])],
   },
 });

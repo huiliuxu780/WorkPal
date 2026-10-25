@@ -60,10 +60,10 @@ pnpm test:inventory
 pnpm test:ci-select
 ```
 
-`pnpm lint` runs Biome's lint rules over maintained source (`apps`, `packages`,
-`scripts`, `services`, `infra`) and the Vitest configs. Formatting and import
-sorting remain a separate `pnpm format` step; the repository still carries
-intentionally frozen prototypes.
+`pnpm lint` runs `biome check .` (lint, formatting, and import sorting). Five
+confirmed prototype paths and a precise temporary list of pre-existing
+formatter/import-sort debt are excluded in `biome.json`; H3 owns closing those
+exclusions. Run `pnpm format` only for intentional reformatting.
 
 `pnpm test:unit` runs the Node and jsdom files selected by the tracked-test
 inventory in `scripts/testing/test-inventory.mjs`. PostgreSQL, integration

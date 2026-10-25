@@ -205,8 +205,9 @@ describe("classifyPath", () => {
     }
     assert.ok(classifyPath("packages/db/prisma/schema.prisma").jobs.includes("db-postgres"));
     assert.ok(
-      classifyPath("packages/db/prisma/migrations/20261022000000_agent_pair_chat_groups/migration.sql")
-        .jobs.includes("db-postgres"),
+      classifyPath(
+        "packages/db/prisma/migrations/20261022000000_agent_pair_chat_groups/migration.sql",
+      ).jobs.includes("db-postgres"),
     );
     assert.equal(classifyPath("docs/privacy.md").jobs.includes("db-postgres"), false);
   });
@@ -576,10 +577,7 @@ describe("workflow contract", () => {
     assert.match(block, /pnpm test:postgres/);
     const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
     assert.match(pkg.scripts["test:postgres"], /run-test-group\.mjs postgres/);
-    const runner = readFileSync(
-      path.join(repoRoot, "scripts/testing/run-test-group.mjs"),
-      "utf8",
-    );
+    const runner = readFileSync(path.join(repoRoot, "scripts/testing/run-test-group.mjs"), "utf8");
     assert.match(runner, /--no-file-parallelism/);
     assert.match(yaml, /RESULT_DB_POSTGRES: \$\{\{\s*needs\.db-postgres\.result\s*\}\}/);
   });

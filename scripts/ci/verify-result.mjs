@@ -20,11 +20,7 @@ const RESULT_ENV = {
   "agent-runtime-image": "RESULT_AGENT_RUNTIME_IMAGE",
 };
 
-export function verifyResult({
-  selectResult,
-  selectChecksOutcome,
-  jobResults,
-}) {
+export function verifyResult({ selectResult, selectChecksOutcome, jobResults }) {
   if (selectChecksOutcome !== "success") {
     return {
       ok: false,

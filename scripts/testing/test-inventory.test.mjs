@@ -37,7 +37,8 @@ function write(root, file, text) {
 
 const UNIT_TEXT = 'import { expect, it } from "vitest";\nit("unit", () => expect(1).toBe(1));\n';
 const JSDOM_TEXT = `// @vitest-environment jsdom\n${UNIT_TEXT}`;
-const POSTGRES_TEXT = 'process.env.VERIFY_DATABASE = "1";\nprocess.env.DATABASE_URL = "postgres://x";\n';
+const POSTGRES_TEXT =
+  'process.env.VERIFY_DATABASE = "1";\nprocess.env.DATABASE_URL = "postgres://x";\n';
 
 function pgRule(file, extra = {}) {
   return {
@@ -90,8 +91,7 @@ function fixtureOptions({
       packageScripts: new Map(Object.entries(presentScripts)),
       ciYaml: `${ciYaml}\n`,
       sources,
-      configFiles:
-        configText === null ? new Map() : new Map([[UNIT_CONFIG, configText]]),
+      configFiles: configText === null ? new Map() : new Map([[UNIT_CONFIG, configText]]),
     },
     requireAllCategories,
   };
@@ -118,7 +118,10 @@ describe("default classification", () => {
   it("rejects an unclassified external suffix", () => {
     const result = classify({ "packages/db/src/new.postgres.test.ts": POSTGRES_TEXT });
     assert.equal(result.entries.length, 0);
-    assert.match(result.errors.join("\n"), /external test suffix requires an explicit classification/);
+    assert.match(
+      result.errors.join("\n"),
+      /external test suffix requires an explicit classification/,
+    );
   });
 
   it("rejects an unclassified node:test file", () => {
@@ -130,7 +133,13 @@ describe("default classification", () => {
   it("accepts an explicit node:test rule with an entry override", () => {
     const file = "docs/roundtable/verify.test.mjs";
     const result = classify({ [file]: 'import test from "node:test";\n' }, [
-      { path: file, categories: ["node-test"], markers: [], reason: "fixture", entry: "docs-verify" },
+      {
+        path: file,
+        categories: ["node-test"],
+        markers: [],
+        reason: "fixture",
+        entry: "docs-verify",
+      },
     ]);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.entries[0].entryIds, ["docs-verify"]);
@@ -144,7 +153,8 @@ describe("default classification", () => {
 
   it("rejects a child process test without an explicit rule", () => {
     const result = classify({
-      "packages/core/src/spawn.test.ts": 'import { spawn } from "node:child_process";\nspawn("true");\n',
+      "packages/core/src/spawn.test.ts":
+        'import { spawn } from "node:child_process";\nspawn("true");\n',
     });
     assert.equal(result.entries.length, 0);
     assert.match(result.errors.join("\n"), /external dependency detected \(child process\)/);
@@ -172,20 +182,18 @@ describe("default classification", () => {
   });
 
   it("accepts an explicit external rule whose marker still matches", () => {
-    const result = classify(
-      { "packages/db/src/new.postgres.test.ts": POSTGRES_TEXT },
-      [pgRule("packages/db/src/new.postgres.test.ts")],
-    );
+    const result = classify({ "packages/db/src/new.postgres.test.ts": POSTGRES_TEXT }, [
+      pgRule("packages/db/src/new.postgres.test.ts"),
+    ]);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.entries[0].categories, ["postgres"]);
     assert.deepEqual(result.entries[0].entryIds, ["postgres"]);
   });
 
   it("fails when an explicit marker no longer matches", () => {
-    const result = classify(
-      { "packages/db/src/new.postgres.test.ts": UNIT_TEXT },
-      [pgRule("packages/db/src/new.postgres.test.ts")],
-    );
+    const result = classify({ "packages/db/src/new.postgres.test.ts": UNIT_TEXT }, [
+      pgRule("packages/db/src/new.postgres.test.ts"),
+    ]);
     assert.match(result.errors.join("\n"), /inventory markers no longer match/);
   });
 
@@ -195,10 +203,10 @@ describe("default classification", () => {
   });
 
   it("fails on duplicate rules", () => {
-    const result = classify(
-      { "packages/db/src/new.postgres.test.ts": POSTGRES_TEXT },
-      [pgRule("packages/db/src/new.postgres.test.ts"), pgRule("packages/db/src/new.postgres.test.ts")],
-    );
+    const result = classify({ "packages/db/src/new.postgres.test.ts": POSTGRES_TEXT }, [
+      pgRule("packages/db/src/new.postgres.test.ts"),
+      pgRule("packages/db/src/new.postgres.test.ts"),
+    ]);
     assert.match(result.errors.join("\n"), /duplicate inventory rule/);
   });
 
@@ -316,7 +324,7 @@ describe("inventory entrypoints", () => {
           reason: "fixture journey",
         },
       ],
-      sources: { [HARNESS_SOURCE]: 'const suites = [];\n' },
+      sources: { [HARNESS_SOURCE]: "const suites = [];\n" },
     });
     assert.match(errorsFor(options).join("\n"), new RegExp(`${harnessFile}: not present in`));
 
@@ -424,10 +432,19 @@ describe("tracked repository", () => {
   it("builds the real unit and group lists from inventory", () => {
     const unit = unitTestFiles();
     assert.ok(unit.length > 400, `unit files: ${unit.length}`);
-    assert.ok(unit.some((file) => file.endsWith(".test.tsx")), "jsdom tests are included");
+    assert.ok(
+      unit.some((file) => file.endsWith(".test.tsx")),
+      "jsdom tests are included",
+    );
     assert.equal(unit.includes("packages/testkit/src/computer-replay.test.ts"), false);
-    assert.equal(unit.some((file) => file.endsWith(".postgres.test.ts")), false);
-    assert.equal(unit.some((file) => file.endsWith(".test.mjs")), false);
+    assert.equal(
+      unit.some((file) => file.endsWith(".postgres.test.ts")),
+      false,
+    );
+    assert.equal(
+      unit.some((file) => file.endsWith(".test.mjs")),
+      false,
+    );
 
     const postgres = filesForGroup("postgres");
     assert.ok(postgres.length >= 44, `postgres files: ${postgres.length}`);
@@ -444,9 +461,7 @@ describe("tracked repository", () => {
     assert.ok(filesForGroup("ci-self-check").includes("scripts/ci/select-checks.test.mjs"));
     assert.ok(filesForGroup("ci-self-check").includes("scripts/testing/test-inventory.test.mjs"));
     assert.ok(
-      filesForGroup("docs-verify").includes(
-        "docs/roundtable/verify-implementation-plan.test.mjs",
-      ),
+      filesForGroup("docs-verify").includes("docs/roundtable/verify-implementation-plan.test.mjs"),
     );
   });
 

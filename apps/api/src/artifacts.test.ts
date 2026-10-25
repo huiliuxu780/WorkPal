@@ -254,7 +254,7 @@ describe("deleteArtifactFamily", () => {
           calls.push(`delete:${where.id}`);
         }),
       },
-      $transaction: vi.fn(async <T,>(run: (tx: unknown) => Promise<T>): Promise<T> => {
+      $transaction: vi.fn(async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => {
         return run({
           $queryRaw: vi.fn(async () => [{ id: "root" }]),
           artifact: {
