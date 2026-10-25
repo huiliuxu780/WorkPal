@@ -7,6 +7,7 @@ export * from "./bootstrap-user.js";
 export * from "./cancel-child-runs.js";
 export * from "./cancel-runs.js";
 export * from "./cancel-terminal.js";
+export * from "./card-interactions.js";
 export * from "./client.js";
 export * from "./computers.js";
 export * from "./credential-secrets.js";
