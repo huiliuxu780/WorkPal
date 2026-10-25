@@ -39,8 +39,9 @@ async function settledSummary(page: Page, botId: string, titlePart: string): Pro
 }
 
 /**
- * Poll one Run by id until terminal. Free-text answers rewrite the Task
- * prompt, so the title is not a stable handle after an answer.
+ * Poll one Run by id until terminal. RT-13 answers are append-only Task
+ * amendments, so the Run title keeps its original text; polling by id stays
+ * immune to any future title projection over the amendment log.
  */
 async function settledSummaryById(page: Page, botId: string, runId: string): Promise<Summary> {
   let found: Summary | undefined;
@@ -519,7 +520,9 @@ test("a paged-out historical Run expands from its card after loading earlier mes
   await region.getByRole("button", { name: "Edit first", exact: true }).click();
   await region.getByRole("textbox", { name: "Answer" }).fill("Paris");
   await region.getByRole("button", { name: "Send answer", exact: true }).click();
-  // The answer rewrites the Task prompt, so track the Run by id from here.
+  // The answer is an append-only Task amendment; the Run title itself never
+  // changes, but track the Run by id so the assertion cannot drift with any
+  // future title projection over the amendment log.
   const summary = await settledSummaryById(page, botId, pending.runId);
   const title = summary.title;
 

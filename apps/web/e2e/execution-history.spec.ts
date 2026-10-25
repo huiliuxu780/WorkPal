@@ -41,8 +41,9 @@ async function summaryByTitle(page: Page, botId: string, titlePart: string): Pro
 }
 
 /**
- * Poll one Run's summary by id until it is terminal. Free-text answers rewrite
- * the Task prompt, so the title is not a stable handle after an answer.
+ * Poll one Run's summary by id until it is terminal. RT-13 answers are
+ * append-only Task amendments, so the title keeps its original text; polling
+ * by id stays immune to any future title projection over the amendment log.
  */
 async function settledSummaryById(page: Page, botId: string, runId: string): Promise<Summary> {
   let found: Summary | undefined;

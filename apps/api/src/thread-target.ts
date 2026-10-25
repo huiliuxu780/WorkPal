@@ -1841,7 +1841,159 @@ export async function stopThreadRuns(
       executionLeaseExpiresAt: null,
     },
   });
-  return { cancelledRunIds: runIds };
+  // RT-05: delegated runs execute in hidden pair Threads, and the source run
+  // may already be completed when the user hits Stop — the active set inside
+  // the transaction above cannot see the delegation. Route Stop through the
+  // persisted origin, one per-run transaction per delegated run (the same
+  // shape as the descendant cascade) so pair-Thread locks are never taken
+  // while this request holds the visible Thread.
+  // Seeds are the first delegation generation from this Thread in ANY state:
+  // completed intermediates still link to the outstanding work below them, so
+  // the walk traverses them and collects only the still-active descendants.
+  const delegatedSeeds = await deps.prisma.run.findMany({
+    where: {
+      originThreadId: target.threadId,
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      threadId: { not: target.threadId },
+    },
+    select: { id: true, threadId: true, status: true },
+    orderBy: { threadId: "asc" },
+  });
+  const delegatedRuns: Array<{ id: string; threadId: string }> = [];
+  const walked = new Set<string>();
+  let frontier = delegatedSeeds.map((seed) => seed.id);
+  // Depth-bounded, never seed-count-bounded: a long-lived Thread's completed
+  // historical delegations must not disable the walk to outstanding nested
+  // work. The visited set only guards against a corrupt cyclic chain.
+  for (let depth = 0; depth < 24 && frontier.length > 0; depth += 1) {
+    const generation = await deps.prisma.run.findMany({
+      where: {
+        originRunId: { in: frontier },
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+      },
+      select: { id: true, threadId: true, status: true },
+      orderBy: { threadId: "asc" },
+    });
+    frontier = [];
+    for (const run of generation) {
+      if (walked.has(run.id)) continue;
+      walked.add(run.id);
+      frontier.push(run.id);
+      if ((ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) {
+        delegatedRuns.push({ id: run.id, threadId: run.threadId });
+      }
+    }
+  }
+  for (const seed of delegatedSeeds) {
+    if ((ACTIVE_RUN_STATUSES as readonly string[]).includes(seed.status)) {
+      delegatedRuns.push({ id: seed.id, threadId: seed.threadId });
+    }
+  }
+  delegatedRuns.sort((left, right) => (left.threadId < right.threadId ? -1 : 1));
+  const delegatedCancelled: string[] = [];
+  const delegatedTeardown: Array<{
+    computer: { id: string; homeKey: string; kind: string; providerRef: string | null };
+    botId: string;
+    runId: string;
+    lease: { computerId: string; botId: string; runId: string; fence: number } | null;
+  }> = [];
+  for (const delegated of delegatedRuns) {
+    const cancelled = await deps.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM threads WHERE id = ${delegated.threadId} FOR UPDATE`;
+      const run = await tx.run.findUnique({
+        where: { id: delegated.id },
+        select: { id: true, taskId: true, status: true, threadId: true, spaceId: true, botId: true },
+      });
+      if (!run || !(ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) return null;
+      const settled = await cancelRunsInTransaction(tx, [run], new Date());
+      if (settled.length === 0) return null;
+      await tx.run.update({
+        where: { id: run.id },
+        data: { error: "parent_cancelled" },
+      });
+      await appendEventInTransaction(tx, {
+        spaceId: run.spaceId,
+        threadId: run.threadId,
+        botId: run.botId,
+        runId: run.id,
+        type: "run.cancelled",
+        payload: { reason: "parent_cancelled" },
+      });
+      // Snapshot teardown coordinates before commit, mirroring the visible
+      // path: once the cancellation is visible, a worker can release the lease
+      // immediately and a later lookup would miss the sandbox work to stop.
+      const lease =
+        (await tx.computerExecutionLease.findFirst({
+          where: { runId: run.id },
+          select: { computerId: true, botId: true, runId: true, fence: true },
+        })) ?? null;
+      const computer = lease
+        ? await tx.computer.findUnique({
+            where: { id: lease.computerId },
+            select: {
+              id: true,
+              homeKey: true,
+              kind: true,
+              providerRef: true,
+              executionBotId: true,
+              executionRunId: true,
+            },
+          })
+        : null;
+      return lease && computer
+        ? { runId: run.id, lease, computer }
+        : { runId: run.id, lease: null, computer: null };
+    });
+    if (cancelled) {
+      delegatedCancelled.push(cancelled.runId);
+      if (cancelled.lease && cancelled.computer) {
+        delegatedTeardown.push({
+          computer: cancelled.computer,
+          botId: cancelled.lease.botId,
+          runId: cancelled.lease.runId,
+          lease: cancelled.lease,
+        });
+      }
+    }
+  }
+  // Same teardown sequence as the visible path: stop sandbox work first, then
+  // release the leases so a replacement run cannot claim the computer while
+  // cancelled background commands may still be running.
+  await Promise.all(
+    delegatedTeardown.map(async ({ computer, botId, runId, lease }) => {
+      if (!computer.providerRef) return;
+      const context = {
+        operationId: "stop",
+        traceId: "stop",
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+        botId,
+        runId,
+        screenLeaseId: screenLeaseIdForRun(lease, runId),
+        cancelRunWork: true,
+        signal: new AbortController().signal,
+      };
+      const ref = toComputerRef(computer);
+      await cancelComputerRunWork(deps.sandbox, ref, computer.id, runId, context);
+      await deps.sandbox.releaseScreen?.(ref, context).catch(() => undefined);
+    }),
+  );
+  if (delegatedCancelled.length) {
+    await expireComputerExecutionLeases(deps.prisma, {
+      runId: { in: delegatedCancelled },
+    });
+    await deps.prisma.computer.updateMany({
+      where: { executionRunId: { in: delegatedCancelled } },
+      data: {
+        executionRunId: null,
+        executionBotId: null,
+        executionLeaseExpiresAt: null,
+      },
+    });
+  }
+  return { cancelledRunIds: [...runIds, ...delegatedCancelled] };
 }
 
 export async function setThreadUnreadState(

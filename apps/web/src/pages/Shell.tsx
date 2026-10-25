@@ -150,6 +150,7 @@ import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { MessageText } from "../components/ai/AgentMentionText";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -202,6 +203,11 @@ import {
 } from "../lib/computer-screen";
 import { publishComputerCommand } from "../lib/computer-workspace";
 import { desktopBridge } from "../lib/desktop";
+import {
+  EXECUTION_NAV_INTENT_EVENT,
+  rosterAttentionIntent,
+  setExecutionNavIntent,
+} from "../lib/execution-nav";
 import { scheduleFocusPrompt } from "../lib/focus-prompt";
 import { localTimezone } from "../lib/local-timezone";
 import { copyableMessageText } from "../lib/message-text";
@@ -214,17 +220,13 @@ import {
   revokePendingAttachmentPreviews,
 } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
+import { projectPublicDelegations } from "../lib/public-collaboration";
 import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
 import { sharedInflight } from "../lib/shared-inflight";
-import {
-  EXECUTION_NAV_INTENT_EVENT,
-  rosterAttentionIntent,
-  setExecutionNavIntent,
-} from "../lib/execution-nav";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
@@ -273,8 +275,6 @@ import {
 import type { SettingsSection } from "./SettingsOverlay";
 import { SpaceSearchResults } from "./SpaceSearch";
 import { BotSettings, CreateBotForm } from "./shell/bot-panel";
-import { GroupIdentityCluster } from "./shell/group-identity-cluster";
-import { GroupPanel, type GroupPanelTab } from "./shell/group-panel";
 import { BotCreatePicker } from "./shell/bot-picker";
 import { CommandPalette, isCommandPaletteHotkey } from "./shell/command-palette";
 import {
@@ -286,6 +286,8 @@ import {
   PickerInfoDialog,
   RenameBotSectionDialog,
 } from "./shell/dialogs";
+import { GroupIdentityCluster } from "./shell/group-identity-cluster";
+import { GroupPanel, type GroupPanelTab } from "./shell/group-panel";
 import {
   AppConnectCard,
   ArtifactImage,
@@ -5019,6 +5021,29 @@ export const Transcript = memo(function Transcript({
     onRefresh,
   });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
+  // Public `message_bot` deliveries only exist as public collaboration in a
+  // group Thread. Direct threads keep the private receipt chip and pair view.
+  const inGroupTranscript = "groupId" in artifactTarget;
+  const publicDelegations = useMemo(
+    () => (inGroupTranscript ? projectPublicDelegations(messages) : null),
+    [inGroupTranscript, messages],
+  );
+  // Rows merged under a PublicDelegationMessage render their execution anchors
+  // there; an orphan hidden row (a wake with no rendered group) keeps its
+  // anchors at its own transcript position instead.
+  const { mergedAnchorMemberIds, memberToGroupFirst } = useMemo(() => {
+    const ids = new Set<string>();
+    const firstOfMember = new Map<string, string>();
+    if (publicDelegations) {
+      for (const group of publicDelegations.groupsByFirstMessageId.values()) {
+        for (const messageId of group.messageIds) {
+          ids.add(messageId);
+          firstOfMember.set(messageId, group.firstMessageId);
+        }
+      }
+    }
+    return { mergedAnchorMemberIds: ids, memberToGroupFirst: firstOfMember };
+  }, [publicDelegations]);
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -5152,8 +5177,16 @@ export const Transcript = memo(function Transcript({
   useLayoutEffect(() => {
     if (!scrollRequest || scrolledJump.current === scrollRequest.nonce) return;
     const element = scrollRef.current;
+    // A merged delegation member (paired wake or later outbound) has no row
+    // of its own; scroll to its visible group bubble instead so search hits
+    // on those ids land on the rendered delegation.
+    const groupFirstId = publicDelegations?.hiddenMessageIds.has(scrollRequest.messageId)
+      ? memberToGroupFirst.get(scrollRequest.messageId)
+      : undefined;
     const row = element?.querySelector(
-      `[data-message-id="${CSS.escape(scrollRequest.messageId)}"]`,
+      `[data-message-id="${CSS.escape(
+        groupFirstId ?? scrollRequest.messageId,
+      )}"]`,
     );
     if (!element || !row) return;
     scrolledJump.current = scrollRequest.nonce;
@@ -5165,7 +5198,15 @@ export const Transcript = memo(function Transcript({
     jumpScrollTimer.current = window.setTimeout(endJumpScroll, 2_000);
     row.scrollIntoView({ behavior: "smooth", block: "center" });
     onScrollRequestHandled();
-  }, [messages, scrollRequest, scrollRef, endJumpScroll, onScrollRequestHandled]);
+  }, [
+    messages,
+    scrollRequest,
+    scrollRef,
+    endJumpScroll,
+    onScrollRequestHandled,
+    publicDelegations,
+    memberToGroupFirst,
+  ]);
 
   useLayoutEffect(() => {
     if (following.current) snapToEnd();
@@ -5275,6 +5316,55 @@ export const Transcript = memo(function Transcript({
             );
           }
           const message = item.message;
+          const publicDelegation = publicDelegations?.groupsByFirstMessageId.get(message.id);
+          if (publicDelegation) {
+            // One natural group message per adjacent same-source delegation.
+            // Merged transport rows keep their execution anchors below so no
+            // Run shell is detached from the transcript.
+            const mergedMessageIds = publicDelegation.messageIds.slice(1);
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                <div data-message-id={message.id} className="group/message relative hover:z-20">
+                  <div className="relative flex justify-start">
+                    <div className="relative w-fit min-w-0 max-w-[min(88%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[88%]">
+                      <PublicDelegationMessage
+                        group={publicDelegation}
+                        onOpenMention={onOpenBot}
+                        resolveBot={(botId) => {
+                          const name = botNameOf?.(botId);
+                          if (!name) return undefined;
+                          return {
+                            name,
+                            color: peerBot(botId)?.color ?? FALLBACK_BOT_COLOR,
+                            available: true,
+                          };
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {renderExecutions(message.id)}
+                {mergedMessageIds.map((messageId) => (
+                  <Fragment key={messageId}>
+                    {renderExecutions(`before:${messageId}`)}
+                    {renderExecutions(messageId)}
+                  </Fragment>
+                ))}
+              </Fragment>
+            );
+          }
+          if (publicDelegations?.hiddenMessageIds.has(message.id)) {
+            // Merged members render no row of their own; the scroll effect
+            // maps their ids onto the group bubble below.
+            if (mergedAnchorMemberIds.has(message.id)) return null;
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                {renderExecutions(message.id)}
+              </Fragment>
+            );
+          }
           const suppressAsk = coveredAsks.has(message.id);
           const visibleBlocks = suppressAsk
             ? message.blocks.filter((block) => block.kind !== "ask")
@@ -6794,6 +6884,10 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
+          // Public group delegations render through PublicDelegationMessage.
+          // A group transcript must never fall back to the private receipt
+          // chip or open the pair conversation.
+          if ("groupId" in artifactTarget) return null;
           const sent = block.kind === "bot_message_sent";
           const peer = sent ? block.toBotName : block.fromBotName;
           const peerBotId = sent ? block.toBotId : block.fromBotId;

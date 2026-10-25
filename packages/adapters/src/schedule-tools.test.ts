@@ -1,4 +1,5 @@
 import { ONCE_ROUTINE_CRON } from "@rakazo/core";
+import { CHAT_GROUP_KIND_AGENT_PAIR } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   cancelScheduleFromTool,
@@ -169,6 +170,24 @@ describe("filterBuiltinToolsForThread", () => {
     expect(
       filterBuiltinToolsForThread(tools, "group-1", false).map((tool) => tool.name),
     ).not.toContain("message_bot");
+  });
+
+  it("keeps message_bot in pair threads regardless of the public-collaboration gate", () => {
+    // A pair Thread only exists through the gated private delivery path; the
+    // delegated chain needs message_bot to reply (clarify, interim status,
+    // explicit result), so the independent public gate must not remove it.
+    expect(
+      filterBuiltinToolsForThread(tools, "pair-1", false, CHAT_GROUP_KIND_AGENT_PAIR).map(
+        (tool) => tool.name,
+      ),
+    ).toContain("message_bot");
+    // A standard group keeps the public-gate behavior.
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", false, "standard").map((tool) => tool.name),
+    ).not.toContain("message_bot");
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", true, "standard").map((tool) => tool.name),
+    ).toContain("message_bot");
   });
 
   it("hides schedule creation from routine runs without removing schedule management", () => {

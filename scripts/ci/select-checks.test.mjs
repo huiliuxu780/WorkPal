@@ -174,11 +174,38 @@ describe("classifyPath", () => {
   });
 
   it("maps TS adapters to backend + agentscope, not worker-chain", () => {
-    const result = classifyPath("packages/adapters/src/executor.ts");
+    const result = classifyPath("packages/adapters/src/agentscope-runtime.ts");
     assert.ok(result.jobs.includes("backend"));
     assert.ok(result.jobs.includes("agentscope"));
     assert.equal(result.jobs.includes("worker-chain"), false);
     assert.equal(result.jobs.includes("web"), false);
+  });
+
+  it("maps the answered-ask resume paths to the Execution Card E2E", () => {
+    for (const file of [
+      "packages/db/src/task-instructions.ts",
+      "packages/db/src/task-instructions.test.ts",
+      "packages/db/src/task-instructions.postgres.test.ts",
+      "packages/adapters/src/executor.ts",
+      "packages/adapters/src/executor.test.ts",
+      "packages/adapters/src/scripted-runtime.ts",
+      "packages/adapters/src/scripted-runtime.test.ts",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("web"), `${file} must select the web E2E job`);
+      assert.ok(result.webE2e.includes("execution-card.spec.ts"), file);
+      assert.equal(result.jobs.includes("worker-chain"), false, file);
+    }
+    // The instruction envelope keeps the real-postgres constraint job.
+    assert.ok(classifyPath("packages/db/src/task-instructions.ts").jobs.includes("db-postgres"));
+    // FIX-127 regression: the focused Playwright pattern must actually collect
+    // execution-card.spec.ts for these paths, not just list it.
+    const selection = selectChecks({ files: ["packages/adapters/src/executor.ts"] });
+    assert.ok(selection.selected.includes("web"));
+    assert.match(selection.webE2eSpec, /execution-card\.spec\.ts/);
+    const instructions = selectChecks({ files: ["packages/db/src/task-instructions.ts"] });
+    assert.ok(instructions.selected.includes("web"));
+    assert.match(instructions.webE2eSpec, /execution-card\.spec\.ts/);
   });
 
   it("forces full for contracts, lockfile, CI, and unknown source", () => {

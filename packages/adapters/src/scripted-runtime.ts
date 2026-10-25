@@ -62,11 +62,23 @@ export class ScriptedAgentRuntime implements AgentRuntime {
         return;
       }
       const script = request.script ?? inferScript(request.prompt, request.resumeFromCheckpoint);
+      // FIX-127 parity with the persisted-state Runtime: a Run resumed after
+      // its ask was answered continues past that ask instead of asking again.
+      // The real Runtime resolves the pending ask_user call with a
+      // "User response: <answer>" SUCCESS tool result and never replays the
+      // turns before it (they already executed in the paused attempt), so
+      // playback starts after the answered ask turn. Turns that follow the ask
+      // keep playing; scripts without an ask turn (approval, secret, takeover
+      // fixtures) replay unchanged because their pauses are tool-driven.
+      const answeredAskIndex =
+        request.resumeAnswer === undefined ? -1 : script.findIndex((turn) => Boolean(turn.ask));
+      const firstTurnIndex = answeredAskIndex >= 0 ? answeredAskIndex + 1 : 0;
       // Per-run call index so repeated tools (e.g. message_agent) get distinct
       // executionIds — delivery keys and effect replays key off this value.
       let toolCallSeq = 0;
-      let turnIndex = 0;
-      for (const turn of script) {
+      let turnIndex = firstTurnIndex;
+      for (let index = firstTurnIndex; index < script.length; index += 1) {
+        const turn = script[index]!;
         if (signal.aborted || controller.signal.aborted) {
           yield { type: "done", text: "stopped" };
           return;
@@ -155,6 +167,16 @@ export class ScriptedAgentRuntime implements AgentRuntime {
       // Step path), "todo" publishes only Todos (the 事项清单 fallback path).
       if (/fail this (?:tracked|todo) run/i.test(request.prompt)) {
         throw new Error("Scripted run failure");
+      }
+      if (answeredAskIndex >= 0) {
+        // The persisted-state Runtime hands the model the answer as the
+        // ask_user tool result and the model finishes acknowledging it; the
+        // deterministic analog echoes the answer in the run summary (the same
+        // "done. i handled: …" idiom as summarize()).
+        const answered = `done. i handled: ${request.resumeAnswer ?? ""}`;
+        yield { type: "text", text: answered };
+        yield { type: "done", text: answered };
+        return;
       }
       yield { type: "text", text: "done." };
       yield { type: "done", text: "done." };
