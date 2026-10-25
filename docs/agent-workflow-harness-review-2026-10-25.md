@@ -596,6 +596,9 @@ git merge-base --is-ancestor <branch> origin/main
 2. 新增 `vitest.unit.config.ts`，排除：
    - `**/*.integration.test.ts`
    - `**/*.postgres.test.ts`
+   - 无后缀但依赖 Java runtime 的测试，例如 `packages/testkit/src/computer-replay.test.ts`（首个用例无条件调用 `startJavaRuntime()`，无 JDK 时不会跳过）
+
+   后缀不是依赖的唯一来源。先按真实依赖逐文件分类，再写排除规则；验收标准是 `pnpm test:unit` 在无 JDK 的干净 checkout 上通过，不是排除规则看起来完整。
 3. 在 `package.json` 增加：
    ```json
    {
@@ -987,6 +990,7 @@ merged 且 0 review: 57/111
 11. **pre-commit 不能作为门禁**：`core.hooksPath` 是本地配置，提交 `.githooks` 不会自动启用；同样的检查必须放进 CI。1MB 阈值需要资产白名单。
 12. **多 agent 数据库判断过宽**：默认 E2E 用 Testcontainer，integration 每个 suite 克隆独立库，integration 拒绝外部 DB URL；只有共享 `WORKPAL_E2E_DATABASE_URL` 或共享 Compose 项目才会踩同一个库。端口冲突是真的。`export API_PORT=3110+<n>` 不是合法算术，应写脚本。
 13. **分支删除条件太激进**：已合并分支还要确认没有打开 PR 把它当 base；未合并但 PR 已关闭的 8 个分支不能仅凭 PR 状态删除，可能含独有提交。验收目标不是“远程分支降到个位数”，而是每个保留分支都有负责人/PR/保留原因。
+14. **只按后缀排除不足以让 `test:unit` 在无 JDK 环境运行**：`packages/testkit/src/computer-replay.test.ts` 首个用例无条件调用 `startJavaRuntime()`，但它既不是 `.integration.test.ts` 也不是 `.postgres.test.ts`。已在该步骤补充“无后缀但依赖 Java runtime 的测试”，并要求按真实依赖逐文件分类。`HARNESS-01` H1 已把这一点固化为验收项。
 
 ---
 
