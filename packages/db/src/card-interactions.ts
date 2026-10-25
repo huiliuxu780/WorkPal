@@ -10,6 +10,7 @@ import {
   type InterventionView,
   interactionViewFromIntervention,
   legacyInterventionId,
+  MAX_PRESENTATION_TEXT_CHARS,
   type MessageBlock,
   PlanReviewViewSchema,
   presentationFromAskBlock,
@@ -128,7 +129,10 @@ function approvalViewFromBlock(
             text: block.name,
             detail: "allowAllTools: true",
           }
-        : { text: block.name, detail: block.goal };
+        : {
+            text: block.name.slice(0, MAX_PRESENTATION_TEXT_CHARS),
+            detail: block.goal,
+          };
   const approval =
     block.kind === "app_connect"
       ? {

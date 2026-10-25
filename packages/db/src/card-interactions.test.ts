@@ -230,6 +230,48 @@ describe("CARD-01 thread card surface", () => {
     expect(surface.attention).toHaveLength(1);
   });
 
+  it("keeps skill drafts with the editor's empty or long names", () => {
+    const longName = "n".repeat(300);
+    const playbook = {
+      whenToUse: "New mail",
+      inputs: [],
+      steps: ["Read"],
+      howToCheck: "Sorted",
+      whatToReturn: "Summary",
+      approvalBoundaries: "No sending",
+      failureHandling: "Stop",
+    };
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "skill_draft",
+            skillId: "skill-empty",
+            name: "",
+            goal: "Sort mail",
+            playbook,
+            status: "draft",
+          },
+          {
+            kind: "skill_draft",
+            skillId: "skill-long",
+            name: longName,
+            goal: "Sort mail",
+            playbook,
+            status: "draft",
+          },
+        ]),
+      ],
+    });
+    const approvals = surface.interactions.filter((view) => view.kind === "action_approval");
+    expect(approvals.map((view) => view.approval)).toEqual([
+      expect.objectContaining({ kind: "skill_save", skillId: "skill-empty", name: "" }),
+      expect.objectContaining({ kind: "skill_save", skillId: "skill-long", name: longName }),
+    ]);
+    expect(surface.attention).toHaveLength(2);
+  });
+
   it("preserves a settled legacy plan-review state instead of reviving it", () => {
     const surface = projectThreadCardSurface({
       ...baseInput,

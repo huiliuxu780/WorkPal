@@ -191,7 +191,9 @@ export const ActionApprovalPayloadSchema = z.discriminatedUnion("kind", [
     kind: z.literal("skill_save"),
     authority: z.literal("business_transaction"),
     skillId: Id,
-    name: z.string().min(1).max(200),
+    // The existing draft editor and TaughtSkill.name allow empty/unbounded
+    // names; rejecting them here would drop the whole draft interaction.
+    name: z.string(),
     // Matches skills.start's existing goal limit; a stricter card schema would
     // silently drop a valid draft from the Interaction projection.
     goal: z.string().max(4_000),
