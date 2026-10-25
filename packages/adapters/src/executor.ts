@@ -5360,6 +5360,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             });
           }
           if (name === "message_bot") {
+            // Async public delegation creates a support Run without this Run's
+            // source-chat origin, so its answer could never reach the source
+            // chat. The message_group owner completes the work itself.
+            if (run.trigger === "message_group")
+              return finish({ error: "message_bot is not available for this work" });
             let sent: Awaited<ReturnType<typeof messageBot>>;
             const toolIntent = args.intent as
               | "request"
@@ -7710,7 +7715,10 @@ export function selectBuiltinToolsForRun(options: {
   ).filter(
     (tool) =>
       (options.voiceCall || tool.name !== "end_call") &&
-      (options.trigger !== "message_group" || tool.name !== "handoff_to_bot") &&
+      // A message_group owner Run must finish its own work: handoff and async
+      // delegation both create Runs without this Run's source-chat origin.
+      (options.trigger !== "message_group" ||
+        (tool.name !== "handoff_to_bot" && tool.name !== "message_bot")) &&
       (options.trigger === "user" ||
         options.trigger === "follow_up" ||
         tool.name !== "change_avatar") &&

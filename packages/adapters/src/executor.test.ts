@@ -426,7 +426,7 @@ describe("run tool selection", () => {
     expect(namesFor("group-1", true)).not.toContain("message_group");
   });
 
-  it("withholds handoff_to_bot from a message_group owner run", () => {
+  it("withholds handoff_to_bot and message_bot from a message_group owner run", () => {
     const namesFor = (trigger: string) =>
       selectBuiltinToolsForRun({
         graphicalToolsAllowed: false,
@@ -437,11 +437,12 @@ describe("run tool selection", () => {
         publicCollaborationEnabled: true,
       }).map((tool) => tool.name);
 
-    // A handoff successor has no source-chat origin, so delegated group work
-    // would finish without ever returning to the direct chat.
+    // Handoff successors and public-delegation support Runs have no
+    // source-chat origin, so the owner must finish its own work.
     expect(namesFor("message_group")).not.toContain("handoff_to_bot");
-    expect(namesFor("message_group")).toContain("message_bot");
+    expect(namesFor("message_group")).not.toContain("message_bot");
     expect(namesFor("user")).toContain("handoff_to_bot");
+    expect(namesFor("user")).toContain("message_bot");
   });
 });
 
