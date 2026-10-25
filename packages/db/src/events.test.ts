@@ -83,21 +83,29 @@ describe("finalizeRun", () => {
     const createEvent = vi.fn(async () => ({ threadId: "thread-1", seq: 0 }));
     const tx = {
       $queryRaw: vi.fn(async () => []),
+      $executeRaw: vi.fn(async () => 1),
       run: {
         findUnique: vi.fn(async () => ({ status: "running" })),
         findUniqueOrThrow: vi.fn(async () => ({ sourceMessage: null })),
         findFirst: vi.fn(async () => null),
         updateMany: vi.fn(async () => ({ count: 1 })),
       },
+      taughtSkill: { findFirst: vi.fn(async () => null) },
       attempt: { updateMany: vi.fn(async () => ({ count: 1 })) },
       task: { updateMany: vi.fn(async () => ({ count: 1 })) },
-      thread: { update: vi.fn(async () => ({ nextEventSeq: 1 })) },
+      thread: {
+        update: vi.fn(async () => ({ nextEventSeq: 1 })),
+        findUnique: vi.fn(async () => ({ groupId: null, spaceId: "space-1" })),
+      },
       event: { create: createEvent, deleteMany: vi.fn(async () => ({ count: 0 })) },
       steeringMessage: {
         findMany: vi.fn(async () => []),
         updateMany: vi.fn(async () => ({ count: 0 })),
       },
-      bot: { update: vi.fn(async () => ({})) },
+      bot: {
+        update: vi.fn(async () => ({})),
+        findUnique: vi.fn(async () => ({ archivedAt: null })),
+      },
     };
     const transaction = vi
       .fn()
@@ -131,6 +139,7 @@ describe("finalizeRun", () => {
   it("resumes a held messaging inbound as a messaging run", async () => {
     const tx = {
       $queryRaw: vi.fn(async () => []),
+      $executeRaw: vi.fn(async () => 1),
       run: {
         findUnique: vi.fn(async () => ({ status: "running", startedAt: null })),
         findUniqueOrThrow: vi.fn(async () => ({ sourceMessage: null })),
@@ -139,11 +148,15 @@ describe("finalizeRun", () => {
         create: vi.fn(async () => ({ id: "run-reply" })),
       },
       attempt: { updateMany: vi.fn(async () => ({ count: 1 })) },
+      taughtSkill: { findFirst: vi.fn(async () => null) },
       task: {
         updateMany: vi.fn(async () => ({ count: 1 })),
         create: vi.fn(async () => ({ id: "task-reply" })),
       },
-      thread: { update: vi.fn(async () => ({ nextEventSeq: 1 })) },
+      thread: {
+        update: vi.fn(async () => ({ nextEventSeq: 1 })),
+        findUnique: vi.fn(async () => ({ groupId: null, spaceId: "space-1" })),
+      },
       event: {
         create: vi.fn(async () => ({ threadId: "thread-1", seq: 0 })),
         deleteMany: vi.fn(async () => ({ count: 0 })),
@@ -163,7 +176,10 @@ describe("finalizeRun", () => {
         ]),
         updateMany: vi.fn(async () => ({ count: 1 })),
       },
-      bot: { update: vi.fn(async () => ({})) },
+      bot: {
+        update: vi.fn(async () => ({})),
+        findUnique: vi.fn(async () => ({ archivedAt: null })),
+      },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -204,6 +220,7 @@ describe("finalizeRun", () => {
     };
     const tx = {
       $queryRaw: vi.fn(async () => []),
+      $executeRaw: vi.fn(async () => 1),
       run: {
         findUnique: vi.fn(async () => ({ status: "running", startedAt: null })),
         findUniqueOrThrow: vi.fn(async () => ({ sourceMessage: null })),
@@ -212,11 +229,15 @@ describe("finalizeRun", () => {
         create: vi.fn(async () => ({ id: "run-reply" })),
       },
       attempt: { updateMany: vi.fn(async () => ({ count: 1 })) },
+      taughtSkill: { findFirst: vi.fn(async () => null) },
       task: {
         updateMany: vi.fn(async () => ({ count: 1 })),
         create: vi.fn(async () => ({ id: "task-reply" })),
       },
-      thread: { update: vi.fn(async () => ({ nextEventSeq: 1 })) },
+      thread: {
+        update: vi.fn(async () => ({ nextEventSeq: 1 })),
+        findUnique: vi.fn(async () => ({ groupId: null, spaceId: "space-1" })),
+      },
       event: {
         create: vi.fn(async () => ({ threadId: "thread-1", seq: 0 })),
         deleteMany: vi.fn(async () => ({ count: 0 })),
@@ -252,7 +273,10 @@ describe("finalizeRun", () => {
         ]),
         updateMany: vi.fn(async () => ({ count: 1 })),
       },
-      bot: { update: vi.fn(async () => ({})) },
+      bot: {
+        update: vi.fn(async () => ({})),
+        findUnique: vi.fn(async () => ({ archivedAt: null })),
+      },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -2765,7 +2789,9 @@ describe("clearThread", () => {
           .mockResolvedValue({ nextEventSeq: 1 }),
       },
       run: {
-        findMany: vi.fn().mockResolvedValue([{ id: "run-1", taskId: "task-1" }]),
+        findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+          args?.where?.trigger ? [] : [{ id: "run-1", taskId: "task-1" }],
+        ),
         updateManyAndReturn: vi.fn().mockResolvedValue([
           {
             id: "run-1",
@@ -2778,6 +2804,7 @@ describe("clearThread", () => {
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
+      steeringMessage: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       computerExecutionLease: { updateMany: vi.fn() },
       computer: { updateMany: vi.fn() },
       message: { deleteMany: vi.fn() },
@@ -2841,10 +2868,14 @@ describe("clearThread", () => {
           .mockResolvedValue({ nextEventSeq: 1 }),
       },
       run: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: "group-run-1", taskId: "task-1" },
-          { id: "group-run-2", taskId: "task-2" },
-        ]),
+        findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+          args?.where?.trigger
+            ? []
+            : [
+                { id: "group-run-1", taskId: "task-1" },
+                { id: "group-run-2", taskId: "task-2" },
+              ],
+        ),
         updateManyAndReturn: vi.fn().mockResolvedValue([
           {
             id: "group-run-1",
@@ -2864,6 +2895,7 @@ describe("clearThread", () => {
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
+      steeringMessage: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       computerExecutionLease: { updateMany: vi.fn() },
       computer: { updateMany: vi.fn() },
       message: { deleteMany: vi.fn() },

@@ -10,10 +10,9 @@ import { selectGroupLead } from "@rakazo/core";
 import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import { backgroundTaskLockTransactionOptions } from "./background-task-registration.js";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
-import { type CancelledRunRow, cancelRunsInTransaction } from "./cancel-runs.js";
+import { applyCancelTerminalPolicy, cancelPolicyFor } from "./cancel-terminal.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
-import { appendEventInTransaction } from "./events.js";
 import {
   backgroundParentRunIdsExcept,
   findLiveBackgroundTasks,
@@ -446,7 +445,11 @@ export function createGroupRepos(prisma: PrismaClient) {
             })
           : [];
         const cancelledRuns = activeRuns.length
-          ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+          ? (
+              await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+                policy: cancelPolicyFor("member_removed"),
+              })
+            ).rows
           : [];
         const backgroundTasks = removedBotIds.length
           ? await markLiveBackgroundTasksCancelling(tx, {
@@ -458,7 +461,6 @@ export function createGroupRepos(prisma: PrismaClient) {
           await expireComputerExecutionLeases(tx, {
             runId: { in: cancelledRuns.map((run) => run.id) },
           });
-          await appendCancelledRunEvents(tx, cancelledRuns, "member_removed");
         }
         if (input.name !== undefined) {
           await tx.chatGroup.update({
@@ -548,13 +550,16 @@ export function createGroupRepos(prisma: PrismaClient) {
         const { targets } = await snapshotRunTeardownTargets(tx, runIds);
 
         const cancelledRuns = runIds.length
-          ? await cancelRunsInTransaction(tx, activeRuns, now)
+          ? (
+              await applyCancelTerminalPolicy(tx, activeRuns, now, {
+                policy: cancelPolicyFor("group_archived"),
+              })
+            ).rows
           : [];
         const backgroundTasks = await markLiveBackgroundTasksCancelling(tx, {
           threadId: current.thread.id,
         });
         if (cancelledRuns.length) {
-          await appendCancelledRunEvents(tx, cancelledRuns, "group_archived");
           await tx.event.deleteMany({
             where: { type: "thread.progress", runId: { in: cancelledRuns.map((run) => run.id) } },
           });
@@ -677,21 +682,4 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     mapGroup,
   };
-}
-
-async function appendCancelledRunEvents(
-  tx: Prisma.TransactionClient,
-  runs: readonly CancelledRunRow[],
-  reason: string,
-) {
-  for (const run of runs) {
-    await appendEventInTransaction(tx, {
-      spaceId: run.spaceId,
-      threadId: run.threadId,
-      botId: run.botId,
-      runId: run.id,
-      type: "run.cancelled",
-      payload: { reason },
-    });
-  }
 }

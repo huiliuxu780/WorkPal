@@ -12,12 +12,12 @@ import { type Actor, type Bot, type ComputerMode, GROUP_MEMBER_MIN } from "@raka
 import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import { browserProfilePathForScreen } from "@rakazo/core/node/desktop-runtime";
 import {
-  appendEventInTransaction,
   backgroundParentRunIdsExcept,
   backgroundTaskLockTransactionOptions,
   CHAT_GROUP_KIND_STANDARD,
   cancelChildrenOfCancelledRuns,
-  cancelRunsInTransaction,
+  applyCancelTerminalPolicy,
+  cancelPolicyFor,
   computerScopeKey,
   createRepos,
   createThreadMessageInTransaction,
@@ -330,18 +330,12 @@ export async function archiveBot(
         })
       : activeRuns;
     const cancelled = runsToCancel.length
-      ? await cancelRunsInTransaction(tx, runsToCancel, now)
+      ? (
+          await applyCancelTerminalPolicy(tx, runsToCancel, now, {
+            policy: cancelPolicyFor("bot_archived"),
+          })
+        ).rows
       : [];
-    for (const run of cancelled) {
-      await appendEventInTransaction(tx, {
-        spaceId: run.spaceId,
-        threadId: run.threadId,
-        botId: run.botId,
-        runId: run.id,
-        type: "run.cancelled",
-        payload: { reason: "bot_archived" },
-      });
-    }
     await tx.routine.updateMany({
       where: { botId: bot.id },
       data: { active: false, nextRunAt: null },
@@ -433,9 +427,13 @@ export async function destroyBot(
   ]);
   const cancelledOwnRuns = activeRuns.length
     ? await deps.prisma.$transaction(async (tx) => {
-        const cancelled = await cancelRunsInTransaction(tx, activeRuns, new Date());
-        await expireComputerExecutionLeases(tx, { runId: { in: cancelled.map((run) => run.id) } });
-        return cancelled;
+        const settled = await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+          policy: cancelPolicyFor("bot_deleted"),
+        });
+        await expireComputerExecutionLeases(tx, {
+          runId: { in: settled.rows.map((run) => run.id) },
+        });
+        return settled.rows;
       })
     : [];
   await Promise.allSettled([
@@ -764,7 +762,11 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
       })
     : [];
   const cancelledGroupRuns = activeRuns.length
-    ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+    ? (
+        await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+          policy: cancelPolicyFor("group_archived"),
+        })
+      ).rows
     : [];
   const backgroundTasks = dissolvedThreadIds.length
     ? await findLiveBackgroundTasks(tx, { threadId: { in: dissolvedThreadIds } })

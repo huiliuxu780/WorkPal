@@ -856,6 +856,8 @@ export async function messageBot(
   },
   options?: {
     allowTerminalSource?: boolean;
+    /** Typed cancel outcome only. Does not treat every terminal status as returnable. */
+    allowTypedCancel?: boolean;
     /** Outcome-return callers supply the resolved upstream origin directly. */
     originOverride?: { threadId: string; runId: string; messageId: string };
   },
@@ -1131,8 +1133,16 @@ export async function messageBot(
             // allowTerminalSource covers the sanctioned reply paths: the
             // terminal automatic outcome and a live explicit result/status,
             // so a still-running source may answer its requester.
+            // allowTypedCancel adds cancelled only for a typed cancel outcome.
             status: options?.allowTerminalSource
-              ? { in: ["completed", "failed", "running"] }
+              ? {
+                  in: [
+                    "completed",
+                    "failed",
+                    "running",
+                    ...(options.allowTypedCancel ? (["cancelled"] as const) : []),
+                  ],
+                }
               : "running",
           },
           select: { id: true },
@@ -1837,6 +1847,7 @@ export async function returnBotMessageOutcome(
   sender: { id: string; name: string },
   text: string,
   intent: "result" | "status" = "result",
+  options?: { allowTypedCancel?: boolean },
 ) {
   const source = await loadBotMessageContext(deps.prisma, run.sourceMessageId);
   if (!source) {
@@ -1894,18 +1905,33 @@ export async function returnBotMessageOutcome(
       // One key per run so status vs result (executor vs reconciler) cannot double-deliver.
       deliveryKey: `auto-outcome:${run.id}`,
     },
-    { allowTerminalSource: true, ...(originOverride ? { originOverride } : {}) },
+    {
+      allowTerminalSource: true,
+      ...(options?.allowTypedCancel ? { allowTypedCancel: true } : {}),
+      ...(originOverride ? { originOverride } : {}),
+    },
   );
-  if (outcome.ok) await markBotOutcomeReturned(deps.prisma, run.id);
+  if (outcome.ok) await markBotOutcomeReturned(deps.prisma, run.id, options);
   return outcome.ok;
 }
 
-async function markBotOutcomeReturned(prisma: PrismaClient, runId: string) {
+async function markBotOutcomeReturned(
+  prisma: PrismaClient,
+  runId: string,
+  options?: { allowTypedCancel?: boolean },
+) {
   await prisma.run.updateMany({
     where: {
       id: runId,
-      status: { in: ["completed", "failed"] },
       botOutcomeReturnedAt: null,
+      ...(options?.allowTypedCancel
+        ? {
+            OR: [
+              { status: { in: ["completed", "failed"] } },
+              { status: "cancelled", cancelReason: { not: null } },
+            ],
+          }
+        : { status: { in: ["completed", "failed"] } }),
     },
     data: { botOutcomeReturnedAt: new Date() },
   });

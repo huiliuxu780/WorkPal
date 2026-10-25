@@ -55,15 +55,28 @@ describe("queued run supersession", () => {
       $queryRaw: vi.fn(),
       thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
       run: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: "run-old",
-            taskId: "task-old",
-            threadId: "thread-1",
-            spaceId: "workspace-1",
-            botId: "bot-1",
-          },
-        ]),
+        findMany: vi.fn(async (args?: { where?: { id?: { in?: string[] }; trigger?: string } }) => {
+          if (args?.where?.trigger) return [];
+          if (args?.where?.id?.in?.includes("run-new")) {
+            return [
+              {
+                id: "run-new",
+                botId: "bot-1",
+                threadId: "thread-1",
+                status: "queued",
+              },
+            ];
+          }
+          return [
+            {
+              id: "run-old",
+              taskId: "task-old",
+              threadId: "thread-1",
+              spaceId: "workspace-1",
+              botId: "bot-1",
+            },
+          ];
+        }),
         updateManyAndReturn: vi.fn().mockResolvedValue([
           {
             id: "run-old",
@@ -73,10 +86,19 @@ describe("queued run supersession", () => {
             botId: "bot-1",
           },
         ]),
-        findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
+        findUnique: vi.fn(async (args?: { where?: { id?: string } }) =>
+          args?.where?.id === "run-new"
+            ? { id: "run-new", botId: "bot-1", threadId: "thread-1", status: "queued" }
+            : { status: "cancelled" },
+        ),
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
+      steeringMessage: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
       event: { create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data) },
     };
     await cancelSupersededQueuedRuns(tx as never, {
@@ -112,7 +134,12 @@ describe("queued run supersession", () => {
       data: expect.objectContaining({
         type: "run.cancelled",
         runId: "run-old",
-        payload: { reason: "superseded" },
+        payload: expect.objectContaining({
+          reason: "superseded",
+          steering: "migrate",
+          reportDelegationOutcome: true,
+          replacementRunId: "run-new",
+        }),
       }),
     });
   });
@@ -3499,7 +3526,11 @@ describe("stopThreadRuns", () => {
         botId: "bot-a",
         type: "run.cancelled",
         runId: "run-a",
-        payload: {},
+        payload: {
+          reason: "user_stopped",
+          reportDelegationOutcome: false,
+          steering: "delete",
+        },
         seq: 2,
       }),
       expect.objectContaining({
@@ -3508,7 +3539,11 @@ describe("stopThreadRuns", () => {
         botId: "bot-b",
         type: "run.cancelled",
         runId: "run-b",
-        payload: {},
+        payload: {
+          reason: "user_stopped",
+          reportDelegationOutcome: false,
+          steering: "delete",
+        },
         seq: 3,
       }),
     ]);
@@ -3617,7 +3652,9 @@ describe("stopThreadRuns", () => {
           { id: "run-c", botId: "bot-c", threadId: "pair-thread-2", spaceId: "workspace-1", taskId: "task-c" },
         ]),
         update: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn(async () => []),
       },
+      steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
       computerExecutionLease: {
@@ -3700,10 +3737,11 @@ describe("stopThreadRuns", () => {
       }),
     );
     expect(result.cancelledRunIds).toEqual(["run-c"]);
-    expect(delegatedTransaction.run.update).toHaveBeenCalledWith({
-      where: { id: "run-c" },
-      data: { error: "parent_cancelled" },
-    });
+    expect(delegatedTransaction.run.updateManyAndReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ error: "parent_cancelled", cancelReason: "parent_cancelled" }),
+      }),
+    );
     // Sandbox work on the delegated run's computer was torn down (cancel +
     // screen release) before the lease expired.
     expect(execute).toHaveBeenCalled();
@@ -3718,7 +3756,11 @@ describe("stopThreadRuns", () => {
           type: "run.cancelled",
           runId: "run-c",
           threadId: "pair-thread-2",
-          payload: { reason: "parent_cancelled" },
+          payload: expect.objectContaining({
+            reason: "parent_cancelled",
+            reportDelegationOutcome: true,
+            steering: "retain_unhandled",
+          }),
         }),
       }),
     );

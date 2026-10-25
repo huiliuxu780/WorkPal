@@ -43,9 +43,9 @@ import {
   teachRecordingTtlMs,
 } from "@rakazo/core";
 import {
-  appendEventInTransaction,
+  applyCancelTerminalPolicy,
   cancelChildrenOfCancelledRuns,
-  cancelRunsInTransaction,
+  cancelPolicyFor,
   type createRepos,
   expireComputerExecutionLeases,
   IsolationError,
@@ -126,35 +126,33 @@ export async function assertTeachingSendAllowed(
   }
 }
 
-async function cancelActiveRuns(
-  deps: TaughtSkillsDeps,
-  _actor: Actor,
+async function cancelActiveRunsInTransaction(
+  tx: Parameters<Parameters<TaughtSkillsDeps["prisma"]["$transaction"]>[0]>[0],
   botId: string,
-): Promise<void> {
-  const activeRuns = await deps.prisma.run.findMany({
+) {
+  const activeRuns = await tx.run.findMany({
     where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
     select: { id: true, taskId: true },
   });
-  const cancelled = await deps.prisma.$transaction(async (tx) => {
-    const rows = await cancelRunsInTransaction(tx, activeRuns, new Date());
-    for (const run of rows) {
-      await appendEventInTransaction(tx, {
-        spaceId: run.spaceId,
-        threadId: run.threadId,
-        botId: run.botId,
-        runId: run.id,
-        type: "run.cancelled",
-        payload: { reason: "teaching_started" },
-      });
-    }
-    if (rows.length) {
-      await expireComputerExecutionLeases(tx, { runId: { in: rows.map((run) => run.id) } });
-      await tx.event.deleteMany({
-        where: { type: "thread.progress", runId: { in: rows.map((run) => run.id) } },
-      });
-    }
-    return rows;
+  const settled = await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+    policy: cancelPolicyFor("teaching_started"),
   });
+  if (settled.rows.length) {
+    await expireComputerExecutionLeases(tx, {
+      runId: { in: settled.rows.map((run) => run.id) },
+    });
+    await tx.event.deleteMany({
+      where: { type: "thread.progress", runId: { in: settled.rows.map((run) => run.id) } },
+    });
+  }
+  return settled.rows;
+}
+
+async function finishTeachingCancellation(
+  deps: TaughtSkillsDeps,
+  botId: string,
+  cancelled: Awaited<ReturnType<typeof cancelActiveRunsInTransaction>>,
+) {
   if (cancelled.length) {
     await deps.prisma.computer.updateMany({
       where: { executionBotId: botId, executionRunId: { in: cancelled.map((run) => run.id) } },
@@ -400,12 +398,12 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
       if (alreadyRecording) {
         throw new ORPCError("CONFLICT", { message: "A teaching session is already active" });
       }
-      await cancelActiveRuns(deps, actor, botId);
       bot = await ensureGraphicalComputer(deps, actor, bot);
       const startedAt = new Date();
       const expiresAt = new Date(startedAt.getTime() + teachRecordingTtlMs());
       const { leaseId } = await grantTakeover(deps, actor, bot, expiresAt);
       let row: TaughtSkillRow;
+      let cancelledRuns: Awaited<ReturnType<typeof cancelActiveRunsInTransaction>> = [];
       try {
         row = await deps.prisma.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT id FROM bots WHERE id = ${botId} FOR UPDATE`;
@@ -415,7 +413,7 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
           if (existing) {
             throw new ORPCError("CONFLICT", { message: "A teaching session is already active" });
           }
-          return tx.taughtSkill.create({
+          const created = await tx.taughtSkill.create({
             data: {
               spaceId: actor.spaceId,
               botId,
@@ -428,6 +426,10 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
               playbook: buildPlaybookFromRecording(goal, []) as never,
             },
           });
+          // The recording row exists in this transaction, so continuation eligibility
+          // sees that the bot cannot take a new conversational run yet.
+          cancelledRuns = await cancelActiveRunsInTransaction(tx, botId);
+          return created;
         });
       } catch (error) {
         if (error instanceof ORPCError) throw error;
@@ -440,6 +442,7 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
         }
         throw error;
       }
+      await finishTeachingCancellation(deps, botId, cancelledRuns);
       await deps.jobs.enqueue(skillTeachingExpireJob(row.id, expiresAt));
       const withSnapshot = await captureTeachingSnapshot(deps, actor, bot, row);
       if (bot.thread) {

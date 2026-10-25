@@ -5,7 +5,13 @@ import {
   runContinueJob,
 } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
-import type { Pool, PrismaClient, ThreadEvents } from "@rakazo/db";
+import {
+  confirmedCancelOutcomeText,
+  type Pool,
+  type PrismaClient,
+  reasonsReadyForCancelOutcome,
+  type ThreadEvents,
+} from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import type { PoolClient } from "pg";
 import { returnBotMessageOutcome } from "./bot-messages.js";
@@ -308,6 +314,49 @@ export function createJobReconciler(
             }
           }),
         );
+
+        // Typed cancel outcomes. Empty while product copy is unconfirmed, so this
+        // sweep does not invent a sentence or read Run.error.
+        const readyReasons = reasonsReadyForCancelOutcome();
+        if (readyReasons.length > 0) {
+          const pendingCancels = await deps.prisma.cancelOutcomeOutbox.findMany({
+            where: { deliveredAt: null, reason: { in: readyReasons } },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            take: batchSize,
+          });
+          await Promise.all(
+            pendingCancels.map(async (intent) => {
+              const text = confirmedCancelOutcomeText(intent.reason);
+              if (!text) return;
+              const returned = await returnBotMessageOutcome(
+                { prisma: deps.prisma, jobs: deps.jobs, events },
+                {
+                  id: intent.runId,
+                  spaceId: intent.spaceId,
+                  threadId: intent.threadId,
+                  botId: intent.senderBotId,
+                  userId: intent.userId,
+                  sourceMessageId: intent.sourceMessageId,
+                  originThreadId: intent.originThreadId,
+                  originRunId: intent.originRunId,
+                  originMessageId: intent.originMessageId,
+                },
+                { id: intent.senderBotId, name: intent.senderName },
+                text,
+                "status",
+                { allowTypedCancel: true },
+              ).catch((error) => {
+                getLogger().error("bot message cancel outcome reconciliation", error);
+                return false;
+              });
+              if (!returned) return;
+              await deps.prisma.cancelOutcomeOutbox.updateMany({
+                where: { id: intent.id, deliveredAt: null },
+                data: { deliveredAt: new Date() },
+              });
+            }),
+          );
+        }
 
         const messageGroupOutcomes = await deps.prisma.run.findMany({
           where: {

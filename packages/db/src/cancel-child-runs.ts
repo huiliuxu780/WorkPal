@@ -1,5 +1,5 @@
 import { ACTIVE_RUN_STATUSES, parseRunOrchestration } from "@rakazo/core";
-import { cancelRunsInTransaction } from "./cancel-runs.js";
+import { applyCancelTerminalPolicy, cancelPolicyFor } from "./cancel-terminal.js";
 import { Prisma, type PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { appendEventInTransaction } from "./events.js";
@@ -48,8 +48,12 @@ export async function cancelChildrenOfCancelledRuns(
         select: { status: true },
       });
       if (parent && parent.status !== "cancelled") return null;
-      await cancelRunsInTransaction(tx, [child], new Date());
-      await tx.run.update({ where: { id: child.id }, data: { error: "parent_cancelled" } });
+      const settled = await applyCancelTerminalPolicy(tx, [child], new Date(), {
+        policy: cancelPolicyFor("parent_cancelled"),
+        cancelOptions: { error: "parent_cancelled" },
+        appendEvents: false,
+      });
+      if (settled.rows.length === 0) return null;
       await expireComputerExecutionLeases(tx, { runId: child.id });
       const event = await appendEventInTransaction(tx, {
         spaceId: child.spaceId,
@@ -58,7 +62,7 @@ export async function cancelChildrenOfCancelledRuns(
         runId: child.id,
         parentRunId,
         type: "run.cancelled",
-        payload: { reason: "parent_cancelled" },
+        payload: { reason: "parent_cancelled", reportDelegationOutcome: true, steering: "retain_unhandled" },
       });
       return { id: child.id, threadId: child.threadId, seq: event.seq };
     });

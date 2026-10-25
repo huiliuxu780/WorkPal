@@ -1542,7 +1542,9 @@ describe("computer execution leases", () => {
           .mockResolvedValue({ nextEventSeq: 1 }),
       },
       run: {
-        findMany: vi.fn().mockResolvedValue([{ id: "run-1", taskId: "task-1" }]),
+        findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+          args?.where?.trigger ? [] : [{ id: "run-1", taskId: "task-1" }],
+        ),
         updateMany: vi.fn(),
         updateManyAndReturn: vi.fn().mockResolvedValue([
           {
@@ -1556,6 +1558,7 @@ describe("computer execution leases", () => {
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
+      steeringMessage: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       computerExecutionLease: {
         updateMany: vi.fn().mockImplementation(async ({ data }) => {
           lease.expiresAt = data.expiresAt;

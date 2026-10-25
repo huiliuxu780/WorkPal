@@ -324,16 +324,20 @@ describe("destroyBot", () => {
     const expireExecutionLeases = vi.fn().mockResolvedValue({ count: 1 });
     const clearExecution = vi.fn().mockResolvedValue({ count: 1 });
     const queryRaw = vi.fn().mockResolvedValue([{ id: "group-1" }, { id: "group-2" }]);
-    const findRuns = vi.fn().mockResolvedValue([
-      {
-        id: "group-run",
-        taskId: "group-task",
-        botId: "bot-2",
-        bot: {
-          computer: { homeKey: "team-home", kind: "fake", providerRef: "screen-1" },
-        },
-      },
-    ]);
+    const findRuns = vi.fn(async (args?: { where?: { trigger?: string } }) =>
+      args?.where?.trigger
+        ? []
+        : [
+            {
+              id: "group-run",
+              taskId: "group-task",
+              botId: "bot-2",
+              bot: {
+                computer: { homeKey: "team-home", kind: "fake", providerRef: "screen-1" },
+              },
+            },
+          ],
+    );
     const transaction = vi.fn(async (callback: (tx: unknown) => Promise<void>) =>
       callback({
         $queryRaw: queryRaw,
@@ -371,7 +375,14 @@ describe("destroyBot", () => {
         run: {
           findMany: findRuns,
           updateManyAndReturn: cancelRuns,
+          findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
         },
+        thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
+        event: {
+          create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+        steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
         attempt: { updateMany: cancelAttempts },
         task: { updateMany: cancelTasks },
         chatGroupMember: { deleteMany: deleteMemberships },
@@ -1037,6 +1048,9 @@ describe("archiveBot", () => {
         ...groupCleanup,
         run: {
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+            args?.where?.trigger ? [] : [{ id: "run-1", taskId: "task-1" }],
+          ),
           updateManyAndReturn: vi.fn().mockResolvedValue([
             {
               id: "run-1",
@@ -1048,6 +1062,7 @@ describe("archiveBot", () => {
           ]),
           findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
         },
+        steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
         attempt: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         task: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
