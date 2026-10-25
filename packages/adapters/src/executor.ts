@@ -2483,6 +2483,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             planningEnabled: turnPolicy.planning.mode === "auto",
             publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
             messageGroupEnabled: deps.roundtableFeatures?.message_group === true,
+            ownerRun: turnPolicy.ownership.mode === "owner",
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -2580,6 +2581,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               planningEnabled: turnPolicy.planning.mode === "auto",
               publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
               messageGroupEnabled: deps.roundtableFeatures?.message_group === true,
+              ownerRun: turnPolicy.ownership.mode === "owner",
             }),
             ...(hasMessagingIdentity ? agentConnectionTools : []),
           ];
@@ -5318,6 +5320,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             );
           }
           if (name === "message_group") {
+            if (turnPolicy.ownership.mode !== "owner") {
+              return finish({ error: "message_group is only available to the owner of this turn" });
+            }
             if (args.targetTaskId !== undefined || args.target_task_id !== undefined) {
               return finish({ error: "message_group cannot attach to existing work" });
             }
@@ -7693,6 +7698,8 @@ export function selectBuiltinToolsForRun(options: {
   groupKind?: string | null;
   /** Opens the direct-chat message_group tool after its gate is enabled. */
   messageGroupEnabled?: boolean;
+  /** Support Runs only answer their requester; cross-session work is owner-only. */
+  ownerRun?: boolean;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -7705,7 +7712,7 @@ export function selectBuiltinToolsForRun(options: {
           options.groupId,
           options.publicCollaborationEnabled,
           options.groupKind,
-          options.messageGroupEnabled,
+          options.messageGroupEnabled && options.ownerRun !== false,
         ),
         options.trigger,
       ),

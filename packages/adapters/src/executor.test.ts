@@ -411,7 +411,7 @@ describe("run tool selection", () => {
   });
 
   it("offers message_group only in a direct chat behind its own gate", () => {
-    const namesFor = (groupId: string | null, messageGroupEnabled: boolean) =>
+    const namesFor = (groupId: string | null, messageGroupEnabled: boolean, ownerRun = true) =>
       selectBuiltinToolsForRun({
         graphicalToolsAllowed: false,
         groupId,
@@ -419,11 +419,13 @@ describe("run tool selection", () => {
         semanticMemoryEnabled: false,
         messagingChannelRun: false,
         messageGroupEnabled,
+        ownerRun,
       }).map((tool) => tool.name);
 
     expect(namesFor(null, true)).toContain("message_group");
     expect(namesFor(null, false)).not.toContain("message_group");
     expect(namesFor("group-1", true)).not.toContain("message_group");
+    expect(namesFor(null, true, false)).not.toContain("message_group");
   });
 
   it("withholds handoff_to_bot and message_bot from a message_group owner run", () => {

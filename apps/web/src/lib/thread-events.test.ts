@@ -1571,6 +1571,26 @@ describe("thread event reduction", () => {
     expect(next?.messages[0]?.callId).toBe("c-1");
   });
 
+  it("keeps a known Run association when an update cannot name a cancelled Run", () => {
+    const initial = snapshot([
+      { ...message("receipt-1", [{ kind: "text", text: "已入席" }]), runId: "run-cancelled" },
+    ]);
+    const next = reduceThreadSnapshot(
+      initial,
+      event({
+        type: "thread.message.updated",
+        seq: 9,
+        runId: undefined,
+        payload: {
+          messageId: "receipt-1",
+          role: "bot",
+          blocks: [{ kind: "text", text: "已取消" }],
+        },
+      }),
+    );
+    expect(next?.messages[0]).toMatchObject({ id: "receipt-1", runId: "run-cancelled" });
+  });
+
   it("preserves botId on durable bot messages", () => {
     const initial = snapshot([]);
     const next = reduceThreadSnapshot(

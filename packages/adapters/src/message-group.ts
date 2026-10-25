@@ -6,6 +6,7 @@ import {
   outcomeResumptionCollaboration,
   parseCollaborationReceipt,
   parseDestinationLocator,
+  parseRunOrchestration,
   RoundtableFeatureDisabledError,
   turnExecutionForSource,
   type CollaborationReceipt,
@@ -35,6 +36,7 @@ const ERROR_NOT_DIRECT_CHAT = "message_group is only available in your direct ch
 const ERROR_INTENT = "message_group only supports intent=request";
 const ERROR_MESSAGE = "message is required";
 const ERROR_SOURCE_INACTIVE = "source run is no longer active";
+const ERROR_NOT_OWNER = "message_group is only available to the owner of this turn";
 const ERROR_GROUP_UNAVAILABLE = "this group is no longer available";
 const ERROR_INCOMPLETE = "recorded message_group delivery is incomplete";
 
@@ -151,6 +153,10 @@ export async function messageGroup(
           select: { id: true, orchestration: true },
         });
         if (!sourceRun) return { ok: false as const, error: ERROR_SOURCE_INACTIVE };
+        const sourceIsSupport =
+          collaborationFromOrchestration(sourceRun.orchestration)?.role === "support" ||
+          parseRunOrchestration(sourceRun.orchestration)?.ownership.mode === "support";
+        if (sourceIsSupport) return { ok: false as const, error: ERROR_NOT_OWNER };
 
         if (receiptNonce) {
           const existing = await tx.message.findUnique({
@@ -553,9 +559,9 @@ export async function returnMessageGroupOutcome(
         threadId: originThreadId,
         botId: run.botId,
         type: "thread.message.updated",
-        // The receipt stays attached to the Run that wrote it even if that Run
-        // was cancelled while the target work was still in flight.
-        runId: originSource.id,
+        // A cancelled Run cannot write run-history events. The message row keeps
+        // its original Run association; the live reducer preserves it.
+        ...(originSource.status === "cancelled" ? {} : { runId: originSource.id }),
         payload: { messageId: receiptMessage.id, role: "bot", blocks: updatedBlocks },
       });
 

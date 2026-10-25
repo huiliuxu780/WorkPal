@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  buildRunOrchestration,
   parseCollaborationReceipt,
   resolveRoundtableFeatureGates,
+  supportCollaboration,
+  turnExecutionForSource,
   type CollaborationReceipt,
 } from "@rakazo/core";
 import {
@@ -148,13 +151,18 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
       topic?: string;
       intent?: string;
     } = {},
-    options: { key?: string; deliveryKey?: string; gates?: typeof GATES } = {},
+    options: {
+      key?: string;
+      deliveryKey?: string;
+      gates?: typeof GATES;
+      sourceRun?: string;
+    } = {},
   ) {
     const key = options.key ?? nextKey();
     const result = await messageGroup(
       deps(options.gates),
       {
-        id: sourceRunId,
+        id: options.sourceRun ?? sourceRunId,
         spaceId,
         threadId: joyThreadId,
         botId: joy.id,
@@ -198,6 +206,31 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
       prisma.run.count({ where: { spaceId } }),
     ]);
     return { receipts, groupMessages, tasks, runs };
+  }
+
+  async function createSourceRun(orchestration?: ReturnType<typeof buildRunOrchestration>) {
+    const task = await prisma.task.create({
+      data: {
+        spaceId,
+        botId: joy.id,
+        threadId: joyThreadId,
+        userId: ownerId,
+        prompt: "RT-11 source work",
+        status: "running",
+      },
+    });
+    return prisma.run.create({
+      data: {
+        spaceId,
+        botId: joy.id,
+        threadId: joyThreadId,
+        taskId: task.id,
+        userId: ownerId,
+        status: "running",
+        trigger: orchestration ? "bot_message" : "user",
+        ...(orchestration ? { orchestration } : {}),
+      },
+    });
   }
 
   it("commits the receipt, target message, Task and independent owner Run together", async () => {
@@ -406,6 +439,31 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     expect(await counts()).toEqual(before);
   });
 
+  it("rejects group work launched from a support Run with zero side effects", async () => {
+    const supportRun = await createSourceRun(
+      buildRunOrchestration({
+        kind: "bot_message",
+        ownerBotId: joy.id,
+        responseMode: "single",
+        ownershipMode: "support",
+        execution: turnExecutionForSource("bot_message"),
+        collaboration: supportCollaboration({
+          fromBotId: blue.id,
+          parentRunId: sourceRunId,
+          handoffDepth: 0,
+          messageHop: 1,
+        }),
+      }),
+    );
+    const before = await counts();
+    const { result } = await send({}, { sourceRun: supportRun.id });
+    expect(result).toMatchObject({
+      ok: false,
+      error: "message_group is only available to the owner of this turn",
+    });
+    expect(await counts()).toEqual(before);
+  });
+
   it("rolls back every core write when a later insert fails", async () => {
     await prisma.$executeRawUnsafe(`
       CREATE OR REPLACE FUNCTION rt11_fail_task() RETURNS trigger AS $$
@@ -534,6 +592,41 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     expect(summaryRun?.task.prompt).not.toContain("<group_result>");
     const duplicate = await returnMessageGroupOutcome(deps(), targetRun, { text: "ignored" });
     expect(duplicate).toBe(false);
+  });
+
+  it("updates the receipt after the source Run is cancelled", async () => {
+    const source = await createSourceRun();
+    const { result, key } = await send({}, { sourceRun: source.id });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    await prisma.run.updateMany({
+      where: { id: { in: [source.id, result.targetRunId] } },
+      data: { status: "cancelled", completedAt: new Date() },
+    });
+    const targetRun = await prisma.run.findUniqueOrThrow({ where: { id: result.targetRunId } });
+    const returned = await returnMessageGroupOutcome(deps(), targetRun, {});
+    expect(returned).toBe(true);
+    const receipt = await receiptFor(key);
+    expect(receipt).toMatchObject({
+      state: "cancelled",
+      destination: { kind: "group_message", messageId: result.locator.messageId },
+    });
+    const receiptMessage = await prisma.message.findUniqueOrThrow({
+      where: { threadId_clientNonce: { threadId: joyThreadId, clientNonce: `group-message:${key}` } },
+      select: { id: true, runId: true },
+    });
+    expect(receiptMessage.runId).toBe(source.id);
+    const updated = await prisma.event.findFirst({
+      where: { threadId: joyThreadId, type: "thread.message.updated", runId: null },
+      orderBy: { seq: "desc" },
+    });
+    expect(updated?.payload).toMatchObject({ messageId: receiptMessage.id });
+    expect(
+      await prisma.run.findUniqueOrThrow({
+        where: { id: result.targetRunId },
+        select: { botOutcomeReturnedAt: true },
+      }),
+    ).toMatchObject({ botOutcomeReturnedAt: expect.any(Date) });
   });
 
   it("updates failed and cancelled receipts without creating a completion report", async () => {
