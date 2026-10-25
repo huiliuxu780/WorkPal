@@ -43,6 +43,17 @@ test("a duplicated RT task fails the audit", () => {
   assert.throws(() => verifyUiConformance(mutated, plan(), null, always), /contiguous|duplicate/i);
 });
 
+test("RT-12 must retain its CARD dependencies and group_membership contract", () => {
+  const changed = plan().replace(
+    "- 视觉和用户语言基线来自 Roundtable X-GROUP-APPROVE / X-GROUP-FAIL 原型；不得新增 CARD A14，不得自行补第三种视觉。",
+    "- 视觉和用户语言基线来自 Roundtable 原型；不得新增 CARD A14，不得自行补第三种视觉。",
+  );
+  assert.throws(
+    () => verifyUiConformance(audit(), changed, null, always),
+    /RT-12 is missing revised constraint/,
+  );
+});
+
 test("direct-ui tasks without prototype references fail", () => {
   const mutated = audit();
   mutated.tasks.find((task) => task.id === "RT-23").prototypeRefs = [];

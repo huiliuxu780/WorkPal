@@ -1,0 +1,45 @@
+from pathlib import Path
+
+families = [
+    ('InputRequestView', 'requestInput(question · choice · form · secret · saved_item)', '用户补充输入；Intervention resolution 是事实来源。'),
+    ('ActionApprovalView', 'requestApproval(tool · payment · outbound · routine · install · skill_save · connect.app_authorization · connect.mcp_assignment)', '本人作出决定；外部结果由 ExternalEffect 或业务事务确认。skill_save 的权威是 TaughtSkill 保存。'),
+    ('PlanReviewView', 'plan_review：计划版本审阅', '独立成员，不进入工具授权链；批准计划版本不批准任何工具调用、连接器或凭据。'),
+    ('SessionControlView', 'requestSessionControl(takeover · return)', '接管与交还桌面；只表达会话控制权。'),
+    ('DisplayBlock', 'showContent(markdown · table · chart · collection · media · html · task_status · page · voice)', '只读展示；副作用必须另发审批。'),
+]
+family_html = ''.join(f'<article><h3>{name}</h3><code>{variants}</code><p>{desc}</p></article>' for name, variants, desc in families)
+
+mappings = [
+    ('ask：文本 / 密钥 / 登录', 'InputRequestView（requestInput(question · secret)）；登录使用严格 secret payload'),
+    ('ask：审批 / 建空间', 'ActionApprovalView（requestApproval(tool)），以严格业务 payload 区分'),
+    ('ask：计划审阅', 'PlanReviewView（plan_review）· 独立成员，只决定计划版本'),
+    ('choice', 'requestInput(choice)'),
+    ('app_connect', 'ActionApprovalView（requestApproval(connect.app_authorization)）· 独立严格 payload'),
+    ('mcp_approval', 'ActionApprovalView（requestApproval(connect.mcp_assignment)）· 展示 allowAllTools 风险'),
+    ('旧 connect', '只读回放，不新增生产者；移除需另立迁移任务'),
+    ('skill_draft', 'ActionApprovalView（requestApproval(skill_save)）；权威是 TaughtSkill 业务事务'),
+    ('computer', 'requestSessionControl(takeover · return)'),
+    ('text / card / chart / image / file', 'showContent(markdown / collection / chart / media)'),
+    ('subagent / cloud_agent / child_bot', 'showContent(task_status)'),
+    ('reaction / message reference', '消息操作 / inline reference，不是卡片'),
+]
+map_html = ''.join(f'<tr><td>{src}</td><td>{dst}</td></tr>' for src, dst in mappings)
+
+union = '''type InteractionView =
+	| InputRequestView        // requestInput(...)
+	| ActionApprovalView      // requestApproval(...)
+	| PlanReviewView          // plan_review：独立计划版本审阅
+	| SessionControlView      // requestSessionControl(...)
+
+type DisplayBlock = showContent(...)'''
+
+html = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WorkPal 卡片统一 · CARD-01</title><style>
+*{{box-sizing:border-box}}body{{margin:0;background:#fafaf8;color:#1c1c1c;font:14px/1.55 -apple-system,"PingFang SC",sans-serif}}main{{max-width:1280px;margin:auto;padding:34px}}h1{{font-size:26px;margin:0 0 8px}}h2{{font-size:18px;margin:32px 0 12px}}p{{color:#555;margin:8px 0}}.lead{{font-size:18px;background:#fff;border:1px solid #e7e7e3;border-left:4px solid #1c1c1c;border-radius:14px;padding:16px}}.grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}}article{{background:#fff;border:1px solid #e7e7e3;border-radius:16px;padding:16px}}article h3{{margin:0 0 8px;font-size:18px}}code{{display:block;font:12px/1.6 ui-monospace,monospace;color:#0b6dd3;white-space:normal;overflow-wrap:anywhere}}.union{{background:#1c1c1c;color:#f5f5f5;border-radius:14px;padding:16px;font:12px/1.7 ui-monospace,monospace;overflow-x:auto;white-space:pre}}.owners{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}}.owner{{border-top:4px solid #1680f3}}.owner:nth-child(3){{border-color:#00854a}}.rule{{background:#f0f0ed;border-radius:12px;padding:12px;margin-top:10px}}.map{{width:100%;border-collapse:collapse;background:#fff}}.map th,.map td{{padding:10px;border-bottom:1px solid #ecece8;text-align:left}}.map th{{color:#666;font-size:12px}}.warn{{border-left:4px solid #cd2834;background:#fb2b3e10;padding:12px;border-radius:10px}}footer{{margin-top:28px;color:#666;font-size:12px}}@media(max-width:700px){{main{{padding:20px 14px}}.grid,.owners{{grid-template-columns:1fr}}}}
+</style></head><body><main><h1>WorkPal 卡片统一 · CARD-01 目标结构</h1><div class="lead">统一 Card Shell，不统一成万能业务类型。Web 从服务端投影渲染严格成员，不从字段组合、工具日志或文本猜类型、权限和状态。</div><p>本页是目标协议示意，不宣称这些类型已经作为生产 API 存在。</p>
+<h2>1 · 目标 InteractionView 与 DisplayBlock</h2><pre class="union">{union}</pre><p>目标 InteractionView 有四个独立成员；<b>PlanReviewView</b>（<b>plan_review</b>）只审阅计划版本，批准计划版本不批准任何工具调用、连接器或凭据，不经过工具授权链。</p><div class="grid">{family_html}</div>
+<h2>2 · 三个状态所有者</h2><div class="owners"><article class="owner"><h3>Intervention</h3><p>用户是否仍需回答或决定。每个请求按自己的生命周期结束。</p></article><article class="owner"><h3>Run</h3><p>这一轮 Bot 是否仍在执行。Run 结束不自动作废 Interaction。</p></article><article class="owner"><h3>ExternalEffect / 业务事务</h3><p>外部动作是否执行及结果是否确定，是付款、发信、安装和 Routine 的权威。</p></article></div><div class="warn"><b>组合示例：</b>Run 已停止且外部结果不确定时，显示“运行已停止，发送结果未确认”；不显示“已作废”，不提供重新执行。</div>
+<h2>3 · 当前兼容输入 → 目标投影</h2><table class="map"><tr><th>当前兼容输入（旧消息/适配器）</th><th>CARD-01 目标成员</th></tr>{map_html}</table>
+<div class="rule"><b>关键产品规则：</b>A12 只选择已保存项，随后独立付款审批；A10 同卡编辑、不可变 revision 和 fingerprint；A13 计划审阅使用独立 PlanReviewView，批准计划不批准任何工具调用、连接器或凭据；安装与授权独立；N1 只列当前用户 pending Interaction；HTML 仅复杂只读报告。</div>
+<footer>目标协议与兼容输入均明确标注。未实现 variant 必须失败或禁用，不能以模拟结果冒充生产执行。</footer></main></body></html>'''
+Path('../../card-unification.html').write_text(html, encoding='utf-8')
+print('Generated ../../card-unification.html')

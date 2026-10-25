@@ -404,7 +404,13 @@
       "taskId": "FIX-APPROVE-E",
       "title": "审批、失败和恢复投影：RT-12/RT-24/RT-28 UI 面与存量文案修复",
       "surface": "approval-card / chat-message / activity-capsule / execution-card",
-      "dependsOn": ["RT-12（依赖 RT-11）", "RT-24（合流任务）", "RT-28", "D1 已裁决（A）"],
+      "dependsOn": [
+        "RT-12（依赖 RT-11、CARD-01A、CARD-01B）",
+        "RT-24（合流任务）",
+        "RT-28",
+        "CARD-01E（最终视觉验收）",
+        "D1 已裁决（A）"
+      ],
       "files": [
         "packages/adapters/src/agentscope-runtime.ts:909（错误文案）",
         "apps/web/src/components/ai/ExecutionCard.tsx（错误展示）",
@@ -424,10 +430,12 @@
       ],
       "acceptance": [
         "审批卡内嵌在消息流：问题 + 拒绝/允许一次（或暂不加入/加入并继续），允许后显示授权范围",
+        "RT-12、RT-24、RT-28 负责业务状态和持久事实；CARD-01A 提供协议和投影；CARD-01B 提供 Card Shell 和 Interaction renderer",
+        "不独立创建第二套审批卡、状态 renderer 或 group_membership 视觉；CARD-01E 承担最终视觉验收",
         "失败/恢复状态行遵循 D1 裁决后的原型文案；不允许出现执行器名称（CF-08：AgentScope 字样清除）",
         "跨会话审批卡（把 A 加入群？）只在来源单聊出现，拒绝/过期不产生目标群消息"
       ],
-      "screenshotRequirements": ["P-SCOPED/P-ALLOW/P-DENY/X-GROUP-APPROVE 四态生产截图对比"]
+      "screenshotRequirements": ["P-SCOPED/P-ALLOW/P-DENY/X-GROUP-APPROVE/X-GROUP-FAIL 五态生产截图对比"]
     },
     {
       "taskId": "FIX-GLOBAL-F",
@@ -669,7 +677,7 @@
       "exposedTerms": [],
       "conflictIds": [],
       "remediationOwner": null,
-      "notes": "「是否把 A 加入群？」审批卡与最终状态只在来源单聊；无成员管理权直接失败不显示假审批。"
+      "notes": "「是否把 A 加入群？」审批卡与最终状态只在来源单聊；无成员管理权直接失败不显示假审批。group_membership 严格协议来自 CARD-01A，Card Shell 来自 CARD-01B，最终视觉由 CARD-01E 验收；依赖 RT-04、RT-11、CARD-01A、CARD-01B。"
     },
     {
       "id": "RT-13",

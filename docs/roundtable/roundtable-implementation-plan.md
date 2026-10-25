@@ -58,7 +58,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | --- | --- | --- | --- |
 | A. 固定 pair | RT-02 → RT-03 → RT-05 → RT-09 | pair identity、访问策略、private delivery、只读浮窗 | RT-19 |
 | B. 群内公开协作 | RT-06 与 RT-07 并行；之后 RT-08、RT-10 | public `message_bot`、mention、公开委派 UI、多 mention | RT-24 |
-| C. 跨群调度 | RT-11 → RT-12 | `message_group`、成员审批、跨会话回流 | RT-19 |
+| C. 跨群调度 | RT-11 → RT-12（另需 CARD-01A、CARD-01B） | `message_group`、成员审批、跨会话回流 | RT-19 |
 | D. Task 修订 | RT-13 → RT-14 | instruction log、prompt 迁移、状态转换 | RT-17、RT-20、RT-27 |
 | E. AgentScope 后台 | **暂停**：RT-15 两轮探针后，RT-16 → RT-17 → RT-18 不启动；先验证新 AgentScope 版本的三项最低能力 | SDK 探针、后台身份、revision、delivery | 待定 |
 | F. 群数据与 Web | RT-21 → RT-22；RT-20 可与其并行；之后 RT-23 | 详情、资料库、成员、例行任务、工作页 | RT-30 |
@@ -89,7 +89,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | RT-25 合入 | RT-26；若 RT-11、RT-14 也完成，同时派 RT-27 |
 | RT-03、RT-04 合入 | RT-05 |
 | RT-06、RT-07 合入 | RT-08 |
-| RT-04、RT-11 合入 | RT-12 |
+| RT-04、RT-11 合入、CARD-01A 与 CARD-01B 完成 | RT-12 |
 | RT-14、RT-16 合入 | RT-17 |
 | RT-16、RT-17 合入 | RT-18 |
 | RT-05 合入 | RT-09 |
@@ -100,6 +100,21 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | RT-04、RT-16、RT-18、RT-19、RT-25、RT-26 合入 | RT-28 |
 | RT-15、RT-16、RT-18、RT-28 合入 | RT-29 |
 | RT-02 至 RT-29 全部满足依赖 | RT-30 |
+
+### 3.3 CARD-01 交叉边界
+
+ROADMAP-CARD-CONVERGE（2026-10-25）固定以下跨程序所有权，避免 CARD-01 与 RT-09、RT-11、RT-12、FIX-APPROVE-E 的协议和 UI 冲突：
+
+| 事项 | 协议/事实 owner | UI owner | 冻结边界 |
+| --- | --- | --- | --- |
+| `collaboration_receipt` | RT-11 业务事务和 outcome 回流 | RT-11 的 `GroupDestinationReceipt`；CARD-01B 只能复用无状态展示组件 | 保持 MessageBlock，不是 InteractionView，不进入 attention queue；locator 和状态所有权不变 |
+| private pair receipt | RT-05 / RT-09 | RT-09（FIX-PAIR-B） | 消息 affordance，不是 Card Shell；RT-09 先于 CARD-01B |
+| `group_membership` | CARD-01A 严格协议；RT-12 业务状态和持久事实 | CARD-01B Card Shell；CARD-01E 最终视觉验收 | 严格 payload，不退化为 `requestApproval(tool)`；X-GROUP-APPROVE / X-GROUP-FAIL 是唯一视觉基线 |
+| `task_status` | CARD-01A 契约 | CARD-01C DisplayBlock | 只展示正式工作投影，不进入 attention queue |
+| PD-01 Retry | PD-01P 集中投影 | PD-01F 消息入口 | 消息操作，不是 CARD 卡片成员；不改变 ExecutionCard 四信号 |
+| 审批、失败、恢复和 ExecutionCard 视觉 | RT-12、RT-24、RT-28 业务事实；CARD-01A 协议 | CARD-01B Shell；CARD-01E 最终验收 | FIX-APPROVE-E 不再独立创建第二套审批卡或状态 renderer |
+
+共享文件规则：CARD-01B 是 `Shell.tsx` Interaction renderer 接入、Card Shell、`InterventionRegion` 统一和 interaction 排序的唯一 owner；CARD-01C 是 DisplayBlock registry 的唯一 owner。B 未冻结接入接口前 C 不修改同一 Shell block；C 需要接入时由 B owner 提交集成 commit，或等 B 合入后 rebase 到 main。不允许两个独立分支并行修改同一 Shell block。
 
 ## 4. 开发任务
 
@@ -320,6 +335,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 全尺寸只读浮窗和 A、双向关系、B 组合胶囊。
 - 消息定位和更早历史加载。
 - receipt 与浮窗不新增侧边栏会话入口；pair 历史只能从来源 receipt 进入（DESIGN.md「该对话不进入侧边栏」）。
+- private receipt 是消息 affordance，不是 Card Shell 成员。它只显示单行轻回执或展开名单，不进入 attention queue。RT-09 必须在 CARD-01B 之前完成；CARD-01B 保留该非卡片语义，不得把 receipt 改造成 InteractionView 或卡片。
 
 验收：
 
@@ -327,6 +343,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 多目标名单只显示头像和 Agent 名称。
 - 选择一个 Agent 不泄露第三个 Agent 的消息。
 - 浮窗没有输入框和写操作。
+- private receipt 不是 Card Shell 成员；CARD-01B 的改动不改变其单行/展开名单语义和只读浮窗。
 
 依赖：RT-05。
 
@@ -387,18 +404,24 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 输出：
 
 - 与原始 `message_group` 绑定的 Intervention。
+- 严格 `ActionApprovalView(group_membership)` 投影，payload 至少包含 `action = add_bot_to_group`、`groupId`、`botId`、`messageGroupRequestId`（或等价稳定请求标识）、`requestRevision`、`sourceThreadId`、`sourceMessageId`（或等价 receipt 关联）、可选 `expiresAt` 和安全 presentation。协议基线来自 CARD-01A；不是任意 tool name/args，不退化为 `requestApproval(tool)`。
 - 批准后的权限重校验和原子加群续跑。
 - 拒绝、过期、撤回和重复决策处理。
 - 来源单聊的审批和最终状态。
+- 视觉和用户语言基线来自 Roundtable X-GROUP-APPROVE / X-GROUP-FAIL 原型；不得新增 CARD A14，不得自行补第三种视觉。
+- 如果后端事务已完成但 CARD-01B 尚未完成，不得临时实现另一套生产审批卡或状态 renderer。
 
 验收：
 
-- 没有成员管理权时直接失败，不显示假审批。
-- 批准前不向目标群写消息。
-- 批准时重新校验用户、Bot、群和参数 revision。
+- 没有成员管理权时直接失败，不显示假审批；使用 X-GROUP-FAIL 的独立失败状态。
+- 批准前不向目标群写消息，不创建目标 Task/Run。
+- 批准时重新校验用户、Space、Bot、群、成员管理权限、参数 revision 和 expiry。
 - 拒绝或过期不加群，也不创建目标 Run。
+- 批准只放行加入该群并继续绑定的 `message_group` 请求，不授权群内其他动作、文件、连接器或凭据。
+- `group_membership` 的状态由 Intervention 管理，成员变更结果由业务事务和审计事实管理；不得合并为一个状态字段。
+- 有权限与无权限是互斥分支：有权限渲染审批卡，无权限不渲染审批卡。
 
-依赖：RT-04、RT-11。
+依赖：RT-04、RT-11、CARD-01A、CARD-01B。
 
 覆盖：AC14。场景 X04、P02、P03、P04、P07、P08。
 
@@ -476,7 +499,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 ### RT-16 建立后台执行身份和注册事务
 
-**状态：暂停（2026-10-22）。** RT-15 两轮探针确认失败归因、内置 `general-purpose` 暴露和 child session native 回传仍未满足。不启动 RT-16；不开启 `background_helper`；不接受文本匹配失败状态；不继续堆 WorkPal 侧后台代码。唯一允许的下一步是验证满足三项最低能力的新 AgentScope 版本，详见 [RT-15 报告第 8 节](RT-15-agentscope-background-probe.md)。
+**状态：暂停（2026-10-22）。** RT-15 两轮探针确认失败归因、内置 `general-purpose` 暴露和 child session native 回传仍未满足。不启动 RT-16；不开启 `background_helper`；不接受文本匹配失败状态；不继续堆 WorkPal 侧后台代码。唯一允许的下一步是验证同时满足三项最低能力的新 AgentScope 版本：typed failure、禁用内置 `general-purpose`、native child session 回传。详见 [RT-15 报告第 8 节](RT-15-agentscope-background-probe.md)。
 
 目标：每个 helper 都有独立产品 Task、Run、Attempt 和 runtime task identity，并通过崩溃安全协议启动。
 
@@ -564,6 +587,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - Agent 被移出群时的授权撤销和 Run 终止。
 - 加入后的 Thread 可读范围和 private pair 独立性。
 - 资源授权、tenant 和一次性批准检查。
+- [EFFECT-01](../tasks/EFFECT-01.md) 的 ExternalEffect 执行权栅栏。effect claim 必须与 Run `status`、`leaseOwner`、`leaseFence` 和 lease 到期检查原子完成。
+- [CANCEL-01](../tasks/CANCEL-01.md) 的类型化取消原因和委派取消回报。除用户明确点「停止」外，受托 Run 的取消必须返回一次安全原因。
 
 验收：
 
@@ -572,8 +597,10 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 移出群不影响同 workspace private pair。
 - 取消一个 child 不停止目标群其他根任务。
 - 资源权限不沿委派链继承。
+- Run 被取消或 Worker 丢失 lease 后，旧 Worker 不能领取 ExternalEffect，也不能写入可信的 `agent.tool.called` 事实。
+- `bot_message` Run 因移出群、教学、归档或删除而取消时，来源方只收到一次取消结果。去重沿用 `auto-outcome:<runId>`。
 
-依赖：RT-04、RT-05、RT-06、RT-12、RT-18。
+依赖：RT-04、RT-05、RT-06、RT-12、RT-18、EFFECT-01、CANCEL-01。
 
 覆盖：AC07、AC14。场景 U08、X08、C04、P06、F02、M01、M02、M03、M04、M05、M06、M08、O06。
 
@@ -681,14 +708,17 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - Agent 拒绝、阶段进展、结论冲突和部分失败消息规范；文案对齐原型分支的实际渲染（U-ACTIVE、C-MULTI、F-OFFLINE、F-RETRY、F-PARTIAL）。D1 裁决（A，2026-10-24）：聊天区不出现 Run、attempt、steering、support Run 等实现术语，DESIGN.md 禁令已扩展至聊天区、原型已按裁决修订；实现文案遵循修订后的原型。
 - handoff 与 `message_bot(intent=...)` 边界测试。
 - 来源 owner 的跨会话二次汇报。
+- 方案 A 的明确回归：点名新 Agent 不取消已排队的其他 Agent。方案 B 不是缺陷修复；若以后改选 B，必须先确认取消提示和恢复原型。
+- 非手动取消的状态消息使用白名单原因，不显示 Run、Attempt、lease、fence 或 steering 等实现术语。
 
 验收：
 
 - 普通消息只选一个 owner。
-- 点名新 Agent 不取消当前说话者或后台任务。
+- 点名新 Agent 不取消当前说话者、已排队回复或后台任务。这一条固定为方案 A。
 - 用户补充只 steering 明确命中的 Task。
 - 冲突结果保留来源和证据。
 - 结束根任务只取消它的后代。
+- 受托 Agent 的 Run 被非手动取消时，来源 owner 收到一次可理解的取消说明；用户明确点「停止」仍遵守 CANCEL-01 的例外。
 
 依赖：RT-08、RT-10、RT-11、RT-18、RT-19、RT-20、RT-27。
 
@@ -756,6 +786,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 新独立 Run 与 RT-25 admission queue 的接入。
 - Task amendment 与普通新任务的分流。
 - 不依赖数据库返回顺序的候选排序和拒绝规则。
+- 取消后的 steering disposition：可继续工作的 Bot 释放消息并创建至多一个 continuation；已移出群、归档或删除的 Bot 不获得新 Run，用户收到「未处理」说明。
 
 验收：
 
@@ -764,6 +795,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 跨会话新任务不进入无关 active Run；明确 Task 补充只命中对应 Run。
 - 数据库查询顺序不能决定 steering 目标。
 - 同 Bot、同 Thread 的独立 Run 通过 RT-25 排队，不把 Runtime 409 标成失败。
+- 等待超时、计划拒绝和预算取消不会把 steering 留在 terminal Run 上。用户 Stop 仍删除该 Run 的 steering。
+- 重复取消、reconciler sweep 和 Worker 重启不会重复创建 continuation。
 
 依赖：RT-11、RT-14、RT-25。
 
@@ -829,6 +862,8 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 96 个原子场景的测试结果。
 - pair 并发创建、重复投递、Runtime 重启、session owner 过期回收、网络乱序、审批/输入等待不阻塞聊天、审批过期和迟到结果的故障测试。
 - gate 灰度顺序、回滚条件和审计查询。
+- [VERIFY-01](../tasks/VERIFY-01.md) 的补充报告：子 Run 级联取消、`waiting_takeover`、multi-dispatch、多条和多渠道 steering、真实时钟边界，以及同一 Bot 同一 session 的并发复核。
+- EFFECT-01 和 CANCEL-01 的进程级故障测试。测试覆盖 stale Worker、post-stop abort 失败、取消 outcome 去重和 continuation 去重。
 
 验收：
 
@@ -837,8 +872,10 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - `pnpm test:integration` 和圆桌定向 E2E 通过。
 - 关闭任一 gate 后，相关入口明确禁用，已有记录仍可读。
 - diff 不包含密钥、真实用户数据、私有 URL 或本机身份信息。
+- 形式化结果区分「已确认缺陷」「模型可达风险」和「未覆盖」。报告不能把没有实机复现的 S1/S2 写成生产事故。
+- 插话方案 A 在生产链测试中成立。X 已排队时再点名 Y，不会静默取消 X；每条消息仍只有一个负责 Agent。
 
-依赖：RT-02、RT-03、RT-04、RT-05、RT-06、RT-07、RT-08、RT-09、RT-10、RT-11、RT-12、RT-13、RT-14、RT-15、RT-16、RT-17、RT-18、RT-19、RT-20、RT-21、RT-22、RT-23、RT-24、RT-25、RT-26、RT-27、RT-28、RT-29。
+依赖：RT-02、RT-03、RT-04、RT-05、RT-06、RT-07、RT-08、RT-09、RT-10、RT-11、RT-12、RT-13、RT-14、RT-15、RT-16、RT-17、RT-18、RT-19、RT-20、RT-21、RT-22、RT-23、RT-24、RT-25、RT-26、RT-27、RT-28、RT-29、EFFECT-01、CANCEL-01、VERIFY-01。
 
 验证覆盖：AC01、AC02、AC03、AC04、AC05、AC06、AC07、AC08、AC09、AC10、AC11、AC12、AC13、AC14、AC15、AC16、AC17、AC18、AC19、AC20、AC21、AC22、AC23、AC24、AC25、AC26、AC27、AC28、AC29、AC30、AC31、AC32、AC33、AC34、AC35、AC36、AC37、AC38、AC39。场景 U01、U02、U03、U04、U05、U06、U07、U08、A01、A02、A03、A04、A05、A06、A07、A08、R01、R02、R03、R04、R05、R06、R07、R08、D01、D02、D03、D04、D05、D06、D07、D08、X01、X02、X03、X04、X05、X06、X07、X08、C01、C02、C03、C04、C05、C06、C07、C08、B01、B02、B03、B04、B05、B06、B07、B08、P01、P02、P03、P04、P05、P06、P07、P08、F01、F02、F03、F04、F05、F06、F07、F08、M01、M02、M03、M04、M05、M06、M07、M08、Q01、Q02、Q03、Q04、Q05、Q06、Q07、Q08、O01、O02、O03、O04、O05、O06、O07、O08。
 

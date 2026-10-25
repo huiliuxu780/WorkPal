@@ -379,6 +379,15 @@ export function verifyUiConformance(audit, plan, evidenceRoot, fileExists = exis
       { present: /顶部「工作」窄入口的挂点/ },
     ]);
     requireChanged("RT-11", [{ present: /已接手 · 正在推进/ }]);
+    requireChanged("RT-12", [
+      { present: /CARD-01A/ },
+      { present: /CARD-01B/ },
+      { present: /group_membership/ },
+      { present: /X-GROUP-APPROVE/ },
+      { present: /X-GROUP-FAIL/ },
+      { present: /不得临时实现另一套生产审批卡/ },
+    ]);
+    requireChanged("RT-09", [{ present: /不是 Card Shell 成员/ }]);
   }
 
   if (errors.length > 0) throw new Error(errors.join("\n"));

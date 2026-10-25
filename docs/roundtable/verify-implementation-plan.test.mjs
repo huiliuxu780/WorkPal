@@ -57,6 +57,30 @@ test("rejects an unknown dependency", () => {
   assert.throws(() => verifyImplementationPlan(prd, changed), /unknown dependency RT-99/);
 });
 
+test("accepts cross-program planning dependencies without treating them as RT graph nodes", () => {
+  const changed = plan.replace("依赖：无。", "依赖：CARD-01A、EFFECT-01。");
+  assert.doesNotThrow(() => verifyImplementationPlan(prd, changed));
+});
+
+test("rejects an unknown cross-program dependency", () => {
+  const changed = plan.replace("依赖：无。", "依赖：CARD-99Z。");
+  assert.throws(
+    () => verifyImplementationPlan(prd, changed),
+    /unknown external dependency CARD-99Z/,
+  );
+});
+
+test("keeps the frozen cross-program dependencies explicit", () => {
+  const changed = plan.replace(
+    "依赖：RT-04、RT-11、CARD-01A、CARD-01B。",
+    "依赖：RT-04、RT-11。",
+  );
+  assert.throws(
+    () => verifyImplementationPlan(prd, changed),
+    /RT-12 must retain external dependency CARD-01A/,
+  );
+});
+
 test("rejects malformed dependency and coverage tokens", () => {
   const badDependency = plan.replace("依赖：无。", "依赖：RT-O1。");
   assert.throws(() => verifyImplementationPlan(prd, badDependency), /invalid dependency syntax/);
@@ -84,7 +108,7 @@ test("rejects integration validation outside the full dependency closure", () =>
     .replace("覆盖：AC12。场景 F06。", "覆盖：AC12。场景 F06。\n\n验证覆盖：AC01。场景 U01。");
   assert.throws(() => verifyImplementationPlan(prd, moved), /integration validation task must be last/);
 
-  const missingLeaf = plan.replace("、RT-29。\n\n验证覆盖：", "。\n\n验证覆盖：");
+  const missingLeaf = plan.replace("、RT-29、EFFECT-01", "、EFFECT-01");
   assert.throws(
     () => verifyImplementationPlan(prd, missingLeaf),
     /does not depend on implementation task RT-29/,
