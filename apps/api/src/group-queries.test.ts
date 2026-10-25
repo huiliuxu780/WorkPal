@@ -125,6 +125,7 @@ describe("GroupQueries.listRoutines", () => {
           spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: null,
+          kind: "standard",
         },
       }),
     );

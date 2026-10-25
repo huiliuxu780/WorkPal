@@ -147,9 +147,13 @@ CI 失败后可以直接下载诊断证据。已确认的 `budget-acceptance` �
     - 禁止 force push。
     - 不要求分支始终与 main 同步。
     - 暂不启用 merge queue。只有并发合并证据表明需要时再启用。
+11. 在 H3 完成前收口 H1F 的临时排除：五组已确认原型路径，以及 `biome.json` 中记录的 188 个 formatter/import-sort 历史文件。逐项选择修复并重跑原型验证、截图和哈希，或证明其为生成、冻结或历史设计资产并取得负责人永久排除批准；不得让排除无主。
+12. 将集中 worktree、禁止嵌套、使用 Git 方式删除 worktree 等规则写入 `AGENTS.md` 和 `docs/agent-verification.md`，并在文档中给出可验证的检查入口。
 
 ### 验收
 
+- H1F 的五组原型路径和 188 个 formatter/import-sort 临时排除已全部收口，或有负责人批准的永久排除记录。
+- `AGENTS.md` 和 `docs/agent-verification.md` 包含集中 worktree、禁止嵌套和使用 Git 方式删除 worktree 的规则。
 - docs-only、Web、backend 和 full 四种 PR 样例都出现同名 `CI result`。
 - 故意让已选 job 失败时，`CI result` 失败且 PR 不能合并。
 - 非 Draft PR 增加新提交后，旧 SHA 的结果不能满足新 head。

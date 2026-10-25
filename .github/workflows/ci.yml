@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docs: ${{ steps.select.outputs.docs }}
+      harness: ${{ steps.select.outputs.harness }}
+      harness_mode: ${{ steps.select.outputs.harness_mode }}
       web: ${{ steps.select.outputs.web }}
       backend: ${{ steps.select.outputs.backend }}
       db_postgres: ${{ steps.select.outputs.db_postgres }}
@@ -73,6 +75,23 @@ jobs:
           path: ${{ runner.temp }}/ci-selection.json
           if-no-files-found: error
           retention-days: 1
+
+  harness:
+    name: harness
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.harness == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm lint
+      - run: pnpm test:inventory
+      - run: pnpm test:ci-select
+      - run: pnpm test:docs
+      - name: Unit tests (inventory-selected, hermetic)
+        if: ${{ needs.select-checks.outputs.harness_mode == 'full' || needs.select-checks.outputs.harness_mode == 'unit' }}
+        run: pnpm test:unit
 
   docs:
     name: docs
@@ -164,13 +183,11 @@ jobs:
       - uses: ./.github/actions/setup-pnpm
       - run: pnpm --filter @rakazo/db generate
       - run: pnpm --filter @rakazo/db exec prisma migrate deploy
-      # The selector deliberately maps every packages/db source change here.
-      # Keep the verification equally broad so an unrelated DB regression
-      # cannot pass by exercising only the agent-pair constraint suite.
-      - run: pnpm exec vitest run --no-file-parallelism packages/db/src/*.postgres.test.ts
+      # Every inventory entry classified as PostgreSQL runs here. The selector
+      # also adds this job whenever a changed test is PostgreSQL-classified.
       # RT-11's atomic delivery, idempotency, concurrency, and permission
-      # boundaries are PostgreSQL behavior; keep them in the DB job.
-      - run: pnpm exec vitest run --no-file-parallelism packages/adapters/src/message-group.postgres.test.ts
+      # boundaries are PostgreSQL behavior; they are part of the same group.
+      - run: pnpm test:postgres
 
   runtime-jar:
     name: runtime-jar
@@ -281,6 +298,7 @@ jobs:
     needs:
       - select-checks
       - docs
+      - harness
       - web
       - backend
       - db-postgres
@@ -299,6 +317,7 @@ jobs:
           SELECT_RESULT: ${{ needs.select-checks.outputs.result }}
           RESULT_SELECT_CHECKS: ${{ needs.select-checks.result }}
           RESULT_DOCS: ${{ needs.docs.result }}
+          RESULT_HARNESS: ${{ needs.harness.result }}
           RESULT_WEB: ${{ needs.web.result }}
           RESULT_BACKEND: ${{ needs.backend.result }}
           RESULT_DB_POSTGRES: ${{ needs.db-postgres.result }}

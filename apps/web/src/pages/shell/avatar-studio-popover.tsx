@@ -227,7 +227,7 @@ export function AvatarStudioPopover({
               <div className="rk-scroll min-h-[210px] flex-1 space-y-4 overflow-y-auto p-5">
                 {tab === "character" ? (
                   <div role="tabpanel" className="space-y-4">
-                    <div role="group" className="flex gap-2" aria-label={t`Body color`}>
+                    <fieldset className="flex min-w-0 gap-2" aria-label={t`Body color`}>
                       {AVATAR_BODY_COLORS.map((color) => (
                         <button
                           key={color}
@@ -249,7 +249,7 @@ export function AvatarStudioPopover({
                           style={{ backgroundColor: `var(--wp-avatar-${color})` }}
                         />
                       ))}
-                    </div>
+                    </fieldset>
                     <div className="grid grid-cols-4 gap-2">
                       {characters.map((character) => (
                         <button
