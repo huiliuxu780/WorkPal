@@ -68,8 +68,8 @@ intentionally frozen prototypes.
 `pnpm test:unit` runs the Node and jsdom files selected by the tracked-test
 inventory in `scripts/testing/test-inventory.mjs`. PostgreSQL, integration
 harness, Java replay, Docker, live-provider, and process tests are not in this
-group. A unit setup file also removes database, runtime, and sandbox credentials
-before the run.
+group. A unit setup file also removes database, runtime, sandbox, and provider
+credentials before the run.
 
 `pnpm test:inventory` fails when a tracked `*.test.ts(x)` file has no
 classification, when a rule points at a file that is no longer tracked, when a
