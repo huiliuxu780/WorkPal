@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntimeEvent, AgentSessionCheckpointProof } from "@rakazo/adapter-kit";
 import {
+  acknowledgeSessionCheckpoint,
   acquireSessionAdmission,
   agentScopeChatSessionKey,
   computerHomeKey,
@@ -11,6 +12,7 @@ import {
   markSessionRuntimeStarted,
   type PrismaClient,
   prepareSessionExecution,
+  recordCheckpointProof,
   sessionCheckpointId,
 } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -242,6 +244,67 @@ describePostgres("session checkpoint recovery (PostgreSQL)", () => {
     if (admission.state === "owned") {
       expect(admission.fence).toBeGreaterThan(owner.lease.admissionFence);
     }
+  });
+
+  it("passes the proven watermark through instead of claiming the newest Thread rows", async () => {
+    // PR #126 review P2 ④: a recovery probe records the owner's binding AFTER
+    // newer PostgreSQL rows appeared. It must pass through the watermark this
+    // Run already proved (the native state was restored from there), not
+    // re-derive thread-latest — otherwise the merged-away rows of a parallel
+    // Run are marked covered while absent from the native state.
+    const owner = await recoveringOwner();
+    await prisma.thread.update({
+      where: { id: owner.run.threadId },
+      data: { nextMessageSeq: 30 },
+    });
+    const priorBinding = {
+      sessionKey: owner.sessionKey,
+      runId: owner.run.id,
+      attemptId: "attempt-prior",
+      executionId: "exec-prior",
+      admissionFence: 1,
+      suspensionKey: "susp-prior",
+    };
+    const priorProof: AgentSessionCheckpointProof = {
+      kind: "detached",
+      checkpointId: sessionCheckpointId(priorBinding),
+      digest: "c".repeat(64),
+      pendingCalls: [{ id: "call-prior", name: "ask_user", state: "asking" }],
+    };
+    await recordCheckpointProof(prisma, {
+      binding: priorBinding,
+      proof: priorProof,
+      threadGeneration: 0,
+    });
+    await acknowledgeSessionCheckpoint(prisma, {
+      binding: priorBinding,
+      proof: priorProof,
+      pendingInterventionId: null,
+      coveredMessageSeq: 7,
+    });
+
+    const checkpointId = sessionCheckpointId({
+      runId: owner.run.id,
+      attemptId: owner.attempt.id,
+      admissionFence: owner.lease.admissionFence,
+    });
+    const runtime = new FakeAgentScopeRuntime(async () => ({
+      kind: "detached",
+      checkpointId,
+      digest: "d".repeat(64),
+      pendingCalls: [{ id: "call-ask", name: "ask_user", state: "asking" }],
+    }));
+    await executor(runtime)
+      .continueRun(owner.run.id, "worker-probe")
+      .catch(() => undefined);
+
+    const row = await prisma.agentSessionCheckpoint.findUniqueOrThrow({ where: { id: checkpointId } });
+    expect(row).toMatchObject({ status: "recorded", proofKind: "detached" });
+    expect(row.ackedAt).not.toBeNull();
+    expect(row.coveredMessageSeq).toBe(7);
+    expect(
+      await prisma.agentSessionAdmission.findUniqueOrThrow({ where: { sessionKey: owner.sessionKey } }),
+    ).not.toMatchObject({ state: "recovering" });
   });
 
   it("does not release when the Runtime proves a different checkpoint", async () => {

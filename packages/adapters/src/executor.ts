@@ -1285,11 +1285,31 @@ export function createRunExecutor(deps: ExecutorDeps) {
       admissionFence: input.admissionFence,
     });
     try {
-      const watermark = await deps.prisma.thread.findUnique({
-        where: { id: input.run.threadId },
-        select: { nextMessageSeq: true },
+      // PR #126 review P2 ④, same watermark discipline as the suspend path:
+      // a recovery probe must not claim the newest Thread rows as covered.
+      // Keep the watermark this binding already recorded; for a first proof
+      // fall back to this Run's most recent checkpoint value — its native
+      // state was restored from there — and otherwise claim nothing.
+      // Under-claiming only re-merges context on the next resume;
+      // over-claiming loses messages permanently.
+      const existing = await deps.prisma.agentSessionCheckpoint.findUnique({
+        where: { id: checkpointId },
+        select: { coveredMessageSeq: true },
       });
-      const coveredMessageSeq = Math.max(0, (watermark?.nextMessageSeq ?? 1) - 1);
+      const knownCoveredSeq =
+        existing?.coveredMessageSeq ??
+        (
+          await deps.prisma.agentSessionCheckpoint.findFirst({
+            where: {
+              runId,
+              sessionKey: input.sessionKey,
+              coveredMessageSeq: { not: null },
+            },
+            orderBy: { coveredMessageSeq: "desc" },
+            select: { coveredMessageSeq: true },
+          })
+        )?.coveredMessageSeq;
+      const coveredMessageSeq = Math.max(0, knownCoveredSeq ?? 0);
       const intervention = await deps.prisma.intervention.findFirst({
         where: {
           runId,
@@ -1948,6 +1968,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let detachShutdown: (() => void) | undefined;
       let sessionMayRelease = true;
       let sessionSettled = false;
+      // RT-26F (PR #126 review P2 ④): the highest Thread message ACTUALLY
+      // ingested into this Attempt's native state — the history window loaded
+      // at claim plus, on a resume, the merged suspension context. A paused
+      // Run's checkpoint watermark is this value, never the newest PostgreSQL
+      // row: a parallel Run's messages that arrived after the load were not
+      // absorbed and must stay uncovered so the next resume merges them.
+      let ingestedMessageSeq = 0;
       // RT-26: the exact execution binding of the attempt that owns the shared
       // AgentScope slot. A pause card may only carry this binding, and only this
       // binding's Runtime proof may release the admission.
@@ -2177,6 +2204,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
           run.sourceMessageId,
         );
         const turnBlocks = currentTurnMessage?.blocks;
+        // The window this Run received at claim time bounds its native state:
+        // it includes the current-turn message that was seeded as this turn's
+        // input. Later PostgreSQL rows are not part of it.
+        ingestedMessageSeq = messages.reduce(
+          (max, message) => Math.max(max, message.seq),
+          0,
+        );
         const allowSilentPeerMessage = botMessageAllowsSilence(
           peerMessage?.intent,
           peerMessage?.repliesToRequest,
@@ -5922,6 +5956,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         afterSeq: checkpoint.coveredMessageSeq,
                         excludeRunId: runId,
                       });
+                // PR #126 review P2 ④: the merged suspension context is handed
+                // to this resume attempt too, so it raises the ingested bound.
+                ingestedMessageSeq = threadContext.reduce(
+                  (max, message) => Math.max(max, message.seq),
+                  ingestedMessageSeq,
+                );
                 checkpointResume = {
                   resumeId: begun.resumeId,
                   executionId: admission.executionId,
@@ -5986,7 +6026,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   where: { id: thread.id },
                   select: { nextMessageSeq: true },
                 });
-                const coveredMessageSeq = Math.max(0, (watermark?.nextMessageSeq ?? 1) - 1);
+                // PR #126 review P2 ④: cover only the messages this Attempt
+                // actually absorbed. Rows a parallel Run B wrote after the
+                // claim-time load stay uncovered so the next resume merges
+                // them; the PostgreSQL watermark only bounds the value.
+                const pgLatestSeq = Math.max(0, (watermark?.nextMessageSeq ?? 1) - 1);
+                const coveredMessageSeq = Math.min(ingestedMessageSeq, pgLatestSeq);
                 const checkpointId = sessionCheckpointId({
                   runId,
                   attemptId: attempt.id,
