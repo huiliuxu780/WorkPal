@@ -103,6 +103,27 @@ describe("classifyPath", () => {
     assert.ok(approval.webE2e.includes("settings-shell.spec.ts"));
   });
 
+  it("routes message_group production paths to the closed-loop spec", () => {
+    for (const file of [
+      "packages/adapters/src/message-group.ts",
+      "packages/adapters/src/message-group.postgres.test.ts",
+      "packages/core/src/roundtable-contracts.ts",
+      "packages/core/src/roundtable-feature-gates.ts",
+      "apps/web/src/components/ai/GroupDestinationReceipt.tsx",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("web"), file);
+      assert.ok(result.webE2e.includes("message-group.spec.ts"), file);
+    }
+    const backend = classifyPath("packages/adapters/src/message-group.ts");
+    assert.ok(backend.jobs.includes("backend"));
+    assert.ok(backend.jobs.includes("agentscope"));
+    assert.ok(backend.jobs.includes("db-postgres"));
+    assert.deepEqual(classifyPath("apps/web/src/components/ai/GroupDestinationReceipt.tsx").jobs, [
+      "web",
+    ]);
+  });
+
   it("keeps AgentScope and Worker exclusive specs off the web E2E mapping", () => {
     for (const file of [
       "apps/web/e2e/agentscope-product.spec.ts",
@@ -240,6 +261,17 @@ describe("selectChecks", () => {
     assert.match(result.webE2eSpec, /avatar-style/);
   });
 
+  it("selects message-group.spec.ts for message_group adapter and receipt changes", () => {
+    for (const files of [
+      ["packages/adapters/src/message-group.ts"],
+      ["packages/core/src/roundtable-contracts.ts"],
+      ["apps/web/src/components/ai/GroupDestinationReceipt.tsx"],
+    ]) {
+      const result = selectChecks({ files });
+      assert.match(result.webE2eSpec, /message-group\.spec\.ts/, files.join(","));
+    }
+  });
+
   it("includes a changed executable spec in the focused web E2E set", () => {
     const history = selectChecks({ files: ["apps/web/e2e/execution-history.spec.ts"] });
     assert.match(history.webE2eSpec, /execution-history\.spec\.ts/);
@@ -267,6 +299,7 @@ describe("selectChecks", () => {
       "execution-history.spec.ts",
       "avatar-studio.spec.ts",
       "approval-resume.spec.ts",
+      "message-group.spec.ts",
     ]) {
       const result = selectChecks({ files: [`apps/web/e2e/${spec}`] });
       const collected = collect(result.webE2eSpec);

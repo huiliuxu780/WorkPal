@@ -202,7 +202,7 @@ describe("AG-03 trigger union: declared-only values have no production entry", (
   it("declares reaction and resume in the contracts union", () => {
     expect(ALL_TRIGGERS).toContain("reaction");
     expect(ALL_TRIGGERS).toContain("resume");
-    expect(ALL_TRIGGERS).toHaveLength(14);
+    expect(ALL_TRIGGERS).toHaveLength(15);
   });
 
   it("finds no Run creation with trigger 'resume' or 'handoff', and only the read-path filter for 'reaction'", () => {
@@ -275,6 +275,7 @@ describe("AG-03 turn policy mapping per trigger", () => {
     expect(turnPolicySourceForTrigger("reaction")).toBe("chat");
     expect(turnPolicySourceForTrigger("resume")).toBe("chat");
     expect(turnPolicySourceForTrigger("bot_message")).toBe("bot_message");
+    expect(turnPolicySourceForTrigger("message_group")).toBe("chat");
     for (const trigger of ["routine", "webhook", "messaging", "created", "call_end", "skill", "cloud_agent", "spawn", "delivery"]) {
       expect(turnPolicySourceForTrigger(trigger), `${trigger} policy source`).toBe("automation");
     }

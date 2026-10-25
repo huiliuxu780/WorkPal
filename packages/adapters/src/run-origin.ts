@@ -4,6 +4,7 @@ import { CHAT_GROUP_KIND_AGENT_PAIR, type PrismaClient } from "@rakazo/db";
 /** The origin facts persisted on a delegated Run (absent on user-started rows). */
 export type RunOriginFields = {
   threadId: string;
+  trigger?: string | null;
   originThreadId: string | null;
   originRunId: string | null;
   originMessageId: string | null;
@@ -143,6 +144,9 @@ export async function interventionOriginForRun(
   run: RunOriginFields,
 ): Promise<{ presentationThreadId?: string; origin?: CollaborationOrigin }> {
   if (!run.originThreadId || !run.originRunId) return {};
+  // The target group is user-accessible, so its waits stay there. Projecting
+  // them into the source DM would need the private-pair gate.
+  if (run.trigger === "message_group") return {};
   const resolved = await resolveInterventionPresentation(prisma, run);
   if (!resolved) return {};
   return { presentationThreadId: resolved.presentationThreadId, origin: resolved.origin };

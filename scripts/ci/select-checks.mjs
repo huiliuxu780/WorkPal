@@ -37,6 +37,7 @@ const AVATAR_WEB_E2E = [
   "avatar-bot-change.spec.ts",
 ];
 const EXECUTION_WEB_E2E = ["execution-card.spec.ts", "task-center.spec.ts"];
+const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
 const ONBOARDING_WEB_E2E = [
   "onboarding-conversation.spec.ts",
   "onboarding-model-auto-skip.spec.ts",
@@ -279,6 +280,20 @@ export function classifyPath(file) {
     };
   }
 
+  // The cross-session group handoff only exists behind the message_group gate;
+  // its receipt, contract, and adapter paths must run the closed-loop spec.
+  if (
+    stemMatch(p, "packages/adapters/src/message-group") ||
+    stemMatch(p, "packages/core/src/roundtable-contracts") ||
+    stemMatch(p, "packages/core/src/roundtable-feature-gates")
+  ) {
+    return {
+      jobs: ["backend", "agentscope", "db-postgres", "web"],
+      reason: "message_group delivery, receipt, and return path",
+      webE2e: MESSAGE_GROUP_WEB_E2E,
+    };
+  }
+
   if (
     isUnder(p, "apps/web") ||
     isUnder(p, "packages/ui-web") ||
@@ -431,6 +446,7 @@ function mappedWebE2e(file) {
   ) {
     return AVATAR_WEB_E2E;
   }
+  if (file.includes("GroupDestinationReceipt")) return MESSAGE_GROUP_WEB_E2E;
   if (
     isUnder(file, "apps/web/src/components/ai") ||
     file.includes("execution") ||

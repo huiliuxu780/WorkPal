@@ -643,6 +643,20 @@ export const TRIGGER_CLASSIFICATIONS: TriggerClassification[] = [
     cases: ["S06-C1", "S06-C2", "S06-C3", "S06-C4"],
   },
   {
+    trigger: "message_group",
+    status: "production-entry",
+    entries: [
+      {
+        file: "packages/adapters/src/message-group.ts",
+        symbol: "messageGroup",
+        note: "gated direct-chat handoff creates the target group's independent owner Run",
+      },
+    ],
+    classification:
+      "Owner turn in the target group; chat TurnPolicy source. The tool entry exists only in a Bot's direct chat and is gate-closed by default; the target Run starts queued.",
+    cases: ["S06-C6"],
+  },
+  {
     trigger: "delivery",
     status: "production-entry",
     entries: [
@@ -1619,6 +1633,31 @@ export const SCENARIO_CASES: ScenarioCase[] = [
     toolSurface: "no plan_enter/plan_write/plan_exit, no agent_*/task_* natives",
     expectedResult: "Planning disabled by policy; delegation suspended at the entrypoint.",
     evidence: [{ layer: "integration", test: INTEGRATION, name: "S06-C1 support shape" }],
+  },
+  {
+    id: "S06-C6",
+    scenario: "S06",
+    title: "message_group takes new work to a joined group and returns its outcome",
+    trigger: "message_group",
+    collaborationRole: "owner",
+    scope: "chat",
+    promptFamilies: { included: ["P02"], excluded: [] },
+    toolSurface:
+      "target group owner shape; the message_group tool itself exists only in the source direct chat",
+    expectedResult:
+      "Source receipt, target message, Task and independent owner Run commit atomically; terminal outcomes update the same receipt and a separate summary Run reports back in the source chat.",
+    evidence: [
+      {
+        layer: "postgres",
+        test: "packages/adapters/src/message-group.postgres.test.ts",
+        name: "RT-11 atomic delivery, idempotency, concurrency, permissions and return",
+      },
+      {
+        layer: "e2e",
+        test: "apps/web/e2e/message-group.spec.ts",
+        name: "X-GROUP/X-RETURN closed loop",
+      },
+    ],
   },
   {
     id: "S06-C5",

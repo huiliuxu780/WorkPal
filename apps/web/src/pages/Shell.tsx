@@ -7,6 +7,7 @@ import type {
   AgentSkillCatalogEntry,
   Bot,
   BotSection,
+  CollaborationReceiptBlock,
   ComputerMode,
   ComputerReleaseReason,
   ComputerStatus,
@@ -150,6 +151,7 @@ import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { MessageText } from "../components/ai/AgentMentionText";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { GroupDestinationReceipt } from "../components/ai/GroupDestinationReceipt";
 import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
@@ -6677,6 +6679,28 @@ function AvatarChangeCard({
   );
 }
 
+function GroupReceiptNavigation({
+  block,
+  botName,
+}: {
+  block: CollaborationReceiptBlock;
+  botName: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <GroupDestinationReceipt
+      block={block}
+      botName={botName}
+      onOpen={({ groupId, messageId }) =>
+        navigate({
+          pathname: `/app/g/${groupId}`,
+          search: `?m=${encodeURIComponent(messageId)}`,
+        })
+      }
+    />
+  );
+}
+
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
@@ -6881,6 +6905,16 @@ const MessageView = memo(function MessageView({
               </span>
               <span>{block.text}</span>
             </div>
+          );
+        }
+        if (block.kind === "collaboration_receipt") {
+          if ("groupId" in artifactTarget) return null;
+          return (
+            <GroupReceiptNavigation
+              key={i}
+              block={block}
+              botName={message.botId ? (botNameOf?.(message.botId) ?? t`Bot`) : t`Bot`}
+            />
           );
         }
         if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {

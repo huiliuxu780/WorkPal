@@ -168,6 +168,9 @@ jobs:
       # Keep the verification equally broad so an unrelated DB regression
       # cannot pass by exercising only the agent-pair constraint suite.
       - run: pnpm exec vitest run --no-file-parallelism packages/db/src/*.postgres.test.ts
+      # RT-11's atomic delivery, idempotency, concurrency, and permission
+      # boundaries are PostgreSQL behavior; keep them in the DB job.
+      - run: pnpm exec vitest run --no-file-parallelism packages/adapters/src/message-group.postgres.test.ts
 
   runtime-jar:
     name: runtime-jar

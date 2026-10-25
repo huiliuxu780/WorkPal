@@ -694,7 +694,9 @@ function reduceThreadSnapshotBase(
       role,
       blocks,
       botId: event.botId,
-      runId: event.runId,
+      // A cancelled Run cannot name itself on a message update; keep the
+      // association the message already had.
+      runId: event.runId ?? known?.runId,
       callId: typeof event.payload.callId === "string" ? event.payload.callId : known?.callId,
       replyToMessageId:
         typeof event.payload.replyToMessageId === "string"

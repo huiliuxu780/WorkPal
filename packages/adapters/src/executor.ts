@@ -250,6 +250,7 @@ import { createAutoReviewProvider } from "./auto-review-factory.js";
 import { authorizedAvatarRequest, requestedAvatarBodyColor } from "./avatar-change-request.js";
 import { attachedImageArtifactIds, resolveUpdateBotAvatar } from "./bot-avatar.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
+import { messageGroup, returnMessageGroupOutcome } from "./message-group.js";
 import { interventionOriginForRun } from "./run-origin.js";
 import {
   allowPrivateHttpSecretOrigins,
@@ -2330,6 +2331,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               "status",
             ).catch((error) => getLogger().error("bot message failure return", error));
           }
+          if (run.trigger === "message_group") {
+            await returnMessageGroupOutcome(deps, { ...run, status: "failed" }).catch((error) =>
+              getLogger().error("message group failure return", error),
+            );
+          }
           if (!failed.continuationRunId) {
             await notifyRun(deps, run, {
               kind: "failure",
@@ -2476,6 +2482,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             mailEnabled: Boolean(deps.mail),
             planningEnabled: turnPolicy.planning.mode === "auto",
             publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
+            messageGroupEnabled: deps.roundtableFeatures?.message_group === true,
+            ownerRun: turnPolicy.ownership.mode === "owner",
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -2572,6 +2580,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
               mailEnabled: Boolean(deps.mail),
               planningEnabled: turnPolicy.planning.mode === "auto",
               publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
+              messageGroupEnabled: deps.roundtableFeatures?.message_group === true,
+              ownerRun: turnPolicy.ownership.mode === "owner",
             }),
             ...(hasMessagingIdentity ? agentConnectionTools : []),
           ];
@@ -5309,7 +5319,57 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 : { ok: true },
             );
           }
+          if (name === "message_group") {
+            if (turnPolicy.ownership.mode !== "owner") {
+              return finish({ error: "message_group is only available to the owner of this turn" });
+            }
+            if (args.targetTaskId !== undefined || args.target_task_id !== undefined) {
+              return finish({ error: "message_group cannot attach to existing work" });
+            }
+            let sent: Awaited<ReturnType<typeof messageGroup>>;
+            try {
+              sent = await messageGroup(
+                deps,
+                { ...run, sourceMessageId: run.sourceMessageId },
+                { id: bot.id, name: bot.name },
+                {
+                  group_id: args.group_id ? String(args.group_id) : undefined,
+                  confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
+                  message: redactSecrets(String(args.message ?? ""), runSecrets),
+                  intent: args.intent ? String(args.intent) : undefined,
+                  topic: args.topic ? redactSecrets(String(args.topic), runSecrets) : undefined,
+                },
+                { deliveryKey: effectKey },
+              );
+            } catch (error) {
+              if (error instanceof RoundtableFeatureDisabledError) {
+                return finish({
+                  error: {
+                    code: error.code,
+                    feature: error.feature,
+                    retryable: error.retryable,
+                  },
+                });
+              }
+              throw error;
+            }
+            if (!sent.ok) return finish({ error: sent.error });
+            return finish({
+              ok: true,
+              groupId: sent.groupId,
+              groupName: sent.groupName,
+              targetRunId: sent.targetRunId,
+              locator: sent.locator,
+              note: sent.note,
+              ...(sent.replayed ? { replayed: true } : {}),
+            });
+          }
           if (name === "message_bot") {
+            // Async public delegation creates a support Run without this Run's
+            // source-chat origin, so its answer could never reach the source
+            // chat. The message_group owner completes the work itself.
+            if (run.trigger === "message_group")
+              return finish({ error: "message_bot is not available for this work" });
             let sent: Awaited<ReturnType<typeof messageBot>>;
             const toolIntent = args.intent as
               | "request"
@@ -5401,6 +5461,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             return finish(result);
           }
           if (name === "handoff_to_bot") {
+            // A handoff successor has no origin lineage, so a message_group
+            // owner Run that handed off could never return its result to the
+            // source chat. Keep this work in the target group instead.
+            if (run.trigger === "message_group")
+              return finish({ error: "handoff_to_bot is not available for this work" });
             if (!thread.groupId) return finish({ error: "handoff_to_bot is only for group chats" });
             const result = await handoffToGroupBot(deps, run, thread.groupId, {
               bot_id: args.bot_id ? String(args.bot_id) : undefined,
@@ -6789,6 +6854,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     stuckText,
                   ).catch((error) => getLogger().error("bot message loop-guard return", error));
                 }
+                if (run.trigger === "message_group") {
+                  await returnMessageGroupOutcome(deps, { ...run, status: "completed" }, {
+                    text: stuckText,
+                  }).catch((error) =>
+                    getLogger().error("message group loop-guard return", error),
+                  );
+                }
                 runAbortController?.abort();
                 return;
               }
@@ -7064,6 +7136,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
               permissionRevoked ? "status" : botMessageOutcome.intent,
             ).catch((error) => getLogger().error("bot message result return", error));
           }
+          if (run.trigger === "message_group") {
+            // Mirror the bot_message recovery: a turn that published mid-turn
+            // text and then left an empty final reply still has durable output
+            // to return. Otherwise the source chat keeps only the receipt.
+            const groupOutcome = permissionRevoked
+              ? null
+              : botMessageOutcomeFromMidTurn(text, midTurnUserTexts);
+            await returnMessageGroupOutcome(
+              deps,
+              { ...run, status: permissionRevoked ? "failed" : "completed" },
+              {
+                text: groupOutcome?.text ?? text,
+                progressOnly: groupOutcome?.intent === "status",
+              },
+            ).catch((error) => getLogger().error("message group result return", error));
+          }
           const notifyBody = completionNotificationPreview(text);
           if (
             runSendsFinishNotification(run.trigger) &&
@@ -7290,6 +7378,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               `Could not complete the delegated request: ${message}`,
               "status",
             ).catch((returnError) => getLogger().error("bot message failure return", returnError));
+          }
+          if (run.trigger === "message_group") {
+            await returnMessageGroupOutcome(deps, { ...run, status: "failed" }).catch((error) =>
+              getLogger().error("message group failure return", error),
+            );
           }
           if (runSendsFinishNotification(run.trigger) && !failed.continuationRunId) {
             await notifyRun(deps, run, {
@@ -7603,6 +7696,10 @@ export function selectBuiltinToolsForRun(options: {
   publicCollaborationEnabled?: boolean;
   /** Pair Threads keep message_bot regardless of the group (public) gate. */
   groupKind?: string | null;
+  /** Opens the direct-chat message_group tool after its gate is enabled. */
+  messageGroupEnabled?: boolean;
+  /** Support Runs only answer their requester; cross-session work is owner-only. */
+  ownerRun?: boolean;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -7615,6 +7712,7 @@ export function selectBuiltinToolsForRun(options: {
           options.groupId,
           options.publicCollaborationEnabled,
           options.groupKind,
+          options.messageGroupEnabled && options.ownerRun !== false,
         ),
         options.trigger,
       ),
@@ -7624,6 +7722,10 @@ export function selectBuiltinToolsForRun(options: {
   ).filter(
     (tool) =>
       (options.voiceCall || tool.name !== "end_call") &&
+      // A message_group owner Run must finish its own work: handoff and async
+      // delegation both create Runs without this Run's source-chat origin.
+      (options.trigger !== "message_group" ||
+        (tool.name !== "handoff_to_bot" && tool.name !== "message_bot")) &&
       (options.trigger === "user" ||
         options.trigger === "follow_up" ||
         tool.name !== "change_avatar") &&

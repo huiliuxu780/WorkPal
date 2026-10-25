@@ -51,6 +51,7 @@ export const RunTrigger = z.enum([
   "spawn",
   "skill",
   "bot_message",
+  "message_group",
   "webhook",
   "messaging",
   "cloud_agent",
