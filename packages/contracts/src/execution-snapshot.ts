@@ -1,5 +1,10 @@
 import * as z from "zod";
 import { ActivityItemSchema } from "./activity.js";
+import {
+  DisplayBlockSchema,
+  InteractionCapabilitiesSchema,
+  InteractionViewSchema,
+} from "./card-interaction.js";
 import { MessageBlock } from "./events.js";
 import { Id, RunStatus, RunTrigger, WaitKind } from "./ids.js";
 import { InterventionViewSchema } from "./intervention.js";
@@ -174,6 +179,10 @@ export const ExecutionSnapshotSchema = z.strictObject({
   activityPage: ExecutionActivityPageSchema,
   /** All Interventions of this Run inside the snapshot windows. */
   interventions: z.array(InterventionViewSchema),
+  /** CARD-01A projection; present only when cards_unified_v2 is enabled. */
+  interactionCapabilities: InteractionCapabilitiesSchema.optional(),
+  interactions: z.array(InteractionViewSchema).optional(),
+  displayBlocks: z.array(DisplayBlockSchema).optional(),
   result: ExecutionResultSchema.optional(),
 });
 export type ExecutionSnapshot = z.infer<typeof ExecutionSnapshotSchema>;

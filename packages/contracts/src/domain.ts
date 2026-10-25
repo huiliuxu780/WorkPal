@@ -6,6 +6,11 @@ import {
   AvatarModeSchema,
   BotAvatarValueSchema,
 } from "./bot-avatar.js";
+import {
+  DisplayBlockSchema,
+  InteractionCapabilitiesSchema,
+  InteractionViewSchema,
+} from "./card-interaction.js";
 import { ThreadMessageSchema } from "./events.js";
 import { ExecutionSummarySchema } from "./execution-snapshot.js";
 import { Id, MemoryScope, RunStatus, RunTrigger, SandboxKind, WaitKind } from "./ids.js";
@@ -1080,6 +1085,14 @@ export const ThreadSnapshotSchema = z.object({
   todos: z.array(RunTodoSnapshotSchema).optional(),
   /** Pending Interventions for this thread. Absent on snapshots from older servers. */
   interventions: z.array(InterventionViewSchema).optional(),
+  /**
+   * CARD-01A strict projection. Present only when the server-side
+   * cards_unified_v2 gate is enabled; older servers and gate-off deployments
+   * omit all three fields, so existing behavior is unchanged.
+   */
+  interactionCapabilities: InteractionCapabilitiesSchema.optional(),
+  interactions: z.array(InteractionViewSchema).optional(),
+  displayBlocks: z.array(DisplayBlockSchema).optional(),
   /**
    * Bounded per-Run execution summaries for the current thread generation:
    * active Runs, Runs with pending Interventions, and recent terminal Runs.

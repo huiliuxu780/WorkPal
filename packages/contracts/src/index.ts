@@ -4,6 +4,7 @@ export * from "./bot-avatar.js";
 export * from "./bot-secrets.js";
 export * from "./brand.js";
 export * from "./capability-rules.js";
+export * from "./card-interaction.js";
 export * from "./desktop.js";
 export * from "./domain.js";
 export * from "./events.js";
