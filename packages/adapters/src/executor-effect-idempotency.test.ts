@@ -70,7 +70,9 @@ function fixture(
     userId: "user-1",
     status: "queued",
     trigger: "user",
+    leaseOwner: null as string | null,
     leaseFence: 0,
+    leaseExpiresAt: null as Date | null,
     planPhase: null as string | null,
   };
   const memoryCommit = vi.fn(async () => ({ revision: "rev-1" }));
@@ -205,17 +207,44 @@ function fixture(
   Object.assign(prisma, {
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        $queryRaw: vi.fn(async () => [{ id: run.id }]),
+        $queryRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          const sql = strings.join("");
+          if (sql.includes('"external_effects"')) {
+            const effect = effects.find((candidate) => candidate.id === values[0]);
+            return effect
+              ? [
+                  {
+                    id: effect.id,
+                    runId: effect.runId ?? run.id,
+                    status: effect.status,
+                    result: effect.result ?? null,
+                  },
+                ]
+              : [];
+          }
+          return [
+            {
+              id: run.id,
+              status: run.status,
+              leaseOwner: run.leaseOwner,
+              leaseFence: run.leaseFence,
+              leaseExpiresAt: run.leaseExpiresAt,
+              leaseValid:
+                run.leaseExpiresAt !== null && run.leaseExpiresAt.getTime() > Date.now(),
+            },
+          ];
+        }),
         run: {
           findUnique: vi.fn(async () => ({
             ...run,
-            leaseExpiresAt: new Date(Date.now() + 60_000),
+            leaseExpiresAt: run.leaseExpiresAt ?? new Date(Date.now() + 60_000),
           })),
           updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
             Object.assign(run, data);
             return { count: 1 };
           }),
         },
+        externalEffect,
         attempt: prisma.attempt,
         // ME-01: remember now writes first-party facts through this transaction.
         memoryFact: {
