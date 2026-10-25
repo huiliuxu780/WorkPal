@@ -23,7 +23,10 @@ if (files.length === 0) {
 }
 
 const args = ["exec", "vitest", "run"];
-if (group === "postgres") args.push("--no-file-parallelism");
+// PostgreSQL suites share database state; process suites compete for ports,
+// CPU, and child-process slots, which can push a real smoke script past its
+// test timeout. Both groups run serially.
+if (group === "postgres" || group === "process") args.push("--no-file-parallelism");
 args.push(...files);
 const result = spawnSync("pnpm", args, { stdio: "inherit", env: process.env });
 if (result.error) console.error(result.error);
