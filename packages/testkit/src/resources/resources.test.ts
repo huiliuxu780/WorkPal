@@ -394,6 +394,27 @@ describe("worktree leases", () => {
   });
 });
 
+describe("dev process env", () => {
+  it("gives the leased dev ports to Turbo and the web proxy", async () => {
+    const turbo = JSON.parse(await readFile(path.resolve("turbo.json"), "utf8")) as {
+      tasks: { dev: { passThroughEnv?: string[] } };
+    };
+    const passed = turbo.tasks.dev.passThroughEnv ?? [];
+    for (const name of [
+      "API_PORT",
+      "WEB_PORT",
+      "API_URL",
+      "WEB_ORIGIN",
+      "BETTER_AUTH_URL",
+      "API_PROXY_TARGET",
+    ]) {
+      expect(passed).toContain(name);
+    }
+    const launcher = await readFile(path.resolve("scripts/dev-workpal.mjs"), "utf8");
+    expect(launcher).toContain("API_PROXY_TARGET");
+  });
+});
+
 describe("dev compose contract", () => {
   it("consumes the planner project, host ports, and volume names", async () => {
     const compose = await readFile(path.resolve("infra/compose/docker-compose.yml"), "utf8");

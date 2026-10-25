@@ -47,8 +47,10 @@ process.on("SIGTERM", () => stop(143));
 
 function applyPlan(plan) {
   if (typeof plan.ports?.api === "number") {
+    const apiOrigin = `http://127.0.0.1:${plan.ports.api}`;
     process.env.API_PORT = String(plan.ports.api);
-    process.env.API_URL = `http://127.0.0.1:${plan.ports.api}`;
+    process.env.API_URL = apiOrigin;
+    process.env.API_PROXY_TARGET = apiOrigin;
   }
   if (typeof plan.ports?.web === "number") {
     const webOrigin = `http://127.0.0.1:${plan.ports.web}`;
