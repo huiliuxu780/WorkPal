@@ -118,6 +118,7 @@ describe("classifyPath", () => {
     const backend = classifyPath("packages/adapters/src/message-group.ts");
     assert.ok(backend.jobs.includes("backend"));
     assert.ok(backend.jobs.includes("agentscope"));
+    assert.ok(backend.jobs.includes("db-postgres"));
     assert.deepEqual(classifyPath("apps/web/src/components/ai/GroupDestinationReceipt.tsx").jobs, [
       "web",
     ]);

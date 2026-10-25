@@ -288,7 +288,7 @@ export function classifyPath(file) {
     stemMatch(p, "packages/core/src/roundtable-feature-gates")
   ) {
     return {
-      jobs: ["backend", "agentscope", "web"],
+      jobs: ["backend", "agentscope", "db-postgres", "web"],
       reason: "message_group delivery, receipt, and return path",
       webE2e: MESSAGE_GROUP_WEB_E2E,
     };
