@@ -273,7 +273,19 @@ export async function applyCancelTerminalPolicy(
     ...args.cancelOptions,
     cancelReason: policy.reason,
   });
-  if (rows.length === 0) return { rows: [], continuationRunIds: [], eventSeq: null };
+  if (rows.length === 0) {
+    // Stop still abandons pending appends when nothing was running. Skipping
+    // that left teaching-released steering for a later continuation.
+    if (policy.steering === "delete" && args.abandonThreadSteering) {
+      await tx.steeringMessage.deleteMany({
+        where: {
+          botId: { in: args.abandonThreadSteering.botIds },
+          message: { threadId: args.abandonThreadSteering.threadId },
+        },
+      });
+    }
+    return { rows: [], continuationRunIds: [], eventSeq: null };
+  }
   const ids = rows.map((run) => run.id);
   let eventSeq: number | null = null;
   if (args.appendEvents !== false) {

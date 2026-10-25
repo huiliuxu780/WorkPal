@@ -179,6 +179,24 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
     expect(calls).toBeTruthy();
   });
 
+  it("abandons pending steering when stop finds no active run", async () => {
+    const pending = await steer(null, "left during teaching");
+    const outcomesBefore = await prisma.cancelOutcomeOutbox.count();
+    await prisma.$transaction((tx) =>
+      applyCancelTerminalPolicy(tx, [], new Date(), {
+        policy: cancelPolicyFor("user_stopped"),
+        abandonThreadSteering: { threadId, botIds: [botId] },
+        effects: effects(),
+      }),
+    );
+    expect(
+      await prisma.steeringMessage.findUnique({ where: { id: pending.steering.id } }),
+    ).toBeNull();
+    expect(await prisma.message.findUnique({ where: { id: pending.message.id } })).not.toBeNull();
+    expect(await prisma.run.count({ where: { threadId, botId, status: "queued" } })).toBe(0);
+    expect(await prisma.cancelOutcomeOutbox.count()).toBe(outcomesBefore);
+  });
+
   it("does not report or keep steering when the user stops", async () => {
     const run = await delegatedRun();
     const pending = await steer(run.id, "abandoned");

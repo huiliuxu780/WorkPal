@@ -206,6 +206,7 @@ const POSTGRES_ONLY = [
   "packages/db/src/avatar-activity.postgres.test.ts",
   "packages/db/src/avatar-changes.postgres.test.ts",
   "packages/db/src/avatar-migration.postgres.test.ts",
+  "packages/db/src/cancel-terminal.postgres.test.ts",
   "packages/db/src/delivery-records.test.ts",
   "packages/db/src/effect-execution-fence.postgres.test.ts",
   "packages/db/src/execution-contract.postgres.test.ts",
