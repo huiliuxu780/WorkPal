@@ -554,8 +554,9 @@ export async function returnMessageGroupOutcome(
         threadId: originThreadId,
         botId: run.botId,
         type: "thread.message.updated",
-        // A cancelled origin Run may still surface its target's terminal state.
-        ...(originSource.status === "cancelled" ? {} : { runId: originSource.id }),
+        // The receipt stays attached to the Run that wrote it even if that Run
+        // was cancelled while the target work was still in flight.
+        runId: originSource.id,
         payload: { messageId: receiptMessage.id, role: "bot", blocks: updatedBlocks },
       });
 
