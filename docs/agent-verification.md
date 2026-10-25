@@ -6,13 +6,82 @@ model can demonstrate that it chooses a useful action for a natural request.
 
 | Layer | Real components | Stand-ins | Command |
 | --- | --- | --- | --- |
-| Existing fast tests | Product functions and contracts | Scripted agent, services, sandbox | `pnpm test` |
+| Unit gate | Product functions and contracts | Scripted agent, services, sandbox | `pnpm test:unit` |
+| PostgreSQL gate | PostgreSQL 16, migrations, repositories | Scripted agent, services, sandbox | `pnpm test:postgres` |
+| Existing broad tests | Product functions and contracts | Scripted agent, services, sandbox | `pnpm test` |
 | Java runtime regressions | AgentScope HarnessAgent, model stream, Tool Bridge, Skill, Plan, subagent | Loopback model and tool endpoints | `pnpm test:agentscope` |
 | Product journey | API, saved model connection, Postgres, executor, AgentScope Java | Model endpoint, sandbox, connectors | `pnpm test:integration` |
 | Computer replay | AgentScope Java, browser tool handlers, page state | Model endpoint, browser and sandbox | `pnpm test:computer-replay` |
 | Docker computer replay | AgentScope Java, supervisor, Chromium, page helper, downloads and files | Model endpoint, local fixture website | `pnpm test:computer-replay` |
 | Agent quality | Product API, Postgres, executor, AgentScope Java, real model | Sandbox and connected services | `pnpm test:evals --live ...` |
 | Vision acceptance | Product API, AgentScope Java, real vision model, Box or E2B desktop | Fixture website | `pnpm test:computer` |
+
+`pnpm test` is the legacy broad Vitest run. It still includes every matched
+file, skips database-gated suites without `VERIFY_DATABASE=1` and
+`DATABASE_URL`, and is not a hermetic gate. Use `pnpm test:unit` for the unit
+gate and the layered commands below for external environments.
+
+## Tracked test inventory
+
+`scripts/testing/test-inventory.mjs` enumerates the Git-tracked `*.test.ts` and
+`*.test.tsx` files and assigns each one at least one execution entry:
+
+| Category | Environment | Entry |
+| --- | --- | --- |
+| `unit-node` | Node, no external service | `pnpm test:unit` |
+| `unit-jsdom` | Vitest jsdom, no browser process | `pnpm test:unit` |
+| `postgres` | PostgreSQL 16 with migrations | `pnpm test:postgres` (`db-postgres` job) |
+| `integration-harness` | PostgreSQL + app + JDK 21 | `pnpm test:integration --spec=<file>` |
+| `agentscope-request` | JDK 21 AgentScope runtime | `agentscope` CI job |
+| `computer-replay-java` | JDK 21 + Maven | direct `vitest run <file>` |
+| `computer-replay-cli` | JDK 21 + Docker | `pnpm test:computer-replay` |
+| `docker-manual` | Docker / Compose | explicit local command |
+| `live-canary` | live provider credentials | `pnpm test:canary` |
+| `live-computer` | live model and sandbox credentials | `pnpm test:computer` |
+| `process` | local shells, scripts, or helper binaries | `pnpm test:process` |
+| `node-test` | Node's built-in test runner | `pnpm test:ci-select`, `pnpm test:docs` |
+
+A file without a rule defaults to unit only when it has no external suffix and
+no external marker. `*.postgres.test.ts`, `*.integration.test.ts`,
+`*.docker.test.ts`, `*.e2e.test.ts`, and `*.canary.test.ts` require an explicit
+rule, as does any ordinary-looking file that reads `DATABASE_URL`,
+`VERIFY_DATABASE`, `AGENTSCOPE_URL`, Testcontainers, live provider flags, or a
+non-type `node:child_process` import. `*.test.mjs` uses Node's runner, so it
+also requires an explicit rule. A file with more than one execution entry must
+state why the duplicate entry is useful.
+
+Ordinary-suffix exceptions are listed in the inventory rather than inferred from
+the filename. `packages/testkit/src/computer-replay.test.ts` starts the Java
+runtime and is not a unit test. `packages/db/src/delivery-records.test.ts`,
+`packages/db/src/usage-stats.test.ts`, and the testkit messaging, mention-target,
+and runs-list tests connect to PostgreSQL despite their plain names.
+
+`node-test` files are not mixed into Vitest: selector and inventory tests run
+through `pnpm test:ci-select`, and roundtable document verifiers run through
+`pnpm test:docs`.
+
+`pnpm test:inventory` fails on an unclassified tracked test, a rule whose file
+was deleted, a rule whose marker no longer matches, a multi-entry classification
+without a duplicate reason, a unit test that also claims an external category,
+and an entry whose package script, CI job, harness suite list, or unit config
+is missing. `pnpm test:unit` builds its include list from the same inventory, so
+a new external test cannot silently join the hermetic unit gate.
+
+To add a test:
+
+1. Prefer a pure unit test with no external dependency; it needs no inventory
+   rule and runs in `pnpm test:unit`.
+2. If it needs PostgreSQL, Java, Docker, a browser, a process, or credentials,
+   add an explicit rule in `scripts/testing/test-inventory.mjs` with markers,
+   `reason`, and, when it has multiple entries, `duplicateReason`.
+3. Run `pnpm test:inventory`; if it is a unit test, run `pnpm test:unit`.
+4. For a new PostgreSQL file, run `pnpm test:postgres` against a migrated
+   database. CI selects `db-postgres` from the same classification.
+
+`pnpm lint` runs Biome lint rules over maintained source; it does not run the
+formatter or import sorting. Frozen prototypes under `docs/` and the legacy
+formatter debt are outside this gate. Run `pnpm format` when intentionally
+reformatting a file.
 
 Default and PR tests never require paid inference. Nightly runs only the web
 tests with emulated providers. Docker topology and browser replay have a manual

@@ -51,11 +51,54 @@ Do not add `-v` unless deleting the database is intended.
 
 ## Verification
 
+Fast, hermetic gates (no PostgreSQL, Java runtime, Docker, browser, or provider credentials):
+
+```bash
+pnpm lint
+pnpm test:unit
+pnpm test:inventory
+pnpm test:ci-select
+```
+
+`pnpm lint` runs Biome's lint rules over maintained source (`apps`, `packages`,
+`scripts`, `services`, `infra`) and the Vitest configs. Formatting and import
+sorting remain a separate `pnpm format` step; the repository still carries
+intentionally frozen prototypes.
+
+`pnpm test:unit` runs the Node and jsdom files selected by the tracked-test
+inventory in `scripts/testing/test-inventory.mjs`. PostgreSQL, integration
+harness, Java replay, Docker, live-provider, and process tests are not in this
+group. A unit setup file also removes database, runtime, and sandbox credentials
+before the run.
+
+`pnpm test:inventory` fails when a tracked `*.test.ts(x)` file has no
+classification, when a rule points at a file that is no longer tracked, when a
+rule's marker stopped matching, or when a multi-entry test has no reason for the
+duplicate entry.
+
+Database and service layers:
+
+```bash
+DATABASE_URL=postgresql://... VERIFY_DATABASE=1 pnpm test:postgres
+pnpm test:integration --spec=packages/testkit/src/journeys.test.ts
+pnpm test:e2e --runtime=scripted --spec="settings-shell.spec.ts"
+pnpm test:worker-chain
+pnpm test:agentscope
+```
+
+`pnpm test:postgres` runs every PostgreSQL-classified file; CI executes the same
+command in the `db-postgres` job. `pnpm test:integration` needs Testcontainers
+and JDK 21 and starts the Java AgentScope runtime. `pnpm test:e2e` needs the
+Playwright Chromium install (`pnpm --filter @rakazo/web exec playwright install
+chromium`); when no container runtime is available, `WORKPAL_E2E_DATABASE_URL`
+may point at a disposable local `workpal_e2e_*` database. The CI jobs and their
+exact suite lists are documented in [docs/agent-verification.md](./docs/agent-verification.md).
+
+Full type/build checks:
+
 ```bash
 pnpm check
 pnpm --filter @rakazo/web build
-pnpm exec vitest run packages/adapters/src apps/api/src apps/web/src
-pnpm test:agentscope
 docker compose --env-file .env -f infra/compose/docker-compose.yml config --quiet
 ```
 
