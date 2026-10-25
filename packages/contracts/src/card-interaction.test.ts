@@ -166,6 +166,52 @@ describe("CARD-01 strict InteractionView contract", () => {
     ).toBe(false);
   });
 
+  it("keeps existing unbounded option and approval labels", () => {
+    const label = "x".repeat(300);
+    const options = Array.from({ length: 25 }, (_, index) => ({
+      id: `option-${index}`,
+      label,
+    }));
+    expect(
+      InteractionViewSchema.safeParse(
+        inputView({ input: { mode: "choice", prompt: "Pick", options } }),
+      ).success,
+    ).toBe(true);
+    const actions = Array.from({ length: 12 }, (_, index) => ({
+      id: `action-${index}`,
+      label,
+    }));
+    expect(
+      InteractionViewSchema.safeParse({
+        kind: "action_approval",
+        ...base,
+        decision: null,
+        approval: {
+          kind: "tool",
+          authority: "external_effect",
+          effectId: "effect-1",
+          effectStatus: "intended",
+          actions,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      InteractionViewSchema.safeParse({
+        kind: "action_approval",
+        ...base,
+        decision: null,
+        approval: {
+          kind: "connect.app_authorization",
+          authority: "business_transaction",
+          connectorId: null,
+          provider: label,
+          name: label,
+          description: label,
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("keeps the nine ActionApproval payloads independent", () => {
     const skillSave = {
       kind: "action_approval",

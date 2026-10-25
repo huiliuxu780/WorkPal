@@ -298,18 +298,22 @@ function approvalViewFromBlock(
   block: Extract<MessageBlock, { kind: "app_connect" | "mcp_approval" | "skill_draft" }>,
   blockIndex: number,
 ): ActionApprovalView | null {
+  // Stored blocks are cast rather than parsed, so a pre-upgrade row can omit a
+  // schema-defaulted status. The MCP resolver treats a missing status as open;
+  // the strict projection must agree or the authorization disappears.
+  const blockStatus = "status" in block ? (block.status as string | undefined) : undefined;
   const status: InteractionView["status"] =
     block.kind === "app_connect"
-      ? block.status === "pending"
+      ? blockStatus === "pending"
         ? "pending"
         : "answered"
       : block.kind === "mcp_approval"
-        ? block.status === "pending"
-          ? "pending"
-          : block.status === "connected"
-            ? "answered"
-            : "cancelled"
-        : block.status === "draft"
+        ? blockStatus === "connected"
+          ? "answered"
+          : blockStatus === "dismissed"
+            ? "cancelled"
+            : "pending"
+        : blockStatus === "draft"
           ? "pending"
           : "answered";
   const interactionId = legacyBlockInteractionId(message.id, block.kind, blockIndex);

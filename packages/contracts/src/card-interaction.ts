@@ -54,7 +54,9 @@ const interactionBaseShape = {
 
 const InputRequestOptionSchema = z.strictObject({
   id: z.string().min(1),
-  label: z.string().min(1).max(200),
+  // Existing choice/table labels are unbounded; a length cap here would drop
+  // the whole pending request instead of rendering its data.
+  label: z.string(),
 });
 
 export const InputRequestPayloadSchema = z.discriminatedUnion("mode", [
@@ -66,7 +68,7 @@ export const InputRequestPayloadSchema = z.discriminatedUnion("mode", [
   z.strictObject({
     mode: z.literal("choice"),
     prompt: z.string().max(4_000),
-    options: z.array(InputRequestOptionSchema).min(1).max(20),
+    options: z.array(InputRequestOptionSchema).min(1),
   }),
   z.strictObject({
     mode: z.literal("form"),
@@ -123,7 +125,8 @@ export type InputRequestView = z.infer<typeof InputRequestViewSchema>;
 
 const ApprovalActionSchema = z.strictObject({
   id: z.string().min(1),
-  label: z.string().min(1).max(200),
+  // Intervention approval labels are unbounded and may be empty.
+  label: z.string(),
 });
 
 /** Display-safe TaughtSkill playbook; the authoritative save is a business transaction. */
@@ -147,7 +150,7 @@ export const ActionApprovalPayloadSchema = z.discriminatedUnion("kind", [
     authority: z.literal("external_effect"),
     effectId: Id,
     effectStatus: z.string().min(1),
-    actions: z.array(ApprovalActionSchema).max(10),
+    actions: z.array(ApprovalActionSchema),
   }),
   z.strictObject({
     kind: z.literal("payment"),
@@ -203,18 +206,18 @@ export const ActionApprovalPayloadSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("connect.app_authorization"),
     authority: z.literal("business_transaction"),
-    connectorId: Id.nullable(),
-    provider: z.string().min(1).max(200),
-    name: z.string().min(1).max(200),
-    description: z.string().max(2_000).nullable(),
+    connectorId: z.string().nullable(),
+    provider: z.string(),
+    name: z.string(),
+    description: z.string().nullable(),
   }),
   z.strictObject({
     kind: z.literal("connect.mcp_assignment"),
     authority: z.literal("business_transaction"),
     serverId: Id,
-    name: z.string().min(1).max(200),
+    name: z.string(),
     transport: McpTransportSchema,
-    endpoint: z.string().max(2_048).nullable(),
+    endpoint: z.string().nullable(),
     needsOAuth: z.boolean(),
     /**
      * The current assignment writes allowAllTools: true. The projection must

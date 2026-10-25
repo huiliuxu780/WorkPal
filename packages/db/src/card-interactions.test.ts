@@ -165,6 +165,33 @@ describe("CARD-01 thread card surface", () => {
     expect(surface.attention).toHaveLength(3);
   });
 
+  it("keeps a pre-upgrade MCP approval without a status pending", () => {
+    const legacyBlock = {
+      kind: "mcp_approval",
+      name: "Docs",
+      serverId: "server-1",
+      transport: "streamable_http",
+      endpoint: null,
+      needsOAuth: false,
+    } as unknown as MessageBlock;
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [message([legacyBlock])],
+    });
+    expect(surface.interactions).toEqual([
+      expect.objectContaining({
+        kind: "action_approval",
+        status: "pending",
+        decision: null,
+        approval: expect.objectContaining({
+          kind: "connect.mcp_assignment",
+          allowAllTools: true,
+        }),
+      }),
+    ]);
+    expect(surface.attention).toHaveLength(1);
+  });
+
   it("keeps every same-kind approval block from one message addressable", () => {
     const surface = projectThreadCardSurface({
       ...baseInput,
