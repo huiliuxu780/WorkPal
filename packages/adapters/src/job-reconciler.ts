@@ -9,6 +9,7 @@ import type { Pool, PrismaClient, ThreadEvents } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import type { PoolClient } from "pg";
 import { returnBotMessageOutcome } from "./bot-messages.js";
+import { returnMessageGroupOutcome } from "./message-group.js";
 import { scheduleComputerControlExpiry } from "./computer-control.js";
 import { isUserProgressClientNonce } from "./user-progress.js";
 
@@ -297,6 +298,50 @@ export function createJobReconciler(
               intent,
             ).catch((error) => {
               getLogger().error("bot message outcome reconciliation", error);
+              return false;
+            });
+            if (!returned) {
+              await deps.prisma.run.updateMany({
+                where: { id: run.id, botOutcomeReturnedAt: null },
+                data: { updatedAt: new Date() },
+              });
+            }
+          }),
+        );
+
+        const messageGroupOutcomes = await deps.prisma.run.findMany({
+          where: {
+            trigger: "message_group",
+            status: { in: ["completed", "failed", "cancelled"] },
+            botOutcomeReturnedAt: null,
+          },
+          orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+          take: batchSize,
+          select: {
+            id: true,
+            spaceId: true,
+            threadId: true,
+            botId: true,
+            userId: true,
+            status: true,
+            error: true,
+            originThreadId: true,
+            originRunId: true,
+            originMessageId: true,
+          },
+        });
+        await Promise.all(
+          messageGroupOutcomes.map(async (run) => {
+            const transcript =
+              run.status === "completed"
+                ? await botRunOutcomeText(deps.prisma, run.id)
+                : { text: "", progressOnly: false };
+            const returned = await returnMessageGroupOutcome(
+              { prisma: deps.prisma, jobs: deps.jobs, events },
+              run,
+              { text: transcript.text },
+            ).catch((error) => {
+              getLogger().error("message group outcome reconciliation", error);
               return false;
             });
             if (!returned) {

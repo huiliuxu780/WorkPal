@@ -256,11 +256,18 @@ export type CollaborationReceiptTarget =
       threadId: ThreadId;
     }>;
 
+export type CollaborationReceiptDisplay = Readonly<{
+  groupName: string;
+  topic: string;
+}>;
+
 export type CollaborationReceipt = Readonly<{
   kind: "collaboration_receipt";
   target: CollaborationReceiptTarget;
   state: "sent" | "failed" | "completed" | "cancelled";
   destination: DestinationLocator | null;
+  /** User-safe labels for the receipt card; never internal ids or states. */
+  display?: CollaborationReceiptDisplay;
 }>;
 
 export type UserActor = Readonly<{
@@ -567,6 +574,16 @@ export function parseDeliveryBatchKey(value: unknown): DeliveryBatchKey {
   };
 }
 
+function parseCollaborationReceiptDisplay(value: unknown): CollaborationReceiptDisplay {
+  const contract = "CollaborationReceiptDisplay";
+  const raw = asRecord(value, contract, "display");
+  assertAllowedKeys(raw, contract, "", ["groupName", "topic"]);
+  return {
+    groupName: asNonEmptyString(raw.groupName, contract, "groupName"),
+    topic: asNonEmptyString(raw.topic, contract, "topic"),
+  };
+}
+
 function parseCollaborationReceiptTarget(value: unknown): CollaborationReceiptTarget {
   const contract = "CollaborationReceiptTarget";
   const raw = asRecord(value, contract, "target");
@@ -592,7 +609,7 @@ function parseCollaborationReceiptTarget(value: unknown): CollaborationReceiptTa
 export function parseCollaborationReceipt(value: unknown): CollaborationReceipt {
   const contract = "CollaborationReceipt";
   const raw = asRecord(value, contract, "receipt");
-  assertAllowedKeys(raw, contract, "", ["kind", "target", "state", "destination"]);
+  assertAllowedKeys(raw, contract, "", ["kind", "target", "state", "destination", "display"]);
   if (raw.kind !== "collaboration_receipt") {
     invalid(contract, "kind", 'expected "collaboration_receipt"');
   }
@@ -606,9 +623,9 @@ export function parseCollaborationReceipt(value: unknown): CollaborationReceipt 
     invalid(contract, "state", "expected sent, failed, completed or cancelled");
   }
   const destination = raw.destination === null ? null : parseDestinationLocator(raw.destination);
-  if (raw.state === "failed") {
-    if (destination !== null) invalid(contract, "destination", "failed receipts have no locator");
-  } else if (destination === null) {
+  // A failed receipt may still point at the delivered target (work failed after
+  // delivery); only receipts that never reached a destination omit the locator.
+  if (raw.state !== "failed" && destination === null) {
     invalid(contract, "destination", "delivered receipts require a locator");
   }
   if (target.kind === "group" && destination !== null) {
@@ -620,7 +637,15 @@ export function parseCollaborationReceipt(value: unknown): CollaborationReceipt 
       invalid(contract, "destination", "group receipt locator must target the same group Thread");
     }
   }
-  return { kind: "collaboration_receipt", target, state: raw.state, destination };
+  const display =
+    raw.display === undefined ? undefined : parseCollaborationReceiptDisplay(raw.display);
+  return {
+    kind: "collaboration_receipt",
+    target,
+    state: raw.state,
+    destination,
+    ...(display ? { display } : {}),
+  };
 }
 
 function parseUserActor(value: unknown): UserActor {

@@ -1194,6 +1194,38 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "message_group",
+    description:
+      "In your direct chat only: take a new piece of work to one of the user's existing groups. You must already be a member of that group. This posts your request in the group, starts a separate task for you there, and leaves a receipt in the direct chat; the result comes back here separately. It does not add work to an existing task or reuse a running task. Use message_bot for another bot and handoff_to_bot only inside a group.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        group_id: { type: "string", description: "Stable target group id." },
+        confirm_name: {
+          type: "string",
+          description:
+            "Exact group name only when group_id is unavailable; it must resolve to exactly one group.",
+        },
+        message: {
+          type: "string",
+          description: "The work to post and complete in the target group.",
+        },
+        intent: {
+          type: "string",
+          enum: ["request"],
+          description: "Only a new request is supported.",
+        },
+        topic: {
+          type: "string",
+          description:
+            "Optional short user-facing label for the direct-chat receipt, e.g. the work item being taken over.",
+        },
+      },
+      required: ["message"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "handoff_to_bot",
     description:
       "In a group chat only: transfer a genuinely distinct next stage to another current member. Appends a visible handoff and starts that bot asynchronously. Do not hand a stage back merely to report or repeat the same work; post results in the shared thread.",

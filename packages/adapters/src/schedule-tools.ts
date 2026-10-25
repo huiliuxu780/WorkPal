@@ -32,8 +32,10 @@ export function filterBuiltinToolsForThread<T extends { name: string }>(
   groupId: string | null | undefined,
   publicCollaborationEnabled = false,
   groupKind: string | null | undefined = null,
+  messageGroupEnabled = false,
 ): T[] {
   return tools.filter((tool) => {
+    if (tool.name === "message_group") return !groupId && messageGroupEnabled;
     if (!groupId) return tool.name !== "handoff_to_bot";
     // In a group, message_bot is only safe once dispatch posts into the shared
     // Thread instead of the target bot's DM. The server gate owns that rollout.

@@ -84,6 +84,7 @@ export * from "./memory-recall.js";
 export * from "./memory-summary.js";
 export * from "./memory-sweep.js";
 export * from "./memory-tools.js";
+export * from "./message-group.js";
 export * from "./messaging-context.js";
 export * from "./messaging-delivery.js";
 export * from "./messaging-platforms.js";

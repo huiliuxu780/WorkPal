@@ -409,6 +409,22 @@ describe("run tool selection", () => {
     expect(namesFor("group-1", true)).toContain("handoff_to_bot");
     expect(namesFor(null, false)).toContain("message_bot");
   });
+
+  it("offers message_group only in a direct chat behind its own gate", () => {
+    const namesFor = (groupId: string | null, messageGroupEnabled: boolean) =>
+      selectBuiltinToolsForRun({
+        graphicalToolsAllowed: false,
+        groupId,
+        trigger: "user",
+        semanticMemoryEnabled: false,
+        messagingChannelRun: false,
+        messageGroupEnabled,
+      }).map((tool) => tool.name);
+
+    expect(namesFor(null, true)).toContain("message_group");
+    expect(namesFor(null, false)).not.toContain("message_group");
+    expect(namesFor("group-1", true)).not.toContain("message_group");
+  });
 });
 
 describe("recent turn images", () => {

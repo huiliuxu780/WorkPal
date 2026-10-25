@@ -557,7 +557,7 @@ describe("CollaborationReceipt", () => {
     );
   });
 
-  it("requires a locator for delivered receipts and none for failures", () => {
+  it("requires a locator for delivered receipts and permits a retained locator on work failure", () => {
     expectContractError(
       () =>
         parseCollaborationReceipt({
@@ -569,21 +569,18 @@ describe("CollaborationReceipt", () => {
       "CollaborationReceipt",
       "destination",
     );
-    expectContractError(
-      () =>
-        parseCollaborationReceipt({
-          kind: "collaboration_receipt",
-          target: { kind: "bot", botId: ids.peerBot },
-          state: "failed",
-          destination: {
-            kind: "pair_message",
-            pairThreadId: ids.pairThread,
-            messageId: ids.message,
-          },
-        }),
-      "CollaborationReceipt",
-      "destination",
-    );
+    expect(
+      parseCollaborationReceipt({
+        kind: "collaboration_receipt",
+        target: { kind: "bot", botId: ids.peerBot },
+        state: "failed",
+        destination: {
+          kind: "pair_message",
+          pairThreadId: ids.pairThread,
+          messageId: ids.message,
+        },
+      }).destination?.kind,
+    ).toBe("pair_message");
     expect(
       parseCollaborationReceipt({
         kind: "collaboration_receipt",
@@ -592,6 +589,42 @@ describe("CollaborationReceipt", () => {
         destination: null,
       }).destination,
     ).toBeNull();
+  });
+
+  it("parses user-safe receipt display labels and rejects internal-only fields", () => {
+    const receipt = parseCollaborationReceipt({
+      kind: "collaboration_receipt",
+      target: { kind: "group", groupId: ids.group, threadId: ids.thread },
+      state: "sent",
+      destination: {
+        kind: "group_message",
+        groupId: ids.group,
+        threadId: ids.thread,
+        messageId: ids.message,
+      },
+      display: { groupName: "Launch room", topic: "Performance risk review" },
+    });
+    expect(receipt.display).toEqual({
+      groupName: "Launch room",
+      topic: "Performance risk review",
+    });
+    expectContractError(
+      () =>
+        parseCollaborationReceipt({
+          kind: "collaboration_receipt",
+          target: { kind: "group", groupId: ids.group, threadId: ids.thread },
+          state: "sent",
+          destination: {
+            kind: "group_message",
+            groupId: ids.group,
+            threadId: ids.thread,
+            messageId: ids.message,
+          },
+          display: { groupName: "Launch room", topic: "Performance risk review", runId: "r1" },
+        }),
+      "CollaborationReceiptDisplay",
+      "",
+    );
   });
 
   it("rejects a group receipt pointing at a pair locator", () => {

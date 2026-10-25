@@ -312,6 +312,34 @@ export const MessageInline = z.discriminatedUnion("kind", [
 ]);
 export type MessageInline = z.infer<typeof MessageInline>;
 
+export const CollaborationReceiptTarget = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("group"), groupId: Id, threadId: Id }),
+  z.object({ kind: z.literal("bot"), botId: Id }),
+]);
+export type CollaborationReceiptTarget = z.infer<typeof CollaborationReceiptTarget>;
+
+export const DestinationLocator = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("group_message"), groupId: Id, threadId: Id, messageId: Id }),
+  z.object({ kind: z.literal("pair_message"), pairThreadId: Id, messageId: Id }),
+]);
+export type DestinationLocator = z.infer<typeof DestinationLocator>;
+
+export const CollaborationReceiptBlock = z.object({
+  kind: z.literal("collaboration_receipt"),
+  target: CollaborationReceiptTarget,
+  state: z.enum(["sent", "failed", "completed", "cancelled"]),
+  /** Navigation only; the destination renderer authorizes the reader again. */
+  destination: DestinationLocator.nullable(),
+  /** User-safe labels; internal ids and execution states never belong here. */
+  display: z
+    .object({
+      groupName: z.string().min(1).max(200),
+      topic: z.string().min(1).max(200),
+    })
+    .optional(),
+});
+export type CollaborationReceiptBlock = z.infer<typeof CollaborationReceiptBlock>;
+
 export const MessageBlock = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("text"),
@@ -495,6 +523,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     /** Links ownership transfers in one user-started group turn. */
     hop: z.number().int().positive().optional(),
   }),
+  CollaborationReceiptBlock,
   z.object({
     /** A group-chat message delivered into a member bot's own thread. */
     kind: z.literal("channel_message"),

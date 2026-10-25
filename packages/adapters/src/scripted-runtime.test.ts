@@ -290,3 +290,35 @@ describe("ScriptedAgentRuntime executionIds", () => {
     expect(toolIds).toEqual(["run-1:message_agent:0", "run-1:message_agent:1"]);
   });
 });
+
+describe("inferScript message_group", () => {
+  it("takes the performance review to a named group", () => {
+    expect(
+      inferScript('Take the performance risk review to the group named "新版发布圆桌".'),
+    ).toEqual([
+      {
+        assistant: "going to that room now.",
+        toolCalls: [
+          {
+            name: "message_group",
+            args: {
+              confirm_name: "新版发布圆桌",
+              message: "Check the launch performance risk and report back.",
+              intent: "request",
+              topic: "性能风险核对",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ]);
+  });
+
+  it("returns deterministic group work and the source summary", () => {
+    const group = inferScript("Check the launch performance risk and report back.");
+    expect(group[0]?.assistant).toContain("Group result:");
+    const returned = inferScript("<group_result>Group result: done.</group_result>");
+    expect(returned[0]?.assistant).toContain("I brought the result back:");
+    expect(returned[0]?.complete).toBe(true);
+  });
+});

@@ -150,6 +150,7 @@ import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { MessageText } from "../components/ai/AgentMentionText";
 import { CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { GroupDestinationReceipt } from "../components/ai/GroupDestinationReceipt";
 import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
@@ -6725,6 +6726,7 @@ const MessageView = memo(function MessageView({
   showToolActivity: boolean;
 }) {
   const { t } = useLingui();
+  const navigate = useNavigate();
   const isNarration =
     message.role === "bot" &&
     message.blocks.length > 0 &&
@@ -6881,6 +6883,22 @@ const MessageView = memo(function MessageView({
               </span>
               <span>{block.text}</span>
             </div>
+          );
+        }
+        if (block.kind === "collaboration_receipt") {
+          if ("groupId" in artifactTarget) return null;
+          return (
+            <GroupDestinationReceipt
+              key={i}
+              block={block}
+              botName={message.botId ? (botNameOf?.(message.botId) ?? t`Bot`) : t`Bot`}
+              onOpen={({ groupId, messageId }) =>
+                navigate({
+                  pathname: `/app/g/${groupId}`,
+                  search: `?m=${encodeURIComponent(messageId)}`,
+                })
+              }
+            />
           );
         }
         if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {

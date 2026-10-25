@@ -93,6 +93,16 @@ export class ScriptedAgentRuntime implements AgentRuntime {
             return;
           }
         }
+        // RT-11 fixture: keep the cross-group owner Run visibly in progress long
+        // enough for the source receipt's X-GROUP state to be asserted and
+        // captured before the terminal result reverses it.
+        if (turnIndex === 0 && /check the launch performance risk/i.test(request.prompt)) {
+          await abortableDelay(12_000, controller.signal);
+          if (signal.aborted || controller.signal.aborted) {
+            yield { type: "done", text: "stopped" };
+            return;
+          }
+        }
         turnIndex += 1;
         if (turn.assistant) {
           yield { type: "progress", text: "working…", activity: true };
@@ -514,6 +524,50 @@ export function inferScript(
       {
         assistant: "running it on my computer.",
         toolCalls: [{ name: "shell", args: { command: shellCommand } }],
+        complete: true,
+      },
+    ];
+  }
+  // Deterministic message_group fixture: a direct-chat request takes new work
+  // to an existing group; the target group Run and the source return Run each
+  // get their own fixed reply so the closed loop is observable end to end.
+  if (lower.includes("group_result")) {
+    return [
+      {
+        assistant:
+          "I brought the result back: Friday can still ship behind a 10% rollout. Lazy-load the chart bundle first; the main image costs about 0.6s and does not block. Purple will re-check the evidence before release.",
+        complete: true,
+      },
+    ];
+  }
+  const groupTarget =
+    /take the performance risk review to the group named\s+["“]?([^"”\n]+?)["”]?\s*[.!?]?\s*$/i.exec(
+      prompt,
+    )?.[1]?.trim();
+  if (groupTarget) {
+    return [
+      {
+        assistant: "going to that room now.",
+        toolCalls: [
+          {
+            name: "message_group",
+            args: {
+              confirm_name: groupTarget,
+              message: "Check the launch performance risk and report back.",
+              intent: "request",
+              topic: "性能风险核对",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ];
+  }
+  if (lower.includes("check the launch performance risk")) {
+    return [
+      {
+        assistant:
+          "Group result: ship Friday behind a 10% rollout after the chart bundle is lazy-loaded. The main image costs about 0.6s and does not block. Purple should re-check the evidence before release.",
         complete: true,
       },
     ];
