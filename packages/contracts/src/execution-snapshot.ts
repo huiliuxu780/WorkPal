@@ -47,6 +47,17 @@ export const ExecutionSummarySchema = z.strictObject({
   threadId: Id,
   botId: Id,
   /**
+   * Server fact (PD-01P): the message that triggered this Run — the durable
+   * `runs.sourceMessageId` link, not an inference from message order, Bot
+   * names, or timestamps. One message may own zero, one, or several Runs (a
+   * multi-Bot group turn creates one Run per dispatched Bot), so clients must
+   * read this field instead of treating `Message.runId` as exhaustive; that
+   * legacy column still names the first Run for old clients. Manual-retry
+   * successors inherit the predecessor's source message, so they stay linked
+   * to the same trigger. Omitted when the Run has no triggering message.
+   */
+  sourceMessageId: Id.optional(),
+  /**
    * Stable monotonic version of the visible projection: the highest product
    * event seq attributed to this Run (0 when none survive, e.g. after a
    * Thread clear). Re-reads of the same commit yield the same value; other

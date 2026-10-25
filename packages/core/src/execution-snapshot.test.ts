@@ -93,6 +93,16 @@ describe("buildExecutionSummary", () => {
     expect(summary.incompleteSections).toEqual(["artifacts"]);
   });
 
+  it("carries the durable source-message link only when recorded", () => {
+    expect(buildExecutionSummary(facts()).sourceMessageId).toBeUndefined();
+    expect(
+      buildExecutionSummary(facts({ run: run({ sourceMessageId: "message-1" }) })).sourceMessageId,
+    ).toBe("message-1");
+    expect(
+      buildExecutionSummary(facts({ run: run({ sourceMessageId: null }) })).sourceMessageId,
+    ).toBeUndefined();
+  });
+
   it("is deterministic and never mixes two Runs' facts", () => {
     const left = buildExecutionSummary(facts({ run: run({ id: "run-a" }), rev: 3 }));
     const right = buildExecutionSummary(

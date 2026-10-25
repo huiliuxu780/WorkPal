@@ -75,6 +75,28 @@ describe("ExecutionSummary contract", () => {
     expect(parsed.outcome).toBeUndefined();
     expect(parsed.anchorMessageId).toBeUndefined();
   });
+
+  it("carries the strict server source-message link, not a client guess", () => {
+    const linked = ExecutionSummarySchema.parse({
+      ...summary,
+      sourceMessageId: "message-1",
+    });
+    expect(linked.sourceMessageId).toBe("message-1");
+    // A Run without a triggering message simply has no link.
+    expect(ExecutionSummarySchema.parse(summary).sourceMessageId).toBeUndefined();
+    // The link is a server id, never a boolean/ordinal guess.
+    expect(
+      ExecutionSummarySchema.safeParse({ ...summary, sourceMessageId: 1 }).success,
+    ).toBe(false);
+    // Several Runs may share one source message (multi-Bot group turns).
+    expect(
+      ExecutionSummarySchema.parse({
+        ...summary,
+        runId: "run-2",
+        sourceMessageId: "message-1",
+      }).sourceMessageId,
+    ).toBe("message-1");
+  });
 });
 
 describe("ExecutionSnapshot contract", () => {

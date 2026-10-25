@@ -62,6 +62,8 @@ export type ExecutionSummaryFacts = {
     trigger: string;
     error: string | null;
     orchestration: unknown;
+    /** Durable trigger message link; several Runs may share one message. */
+    sourceMessageId?: string | null;
     startedAt: string | null;
     completedAt: string | null;
     /** Immutable creation time; the updatedAt fallback for Runs without events. */
@@ -160,6 +162,7 @@ export function buildExecutionSummary(facts: ExecutionSummaryFacts): ExecutionSu
     runId: run.id,
     threadId: run.threadId,
     botId: run.botId,
+    ...(run.sourceMessageId ? { sourceMessageId: run.sourceMessageId } : {}),
     rev: facts.rev,
     status: run.status,
     ...(waitKind
