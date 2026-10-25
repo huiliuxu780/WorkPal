@@ -58,6 +58,8 @@ export interface CreateThreadMessageInput {
   runId?: string;
   clientNonce?: string;
   markUnread?: boolean;
+  /** Typed cancel outcome only. Lets the cancelled owner write its one outcome. */
+  allowTypedCancel?: boolean;
 }
 
 export async function createThreadMessage(prisma: PrismaClient, input: CreateThreadMessageInput) {
@@ -89,7 +91,9 @@ export async function createThreadMessageInTransaction(
     },
     select: { nextMessageSeq: true },
   });
-  await assertRunCanWriteHistory(tx, input.runId);
+  await assertRunCanWriteHistory(tx, input.runId, {
+    allowTypedCancel: input.allowTypedCancel,
+  });
   return tx.message.create({
     data: {
       ...(input.id ? { id: input.id } : {}),
@@ -118,22 +122,34 @@ export class RunHistoryWriteError extends Error {
 export async function assertRunCanWriteHistory(
   tx: Prisma.TransactionClient,
   runId?: string,
+  options?: { allowTypedCancel?: boolean },
 ): Promise<{ status: string; startedAt: Date | null } | undefined> {
   if (!runId) return;
   const run = await tx.run.findUnique({
     where: { id: runId },
-    select: { status: true, startedAt: true, orchestration: true },
+    select: { status: true, startedAt: true, orchestration: true, cancelReason: true },
   });
-  if (!run || run.status === "cancelled") {
+  if (!run) throw new RunHistoryWriteError();
+  const typedCancel =
+    options?.allowTypedCancel === true && run.status === "cancelled" && run.cancelReason !== null;
+  if (run.status === "cancelled" && !typedCancel) {
     throw new RunHistoryWriteError();
   }
+  // The terminal outcome is the only history a typed-cancelled run may write.
+  if (typedCancel) return run;
   const parentRunId = parseRunOrchestration(run.orchestration)?.collaboration?.parentRunId;
   if (parentRunId) {
     const parent = await tx.run.findUnique({
       where: { id: parentRunId },
-      select: { status: true },
+      select: { status: true, cancelReason: true },
     });
-    if (!parent || parent.status === "cancelled") throw new RunHistoryWriteError();
+    const parentTypedCancel =
+      options?.allowTypedCancel === true &&
+      parent?.status === "cancelled" &&
+      parent.cancelReason !== null;
+    if (!parent || (parent.status === "cancelled" && !parentTypedCancel)) {
+      throw new RunHistoryWriteError();
+    }
   }
   return run;
 }

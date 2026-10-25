@@ -72,6 +72,8 @@ export interface AppendEventInput {
   type: ProductEvent["type"];
   payload: Record<string, unknown>;
   runId?: string;
+  /** Typed cancel outcome only. Lets the cancelled owner write its one outcome. */
+  allowTypedCancel?: boolean;
   schemaVersion?: number;
   causationId?: string;
   parentRunId?: string;
@@ -2245,7 +2247,9 @@ export async function appendEventInTransaction(
   if (input.type === "run.cancelled") {
     await assertRunIsCancelled(tx, input.runId);
   } else if (input.type !== "thread.artifact") {
-    await assertRunCanWriteHistory(tx, input.runId);
+    await assertRunCanWriteHistory(tx, input.runId, {
+      allowTypedCancel: input.allowTypedCancel,
+    });
   }
   // Unpaired UTF-16 surrogates (e.g. a split emoji high half) are invalid JSON for Postgres.
   const payload = sanitizeJsonValue(input.payload);

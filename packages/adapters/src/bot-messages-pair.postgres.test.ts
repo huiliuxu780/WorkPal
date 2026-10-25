@@ -572,6 +572,66 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     expect(second.error).toContain("already sent");
   });
 
+  it("delivers a typed cancel outcome from a cancelled pair run", async () => {
+    const sourceRun = await newSenderRun();
+    const dispatched = await send(sourceRun, {
+      bot_id: researcher.id,
+      message: "wait for the slow source",
+      deliveryKey: "typed-cancel-outcome",
+    });
+    if (!dispatched.ok) throw new Error("delivery failed");
+    const pairRun = await prisma.run.update({
+      where: { id: dispatched.targetRunId },
+      data: { status: "cancelled", cancelReason: "wait_timeout", completedAt: new Date() },
+    });
+    const outcomeDeps = {
+      prisma,
+      events: { notify: vi.fn(async () => undefined) },
+      jobs: { enqueue: vi.fn(async () => undefined) },
+    } as unknown as Parameters<typeof returnBotMessageOutcome>[0];
+    const runRef = {
+      id: pairRun.id,
+      spaceId,
+      threadId: pairRun.threadId,
+      botId: pairRun.botId,
+      userId: id,
+      sourceMessageId: pairRun.sourceMessageId,
+      orchestration: pairRun.orchestration,
+      originThreadId: pairRun.originThreadId,
+      originRunId: pairRun.originRunId,
+      originMessageId: pairRun.originMessageId,
+    };
+
+    expect(
+      await returnBotMessageOutcome(outcomeDeps, runRef, researcher, "must not send"),
+    ).toBe(false);
+
+    expect(
+      await returnBotMessageOutcome(
+        outcomeDeps,
+        runRef,
+        researcher,
+        "已取消：等太久了，这项委托没有完成。",
+        "status",
+        { allowTypedCancel: true },
+      ),
+    ).toBe(true);
+    const wake = await prisma.message.findFirstOrThrow({
+      where: {
+        threadId: sourceThreadId,
+        clientNonce: `bot-message:auto-outcome:${pairRun.id}`,
+      },
+    });
+    expect(wake.role).toBe("user");
+    expect(wake.blocks).toEqual([
+      expect.objectContaining({
+        kind: "bot_message_received",
+        text: "已取消：等太久了，这项委托没有完成。",
+        intent: "status",
+      }),
+    ]);
+  });
+
   it("returns the result to the origin Thread and reuses the same pair", async () => {
     const sourceRun = await newSenderRun();
     const dispatched = await send(sourceRun, {

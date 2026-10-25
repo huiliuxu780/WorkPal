@@ -321,7 +321,11 @@ export function createJobReconciler(
         if (readyReasons.length > 0) {
           const pendingCancels = await deps.prisma.cancelOutcomeOutbox.findMany({
             where: { deliveredAt: null, reason: { in: readyReasons } },
-            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            orderBy: [
+              { lastAttemptAt: "asc" },
+              { createdAt: "asc" },
+              { id: "asc" },
+            ],
             take: batchSize,
           });
           await Promise.all(
@@ -349,7 +353,13 @@ export function createJobReconciler(
                 getLogger().error("bot message cancel outcome reconciliation", error);
                 return false;
               });
-              if (!returned) return;
+              if (!returned) {
+                await deps.prisma.cancelOutcomeOutbox.updateMany({
+                  where: { id: intent.id, deliveredAt: null },
+                  data: { lastAttemptAt: new Date() },
+                });
+                return;
+              }
               await deps.prisma.cancelOutcomeOutbox.updateMany({
                 where: { id: intent.id, deliveredAt: null },
                 data: { deliveredAt: new Date() },

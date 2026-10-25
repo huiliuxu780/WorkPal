@@ -970,10 +970,12 @@ model CancelOutcomeOutbox {
   originRunId      String?
   originMessageId  String?
   reason           String
+  /// Moved to now after a failed delivery so one stuck row cannot block the batch.
+  lastAttemptAt    DateTime  @default(now())
   deliveredAt      DateTime?
   createdAt        DateTime  @default(now())
 
-  @@index([deliveredAt, reason])
+  @@index([deliveredAt, reason, lastAttemptAt])
   @@map("cancel_outcome_outbox")
 }
 

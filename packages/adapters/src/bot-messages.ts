@@ -290,6 +290,7 @@ async function messageBotInAgentPair(
   input: { message: string; intent: BotMessageIntent; deliveryKey?: string },
   context: PrivateMessageContext,
   mode: PairDeliveryMode,
+  options?: { allowTypedCancel?: boolean },
 ): Promise<
   | {
       ok: true;
@@ -361,8 +362,17 @@ async function messageBotInAgentPair(
           // automatic outcome and a live explicit result/status, so the source
           // may still be running when it answers through the origin.
           status: writesToOrigin
-            ? { in: ["completed", "failed", "running"] }
-            : "running",
+            ? {
+                in: [
+                  "completed",
+                  "failed",
+                  "running",
+                  ...(options?.allowTypedCancel ? (["cancelled"] as const) : []),
+                ],
+              }
+            : options?.allowTypedCancel
+              ? { in: ["running", "cancelled"] }
+              : "running",
         },
         select: { id: true, orchestration: true },
       });
@@ -572,6 +582,7 @@ async function messageBotInAgentPair(
             ? context.sourceContext.returnToMessageId
             : undefined,
         markUnread: false,
+        allowTypedCancel: options?.allowTypedCancel,
       });
       let receiptMessageId = origin?.messageId;
       const receiptBlock: MessageBlock = {
@@ -593,6 +604,7 @@ async function messageBotInAgentPair(
           runId: run.id,
           clientNonce: receiptNonce,
           markUnread: false,
+          allowTypedCancel: options?.allowTypedCancel,
         });
         receiptMessageId = receipt.id;
       }
@@ -709,6 +721,7 @@ async function messageBotInAgentPair(
         botId: mode.target.id,
         type: "thread.message.created",
         runId: nextRun.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
       });
       const outboundEvent = await appendEventInTransaction(tx, {
@@ -717,6 +730,7 @@ async function messageBotInAgentPair(
         botId: sender.id,
         type: "thread.message.created",
         runId: run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
       });
       let receiptEventSeq = 0;
@@ -728,6 +742,7 @@ async function messageBotInAgentPair(
             botId: sender.id,
             type: "thread.message.created",
             runId: run.id,
+            allowTypedCancel: options?.allowTypedCancel,
             payload: {
               messageId: receiptMessageId,
               role: "bot",
@@ -745,6 +760,7 @@ async function messageBotInAgentPair(
             ? "thread.collaboration.result"
             : "thread.collaboration.requested",
         runId: writesToOrigin ? nextRun.id : run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: {
           fromBotId: sender.id,
           toBotId: mode.target.id,
@@ -926,6 +942,7 @@ export async function messageBot(
         { message, intent, deliveryKey: input.deliveryKey },
         pairContext,
         { kind: "origin_outcome", origin, target: resolved.target },
+        options,
       );
     }
     // Nested delegation: this run was resumed by a child's outcome, so its own
@@ -952,6 +969,7 @@ export async function messageBot(
           { message, intent, deliveryKey: input.deliveryKey },
           pairContext,
           { kind: "origin_outcome", origin: upstream.origin, target: resolved.target },
+          options,
         );
       }
     }
@@ -975,6 +993,7 @@ export async function messageBot(
       { message, intent, deliveryKey: input.deliveryKey },
       pairContext,
       { kind: "request", target: resolved.target, pair },
+      options,
     );
   }
   // private_pair off: bot-level messaging keeps its pre-roundtable contract —
@@ -1173,6 +1192,7 @@ export async function messageBot(
           blocks: [outboundBlock],
           botId: run.botId,
           runId: run.id,
+          allowTypedCancel: options?.allowTypedCancel,
         });
         const inboundBlock: MessageBlock = {
           kind: "bot_message_received",
@@ -1255,6 +1275,7 @@ export async function messageBot(
           botId: target.id,
           type: "thread.message.created",
           runId: nextRun.id,
+          allowTypedCancel: options?.allowTypedCancel,
           payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
         });
         const outboundEvent = await appendEventInTransaction(tx, {
@@ -1263,6 +1284,7 @@ export async function messageBot(
           botId: run.botId,
           type: "thread.message.created",
           runId: run.id,
+          allowTypedCancel: options?.allowTypedCancel,
           payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
         });
         // Structured collaboration events for observability and the Phase 4
@@ -1277,6 +1299,7 @@ export async function messageBot(
           type:
             intent === "result" ? "thread.collaboration.result" : "thread.collaboration.requested",
           runId: returnsToSender ? nextRun.id : run.id,
+          allowTypedCancel: options?.allowTypedCancel,
           payload: {
             fromBotId: sender.id,
             toBotId: target.id,
@@ -1378,7 +1401,7 @@ async function messageBotInCurrentGroup(
     deliveryKey?: string;
   },
   context: CurrentGroupMessageContext,
-  options?: { allowTerminalSource?: boolean },
+  options?: { allowTerminalSource?: boolean; allowTypedCancel?: boolean },
 ): Promise<
   | (PublicGroupDelivery & {
       ok: true;
@@ -1479,7 +1502,14 @@ async function messageBotInCurrentGroup(
             // Same sanctioned-reply relaxation as the private paths: a live
             // explicit result/status answers its requester from a running run.
             status: options?.allowTerminalSource
-              ? { in: ["completed", "failed", "running"] }
+              ? {
+                  in: [
+                    "completed",
+                    "failed",
+                    "running",
+                    ...(options?.allowTypedCancel ? (["cancelled"] as const) : []),
+                  ],
+                }
               : "running",
           },
           select: { id: true, orchestration: true },
@@ -1652,6 +1682,7 @@ async function messageBotInCurrentGroup(
         blocks: [outboundBlock],
         botId: run.botId,
         runId: run.id,
+        allowTypedCancel: options?.allowTypedCancel,
       });
       const inboundBlock: MessageBlock = {
         kind: "bot_message_received",
@@ -1729,6 +1760,7 @@ async function messageBotInCurrentGroup(
         botId: target.id,
         type: "thread.message.created",
         runId: nextRun.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
       });
       const outboundEvent = await appendEventInTransaction(tx, {
@@ -1737,6 +1769,7 @@ async function messageBotInCurrentGroup(
         botId: run.botId,
         type: "thread.message.created",
         runId: run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: { messageId: outbound.id, role: "bot", blocks: [outboundBlock] },
       });
       const collaborationEvent = await appendEventInTransaction(tx, {
@@ -1748,6 +1781,7 @@ async function messageBotInCurrentGroup(
             ? "thread.collaboration.result"
             : "thread.collaboration.requested",
         runId: returnsToSender ? nextRun.id : run.id,
+        allowTypedCancel: options?.allowTypedCancel,
         payload: {
           fromBotId: sender.id,
           toBotId: target.id,
