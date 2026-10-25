@@ -65,7 +65,6 @@ const baseInput = {
   messages: [] as CardMessageFact[],
   interventions: [] as InterventionView[],
   runs: [],
-  computer: null,
 };
 
 describe("CARD-01 thread card surface", () => {
@@ -448,14 +447,17 @@ describe("CARD-01 thread card surface", () => {
       ...baseInput,
       messages: [message([{ kind: "computer", state: "waiting", text: "Take over" }])],
       runs: [run],
-      computer: {
-        id: "computer-1",
-        controlHolder: "none",
-        controlBotId: null,
-        controlRunId: "run-1",
-        controlLeaseId: null,
-        controlLeaseExpiresAt: null,
-      },
+      computers: [
+        {
+          id: "computer-1",
+          botId: "bot-1",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-1",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+      ],
     });
     expect(waiting.interactions).toEqual([
       expect.objectContaining({ kind: "session_control", action: "takeover" }),
@@ -464,14 +466,17 @@ describe("CARD-01 thread card surface", () => {
       ...baseInput,
       messages: [message([{ kind: "computer", state: "running", text: "Bot took over" }])],
       runs: [run],
-      computer: {
-        id: "computer-1",
-        controlHolder: "user",
-        controlBotId: "bot-1",
-        controlRunId: "run-1",
-        controlLeaseId: "lease-1",
-        controlLeaseExpiresAt: new Date(Date.now() + 60_000),
-      },
+      computers: [
+        {
+          id: "computer-1",
+          botId: "bot-1",
+          controlHolder: "user",
+          controlBotId: "bot-1",
+          controlRunId: "run-1",
+          controlLeaseId: "lease-1",
+          controlLeaseExpiresAt: new Date(Date.now() + 60_000),
+        },
+      ],
     });
     expect(returning.interactions).toEqual([
       expect.objectContaining({ kind: "session_control", action: "return" }),
@@ -481,6 +486,68 @@ describe("CARD-01 thread card surface", () => {
       messages: [message([{ kind: "computer", state: "running", text: "Bot took over" }])],
     });
     expect(historicalOnly.interactions).toEqual([]);
+  });
+
+  it("projects delegated takeovers from separate Bots in one visible thread", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      runs: [
+        {
+          id: "run-delegated-1",
+          spaceId: "space-1",
+          threadId: "thread-1",
+          botId: "bot-2",
+          status: "waiting_takeover",
+          createdAt,
+          waitStartedAt: createdAt,
+          executionLeaseActive: false,
+        },
+        {
+          id: "run-delegated-2",
+          spaceId: "space-1",
+          threadId: "thread-1",
+          botId: "bot-3",
+          status: "waiting_takeover",
+          createdAt,
+          waitStartedAt: createdAt,
+          executionLeaseActive: false,
+        },
+      ],
+      computers: [
+        {
+          id: "computer-2",
+          botId: "bot-2",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-delegated-1",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+        {
+          id: "computer-3",
+          botId: "bot-3",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-delegated-2",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+      ],
+    });
+    expect(surface.interactions).toEqual([
+      expect.objectContaining({
+        kind: "session_control",
+        action: "takeover",
+        runId: "run-delegated-1",
+        computerId: "computer-2",
+      }),
+      expect.objectContaining({
+        kind: "session_control",
+        action: "takeover",
+        runId: "run-delegated-2",
+        computerId: "computer-3",
+      }),
+    ]);
   });
 
   it("never leaks answer, secret, address, payment body, or effect payloads", () => {

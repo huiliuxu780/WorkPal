@@ -249,6 +249,8 @@ describe("CARD-01 snapshot gate", () => {
         findMany: vi.fn().mockResolvedValue([]),
       },
       run: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
+      thread: { findMany: vi.fn().mockResolvedValue([]) },
+      bot: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const prisma = {
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
@@ -260,7 +262,7 @@ describe("CARD-01 snapshot gate", () => {
       spaceId: "space-1",
       bot: { name: "Bot", computer: null },
     } as ThreadTarget;
-    return { prisma, target };
+    return { prisma, target, tx };
   }
 
   it("leaves the old snapshot shape untouched while the gate is off", async () => {
@@ -278,6 +280,112 @@ describe("CARD-01 snapshot gate", () => {
     expect(snapshot.interactions).toEqual([]);
     expect(snapshot.displayBlocks).toEqual([]);
     expect(snapshot).not.toHaveProperty("attention");
+  });
+
+  it("projects a delegated takeover into the visible origin thread", async () => {
+    const { prisma, target, tx } = fixture();
+    const delegatedRun = {
+      id: "run-delegated",
+      spaceId: "space-1",
+      threadId: "pair-thread-1",
+      botId: "bot-2",
+      status: "waiting_takeover",
+      waitKind: "takeover",
+      createdAt: new Date("2026-10-24T10:00:00.000Z"),
+      waitStartedAt: new Date("2026-10-24T10:00:00.000Z"),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    };
+    tx.run.findMany.mockImplementation(async (args: { where?: { originThreadId?: unknown } }) =>
+      args?.where?.originThreadId ? [delegatedRun] : [],
+    );
+    tx.bot.findMany.mockResolvedValue([
+      {
+        id: "bot-2",
+        computer: {
+          id: "computer-2",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-delegated",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+      },
+    ]);
+
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+
+    expect(snapshot.interactions).toEqual([
+      expect.objectContaining({
+        kind: "session_control",
+        action: "takeover",
+        runId: "run-delegated",
+        botId: "bot-2",
+        computerId: "computer-2",
+        source: expect.objectContaining({
+          threadId: "thread-1",
+          runId: "run-delegated",
+          botId: "bot-2",
+        }),
+      }),
+    ]);
+    // The hidden pair Thread must never reach the visible snapshot.
+    expect(JSON.stringify(snapshot)).not.toContain("pair-thread-1");
+  });
+
+  it("projects a delegated takeover into the visible origin group thread", async () => {
+    const { prisma, target: botTarget, tx } = fixture();
+    const delegatedRun = {
+      id: "run-delegated",
+      spaceId: "space-1",
+      threadId: "pair-thread-1",
+      botId: "bot-2",
+      status: "waiting_takeover",
+      waitKind: "takeover",
+      createdAt: new Date("2026-10-24T10:00:00.000Z"),
+      waitStartedAt: new Date("2026-10-24T10:00:00.000Z"),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    };
+    tx.run.findMany.mockImplementation(async (args: { where?: { originThreadId?: unknown } }) =>
+      args?.where?.originThreadId ? [delegatedRun] : [],
+    );
+    tx.bot.findMany.mockResolvedValue([
+      {
+        id: "bot-2",
+        computer: {
+          id: "computer-2",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-delegated",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+      },
+    ]);
+    const target = {
+      kind: "group",
+      groupId: "group-1",
+      groupName: "Group",
+      spaceId: botTarget.kind === "bot" ? botTarget.spaceId : "space-1",
+      leadBotId: null,
+      members: [],
+      memberBotIds: [],
+      threadId: "thread-1",
+    } as ThreadTarget;
+
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+
+    expect(snapshot.interactions).toEqual([
+      expect.objectContaining({
+        kind: "session_control",
+        action: "takeover",
+        runId: "run-delegated",
+        computerId: "computer-2",
+        source: expect.objectContaining({ threadId: "thread-1", botId: "bot-2" }),
+      }),
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain("pair-thread-1");
   });
 });
 

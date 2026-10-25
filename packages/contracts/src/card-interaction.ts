@@ -635,6 +635,8 @@ export interface SessionControlRunFact {
 
 export interface SessionControlComputerFact {
   id: string;
+  /** The Bot this Computer belongs to; each Run resolves control per Bot. */
+  botId: string;
   controlHolder: string;
   controlBotId: string | null;
   controlRunId: string | null;
@@ -654,26 +656,30 @@ function iso(value: Date | string): string {
  * - takeover requires Run status waiting_takeover.
  * - return requires Computer.controlRunId === run.id, a live user control
  *   lease for the same Bot, and no active bot execution lease.
+ *
+ * Computers are keyed by Bot: a visible Thread can surface a delegated Run
+ * whose Computer is not the Thread owner's.
  */
 export function deriveSessionControlViews(input: {
   runs: readonly SessionControlRunFact[];
-  computer: SessionControlComputerFact | null;
+  computers: readonly SessionControlComputerFact[];
   now?: Date;
 }): SessionControlView[] {
   const now = input.now ?? new Date();
-  const computer = input.computer;
-  const controlLeaseExpiresAt = computer?.controlLeaseExpiresAt
-    ? new Date(computer.controlLeaseExpiresAt)
-    : null;
-  const userLeaseActive = Boolean(
-    computer &&
-      computer.controlHolder === "user" &&
-      computer.controlLeaseId &&
-      controlLeaseExpiresAt &&
-      controlLeaseExpiresAt.getTime() > now.getTime(),
-  );
+  const computersByBot = new Map(input.computers.map((computer) => [computer.botId, computer]));
   const views: SessionControlView[] = [];
   for (const run of input.runs) {
+    const computer = computersByBot.get(run.botId) ?? null;
+    const controlLeaseExpiresAt = computer?.controlLeaseExpiresAt
+      ? new Date(computer.controlLeaseExpiresAt)
+      : null;
+    const userLeaseActive = Boolean(
+      computer &&
+        computer.controlHolder === "user" &&
+        computer.controlLeaseId &&
+        controlLeaseExpiresAt &&
+        controlLeaseExpiresAt.getTime() > now.getTime(),
+    );
     const createdAt = iso(run.waitStartedAt ?? run.createdAt);
     // A live user takeover bound to this Run is the current action; it must
     // win over the original waiting_takeover request, otherwise the card would

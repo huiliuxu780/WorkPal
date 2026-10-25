@@ -461,10 +461,16 @@ describe("CARD-01 SessionControlView derivation", () => {
 
   it("projects takeover only from waiting_takeover", () => {
     expect(
-      deriveSessionControlViews({ runs: [{ ...run, status: "waiting_takeover" }], computer: null }),
+      deriveSessionControlViews({
+        runs: [{ ...run, status: "waiting_takeover" }],
+        computers: [],
+      }),
     ).toEqual([expect.objectContaining({ action: "takeover", runId: "run-1", computerId: null })]);
     expect(
-      deriveSessionControlViews({ runs: [{ ...run, status: "waiting_input" }], computer: null }),
+      deriveSessionControlViews({
+        runs: [{ ...run, status: "waiting_input" }],
+        computers: [],
+      }),
     ).toEqual([]);
   });
 
@@ -472,6 +478,7 @@ describe("CARD-01 SessionControlView derivation", () => {
     const now = new Date("2026-10-24T10:00:00.000Z");
     const computer = {
       id: "computer-1",
+      botId: "bot-1",
       controlHolder: "user",
       controlBotId: "bot-1",
       controlRunId: "run-1",
@@ -481,30 +488,65 @@ describe("CARD-01 SessionControlView derivation", () => {
     expect(
       deriveSessionControlViews({
         runs: [{ ...run, status: "waiting_takeover" }],
-        computer,
+        computers: [computer],
         now,
       }).map((view) => view.action),
     ).toEqual(["return"]);
     expect(
       deriveSessionControlViews({
         runs: [{ ...run, status: "waiting_takeover" }],
-        computer: { ...computer, controlLeaseExpiresAt: "2026-10-24T09:59:59.000Z" },
+        computers: [{ ...computer, controlLeaseExpiresAt: "2026-10-24T09:59:59.000Z" }],
         now,
       }).map((view) => view.action),
     ).toEqual(["takeover"]);
     expect(
       deriveSessionControlViews({
         runs: [{ ...run, status: "waiting_takeover" }],
-        computer: { ...computer, controlRunId: "run-other" },
+        computers: [{ ...computer, controlRunId: "run-other" }],
         now,
       }).map((view) => view.action),
     ).toEqual(["takeover"]);
     expect(
       deriveSessionControlViews({
         runs: [{ ...run, status: "waiting_takeover", executionLeaseActive: true }],
-        computer,
+        computers: [computer],
         now,
       }).map((view) => view.action),
     ).toEqual(["takeover"]);
+  });
+
+  it("resolves each delegated Run's control against its own Bot's Computer", () => {
+    const now = new Date("2026-10-24T10:00:00.000Z");
+    const views = deriveSessionControlViews({
+      runs: [
+        { ...run, id: "run-1", botId: "bot-1", status: "waiting_takeover" },
+        { ...run, id: "run-2", botId: "bot-2", status: "waiting_takeover" },
+      ],
+      computers: [
+        {
+          id: "computer-1",
+          botId: "bot-1",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-1",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+        {
+          id: "computer-2",
+          botId: "bot-2",
+          controlHolder: "user",
+          controlBotId: "bot-2",
+          controlRunId: "run-2",
+          controlLeaseId: "lease-2",
+          controlLeaseExpiresAt: "2026-10-24T10:15:00.000Z",
+        },
+      ],
+      now,
+    });
+    expect(views).toEqual([
+      expect.objectContaining({ action: "takeover", runId: "run-1", computerId: "computer-1" }),
+      expect.objectContaining({ action: "return", runId: "run-2", computerId: "computer-2" }),
+    ]);
   });
 });

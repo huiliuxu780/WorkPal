@@ -21,6 +21,9 @@ import {
   type SessionControlView,
   type ThreadMessage,
 } from "@rakazo/contracts";
+import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
+import { CHAT_GROUP_KIND_AGENT_PAIR } from "./agent-pairs.js";
+import { Prisma } from "./client.js";
 
 export interface CardMessageFact {
   id: string;
@@ -64,14 +67,150 @@ export interface ThreadCardSurfaceInput {
   interventions: readonly InterventionView[];
   /** Current Runs that may carry a takeover/return control. */
   runs: readonly CardRunFact[];
-  /** Current Computer row; history `computer` blocks are never consulted. */
-  computer: CardComputerFact | null;
+  /** Current Computer rows keyed by the Bot that owns them. */
+  computers?: readonly CardComputerFact[];
   /**
    * Business facts for group_membership. RT-12 owns persistence; CARD-01A only
    * defines and tests the strict projection.
    */
   groupMembershipApprovals?: readonly GroupMembershipApprovalFacts[];
   now?: Date;
+}
+
+const ORIGIN_CONTROL_MAX_DEPTH = 8;
+
+/**
+ * RT-05F publishes a delegated Run's takeover request into its first visible
+ * origin Thread while the Run itself stays bound to a hidden pair Thread, so
+ * the thread's headline Run cannot represent it and `computer` message blocks
+ * are display-only history. Walk the persisted origin chain the same way
+ * `resolveVisibleOrigin` does and return the active Runs whose visible origin
+ * is this Thread, already re-based onto the visible Thread. The caller derives
+ * SessionControlViews from these facts; only a live takeover request or a
+ * user-held return produces a view.
+ */
+export async function loadOriginControlFacts(
+  tx: Prisma.TransactionClient,
+  input: { spaceId: string; threadId: string },
+): Promise<{ runs: CardRunFact[]; computers: CardComputerFact[] }> {
+  const controlRuns: Array<{
+    id: string;
+    spaceId: string;
+    botId: string;
+    status: string;
+    waitKind: string | null;
+    createdAt: Date;
+    waitStartedAt: Date | null;
+    leaseOwner: string | null;
+    leaseExpiresAt: Date | null;
+  }> = [];
+  const seenRuns = new Set<string>();
+  const seenThreads = new Set<string>([input.threadId]);
+  let originThreadIds = [input.threadId];
+  for (let depth = 0; depth < ORIGIN_CONTROL_MAX_DEPTH && originThreadIds.length > 0; depth += 1) {
+    const runs = await tx.run.findMany({
+      where: {
+        spaceId: input.spaceId,
+        originThreadId: { in: originThreadIds },
+        originRunId: { not: null },
+        // readOrigin requires the full triple before presenting in an origin.
+        originMessageId: { not: null },
+        // message_group presents its waits in the target group, not the source.
+        trigger: { not: "message_group" },
+      },
+      select: {
+        id: true,
+        spaceId: true,
+        threadId: true,
+        botId: true,
+        status: true,
+        waitKind: true,
+        createdAt: true,
+        waitStartedAt: true,
+        leaseOwner: true,
+        leaseExpiresAt: true,
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    for (const run of runs) {
+      if (seenRuns.has(run.id)) continue;
+      seenRuns.add(run.id);
+      if ((ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status)) controlRuns.push(run);
+    }
+    const nextThreadIds = [...new Set(runs.map((run) => run.threadId))].filter(
+      (threadId) => !seenThreads.has(threadId),
+    );
+    if (nextThreadIds.length === 0) break;
+    for (const threadId of nextThreadIds) seenThreads.add(threadId);
+    // Only a hidden pair Thread continues the chain; a visible ancestor ends it.
+    const pairThreads = await tx.thread.findMany({
+      where: {
+        id: { in: nextThreadIds },
+        spaceId: input.spaceId,
+        group: { kind: CHAT_GROUP_KIND_AGENT_PAIR },
+      },
+      select: { id: true },
+    });
+    originThreadIds = pairThreads.map((thread) => thread.id);
+  }
+  if (controlRuns.length === 0) return { runs: [], computers: [] };
+  const bots = await tx.bot.findMany({
+    where: {
+      id: { in: [...new Set(controlRuns.map((run) => run.botId))] },
+      spaceId: input.spaceId,
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      computer: {
+        select: {
+          id: true,
+          controlHolder: true,
+          controlBotId: true,
+          controlRunId: true,
+          controlLeaseId: true,
+          controlLeaseExpiresAt: true,
+        },
+      },
+    },
+  });
+  const visibleBotIds = new Set(bots.map((bot) => bot.id));
+  return {
+    runs: controlRuns
+      .filter((run) => visibleBotIds.has(run.botId))
+      .map((run) => ({
+        id: run.id,
+        spaceId: run.spaceId,
+        // The Run executes in a hidden pair Thread; its control is presented
+        // in this visible origin Thread.
+        threadId: input.threadId,
+        botId: run.botId,
+        status: run.status,
+        waitKind: run.waitKind,
+        createdAt: run.createdAt,
+        waitStartedAt: run.waitStartedAt,
+        executionLeaseActive: Boolean(
+          (run.status === "leased" || run.status === "running") &&
+            run.leaseOwner &&
+            (!run.leaseExpiresAt || run.leaseExpiresAt.getTime() > Date.now()),
+        ),
+      })),
+    computers: bots.flatMap((bot) =>
+      bot.computer
+        ? [
+            {
+              id: bot.computer.id,
+              botId: bot.id,
+              controlHolder: bot.computer.controlHolder,
+              controlBotId: bot.computer.controlBotId,
+              controlRunId: bot.computer.controlRunId,
+              controlLeaseId: bot.computer.controlLeaseId,
+              controlLeaseExpiresAt: bot.computer.controlLeaseExpiresAt,
+            },
+          ]
+        : [],
+    ),
+  };
 }
 
 export function legacyBlockInteractionId(
@@ -385,7 +524,7 @@ export function projectThreadCardSurface(input: ThreadCardSurfaceInput): ThreadC
 
   const sessionControls: SessionControlView[] = deriveSessionControlViews({
     runs: input.runs,
-    computer: input.computer,
+    computers: input.computers ?? [],
     ...(input.now ? { now: input.now } : {}),
   });
 

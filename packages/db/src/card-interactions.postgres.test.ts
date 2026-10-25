@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { MessageBlock, PlanReviewContent } from "@rakazo/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cardMessageFact, projectThreadCardSurface } from "./card-interactions.js";
+import { CHAT_GROUP_KIND_AGENT_PAIR } from "./agent-pairs.js";
+import {
+  cardMessageFact,
+  loadOriginControlFacts,
+  projectThreadCardSurface,
+} from "./card-interactions.js";
 import type { PrismaClient } from "./client.js";
 import { pauseRunForInput } from "./events.js";
 import { loadInterventionViews } from "./interventions.js";
@@ -120,7 +125,6 @@ describePostgres("CARD-01 card projection (PostgreSQL)", () => {
         ),
         interventions: views,
         runs: [],
-        computer: null,
       });
     }, TX);
   }
@@ -312,5 +316,146 @@ describePostgres("CARD-01 card projection (PostgreSQL)", () => {
         },
       }),
     ]);
+  });
+
+  it("walks nested pair origins for delegated takeover controls", async () => {
+    const visible = await freshThread();
+    async function pairThread(name: string) {
+      const group = await prisma.chatGroup.create({
+        data: {
+          spaceId: id,
+          userId: id,
+          name,
+          kind: CHAT_GROUP_KIND_AGENT_PAIR,
+          pairKey: `${id}:${name}`,
+        },
+      });
+      const thread = await prisma.thread.create({
+        data: { spaceId: id, userId: id, groupId: group.id },
+      });
+      return thread.id;
+    }
+    async function delegatedRun(input: {
+      threadId: string;
+      botId: string;
+      originThreadId: string;
+      originRunId: string;
+      status: string;
+      trigger?: string;
+    }) {
+      const task = await prisma.task.create({
+        data: {
+          spaceId: id,
+          userId: id,
+          botId: input.botId,
+          threadId: input.threadId,
+          prompt: "Delegated",
+          status: input.status,
+        },
+      });
+      return prisma.run.create({
+        data: {
+          spaceId: id,
+          userId: id,
+          botId: input.botId,
+          threadId: input.threadId,
+          taskId: task.id,
+          status: input.status,
+          trigger: input.trigger ?? "bot_message",
+          originThreadId: input.originThreadId,
+          originRunId: input.originRunId,
+          originMessageId: "origin-message",
+        },
+      });
+    }
+    const outerBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Outer bot", color: "test" },
+    });
+    const innerBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Inner bot", color: "test" },
+    });
+    const outerPairThreadId = await pairThread("outer-pair");
+    const innerPairThreadId = await pairThread("inner-pair");
+    // A completed delegation hop still authorizes the walk to its child.
+    const outerRun = await delegatedRun({
+      threadId: outerPairThreadId,
+      botId: outerBot.id,
+      originThreadId: visible.threadId,
+      originRunId: "run-visible-origin",
+      status: "completed",
+    });
+    const directRun = await delegatedRun({
+      threadId: outerPairThreadId,
+      botId: outerBot.id,
+      originThreadId: visible.threadId,
+      originRunId: "run-visible-origin-direct",
+      status: "waiting_takeover",
+    });
+    const nestedRun = await delegatedRun({
+      threadId: innerPairThreadId,
+      botId: innerBot.id,
+      originThreadId: outerPairThreadId,
+      originRunId: outerRun.id,
+      status: "waiting_takeover",
+    });
+    const computer = await prisma.computer.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        scopeKey: `${id}:inner-computer`,
+        homeKey: `${id}:inner-home`,
+        kind: "docker",
+        state: "running",
+        controlRunId: nestedRun.id,
+      },
+    });
+    await prisma.bot.update({
+      where: { id: innerBot.id },
+      data: { computerId: computer.id },
+    });
+    // Excluded: another visible origin, message_group presentations, archived bots.
+    const otherVisible = await freshThread();
+    await delegatedRun({
+      threadId: outerPairThreadId,
+      botId: outerBot.id,
+      originThreadId: otherVisible.threadId,
+      originRunId: "other-origin",
+      status: "waiting_takeover",
+    });
+    await delegatedRun({
+      threadId: outerPairThreadId,
+      botId: outerBot.id,
+      originThreadId: visible.threadId,
+      originRunId: "group-origin",
+      status: "waiting_takeover",
+      trigger: "message_group",
+    });
+    const archivedBot = await prisma.bot.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        name: "Archived bot",
+        color: "test",
+        archivedAt: new Date(),
+      },
+    });
+    await delegatedRun({
+      threadId: outerPairThreadId,
+      botId: archivedBot.id,
+      originThreadId: visible.threadId,
+      originRunId: "archived-origin",
+      status: "waiting_takeover",
+    });
+
+    const facts = await prisma.$transaction((tx) =>
+      loadOriginControlFacts(tx, { spaceId: id, threadId: visible.threadId }),
+    );
+
+    expect(facts.runs.map((run) => run.id).sort()).toEqual([directRun.id, nestedRun.id].sort());
+    expect(facts.runs.every((run) => run.threadId === visible.threadId)).toBe(true);
+    expect(facts.computers).toEqual([
+      expect.objectContaining({ id: computer.id, botId: innerBot.id, controlRunId: nestedRun.id }),
+    ]);
+    expect(JSON.stringify(facts)).not.toContain("origin-message");
   });
 });
