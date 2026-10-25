@@ -2,6 +2,7 @@ import {
   ACTIVE_RUN_STATUSES,
   decideMessageRoute,
   type MessageRouteDecision,
+  STEERING_CANDIDATE_ORDER,
   type SteeringCandidate,
 } from "@rakazo/core";
 import type { Prisma } from "./client.js";
@@ -47,7 +48,7 @@ export async function readSteeringCandidates(
       status: { in: [...ACTIVE_RUN_STATUSES] },
     },
     select: CANDIDATE_SELECT,
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    orderBy: [...STEERING_CANDIDATE_ORDER],
   });
   return runs.map((run) => ({
     runId: run.id,
