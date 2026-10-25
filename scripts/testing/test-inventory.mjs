@@ -170,7 +170,7 @@ export const ENTRYPOINTS = {
   "docs-verify": {
     command: "pnpm test:docs",
     kind: "script",
-    ciJob: null,
+    ciJob: "harness",
     requires: [],
     scriptIncludes: "docs/roundtable/*.test.mjs",
     filePattern: /^docs\/roundtable\/.+\.test\.mjs$/,

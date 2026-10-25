@@ -88,6 +88,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm test:inventory
       - run: pnpm test:ci-select
+      - run: pnpm test:docs
       - name: Unit tests (inventory-selected, hermetic)
         if: ${{ needs.select-checks.outputs.harness_mode == 'full' || needs.select-checks.outputs.harness_mode == 'unit' }}
         run: pnpm test:unit

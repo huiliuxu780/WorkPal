@@ -589,6 +589,7 @@ describe("workflow contract", () => {
     assert.match(block, /pnpm lint/);
     assert.match(block, /pnpm test:inventory/);
     assert.match(block, /pnpm test:ci-select/);
+    assert.match(block, /pnpm test:docs/);
     assert.match(block, /pnpm test:unit/);
     assert.match(
       block,

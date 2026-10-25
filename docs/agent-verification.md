@@ -58,7 +58,7 @@ and runs-list tests connect to PostgreSQL despite their plain names.
 
 `node-test` files are not mixed into Vitest: selector and inventory tests run
 through `pnpm test:ci-select`, and roundtable document verifiers run through
-`pnpm test:docs`.
+`pnpm test:docs`. The harness CI job runs both commands.
 
 `pnpm test:inventory` fails on an unclassified tracked test, a rule whose file
 was deleted, a rule whose marker no longer matches, a multi-entry classification
