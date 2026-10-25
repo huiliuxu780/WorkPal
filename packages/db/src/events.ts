@@ -17,6 +17,7 @@ import {
   blocksToAgentHistoryText,
   budgetAskCheckpoint,
   callIdFromClientNonce,
+  decideMessageRoute,
   increasedBudgetForViolation,
   isApprovalAskBlock,
   isConversationalRun,
@@ -582,9 +583,10 @@ export async function sendUserMessage(
         clientNonce: input.clientNonce,
       });
       const createRun = input.createRun !== false;
-      // Include the creation intro. It has no tools, so it must not absorb the message, and a
-      // second run would overlap it on a dedicated computer. Pending steering waits for the
-      // continuation that starts when the intro finishes.
+      // RT-27: inbound messaging and webhook writes use the same decision as the
+      // web composer. Exactly one eligible conversational Run takes steering; two
+      // or more, or none, get their own Task instead of "whichever row came first".
+      // A creation intro, routine, webhook, or delivery turn is never a candidate.
       const activeRuns =
         createRun && !input.allowParallelRun
           ? await tx.run.findMany({
@@ -595,12 +597,27 @@ export async function sendUserMessage(
                   in: ["running", "queued", "leased", "waiting_input", "waiting_takeover"],
                 },
               },
-              select: { id: true, taskId: true, trigger: true },
+              select: { id: true, taskId: true, botId: true, status: true, trigger: true },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             })
           : [];
-      // Steer a conversational run when there is one; a routine, webhook, or intro turn only holds the queue.
+      const decision =
+        createRun && !input.allowParallelRun
+          ? decideMessageRoute({
+              botId: input.botId,
+              candidates: activeRuns.map((run) => ({
+                runId: run.id,
+                taskId: run.taskId,
+                botId: run.botId,
+                status: run.status,
+                trigger: run.trigger,
+              })),
+            })
+          : null;
       const busy =
-        activeRuns.find((run) => isConversationalRun(run.trigger)) ?? activeRuns[0] ?? null;
+        decision?.kind === "steer_existing_run"
+          ? (activeRuns.find((run) => run.id === decision.runId) ?? null)
+          : null;
       let task = null;
       let run = null;
       if (createRun && !busy) {
@@ -631,15 +648,12 @@ export async function sendUserMessage(
           await tx.message.update({ where: { id: message.id }, data: { runId: run.id } });
         }
       } else if (createRun && busy) {
-        const held = !isConversationalRun(busy.trigger);
         await tx.steeringMessage.create({
           data: {
             messageId: message.id,
             botId: input.botId,
             userId: input.userId,
-            // Keep messaging on the hold so the later run is mirrored back to that app.
-            runId: held ? null : busy.id,
-            ...(held && input.trigger === "messaging" ? { originTrigger: "messaging" } : {}),
+            runId: busy.id,
           },
         });
         await tx.message.update({ where: { id: message.id }, data: { runId: busy.id } });

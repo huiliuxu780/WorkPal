@@ -185,6 +185,13 @@ const threadSendInput = threadTarget
     replyToMessageId: Id.optional(),
     replyQuote: z.string().trim().min(1).max(REPLY_QUOTE_MAX_LENGTH).optional(),
     clientNonce: z.string().min(1).max(200).optional(),
+    /**
+     * RT-27: address an existing Task explicitly. The message becomes that
+     * Task's next instruction revision (or its recorded-only amendment when the
+     * Task is terminal); it never starts a new Task and never falls back to an
+     * active Run when the id is unknown or out of scope.
+     */
+    targetTaskId: Id.optional(),
   })
   .superRefine((input, ctx) => {
     const text = input.text?.trim() ?? "";
@@ -196,6 +203,36 @@ const threadSendInput = threadTarget
         message: "Provide text or at least one attachment",
         path: ["text"],
       });
+    }
+    if (input.targetTaskId) {
+      if (!text) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement needs text",
+          path: ["text"],
+        });
+      }
+      if (artifactIds.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement cannot carry attachments",
+          path: ["artifactIds"],
+        });
+      }
+      if (input.replyToMessageId) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement cannot reply to another message",
+          path: ["replyToMessageId"],
+        });
+      }
+      if (!input.clientNonce) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement needs a clientNonce",
+          path: ["clientNonce"],
+        });
+      }
     }
     if (input.replyQuote && !input.replyToMessageId) {
       ctx.addIssue({

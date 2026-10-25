@@ -1883,11 +1883,13 @@ describe("sendThreadMessage", () => {
     expect(tx.steeringMessage.create).not.toHaveBeenCalled();
   });
 
-  it("waits for the creation intro instead of starting a second run", async () => {
+  it("queues an independent run instead of steering into the creation intro", async () => {
+    let messageSeq = 0;
+    let eventSeq = 0;
     const tx = {
       thread: {
         update: vi.fn(async ({ data }: { data: { nextMessageSeq?: unknown } }) =>
-          data.nextMessageSeq ? { nextMessageSeq: 2 } : { nextEventSeq: 3 },
+          data.nextMessageSeq ? { nextMessageSeq: ++messageSeq } : { nextEventSeq: ++eventSeq },
         ),
       },
       message: {
@@ -1907,14 +1909,23 @@ describe("sendThreadMessage", () => {
       run: {
         findMany: vi
           .fn()
-          .mockResolvedValue([
-            { id: "intro-run", taskId: "intro-task", status: "running", trigger: "created" },
-          ]),
-        create: vi.fn(),
+          .mockResolvedValueOnce([
+            {
+              id: "intro-run",
+              taskId: "intro-task",
+              botId: "bot-1",
+              status: "running",
+              trigger: "created",
+            },
+          ])
+          .mockResolvedValue([]),
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: "run-user", taskId: "task-user", botId: "bot-1", status: "queued" }),
         findUnique: vi.fn().mockResolvedValue({ status: "running", startedAt: new Date() }),
         updateMany: vi.fn(),
       },
-      task: { create: vi.fn(), updateMany: vi.fn() },
+      task: { create: vi.fn().mockResolvedValue({ id: "task-user" }), updateMany: vi.fn() },
       steeringMessage: { create: vi.fn() },
       event: {
         create: vi.fn().mockResolvedValue({ seq: 2, threadId: "thread-1" }),
@@ -1946,22 +1957,25 @@ describe("sendThreadMessage", () => {
         { text: "Check the inbox", clientNonce: "nonce-during-intro" },
       ),
     ).resolves.toMatchObject({
-      runId: "intro-run",
-      taskId: "intro-task",
-      runIds: ["intro-run"],
+      runId: "run-user",
+      taskId: "task-user",
+      runIds: ["run-user"],
     });
-    // Pending steering: the intro never claims it, so only that turn replies.
-    // The continuation after it finishes answers with tools.
-    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
-      data: { messageId: "msg-1", botId: "bot-1", userId: "user-1", runId: null },
-    });
-    expect(tx.run.create).not.toHaveBeenCalled();
-    expect(tx.task.create).not.toHaveBeenCalled();
+    // The creation intro is not the conversation, so it never claims the text.
+    // RT-27 queues the message as its own Run; RT-25 admission serializes it
+    // behind the intro instead of overlapping on the computer.
+    expect(tx.steeringMessage.create).not.toHaveBeenCalled();
+    expect(tx.task.create).toHaveBeenCalledTimes(1);
+    expect(tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "queued", trigger: "user", botId: "bot-1" }),
+      }),
+    );
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "msg-1" },
-      data: { runId: "intro-run" },
+      data: { runId: "run-user" },
     });
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "run.continue" }));
   });
 
   it("steers a waiting-takeover run instead of refusing the message", async () => {
@@ -1987,9 +2001,15 @@ describe("sendThreadMessage", () => {
         update: vi.fn(),
       },
       run: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ id: "run-waiting", taskId: "task-1", status: "waiting_takeover" }]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "run-waiting",
+            taskId: "task-1",
+            botId: "bot-1",
+            status: "waiting_takeover",
+            trigger: "user",
+          },
+        ]),
         findUnique: vi.fn().mockResolvedValue({
           status: "waiting_takeover",
           startedAt: new Date(),
@@ -2043,7 +2063,7 @@ describe("sendThreadMessage", () => {
     expect(tx.task.create).not.toHaveBeenCalled();
     expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "run.continue" }));
   });
-  it("keeps a message pending instead of steering into an active routine run", async () => {
+  it("queues an independent run instead of steering into an active routine run", async () => {
     let messageSeq = 0;
     let eventSeq = 0;
     const tx = {
@@ -2109,24 +2129,26 @@ describe("sendThreadMessage", () => {
         { text: "what are the alternatives?", clientNonce: "nonce-routine" },
       ),
     ).resolves.toMatchObject({
-      runId: "run-routine",
-      taskId: "task-routine",
-      runIds: ["run-routine"],
+      runId: "run-user",
+      taskId: "task-user",
+      runIds: ["run-user"],
     });
-    // Pending steering (no run): the routine's turn never claims it, and the continuation
-    // that starts when the routine finishes answers with the full thread.
-    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
-      data: { messageId: "msg-1", botId: "bot-1", userId: "user-1", runId: null },
-    });
-    expect(tx.task.create).not.toHaveBeenCalled();
-    expect(tx.run.create).not.toHaveBeenCalled();
+    // A routine turn carries its own prompt; RT-27 never steers it. The message
+    // becomes its own queued Task/Run and waits for admission.
+    expect(tx.steeringMessage.create).not.toHaveBeenCalled();
+    expect(tx.task.create).toHaveBeenCalledTimes(1);
+    expect(tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "queued", trigger: "user" }),
+      }),
+    );
     expect(tx.message.update).toHaveBeenCalledWith({
       where: { id: "msg-1" },
-      data: { runId: "run-routine" },
+      data: { runId: "run-user" },
     });
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "run.continue" }));
   });
-  it("keeps a group message pending instead of steering into a member's webhook run", async () => {
+  it("queues an independent group run instead of steering into a member's webhook run", async () => {
     let messageSeq = 0;
     let eventSeq = 0;
     const tx = {
@@ -2211,11 +2233,13 @@ describe("sendThreadMessage", () => {
       { text: "status?", clientNonce: "nonce-group-webhook" },
     );
 
-    expect(result).toMatchObject({ runId: "run-webhook", taskId: "task-webhook" });
-    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
-      data: { messageId: "msg-1", botId: "bot-a", userId: "user-1", runId: null },
-    });
-    expect(tx.run.create).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ runId: "run-a", taskId: "task-a" });
+    expect(tx.steeringMessage.create).not.toHaveBeenCalled();
+    expect(tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "queued", botId: "bot-a" }),
+      }),
+    );
   });
   it("answers a routine run waiting for input from the composer", async () => {
     const waitingAsk = {
@@ -2494,10 +2518,17 @@ describe("sendThreadMessage", () => {
             {
               id: "run-routine",
               taskId: "task-routine",
+              botId: "bot-1",
               status: "waiting_input",
               trigger: "routine",
             },
-            { id: "run-user", taskId: "task-user", status: "running", trigger: "user" },
+            {
+              id: "run-user",
+              taskId: "task-user",
+              botId: "bot-1",
+              status: "running",
+              trigger: "user",
+            },
           ])
           .mockResolvedValue([]),
         findUnique: vi.fn().mockResolvedValue({ status: "running", startedAt: new Date() }),

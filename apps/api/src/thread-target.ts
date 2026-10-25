@@ -38,6 +38,8 @@ import {
   hasMentionToken,
   isActive,
   isConversationalRun,
+  decideMessageRoute,
+  type MessageRouteRejectCode,
   projectActivity,
   projectMessages,
   type ResolvedTurnOwner,
@@ -52,8 +54,9 @@ import { deriveMessageQuote } from "@rakazo/core/message-quote";
 import {
   answerSingleOrdinaryTextInTransaction,
   appendEventInTransaction,
-  cancelChildrenOfCancelledRuns,
   applyCancelTerminalPolicy,
+  applyTaskAmendmentInTransaction,
+  cancelChildrenOfCancelledRuns,
   cancelEventPayload,
   cancelPolicyFor,
   cardMessageFact,
@@ -74,9 +77,12 @@ import {
   loadExecutionSummariesForMessages,
   loadInterventionViews,
   lockOwnedStandardGroupThread,
+  planMessageRoute,
   type Prisma,
   type PrismaClient,
   type ThreadEvents,
+  TaskAmendmentRejected,
+  TaskInstructionIntegrityError,
   touchGroupUpdatedAt,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
@@ -319,6 +325,85 @@ function sendRunClientNonce(
 ): string | undefined {
   if (!clientNonce) return undefined;
   return botId ? `send:${messageId}:${botId}` : `send:${messageId}`;
+}
+
+function targetTaskRouteError(code: MessageRouteRejectCode) {
+  const data = { code };
+  return code === "target_task_not_amendable"
+    ? new ORPCError("CONFLICT", {
+        message: "This task cannot take another instruction.",
+        data,
+      })
+    : new ORPCError("NOT_FOUND", { message: "Task was not found.", data });
+}
+
+/**
+ * RT-27 explicit Task supplement. The revision, the amendment Message/Event, and
+ * the steering or follow-up it implies commit together with the caller's send
+ * transaction; a rejection rolls the whole transaction back.
+ */
+async function commitExplicitTaskAmendment(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    threadId: string;
+    actorUserId: string;
+    targetTaskId: string;
+    text?: string;
+    clientNonce?: string;
+  },
+) {
+  const content = input.text?.trim();
+  if (!content) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: "A Task supplement needs its text.",
+      data: { code: "target_task_text_required" },
+    });
+  }
+  if (!input.clientNonce) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: "A Task supplement needs its client nonce.",
+      data: { code: "target_task_client_nonce_required" },
+    });
+  }
+  let appended: Awaited<ReturnType<typeof applyTaskAmendmentInTransaction>>;
+  try {
+    appended = await applyTaskAmendmentInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      actorUserId: input.actorUserId,
+      targetTaskId: input.targetTaskId,
+      content,
+      clientNonce: input.clientNonce,
+    });
+  } catch (error) {
+    if (error instanceof TaskAmendmentRejected) {
+      throw targetTaskRouteError(
+        error.reason === "not_found" ? "target_task_not_found" : "target_task_not_amendable",
+      );
+    }
+    if (error instanceof TaskInstructionIntegrityError) {
+      throw new ORPCError("CONFLICT", {
+        message: "This task's instruction history is no longer available.",
+      });
+    }
+    throw error;
+  }
+  const message = await tx.message.findUniqueOrThrow({ where: { id: appended.messageId } });
+  const runId =
+    appended.application.kind === "completed_follow_up"
+      ? appended.application.followUpRunId
+      : appended.application.targetRunId;
+  const run = await tx.run.findUniqueOrThrow({
+    where: { id: runId },
+    select: { id: true, taskId: true, status: true },
+  });
+  return {
+    message,
+    runs: [run],
+    eventSeq: appended.eventSeq,
+    supersededRunIds: [] as string[],
+  };
 }
 
 async function enqueueRunsNeedingContinue(
@@ -1207,10 +1292,23 @@ export async function sendThreadMessage(
     replyToMessageId?: string;
     replyQuote?: string;
     clientNonce?: string;
+    /** RT-27: explicit Task supplement; never a new Task or a candidate fallback. */
+    targetTaskId?: string;
   },
 ) {
   const existing = await replayExistingSend(deps, target.threadId, input.clientNonce);
   if (existing) return existing;
+  if (input.targetTaskId) {
+    // RT-27: a supplement is instruction text for one Task. Attachments and
+    // reply framing belong to a new message, not to a revision; refusing them is
+    // better than silently dropping what the user attached.
+    if ((input.artifactIds?.length ?? 0) > 0 || input.replyToMessageId) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "A Task supplement cannot carry attachments or a reply target.",
+        data: { code: "target_task_supplement_not_supported" },
+      });
+    }
+  }
   // Live events carry the call id so a spoken turn joins the call card on first
   // paint; without it the bubble shows loose until a refetch reads the nonce.
   const callId = callIdFromClientNonce(input.clientNonce);
@@ -1299,26 +1397,64 @@ export async function sendThreadMessage(
           await botThreadMentionLinkableIds(tx, actor, input),
         );
         const blocks = buildUserMessageBlocks(input.text, attachmentBlocks, mentionInlines);
-        const message = await createThreadMessageInTransaction(tx, {
-          threadId: target.threadId,
-          role: "user",
-          originKind: "human_web",
-          authorUserId: actor.userId,
-          blocks,
-          replyToMessageId,
-          replyQuote,
-          clientNonce: input.clientNonce,
-        });
+        // RT-27: the route is decided before any write, so a rejected explicit
+        // Task leaves no Message, Revision, Run, or steering row behind.
+        const route = input.targetTaskId
+          ? await planMessageRoute(tx, {
+              spaceId: actor.spaceId,
+              threadId: target.threadId,
+              actorUserId: actor.userId,
+              botId: target.botId,
+              targetTaskId: input.targetTaskId,
+            })
+          : null;
+        if (route?.decision.kind === "reject") throw targetTaskRouteError(route.decision.code);
+        if (route?.decision.kind === "amend_target_task") {
+          return commitExplicitTaskAmendment(tx, {
+            spaceId: actor.spaceId,
+            threadId: target.threadId,
+            actorUserId: actor.userId,
+            targetTaskId: route.decision.taskId,
+            text: input.text,
+            clientNonce: input.clientNonce,
+          });
+        }
         const activeRuns = await tx.run.findMany({
           where: {
             threadId: target.threadId,
             botId: target.botId,
             status: { in: [...ACTIVE_RUN_STATUSES] },
           },
-          select: { id: true, taskId: true, status: true, trigger: true },
+          select: { id: true, taskId: true, botId: true, status: true, trigger: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         });
+        const decision =
+          route?.decision ??
+          decideMessageRoute({
+            botId: target.botId,
+            candidates: activeRuns.map((run) => ({
+              runId: run.id,
+              taskId: run.taskId,
+              botId: run.botId,
+              status: run.status,
+              trigger: run.trigger,
+            })),
+          });
         const waitingRuns = activeRuns.filter((run) => run.status === "waiting_input");
-        if (waitingRuns.length && !activeRuns.some(steersUserMessage)) {
+        const noSteerableCandidate =
+          decision.kind === "create_independent_run" &&
+          decision.reason === "no_steerable_candidate";
+        if (noSteerableCandidate && waitingRuns.length) {
+          const message = await createThreadMessageInTransaction(tx, {
+            threadId: target.threadId,
+            role: "user",
+            originKind: "human_web",
+            authorUserId: actor.userId,
+            blocks,
+            replyToMessageId,
+            replyQuote,
+            clientNonce: input.clientNonce,
+          });
           const answerText = input.text?.trim();
           if (!answerText) {
             throw new ORPCError("CONFLICT", {
@@ -1362,31 +1498,43 @@ export async function sendThreadMessage(
           return { message, runs: answered, eventSeq: event.seq, supersededRunIds: [] as string[] };
         }
         if (
+          noSteerableCandidate &&
           activeRuns.some(
             (run) => run.status !== "waiting_input" && !STEERABLE_RUN_STATUSES.has(run.status),
           )
         ) {
+          // An unknown status on an active row cannot be steered safely.
           throw new ORPCError("CONFLICT", {
             message: "Answer the pending ask first.",
           });
         }
-        const active = activeRuns.find(steersUserMessage) ?? activeRuns[0];
-        if (active) {
+        const message = await createThreadMessageInTransaction(tx, {
+          threadId: target.threadId,
+          role: "user",
+          originKind: "human_web",
+          authorUserId: actor.userId,
+          blocks,
+          replyToMessageId,
+          replyQuote,
+          clientNonce: input.clientNonce,
+        });
+        if (decision.kind === "steer_existing_run") {
+          const steering = decision;
           await tx.steeringMessage.create({
             data: {
               messageId: message.id,
               botId: target.botId,
               userId: actor.userId,
-              runId: steersUserMessage(active) ? active.id : null,
+              runId: steering.runId,
             },
           });
-          await tx.message.update({ where: { id: message.id }, data: { runId: active.id } });
+          await tx.message.update({ where: { id: message.id }, data: { runId: steering.runId } });
           const event = await appendEventInTransaction(tx, {
             spaceId: actor.spaceId,
             threadId: target.threadId,
             botId: target.botId,
             type: "thread.message.created",
-            runId: active.id,
+            runId: steering.runId,
             payload: {
               messageId: message.id,
               role: "user",
@@ -1396,7 +1544,15 @@ export async function sendThreadMessage(
               replyQuote,
             },
           });
-          return { message, runs: [active], eventSeq: event.seq, supersededRunIds: [] as string[] };
+          const steered = activeRuns.find((run) => run.id === steering.runId);
+          return {
+            message,
+            runs: [
+              { id: steering.runId, taskId: steering.taskId, status: steered?.status ?? "running" },
+            ],
+            eventSeq: event.seq,
+            supersededRunIds: [] as string[],
+          };
         }
         const task = await tx.task.create({
           data: {
@@ -1557,6 +1713,32 @@ export async function sendThreadMessage(
       if (targetBotIds.some((botId) => !memberBotIds.includes(botId))) {
         throw new IsolationError("Group send resolved a non-member target");
       }
+      if (input.targetTaskId) {
+        // An explicit Task supplement addresses exactly one Bot. A broadcast or
+        // multi-target message cannot be a supplement, and a Task of a Bot this
+        // message did not address is not enumerable.
+        if (targetBotIds.length !== 1) throw targetTaskRouteError("target_task_not_found");
+        const plan = await planMessageRoute(tx, {
+          spaceId: actor.spaceId,
+          threadId: target.threadId,
+          actorUserId: actor.userId,
+          botId: targetBotIds[0]!,
+          targetTaskId: input.targetTaskId,
+        });
+        if (plan.decision.kind === "reject") throw targetTaskRouteError(plan.decision.code);
+        if (plan.decision.kind !== "amend_target_task") {
+          throw targetTaskRouteError("target_task_not_found");
+        }
+        await touchGroupUpdatedAt(tx, target.groupId);
+        return commitExplicitTaskAmendment(tx, {
+          spaceId: actor.spaceId,
+          threadId: target.threadId,
+          actorUserId: actor.userId,
+          targetTaskId: plan.decision.taskId,
+          text: input.text,
+          clientNonce: input.clientNonce,
+        });
+      }
       const { blocks: attachmentBlocks, artifacts } = await resolveGroupSendAttachments(
         { prisma: tx },
         actor,
@@ -1591,8 +1773,8 @@ export async function sendThreadMessage(
           status: { in: [...ACTIVE_RUN_STATUSES] },
         },
         select: { id: true, taskId: true, botId: true, status: true, trigger: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
-      const activeByBotId = new Map<string, (typeof activeRuns)[number]>();
       const answeredByBotId = new Map<string, Array<(typeof activeRuns)[number]>>();
       if (multiDispatch && activeRuns.length > 0) {
         // Independent per-target Runs and per-target instructions cannot be
@@ -1605,6 +1787,20 @@ export async function sendThreadMessage(
           },
         });
       }
+      // RT-27: one decision per addressed Bot, from the whole candidate set.
+      const candidates = activeRuns.map((run) => ({
+        runId: run.id,
+        taskId: run.taskId,
+        botId: run.botId,
+        status: run.status,
+        trigger: run.trigger,
+      }));
+      const routeByBotId = new Map(
+        targetBotIds.map((botId) => [
+          botId,
+          decideMessageRoute({ botId, candidates }),
+        ] as const),
+      );
       const conversationalBotIds = new Set(
         activeRuns.filter(steersUserMessage).map((run) => run.botId),
       );
@@ -1632,18 +1828,6 @@ export async function sendThreadMessage(
         }
         answeredByBotId.set(matched.botId, [{ ...matched, status: "queued" }]);
       }
-      for (const run of activeRuns) {
-        if (run.status === "waiting_input") continue;
-        if (!STEERABLE_RUN_STATUSES.has(run.status)) {
-          throw new ORPCError("CONFLICT", {
-            message: "Answer the pending ask first.",
-          });
-        }
-        const current = activeByBotId.get(run.botId);
-        if (!current || (!steersUserMessage(current) && steersUserMessage(run))) {
-          activeByBotId.set(run.botId, run);
-        }
-      }
       const runs: Array<{ id: string; taskId: string; botId: string; status: string }> = [];
       const instructionByBotId = new Map(
         dispatchTargets.map((target) => [target.botId, target.instruction] as const),
@@ -1655,19 +1839,25 @@ export async function sendThreadMessage(
           runs.push(...answered);
           continue;
         }
-        const active = activeByBotId.get(botId);
-        if (active) {
+        const decision = routeByBotId.get(botId);
+        if (decision?.kind === "steer_existing_run") {
           await tx.steeringMessage.create({
             data: {
               messageId: message.id,
               botId,
               userId: actor.userId,
-              runId: steersUserMessage(active) ? active.id : null,
+              runId: decision.runId,
             },
           });
-          runs.push(active);
+          runs.push({
+            id: decision.runId,
+            taskId: decision.taskId,
+            botId,
+            status: candidates.find((run) => run.runId === decision.runId)?.status ?? "running",
+          });
           continue;
         }
+        if (decision?.kind === "reject") throw targetTaskRouteError(decision.code);
         const task = await tx.task.create({
           data: {
             spaceId: actor.spaceId,
@@ -1708,7 +1898,9 @@ export async function sendThreadMessage(
       if (firstRun) {
         await tx.message.update({ where: { id: message.id }, data: { runId: firstRun.id } });
         const createdRuns = runs.filter(
-          (run) => !activeByBotId.has(run.botId) && !answeredByBotId.has(run.botId),
+          (run) =>
+            routeByBotId.get(run.botId)?.kind === "create_independent_run" &&
+            !answeredByBotId.has(run.botId),
         );
         if (createdRuns.length) {
           supersededRunIds = await cancelSupersededQueuedRuns(tx, {

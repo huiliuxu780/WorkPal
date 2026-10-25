@@ -2342,7 +2342,11 @@ describe("sendUserMessage", () => {
       steeringMessage: { create: vi.fn() },
       task: { create: vi.fn() },
       run: {
-        findMany: vi.fn().mockResolvedValue([{ id: "run-0", taskId: "task-0", trigger: "user" }]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { id: "run-0", taskId: "task-0", botId: "bot-1", status: "running", trigger: "user" },
+          ]),
         findUnique: vi.fn().mockResolvedValue({ status: "running" }),
         create: vi.fn(),
       },
@@ -2380,7 +2384,7 @@ describe("sendUserMessage", () => {
     });
   });
 
-  it("keeps an inbound message pending while the creation intro is active", async () => {
+  it("queues an inbound message as its own run behind the creation intro", async () => {
     const tx = {
       thread: {
         update: vi
@@ -2393,13 +2397,19 @@ describe("sendUserMessage", () => {
         update: vi.fn(),
       },
       steeringMessage: { create: vi.fn() },
-      task: { create: vi.fn() },
+      task: { create: vi.fn().mockResolvedValue({ id: "task-user" }) },
       run: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ id: "intro-run", taskId: "intro-task", trigger: "created" }]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "intro-run",
+            taskId: "intro-task",
+            botId: "bot-1",
+            status: "running",
+            trigger: "created",
+          },
+        ]),
         findUnique: vi.fn().mockResolvedValue({ status: "running", startedAt: new Date() }),
-        create: vi.fn(),
+        create: vi.fn().mockResolvedValue({ id: "run-user" }),
       },
       event: {
         create: vi.fn(async ({ data }: { data: { seq: number; type: string } }) => ({
@@ -2423,16 +2433,20 @@ describe("sendUserMessage", () => {
         prompt: "Check the inbox",
         trigger: "user",
       }),
-    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: null, runId: "intro-run" });
+    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: "task-user", runId: "run-user" });
 
-    expect(tx.run.create).not.toHaveBeenCalled();
-    expect(tx.task.create).not.toHaveBeenCalled();
-    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
-      data: { messageId: "message-1", botId: "bot-1", userId: "user-1", runId: null },
-    });
+    // The creation intro is not conversational, so it is never a steering
+    // candidate. RT-25 admission serializes the new Run behind it.
+    expect(tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "queued", trigger: "user", botId: "bot-1" }),
+      }),
+    );
+    expect(tx.task.create).toHaveBeenCalledTimes(1);
+    expect(tx.steeringMessage.create).not.toHaveBeenCalled();
   });
 
-  it("keeps a messaging inbound's origin on the hold behind the creation intro", async () => {
+  it("queues a messaging inbound behind the creation intro without a steering hold", async () => {
     const tx = {
       thread: {
         update: vi
@@ -2445,13 +2459,19 @@ describe("sendUserMessage", () => {
         update: vi.fn(),
       },
       steeringMessage: { create: vi.fn() },
-      task: { create: vi.fn() },
+      task: { create: vi.fn().mockResolvedValue({ id: "task-user" }) },
       run: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ id: "intro-run", taskId: "intro-task", trigger: "created" }]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "intro-run",
+            taskId: "intro-task",
+            botId: "bot-1",
+            status: "running",
+            trigger: "created",
+          },
+        ]),
         findUnique: vi.fn().mockResolvedValue({ status: "running", startedAt: new Date() }),
-        create: vi.fn(),
+        create: vi.fn().mockResolvedValue({ id: "run-user" }),
       },
       event: {
         create: vi.fn(async ({ data }: { data: { seq: number; type: string } }) => ({
@@ -2476,21 +2496,17 @@ describe("sendUserMessage", () => {
         trigger: "messaging",
         clientNonce: "messaging:slack:handle-1",
       }),
-    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: null, runId: "intro-run" });
+    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: "task-user", runId: "run-user" });
 
-    expect(tx.run.create).not.toHaveBeenCalled();
-    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
-      data: {
-        messageId: "message-1",
-        botId: "bot-1",
-        userId: "user-1",
-        runId: null,
-        originTrigger: "messaging",
-      },
-    });
+    expect(tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "queued", trigger: "messaging" }),
+      }),
+    );
+    expect(tx.steeringMessage.create).not.toHaveBeenCalled();
   });
 
-  it("keeps the message pending when the busy run is a routine turn", async () => {
+  it("creates an independent run when the busy run is a routine turn", async () => {
     const tx = {
       thread: {
         update: vi
@@ -2503,13 +2519,19 @@ describe("sendUserMessage", () => {
         update: vi.fn().mockResolvedValue({ id: "message-1" }),
       },
       steeringMessage: { create: vi.fn() },
-      task: { create: vi.fn() },
+      task: { create: vi.fn().mockResolvedValue({ id: "task-user" }) },
       run: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ id: "run-routine", taskId: "task-routine", trigger: "routine" }]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "run-routine",
+            taskId: "task-routine",
+            botId: "bot-1",
+            status: "running",
+            trigger: "routine",
+          },
+        ]),
         findUnique: vi.fn().mockResolvedValue({ status: "running" }),
-        create: vi.fn(),
+        create: vi.fn().mockResolvedValue({ id: "run-user" }),
       },
       event: {
         create: vi.fn(async ({ data }: { data: { seq: number; type: string } }) => ({
@@ -2532,20 +2554,14 @@ describe("sendUserMessage", () => {
         prompt: "hello",
         trigger: "messaging",
       }),
-    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: null, runId: "run-routine" });
+    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: "task-user", runId: "run-user" });
 
-    expect(tx.run.create).not.toHaveBeenCalled();
-    // No run on the steering row: the routine never claims it; its continuation does.
-    // The inbound stays messaging so that continuation is mirrored back to the app.
-    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
-      data: {
-        messageId: "message-1",
-        botId: "bot-1",
-        userId: "user-1",
-        runId: null,
-        originTrigger: "messaging",
-      },
-    });
+    // A routine turn carries its own prompt and is never a steering candidate;
+    // the inbound gets its own queued Run and RT-25 serializes execution.
+    expect(tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "queued" }) }),
+    );
+    expect(tx.steeringMessage.create).not.toHaveBeenCalled();
   });
 
   it("steers the conversational run when a parallel webhook turn is also active", async () => {
@@ -2564,8 +2580,20 @@ describe("sendUserMessage", () => {
       task: { create: vi.fn() },
       run: {
         findMany: vi.fn().mockResolvedValue([
-          { id: "run-webhook", taskId: "task-webhook", trigger: "webhook" },
-          { id: "run-user", taskId: "task-user", trigger: "user" },
+          {
+            id: "run-webhook",
+            taskId: "task-webhook",
+            botId: "bot-1",
+            status: "running",
+            trigger: "webhook",
+          },
+          {
+            id: "run-user",
+            taskId: "task-user",
+            botId: "bot-1",
+            status: "running",
+            trigger: "user",
+          },
         ]),
         findUnique: vi.fn().mockResolvedValue({ status: "running" }),
         create: vi.fn(),
