@@ -119,6 +119,46 @@ describePostgres("effect execution fence (PostgreSQL)", () => {
     return (await prisma.externalEffect.findUniqueOrThrow({ where: { id: effectId } })).status;
   }
 
+  async function waitForBlockedQuery(pattern: string) {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      const rows = await prisma.$queryRaw<{ xactStart: Date }[]>`
+        SELECT xact_start AS "xactStart"
+        FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND wait_event_type = 'Lock'
+          AND query ILIKE ${pattern}
+      `;
+      if (rows[0]) return rows[0];
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`No backend was waiting on a lock for ${pattern}`);
+  }
+
+  async function setLeaseExpiry(runId: string, seconds: number) {
+    await prisma.$executeRaw`
+      UPDATE "runs"
+      SET "leaseExpiresAt" = clock_timestamp() + make_interval(secs => ${seconds})
+      WHERE id = ${runId}
+    `;
+    const rows = await prisma.$queryRaw<{ leaseExpiresAt: Date }[]>`
+      SELECT "leaseExpiresAt" FROM "runs" WHERE id = ${runId}
+    `;
+    return rows[0]!.leaseExpiresAt;
+  }
+
+  async function waitForLeaseExpiry(runId: string) {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      const rows = await prisma.$queryRaw<{ expired: boolean }[]>`
+        SELECT clock_timestamp() >= "leaseExpiresAt" AS expired
+        FROM "runs"
+        WHERE id = ${runId}
+      `;
+      if (rows[0]?.expired) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error("Lease did not expire");
+  }
+
   describe("atomic claim", () => {
     it("claims approved exactly once and reports the existing executing state", async () => {
       const run = await seedRun();
@@ -456,6 +496,36 @@ describePostgres("effect execution fence (PostgreSQL)", () => {
 
       await expect(claim).resolves.toEqual({ outcome: "claimed", effectId: effect.id });
       expect(await effectStatus(effect.id)).toBe("executing");
+    });
+
+    it("rejects a claim whose lease expires while it waits for the effect lock", async () => {
+      const run = await seedRun();
+      const leaseExpiresAt = await setLeaseExpiry(run.id, 2);
+      const effect = await seedEffect(run.id, "approved");
+      const locked = deferred();
+      const release = deferred();
+
+      const blocker = prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "external_effects" WHERE id = ${effect.id} FOR UPDATE`;
+        locked.resolve();
+        await release.promise;
+      });
+      await locked.promise;
+      const claim = claimExternalEffectForExecution(prisma, {
+        effectId: effect.id,
+        expectedStatus: "approved",
+        execution: identity(run.id),
+      });
+      const waiting = await waitForBlockedQuery("%external_effects%");
+      // The claim's transaction began while the lease was live, which is the
+      // snapshot a transaction-start clock would have authorized.
+      expect(waiting.xactStart.getTime()).toBeLessThan(leaseExpiresAt.getTime());
+      await waitForLeaseExpiry(run.id);
+      release.resolve();
+      await blocker;
+
+      await expect(claim).resolves.toMatchObject({ outcome: "lease_expired" });
+      expect(await effectStatus(effect.id)).toBe("approved");
     });
 
     it("releases a claimed secret request only under the current fence", async () => {

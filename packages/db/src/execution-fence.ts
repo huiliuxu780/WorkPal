@@ -29,23 +29,47 @@ export class StaleExecutionError extends Error {
   }
 }
 
+/**
+ * Re-reads lease expiry against the database wall clock. `now()` is frozen at
+ * transaction start, and a lock wait can outlast the lease, so callers must use
+ * this while holding the Run row lock instead of a pre-lock snapshot.
+ */
+export async function readCurrentLeaseValidity(
+  tx: Prisma.TransactionClient,
+  runId: string,
+): Promise<Pick<LockedRunLease, "leaseExpiresAt" | "leaseValid"> | null> {
+  const rows = await tx.$queryRaw<Pick<LockedRunLease, "leaseExpiresAt" | "leaseValid">[]>`
+    SELECT
+      "leaseExpiresAt",
+      ("leaseExpiresAt" IS NOT NULL AND "leaseExpiresAt" > clock_timestamp()) AS "leaseValid"
+    FROM "runs"
+    WHERE id = ${runId}
+  `;
+  return rows[0] ?? null;
+}
+
 /** Locks the Run row first so cancellation, reclaim, renewal, and effect claims share one order. */
 export async function lockRunLease(
   tx: Prisma.TransactionClient,
   runId: string,
 ): Promise<LockedRunLease | null> {
-  const rows = await tx.$queryRaw<LockedRunLease[]>`
+  const rows = await tx.$queryRaw<Omit<LockedRunLease, "leaseValid">[]>`
     SELECT
       "status",
       "leaseOwner",
       "leaseFence",
-      "leaseExpiresAt",
-      ("leaseExpiresAt" IS NOT NULL AND "leaseExpiresAt" > now()) AS "leaseValid"
+      "leaseExpiresAt"
     FROM "runs"
     WHERE id = ${runId}
     FOR UPDATE
   `;
-  return rows[0] ?? null;
+  const run = rows[0];
+  if (!run) return null;
+  // The lock wait may have crossed the expiry, so validate on the current clock
+  // now that this transaction owns the row.
+  const current = await readCurrentLeaseValidity(tx, runId);
+  if (!current) return null;
+  return { ...run, ...current };
 }
 
 export function executionFenceFailure(

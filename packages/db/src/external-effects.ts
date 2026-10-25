@@ -3,6 +3,7 @@ import {
   type ExecutionIdentity,
   executionFenceFailure,
   lockRunLease,
+  readCurrentLeaseValidity,
 } from "./execution-fence.js";
 
 export type ClaimExternalEffectOutcome =
@@ -59,16 +60,21 @@ export async function claimExternalEffectForExecution(
       return { outcome: "effect_run_mismatch", effectRunId: effect.runId } as const;
     }
 
-    const failure = executionFenceFailure(run, input.execution);
+    // Waiting on the effect row can outlast the lease, so re-check expiry on the
+    // current database clock after both locks are held.
+    const lease = await readCurrentLeaseValidity(tx, input.execution.runId);
+    if (!lease) return { outcome: "run_not_found" } as const;
+    const guardedRun = { ...run, ...lease };
+    const failure = executionFenceFailure(guardedRun, input.execution);
     if (failure === "run_cancelled") return { outcome: "run_cancelled" } as const;
     if (failure === "run_not_running") {
-      return { outcome: "run_not_running", runStatus: run.status } as const;
+      return { outcome: "run_not_running", runStatus: guardedRun.status } as const;
     }
     if (failure === "lease_owner_mismatch" || failure === "lease_fence_mismatch") {
       return { outcome: "stale_execution", reason: failure } as const;
     }
     if (failure === "lease_expired") {
-      return { outcome: "lease_expired", leaseExpiresAt: run.leaseExpiresAt } as const;
+      return { outcome: "lease_expired", leaseExpiresAt: guardedRun.leaseExpiresAt } as const;
     }
     if (failure === "run_not_found") return { outcome: "run_not_found" } as const;
 
