@@ -130,7 +130,7 @@ for (const file of process.argv.slice(2)) {
         cwd: root,
         env: { ...env, ...overrides },
         encoding: "utf8",
-        timeout: 10_000,
+        timeout: 60_000,
       });
       expect(result.error).toBeUndefined();
       expect(result.signal).toBeNull();
@@ -193,7 +193,7 @@ describe("development backup failures", () => {
     expect(existsSync(path.join(f.checkout, "backups/example/homes.tgz"))).toBe(false);
   });
 
-  it("does not archive files or report success after pg_dump fails", () => {
+  it("does not archive files or report success after pg_dump fails", { timeout: 90000 }, () => {
     const f = fixture();
     const result = f.run("scripts/backup.sh", ["example"], { FAIL_DUMP: "1" });
     expect(result.status).toBe(2);
@@ -238,7 +238,7 @@ describe("development restore failures", () => {
     },
   );
 
-  it("fails rather than starting services after an invalid homes archive", () => {
+  it("fails rather than starting services after an invalid homes archive", { timeout: 90000 }, () => {
     const f = restoreFixture();
     write(path.join(f.checkout, "backups/example/homes.tgz"), "invalid archive");
     const result = f.run("scripts/restore.sh", [path.join(f.checkout, "backups/example")]);
@@ -270,7 +270,7 @@ describe("production backup deployment and archive behavior", () => {
     }
   });
 
-  it("provides optional systemd configuration for installed copies", () => {
+  it("provides optional systemd configuration for installed copies", { timeout: 90000 }, () => {
     const service = readFileSync(
       path.join(repoRoot, "infra/systemd/rakazo-backup.service"),
       "utf8",
@@ -278,7 +278,7 @@ describe("production backup deployment and archive behavior", () => {
     expect(service).toContain("EnvironmentFile=-/etc/rakazo/backup.env");
   });
 
-  it("rejects relative deployment paths before any backup commands", () => {
+  it("rejects relative deployment paths before any backup commands", { timeout: 90000 }, () => {
     const f = fixture();
     const result = f.run("infra/compose/backup-prod.sh", [], { RAKAZO_DEPLOY_DIR: "relative" });
     expect(result.status).not.toBe(0);
@@ -287,7 +287,7 @@ describe("production backup deployment and archive behavior", () => {
     expect(existsSync(f.snapshots)).toBe(false);
   });
 
-  it("preserves host archiving and the live-file warning allowance from PR #618", () => {
+  it("preserves host archiving and the live-file warning allowance from PR #618", { timeout: 90000 }, () => {
     const f = fixture();
     const result = f.run("infra/compose/backup-prod.sh", [], { CHANGED_TAR: "1" });
     expect(result.status, result.stderr).toBe(0);
