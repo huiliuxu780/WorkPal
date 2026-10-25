@@ -866,4 +866,31 @@ describePostgres("RT-26 AgentScope session checkpoint (PostgreSQL)", () => {
       { seq: 3, role: "user", content: "follow-up from the user" },
     ]);
   });
+
+  it("keeps the newest limit window in ascending seq order when more arrived while suspended", async () => {
+    // PR #126 review P2 ②: an ascending take kept the OLDEST 40 messages and
+    // dropped the newest conversation once a long suspension exceeded the cap.
+    // The window must be the NEWEST `limit` rows, still returned in ascending
+    // seq order, and it must include the very last message.
+    const { thread } = await newDirectSession();
+    await prisma.message.createMany({
+      data: Array.from({ length: 45 }, (_, index) => ({
+        threadId: thread.id,
+        seq: index + 1,
+        role: "user" as const,
+        originKind: "user" as const,
+        blocks: [{ kind: "text", text: `suspended message ${index + 1}` }],
+      })),
+    });
+    const loaded = await loadThreadContextAfterCheckpoint(prisma, {
+      threadId: thread.id,
+      afterSeq: 0,
+      excludeRunId: "own-run",
+    });
+    expect(loaded).toHaveLength(40);
+    expect(loaded.map((message) => message.seq)).toEqual(
+      Array.from({ length: 40 }, (_, index) => index + 6),
+    );
+    expect(loaded.at(-1)).toEqual({ seq: 45, role: "user", content: "suspended message 45" });
+  });
 });

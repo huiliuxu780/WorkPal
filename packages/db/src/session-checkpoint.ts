@@ -465,11 +465,15 @@ export async function loadThreadContextAfterCheckpoint(
       role: { in: ["user", "assistant", "bot"] },
       OR: [{ runId: null }, { runId: { not: input.excludeRunId } }],
     },
-    orderBy: { seq: "asc" },
+    // PR #126 review P2 ②: an ascending take kept the OLDEST window and dropped
+    // the newest conversation once a thread exceeded the limit while suspended.
+    // Take the newest `limit` rows and reverse, so the Runtime still receives
+    // ascending seq order, the same excludeRunId semantics and the same cap.
+    orderBy: { seq: "desc" },
     take: limit,
     select: { seq: true, role: true, blocks: true },
   });
-  return rows.flatMap((row) => {
+  return rows.reverse().flatMap((row) => {
     if (row.role !== "user" && row.role !== "assistant" && row.role !== "bot") return [];
     const content = messageText(row.blocks);
     if (!content) return [];
