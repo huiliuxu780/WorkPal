@@ -161,6 +161,39 @@ describe("CARD-01 thread card surface", () => {
     expect(surface.attention).toHaveLength(3);
   });
 
+  it("keeps every same-kind approval block from one message addressable", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "app_connect",
+            connectorId: "composio",
+            provider: "gmail",
+            name: "Gmail",
+            description: "Read mail",
+            logo: null,
+            status: "pending",
+          },
+          {
+            kind: "app_connect",
+            connectorId: "composio",
+            provider: "drive",
+            name: "Drive",
+            description: "Read files",
+            logo: null,
+            status: "pending",
+          },
+        ]),
+      ],
+    });
+    const approvals = surface.interactions.filter((view) => view.kind === "action_approval");
+    expect(approvals).toHaveLength(2);
+    expect(new Set(approvals.map((view) => view.interactionId)).size).toBe(2);
+    expect(approvals.map((view) => view.presentation.text)).toEqual(["Gmail", "Drive"]);
+    expect(surface.attention).toHaveLength(2);
+  });
+
   it("treats settled legacy blocks as terminal history, never actionable", () => {
     const surface = projectThreadCardSurface({
       ...baseInput,

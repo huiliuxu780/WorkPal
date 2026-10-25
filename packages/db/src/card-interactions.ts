@@ -76,8 +76,12 @@ export interface ThreadCardSurfaceInput {
 export function legacyBlockInteractionId(
   messageId: string,
   block: "app_connect" | "mcp_approval" | "skill_draft",
+  blockIndex: number,
 ): string {
-  return `legacy_block:${block}:${messageId}`;
+  // A message may carry several approvals of the same kind (onboarding posts
+  // every suggested app_connect together), so the message id alone would make
+  // them overwrite each other in the projection map.
+  return `legacy_block:${block}:${messageId}:${blockIndex}`;
 }
 
 function messageSource(message: CardMessageFact) {
@@ -99,6 +103,7 @@ function terminalDecision(status: string): "approved" | "denied" | null {
 function approvalViewFromBlock(
   message: CardMessageFact,
   block: Extract<MessageBlock, { kind: "app_connect" | "mcp_approval" | "skill_draft" }>,
+  blockIndex: number,
 ): ActionApprovalView | null {
   const status: InteractionView["status"] =
     block.kind === "app_connect"
@@ -114,7 +119,7 @@ function approvalViewFromBlock(
         : block.status === "draft"
           ? "pending"
           : "answered";
-  const interactionId = legacyBlockInteractionId(message.id, block.kind);
+  const interactionId = legacyBlockInteractionId(message.id, block.kind, blockIndex);
   const presentation =
     block.kind === "app_connect"
       ? { text: block.name, detail: block.description }
@@ -210,7 +215,7 @@ export function interactionViewsFromMessages(messages: readonly CardMessageFact[
         block.kind === "mcp_approval" ||
         block.kind === "skill_draft"
       ) {
-        const view = approvalViewFromBlock(message, block);
+        const view = approvalViewFromBlock(message, block, index);
         if (view) interactions.push(view);
         return;
       }
