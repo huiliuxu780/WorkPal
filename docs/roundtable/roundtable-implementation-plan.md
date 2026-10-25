@@ -58,7 +58,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | --- | --- | --- | --- |
 | A. 固定 pair | RT-02 → RT-03 → RT-05 → RT-09 | pair identity、访问策略、private delivery、只读浮窗 | RT-19 |
 | B. 群内公开协作 | RT-06 与 RT-07 并行；之后 RT-08、RT-10 | public `message_bot`、mention、公开委派 UI、多 mention | RT-24 |
-| C. 跨群调度 | RT-11 → RT-12 | `message_group`、成员审批、跨会话回流 | RT-19 |
+| C. 跨群调度 | RT-11 → RT-12（另需 CARD-01A、CARD-01B） | `message_group`、成员审批、跨会话回流 | RT-19 |
 | D. Task 修订 | RT-13 → RT-14 | instruction log、prompt 迁移、状态转换 | RT-17、RT-20、RT-27 |
 | E. AgentScope 后台 | **暂停**：RT-15 两轮探针后，RT-16 → RT-17 → RT-18 不启动；先验证新 AgentScope 版本的三项最低能力 | SDK 探针、后台身份、revision、delivery | 待定 |
 | F. 群数据与 Web | RT-21 → RT-22；RT-20 可与其并行；之后 RT-23 | 详情、资料库、成员、例行任务、工作页 | RT-30 |
@@ -89,7 +89,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | RT-25 合入 | RT-26；若 RT-11、RT-14 也完成，同时派 RT-27 |
 | RT-03、RT-04 合入 | RT-05 |
 | RT-06、RT-07 合入 | RT-08 |
-| RT-04、RT-11 合入 | RT-12 |
+| RT-04、RT-11 合入、CARD-01A 与 CARD-01B 完成 | RT-12 |
 | RT-14、RT-16 合入 | RT-17 |
 | RT-16、RT-17 合入 | RT-18 |
 | RT-05 合入 | RT-09 |
@@ -100,6 +100,21 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 | RT-04、RT-16、RT-18、RT-19、RT-25、RT-26 合入 | RT-28 |
 | RT-15、RT-16、RT-18、RT-28 合入 | RT-29 |
 | RT-02 至 RT-29 全部满足依赖 | RT-30 |
+
+### 3.3 CARD-01 交叉边界
+
+ROADMAP-CARD-CONVERGE（2026-10-25）固定以下跨程序所有权，避免 CARD-01 与 RT-09、RT-11、RT-12、FIX-APPROVE-E 的协议和 UI 冲突：
+
+| 事项 | 协议/事实 owner | UI owner | 冻结边界 |
+| --- | --- | --- | --- |
+| `collaboration_receipt` | RT-11 业务事务和 outcome 回流 | RT-11 的 `GroupDestinationReceipt`；CARD-01B 只能复用无状态展示组件 | 保持 MessageBlock，不是 InteractionView，不进入 attention queue；locator 和状态所有权不变 |
+| private pair receipt | RT-05 / RT-09 | RT-09（FIX-PAIR-B） | 消息 affordance，不是 Card Shell；RT-09 先于 CARD-01B |
+| `group_membership` | CARD-01A 严格协议；RT-12 业务状态和持久事实 | CARD-01B Card Shell；CARD-01E 最终视觉验收 | 严格 payload，不退化为 `requestApproval(tool)`；X-GROUP-APPROVE / X-GROUP-FAIL 是唯一视觉基线 |
+| `task_status` | CARD-01A 契约 | CARD-01C DisplayBlock | 只展示正式工作投影，不进入 attention queue |
+| PD-01 Retry | PD-01P 集中投影 | PD-01F 消息入口 | 消息操作，不是 CARD 卡片成员；不改变 ExecutionCard 四信号 |
+| 审批、失败、恢复和 ExecutionCard 视觉 | RT-12、RT-24、RT-28 业务事实；CARD-01A 协议 | CARD-01B Shell；CARD-01E 最终验收 | FIX-APPROVE-E 不再独立创建第二套审批卡或状态 renderer |
+
+共享文件规则：CARD-01B 是 `Shell.tsx` Interaction renderer 接入、Card Shell、`InterventionRegion` 统一和 interaction 排序的唯一 owner；CARD-01C 是 DisplayBlock registry 的唯一 owner。B 未冻结接入接口前 C 不修改同一 Shell block；C 需要接入时由 B owner 提交集成 commit，或等 B 合入后 rebase 到 main。不允许两个独立分支并行修改同一 Shell block。
 
 ## 4. 开发任务
 
@@ -320,6 +335,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 全尺寸只读浮窗和 A、双向关系、B 组合胶囊。
 - 消息定位和更早历史加载。
 - receipt 与浮窗不新增侧边栏会话入口；pair 历史只能从来源 receipt 进入（DESIGN.md「该对话不进入侧边栏」）。
+- private receipt 是消息 affordance，不是 Card Shell 成员。它只显示单行轻回执或展开名单，不进入 attention queue。RT-09 必须在 CARD-01B 之前完成；CARD-01B 保留该非卡片语义，不得把 receipt 改造成 InteractionView 或卡片。
 
 验收：
 
@@ -327,6 +343,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 - 多目标名单只显示头像和 Agent 名称。
 - 选择一个 Agent 不泄露第三个 Agent 的消息。
 - 浮窗没有输入框和写操作。
+- private receipt 不是 Card Shell 成员；CARD-01B 的改动不改变其单行/展开名单语义和只读浮窗。
 
 依赖：RT-05。
 
@@ -387,18 +404,24 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 输出：
 
 - 与原始 `message_group` 绑定的 Intervention。
+- 严格 `ActionApprovalView(group_membership)` 投影，payload 至少包含 `action = add_bot_to_group`、`groupId`、`botId`、`messageGroupRequestId`（或等价稳定请求标识）、`requestRevision`、`sourceThreadId`、`sourceMessageId`（或等价 receipt 关联）、可选 `expiresAt` 和安全 presentation。协议基线来自 CARD-01A；不是任意 tool name/args，不退化为 `requestApproval(tool)`。
 - 批准后的权限重校验和原子加群续跑。
 - 拒绝、过期、撤回和重复决策处理。
 - 来源单聊的审批和最终状态。
+- 视觉和用户语言基线来自 Roundtable X-GROUP-APPROVE / X-GROUP-FAIL 原型；不得新增 CARD A14，不得自行补第三种视觉。
+- 如果后端事务已完成但 CARD-01B 尚未完成，不得临时实现另一套生产审批卡或状态 renderer。
 
 验收：
 
-- 没有成员管理权时直接失败，不显示假审批。
-- 批准前不向目标群写消息。
-- 批准时重新校验用户、Bot、群和参数 revision。
+- 没有成员管理权时直接失败，不显示假审批；使用 X-GROUP-FAIL 的独立失败状态。
+- 批准前不向目标群写消息，不创建目标 Task/Run。
+- 批准时重新校验用户、Space、Bot、群、成员管理权限、参数 revision 和 expiry。
 - 拒绝或过期不加群，也不创建目标 Run。
+- 批准只放行加入该群并继续绑定的 `message_group` 请求，不授权群内其他动作、文件、连接器或凭据。
+- `group_membership` 的状态由 Intervention 管理，成员变更结果由业务事务和审计事实管理；不得合并为一个状态字段。
+- 有权限与无权限是互斥分支：有权限渲染审批卡，无权限不渲染审批卡。
 
-依赖：RT-04、RT-11。
+依赖：RT-04、RT-11、CARD-01A、CARD-01B。
 
 覆盖：AC14。场景 X04、P02、P03、P04、P07、P08。
 
@@ -476,7 +499,7 @@ RT-00 和 RT-01 合入后，至少可以同时启动六条开发线。每条线�
 
 ### RT-16 建立后台执行身份和注册事务
 
-**状态：暂停（2026-10-22）。** RT-15 两轮探针确认失败归因、内置 `general-purpose` 暴露和 child session native 回传仍未满足。不启动 RT-16；不开启 `background_helper`；不接受文本匹配失败状态；不继续堆 WorkPal 侧后台代码。唯一允许的下一步是验证满足三项最低能力的新 AgentScope 版本，详见 [RT-15 报告第 8 节](RT-15-agentscope-background-probe.md)。
+**状态：暂停（2026-10-22）。** RT-15 两轮探针确认失败归因、内置 `general-purpose` 暴露和 child session native 回传仍未满足。不启动 RT-16；不开启 `background_helper`；不接受文本匹配失败状态；不继续堆 WorkPal 侧后台代码。唯一允许的下一步是验证同时满足三项最低能力的新 AgentScope 版本：typed failure、禁用内置 `general-purpose`、native child session 回传。详见 [RT-15 报告第 8 节](RT-15-agentscope-background-probe.md)。
 
 目标：每个 helper 都有独立产品 Task、Run、Attempt 和 runtime task identity，并通过崩溃安全协议启动。
 

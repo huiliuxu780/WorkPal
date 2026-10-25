@@ -117,7 +117,7 @@
 | RT-09 receipt+浮窗 | 未开工 | direct-ui | branch-X-BOT/Q-MULTI/Q-UNAVAILABLE；interaction:pair-float/receipt-expanded；DESIGN L8/10/11 | — |
 | RT-10 多 mention 分段 | #113 合入 | ui-projection-contract | branch-U-MULTI/A-AMBIGUOUS | — |
 | RT-11 message_group | 未开工 | ui-projection-contract | branch-X-GROUP；DESIGN L7 | — |
-| RT-12 跨群审批 | 未开工 | ui-projection-contract | branch-X-GROUP-FAIL/X-RETURN；DESIGN L7 | — |
+| RT-12 跨群审批 | 未开工 | ui-projection-contract | branch-X-GROUP-APPROVE/X-GROUP-FAIL/X-RETURN；DESIGN L7 | — |
 | RT-13 指令日志 | #114 合入 | backend-only | — | — |
 | RT-14 按状态补充 | #117 在途（暂停） | ui-projection-contract | branch-A-COMPLETED/A-ACTIVE/A-BACKGROUND | CF-03 |
 | RT-15 SDK 探针 | #106 合入（suspended） | backend-only | — | — |
@@ -234,7 +234,7 @@
 | **FIX-PAIR-B** private receipt 与 pair 浮窗（RT-09） | receipt/浮窗 | RT-05（依赖 #118、#110） | receipt 行组件、pair 浮窗组件、`Shell.tsx` 回执路径 | branch-X-BOT/Q-MULTI/Q-UNAVAILABLE、interaction:pair-float/receipt-expanded、DESIGN L8/10/11 | 单行轻回执；展开名单；只读浮窗（身份胶囊+唯一关闭）；不进侧边栏；停用 Bot「未发送给 X」；三态截图对比 |
 | **FIX-GROUP-C** 群详情基础页（RT-22 后续） | 右栏/顶栏 | RT-22 ✓ | `group-panel.tsx`、`Shell.tsx` 顶栏 | interaction:rail-library/members、main-stage-1、DESIGN L14/19 | 资料库行悬停操作；成员状态语义澄清（CF-07）；顶部工作直达无数量；悬停态截图 |
 | **FIX-WORK-D** 工作页与 Task 详情（RT-23） | 右栏工作/详情/composer | #117、RT-20（依赖 RT-18 链）、RT-22 ✓ | `group-panel.tsx` work 面板、task chip 组件 | interaction:work-tab/task-detail/amend-chip、branch-A-COMPLETED、DESIGN L15/22/24 | 原位详情无二层抽屉；「追加复核」按原型（CF-03 落点）；补充要求回 composer 带 chip；无百分比；三态截图对比 |
-| **FIX-APPROVE-E** 审批、失败和恢复投影（RT-12/24/28 面 + 存量文案） | 审批卡/消息/胶囊/ExecutionCard | RT-12、RT-24、RT-28、D1=A ✓ | `agentscope-runtime.ts:909`、`ExecutionCard.tsx`、状态消息渲染 | main-stage-7、branch-P-*/X-GROUP-FAIL/F-* | 审批卡内嵌消息流（拒绝/允许一次/加入并继续）；授权范围卡；失败恢复文案遵循 D1=A 的修订后原型；清除「AgentScope」字样（CF-08）；四态截图 |
+| **FIX-APPROVE-E** 审批、失败和恢复投影（RT-12/24/28 面 + 存量文案） | 审批卡/消息/胶囊/ExecutionCard | RT-12（依赖 RT-11、CARD-01A、CARD-01B）、RT-24、RT-28、CARD-01E、D1=A ✓ | `agentscope-runtime.ts:909`、`ExecutionCard.tsx`、状态消息渲染 | main-stage-7、branch-P-*/X-GROUP-APPROVE/X-GROUP-FAIL/F-* | 审批卡内嵌消息流（拒绝/允许一次/加入并继续）；授权范围卡；失败恢复文案遵循 D1=A 的修订后原型；清除「AgentScope」字样（CF-08）；四态截图。**所有权：RT-12/24/28 负责业务状态和持久事实，CARD-01A 提供协议和投影，CARD-01B 提供 Card Shell 和 Interaction renderer，CARD-01E 承担最终视觉验收；FIX-APPROVE-E 不再独立创建第二套审批卡或状态 renderer。** |
 | **FIX-GLOBAL-F** 响应式与键盘行为 | 全局 | A–E | e2e specs | interaction:narrow-*、DESIGN L12 | 窄屏覆盖层；胶囊/药丸直达工作页签；页签键盘导航；430px 截图两张 |
 | **FIX-SIDEBAR-G** 侧边栏后台任务中心（新） | sidebar | D2=B ✓、RT-20 | `Shell.tsx` 侧边栏 | main-stage-1、DESIGN L20、PRD §9.3 | 跨会话工作入口；与群内「工作」同一投影；徽标为单一口径后台任务数（D2=B）；侧边栏截图对比 |
 
