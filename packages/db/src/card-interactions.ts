@@ -327,20 +327,21 @@ function upgradeLegacyPlanReview(
 }
 
 /**
- * Compose the thread-level CARD-01 surface. It is a read model over facts the
- * snapshot already loaded; it introduces no persistence and no new producers.
+ * Merge durable Interventions with message-derived views. Durable rows are
+ * authoritative; a message may upgrade a generic input to plan review but can
+ * never overwrite a settled lifecycle. Shared by the thread and execution
+ * projections so both surfaces agree on the same interaction id.
  */
-export function projectThreadCardSurface(input: ThreadCardSurfaceInput): ThreadCardSurface {
-  const fromMessages = interactionViewsFromMessages(input.messages);
-  const interactions: InteractionView[] = [];
+export function mergeCardInteractions(
+  durable: readonly InterventionView[],
+  messageViews: readonly InteractionView[],
+): Map<string, InteractionView> {
   const byId = new Map<string, InteractionView>();
-
-  // The durable Intervention row is authoritative (revision, settled state).
-  for (const view of input.interventions) {
+  for (const view of durable) {
     const projected = interactionViewFromIntervention(view);
     if (projected) byId.set(projected.interactionId, projected);
   }
-  for (const view of fromMessages.interactions) {
+  for (const view of messageViews) {
     const existing = byId.get(view.interactionId);
     if (!existing) {
       byId.set(view.interactionId, view);
@@ -362,11 +363,21 @@ export function projectThreadCardSurface(input: ThreadCardSurfaceInput): ThreadC
     }
     byId.set(view.interactionId, view);
   }
+  return byId;
+}
+
+/**
+ * Compose the thread-level CARD-01 surface. It is a read model over facts the
+ * snapshot already loaded; it introduces no persistence and no new producers.
+ */
+export function projectThreadCardSurface(input: ThreadCardSurfaceInput): ThreadCardSurface {
+  const fromMessages = interactionViewsFromMessages(input.messages);
+  const byId = mergeCardInteractions(input.interventions, fromMessages.interactions);
   for (const facts of input.groupMembershipApprovals ?? []) {
     const projected = projectGroupMembershipApproval(facts);
     if (projected) byId.set(projected.interactionId, projected);
   }
-  interactions.push(...byId.values());
+  const interactions = [...byId.values()];
 
   const sessionControls: SessionControlView[] = deriveSessionControlViews({
     runs: input.runs,
@@ -415,6 +426,20 @@ export function projectExecutionInteractions(
   return interventions
     .map((view) => interactionViewFromIntervention(view))
     .filter((view): view is InteractionView => view !== null);
+}
+
+/**
+ * Execution snapshots need the same message-backed approvals as the Thread
+ * surface: MCP assignment and app authorization are persisted as message
+ * blocks without an Intervention row. Merge them with the durable views over
+ * the snapshot's bounded message window.
+ */
+export function projectExecutionCardInteractions(input: {
+  messages: readonly CardMessageFact[];
+  interventions: readonly InterventionView[];
+}): InteractionView[] {
+  const fromMessages = interactionViewsFromMessages(input.messages);
+  return [...mergeCardInteractions(input.interventions, fromMessages.interactions).values()];
 }
 
 /** Read-only helper for the execution snapshot's final result blocks. */

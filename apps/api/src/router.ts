@@ -6040,6 +6040,7 @@ export function createRouter(deps: RouterDeps) {
             threadId: target.threadId,
             spaceId: target.spaceId,
             runId: input.runId,
+            cardsUnifiedV2: deps.cardsUnifiedV2,
           });
         });
         if (!snapshot) throw new ORPCError("NOT_FOUND");
@@ -6047,7 +6048,10 @@ export function createRouter(deps: RouterDeps) {
         return {
           ...snapshot,
           interactionCapabilities: { cardsUnifiedV2: true as const },
-          interactions: projectExecutionInteractions(snapshot.interventions),
+          // The DB projection already merges message-backed approvals (MCP
+          // assignment/app authorization) with durable Interventions.
+          interactions:
+            snapshot.interactions ?? projectExecutionInteractions(snapshot.interventions),
           displayBlocks: snapshot.result
             ? projectExecutionDisplayBlocks(snapshot.result.blocks, {
                 threadId: target.threadId,

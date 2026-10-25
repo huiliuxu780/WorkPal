@@ -10,6 +10,7 @@ import {
   type ExecutionSnapshot,
   type ExecutionSummary,
   MAX_SUMMARY_ARTIFACTS,
+  type MessageBlock,
   RunPlanRevisionSchema,
   RunStepSnapshotSchema,
   RunTodoSnapshotSchema,
@@ -28,6 +29,7 @@ import {
   projectActivity,
   projectManualRetryEligibility,
 } from "@rakazo/core";
+import { type CardMessageFact, projectExecutionCardInteractions } from "./card-interactions.js";
 import type { PrismaClient } from "./client.js";
 import { Prisma } from "./client.js";
 import { currentThreadGeneration } from "./events.js";
@@ -650,7 +652,13 @@ export async function loadRunActivityPage(
  */
 export async function loadExecutionSnapshot(
   db: TxLike,
-  input: { threadId: string; spaceId: string; runId: string },
+  input: {
+    threadId: string;
+    spaceId: string;
+    runId: string;
+    /** CARD-01A: merge message-backed approvals into the snapshot projection. */
+    cardsUnifiedV2?: boolean;
+  },
 ): Promise<ExecutionSnapshot | null> {
   const [run, generation] = await Promise.all([
     db.run.findFirst({
@@ -696,7 +704,7 @@ export async function loadExecutionSnapshot(
       // as its final result or miss a later legacy Ask in the same window.
       orderBy: { seq: "desc" },
       take: SUMMARY_MESSAGE_SCAN_LIMIT,
-      select: { id: true, runId: true, blocks: true },
+      select: { id: true, runId: true, blocks: true, createdAt: true },
     }),
   ]);
   const summary = summaries[0];
@@ -710,6 +718,24 @@ export async function loadExecutionSnapshot(
           run.id,
         ])
       ).filter((view) => view.runId === run.id);
+
+  const cardInteractions =
+    input.cardsUnifiedV2 && !stale
+      ? projectExecutionCardInteractions({
+          interventions,
+          messages: runMessages.map(
+            (message): CardMessageFact => ({
+              id: message.id,
+              threadId: input.threadId,
+              spaceId: input.spaceId,
+              botId: run.botId,
+              runId: message.runId ?? run.id,
+              createdAt: message.createdAt.toISOString(),
+              blocks: message.blocks as MessageBlock[],
+            }),
+          ),
+        })
+      : undefined;
 
   const stepsTruncated = stepRows.length > EXECUTION_STEPS_LIMIT;
   const steps = {
@@ -799,6 +825,7 @@ export async function loadExecutionSnapshot(
     timeline,
     activityPage,
     interventions,
+    ...(cardInteractions ? { interactions: cardInteractions } : {}),
     ...(result ? { result } : {}),
   };
 }
