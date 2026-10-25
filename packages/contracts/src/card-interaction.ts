@@ -192,7 +192,9 @@ export const ActionApprovalPayloadSchema = z.discriminatedUnion("kind", [
     authority: z.literal("business_transaction"),
     skillId: Id,
     name: z.string().min(1).max(200),
-    goal: z.string().max(2_000),
+    // Matches skills.start's existing goal limit; a stricter card schema would
+    // silently drop a valid draft from the Interaction projection.
+    goal: z.string().max(4_000),
     contentRevision: z.number().int().positive(),
     playbook: CardSkillPlaybookSchema,
   }),

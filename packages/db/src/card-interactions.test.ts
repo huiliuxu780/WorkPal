@@ -1,4 +1,9 @@
-import type { InterventionView, MessageBlock, PlanReviewContent } from "@rakazo/contracts";
+import {
+  type InterventionView,
+  legacyInterventionId,
+  type MessageBlock,
+  type PlanReviewContent,
+} from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
 import {
   type CardMessageFact,
@@ -192,6 +197,75 @@ describe("CARD-01 thread card surface", () => {
     expect(new Set(approvals.map((view) => view.interactionId)).size).toBe(2);
     expect(approvals.map((view) => view.presentation.text)).toEqual(["Gmail", "Drive"]);
     expect(surface.attention).toHaveLength(2);
+  });
+
+  it("keeps a skill-save draft whose goal uses the existing skills.start limit", () => {
+    const goal = "g".repeat(3_500);
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "skill_draft",
+            skillId: "skill-1",
+            name: "Triage",
+            goal,
+            playbook: {
+              whenToUse: "New mail",
+              inputs: [],
+              steps: ["Read"],
+              howToCheck: "Sorted",
+              whatToReturn: "Summary",
+              approvalBoundaries: "No sending",
+              failureHandling: "Stop",
+            },
+            status: "draft",
+          },
+        ]),
+      ],
+    });
+    const approvals = surface.interactions.filter((view) => view.kind === "action_approval");
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0]?.approval).toMatchObject({ kind: "skill_save", goal });
+    expect(surface.attention).toHaveLength(1);
+  });
+
+  it("preserves a settled legacy plan-review state instead of reviving it", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "ask",
+            text: "Review the plan",
+            status: "pending",
+            planReview: plan,
+          },
+        ]),
+      ],
+      interventions: [
+        intervention({
+          id: legacyInterventionId("message-1"),
+          kind: "input",
+          status: "cancelled",
+          revision: 4,
+          expiresAt: "2026-10-24T11:00:00.000Z",
+          messageId: "message-1",
+          input: { mode: "text" },
+          presentation: { text: "Review the plan" },
+        }),
+      ],
+    });
+    expect(surface.interactions).toEqual([
+      expect.objectContaining({
+        kind: "plan_review",
+        status: "cancelled",
+        revision: 4,
+        expiresAt: "2026-10-24T11:00:00.000Z",
+        source: expect.objectContaining({ messageId: "message-1" }),
+      }),
+    ]);
+    expect(surface.attention).toEqual([]);
   });
 
   it("treats settled legacy blocks as terminal history, never actionable", () => {

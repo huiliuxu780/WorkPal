@@ -302,6 +302,31 @@ function displayBlockFrom(
 }
 
 /**
+ * Upgrade a durable generic input Intervention to a plan-review view without
+ * losing the Intervention's lifecycle. The message supplies the plan content;
+ * revision, status, expiry, source, and presentation stay authoritative.
+ */
+function upgradeLegacyPlanReview(
+  authoritative: Extract<InteractionView, { kind: "input_request" }>,
+  legacy: Extract<InteractionView, { kind: "plan_review" }>,
+): InteractionView | null {
+  const parsed = PlanReviewViewSchema.safeParse({
+    ...legacy,
+    interactionId: authoritative.interactionId,
+    revision: authoritative.revision,
+    status: authoritative.status,
+    createdAt: authoritative.createdAt,
+    expiresAt: authoritative.expiresAt,
+    attentionAt: authoritative.attentionAt,
+    source: authoritative.source,
+    presentation: authoritative.presentation,
+    decision: null,
+    feedback: null,
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+/**
  * Compose the thread-level CARD-01 surface. It is a read model over facts the
  * snapshot already loaded; it introduces no persistence and no new producers.
  */
@@ -316,11 +341,25 @@ export function projectThreadCardSurface(input: ThreadCardSurfaceInput): ThreadC
     if (projected) byId.set(projected.interactionId, projected);
   }
   for (const view of fromMessages.interactions) {
+    const existing = byId.get(view.interactionId);
+    if (!existing) {
+      byId.set(view.interactionId, view);
+      continue;
+    }
     // A legacy plan-review ask can be synthesized as a generic input by the
     // older Intervention projection. The message binding wins there because it
     // is the only fact that proves the card reviews a plan version, not a tool.
     // A real plan_review row still wins over the message's revision-1 view.
-    if (byId.get(view.interactionId)?.kind === "plan_review") continue;
+    if (existing.kind === "plan_review") continue;
+    if (view.kind === "plan_review") {
+      if (existing.kind === "input_request") {
+        const upgraded = upgradeLegacyPlanReview(existing, view);
+        if (upgraded) byId.set(view.interactionId, upgraded);
+      }
+      // Never let a message-derived pending view overwrite a settled durable
+      // one; a stopped or expired run must stay non-actionable history.
+      continue;
+    }
     byId.set(view.interactionId, view);
   }
   for (const facts of input.groupMembershipApprovals ?? []) {
