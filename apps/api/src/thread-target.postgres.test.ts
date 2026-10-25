@@ -178,6 +178,45 @@ describePostgres("RT-27 deterministic message routing (PostgreSQL)", () => {
     });
   });
 
+  it("creates an independent queued run for a request in another thread", async () => {
+    const direct = await newBotThread("cross-thread-source");
+    // X02: the same Bot is busy in a group Thread. The direct Thread has no
+    // candidate, so the request owns a queued Run and never touches that turn.
+    const group = await prisma.chatGroup.create({
+      data: { spaceId: id, userId: id, name: "X02 group", leadBotId: direct.botId },
+    });
+    await prisma.chatGroupMember.create({ data: { groupId: group.id, botId: direct.botId } });
+    const groupThread = await prisma.thread.create({
+      data: { spaceId: id, userId: id, groupId: group.id },
+    });
+    const active = await newRun(
+      { botId: direct.botId, threadId: groupThread.id, spaceId: id },
+      { status: "running" },
+    );
+
+    const result = await send(targetOf(direct), {
+      text: "start the interview notes",
+      clientNonce: "rt27-cross-thread",
+    });
+
+    expect(result.runId).not.toBe(active.run.id);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: result.runId! } })).toMatchObject({
+      threadId: direct.threadId,
+      botId: direct.botId,
+      status: "queued",
+      trigger: "user",
+    });
+    expect(
+      await prisma.steeringMessage.count({
+        where: { message: { threadId: direct.threadId } },
+      }),
+    ).toBe(0);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: active.run.id } })).toMatchObject({
+      status: "running",
+    });
+    expect(await prisma.steeringMessage.count({ where: { runId: active.run.id } })).toBe(0);
+  });
+
   it("amends exactly the explicitly addressed task", async () => {
     const target = await newBotThread("explicit");
     const addressed = await newRun(target, { status: "running" });
@@ -266,6 +305,51 @@ describePostgres("RT-27 deterministic message routing (PostgreSQL)", () => {
     ).toMatchObject({ revision: 1 });
   });
 
+  it("rejects a Task that cannot take a revision without creating a new one", async () => {
+    const target = await newBotThread("not-amendable");
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        prompt: "Already finished",
+        status: "completed",
+      },
+    });
+    // The Task projection and its Run disagree, so the route must not assume
+    // the Task can still take an instruction.
+    await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        taskId: task.id,
+        status: "running",
+        trigger: "user",
+      },
+    });
+
+    await expect(
+      send(targetOf(target), {
+        text: "one more thing",
+        clientNonce: "rt27-not-amendable",
+        targetTaskId: task.id,
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      data: { code: "target_task_not_amendable" },
+    });
+
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({
+      revision: 1,
+    });
+    expect(await prisma.task.count({ where: { threadId: target.threadId } })).toBe(1);
+    expect(await prisma.run.count({ where: { threadId: target.threadId } })).toBe(1);
+    expect(await prisma.message.count({ where: { threadId: target.threadId } })).toBe(0);
+  });
+
   it("replays one nonce without a second task, run, or steering", async () => {
     const target = await newBotThread("replay");
     await newRun(target, { status: "running" });
@@ -317,6 +401,23 @@ describePostgres("RT-27 deterministic message routing (PostgreSQL)", () => {
     expect(
       await prisma.steeringMessage.count({ where: { message: { threadId: target.threadId } } }),
     ).toBe(0);
+  });
+
+  it("writes one steering row for concurrent duplicates", async () => {
+    const target = await newBotThread("concurrent-steer");
+    const { run } = await newRun(target, { status: "running" });
+
+    const results = await Promise.allSettled([
+      send(targetOf(target), { text: "duplicate steering", clientNonce: "rt27-concurrent-steer" }),
+      send(targetOf(target), { text: "duplicate steering", clientNonce: "rt27-concurrent-steer" }),
+    ]);
+
+    expect(results.every((result) => result.status === "fulfilled")).toBe(true);
+    expect(await prisma.message.count({ where: { threadId: target.threadId } })).toBe(1);
+    expect(await prisma.steeringMessage.count({ where: { runId: run.id } })).toBe(1);
+    // The duplicate never turns into a second Task or Run.
+    expect(await prisma.task.count({ where: { threadId: target.threadId } })).toBe(1);
+    expect(await prisma.run.count({ where: { threadId: target.threadId } })).toBe(1);
   });
 
   it("reads candidates in a stable order without letting it pick a winner", async () => {

@@ -378,7 +378,9 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
           where: { id: first.runId },
         });
         // A second eligible candidate forces the new message into its own Run
-        // instead of steering either active turn.
+        // instead of steering either active turn. Its retry window keeps the
+        // fixture out of the Worker's queued sweep, so only the new Run competes
+        // for the session this test is about.
         const otherTask = await handles.prisma.task.create({
           data: {
             spaceId: running.spaceId,
@@ -398,6 +400,7 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
             taskId: otherTask.id,
             status: "queued",
             trigger: "follow_up",
+            retryAt: new Date(Date.now() + 60 * 60_000),
           },
         });
 
