@@ -7,7 +7,7 @@ import { TaskInstructionIntegrityError } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import type * as AutoReviewModule from "./auto-review.js";
 import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
-import { createRunExecutor } from "./executor.js";
+import { createRunExecutor, effectClaimsBeforeExecution } from "./executor.js";
 
 vi.mock("./computer-lifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof ComputerLifecycleModule>()),
@@ -353,6 +353,24 @@ function fixture(
     },
   };
 }
+
+describe("effect claim policy", () => {
+  it("keeps plan records and request_secret intended across their pause", () => {
+    for (const name of [
+      "plan_enter",
+      "plan_write",
+      "plan_exit",
+      "publish_run_plan",
+      "publish_run_step",
+      "publish_run_todo",
+      "request_secret",
+    ]) {
+      expect(effectClaimsBeforeExecution(name), name).toBe(false);
+    }
+    expect(effectClaimsBeforeExecution("send_email")).toBe(true);
+    expect(effectClaimsBeforeExecution("destination.write")).toBe(true);
+  });
+});
 
 describe("mutating tool effect idempotency keys", () => {
   it("feeds the original and all server-ordered amendments to the runtime", async () => {

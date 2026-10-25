@@ -514,6 +514,11 @@ export const PLAN_SERVICE_TOOL_NAMES = new Set([
  */
 const PLAN_RECORD_TOOL_NAMES = PLAN_RECORD_OPERATION_KINDS;
 
+/** Plan records and the secret card keep intended status until their resume/answer step. */
+export function effectClaimsBeforeExecution(toolName: string): boolean {
+  return toolName !== "request_secret" && !PLAN_RECORD_TOOL_NAMES.has(toolName);
+}
+
 /** Tools that stay visible while the run is in the read-only PLAN phase. */
 const PLAN_PHASE_KEEP_TOOLS = new Set([
   ...READ_ONLY_AGENT_TOOLS,
@@ -3539,9 +3544,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           } else if (needsApproval && applied) {
             return requestApproval();
-          } else if (applied && name !== "request_secret") {
-            // Every executable effect — approved or intended — crosses the same
-            // database fence before a provider can be called.
+          } else if (applied && effectClaimsBeforeExecution(name)) {
+            // Every external-effect execution — approved or intended — crosses
+            // the same database fence before a provider can be called. Plan
+            // records keep their intended status across a review pause so the
+            // resumed bridge call can answer from the durable decision.
             const early = await claimOrReturn("intended");
             if (early !== undefined) return early;
           }
