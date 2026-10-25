@@ -22,14 +22,14 @@
 - 消费 CARD-01A 定义的 attention DTO，增加服务端有界查询/RPC，只返回当前 actor 有权访问线程中仍需本人处理的 Interaction 投影：
   - 持久 pending Intervention
   - 当前有效的派生 `SessionControlView`
-  - 完成严格映射后的 pending 业务审批
-- 查询不得扫描或暴露 Run 历史、完成记录、普通后台工作、旧 `connect` 回放或无关 Space。
+  - 完成严格映射后的 pending 业务审批，包括 `ActionApprovalView(group_membership)`
+- 查询不得扫描或暴露 Run 历史、完成记录、普通后台工作、旧 `connect` 回放、`collaboration_receipt`、private pair receipt、`task_status` 或 PD-01 Retry。
 - 排序固定为 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC`；按 `interactionId + revision` 去重并分页。
 - Web 增加轻量 attention queue：条目显示来源 Bot、Task 或 reply target，点击跳回来源 Interaction 并聚焦。
 - 结算后条目立即消失，计数同步；关闭队列不等于处理请求。
 - 未读角标、待处理角标和 @我使用文字、形状与颜色共同区分。
 - 群聊成员等待标记只标等待中的 Bot，决定后移除；点击只回来源。
-- 浏览器通知只使用 Web Notification 或仓库已有 Web Push，覆盖需要本人处理的 Interaction；普通展示、后台进度和终态不再提醒。
+- 浏览器通知只使用 Web Notification 或仓库已有 Web Push，覆盖需要本人处理的 Interaction；普通展示、后台进度、终态、`collaboration_receipt` 和 private pair receipt 不再提醒。
 - 通知内容脱敏，不包含收件人、正文、金额、卡号、地址、验证码、密码、参数或文件名；通知内不能直接批准。
 - 只有可信 `expiresAt` 存在时才能引用过期时间；不承诺固定提前量。
 - 点击通知回到来源 Interaction；已终态时只展示终态。
@@ -50,18 +50,19 @@
 - 修改 Interaction 的创建、结算、权限或 ExternalEffect 语义
 - 读取全部 Run 历史来计算待处理
 - 恢复 Task Center、任务完成列表或运行详情入口
+- 把 `collaboration_receipt`、private pair receipt、`task_status` 或 PD-01 Retry 加入 queue 或通知
 - 新增原生移动端通知
 - 在通知中放敏感正文或直接执行决定
 - 在 gate 关闭时改变现有 ActivityList/未读行为
 
 ## 验收
 
-- 三类来源都进入 queue：持久 pending Intervention、当前有效 `SessionControlView`、strict pending 业务审批；answered、expired、cancelled、superseded、普通 Run、Run 历史、后台任务和旧 `connect` 回放不进入。
+- 三类来源都进入 queue：持久 pending Intervention、当前有效 `SessionControlView`、strict pending 业务审批（含 `group_membership`）；answered、expired、cancelled、superseded、普通 Run、Run 历史、后台任务、旧 `connect` 回放、`collaboration_receipt`、private pair receipt 和 `task_status` 不进入。
 - 服务端按 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC` 排序，按 `interactionId + revision` 去重并分页；无权限或失去资格后立即排除。
 - 来源跳转准确，处理后条目和计数同步消失；空队列有明确空态。
 - 群聊来源可按 Bot 和 Task/reply target 寻址，不依赖孤立的“可以”或“A”。
 - 未读、待处理、@我语义在测试中互不混用。
-- 通知覆盖 Interaction 创建/需要处理，终态停止；内容扫描无敏感字段；不提供通知内批准。
+- 通知覆盖 Interaction 创建/需要处理，终态停止；`collaboration_receipt` 的创建/更新和 private pair receipt 不触发通知；内容扫描无敏感字段；不提供通知内批准。
 - `expiresAt` 缺失时不生成固定提前量承诺。
 - 现有 `ActivityList`、未读和通知行为在 gate 关闭时保持不变；开启后 15s 轮询或新查询不造成重复条目。
 - 390px、375px 和深色模式可用；键盘可达，处理后焦点合理。

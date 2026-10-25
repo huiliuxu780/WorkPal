@@ -4,7 +4,7 @@
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
-依赖：[CARD-01A](./CARD-01A.md)。可与 [CARD-01B](./CARD-01B.md) 并行。
+依赖：[CARD-01A](./CARD-01A.md)。可以在 A 后并行开发，但 `Shell.tsx` 的接入必须等待 [CARD-01B](./CARD-01B.md) 冻结接入接口。CARD-01B 是 Interaction renderer 接入、Card Shell、`InterventionRegion` 统一和 interaction 排序的唯一 owner；CARD-01C 是 DisplayBlock registry、展示成员、详情组件和安全 HTML 的唯一 owner。
 
 ## 用户结果
 
@@ -20,7 +20,13 @@ Markdown、结构化表格、图表、集合、媒体、安全 HTML、任务状�
 
 ## 范围
 
+- 本任务是 DisplayBlock registry 的唯一 owner：markdown、table、chart、collection、media、html、task_status、page、voice，以及独立详情组件、安全 HTML 和对应测试。
+- B 未冻结接入接口前，C 不修改 `Shell.tsx` 的同一交互/展示 block。需要接入时二选一：
+  - 由 CARD-01B owner 提交集成 commit；
+  - 等 CARD-01B 合入后 rebase 到 main。
+- 不允许两个独立分支并行修改同一 Shell block。
 - 建立有限 `DisplayBlock` 渲染注册表：markdown、table、chart、collection、media、html、task_status、page、voice。
+- `collaboration_receipt` 与 private pair receipt 不是 DisplayBlock；C 不得把它们纳入展示注册表或改写成普通 Markdown。
 - Markdown 长文按渲染高度或行数折叠，不按字符数决定 UI 高度；详情面板打开/关闭不修改消息。
 - Markdown 表格只用于简单静态内容；复杂数据使用结构化 `table`，支持 columns/rows、排序和分页。
 - 图表提供可访问的数据表替代。
@@ -44,6 +50,8 @@ Markdown、结构化表格、图表、集合、媒体、安全 HTML、任务状�
 ## 禁止
 
 - 修改 Interaction 生命周期、审批/输入权限或 Run/ExternalEffect 状态
+- 在 B 冻结接入接口前修改 `Shell.tsx` 的同一 block，或与 B 并行改建同一交互区域
+- 把 `collaboration_receipt`、private pair receipt、PD-01 Retry 纳入 DisplayBlock
 - 在展示块中加入批准、付款、发送、删除、安装或连接控件
 - 把 B6/B7 变成卡片
 - 扩大 HTML 沙盒权限或允许网络、表单、父页面访问
@@ -59,6 +67,8 @@ Markdown、结构化表格、图表、集合、媒体、安全 HTML、任务状�
 - 媒体、图表和长文在 390px、375px 无横向溢出；深色模式可读。
 - 现有 `artifact-preview`、`artifacts-tab`、`chart-links`、`voice` 和 `SandboxedHtmlViewer` 测试继续通过。
 - 对照原型截图验证视觉层级、间距、圆角、边框和状态表达；不引入第二套 token。
+- 接入证据证明只修改了 B 冻结的接口：要么包含 B owner 的集成 commit，要么基于 B 合入后的 main rebase；没有与 B 并行修改同一 Shell block。
+- `collaboration_receipt` 和 private pair receipt 的既有渲染路径保持不变，未进入 DisplayBlock registry。
 
 ## 交付
 

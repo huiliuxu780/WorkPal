@@ -10,7 +10,7 @@
 
 ```text
 requestInput(question | choice | form | secret | saved_item)
-requestApproval(tool | payment | outbound | routine | install | skill_save | connect.app_authorization | connect.mcp_assignment)
+requestApproval(tool | payment | outbound | routine | install | skill_save | connect.app_authorization | connect.mcp_assignment | group_membership)
 requestSessionControl(takeover | return)
 showContent(markdown | table | chart | collection | media | html | task_status | page | voice)
 ```
@@ -100,6 +100,99 @@ Run 结束不会自动终止所有 Interaction。生命周期由 Intervention �
 
     类型优先级只适用于 pending 卡，不能把已结算的旧 PlanReviewView 抬到当前待审批或待输入之前。计划审阅先于工具审批，是因为它约束整个 Run 的后续执行；普通输入最后。CARD-01A 只定义排序字段/语义，CARD-01B 统一 Web 实现和测试。
 
+## Roundtable × CARD 协议边界
+
+2026-10-25 的规划收敛固定以下边界。CARD-01 不新增产品场景，仍为 27 个产品场景、7 个详情场景、4 类提醒和 112 条验收；不新增 CARD A14。
+
+### collaboration_receipt
+
+- 保持业务 receipt MessageBlock（`collaboration_receipt`），不是 `InputRequestView`、`ActionApprovalView`、`PlanReviewView` 或 `SessionControlView`。
+- 不进入 attention queue，不转换成普通 Markdown。
+- CARD-01B 之后可以复用 Card Shell 的无状态展示组件；复用展示组件不能改变 receipt 的持久协议、状态所有权或 destination locator。
+- 目标工作的 `sent`、`completed`、`failed`、`cancelled` 状态由业务事务和 RT-11 outcome 回流维护，不由 Web 从卡片字段推断。
+
+### private pair receipt
+
+- 属于消息 affordance，只显示单行轻回执或展开名单。
+- 不使用 Card Shell，不进入 attention queue，不新增侧栏入口。
+- 对应 RT-09 / FIX-PAIR-B；CARD-01B 必须保留该非卡片语义。
+
+### task_status
+
+- 属于 `DisplayBlock`。
+- 只展示正式工作投影，不代表 pending Interaction，不进入 attention queue。
+- 不从原始 Run/Attempt 字段猜状态。
+
+### PD-01 Retry
+
+- 属于消息操作，不是 CARD-01 卡片成员。
+- 不改变 ExecutionCard 四信号规则：结构化 Plan、语义 Step、待处理 Intervention、失败。`cancelled` 不成为第五个信号。
+- 不恢复 Task Center；单独走 PD-01P（集中投影）和 PD-01F（消息入口）。
+
+### group_membership
+
+`group_membership` 是 `ActionApprovalView` 的严格成员，语义固定为 `requestApproval(group_membership)`，不是通用 `requestApproval(tool)`。只支持：
+
+- `action = add_bot_to_group`
+- 目标 standard group
+- 一个明确 Bot
+- 一个明确的 `message_group` 请求
+- request revision
+- 可选 `expiresAt`
+- 可寻址来源
+
+严格 payload 至少包含：
+
+- `kind: group_membership`
+- `action: add_bot_to_group`
+- `groupId`
+- `botId`
+- `messageGroupRequestId` 或等价稳定请求标识
+- `requestRevision`
+- `sourceThreadId`
+- `sourceMessageId` 或等价 receipt 关联
+- `expiresAt`，允许为空
+- 安全 presentation 字段
+
+约束：
+
+1. 不使用任意 tool name 或任意 args。
+2. 不退化为 `requestApproval(tool)`。
+3. 批准只表示允许把该 Bot 加入该群，并继续绑定的 `message_group` 请求。
+4. 批准不授权群内其他动作、文件、连接器或凭据。
+5. RT-12 在执行批准时重新校验当前用户、Space、group、Bot、成员管理权限、`requestRevision` 和 expiry。
+6. 批准前不加群、不写目标群消息、不创建目标 Task/Run。
+7. 拒绝、过期或撤回不产生目标群副作用。
+8. 用户没有成员管理权限时不创建 `ActionApprovalView`。
+9. 无权限路径使用 X-GROUP-FAIL 的独立失败状态。
+10. `group_membership` 的状态仍由 Intervention 管理；成员变更结果由业务事务和审计事实管理。
+11. 不把 Intervention、Run 和成员变更合成一个状态字段。
+
+协议基线来自本文档和 [CARD-01A](../tasks/CARD-01A.md)；视觉和用户语言基线来自 Roundtable 已确认原型：
+
+- `docs/roundtable/prototype/index.html?branch=X-GROUP-APPROVE`
+- `docs/roundtable/prototype/index.html?branch=X-GROUP-FAIL`
+- `docs/roundtable/audits/evidence/prototype/branch-X-GROUP-APPROVE.png`
+- `docs/roundtable/audits/evidence/prototype/branch-X-GROUP-FAIL.png`
+- `docs/roundtable/audits/evidence/prototype/narrow-branch-X-GROUP-APPROVE.png`
+- `docs/roundtable/audits/evidence/prototype/narrow-branch-X-GROUP-FAIL.png`
+
+两个原型共同构成验收输入。实现者不得自行补第三种视觉，也不得把它画成通用工具审批。
+
+已批准 CARD 原型包保持字节不变；其 27 个场景不包含 A14。`group_membership` 的视觉来自 Roundtable，协议成员由本文档和 CARD-01A 冻结，因此不需要重新生成或重新确认 CARD 原型包。
+
+## UI 所有权与依赖
+
+| 范围 | 唯一 owner | 规则 |
+| --- | --- | --- |
+| `Shell.tsx` 的 Interaction renderer 接入、Card Shell、InteractionView renderer、InterventionRegion 统一和 interaction 排序 | CARD-01B | CARD-01C 不得在 B 冻结接入接口前修改同一 Shell 区域 |
+| DisplayBlock registry、markdown/table/chart/collection/media/html/task_status/page/voice、独立详情组件、安全 HTML 和对应测试 | CARD-01C | 需要接入 Shell 时由 B owner 提交集成 commit，或等 B 合入后 rebase 到 main |
+| private receipt 与 pair 浮窗 | RT-09 | 必须在 CARD-01B 之前完成；B 保留其非卡片语义 |
+| 跨群成员审批的业务状态和持久事实 | RT-12 | 依赖 RT-04、RT-11、CARD-01A、CARD-01B；不得因 B 未完成而临时实现第二套生产审批卡 |
+| 审批、失败、恢复和 ExecutionCard 的最终视觉验收 | CARD-01E | FIX-APPROVE-E 不再独立创建第二套审批卡或状态 renderer |
+
+不允许两个独立分支并行修改 `apps/web/src/pages/Shell.tsx` 的同一个 block。共享文件冲突必须在 B 的集成 commit 或 rebase 后解决，不能在页面里散落协议分支。
+
 ## 九个开放问题的决定
 
 | 原问题 | 决定 |
@@ -160,7 +253,7 @@ HTML 中不能出现批准、付款、发送、删除或授权控件。任何副
 
 ## 剩余门槛
 
-状态：第 1–4 项已于 2026-10-24 完成，批准原型入库于 `docs/cards/source/card-unification-v2/`；第 5 项已拆为 CARD-01A–E，生产实现尚未开始。
+状态：第 1–4 项已于 2026-10-24 完成，批准原型入库于 `docs/cards/source/card-unification-v2/`；第 5 项已拆为 CARD-01A–E。2026-10-25 的 ROADMAP-CARD-CONVERGE 将 CARD-01A 的协议输入冻结到最新 main，并补充 `group_membership`、receipt/private receipt/task_status/PD-01 边界和 UI 所有权。生产实现尚未开始，`cards_unified_v2` 仍默认关闭。
 
 1. 根据本决策更新 v4 PRD、STYLE-SPEC、HTML、CSS 和生成脚本。
 2. 重新生成 cards、detail、alerts 和 states 四组截图。旧截图不再是验收基准。
