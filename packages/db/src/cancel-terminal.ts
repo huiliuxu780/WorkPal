@@ -393,6 +393,7 @@ async function appendCancelNotice(
     text: string;
   },
 ): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
   const clientNonce = `cancel-notice:${input.notice}:${input.reason}:${input.botId}`;
   const existing = await tx.message.findUnique({
     where: {

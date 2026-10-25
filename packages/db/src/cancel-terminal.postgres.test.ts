@@ -404,6 +404,32 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
     ).not.toMatch(FORBIDDEN_VISIBLE);
   });
 
+  it("writes one unhandled notice under concurrent cancels for the same bot and thread", async () => {
+    const first = await delegatedRun();
+    const second = await delegatedRun();
+    await steer(first.id, "first unhandled");
+    await steer(second.id, "second unhandled");
+    await Promise.all([
+      prisma.$transaction((tx) =>
+        applyCancelTerminalPolicy(tx, [{ id: first.id, taskId: first.taskId }], new Date(), {
+          policy: cancelPolicyFor("member_removed"),
+        }),
+      ),
+      prisma.$transaction((tx) =>
+        applyCancelTerminalPolicy(tx, [{ id: second.id, taskId: second.taskId }], new Date(), {
+          policy: cancelPolicyFor("member_removed"),
+        }),
+      ),
+    ]);
+    const notices = (
+      await prisma.message.findMany({
+        where: { threadId, role: "system" },
+        select: { blocks: true },
+      })
+    ).filter((row) => JSON.stringify(row.blocks).includes("未处理：Policy bot已经不在这个群里。"));
+    expect(notices).toHaveLength(1);
+  });
+
   it("migrates superseded steering onto one replacement and retains otherwise", async () => {
     const oldRun = await delegatedRun("running", "user");
     const next = await delegatedRun("running", "user");
