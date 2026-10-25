@@ -150,6 +150,18 @@ describe("default classification", () => {
     assert.match(result.errors.join("\n"), /external dependency detected \(child process\)/);
   });
 
+  it("rejects browser and paid model SDK tests without an explicit rule", () => {
+    for (const text of [
+      'import { test } from "@playwright/test";\n',
+      'import { chromium } from "playwright";\n',
+      'import OpenAI from "openai";\n',
+    ]) {
+      const result = classify({ "apps/web/e2e/new.test.ts": text });
+      assert.equal(result.entries.length, 0, text);
+      assert.match(result.errors.join("\n"), /browser or paid model SDK/, text);
+    }
+  });
+
   it("keeps type-only child_process imports inside unit tests", () => {
     const result = classify({
       "packages/core/src/type-only.test.ts":

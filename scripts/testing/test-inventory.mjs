@@ -471,6 +471,13 @@ export function detectExternalHints(text) {
     hints.push("live provider or Docker replay");
   }
   if (/PostgreSqlContainer|testcontainers/.test(text)) hints.push("Docker/Testcontainers");
+  if (
+    /from\s+["'](?:@playwright\/test|playwright|@vitest\/browser|vitest\/browser|openai|@anthropic-ai\/sdk|@google\/generative-ai)["']/.test(
+      text,
+    )
+  ) {
+    hints.push("browser or paid model SDK");
+  }
   if (nonTypeChildProcessImport(text)) hints.push("child process");
   return hints;
 }
