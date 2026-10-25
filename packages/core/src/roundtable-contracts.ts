@@ -1,4 +1,8 @@
-import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN } from "@rakazo/contracts";
+import {
+  GROUP_MEMBER_MAX,
+  GROUP_MEMBER_MIN,
+  type CollaborationReceiptBlock,
+} from "@rakazo/contracts";
 
 export type BrandedId<Name extends string> = string & { readonly __brand: Name };
 
@@ -269,6 +273,12 @@ export type CollaborationReceipt = Readonly<{
   /** User-safe labels for the receipt card; never internal ids or states. */
   display?: CollaborationReceiptDisplay;
 }>;
+
+// The strict parser's output must remain a valid persisted MessageBlock.
+type AssertTrue<T extends true> = T;
+type _AssertReceiptBlockParity = AssertTrue<
+  CollaborationReceipt extends CollaborationReceiptBlock ? true : false
+>;
 
 export type UserActor = Readonly<{
   kind: "user";
