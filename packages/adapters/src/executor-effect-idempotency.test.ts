@@ -7,7 +7,7 @@ import { TaskInstructionIntegrityError } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import type * as AutoReviewModule from "./auto-review.js";
 import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
-import { createRunExecutor } from "./executor.js";
+import { createRunExecutor, effectClaimsBeforeExecution } from "./executor.js";
 
 vi.mock("./computer-lifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof ComputerLifecycleModule>()),
@@ -70,7 +70,9 @@ function fixture(
     userId: "user-1",
     status: "queued",
     trigger: "user",
+    leaseOwner: null as string | null,
     leaseFence: 0,
+    leaseExpiresAt: null as Date | null,
     planPhase: null as string | null,
   };
   const memoryCommit = vi.fn(async () => ({ revision: "rev-1" }));
@@ -205,17 +207,44 @@ function fixture(
   Object.assign(prisma, {
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        $queryRaw: vi.fn(async () => [{ id: run.id }]),
+        $queryRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          const sql = strings.join("");
+          if (sql.includes('"external_effects"')) {
+            const effect = effects.find((candidate) => candidate.id === values[0]);
+            return effect
+              ? [
+                  {
+                    id: effect.id,
+                    runId: effect.runId ?? run.id,
+                    status: effect.status,
+                    result: effect.result ?? null,
+                  },
+                ]
+              : [];
+          }
+          return [
+            {
+              id: run.id,
+              status: run.status,
+              leaseOwner: run.leaseOwner,
+              leaseFence: run.leaseFence,
+              leaseExpiresAt: run.leaseExpiresAt,
+              leaseValid:
+                run.leaseExpiresAt !== null && run.leaseExpiresAt.getTime() > Date.now(),
+            },
+          ];
+        }),
         run: {
           findUnique: vi.fn(async () => ({
             ...run,
-            leaseExpiresAt: new Date(Date.now() + 60_000),
+            leaseExpiresAt: run.leaseExpiresAt ?? new Date(Date.now() + 60_000),
           })),
           updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
             Object.assign(run, data);
             return { count: 1 };
           }),
         },
+        externalEffect,
         attempt: prisma.attempt,
         // ME-01: remember now writes first-party facts through this transaction.
         memoryFact: {
@@ -324,6 +353,24 @@ function fixture(
     },
   };
 }
+
+describe("effect claim policy", () => {
+  it("keeps plan records and request_secret intended across their pause", () => {
+    for (const name of [
+      "plan_enter",
+      "plan_write",
+      "plan_exit",
+      "publish_run_plan",
+      "publish_run_step",
+      "publish_run_todo",
+      "request_secret",
+    ]) {
+      expect(effectClaimsBeforeExecution(name), name).toBe(false);
+    }
+    expect(effectClaimsBeforeExecution("send_email")).toBe(true);
+    expect(effectClaimsBeforeExecution("destination.write")).toBe(true);
+  });
+});
 
 describe("mutating tool effect idempotency keys", () => {
   it("feeds the original and all server-ordered amendments to the runtime", async () => {

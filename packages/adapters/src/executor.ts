@@ -130,6 +130,7 @@ import {
   backgroundTaskLockTransactionOptions,
   beginCheckpointResume,
   changeBotAvatarInTransaction,
+  claimExternalEffectForExecution,
   completeSessionAdmission,
   createSpaceForMember,
   createThreadMessageInTransaction,
@@ -167,6 +168,7 @@ import {
   recordCheckpointProof,
   recordLegacyNativePlanDecision,
   registerBackgroundTaskProjection,
+  releaseExternalEffectClaim,
   releaseRecoveredSessionAdmission,
   releaseSessionAdmission,
   releaseSuspendedSessionAdmission,
@@ -178,6 +180,7 @@ import {
   SpaceLimitError,
   scheduleAutomaticRunRetry,
   sessionCheckpointId,
+  StaleExecutionError,
   submitDraftForReview,
   TaskInstructionIntegrityError,
   type ThreadEvents,
@@ -224,8 +227,6 @@ import {
   catalogApprovalRequest,
   catalogExecuteToolName,
   catalogIdForRoute,
-  claimApprovedEffect,
-  claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
   denyRevokedPermissionEffects,
@@ -512,6 +513,11 @@ export const PLAN_SERVICE_TOOL_NAMES = new Set([
  * old approval).
  */
 const PLAN_RECORD_TOOL_NAMES = PLAN_RECORD_OPERATION_KINDS;
+
+/** Plan records and the secret card keep intended status until their resume/answer step. */
+export function effectClaimsBeforeExecution(toolName: string): boolean {
+  return toolName !== "request_secret" && !PLAN_RECORD_TOOL_NAMES.has(toolName);
+}
 
 /** Tools that stay visible while the run is in the read-only PLAN phase. */
 const PLAN_PHASE_KEEP_TOOLS = new Set([
@@ -3392,16 +3398,37 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (context.signal.aborted) return pauseForApproval();
 
           const needsApproval = gateDecision === "ask";
-          const bypassApproval = gateDecision === "allow" && requiresApprovalByDefault;
           let claimedEffect = false;
 
           const claimOrReturn = async (
             from: "approved" | "intended",
           ): Promise<unknown | undefined> => {
-            const claim = from === "approved" ? claimApprovedEffect : claimIntendedEffect;
-            if (await claim(deps.prisma, applied!.effect.id)) {
+            const claim = await claimExternalEffectForExecution(deps.prisma, {
+              effectId: applied!.effect.id,
+              expectedStatus: from,
+              execution: { runId, leaseOwner: workerId, leaseFence: fence },
+            });
+            if (claim.outcome === "claimed") {
               claimedEffect = true;
               return undefined;
+            }
+            if (
+              claim.outcome === "run_not_found" ||
+              claim.outcome === "run_cancelled" ||
+              claim.outcome === "run_not_running" ||
+              claim.outcome === "stale_execution" ||
+              claim.outcome === "lease_expired"
+            ) {
+              // The action never started. Stop this Attempt without writing a
+              // result the next retry could misread as a completed side effect.
+              leaseValid = false;
+              runAbortController?.abort();
+              return {
+                error: "Execution authority was lost before this action started; it was not executed.",
+              };
+            }
+            if (claim.outcome === "effect_executing") {
+              return settleUncertainEffect(deps.prisma, applied!.effect.id, name);
             }
             const current = await deps.prisma.externalEffect.findUnique({
               where: { id: applied!.effect.id },
@@ -3517,7 +3544,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           } else if (needsApproval && applied) {
             return requestApproval();
-          } else if (bypassApproval && applied) {
+          } else if (applied && effectClaimsBeforeExecution(name)) {
+            // Every external-effect execution — approved or intended — crosses
+            // the same database fence before a provider can be called. Plan
+            // records keep their intended status across a review pause so the
+            // resumed bridge call can answer from the durable decision.
             const early = await claimOrReturn("intended");
             if (early !== undefined) return early;
           }
@@ -4867,11 +4898,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               // Action approval authorizes showing the card; it is not a credential submission.
               // Return the claim to intended so the answer transaction can approve the saved value.
               if (claimedEffect) {
-                const released = await deps.prisma.externalEffect.updateMany({
-                  where: { id: applied!.effect.id, status: "executing" },
-                  data: { status: "intended" },
+                const released = await releaseExternalEffectClaim(deps.prisma, {
+                  effectId: applied!.effect.id,
+                  execution: { runId, leaseOwner: workerId, leaseFence: fence },
                 });
-                if (released.count !== 1) return uncertainEffectResult(name);
+                if (!released) return uncertainEffectResult(name);
                 claimedEffect = false;
               }
             }
@@ -6791,14 +6822,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
               if (event.name !== "message_user") {
                 await publishMidTurnNarration();
               }
-              await deps.events.append({
-                spaceId: run.spaceId,
-                threadId: thread.id,
-                botId: bot.id,
-                type: "agent.tool.called",
-                runId,
-                payload: { name: event.name, executionId: event.executionId },
-              });
+              try {
+                await deps.events.append({
+                  spaceId: run.spaceId,
+                  threadId: thread.id,
+                  botId: bot.id,
+                  type: "agent.tool.called",
+                  runId,
+                  execution: { leaseOwner: workerId, leaseFence: fence },
+                  payload: { name: event.name, executionId: event.executionId },
+                });
+              } catch (error) {
+                if (!(error instanceof StaleExecutionError)) throw error;
+                leaseValid = false;
+                runAbortController?.abort();
+                return;
+              }
               if (
                 !scripted &&
                 (await enforceRunBudgets(

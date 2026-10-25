@@ -74,6 +74,8 @@ describe("classifyPath", () => {
       "packages/adapters/src/wakeup.postgres.test.ts",
       "packages/adapters/src/result-delivery.ts",
       "packages/db/src/run-lease.ts",
+      "packages/db/src/execution-fence.ts",
+      "packages/db/src/external-effects.ts",
       "packages/adapter-kit/src/background-jobs.ts",
       "apps/web/e2e/worker-chain.spec.ts",
     ]) {
@@ -81,6 +83,21 @@ describe("classifyPath", () => {
       assert.ok(jobs.includes("worker-chain"), file);
       assert.equal(jobs.includes("web"), false, file);
     }
+  });
+
+  it("routes effect execution fencing to DB and executor verification", () => {
+    for (const file of [
+      "packages/db/src/execution-fence.ts",
+      "packages/db/src/external-effects.ts",
+      "packages/db/src/effect-execution-fence.postgres.test.ts",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("db-postgres"), file);
+      assert.ok(result.jobs.includes("backend"), file);
+    }
+    const executor = classifyPath("packages/adapters/src/executor-readonly-approval.test.ts");
+    assert.ok(executor.jobs.includes("backend"));
+    assert.ok(executor.jobs.includes("agentscope"));
   });
 
   it("unions a changed web spec with its product-path mapping", () => {
@@ -482,6 +499,18 @@ describe("workflow contract", () => {
       yaml,
       /push: \$\{\{\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\s*\}\}/,
     );
+  });
+
+  it("runs the effect execution fence suites in backend and DB jobs", () => {
+    const backend = yaml.split("\n  backend:")[1]?.split("\n  db-postgres:")[0] ?? "";
+    for (const file of [
+      "approval-effect.test.ts",
+      "executor-effect-idempotency.test.ts",
+      "executor-readonly-approval.test.ts",
+      "manual-retry-reuse.test.ts",
+    ]) {
+      assert.match(backend, new RegExp(`packages/adapters/src/${file.replaceAll(".", "\\.")}`));
+    }
   });
 
   it("runs every DB postgres suite against a real postgres service", () => {

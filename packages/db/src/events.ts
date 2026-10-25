@@ -37,6 +37,7 @@ import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { enqueueDeliveryInTransaction } from "./delivery-records.js";
+import { assertActiveExecutionFence } from "./execution-fence.js";
 import {
   assertSafeClientSubmissionId,
   emitInterventionCreated,
@@ -75,6 +76,12 @@ export interface AppendEventInput {
   schemaVersion?: number;
   causationId?: string;
   parentRunId?: string;
+  /**
+   * Require this Run's current execution lease in the same transaction.
+   * Execution facts (for example agent.tool.called) use it so a worker that
+   * lost the Run cannot persist a start fact a retry policy might trust.
+   */
+  execution?: { leaseOwner: string; leaseFence: number };
 }
 
 export interface ThreadEvents {
@@ -2217,6 +2224,10 @@ export async function appendEventInTransaction(
     data: { nextEventSeq: { increment: 1 } },
     select: { nextEventSeq: true },
   });
+  if (input.execution) {
+    if (!input.runId) throw new Error("An execution fence requires a runId");
+    await assertActiveExecutionFence(tx, { runId: input.runId, ...input.execution });
+  }
   // run.cancelled is appended after the run row already reads cancelled, so it
   // asserts the terminal status where every other event needs a writable run.
   // thread.artifact is a Thread-maintenance membership fact (user-initiated

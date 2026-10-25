@@ -91,6 +91,8 @@ const WORKER_DB_STEMS = [
   "packages/db/src/background-task-registration",
   "packages/db/src/wait-timeouts",
   "packages/db/src/execution-revocations",
+  "packages/db/src/execution-fence",
+  "packages/db/src/external-effects",
 ];
 
 const CORE_WEB_STEMS = [

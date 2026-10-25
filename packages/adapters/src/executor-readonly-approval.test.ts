@@ -6,6 +6,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import type { ActionApprovalRule } from "@rakazo/core";
 import { approvalEffectKey, toolEffectIdempotencyKey } from "@rakazo/core/node/approval-effect-key";
+import { StaleExecutionError } from "@rakazo/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isApprovalPausedResult } from "./approval-effect.js";
 import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
@@ -55,6 +56,7 @@ function fixture({
     title: "Assistant",
     description: "Test assistant",
   },
+  emitToolEvent = false,
   shutdownSignal,
 }: {
   name?: string;
@@ -67,6 +69,7 @@ function fixture({
   secrets?: string[];
   prompt?: string;
   bot?: { name: string; title: string; description: string };
+  emitToolEvent?: boolean;
   shutdownSignal?: AbortSignal;
 } = {}) {
   const tool: ConnectorTool = {
@@ -82,6 +85,15 @@ function fixture({
   };
   const effects: Effect[] = [];
   const results: unknown[] = [];
+  let claimLease:
+    | {
+        status: string;
+        leaseOwner: string | null;
+        leaseFence: number;
+        leaseExpiresAt: Date | null;
+        leaseValid: boolean;
+      }
+    | undefined;
   const run = {
     id: "run-1",
     botId: "bot-1",
@@ -91,7 +103,9 @@ function fixture({
     userId: "user-1",
     status: "queued",
     trigger,
+    leaseOwner: null as string | null,
     leaseFence: 0,
+    leaseExpiresAt: null as Date | null,
   };
   const externalEffect = {
     findMany: vi.fn(
@@ -202,17 +216,44 @@ function fixture({
   Object.assign(prisma, {
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        $queryRaw: vi.fn(async () => [{ id: run.id }]),
+        $queryRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          const sql = strings.join("");
+          if (sql.includes('"external_effects"')) {
+            const effect = effects.find((candidate) => candidate.id === values[0]);
+            return effect
+              ? [
+                  {
+                    id: effect.id,
+                    runId: effect.runId ?? run.id,
+                    status: effect.status,
+                    result: effect.result ?? null,
+                  },
+                ]
+              : [];
+          }
+          return [
+            claimLease ?? {
+              id: run.id,
+              status: run.status,
+              leaseOwner: run.leaseOwner,
+              leaseFence: run.leaseFence,
+              leaseExpiresAt: run.leaseExpiresAt,
+              leaseValid:
+                run.leaseExpiresAt !== null && run.leaseExpiresAt.getTime() > Date.now(),
+            },
+          ];
+        }),
         run: {
           findUnique: vi.fn(async () => ({
             ...run,
-            leaseExpiresAt: new Date(Date.now() + 60_000),
+            leaseExpiresAt: run.leaseExpiresAt ?? new Date(Date.now() + 60_000),
           })),
           updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
             Object.assign(run, data);
             return { count: 1 };
           }),
         },
+        externalEffect,
         attempt: prisma.attempt,
       }),
     ),
@@ -237,13 +278,22 @@ function fixture({
           },
         ]
       : [tool];
+  const append = vi.fn(async (_input?: { type?: string; execution?: unknown }) => undefined);
   const runtimeRun = vi.fn(async function* (request: AgentRunRequest) {
     for (const call of calls) {
-      const result = await request.executeTool!(
-        catalog ? "demo_execute_tool" : name,
-        catalog ? { id: `resource-1:${name}`, arguments: call.args } : call.args,
-        call.executionId,
-      );
+      const toolName = catalog ? "demo_execute_tool" : name;
+      const toolArgs = catalog
+        ? { id: `resource-1:${name}`, arguments: call.args }
+        : call.args;
+      if (emitToolEvent) {
+        yield {
+          type: "tool" as const,
+          name: toolName,
+          args: toolArgs,
+          executionId: call.executionId,
+        };
+      }
+      const result = await request.executeTool!(toolName, toolArgs, call.executionId);
       results.push(result);
       if (isApprovalPausedResult(result)) return;
     }
@@ -270,7 +320,7 @@ function fixture({
     sandbox: { describe: () => ({ capabilities: { graphical: false } }) },
     memory: { read: async () => ({ documents: [] }) },
     memoryProviders: { resolve: async () => null },
-    events: { append: vi.fn(async () => undefined), pauseRunForInput, finalizeRun },
+    events: { append, pauseRunForInput, finalizeRun },
     jobs: { enqueue: vi.fn(async () => undefined) },
     secrets,
     autoReview: autoReviewProvider,
@@ -280,6 +330,7 @@ function fixture({
     effects,
     results,
     execute,
+    append,
     pauseRunForInput,
     finalizeRun,
     setCapabilityRules(value: unknown) {
@@ -290,6 +341,9 @@ function fixture({
     },
     setDiscoverTools(next: typeof discoverTools) {
       discoverTools = next;
+    },
+    setClaimLease(next: typeof claimLease) {
+      claimLease = next;
     },
     async run() {
       run.status = "queued";
@@ -659,6 +713,115 @@ describe("connector read-only metadata and approval enforcement", () => {
       expect(f.effects[0]?.reviewDecision).toBeUndefined();
       expect(f.execute).not.toHaveBeenCalled();
       expect(f.pauseRunForInput).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("EFFECT-01 execution fence at the executor boundary", () => {
+  it("stops before the tool callback when agent.tool.called loses the fence", async () => {
+    const f = fixture({ name: "demo_send_message", readOnly: false, emitToolEvent: true });
+    f.append.mockImplementation(async (input?: { type?: string }) => {
+      if (input?.type === "agent.tool.called") {
+        throw new StaleExecutionError("lease_owner_mismatch");
+      }
+    });
+    f.setCalls([{ args: { id: "item-1" }, executionId: "call-1" }]);
+
+    await f.continueRun();
+
+    expect(f.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "agent.tool.called",
+        execution: { leaseOwner: "worker-1", leaseFence: 1 },
+      }),
+    );
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.results).toHaveLength(0);
+  });
+
+  it("claims an intended effect before executing and calls the connector once", async () => {
+    const f = fixture({ name: "demo_send_message", readOnly: false });
+    f.setCalls([{ args: { id: "item-1" }, executionId: "call-1" }]);
+
+    await f.run();
+
+    expect(f.execute).toHaveBeenCalledOnce();
+    expect(f.effects[0]?.status).toBe("completed");
+  });
+
+  it.each([
+    {
+      label: "a lease takeover",
+      lease: {
+        status: "running",
+        leaseOwner: "worker-2",
+        leaseFence: 2,
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+        leaseValid: true,
+      },
+    },
+    {
+      label: "an expired lease",
+      lease: {
+        status: "running",
+        leaseOwner: "worker-1",
+        leaseFence: 1,
+        leaseExpiresAt: new Date(Date.now() - 1_000),
+        leaseValid: false,
+      },
+    },
+    {
+      label: "a committed cancellation",
+      lease: {
+        status: "cancelled",
+        leaseOwner: null,
+        leaseFence: 1,
+        leaseExpiresAt: null,
+        leaseValid: false,
+      },
+    },
+  ])("does not call the connector for an intended effect after $label", async ({ lease }) => {
+    const f = fixture({ name: "demo_send_message", readOnly: false });
+    f.setCalls([{ args: { id: "item-1" }, executionId: "call-1" }]);
+    f.setClaimLease(lease);
+
+    await f.continueRun();
+
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.results[0]).toMatchObject({
+      error: expect.stringContaining("Execution authority was lost"),
+    });
+    expect(f.effects[0]?.status).toBe("intended");
+  });
+
+  it("does not call the connector for an approved effect after a lease takeover", async () => {
+    const f = fixture({
+      name: "demo_send_message",
+      readOnly: false,
+      rules: [
+        { effect: "require_approval", matchKind: "tool", matchValue: "demo_send_message" },
+      ],
+    });
+    await f.run();
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.effects[0]?.status).toBe("intended");
+
+    f.effects[0]!.status = "approved";
+    f.setCalls([{ args: { id: "item-1" }, executionId: "call-2" }]);
+    f.setClaimLease({
+      status: "running",
+      leaseOwner: "worker-2",
+      leaseFence: 2,
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+      leaseValid: true,
+    });
+
+    await f.continueRun();
+
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.effects[0]?.status).toBe("approved");
+    expect(f.results.at(-1)).toMatchObject({
+      error: expect.stringContaining("Execution authority was lost"),
     });
   });
 });
