@@ -8,6 +8,27 @@ const requiredImplementationOwners = new Map([
   ["RT-26", ["C06", "P05", "F04"]],
 ]);
 
+/** Cross-program planning dependencies are not RT graph nodes. */
+const EXTERNAL_DEPENDENCY_IDS = new Set([
+  "EFFECT-01",
+  "CANCEL-01",
+  "VERIFY-01",
+  "CARD-01A",
+  "CARD-01B",
+  "CARD-01C",
+  "CARD-01D",
+  "CARD-01E",
+]);
+
+const EXTERNAL_DEPENDENCY_PATTERN = /^(?:(?:EFFECT|CANCEL|VERIFY)-\d+|CARD-\d+[A-Z])$/;
+
+/** Dependencies that must remain explicit in the frozen cross-program plan. */
+const requiredExternalDependencies = new Map([
+  ["RT-12", ["CARD-01A", "CARD-01B"]],
+  ["RT-19", ["EFFECT-01", "CANCEL-01"]],
+  ["RT-30", ["EFFECT-01", "CANCEL-01", "VERIFY-01"]],
+]);
+
 function between(text, start, end) {
   const startIndex = text.indexOf(start);
   const endIndex = text.indexOf(end, startIndex + start.length);
@@ -22,11 +43,25 @@ function unique(values) {
 }
 
 function parseDependencyLine(line) {
-  if (line === "无。") return { ids: [] };
-  if (!/^RT-\d+(?:、RT-\d+)*。$/.test(line)) {
+  if (line === "无。") return { rtIds: [], externalIds: [] };
+  if (!line.endsWith("。")) {
     return { error: `invalid dependency syntax: ${line}` };
   }
-  return { ids: line.slice(0, -1).split("、") };
+  const tokens = line.slice(0, -1).split("、");
+  const rtIds = [];
+  const externalIds = [];
+  for (const token of tokens) {
+    if (/^RT-\d+$/.test(token)) {
+      rtIds.push(token);
+      continue;
+    }
+    if (EXTERNAL_DEPENDENCY_PATTERN.test(token)) {
+      externalIds.push(token);
+      continue;
+    }
+    return { error: `invalid dependency syntax: ${line}` };
+  }
+  return { rtIds, externalIds };
 }
 
 function parseCoverageLine(line, label) {
@@ -102,9 +137,15 @@ export function verifyImplementationPlan(prd, plan) {
     }
     const parsedDependencies = task.dependencyLines[0]
       ? parseDependencyLine(task.dependencyLines[0])
-      : { ids: [] };
+      : { rtIds: [], externalIds: [] };
     if (parsedDependencies.error) errors.push(`${task.id} ${parsedDependencies.error}`);
-    task.dependencies = parsedDependencies.ids ?? [];
+    task.dependencies = parsedDependencies.rtIds ?? [];
+    task.externalDependencies = parsedDependencies.externalIds ?? [];
+    for (const dependency of task.externalDependencies) {
+      if (!EXTERNAL_DEPENDENCY_IDS.has(dependency)) {
+        errors.push(`${task.id} has unknown external dependency ${dependency}`);
+      }
+    }
     for (const dependency of task.dependencies) {
       if (!taskSet.has(dependency)) {
         errors.push(`${task.id} has unknown dependency ${dependency}`);
@@ -154,11 +195,20 @@ export function verifyImplementationPlan(prd, plan) {
     task.verificationScenarios = parsedVerification.scenarios ?? [];
   }
 
+  for (const [taskId, dependencies] of requiredExternalDependencies) {
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    if (!task) continue;
+    for (const dependency of dependencies) {
+      if (!task.externalDependencies.includes(dependency)) {
+        errors.push(`${taskId} must retain external dependency ${dependency}`);
+      }
+    }
+  }
+
   const validationTasks = tasks.filter((task) => task.verificationCoverageLines.length > 0);
   if (validationTasks.length !== 1) {
     errors.push(`expected exactly one integration validation task, found ${validationTasks.length}`);
-  }
-  const validationTask = validationTasks[0];
+  }  const validationTask = validationTasks[0];
   if (validationTask && validationTask.coverageLines.length > 0) {
     errors.push(`${validationTask.id} cannot claim implementation coverage`);
   }
