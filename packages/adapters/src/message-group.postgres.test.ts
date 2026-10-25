@@ -14,6 +14,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createJobReconciler } from "./job-reconciler.js";
 import { messageGroup, returnMessageGroupOutcome } from "./message-group.js";
+import { userProgressClientNonce } from "./user-progress.js";
 
 const describePostgres =
   process.env.VERIFY_DATABASE && process.env.DATABASE_URL ? describe.sequential : describe.skip;
@@ -489,6 +490,52 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     expect(await prisma.run.count({ where: { originRunId: targetRun.id, threadId: joyThreadId } })).toBe(1);
   });
 
+  it("reports a status when a completed target left only progress notes", async () => {
+    const { result, key } = await send({});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const targetRun = await prisma.run.update({
+      where: { id: result.targetRunId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const returned = await returnMessageGroupOutcome(deps(), targetRun, {
+      text: "Working through the risk list; no final write-up yet.",
+      progressOnly: true,
+    });
+    expect(returned).toBe(true);
+    expect((await receiptFor(key))?.state).toBe("completed");
+    const summaryRun = await prisma.run.findFirst({
+      where: { originRunId: targetRun.id, threadId: joyThreadId },
+      include: { task: true },
+    });
+    expect(summaryRun?.status).toBe("queued");
+    expect(summaryRun?.task.prompt).toContain("过程进展");
+    expect(summaryRun?.task.prompt).toContain("<group_result>Working through the risk list");
+    expect(summaryRun?.task.prompt).toContain("不要把过程进展");
+  });
+
+  it("reports a status when a completed target left no text", async () => {
+    const { result, key } = await send({});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const targetRun = await prisma.run.update({
+      where: { id: result.targetRunId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const returned = await returnMessageGroupOutcome(deps(), targetRun, { text: "  " });
+    expect(returned).toBe(true);
+    expect((await receiptFor(key))?.state).toBe("completed");
+    const summaryRun = await prisma.run.findFirst({
+      where: { originRunId: targetRun.id, threadId: joyThreadId },
+      include: { task: true },
+    });
+    expect(summaryRun?.status).toBe("queued");
+    expect(summaryRun?.task.prompt).toContain("没有留下书面结果");
+    expect(summaryRun?.task.prompt).not.toContain("<group_result>");
+    const duplicate = await returnMessageGroupOutcome(deps(), targetRun, { text: "ignored" });
+    expect(duplicate).toBe(false);
+  });
+
   it("updates failed and cancelled receipts without creating a completion report", async () => {
     for (const status of ["failed", "cancelled"] as const) {
       const { result, key } = await send({});
@@ -530,6 +577,56 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
       select: { botOutcomeReturnedAt: true },
     });
     expect(after.botOutcomeReturnedAt).toBeNull();
+  });
+
+  it("lets the reconciler report a completed target that only posted progress", async () => {
+    const { result, key } = await send({});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    await prisma.run.update({
+      where: { id: result.targetRunId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    await prisma.$transaction((tx) =>
+      createThreadMessageInTransaction(tx, {
+        threadId: group.threadId,
+        role: "bot",
+        originKind: "bot",
+        blocks: [{ kind: "text", text: "Checked the risk list; still verifying tags." }],
+        botId: joy.id,
+        runId: result.targetRunId,
+        clientNonce: userProgressClientNonce(result.targetRunId),
+      }),
+    );
+    const reconciler = createJobReconciler(deps(), { batchSize: 50 });
+    await reconciler.reconcileOnce();
+    expect((await receiptFor(key))?.state).toBe("completed");
+    const summaryRun = await prisma.run.findFirst({
+      where: { originRunId: result.targetRunId, threadId: joyThreadId },
+      include: { task: true },
+    });
+    expect(summaryRun?.task.prompt).toContain("过程进展");
+  });
+
+  it("does not return the delivery instruction as the target result", async () => {
+    const { result, key } = await send({});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    await prisma.run.update({
+      where: { id: result.targetRunId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const reconciler = createJobReconciler(deps(), { batchSize: 50 });
+    await reconciler.reconcileOnce();
+    expect((await receiptFor(key))?.state).toBe("completed");
+    const summaryRun = await prisma.run.findFirst({
+      where: { originRunId: result.targetRunId, threadId: joyThreadId },
+      include: { task: true },
+    });
+    expect(summaryRun?.task.prompt).toContain("没有留下书面结果");
+    expect(summaryRun?.task.prompt).not.toContain(
+      "Check the launch performance risk and report back.",
+    );
   });
 
   it("lets the reconciler return a completed target Run", async () => {

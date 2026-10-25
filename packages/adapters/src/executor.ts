@@ -5451,6 +5451,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             return finish(result);
           }
           if (name === "handoff_to_bot") {
+            // A handoff successor has no origin lineage, so a message_group
+            // owner Run that handed off could never return its result to the
+            // source chat. Keep this work in the target group instead.
+            if (run.trigger === "message_group")
+              return finish({ error: "handoff_to_bot is not available for this work" });
             if (!thread.groupId) return finish({ error: "handoff_to_bot is only for group chats" });
             const result = await handoffToGroupBot(deps, run, thread.groupId, {
               bot_id: args.bot_id ? String(args.bot_id) : undefined,
@@ -7122,10 +7127,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
             ).catch((error) => getLogger().error("bot message result return", error));
           }
           if (run.trigger === "message_group") {
+            // Mirror the bot_message recovery: a turn that published mid-turn
+            // text and then left an empty final reply still has durable output
+            // to return. Otherwise the source chat keeps only the receipt.
+            const groupOutcome = permissionRevoked
+              ? null
+              : botMessageOutcomeFromMidTurn(text, midTurnUserTexts);
             await returnMessageGroupOutcome(
               deps,
               { ...run, status: permissionRevoked ? "failed" : "completed" },
-              { text },
+              {
+                text: groupOutcome?.text ?? text,
+                progressOnly: groupOutcome?.intent === "status",
+              },
             ).catch((error) => getLogger().error("message group result return", error));
           }
           const notifyBody = completionNotificationPreview(text);
@@ -7696,6 +7710,7 @@ export function selectBuiltinToolsForRun(options: {
   ).filter(
     (tool) =>
       (options.voiceCall || tool.name !== "end_call") &&
+      (options.trigger !== "message_group" || tool.name !== "handoff_to_bot") &&
       (options.trigger === "user" ||
         options.trigger === "follow_up" ||
         tool.name !== "change_avatar") &&

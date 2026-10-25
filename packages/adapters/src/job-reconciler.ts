@@ -328,18 +328,22 @@ export function createJobReconciler(
             originThreadId: true,
             originRunId: true,
             originMessageId: true,
+            sourceMessageId: true,
           },
         });
         await Promise.all(
           messageGroupOutcomes.map(async (run) => {
             const transcript =
               run.status === "completed"
-                ? await botRunOutcomeText(deps.prisma, run.id)
+                ? await botRunOutcomeText(deps.prisma, run.id, {
+                    // The delivery message is this Run's prompt, not its output.
+                    excludeMessageId: run.sourceMessageId,
+                  })
                 : { text: "", progressOnly: false };
             const returned = await returnMessageGroupOutcome(
               { prisma: deps.prisma, jobs: deps.jobs, events },
               run,
-              { text: transcript.text },
+              { text: transcript.text, progressOnly: transcript.progressOnly },
             ).catch((error) => {
               getLogger().error("message group outcome reconciliation", error);
               return false;
@@ -428,20 +432,22 @@ async function botRunOutcomeText(
       findMany: (args: {
         where: { runId: string; role: "bot" };
         orderBy: { seq: "asc" };
-        select: { blocks: true; clientNonce: true };
-      }) => Promise<Array<{ blocks: unknown; clientNonce: string | null }>>;
+        select: { id: true; blocks: true; clientNonce: true };
+      }) => Promise<Array<{ id: string; blocks: unknown; clientNonce: string | null }>>;
     };
   },
   runId: string,
+  options: { excludeMessageId?: string | null } = {},
 ): Promise<{ text: string; progressOnly: boolean }> {
   const messages = await prisma.message.findMany({
     where: { runId, role: "bot" },
     orderBy: { seq: "asc" },
-    select: { blocks: true, clientNonce: true },
+    select: { id: true, blocks: true, clientNonce: true },
   });
   const progressParts: string[] = [];
   const finalParts: string[] = [];
   for (const message of messages) {
+    if (options.excludeMessageId && message.id === options.excludeMessageId) continue;
     const text = messageText(message.blocks);
     if (!text) continue;
     if (isUserProgressClientNonce(message.clientNonce)) progressParts.push(text);
