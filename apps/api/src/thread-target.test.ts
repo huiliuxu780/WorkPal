@@ -387,6 +387,72 @@ describe("CARD-01 snapshot gate", () => {
     ]);
     expect(JSON.stringify(snapshot)).not.toContain("pair-thread-1");
   });
+
+  it("resolves a direct group Run's hand-back against its own Bot computer", async () => {
+    const { prisma, tx } = fixture();
+    const activeRun = {
+      id: "run-group",
+      spaceId: "space-1",
+      threadId: "thread-1",
+      taskId: "task-1",
+      botId: "bot-2",
+      status: "waiting_takeover",
+      waitKind: "takeover",
+      trigger: "user",
+      modelProvider: null,
+      modelId: null,
+      error: null,
+      startedAt: null,
+      completedAt: null,
+      waitStartedAt: new Date("2026-10-24T10:00:00.000Z"),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      createdAt: new Date("2026-10-24T10:00:00.000Z"),
+      updatedAt: new Date("2026-10-24T10:00:00.000Z"),
+      snapshotRev: 0,
+    };
+    tx.run.findMany.mockImplementation(
+      async (args: { where?: { status?: { in?: string[] }; originThreadId?: unknown } }) => {
+        if (args?.where?.originThreadId) return [];
+        const statuses = args?.where?.status?.in ?? [];
+        return statuses.includes("waiting_takeover") ? [activeRun] : [];
+      },
+    );
+    tx.bot.findMany.mockResolvedValue([
+      {
+        id: "bot-2",
+        computer: {
+          id: "computer-2",
+          controlHolder: "user",
+          controlBotId: "bot-2",
+          controlRunId: "run-group",
+          controlLeaseId: "lease-2",
+          controlLeaseExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    ]);
+    const target = {
+      kind: "group",
+      groupId: "group-1",
+      groupName: "Group",
+      spaceId: "space-1",
+      leadBotId: null,
+      members: [],
+      memberBotIds: [],
+      threadId: "thread-1",
+    } as ThreadTarget;
+
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+
+    expect(snapshot.interactions).toEqual([
+      expect.objectContaining({
+        kind: "session_control",
+        action: "return",
+        runId: "run-group",
+        computerId: "computer-2",
+      }),
+    ]);
+  });
 });
 
 describe("threadSnapshot", () => {

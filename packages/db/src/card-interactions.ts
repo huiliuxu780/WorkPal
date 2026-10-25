@@ -77,6 +77,60 @@ export interface ThreadCardSurfaceInput {
   now?: Date;
 }
 
+async function queryBotComputerFacts(
+  tx: Prisma.TransactionClient,
+  input: { spaceId: string; botIds: readonly string[] },
+): Promise<{ botIds: Set<string>; computers: CardComputerFact[] }> {
+  const botIds = [...new Set(input.botIds)];
+  if (botIds.length === 0) return { botIds: new Set(), computers: [] };
+  const bots = await tx.bot.findMany({
+    where: { id: { in: botIds }, spaceId: input.spaceId, archivedAt: null },
+    select: {
+      id: true,
+      computer: {
+        select: {
+          id: true,
+          controlHolder: true,
+          controlBotId: true,
+          controlRunId: true,
+          controlLeaseId: true,
+          controlLeaseExpiresAt: true,
+        },
+      },
+    },
+  });
+  return {
+    botIds: new Set(bots.map((bot) => bot.id)),
+    computers: bots.flatMap((bot) =>
+      bot.computer
+        ? [
+            {
+              id: bot.computer.id,
+              botId: bot.id,
+              controlHolder: bot.computer.controlHolder,
+              controlBotId: bot.computer.controlBotId,
+              controlRunId: bot.computer.controlRunId,
+              controlLeaseId: bot.computer.controlLeaseId,
+              controlLeaseExpiresAt: bot.computer.controlLeaseExpiresAt,
+            },
+          ]
+        : [],
+    ),
+  };
+}
+
+/**
+ * Current Computer facts for the Bots behind a Thread's active Runs. A Run
+ * executing directly in a group needs its own Computer to show takeover/return;
+ * a delegated Run needs the Computer of the Bot executing it.
+ */
+export async function loadBotComputerFacts(
+  tx: Prisma.TransactionClient,
+  input: { spaceId: string; botIds: readonly string[] },
+): Promise<CardComputerFact[]> {
+  return (await queryBotComputerFacts(tx, input)).computers;
+}
+
 const ORIGIN_CONTROL_MAX_DEPTH = 8;
 
 const ORIGIN_CONTROL_RUN_SELECT = {
@@ -185,30 +239,13 @@ export async function loadOriginControlFacts(
     );
   }
   if (controlRuns.length === 0) return { runs: [], computers: [] };
-  const bots = await tx.bot.findMany({
-    where: {
-      id: { in: [...new Set(controlRuns.map((run) => run.botId))] },
-      spaceId: input.spaceId,
-      archivedAt: null,
-    },
-    select: {
-      id: true,
-      computer: {
-        select: {
-          id: true,
-          controlHolder: true,
-          controlBotId: true,
-          controlRunId: true,
-          controlLeaseId: true,
-          controlLeaseExpiresAt: true,
-        },
-      },
-    },
+  const bots = await queryBotComputerFacts(tx, {
+    spaceId: input.spaceId,
+    botIds: controlRuns.map((run) => run.botId),
   });
-  const visibleBotIds = new Set(bots.map((bot) => bot.id));
   return {
     runs: controlRuns
-      .filter((run) => visibleBotIds.has(run.botId))
+      .filter((run) => bots.botIds.has(run.botId))
       .map((run) => ({
         id: run.id,
         spaceId: run.spaceId,
@@ -226,21 +263,7 @@ export async function loadOriginControlFacts(
             (!run.leaseExpiresAt || run.leaseExpiresAt.getTime() > Date.now()),
         ),
       })),
-    computers: bots.flatMap((bot) =>
-      bot.computer
-        ? [
-            {
-              id: bot.computer.id,
-              botId: bot.id,
-              controlHolder: bot.computer.controlHolder,
-              controlBotId: bot.computer.controlBotId,
-              controlRunId: bot.computer.controlRunId,
-              controlLeaseId: bot.computer.controlLeaseId,
-              controlLeaseExpiresAt: bot.computer.controlLeaseExpiresAt,
-            },
-          ]
-        : [],
-    ),
+    computers: bots.computers,
   };
 }
 

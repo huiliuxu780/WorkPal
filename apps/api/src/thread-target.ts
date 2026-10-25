@@ -57,6 +57,7 @@ import {
   cancelEventPayload,
   cancelPolicyFor,
   cardMessageFact,
+  loadBotComputerFacts,
   loadOriginControlFacts,
   projectThreadCardSurface,
   supersededCancelPolicy,
@@ -958,6 +959,15 @@ export async function threadSnapshot(
         ...interventions.map((view) => view.runId),
       ],
     });
+    const cardComputers = deps.cardsUnifiedV2
+      ? await loadBotComputerFacts(tx, {
+          spaceId: target.spaceId,
+          botIds: [
+            ...activeRuns.map((run) => run.botId),
+            ...(originControls?.computers ?? []).map((computer) => computer.botId),
+          ],
+        })
+      : [];
     const cardSurface = deps.cardsUnifiedV2
       ? projectThreadCardSurface({
           spaceId: target.spaceId,
@@ -986,9 +996,9 @@ export async function threadSnapshot(
               (run) => !activeRuns.some((active) => active.id === run.id),
             ),
           ],
-          // A group Thread has no single Computer; each delegated Run presented
-          // here resolves control against its own Bot's Computer row.
-          computers: originControls?.computers ?? [],
+          // A group Thread has no single Computer; every Run resolves control
+          // against the Computer of the Bot executing it.
+          computers: cardComputers,
         })
       : null;
     return {
