@@ -201,6 +201,59 @@ describePostgres("RT-27 deterministic message routing (PostgreSQL)", () => {
     });
   });
 
+  it("keeps an existing queued user run when multiple candidates force a new route", async () => {
+    const target = await newBotThread("preserve-queued");
+    const running = await newRun(target, { status: "running" });
+    const source = await prisma.message.create({
+      data: {
+        threadId: target.threadId,
+        seq: 1,
+        role: "user",
+        blocks: [{ kind: "text", text: "queued request" }],
+        clientNonce: "rt27-preserve-queued-source",
+      },
+    });
+    const queuedTask = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        prompt: "queued request",
+        status: "queued",
+      },
+    });
+    const queuedRun = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: target.botId,
+        threadId: target.threadId,
+        taskId: queuedTask.id,
+        status: "queued",
+        trigger: "user",
+        sourceMessageId: source.id,
+      },
+    });
+
+    const result = await send(targetOf(target), {
+      text: "a different request",
+      clientNonce: "rt27-preserve-queued",
+    });
+
+    expect(result.runId).not.toBe(running.run.id);
+    expect(result.runId).not.toBe(queuedRun.id);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: queuedRun.id } })).toMatchObject({
+      status: "queued",
+    });
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: queuedTask.id } })).toMatchObject({
+      status: "queued",
+    });
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: running.run.id } })).toMatchObject({
+      status: "running",
+    });
+  });
+
   it("creates an independent queued run for a request in another thread", async () => {
     const direct = await newBotThread("cross-thread-source");
     // X02: the same Bot is busy in a group Thread. The direct Thread has no
@@ -371,6 +424,52 @@ describePostgres("RT-27 deterministic message routing (PostgreSQL)", () => {
     expect(await prisma.task.count({ where: { threadId: target.threadId } })).toBe(1);
     expect(await prisma.run.count({ where: { threadId: target.threadId } })).toBe(1);
     expect(await prisma.message.count({ where: { threadId: target.threadId } })).toBe(0);
+  });
+
+  it("rejects terminal tasks instead of creating an implicit follow-up", async () => {
+    for (const status of ["completed", "failed", "cancelled"] as const) {
+      const target = await newBotThread(`terminal-${status}`);
+      const task = await prisma.task.create({
+        data: {
+          spaceId: id,
+          userId: id,
+          botId: target.botId,
+          threadId: target.threadId,
+          prompt: "Already terminal",
+          status,
+        },
+      });
+      await prisma.run.create({
+        data: {
+          spaceId: id,
+          userId: id,
+          botId: target.botId,
+          threadId: target.threadId,
+          taskId: task.id,
+          status,
+          trigger: "user",
+        },
+      });
+
+      await expect(
+        send(targetOf(target), {
+          text: "one more thing",
+          clientNonce: `rt27-terminal-${status}`,
+          targetTaskId: task.id,
+        }),
+      ).rejects.toMatchObject({
+        code: "CONFLICT",
+        data: { code: "target_task_not_amendable" },
+      });
+
+      expect(await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({
+        revision: 1,
+        status,
+      });
+      expect(await prisma.task.count({ where: { threadId: target.threadId } })).toBe(1);
+      expect(await prisma.run.count({ where: { threadId: target.threadId } })).toBe(1);
+      expect(await prisma.message.count({ where: { threadId: target.threadId } })).toBe(0);
+    }
   });
 
   it("replays one nonce without a second task, run, or steering", async () => {

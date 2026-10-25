@@ -1367,6 +1367,10 @@ export async function sendThreadMessage(
       }
 
       if (target.kind === "bot") {
+        // RT-27 reads the candidate set before creating the message. Take the
+        // same thread row lock the message write and finalizeRunOnce use, so a
+        // Run cannot finish between candidate selection and steering attach.
+        await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR UPDATE`;
         const mentionTargets = splitMentionTargets(input.mentions);
         const { blocks: attachmentBlocks, artifacts } = await resolveSendAttachments(
           { prisma: tx },
@@ -1572,11 +1576,19 @@ export async function sendThreadMessage(
           },
         });
         await tx.message.update({ where: { id: message.id }, data: { runId: run.id } });
-        const supersededRunIds = await cancelSupersededQueuedRuns(tx, {
-          threadId: target.threadId,
-          botIds: [target.botId],
-          keepRunIds: [run.id],
-        });
+        // A multiple-candidate route means an existing queued user Run is one
+        // of the reasons this message needs its own Task. Superseding that Run
+        // here would cancel work the user never replaced; only the no-candidate
+        // route cleans up stale queued sends.
+        const supersededRunIds =
+          decision.kind === "create_independent_run" &&
+          decision.reason === "multiple_steerable_candidates"
+            ? []
+            : await cancelSupersededQueuedRuns(tx, {
+                threadId: target.threadId,
+                botIds: [target.botId],
+                keepRunIds: [run.id],
+              });
         const event = await appendEventInTransaction(tx, {
           spaceId: actor.spaceId,
           threadId: target.threadId,
@@ -1884,11 +1896,14 @@ export async function sendThreadMessage(
       let supersededRunIds: string[] = [];
       if (firstRun) {
         await tx.message.update({ where: { id: message.id }, data: { runId: firstRun.id } });
-        const createdRuns = runs.filter(
-          (run) =>
-            routeByBotId.get(run.botId)?.kind === "create_independent_run" &&
-            !answeredByBotId.has(run.botId),
-        );
+        const createdRuns = runs.filter((run) => {
+          const route = routeByBotId.get(run.botId);
+          return (
+            route?.kind === "create_independent_run" &&
+            route.reason !== "multiple_steerable_candidates" &&
+            !answeredByBotId.has(run.botId)
+          );
+        });
         if (createdRuns.length) {
           supersededRunIds = await cancelSupersededQueuedRuns(tx, {
             threadId: target.threadId,

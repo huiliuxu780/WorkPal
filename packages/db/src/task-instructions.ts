@@ -808,6 +808,10 @@ export async function applyTaskAmendmentInTransaction(
  * indistinguishable from a missing one. `amendable` is false when the Task
  * exists but its Run lineage or status projection cannot take a revision; the
  * amendment itself re-validates under locks.
+ *
+ * RT-27 also rejects terminal Tasks at the routing layer: RT-14 can record or
+ * follow up on a terminal Task internally, but an explicit chat supplement is
+ * not the retry/recovery path for work that already finished.
  */
 export async function readAmendmentTargetInTransaction(
   tx: Prisma.TransactionClient,
@@ -838,7 +842,10 @@ export async function readAmendmentTargetInTransaction(
   const targetRun = boundTaskRun(runs);
   if (!targetRun) return null;
   const status = RunStatus.safeParse(targetRun.status);
-  const amendable = status.success && task.status === expectedTaskStatus(status.data);
+  const terminal =
+    status.success &&
+    (status.data === "completed" || status.data === "failed" || status.data === "cancelled");
+  const amendable = status.success && !terminal && task.status === expectedTaskStatus(status.data);
   return { taskId: task.id, botId: task.botId, amendable };
 }
 
