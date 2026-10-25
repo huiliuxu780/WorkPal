@@ -376,6 +376,17 @@ export function classifyPath(file) {
   }
 
   if (
+    isUnder(p, "packages/testkit/src/resources") ||
+    isUnder(p, "packages/testkit/src/cli/resources")
+  ) {
+    return {
+      jobs: ["harness", "backend", "agentscope"],
+      reason: "worktree resource planner and agent doctor",
+      webE2e: [],
+    };
+  }
+
+  if (
     isUnder(p, "packages/adapters") ||
     isUnder(p, "packages/adapter-kit") ||
     isUnder(p, "apps/api") ||

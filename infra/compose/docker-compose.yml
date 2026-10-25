@@ -1,4 +1,4 @@
-name: workpal
+name: ${COMPOSE_PROJECT_NAME:-workpal}
 
 services:
   postgres:
@@ -44,7 +44,7 @@ services:
       AXIOM_EDGE_URL: ${AXIOM_EDGE_URL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ../../data:/data
+      - ${WORKPAL_COMPOSE_DATA_DIR:-../../data}:/data
     depends_on:
       computer:
         condition: service_completed_successfully
@@ -61,7 +61,7 @@ services:
     command: ["chown", "-R", "1000:1000", "/data"]
     restart: "no"
     volumes:
-      - ../../data:/data
+      - ${WORKPAL_COMPOSE_DATA_DIR:-../../data}:/data
 
   agentscope:
     build:
@@ -116,7 +116,7 @@ services:
     ports:
       - "127.0.0.1:${API_HOST_PORT:-3100}:3100"
     volumes:
-      - ../../data:/data
+      - ${WORKPAL_COMPOSE_DATA_DIR:-../../data}:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,7 +156,7 @@ services:
       https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
       no_proxy: ${no_proxy:-${NO_PROXY:-}}
     volumes:
-      - ../../data:/data
+      - ${WORKPAL_COMPOSE_DATA_DIR:-../../data}:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,4 +181,6 @@ services:
 
 volumes:
   pgdata:
+    name: ${COMPOSE_PROJECT_NAME:-workpal}_pgdata
   agentstate:
+    name: ${COMPOSE_PROJECT_NAME:-workpal}_agentstate
