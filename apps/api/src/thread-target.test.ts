@@ -1257,11 +1257,16 @@ function isTerminalRunQuery(where: { status?: { in?: string[] } } | undefined) {
 }
 
 function matchesPeerActiveFilter(
-  row: { trigger?: string; status?: string },
+  row: { id?: string; trigger?: string; status?: string; sourceMessageId?: string | null },
   where:
     | {
         trigger?: { not?: string };
-        OR?: Array<{ trigger?: { not?: string }; status?: { in?: string[] } }>;
+        OR?: Array<{
+          trigger?: { not?: string };
+          status?: { in?: string[] };
+          id?: { in?: string[] };
+          sourceMessageId?: { in?: string[] };
+        }>;
       }
     | undefined,
 ) {
@@ -1270,6 +1275,14 @@ function matchesPeerActiveFilter(
   return where.OR.some((clause) => {
     if (clause.trigger?.not === "bot_message") return row.trigger !== "bot_message";
     if (clause.status?.in) return clause.status.in.includes(row.status ?? "");
+    // PD-01P message→Runs window: match the explicit run ids and the durable
+    // source-message links, exactly like the SQL where clause.
+    if (clause.id?.in) return Boolean(row.id && clause.id.in.includes(row.id));
+    if (clause.sourceMessageId?.in) {
+      return Boolean(
+        row.sourceMessageId && clause.sourceMessageId.in.includes(row.sourceMessageId),
+      );
+    }
     return false;
   });
 }
