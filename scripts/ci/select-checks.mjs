@@ -39,6 +39,7 @@ const AVATAR_WEB_E2E = [
   "avatar-bot-change.spec.ts",
 ];
 const EXECUTION_WEB_E2E = ["execution-card.spec.ts", "task-center.spec.ts"];
+const CARD_UI_INTERACTIONS_WEB_E2E = ["card-ui-interactions.spec.ts", "peer-messages.spec.ts"];
 const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
 const ONBOARDING_WEB_E2E = [
   "onboarding-conversation.spec.ts",
@@ -461,6 +462,21 @@ function mappedWebE2e(file) {
   ) {
     return AVATAR_WEB_E2E;
   }
+  // CARD-01B renderers and the RT-09 private-pair receipt/overlay are one
+  // production path: a change here must run both the gate-on card spec and the
+  // bound private-history spec.
+  if (
+    isUnder(file, "apps/web/src/components/ai/interactions") ||
+    file.includes("PeerReceiptRow") ||
+    file.includes("peer-receipts") ||
+    file.includes("peer-transcript") ||
+    file.includes("PeerMessagesOverlay") ||
+    file.includes("InterventionRegion") ||
+    stemMatch(file, "apps/web/src/pages/Shell") ||
+    stemMatch(file, "apps/web/src/pages/shell/use-execution-transcript")
+  ) {
+    return CARD_UI_INTERACTIONS_WEB_E2E;
+  }
   if (file.includes("GroupDestinationReceipt")) return MESSAGE_GROUP_WEB_E2E;
   if (
     isUnder(file, "apps/web/src/components/ai") ||
@@ -567,6 +583,7 @@ export function selectChecks(input) {
   const selected = new Set();
   const reasons = {};
   const webE2e = new Set();
+  const directSpecs = new Set();
   const fileReasons = [];
   let harnessMode = null;
   let sawUnitChange = false;
@@ -579,6 +596,8 @@ export function selectChecks(input) {
     if (traits.isPostgres && !jobs.includes("db-postgres")) jobs.push("db-postgres");
     for (const job of jobs) selected.add(job);
     for (const spec of classified.webE2e) webE2e.add(spec);
+    const directSpec = executableWebSpecName(file);
+    if (directSpec) directSpecs.add(directSpec);
     fileReasons.push({ file, jobs, reason: classified.reason });
     if (!reasons[jobs.join("+")]) {
       reasons[jobs.join("+")] = `${file}: ${classified.reason}`;
@@ -593,6 +612,15 @@ export function selectChecks(input) {
   }
   if (harnessMode) {
     harnessMode = forceHarnessFull ? "full" : sawUnitChange ? "unit" : "inventory";
+  }
+
+  // The CARD/pair specs run with feature gates enabled for the whole
+  // Playwright invocation. Do not mix in legacy execution specs that assert
+  // the gate-off card path unless that spec itself changed.
+  if (webE2e.has("card-ui-interactions.spec.ts")) {
+    for (const spec of ["execution-card.spec.ts", "task-center.spec.ts"]) {
+      if (!directSpecs.has(spec)) webE2e.delete(spec);
+    }
   }
 
   return buildResult({

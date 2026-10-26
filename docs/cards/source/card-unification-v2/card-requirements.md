@@ -2,7 +2,7 @@
 
 - 状态：产品原型评审版 · 2026-10-24
 - 视觉与操作：`mockup/cards-hifi-v4/`
-- 范围：27 个产品场景、7 个详情场景、4 类提醒，以及加载、窄屏、深色和无障碍
+- 范围：27 个产品场景、8 个详情场景、4 类提醒，以及加载、窄屏、深色和无障碍
 - 边界：目标协议是产品示意，不代表现有生产 API；本原型不解除生产实现阻塞
 
 ## 1. 用户目标与原则
@@ -76,7 +76,7 @@ UI 可合成用户文案，但不能合成持久状态。Run 结束不自动作�
 | A5 | 选择 · `requestInput(choice)` | 选中与提交清晰；答案以 resolution 为准，不接受孤立“A”作为群回复凭据。 |
 | A6 | 建空间 · `requestApproval(tool)` | 本人确认；创建成功后链接来自业务事务。 |
 | A7 | 连接授权 · `requestApproval(connect.app_authorization)` + `requestApproval(connect.mcp_assignment)` | 同一场景展示两张卡；app authorization 与 MCP assignment 使用不同严格 payload；MCP 卡必须在标题、风险说明和主操作中明确 `allowAllTools: true`；OAuth 未完成保持 pending；与安装独立。 |
-| A8 | 保存技能 · `requestApproval(skill_save)` | 可查看 playbook；保存绑定当前内容快照；权威事务是 TaughtSkill 保存，不是工具执行。 |
+| A8 | 保存技能 · `requestApproval(skill_save)` | 可查看只读 playbook；保存绑定当前内容快照；权威事务是 TaughtSkill 保存，不是工具执行。 |
 | A9 | 接管电脑 · `requestSessionControl(takeover)` | 主按钮“打开桌面”；只暂停对应 Bot；群聊引导本人到可操作上下文。 |
 | A10 | 外发草稿 · `requestApproval(outbound)` | 同卡编辑；不可变 revision；最新 pending 才可发送；决定绑定 fingerprint；收件人与正文必须与确认页一致。 |
 | A11 | 表单 · `requestInput(form)` | 必填就地校验；敏感支付/密钥不混入；完成后只显示非敏感摘要。 |
@@ -117,7 +117,7 @@ UI 可合成用户文案，但不能合成持久状态。Run 结束不自动作�
 6. 旧 revision 保留 superseded 审计；待处理只显示最新 pending revision。
 7. 卡号只显示末四位；密钥不可复制、不可回显；通知不包含敏感内容。
 
-## 6. 七个详情场景
+## 6. 八个详情场景
 
 通用：宽屏右侧或模态，窄屏使用可用全宽；关闭返回来源位置。✕、遮罩与 Esc 只关闭，不等于拒绝、取消或放弃修改。详情内决定与来源 Intervention 同步且只记录一次。
 
@@ -130,6 +130,7 @@ UI 可合成用户文案，但不能合成持久状态。Run 结束不自动作�
 | V5 | 工具审批详情 | 完整参数、命令、来源与风险；敏感值遮罩；无全局 Enter 批准；Esc 不等于拒绝。 |
 | V6 | task_status 运行详情 | 步骤、日志、结果与 Run 状态；Run 停止不自动作废 Interaction；未知外部结果无重新执行。 |
 | V7 | Routine 详情与历史 | 配置、历史运行与业务事实；历史留在工作投影；暂停/修改/删除另发 B2 审批。 |
+| V8 | A8 技能保存详情 | 只读查看即将保存的 playbook：名称、目标、适用时机、输入、步骤、检查方式、返回内容、授权边界与失败处理；查看不改变消息、草稿或 Intervention；详情内无编辑、测试、执行、保存或批准按钮。 |
 
 ## 7. 四类提醒
 
@@ -197,7 +198,7 @@ UI 可合成用户文案，但不能合成持久状态。Run 结束不自动作�
 
 ## 11. 原型验收清单
 
-- 27 个产品场景、7 个详情场景、4 类提醒均可从总索引到达并返回。
+- 27 个产品场景、8 个详情场景、4 类提醒均可从总索引到达并返回。
 - A10 编辑、保存 revision、最新 pending、fingerprint 和最终确认内容一致。
 - A13 是独立 `PlanReviewView`（`plan_review`），未归入工具审批；批准计划不批准任何工具调用、连接器或凭据。
 - A12 与付款审批为两个连续场景；安装与授权独立。

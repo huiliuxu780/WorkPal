@@ -150,7 +150,7 @@ import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { MessageText } from "../components/ai/AgentMentionText";
-import { CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { PeerReceiptRow } from "../components/ai/PeerReceiptRow";
 import { GroupDestinationReceipt } from "../components/ai/GroupDestinationReceipt";
 import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
 import { CloudAgentCard } from "../components/CloudAgentCard";
@@ -223,6 +223,11 @@ import {
 } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { projectPublicDelegations } from "../lib/public-collaboration";
+import {
+  groupPeerReceipts,
+  type PeerReceiptGroup,
+  type PeerReceiptTarget,
+} from "../lib/peer-receipts";
 import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
@@ -238,6 +243,7 @@ import {
   computerPanelNeedsMaintenance,
   computerTakeoverBlocked,
   isComputerStatusEvent,
+  isSessionControlLifecycleEvent,
   isThreadSnapshotEvent,
   prependThreadMessagePage,
   reconcileRefreshedThread,
@@ -502,6 +508,9 @@ export function ShellPage() {
   const [peerConversation, setPeerConversation] = useState<{
     peerBotId: string;
     peerBotName: string;
+    sourceReceiptMessageId: string;
+    pairThreadId: string;
+    messageId: string;
   } | null>(null);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
@@ -1424,6 +1433,11 @@ export function ShellPage() {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
         } else if (isComputerStatusEvent(event)) {
+          if (isSessionControlLifecycleEvent(event)) {
+            // The session-control card is derived from the authoritative
+            // snapshot; a screen-only refresh leaves it stale or missing.
+            void refreshThread(active.id).catch(() => undefined);
+          }
           void refreshComputerScreen(active.id).catch(() => undefined);
         }
       },
@@ -3764,6 +3778,12 @@ export function ShellPage() {
             olderCursor={activeSnapshot?.olderCursor ?? null}
             loadingOlder={loadingOlder}
             interventions={activeSnapshot?.interventions}
+            interactions={activeSnapshot?.interactions}
+            cardsUnifiedV2={activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true}
+            conversationName={
+              inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
+            }
+            groupNameOf={(groupId) => groups.find((group) => group.id === groupId)?.name}
             threadId={activeSnapshot?.threadId ?? ""}
             executions={activeSnapshot?.executions}
             running={transcriptRunning}
@@ -3785,8 +3805,16 @@ export function ShellPage() {
             }}
             onReact={reactToMessage}
             onJumpToMessage={jumpToReplyMessage}
-            onOpenPeerMessages={(peer) => {
-              setPeerConversation(peer);
+            onOpenPeerMessages={(target) => {
+              if (!target.destination) return;
+              setPeerConversation({
+                peerBotId: target.botId,
+                peerBotName:
+                  resolveTranscriptBotDisplayName(target.botId) ?? target.botName ?? t`Bot`,
+                sourceReceiptMessageId: target.sourceReceiptMessageId,
+                pairThreadId: target.destination.pairThreadId,
+                messageId: target.destination.messageId,
+              });
             }}
             memberName={resolveTranscriptMemberName}
             botNameOf={resolveTranscriptBotDisplayName}
@@ -4628,7 +4656,21 @@ export function ShellPage() {
                 pinnedAroundRef.current = null;
                 historyEpoch.current += 1;
                 updateSnapshot((current) =>
-                  current ? { ...current, messages: [], olderCursor: null, run: null } : current,
+                  current
+                    ? {
+                        ...current,
+                        messages: [],
+                        olderCursor: null,
+                        run: null,
+                        activeRuns: [],
+                        plans: [],
+                        steps: [],
+                        todos: [],
+                        interventions: [],
+                        interactions: [],
+                        displayBlocks: [],
+                      }
+                    : current,
                 );
               }
               setClearTarget(null);
@@ -4719,6 +4761,12 @@ export function ShellPage() {
             peerBotColor={
               resolveTranscriptBot(peerConversation.peerBotId)?.color ?? FALLBACK_BOT_COLOR
             }
+            sourceReceiptMessageId={peerConversation.sourceReceiptMessageId}
+            locator={{
+              kind: "pair_message",
+              pairThreadId: peerConversation.pairThreadId,
+              messageId: peerConversation.messageId,
+            }}
             onClose={() => setPeerConversation(null)}
           />
         ) : null}
@@ -4913,6 +4961,10 @@ export const Transcript = memo(function Transcript({
   olderCursor,
   loadingOlder,
   interventions,
+  interactions,
+  cardsUnifiedV2,
+  conversationName,
+  groupNameOf,
   threadId,
   executions,
   running,
@@ -4960,6 +5012,11 @@ export const Transcript = memo(function Transcript({
   olderCursor: number | null;
   loadingOlder: boolean;
   interventions?: ThreadSnapshot["interventions"];
+  /** CARD-01A strict projection; present only when the server gate is on. */
+  interactions?: ThreadSnapshot["interactions"];
+  cardsUnifiedV2?: boolean;
+  conversationName?: string;
+  groupNameOf?: (groupId: string) => string | undefined;
   threadId: string;
   /** Server per-Run summaries (HISTORY-001); absent on older servers. */
   executions?: ThreadSnapshot["executions"];
@@ -4978,7 +5035,7 @@ export const Transcript = memo(function Transcript({
   onQuote: (message: ThreadMessage, quote: string) => void;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
   onJumpToMessage: (messageId: string) => void;
-  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
+  onOpenPeerMessages: (target: PeerReceiptTarget) => void;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
   onRefresh: () => Promise<void>;
@@ -5004,7 +5061,7 @@ export const Transcript = memo(function Transcript({
   // detail cache, Interventions, execution-nav return focus and the per-anchor
   // ExecutionShell rendering) is owned by useExecutionTranscript; messageById
   // is shared read-only input, not an execution-region responsibility.
-  const { coveredAsks, renderExecutions } = useExecutionTranscript({
+  const { coveredAsks, renderExecutions, standaloneRegion } = useExecutionTranscript({
     threadId,
     artifactTarget,
     messages,
@@ -5015,14 +5072,30 @@ export const Transcript = memo(function Transcript({
     runs,
     activeRunIds,
     interventions,
+    interactions,
+    cardsUnifiedV2,
+    conversationName,
+    groupNameOf,
     executions,
     activity,
     showActivityAvatars,
     activityBotColors,
     botNameOf,
+    onOpenComputer,
     onRefresh,
   });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
+  const peerReceipts = useMemo(() => {
+    // Group transcripts use PublicDelegationMessage; a private pair receipt
+    // (and the wake row behind it) must never surface there.
+    if ("groupId" in artifactTarget) {
+      return {
+        groups: [],
+        groupByMessageId: new Map<string, PeerReceiptGroup>(),
+      };
+    }
+    return groupPeerReceipts(reactionView.visibleMessages);
+  }, [artifactTarget, reactionView.visibleMessages]);
   // Public `message_bot` deliveries only exist as public collaboration in a
   // group Thread. Direct threads keep the private receipt chip and pair view.
   const inGroupTranscript = "groupId" in artifactTarget;
@@ -5318,6 +5391,31 @@ export const Transcript = memo(function Transcript({
             );
           }
           const message = item.message;
+          const receiptGroup = peerReceipts.groupByMessageId.get(message.id);
+          if (receiptGroup) {
+            if (receiptGroup.anchorMessageId !== message.id) {
+              return (
+                <Fragment key={message.id}>
+                  {renderExecutions(`before:${message.id}`)}
+                  {renderExecutions(message.id)}
+                </Fragment>
+              );
+            }
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                <div data-message-id={message.id} className="relative py-0.5">
+                  <PeerReceiptRow
+                    targets={receiptGroup.targets}
+                    botName={(botId) => botNameOf?.(botId)}
+                    botColor={(botId) => peerBot(botId)?.color}
+                    onOpen={onOpenPeerMessages}
+                  />
+                </div>
+                {renderExecutions(message.id)}
+              </Fragment>
+            );
+          }
           const publicDelegation = publicDelegations?.groupsByFirstMessageId.get(message.id);
           if (publicDelegation) {
             // One natural group message per adjacent same-source delegation.
@@ -5369,7 +5467,14 @@ export const Transcript = memo(function Transcript({
           }
           const suppressAsk = coveredAsks.has(message.id);
           const visibleBlocks = suppressAsk
-            ? message.blocks.filter((block) => block.kind !== "ask")
+            ? message.blocks.filter(
+                (block) =>
+                  block.kind !== "ask" &&
+                  (!cardsUnifiedV2 ||
+                    (block.kind !== "app_connect" &&
+                      block.kind !== "mcp_approval" &&
+                      block.kind !== "skill_draft")),
+              )
             : message.blocks;
           const showMessage = messageHasVisibleBlocks(visibleBlocks, showToolActivity);
           if (!showMessage) {
@@ -5431,10 +5536,10 @@ export const Transcript = memo(function Transcript({
                     <MessageView
                       artifactTarget={artifactTarget}
                       message={message}
+                      blocks={visibleBlocks}
                       canAnswer
                       suppressAsk={suppressAsk}
                       onOpenBot={onOpenBot}
-                      onOpenPeerMessages={onOpenPeerMessages}
                       onAnswer={onAnswer}
                       speakerName={
                         peerReceipt
@@ -5497,6 +5602,7 @@ export const Transcript = memo(function Transcript({
           );
         })}
         {renderExecutions("__tail")}
+        {standaloneRegion}
         {backgroundTasks && backgroundTasks.length > 0 ? (
           <BackgroundTaskActivity items={backgroundTasks} onCancel={onCancelBackgroundTask} />
         ) : null}
@@ -6706,9 +6812,9 @@ const MessageView = memo(function MessageView({
   canAnswer,
   suppressAsk = false,
   message,
+  blocks,
   onAnswer,
   onOpenBot,
-  onOpenPeerMessages,
   speakerName,
   memberName,
   peerBot,
@@ -6729,9 +6835,10 @@ const MessageView = memo(function MessageView({
   canAnswer: boolean;
   suppressAsk?: boolean;
   message: ThreadMessage;
+  /** Parent-filtered blocks; defaults to the message's own blocks. */
+  blocks?: ThreadMessage["blocks"];
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
-  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
@@ -6749,15 +6856,16 @@ const MessageView = memo(function MessageView({
   showToolActivity: boolean;
 }) {
   const { t } = useLingui();
+  const messageBlocks = blocks ?? message.blocks;
   const isNarration =
     message.role === "bot" &&
-    message.blocks.length > 0 &&
-    message.blocks.every(
+    messageBlocks.length > 0 &&
+    messageBlocks.every(
       (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const isLive = message.id.startsWith("progress:");
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
-  const visibleNarrationBlocks = renderableMessageBlocks(message.blocks, showToolActivity);
+  const visibleNarrationBlocks = renderableMessageBlocks(messageBlocks, showToolActivity);
   const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const speakerBot = message.botId ? peerBot?.(message.botId) : undefined;
   const speakerColorDef = useMemo(
@@ -6808,7 +6916,7 @@ const MessageView = memo(function MessageView({
   );
   if (isNarration) {
     if (visibleNarrationBlocks.length === 0) return null;
-    if (isToolOnlyNarration(message.blocks, showToolActivity)) {
+    if (isToolOnlyNarration(messageBlocks, showToolActivity)) {
       return (
         <>
           {messageContext}
@@ -6861,7 +6969,7 @@ const MessageView = memo(function MessageView({
               }
               return null;
             })}
-            {!isLive && voiceReady && message.blocks.some((block) => block.kind === "text") ? (
+            {!isLive && voiceReady && messageBlocks.some((block) => block.kind === "text") ? (
               <button
                 type="button"
                 aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
@@ -6879,7 +6987,7 @@ const MessageView = memo(function MessageView({
   return (
     <>
       {messageContext}
-      {message.blocks.map((block, i) => {
+      {messageBlocks.map((block, i) => {
         if (block.kind === "steps" && shouldRenderToolCard(block, showToolActivity)) {
           return (
             <StandaloneToolActivity
@@ -6908,6 +7016,9 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "collaboration_receipt") {
+          // Bot-target receipts render through PeerReceiptRow before this
+          // message view; group receipts keep the destination card below.
+          if (block.target.kind === "bot") return null;
           if ("groupId" in artifactTarget) return null;
           return (
             <GroupReceiptNavigation
@@ -6918,24 +7029,9 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
-          // Public group delegations render through PublicDelegationMessage.
-          // A group transcript must never fall back to the private receipt
-          // chip or open the pair conversation.
-          if ("groupId" in artifactTarget) return null;
-          const sent = block.kind === "bot_message_sent";
-          const peer = sent ? block.toBotName : block.fromBotName;
-          const peerBotId = sent ? block.toBotId : block.fromBotId;
-          const label = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
-          return (
-            <CollaborationMarker
-              key={i}
-              ariaLabel={label}
-              color={peerBot(peerBotId)?.color ?? FALLBACK_BOT_COLOR}
-              identity={peerBotId}
-              label={label}
-              onClick={() => onOpenPeerMessages({ peerBotId, peerBotName: peer })}
-            />
-          );
+          // Legacy source receipts are grouped into the lightweight row before
+          // this view. Pair-side bodies never reach a human transcript here.
+          return null;
         }
         if (block.kind === "channel_message") {
           return (

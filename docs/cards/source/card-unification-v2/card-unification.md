@@ -124,7 +124,7 @@ type DisplayBlock = showContent(markdown | table | chart | collection | media | 
 ## 7. 原型范围与验收入口
 
 - `mockup/cards-hifi-v4/cards.html`：27 个产品场景，含可操作的 A12 与 B3。
-- `mockup/cards-hifi-v4/a-detail.html`：V1–V7，含可操作的 A10、报告面板、灯箱与审批详情。
+- `mockup/cards-hifi-v4/a-detail.html`：V1–V8，含可操作的 A10、报告面板、灯箱、审批详情与 A8 只读 playbook 查看。
 - `mockup/cards-hifi-v4/b-alerts.html`：N1–N4，含可操作的 attention queue。
 - `mockup/cards-hifi-v4/c-states.html`：状态所有者、加载/读取失败、390px、深色、键盘与终态。
 - 原型状态切换是本地确定性演示，不代表真实网络或外部系统已成功执行。

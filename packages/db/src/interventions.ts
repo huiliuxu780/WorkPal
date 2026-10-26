@@ -8,6 +8,7 @@ import {
   legacyInterventionId,
   type MessageBlock,
   MessageBlock as MessageBlockSchema,
+  type OutboundDraftState,
   presentationFromAskBlock,
 } from "@rakazo/contracts";
 import {
@@ -17,6 +18,8 @@ import {
   isSecretAskBlock,
 } from "@rakazo/core";
 import type { Prisma } from "./client.js";
+import { lockIntervention, lockInterventionThreads, lockRun, lockThreadGroups } from "./locks.js";
+import { loadOutboundDraftStates, readOutboundDraftBinding } from "./outbound-drafts.js";
 
 /** Same wait as input and approval runs. Kept here to avoid a cycle with wait-timeouts. */
 export const INTERVENTION_WAIT_MS = 24 * 60 * 60 * 1000;
@@ -134,7 +137,11 @@ async function readEffectStatus(
   return effect?.status ?? "unknown";
 }
 
-export function interventionView(row: InterventionRecord, effectStatus?: string): InterventionView {
+export function interventionView(
+  row: InterventionRecord,
+  effectStatus?: string,
+  outbound?: OutboundDraftState,
+): InterventionView {
   const parsedPresentation = InterventionPresentationSchema.safeParse(row.presentation);
   const presentation = parsedPresentation.success ? parsedPresentation.data : undefined;
   const parsedPlanReview = InterventionPlanReviewSchema.safeParse(row.planReview);
@@ -166,6 +173,7 @@ export function interventionView(row: InterventionRecord, effectStatus?: string)
       : undefined;
   if (approval && decision) approval.decision = decision;
   if (approval && actions) approval.actions = actions;
+  if (approval && outbound) approval.outbound = outbound;
   return {
     id: row.id,
     revision: row.revision,
@@ -244,60 +252,6 @@ async function appendInterventionEvent(
     schemaVersion: 1,
     payload: eventPayload(input.view),
   });
-}
-
-async function lockRun(tx: InterventionTx, runId: string) {
-  await tx.$queryRaw`SELECT id FROM runs WHERE id = ${runId} FOR UPDATE`;
-}
-
-async function lockIntervention(tx: InterventionTx, interventionId: string) {
-  await tx.$queryRaw`SELECT id FROM interventions WHERE id = ${interventionId} FOR UPDATE`;
-}
-
-/**
- * Lock the Thread rows a settling transaction is about to write, in the ONE
- * order every path uses: execution Threads first (sorted), then presentation
- * Threads (sorted).
- *
- * Terminalizing an Intervention appends an event, which writes the Thread row;
- * without a pre-lock a cancel that starts from the Run takes Run → Thread while
- * an answer takes Thread → Run — the deadlock PostgreSQL resolves by aborting
- * one transaction with 40P01.
- *
- * Two groups rather than one sorted set: every cancel and clear entry point in
- * this repository locks the Run's own Thread before it reaches this helper, so a
- * presentation Thread that happens to sort earlier would be acquired second and
- * invert against a concurrent answer. Grouping keeps those callers correct
- * unchanged, because the Thread a caller pre-locks is always an execution Thread
- * and a presentation Thread is only ever reached from here.
- *
- * Precondition: a presentation Thread is never the execution Thread of another
- * cross-Thread Intervention. RT-03 guarantees that — a Thread humans cannot
- * write to is not addressable as a presentation target.
- */
-async function lockThreadGroups(
-  tx: InterventionTx,
-  executionThreadIds: Iterable<string | null | undefined>,
-  presentationThreadIds: Iterable<string | null | undefined> = [],
-): Promise<void> {
-  const locked = new Set<string>();
-  for (const group of [executionThreadIds, presentationThreadIds]) {
-    const unique = [...new Set(group)].filter((threadId): threadId is string => Boolean(threadId));
-    for (const threadId of unique.sort()) {
-      if (locked.has(threadId)) continue;
-      locked.add(threadId);
-      await tx.$queryRaw`SELECT id FROM threads WHERE id = ${threadId} FOR UPDATE`;
-    }
-  }
-}
-
-/** Lock one Intervention's execution Thread, then the Thread it is presented in. */
-export async function lockInterventionThreads(
-  tx: InterventionTx,
-  executionThreadId: string | null | undefined,
-  presentationThreadId?: string | null,
-): Promise<void> {
-  await lockThreadGroups(tx, [executionThreadId], [presentationThreadId]);
 }
 
 /**
@@ -837,8 +791,16 @@ export async function loadInterventionViews(
         })
       : [];
   const effectStatus = new Map(effects.map((effect) => [effect.id, effect.status]));
+  const outboundDrafts = await loadOutboundDraftStates(
+    tx,
+    rows.map((row) => ({ id: row.id, effectId: row.effectId })),
+  );
   const views = rows.map((row) =>
-    interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined),
+    interventionView(
+      row,
+      row.effectId ? effectStatus.get(row.effectId) : undefined,
+      outboundDrafts.get(row.id),
+    ),
   );
   const covered = new Set(views.map((view) => view.messageId));
   for (const message of messages) {
@@ -1021,6 +983,8 @@ export async function resolveInterventionInTransaction(
     /** Thread of the bound Run, derived server-side from it. Never a client value. */
     executionThreadId: string;
     runId: string;
+    /** A10: the outbound draft revision and fingerprint the user confirmed. */
+    outbound?: { revision: number; fingerprint: string };
   },
   commit: (
     tx: InterventionTx,
@@ -1069,6 +1033,27 @@ export async function resolveInterventionInTransaction(
   }
   if (row && !(await boundAttemptIsCurrent(tx, row))) {
     return { outcome: "rejected", reason: "conflict" };
+  }
+  if (row && row.kind === "approval") {
+    // A10: an approving decision binds the draft revision and fingerprint it
+    // was shown. Once an edit exists, "allow" must name the latest revision;
+    // a denial does not approve content and stays unbound.
+    const approving = input.answer === "allow" || input.answer === "always";
+    if (approving) {
+      const binding = await readOutboundDraftBinding(tx, {
+        interventionId: row.id,
+        effectId: row.effectId,
+      });
+      if (binding === "invalid") return { outcome: "rejected", reason: "conflict" };
+      if (binding) {
+        const matches =
+          input.outbound?.revision === binding.revision &&
+          input.outbound?.fingerprint === binding.fingerprint;
+        if (binding.revision > 1 ? !matches : input.outbound !== undefined && !matches) {
+          return { outcome: "rejected", reason: "conflict" };
+        }
+      }
+    }
   }
   const committed = await commit(tx);
   if (!committed) {

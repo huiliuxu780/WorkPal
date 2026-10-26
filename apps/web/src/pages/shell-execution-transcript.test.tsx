@@ -20,8 +20,10 @@
  */
 import { i18n } from "@lingui/core";
 import type {
+  ActionApprovalView,
   ActivityItem,
   ExecutionSummary,
+  InputRequestView,
   InterventionView,
   MessageBlock,
   Run,
@@ -238,6 +240,167 @@ function approvalIntervention(overrides: Partial<InterventionView> = {}): Interv
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const interactionSource = {
+  spaceId: "space-1",
+  threadId: THREAD,
+  messageId: "m2",
+  runId: "run-4",
+  botId: BOT,
+};
+
+const skillPlaybook = {
+  whenToUse: "Every Friday.",
+  inputs: ["inbox"],
+  steps: ["Read", "Write"],
+  howToCheck: "Each bullet cites a thread.",
+  whatToReturn: "Five bullets.",
+  approvalBoundaries: "Never send without approval.",
+  failureHandling: "Report gaps.",
+};
+
+function appAuthorizationInteraction(): ActionApprovalView {
+  const presentation = { text: "CARD-APP-AUTH", detail: "Read the team wiki." };
+  return {
+    kind: "action_approval",
+    interactionId: "interaction-app",
+    revision: 1,
+    status: "pending",
+    createdAt: ISO,
+    expiresAt: null,
+    attentionAt: ISO,
+    source: interactionSource,
+    presentation,
+    decision: null,
+    approval: {
+      kind: "connect.app_authorization",
+      authority: "business_transaction",
+      connectorId: "connector-1",
+      provider: "notion",
+      name: "Notion",
+      description: "Read the team wiki.",
+    },
+  };
+}
+
+function mcpAssignmentInteraction(): ActionApprovalView {
+  const presentation = { text: "CARD-MCP-ASSIGN", detail: "Allows every tool." };
+  return {
+    kind: "action_approval",
+    interactionId: "interaction-mcp",
+    revision: 1,
+    status: "pending",
+    createdAt: "2026-10-12T00:00:01.000Z",
+    expiresAt: null,
+    attentionAt: "2026-10-12T00:00:01.000Z",
+    source: interactionSource,
+    presentation,
+    decision: null,
+    approval: {
+      kind: "connect.mcp_assignment",
+      authority: "business_transaction",
+      serverId: "server-1",
+      name: "Search server",
+      transport: "streamable_http",
+      endpoint: null,
+      needsOAuth: false,
+      allowAllTools: true,
+    },
+  };
+}
+
+function skillSaveInteraction(): ActionApprovalView {
+  const presentation = { text: "CARD-SKILL-SAVE", detail: "Save the taught draft." };
+  return {
+    kind: "action_approval",
+    interactionId: "interaction-skill",
+    revision: 1,
+    status: "pending",
+    createdAt: "2026-10-12T00:00:02.000Z",
+    expiresAt: null,
+    attentionAt: "2026-10-12T00:00:02.000Z",
+    source: interactionSource,
+    presentation,
+    decision: null,
+    approval: {
+      kind: "skill_save",
+      authority: "business_transaction",
+      skillId: "skill-1",
+      name: "Weekly digest",
+      goal: "Summarize the week.",
+      contentRevision: 1,
+      playbook: skillPlaybook,
+    },
+  };
+}
+
+function standaloneQuestion(): InputRequestView {
+  return {
+    kind: "input_request",
+    interactionId: "interaction-standalone",
+    revision: 1,
+    status: "pending",
+    createdAt: ISO,
+    expiresAt: null,
+    attentionAt: ISO,
+    source: { spaceId: "space-1", threadId: THREAD, messageId: null, runId: null, botId: BOT },
+    presentation: { text: "STANDALONE-QUESTION" },
+    input: { mode: "question", prompt: "STANDALONE-QUESTION", placeholder: null },
+  };
+}
+
+const card01BMessages = [
+  message("m1", "user", [{ kind: "text", text: "USER-CARD-01B" }]),
+  message(
+    "m2",
+    "bot",
+    [
+      { kind: "text", text: "READY-FOR-CARD" },
+      {
+        kind: "app_connect",
+        provider: "notion",
+        name: "Notion",
+        description: "LEGACY-APP-COPY",
+        logo: null,
+        status: "pending",
+      },
+      {
+        kind: "mcp_approval",
+        name: "Search server",
+        serverId: "server-1",
+        transport: "streamable_http",
+        endpoint: null,
+        needsOAuth: false,
+        status: "pending",
+      },
+      {
+        kind: "skill_draft",
+        skillId: "skill-1",
+        name: "Weekly digest",
+        goal: "Summarize the week.",
+        playbook: skillPlaybook,
+        status: "draft",
+      },
+    ],
+    "run-4",
+  ),
+];
+
+const card01BProps: Partial<ComponentProps<typeof Transcript>> = {
+  messages: card01BMessages,
+  runs: [run("run-4", "waiting_input", { waitKind: "approval" })],
+  activeRunIds: ["run-4"],
+  executions: [
+    summary({
+      runId: "run-4",
+      rev: 2,
+      status: "waiting_input",
+      waitKind: "approval",
+      title: "WAITING-RUN-TITLE",
+      anchorMessageId: "m2",
+    }),
+  ],
+};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -1459,5 +1622,297 @@ describe("public group delegation transcript", () => {
 
     expect(host.textContent).toContain("TARGET-REAL-CONFIRMATION");
     expect(host.querySelectorAll('[data-testid="public-delegation"]')).toHaveLength(1);
+  });
+});
+
+describe("CARD-01B gate integration", () => {
+  it("renders the strict interaction cards and suppresses every legacy block on the same message", () => {
+    const host = renderTranscript({
+      ...card01BProps,
+      interactions: [
+        appAuthorizationInteraction(),
+        mcpAssignmentInteraction(),
+        skillSaveInteraction(),
+      ],
+      cardsUnifiedV2: true,
+    });
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.getAttribute("data-surface")).toBe("interaction-v2");
+    expect(region?.closest('[data-testid="execution-shell"]')).not.toBeNull();
+    expect(region?.closest(".exc-details")).toBeNull();
+    expect(
+      [...region!.querySelectorAll('[data-testid="interaction-card"]')].map((card) =>
+        card.getAttribute("data-kind"),
+      ),
+    ).toEqual(["action_approval", "action_approval", "action_approval"]);
+    expect(region?.textContent).toContain("CARD-APP-AUTH");
+    expect(region?.textContent).toContain("MCP assignment · allow all tools");
+    expect(region?.textContent).toContain("Save skill “Weekly digest”");
+    expect(host.querySelector('[data-testid="app-authorization-approve"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="mcp-allow-all-tools"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="skill-save-open"]')).not.toBeNull();
+
+    // The projection is the only surface: no legacy app/MCP/skill block and
+    // no duplicated legacy copy in the bubble.
+    expect(host.querySelector('[aria-label="Notion connection"]')).toBeNull();
+    expect(host.querySelector('[data-testid="mcp-approval-card"]')).toBeNull();
+    expect(host.querySelector('[data-testid="skill-draft-card"]')).toBeNull();
+    expect(host.textContent).not.toContain("LEGACY-APP-COPY");
+
+    // The execution headline carries the first pending presentation text.
+    const shell = host.querySelector('[data-testid="execution-card"]');
+    expect(shell?.textContent).toContain("WAITING-RUN-TITLE");
+    expect(shell?.textContent).toContain("CARD-APP-AUTH");
+  });
+
+  it("keeps a settled message-backed card and its shell after the Run completes", () => {
+    // CARD-01B gate-on: legacy app/MCP/skill blocks stay suppressed, so the
+    // strict region is the only surface. A terminal card must survive the Run
+    // losing every pending/Plan/Step signal — otherwise history vanishes.
+    const host = renderTranscript({
+      ...card01BProps,
+      runs: [run("run-4", "completed")],
+      activeRunIds: [],
+      executions: [
+        summary({
+          runId: "run-4",
+          rev: 3,
+          status: "completed",
+          title: "COMPLETED-RUN-TITLE",
+          anchorMessageId: "m2",
+        }),
+      ],
+      interactions: [
+        { ...appAuthorizationInteraction(), status: "answered", decision: "approved" },
+      ],
+      cardsUnifiedV2: true,
+    });
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.getAttribute("data-surface")).toBe("interaction-v2");
+    expect(region?.closest('[data-testid="execution-shell"]')).not.toBeNull();
+    expect(region?.textContent).toContain("CARD-APP-AUTH");
+    expect(region?.textContent).toContain("Authorized");
+    expect(region?.querySelector('[data-testid="interaction-actions"]')).toBeNull();
+    // The legacy block does not come back as a fallback.
+    expect(host.querySelector('[aria-label="Notion connection"]')).toBeNull();
+    expect(host.textContent).not.toContain("LEGACY-APP-COPY");
+  });
+
+  it("restores a message-backed card from the execution detail when its message is paged out", async () => {
+    rpcMocks.executionSnapshot.mockResolvedValue({
+      summary: summary({
+        runId: "run-detail",
+        rev: 2,
+        status: "completed",
+        title: "DETAIL-RUN",
+        anchorMessageId: "m2",
+      }),
+      steps: { items: [step("run-detail", "detail-step", "DETAIL-STEP", 0)], truncated: false },
+      todos: { items: [], truncated: false },
+      timeline: [],
+      activityPage: { items: [], olderCursor: null, truncated: false },
+      interventions: [],
+      interactions: [
+        {
+          ...mcpAssignmentInteraction(),
+          status: "answered",
+          decision: "approved",
+          source: {
+            spaceId: "space-1",
+            threadId: THREAD,
+            messageId: "m-paged-out",
+            runId: "run-detail",
+            botId: BOT,
+          },
+        },
+      ],
+    } as never);
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-DETAIL" }]),
+        message("m2", "bot", [{ kind: "text", text: "DETAIL-READY" }], "run-detail"),
+      ],
+      steps: [step("run-detail", "thread-step", "THREAD-STEP", 0)],
+      runs: [run("run-detail", "completed")],
+      executions: [
+        summary({ runId: "run-detail", rev: 2, status: "completed", anchorMessageId: "m2" }),
+      ],
+      interactions: [],
+      cardsUnifiedV2: true,
+    });
+
+    const card = host.querySelector('article[data-testid="execution-card"]');
+    expect(card).not.toBeNull();
+    act(() => {
+      card
+        ?.querySelector<HTMLElement>(".exc-entry")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(60);
+    });
+    expect(rpcMocks.executionSnapshot).toHaveBeenCalled();
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.closest('[data-testid="execution-shell"]')).not.toBeNull();
+    expect(region?.textContent).toContain("MCP assignment");
+    expect(region?.textContent).toContain("Allowed");
+    expect(host.querySelector('[data-testid="mcp-allow-all-tools"]')).not.toBeNull();
+  });
+
+  it("keeps the legacy blocks and ignores the projection when the gate is off", () => {
+    const host = renderTranscript({
+      ...card01BProps,
+      interactions: [
+        appAuthorizationInteraction(),
+        mcpAssignmentInteraction(),
+        skillSaveInteraction(),
+      ],
+      cardsUnifiedV2: false,
+    });
+
+    expect(host.querySelector('[data-surface="interaction-v2"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Notion connection"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="mcp-approval-card"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="skill-draft-card"]')).not.toBeNull();
+    expect(host.textContent).toContain("LEGACY-APP-COPY");
+    expect(host.textContent).not.toContain("CARD-APP-AUTH");
+  });
+
+  it("renders a standalone interaction at the transcript tail, outside any execution shell", () => {
+    const host = renderTranscript({
+      messages: [message("m1", "user", [{ kind: "text", text: "ASK-STANDALONE" }])],
+      interactions: [standaloneQuestion()],
+      cardsUnifiedV2: true,
+    });
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.getAttribute("data-surface")).toBe("interaction-v2");
+    expect(region?.closest('[data-testid="execution-shell"]')).toBeNull();
+    expect(region?.textContent).toContain("STANDALONE-QUESTION");
+    expect(host.querySelector('[data-testid="execution-card"]')).toBeNull();
+  });
+
+  it("keeps a discarded run-less skill card at the tail after a refresh", () => {
+    const discarded = {
+      ...skillSaveInteraction(),
+      status: "cancelled" as const,
+      decision: "denied" as const,
+      source: {
+        spaceId: "space-1",
+        threadId: THREAD,
+        messageId: "m2",
+        runId: null,
+        botId: BOT,
+      },
+    };
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-SKILL" }]),
+        message("m2", "bot", [
+          { kind: "text", text: "DRAFT-READY" },
+          {
+            kind: "skill_draft",
+            skillId: "skill-1",
+            name: "Weekly digest",
+            goal: "Summarize the week.",
+            playbook: skillPlaybook,
+            status: "discarded",
+          },
+        ]),
+      ],
+      interactions: [discarded],
+      cardsUnifiedV2: true,
+    });
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.getAttribute("data-surface")).toBe("interaction-v2");
+    expect(region?.closest('[data-testid="execution-shell"]')).toBeNull();
+    expect(region?.textContent).toContain("Discarded");
+    expect(region?.textContent).toContain("Weekly digest");
+    expect(host.querySelector('[data-testid="skill-draft-card"]')).toBeNull();
+    expect(host.querySelector('[data-testid="skill-save-save"]')).toBeNull();
+    expect(host.querySelector('[data-testid="skill-save-discard"]')).toBeNull();
+  });
+});
+
+describe("private pair receipt transcript", () => {
+  it("opens the bound pair from the bot collaboration receipt without reading a generic thread", () => {
+    const openPair = vi.fn();
+    const host = renderTranscript({
+      messages: [
+        message("m-before", "user", [{ kind: "text", text: "BEFORE-RECEIPT" }]),
+        message(
+          "m-receipt",
+          "bot",
+          [
+            {
+              kind: "collaboration_receipt",
+              target: { kind: "bot", botId: "bot-2" },
+              state: "sent",
+              destination: {
+                kind: "pair_message",
+                pairThreadId: "pair-1",
+                messageId: "pair-message-1",
+              },
+            },
+          ],
+          "run-4",
+        ),
+        message("m-after", "bot", [{ kind: "text", text: "AFTER-RECEIPT" }], "run-4"),
+      ],
+      botNameOf: (botId) => (botId === "bot-2" ? "Analyst" : undefined),
+      onOpenPeerMessages: openPair,
+    });
+
+    const row = host.querySelector('[data-testid="peer-receipt-row"]');
+    expect(row?.textContent).toContain("Messaged");
+    expect(row?.textContent).toContain("Analyst");
+    expect(host.textContent).toContain("BEFORE-RECEIPT");
+    expect(host.textContent).toContain("AFTER-RECEIPT");
+
+    const trigger = row?.querySelector("button");
+    act(() => trigger?.click());
+    expect(openPair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botId: "bot-2",
+        sourceReceiptMessageId: "m-receipt",
+        destination: {
+          kind: "pair_message",
+          pairThreadId: "pair-1",
+          messageId: "pair-message-1",
+        },
+      }),
+    );
+  });
+
+  it("keeps a legacy nonempty sent receipt as a non-openable row without its body", () => {
+    const host = renderTranscript({
+      messages: [
+        message(
+          "m-legacy",
+          "bot",
+          [
+            {
+              kind: "bot_message_sent",
+              toBotId: "bot-2",
+              toBotName: "Analyst",
+              text: "LEGACY-PRIVATE-BODY",
+            },
+          ],
+          "run-legacy",
+        ),
+      ],
+      botNameOf: (botId) => (botId === "bot-2" ? "Analyst" : undefined),
+      onOpenPeerMessages: vi.fn(),
+    });
+
+    const row = host.querySelector('[data-testid="peer-receipt-row"]');
+    expect(row?.textContent).toContain("Messaged");
+    expect(row?.textContent).toContain("Analyst");
+    expect(host.querySelector('[data-testid="peer-receipt-unavailable"]')).not.toBeNull();
+    expect(host.textContent).not.toContain("LEGACY-PRIVATE-BODY");
   });
 });

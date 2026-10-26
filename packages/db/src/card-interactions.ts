@@ -23,7 +23,7 @@ import {
 } from "@rakazo/contracts";
 import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import { CHAT_GROUP_KIND_AGENT_PAIR } from "./agent-pairs.js";
-import { Prisma } from "./client.js";
+import type { Prisma } from "./client.js";
 
 export interface CardMessageFact {
   id: string;
@@ -315,7 +315,9 @@ function approvalViewFromBlock(
             : "pending"
         : blockStatus === "draft"
           ? "pending"
-          : "answered";
+          : blockStatus === "discarded"
+            ? "cancelled"
+            : "answered";
   const interactionId = legacyBlockInteractionId(message.id, block.kind, blockIndex);
   const presentation =
     block.kind === "app_connect"

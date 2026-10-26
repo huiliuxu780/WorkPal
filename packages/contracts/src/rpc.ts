@@ -129,6 +129,12 @@ import {
   MemorySummaryGetInputSchema,
   MemorySummarySchema,
 } from "./memory-facts.js";
+import {
+  OUTBOUND_DRAFT_MAX_SUBJECT_CHARS,
+  OutboundDraftBodySchema,
+  OutboundDraftRecipientsSchema,
+  OutboundDraftStateSchema,
+} from "./outbound-draft.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
@@ -605,9 +611,37 @@ export const appContract = {
            * for `request_changes`, optional reason for `reject`.
            */
           feedback: z.string().trim().min(1).max(2000).optional(),
+          /**
+           * A10: the outbound draft revision and fingerprint the user
+           * confirmed. Required once an edit exists, so an approval can never
+           * ride on content the user did not see.
+           */
+          outbound: z
+            .object({
+              revision: z.number().int().positive(),
+              fingerprint: z.string().min(8).max(128),
+            })
+            .strict()
+            .optional(),
         }),
       )
       .output(ResolveInterventionResultSchema),
+    /**
+     * A10: save an outbound draft as a new immutable revision. The previous
+     * revision is superseded; the pending entry always shows the latest one.
+     */
+    updateOutboundDraft: oc
+      .input(
+        threadTarget.safeExtend({
+          interventionId: Id,
+          /** Optimistic guard: the revision the editor was based on. */
+          expectedRevision: z.number().int().positive(),
+          recipients: OutboundDraftRecipientsSchema,
+          subject: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_SUBJECT_CHARS),
+          body: OutboundDraftBodySchema,
+        }),
+      )
+      .output(OutboundDraftStateSchema),
     markRead: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
     markUnread: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
   },

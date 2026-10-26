@@ -46,11 +46,11 @@ import {
   insertPausedIntervention,
   interventionStore,
   legacyMessageId,
-  lockInterventionThreads,
   type ResolveInterventionOutcome,
   resolveInterventionInTransaction,
   settleAnsweredIntervention,
 } from "./interventions.js";
+import { lockInterventionThreads } from "./locks.js";
 import { invalidateThreadMemoryEvidence } from "./memory-facts.js";
 import {
   assertRunCanWriteHistory,
@@ -330,6 +330,8 @@ export interface ResolveInterventionInput {
   answer: string;
   username?: string;
   feedback?: string;
+  /** A10: the outbound draft revision and fingerprint the user confirmed. */
+  outbound?: { revision: number; fingerprint: string };
   /** Deployment gates; absent means every roundtable capability is off. */
   gates?: RoundtableFeatureGates;
 }

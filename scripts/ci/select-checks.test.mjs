@@ -314,6 +314,34 @@ describe("selectChecks", () => {
     }
   });
 
+  it("selects the CARD-01B and private-pair specs for their shared production path", () => {
+    for (const file of [
+      "apps/web/src/components/ai/interactions/ActionApprovalCard.tsx",
+      "apps/web/src/components/ai/PeerReceiptRow.tsx",
+      "apps/web/src/lib/peer-receipts.ts",
+      "apps/web/src/lib/peer-transcript.ts",
+      "apps/web/src/pages/PeerMessagesOverlay.tsx",
+      "apps/web/src/pages/Shell.tsx",
+    ]) {
+      const result = selectChecks({ files: [file] });
+      assert.match(result.webE2eSpec, /card-ui-interactions\.spec\.ts/, file);
+      assert.match(result.webE2eSpec, /peer-messages\.spec\.ts/, file);
+      // The gate-on batch must not include legacy execution specs.
+      assert.doesNotMatch(result.webE2eSpec, /execution-card\.spec\.ts/, file);
+    }
+  });
+
+  it("keeps an explicitly changed legacy execution spec in the batch", () => {
+    const result = selectChecks({
+      files: [
+        "apps/web/e2e/execution-card.spec.ts",
+        "apps/web/src/components/ai/interactions/ActionApprovalCard.tsx",
+      ],
+    });
+    assert.match(result.webE2eSpec, /execution-card\.spec\.ts/);
+    assert.match(result.webE2eSpec, /card-ui-interactions\.spec\.ts/);
+  });
+
   it("includes a changed executable spec in the focused web E2E set", () => {
     const history = selectChecks({ files: ["apps/web/e2e/execution-history.spec.ts"] });
     assert.match(history.webE2eSpec, /execution-history\.spec\.ts/);

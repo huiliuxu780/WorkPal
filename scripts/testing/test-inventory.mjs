@@ -220,6 +220,7 @@ const POSTGRES_ONLY = [
   "packages/db/src/memory-facts.postgres.test.ts",
   "packages/db/src/messaging.postgres.test.ts",
   "packages/db/src/origin-intervention.postgres.test.ts",
+  "packages/db/src/outbound-drafts.postgres.test.ts",
   "packages/db/src/repos-avatar.postgres.test.ts",
   "packages/db/src/run-plans.postgres.test.ts",
   "packages/db/src/run-steps.postgres.test.ts",

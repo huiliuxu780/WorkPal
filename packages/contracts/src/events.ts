@@ -4,6 +4,7 @@ import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { InterventionEventPayloadSchema } from "./intervention.js";
 import { McpTransportSchema } from "./mcp.js";
+import { OutboundDraftStateSchema } from "./outbound-draft.js";
 import {
   PlanReviewContentSchema,
   PlanReviewDecisionSchema,
@@ -70,6 +71,7 @@ export const ProductEventType = z.enum([
   "approval.resolved",
   "intervention.created",
   "intervention.resolved",
+  "outbound.draft.updated",
   "computer.status",
   "computer.takeover.requested",
   "computer.takeover.granted",
@@ -226,6 +228,12 @@ export const ProductEventPayloadSchemas = {
   }),
   "intervention.created": InterventionEventPayloadSchema,
   "intervention.resolved": InterventionEventPayloadSchema,
+  "outbound.draft.updated": z
+    .object({
+      interventionId: Id,
+      state: OutboundDraftStateSchema,
+    })
+    .strict(),
   // Run↔Artifact membership changes. Safe metadata only; the bytes never
   // ride along. Emitted so an Artifact change moves the Run's snapshot `rev`.
   "thread.artifact": z
@@ -487,7 +495,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
       approvalBoundaries: z.string(),
       failureHandling: z.string(),
     }),
-    status: z.enum(["draft", "saved"]),
+    status: z.enum(["draft", "saved", "discarded"]),
   }),
   ChartBlock,
   z.object({

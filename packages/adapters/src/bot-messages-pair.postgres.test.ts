@@ -206,12 +206,16 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
     const receipt = receipts[0]!;
     expect(receipt.threadId).toBe(sourceThreadId);
     expect(receipt.blocks).toEqual([
-      expect.objectContaining({
-        kind: "bot_message_sent",
-        toBotId: researcher.id,
-        toBotName: "Researcher",
-        text: "",
-      }),
+      {
+        kind: "collaboration_receipt",
+        target: { kind: "bot", botId: researcher.id },
+        state: "sent",
+        destination: {
+          kind: "pair_message",
+          pairThreadId,
+          messageId: expect.any(String),
+        },
+      },
     ]);
 
     // The pair Thread holds the full collaboration plus its wake.
@@ -220,6 +224,12 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
       orderBy: { seq: "asc" },
     });
     expect(pairMessages.map((message) => message.role)).toEqual(["bot", "user"]);
+    const firstReceiptBlock = Array.isArray(receipt.blocks) ? receipt.blocks[0] : undefined;
+    const receiptDestination = (
+      firstReceiptBlock as { destination?: { kind?: string; messageId?: string } } | undefined
+    )?.destination;
+    expect(receiptDestination?.kind).toBe("pair_message");
+    expect(receiptDestination?.messageId).toBe(pairMessages[0]!.id);
     expect(pairMessages[0]!.blocks).toEqual([
       expect.objectContaining({
         kind: "bot_message_sent",
@@ -342,9 +352,19 @@ describePostgres("private pair delivery (PostgreSQL)", () => {
       where: { runId: run.id, threadId: sourceThreadId },
     });
     expect(receipts).toHaveLength(2);
-    expect(receipts.every((message) => JSON.stringify(message.blocks).includes('"text":""'))).toBe(
-      true,
-    );
+    const destinations = receipts.map((message) => {
+      const blocks = message.blocks as Array<Record<string, unknown>>;
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toMatchObject({
+        kind: "collaboration_receipt",
+        target: { kind: "bot" },
+        state: "sent",
+        destination: { kind: "pair_message" },
+      });
+      return blocks[0]!.destination as { pairThreadId: string; messageId: string };
+    });
+    expect(new Set(destinations.map((destination) => destination.pairThreadId)).size).toBe(2);
+    expect(destinations.every((destination) => destination.messageId.length > 0)).toBe(true);
   });
 
   it("refuses archived, unknown and cross-workspace targets without writing", async () => {

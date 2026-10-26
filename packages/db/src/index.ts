@@ -29,6 +29,7 @@ export * from "./message-route.js";
 export * from "./messages.js";
 export * from "./messaging.js";
 export * from "./model-credentials.js";
+export * from "./outbound-drafts.js";
 export * from "./postgres-test-database.js";
 export * from "./promote-run.js";
 export * from "./repos.js";

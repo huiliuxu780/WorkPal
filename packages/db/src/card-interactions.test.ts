@@ -374,6 +374,22 @@ describe("CARD-01 thread card surface", () => {
             },
             status: "saved",
           },
+          {
+            kind: "skill_draft",
+            skillId: "skill-2",
+            name: "Digest",
+            goal: "Summarize",
+            playbook: {
+              whenToUse: "Friday",
+              inputs: [],
+              steps: [],
+              howToCheck: "Bullets",
+              whatToReturn: "Summary",
+              approvalBoundaries: "None",
+              failureHandling: "Stop",
+            },
+            status: "discarded",
+          },
         ]),
       ],
     });
@@ -381,6 +397,7 @@ describe("CARD-01 thread card surface", () => {
       "answered",
       "cancelled",
       "answered",
+      "cancelled",
     ]);
     expect(surface.attention).toEqual([]);
   });

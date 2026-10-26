@@ -1,23 +1,36 @@
-import { Trans, useLingui } from "@lingui/react/macro";
+import { Trans } from "@lingui/react/macro";
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
-import type { ThreadMessage } from "@rakazo/contracts";
-import { BotAvatar, Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
-import { useEffect, useMemo, useState } from "react";
-import { loadPeerHistory } from "../lib/peer-history";
-import { peerConversations } from "../lib/peer-messages";
-import { rpc } from "../lib/rpc";
+import type { PairThreadMessage } from "@rakazo/contracts";
+import {
+  BotAvatar,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@rakazo/ui-web";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { loadPairPage, pairTranscript } from "../lib/peer-transcript";
+import { formatRelativeTime } from "../lib/relative-time";
+
+const PAGE_SIZE = 50;
+const LOAD_OLDER_THRESHOLD_PX = 120;
 
 /**
- * Full-screen view-only transcript of a bot-to-bot exchange.
- * Opened from a Messaged / Message from chip in the human thread.
+ * View-only transcript of the long-lived private pair between two Agents.
+ * Reads only the narrow `threads.pairMessages` projection bound to the clicked
+ * receipt and its message locator; there is no generic Thread query and no
+ * write surface.
  */
 export function PeerMessagesOverlay({
   botId,
   botName,
   botColor,
   peerBotId,
-  peerBotName: initialPeerBotName,
+  peerBotName,
   peerBotColor,
+  sourceReceiptMessageId,
+  locator,
   onClose,
 }: {
   botId: string;
@@ -26,44 +39,92 @@ export function PeerMessagesOverlay({
   peerBotId: string;
   peerBotName: string;
   peerBotColor: string;
+  sourceReceiptMessageId: string;
+  locator: { kind: "pair_message"; pairThreadId: string; messageId: string };
   onClose: () => void;
 }) {
-  const { t } = useLingui();
-  const [messages, setMessages] = useState<readonly ThreadMessage[]>([]);
-  const [historyReady, setHistoryReady] = useState(false);
-  const [historyFailed, setHistoryFailed] = useState(false);
+  const [messages, setMessages] = useState<readonly PairThreadMessage[]>([]);
+  const [olderCursor, setOlderCursor] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const conversation = useMemo(() => {
-    if (!historyReady) return null;
-    return peerConversations(messages).find((entry) => entry.peerBotId === peerBotId) ?? null;
-  }, [historyReady, messages, peerBotId]);
-  const peerBotName = conversation?.peerBotName ?? initialPeerBotName;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const loadingOlderRef = useRef(false);
+  const initialScrollRef = useRef(true);
+  const restoreScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const pairThreadId = locator.pairThreadId;
+  const locatorMessageId = locator.messageId;
 
   useEffect(() => {
     const abort = new AbortController();
-    setHistoryReady(false);
-    setHistoryFailed(false);
+    setStatus("loading");
     setMessages([]);
-    void loadPeerHistory({
-      signal: abort.signal,
-      loadPage: (before, signal) =>
-        rpc.threads.messages({ botId, before, includePeerRuns: true }, { signal }),
-    })
-      .then((loaded) => {
+    setOlderCursor(null);
+    setLoadingOlder(false);
+    loadingOlderRef.current = false;
+    initialScrollRef.current = true;
+    void loadPairPage(
+      {
+        sourceReceiptMessageId,
+        locator: { kind: "pair_message", pairThreadId, messageId: locatorMessageId },
+        limit: PAGE_SIZE,
+      },
+      { signal: abort.signal },
+    )
+      .then((page) => {
         if (abort.signal.aborted) return;
-        setMessages(loaded);
-        setHistoryReady(true);
+        setMessages(page.messages);
+        setOlderCursor(page.olderCursor);
+        setStatus("ready");
       })
       .catch(() => {
         if (abort.signal.aborted) return;
-        setHistoryFailed(true);
-        setHistoryReady(true);
+        setStatus("failed");
       });
-    return () => {
-      abort.abort();
-    };
-  }, [botId, reloadKey]);
+    return () => abort.abort();
+  }, [sourceReceiptMessageId, pairThreadId, locatorMessageId, reloadKey]);
 
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    if (initialScrollRef.current && status === "ready") {
+      initialScrollRef.current = false;
+      element.scrollTop = element.scrollHeight;
+      return;
+    }
+    const restore = restoreScrollRef.current;
+    if (!restore) return;
+    restoreScrollRef.current = null;
+    element.scrollTop = element.scrollHeight - restore.height + restore.top;
+  }, [messages, status]);
+
+  const loadOlder = useCallback(async () => {
+    if (!olderCursor || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    const element = scrollRef.current;
+    restoreScrollRef.current = element
+      ? { height: element.scrollHeight, top: element.scrollTop }
+      : null;
+    try {
+      const page = await loadPairPage({
+        sourceReceiptMessageId,
+        locator: { kind: "pair_message", pairThreadId, messageId: locatorMessageId },
+        before: olderCursor,
+        limit: PAGE_SIZE,
+      });
+      setMessages((current) => [...page.messages, ...current]);
+      setOlderCursor(page.olderCursor);
+    } catch {
+      // Keep the loaded window; the reader can retry by scrolling again.
+      restoreScrollRef.current = null;
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [sourceReceiptMessageId, pairThreadId, locatorMessageId, olderCursor]);
+
+  const transcript = useMemo(() => pairTranscript(messages, botId), [messages, botId]);
   const title = `${botName} · ${peerBotName}`;
 
   return (
@@ -76,66 +137,112 @@ export function PeerMessagesOverlay({
       <DialogContent
         data-testid="peer-conversation-view"
         showCloseButton={false}
-        className="inset-0 top-0 left-0 flex h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none bg-background p-0 text-foreground ring-0 sm:max-w-none"
+        className="inset-0 top-0 left-0 grid h-dvh w-full max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 rounded-none bg-background p-0 text-foreground ring-0 sm:top-1/2 sm:left-1/2 sm:h-[min(900px,calc(100dvh-32px))] sm:w-[min(960px,calc(100vw-32px))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[26px] sm:ring-1 sm:ring-border"
       >
-        <div className="flex items-center justify-between gap-4 border-b border-sidebar-border px-[18px] py-3.5">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex items-center -space-x-2">
-              <BotAvatar color={botColor} identity={botId} size={28} />
-              <BotAvatar color={peerBotColor} identity={peerBotId} size={28} />
-            </div>
-            <DialogTitle className="truncate text-[15.5px] font-medium text-foreground" dir="auto">
-              {title}
-            </DialogTitle>
+        <header className="flex flex-col items-center gap-2 px-5 pt-4 pb-2 sm:pt-5">
+          <DialogTitle className="sr-only">{title}</DialogTitle>
+          <div
+            data-testid="peer-identity-capsule"
+            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-background px-2 py-1 text-[13.5px] font-semibold shadow-sm sm:min-h-[42px] sm:gap-2.5 sm:px-3.5 sm:text-[14px]"
+          >
+            <BotAvatar color={botColor} identity={botId} size={28} />
+            <span className="max-w-[36vw] truncate" dir="auto">
+              {botName}
+            </span>
+            <span aria-hidden="true" className="font-normal text-muted-foreground/60">
+              ↔
+            </span>
+            <BotAvatar color={peerBotColor} identity={peerBotId} size={28} />
+            <span className="max-w-[36vw] truncate" dir="auto">
+              {peerBotName}
+            </span>
           </div>
-          <DialogClose aria-label={t`Close`} render={<Button variant="ghost" size="sm" />}>
-            <Trans>Close</Trans>
-          </DialogClose>
-        </div>
+          <DialogDescription className="text-center text-[12px] text-muted-foreground/75">
+            <Trans>
+              You can read this collaboration record, but you cannot speak in the chat between
+              Agents.
+            </Trans>
+          </DialogDescription>
+        </header>
 
-        {!historyReady ? (
-          <div className="grid flex-1 place-items-center px-8 text-center text-[13.5px] text-muted-foreground/80">
+        {status === "loading" ? (
+          <div className="grid place-items-center px-8 text-center text-[13.5px] text-muted-foreground/80">
             <Trans>Loading…</Trans>
           </div>
-        ) : historyFailed ? (
-          <div className="grid flex-1 place-items-center px-8 text-center text-[13.5px] text-muted-foreground/80">
+        ) : status === "failed" ? (
+          <div className="grid place-items-center px-8 text-center text-[13.5px] text-muted-foreground/80">
             <div className="flex flex-col items-center gap-3">
               <Trans>Could not load this chat.</Trans>
-              <Button
-                variant="outline"
-                size="sm"
+              <button
+                type="button"
                 onClick={() => setReloadKey((value) => value + 1)}
+                className="rounded-full border border-border px-3.5 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <Trans>Retry now</Trans>
-              </Button>
+                <Trans>Reload</Trans>
+              </button>
             </div>
           </div>
-        ) : !conversation || conversation.messages.length === 0 ? (
-          <div className="grid flex-1 place-items-center px-8 text-center text-[13.5px] text-muted-foreground/80">
+        ) : transcript.length === 0 ? (
+          <div className="grid place-items-center px-8 text-center text-[13.5px] text-muted-foreground/80">
             <Trans>No messages with {peerBotName} yet.</Trans>
           </div>
         ) : (
           <div
+            ref={scrollRef}
             data-testid="peer-conversation-transcript"
-            className="rk-scroll flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
+            onScroll={(event) => {
+              if (event.currentTarget.scrollTop <= LOAD_OLDER_THRESHOLD_PX) void loadOlder();
+            }}
+            className="rk-scroll min-h-0 overflow-y-auto px-5 py-4 sm:px-[max(36px,calc((100%-760px)/2))] sm:py-6"
           >
-            {conversation.messages.map((peerMessage, index) => {
-              const sent = peerMessage.direction === "sent";
+            <p className="mb-5 text-center text-[11px] text-muted-foreground/60">
+              <Trans>
+                This chat does not appear in your conversation list; {botName} and {peerBotName}{" "}
+                will continue here next time they collaborate.
+              </Trans>
+            </p>
+            {loadingOlder ? (
+              <div
+                className="pb-3 text-center text-[11.5px] text-muted-foreground/60"
+                role="status"
+              >
+                <Trans>Loading earlier messages…</Trans>
+              </div>
+            ) : null}
+            {transcript.map((entry) => {
+              const sent = entry.direction === "sent";
+              const author = sent ? botName : peerBotName;
+              const authorColor = sent ? botColor : peerBotColor;
+              const authorId = sent ? botId : peerBotId;
               return (
                 <div
-                  key={`${peerMessage.messageId}-${index}`}
-                  className={`flex ${sent ? "justify-end" : "justify-start"}`}
+                  key={entry.id}
+                  data-testid="peer-message"
+                  data-direction={entry.direction}
+                  data-author-id={authorId}
+                  className={`mb-4 flex gap-2.5 ${sent ? "flex-row-reverse" : ""}`}
                 >
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                      sent ? "bg-accent" : "bg-muted"
-                    }`}
-                  >
-                    <div className="mb-1 text-[12px] text-muted-foreground/70" dir="auto">
-                      {sent ? botName : peerBotName}
+                  <BotAvatar color={authorColor} identity={authorId} size={30} />
+                  <div className={`min-w-0 ${sent ? "text-right" : "text-left"}`}>
+                    <div
+                      className={`mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70 ${
+                        sent ? "justify-end" : ""
+                      }`}
+                    >
+                      <span className="font-medium" dir="auto">
+                        {author}
+                      </span>
+                      <span>{formatRelativeTime(entry.createdAt)}</span>
                     </div>
-                    <div className="text-[14.5px] leading-[1.5] text-foreground/90" dir="auto">
-                      <ChatMarkdown>{peerMessage.text}</ChatMarkdown>
+                    <div
+                      className={`inline-block max-w-full px-3.5 py-2.5 text-[13.5px] leading-[1.5] text-foreground/90 sm:text-[14px] ${
+                        sent
+                          ? "rounded-[14px_4px_14px_14px] bg-primary/10"
+                          : "rounded-[4px_14px_14px_14px] bg-muted"
+                      }`}
+                      dir="auto"
+                    >
+                      <ChatMarkdown>{entry.text}</ChatMarkdown>
                     </div>
                   </div>
                 </div>
@@ -144,11 +251,18 @@ export function PeerMessagesOverlay({
           </div>
         )}
 
-        <div className="flex items-center gap-4 border-t border-sidebar-border px-[18px] py-3.5">
-          <p className="text-[13.5px] text-muted-foreground/80">
-            <Trans>This chat is view-only</Trans>
-          </p>
-        </div>
+        <footer className="flex items-end justify-center px-4 pt-3 pb-4 sm:min-h-[88px] sm:pt-4 sm:pb-5">
+          <DialogClose
+            render={
+              <button
+                type="button"
+                className="h-10 rounded-full bg-muted px-6 text-[13.5px] font-semibold text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-11"
+              />
+            }
+          >
+            <Trans>Close chat</Trans>
+          </DialogClose>
+        </footer>
       </DialogContent>
     </Dialog>
   );

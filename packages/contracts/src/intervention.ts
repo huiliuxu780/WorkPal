@@ -1,6 +1,7 @@
 import * as z from "zod";
 import type { MessageBlock } from "./events.js";
 import { Id } from "./ids.js";
+import { OutboundDraftStateSchema } from "./outbound-draft.js";
 import { PlanReviewContentSchema, PlanReviewDecisionSchema } from "./run-plans.js";
 
 /**
@@ -125,6 +126,11 @@ export const InterventionViewSchema = z
         effectStatus: z.string().min(1),
         /** Redacted ask-block actions. Labels are not ExternalEffect bodies. */
         actions: z.array(InterventionActionSchema).optional(),
+        /**
+         * A10: the immutable outbound draft revisions. Only approval rows backed
+         * by an outbound effect carry it; other approvals stay preview-only.
+         */
+        outbound: OutboundDraftStateSchema.optional(),
       })
       .strict()
       .optional(),

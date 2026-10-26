@@ -1,7 +1,8 @@
-import type { InterventionView } from "@rakazo/contracts";
+import type { ActionApprovalView, InterventionView } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
 import {
   coveredAskMessageIds,
+  mergeInteractionViews,
   mergeInterventionViews,
   pendingInterventionKindsForRun,
 } from "./intervention-view";
@@ -24,6 +25,56 @@ function view(overrides: Partial<InterventionView> = {}): InterventionView {
     ...overrides,
   };
 }
+
+describe("interaction view merge", () => {
+  function interaction(overrides: Partial<ActionApprovalView> = {}): ActionApprovalView {
+    return {
+      kind: "action_approval",
+      interactionId: "interaction-1",
+      revision: 1,
+      status: "pending",
+      createdAt: "2026-10-12T00:00:00.000Z",
+      expiresAt: null,
+      attentionAt: "2026-10-12T00:00:00.000Z",
+      source: {
+        spaceId: "space-1",
+        threadId: "thread-1",
+        messageId: "message-1",
+        runId: "run-1",
+        botId: "bot-1",
+      },
+      presentation: { text: "THREAD-VIEW" },
+      decision: null,
+      approval: {
+        kind: "connect.app_authorization",
+        authority: "business_transaction",
+        connectorId: "connector-1",
+        provider: "notion",
+        name: "Notion",
+        description: null,
+      },
+      ...overrides,
+    };
+  }
+
+  it("adds detail interactions that are missing from the loaded page", () => {
+    const detail = interaction({ presentation: { text: "DETAIL-VIEW" } });
+    expect(mergeInteractionViews(undefined, [detail])).toEqual([detail]);
+    expect(mergeInteractionViews([], [detail])).toEqual([detail]);
+    expect(mergeInteractionViews(undefined, undefined)).toBeUndefined();
+  });
+
+  it("keeps the thread lifecycle at an equal revision and prefers a newer detail", () => {
+    const thread = interaction();
+    const equal = interaction({ presentation: { text: "STALE-DETAIL" } });
+    expect(mergeInteractionViews([thread], [equal])).toEqual([thread]);
+    const newer = interaction({
+      revision: 2,
+      presentation: { text: "NEWER-DETAIL" },
+    });
+    expect(mergeInteractionViews([thread], [newer])).toEqual([newer]);
+  });
+});
 
 describe("intervention view helpers", () => {
   it("keeps a settled card over a stale pending projection", () => {

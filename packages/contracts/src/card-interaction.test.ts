@@ -12,6 +12,7 @@ import {
   projectAttentionItems,
   projectGroupMembershipApproval,
 } from "./card-interaction.js";
+import { outboundDraftBodyBytes, outboundDraftRecipientIssue } from "./outbound-draft.js";
 
 const createdAt = "2026-10-24T10:00:00.000Z";
 const source = {
@@ -281,6 +282,125 @@ describe("CARD-01 strict InteractionView contract", () => {
         approval: { ...mcpAssignment.approval, allowAllTools: false },
       }).success,
     ).toBe(false);
+  });
+
+  it("carries immutable outbound draft revisions and validates their bounds", () => {
+    const outbound = {
+      kind: "action_approval",
+      ...base,
+      decision: null,
+      approval: {
+        kind: "outbound",
+        authority: "external_effect",
+        effectId: "effect-outbound",
+        effectStatus: "intended",
+        channel: "email",
+        recipientCount: 1,
+        subject: "Weekly digest",
+        fingerprint: "sha256:aaaaaaaaaaaaaaaa",
+        draftState: {
+          channel: "email",
+          draft: {
+            revision: 2,
+            fingerprint: "sha256:bbbbbbbbbbbbbbbb",
+            recipients: ["ada@example.test"],
+            subject: "Weekly digest r2",
+            body: "Edited body",
+          },
+          revisions: [
+            {
+              revision: 1,
+              fingerprint: "sha256:aaaaaaaaaaaaaaaa",
+              subject: "Weekly digest",
+              createdAt,
+              status: "superseded",
+            },
+            {
+              revision: 2,
+              fingerprint: "sha256:bbbbbbbbbbbbbbbb",
+              subject: "Weekly digest r2",
+              createdAt,
+              status: "pending",
+            },
+          ],
+        },
+      },
+    };
+    const parsed = ActionApprovalViewSchema.parse(outbound) as ActionApprovalView;
+    if (parsed.approval.kind !== "outbound") throw new Error("outbound expected");
+    expect(parsed.approval.draftState?.draft.revision).toBe(2);
+    expect(parsed.approval.draftState?.revisions.map((entry) => entry.status)).toEqual([
+      "superseded",
+      "pending",
+    ]);
+    expect(
+      ActionApprovalViewSchema.safeParse({
+        ...outbound,
+        approval: {
+          ...outbound.approval,
+          draftState: {
+            ...outbound.approval.draftState,
+            draft: { ...outbound.approval.draftState.draft, recipients: [] },
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ActionApprovalViewSchema.safeParse({
+        ...outbound,
+        approval: {
+          ...outbound.approval,
+          draftState: {
+            ...outbound.approval.draftState,
+            draft: { ...outbound.approval.draftState.draft, body: "x".repeat(65_537) },
+          },
+        },
+      }).success,
+    ).toBe(false);
+    for (const recipients of [["abc"], ["ada@example.test", "ada@example.test"]]) {
+      expect(
+        ActionApprovalViewSchema.safeParse({
+          ...outbound,
+          approval: {
+            ...outbound.approval,
+            draftState: {
+              ...outbound.approval.draftState,
+              draft: { ...outbound.approval.draftState.draft, recipients },
+            },
+          },
+        }).success,
+      ).toBe(false);
+    }
+    const multibyteBody = "密".repeat(22_000);
+    expect(multibyteBody.length).toBeLessThan(65_536);
+    expect(outboundDraftBodyBytes(multibyteBody)).toBeGreaterThan(65_536);
+    expect(
+      ActionApprovalViewSchema.safeParse({
+        ...outbound,
+        approval: {
+          ...outbound.approval,
+          draftState: {
+            ...outbound.approval.draftState,
+            draft: { ...outbound.approval.draftState.draft, body: multibyteBody },
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("mirrors the mail sender's recipient acceptance rules", () => {
+    expect(outboundDraftRecipientIssue(["ada@example.test"])).toBeNull();
+    expect(outboundDraftRecipientIssue([])).toBe("empty");
+    expect(outboundDraftRecipientIssue(["abc"])).toBe("invalid");
+    expect(outboundDraftRecipientIssue(["ada@example.test", "ADA@example.test"])).toBeNull();
+    expect(outboundDraftRecipientIssue(["ada@example.test", " ada@example.test "])).toBe(
+      "duplicate",
+    );
+    expect(
+      outboundDraftRecipientIssue(
+        Array.from({ length: 21 }, (_, index) => `user${index}@example.test`),
+      ),
+    ).toBe("too_many");
   });
 
   it("keeps plan review free of any approval or effect binding", () => {

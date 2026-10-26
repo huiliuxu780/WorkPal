@@ -1,5 +1,7 @@
 import type {
   ComputerStatus,
+  InteractionView,
+  MessageBlock,
   ProductEvent,
   Run,
   RunStatus,
@@ -10,6 +12,8 @@ import type {
 import {
   InterventionEventPayloadSchema,
   type InterventionView,
+  interactionViewFromIntervention,
+  ProductEventPayloadSchemas,
   RunPlanRevisionSchema,
   RunStepSnapshotSchema,
   RunTodoSnapshotSchema,
@@ -288,6 +292,7 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "thread.message.updated" ||
     event.type === "intervention.created" ||
     event.type === "intervention.resolved" ||
+    event.type === "outbound.draft.updated" ||
     event.type === "thread.message.reaction" ||
     event.type === "run.started" ||
     event.type === "run.waiting_input" ||
@@ -306,6 +311,15 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "subagent.cancelled" ||
     event.type === "delivery.failed" ||
     isRunTerminalEvent(event)
+  );
+}
+
+/** Takeover lifecycle changes can add, replace or remove a session-control card. */
+export function isSessionControlLifecycleEvent(event: ProductEvent): boolean {
+  return (
+    event.type === "computer.takeover.requested" ||
+    event.type === "computer.takeover.granted" ||
+    event.type === "computer.takeover.released"
   );
 }
 
@@ -381,6 +395,8 @@ function reduceThreadSnapshotBase(
       steps: [],
       todos: [],
       interventions: [],
+      interactions: [],
+      displayBlocks: [],
     };
   }
   if (event.type === "plan.revised") {
@@ -712,7 +728,48 @@ function reduceThreadSnapshotBase(
     const liveId = progressMessageId(event);
     const { remaining } = takeLiveMessage(prev.messages, liveId);
     const without = remaining.filter((message) => !replacedSubagent(message, replacedSubagentIds));
-    return { ...prev, cursor: event.seq, messages: upsertMessageById(without, next) };
+    const nextInteractions =
+      event.type === "thread.message.updated" && prev.interactions
+        ? reconcileMessageInteractions(prev.interactions, id, blocks)
+        : null;
+    const nextSnapshot = { ...prev, cursor: event.seq, messages: upsertMessageById(without, next) };
+    return nextInteractions ? { ...nextSnapshot, interactions: nextInteractions } : nextSnapshot;
+  }
+  if (event.type === "outbound.draft.updated") {
+    if (event.seq <= prev.cursor) return prev;
+    const parsed = ProductEventPayloadSchemas["outbound.draft.updated"].safeParse(event.payload);
+    if (!parsed.success) return { ...prev, cursor: event.seq };
+    const { interventionId, state } = parsed.data;
+    const nextInterventions = prev.interventions?.map((view) =>
+      view.id === interventionId && view.approval?.outbound
+        ? { ...view, approval: { ...view.approval, outbound: state } }
+        : view,
+    );
+    const nextInteractions = prev.interactions?.map((interaction): InteractionView => {
+      if (
+        interaction.kind !== "action_approval" ||
+        interaction.interactionId !== interventionId ||
+        interaction.approval.kind !== "outbound"
+      ) {
+        return interaction;
+      }
+      return {
+        ...interaction,
+        approval: {
+          ...interaction.approval,
+          recipientCount: state.draft.recipients.length,
+          subject: state.draft.subject,
+          fingerprint: state.draft.fingerprint,
+          draftState: state,
+        },
+      };
+    });
+    return {
+      ...prev,
+      cursor: event.seq,
+      ...(nextInterventions ? { interventions: nextInterventions } : {}),
+      ...(nextInteractions ? { interactions: nextInteractions } : {}),
+    };
   }
   if (event.type === "intervention.created" || event.type === "intervention.resolved") {
     if (event.seq <= prev.cursor) return prev;
@@ -743,9 +800,127 @@ function reduceThreadSnapshotBase(
     const current = prev.interventions?.find((item) => item.id === view.id);
     if (current && current.revision >= view.revision) return { ...prev, cursor: event.seq };
     const rest = (prev.interventions ?? []).filter((item) => item.id !== view.id);
-    return { ...prev, cursor: event.seq, interventions: [view, ...rest] };
+    const interactions = prev.interactions;
+    if (!interactions) {
+      return { ...prev, cursor: event.seq, interventions: [view, ...rest] };
+    }
+    const existing = interactions.find((item) => item.interactionId === view.id);
+    const next = interactionFromLiveEvent(existing, view);
+    const nextInteractions = next
+      ? existing
+        ? interactions.map((item) => (item.interactionId === view.id ? next : item))
+        : [next, ...interactions]
+      : interactions;
+    return {
+      ...prev,
+      cursor: event.seq,
+      interventions: [view, ...rest],
+      interactions: nextInteractions,
+    };
   }
   return prev;
+}
+
+function messageBlockInteractionStatus(block: MessageBlock): InteractionView["status"] | null {
+  if (block.kind === "app_connect") {
+    return block.status === "pending" ? "pending" : "answered";
+  }
+  if (block.kind === "mcp_approval") {
+    if (block.status === "connected") return "answered";
+    if (block.status === "dismissed") return "cancelled";
+    return "pending";
+  }
+  if (block.kind === "skill_draft") {
+    if (block.status === "draft") return "pending";
+    if (block.status === "discarded") return "cancelled";
+    return "answered";
+  }
+  return null;
+}
+
+function messageBlockDecision(status: InteractionView["status"]): "approved" | "denied" | null {
+  if (status === "answered") return "approved";
+  if (status === "cancelled") return "denied";
+  return null;
+}
+
+/**
+ * Legacy message-backed approvals (app connection, MCP assignment, skill
+ * draft) have no Intervention event when another tab settles them; their
+ * message block changes instead. Reconcile the strict view from that block.
+ */
+function reconcileMessageInteractions(
+  interactions: readonly InteractionView[],
+  messageId: string,
+  blocks: readonly MessageBlock[],
+): InteractionView[] | null {
+  let changed = false;
+  const next = interactions.map((interaction): InteractionView => {
+    if (
+      interaction.kind === "session_control" ||
+      interaction.source.messageId !== messageId ||
+      !interaction.interactionId.startsWith("legacy_block:")
+    ) {
+      return interaction;
+    }
+    const [, kind, , rawIndex] = interaction.interactionId.split(":");
+    const block = blocks[Number(rawIndex)];
+    if (!block || block.kind !== kind) return interaction;
+    const status = messageBlockInteractionStatus(block);
+    if (!status || status === interaction.status) return interaction;
+    if (interaction.status !== "pending" && status === "pending") return interaction;
+    changed = true;
+    if (interaction.kind === "action_approval") {
+      return { ...interaction, status, decision: messageBlockDecision(status) };
+    }
+    return { ...interaction, status };
+  });
+  return changed ? next : null;
+}
+
+function interactionFromLiveEvent(
+  existing: InteractionView | undefined,
+  view: InterventionView,
+): InteractionView | null {
+  if (!existing) return interactionViewFromIntervention(view);
+  // Session control is a derived lease view, never an Intervention settlement.
+  if (existing.kind === "session_control") return existing;
+  const common = {
+    revision: view.revision,
+    status: view.status,
+    ...(view.presentation ? { presentation: view.presentation } : {}),
+    ...(view.expiresAt !== undefined ? { expiresAt: view.expiresAt } : {}),
+  };
+  if (existing.kind === "action_approval") {
+    const decision = view.approval?.decision ?? existing.decision ?? null;
+    const approval = existing.approval;
+    if (approval.kind === "outbound" || approval.kind === "tool") {
+      const effectStatus = view.approval?.effectStatus ?? approval.effectStatus;
+      return {
+        ...existing,
+        ...common,
+        decision,
+        approval:
+          approval.kind === "outbound"
+            ? { ...approval, effectStatus }
+            : {
+                ...approval,
+                effectStatus,
+                actions: view.approval?.actions ?? approval.actions,
+              },
+      };
+    }
+    return { ...existing, ...common, decision };
+  }
+  if (existing.kind === "plan_review") {
+    return {
+      ...existing,
+      ...common,
+      decision: view.planReview?.decision ?? existing.decision,
+      feedback: view.planReview?.feedback ?? existing.feedback,
+    };
+  }
+  return { ...existing, ...common };
 }
 
 function updateMemberStatus(

@@ -624,6 +624,7 @@ describe("agent_pair receipt read RPC", () => {
     const queryRaw = vi
       .fn()
       .mockResolvedValueOnce(authorized ? [{ targetSeq: 7, visibleIndex: 0 }] : [])
+      .mockResolvedValueOnce([{ seq: 7 }])
       .mockResolvedValueOnce([{ count: 1 }])
       .mockResolvedValueOnce([
         {
@@ -711,7 +712,7 @@ describe("agent_pair receipt read RPC", () => {
         target: { messageId: "pair-message-1", visibleIndex: 0 },
       },
     });
-    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect(queryRaw).toHaveBeenCalledTimes(4);
   });
 
   it("returns the same not-found boundary when the origin locator is unauthorized", async () => {

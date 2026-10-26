@@ -21,6 +21,7 @@ export * from "./mcp.js";
 export * from "./memory-facts.js";
 export * from "./message-provenance.js";
 export * from "./openai-compatible-ui.js";
+export * from "./outbound-draft.js";
 export * from "./reactions.js";
 export * from "./rpc.js";
 export * from "./run-plans.js";
