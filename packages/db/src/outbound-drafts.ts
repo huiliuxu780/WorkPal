@@ -465,7 +465,20 @@ export async function updateOutboundDraftRevision(
         rowsAfter,
       );
       if (!state) throw new OutboundDraftConflictError();
-      return { outcome: "updated", state, threadId: row.threadId, seq } as const;
+      const outboundEvent = await appendEventInTransaction(tx, {
+        spaceId: row.spaceId,
+        threadId: row.threadId,
+        botId: row.botId,
+        runId: row.runId,
+        type: "outbound.draft.updated",
+        payload: { interventionId: row.id, state },
+      });
+      return {
+        outcome: "updated",
+        state,
+        threadId: row.threadId,
+        seq: Math.max(seq, outboundEvent.seq),
+      } as const;
     }, OUTBOUND_DRAFT_TRANSACTION);
   } catch (error) {
     if (error instanceof OutboundDraftConflictError) {

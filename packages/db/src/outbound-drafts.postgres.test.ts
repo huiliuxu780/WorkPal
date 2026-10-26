@@ -295,6 +295,11 @@ describePostgres("A10 outbound draft revisions (PostgreSQL)", () => {
         where: { runId: run.id, type: "thread.message.updated" },
       }),
     ).toBe(2);
+    expect(
+      await prisma.event.count({
+        where: { runId: run.id, type: "outbound.draft.updated" },
+      }),
+    ).toBe(2);
 
     await expect(
       updateOutboundDraftRevision(prisma, {

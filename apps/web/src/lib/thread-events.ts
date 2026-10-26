@@ -13,6 +13,7 @@ import {
   InterventionEventPayloadSchema,
   type InterventionView,
   interactionViewFromIntervention,
+  ProductEventPayloadSchemas,
   RunPlanRevisionSchema,
   RunStepSnapshotSchema,
   RunTodoSnapshotSchema,
@@ -291,6 +292,7 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "thread.message.updated" ||
     event.type === "intervention.created" ||
     event.type === "intervention.resolved" ||
+    event.type === "outbound.draft.updated" ||
     event.type === "thread.message.reaction" ||
     event.type === "run.started" ||
     event.type === "run.waiting_input" ||
@@ -721,6 +723,42 @@ function reduceThreadSnapshotBase(
         : null;
     const nextSnapshot = { ...prev, cursor: event.seq, messages: upsertMessageById(without, next) };
     return nextInteractions ? { ...nextSnapshot, interactions: nextInteractions } : nextSnapshot;
+  }
+  if (event.type === "outbound.draft.updated") {
+    if (event.seq <= prev.cursor) return prev;
+    const parsed = ProductEventPayloadSchemas["outbound.draft.updated"].safeParse(event.payload);
+    if (!parsed.success) return { ...prev, cursor: event.seq };
+    const { interventionId, state } = parsed.data;
+    const nextInterventions = prev.interventions?.map((view) =>
+      view.id === interventionId && view.approval?.outbound
+        ? { ...view, approval: { ...view.approval, outbound: state } }
+        : view,
+    );
+    const nextInteractions = prev.interactions?.map((interaction): InteractionView => {
+      if (
+        interaction.kind !== "action_approval" ||
+        interaction.interactionId !== interventionId ||
+        interaction.approval.kind !== "outbound"
+      ) {
+        return interaction;
+      }
+      return {
+        ...interaction,
+        approval: {
+          ...interaction.approval,
+          recipientCount: state.draft.recipients.length,
+          subject: state.draft.subject,
+          fingerprint: state.draft.fingerprint,
+          draftState: state,
+        },
+      };
+    });
+    return {
+      ...prev,
+      cursor: event.seq,
+      ...(nextInterventions ? { interventions: nextInterventions } : {}),
+      ...(nextInteractions ? { interactions: nextInteractions } : {}),
+    };
   }
   if (event.type === "intervention.created" || event.type === "intervention.resolved") {
     if (event.seq <= prev.cursor) return prev;

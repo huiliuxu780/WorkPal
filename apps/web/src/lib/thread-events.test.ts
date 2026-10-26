@@ -2087,6 +2087,106 @@ describe("activity projection reduction (Phase 4)", () => {
     });
   });
 
+  it("updates an outbound draft projection from a revision event", () => {
+    const initial = {
+      ...snapshot([]),
+      interactions: [
+        {
+          kind: "action_approval" as const,
+          interactionId: "intervention-outbound",
+          revision: 1,
+          status: "pending" as const,
+          createdAt: "2026-10-12T00:00:00.000Z",
+          expiresAt: null,
+          attentionAt: "2026-10-12T00:00:00.000Z",
+          source: {
+            spaceId: "workspace-1",
+            threadId: "thread-1",
+            messageId: "message-1",
+            runId: "run-1",
+            botId: "bot-1",
+          },
+          presentation: { text: "Review the outbound draft" },
+          decision: null,
+          approval: {
+            kind: "outbound" as const,
+            authority: "external_effect" as const,
+            effectId: "effect-1",
+            effectStatus: "intended",
+            channel: "email" as const,
+            recipientCount: 1,
+            subject: "Weekly digest",
+            fingerprint: "fp-r2-12345678",
+            draftState: {
+              channel: "email" as const,
+              draft: {
+                revision: 2,
+                fingerprint: "fp-r2-12345678",
+                recipients: ["ada@example.test"],
+                subject: "Weekly digest",
+                body: "Original body",
+              },
+              revisions: [
+                {
+                  revision: 2,
+                  fingerprint: "fp-r2-12345678",
+                  subject: "Weekly digest",
+                  createdAt: "2026-10-12T00:00:00.000Z",
+                  status: "pending" as const,
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const state = {
+      channel: "email" as const,
+      draft: {
+        revision: 3,
+        fingerprint: "fp-r3-12345678",
+        recipients: ["ada@example.test", "lin@example.test"],
+        subject: "Weekly digest r3",
+        body: "Edited elsewhere",
+      },
+      revisions: [
+        {
+          revision: 2,
+          fingerprint: "fp-r2-12345678",
+          subject: "Weekly digest",
+          createdAt: "2026-10-12T00:00:00.000Z",
+          status: "superseded" as const,
+        },
+        {
+          revision: 3,
+          fingerprint: "fp-r3-12345678",
+          subject: "Weekly digest r3",
+          createdAt: "2026-10-12T00:01:00.000Z",
+          status: "pending" as const,
+        },
+      ],
+    };
+    const updated = reduceThreadSnapshot(
+      initial,
+      event({
+        type: "outbound.draft.updated",
+        seq: 4,
+        payload: { interventionId: "intervention-outbound", state },
+      }),
+    );
+    const approval = updated?.interactions?.[0];
+    expect(approval?.kind).toBe("action_approval");
+    if (approval?.kind !== "action_approval" || approval.approval.kind !== "outbound") {
+      throw new Error("outbound interaction expected");
+    }
+    expect(approval.approval).toMatchObject({
+      recipientCount: 2,
+      subject: "Weekly digest r3",
+      fingerprint: "fp-r3-12345678",
+      draftState: { draft: { revision: 3, body: "Edited elsewhere" } },
+    });
+  });
+
   it("settles a message-backed skill card when another tab updates the message", () => {
     const playbook = {
       whenToUse: "Every Friday.",

@@ -1,5 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
+
+async function scrollIntoView(locator: Locator) {
+  await expect(async () => {
+    await locator.scrollIntoViewIfNeeded();
+  }).toPass({ timeout: 5_000 });
+}
 
 async function finishWelcomeSetup(page: Page) {
   const choice = page.getByRole("button", { name: /Day-to-day work/ });
@@ -69,11 +75,11 @@ test("shows peer chips in transcript and opens view-only peer chat", async ({ pa
 
   await assertReceiptCompact();
   await expect(composer).toBeVisible();
-  await receipt.scrollIntoViewIfNeeded();
+  await scrollIntoView(receipt);
   await captureScreenshot(page, testInfo, "peer-receipt-desktop");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await receipt.scrollIntoViewIfNeeded();
+  await scrollIntoView(receipt);
   await expect(receipt).toBeVisible();
   await expect(composer).toBeVisible();
   await assertReceiptCompact();
@@ -156,7 +162,7 @@ test("expands a multi-target receipt and opens one bound private pair", async ({
   await expect(row).toBeVisible({ timeout: 60_000 });
   await expect(row).toHaveAttribute("data-receipt-count", "2");
   await expect(row).not.toContainText("peer-multi-alpha");
-  await row.scrollIntoViewIfNeeded();
+  await scrollIntoView(row);
   await captureScreenshot(page, testInfo, "peer-receipt-multi-desktop");
 
   const toggle = row.getByRole("button", {

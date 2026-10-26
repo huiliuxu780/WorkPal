@@ -1,5 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { activeBotId, captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
+
+async function scrollIntoView(locator: Locator) {
+  await expect(async () => {
+    await locator.scrollIntoViewIfNeeded();
+  }).toPass({ timeout: 5_000 });
+}
 
 async function waitForWaitingRun(page: Page, botId: string) {
   await expect
@@ -63,11 +69,11 @@ test("renders an MCP assignment as the unified CARD-01B card and settles it", as
   await expect(card).toContainText("All tools on this server");
   await expect(page.getByTestId("mcp-approval-card")).toHaveCount(0);
   await expect(page.locator("[data-intervention-id]")).toHaveCount(0);
-  await card.scrollIntoViewIfNeeded();
+  await scrollIntoView(card);
   await captureScreenshot(page, testInfo, "card-ui-mcp-desktop-1440");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await card.scrollIntoViewIfNeeded();
+  await scrollIntoView(card);
   await expect(card).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await captureScreenshot(page, testInfo, "card-ui-mcp-390");
@@ -87,7 +93,7 @@ test("renders an MCP assignment as the unified CARD-01B card and settles it", as
   await expect(card).toBeVisible();
   expect(await card.evaluate((element) => element.className.includes("opacity-"))).toBe(false);
   await page.emulateMedia({ colorScheme: "dark" });
-  await card.scrollIntoViewIfNeeded();
+  await scrollIntoView(card);
   await captureScreenshot(page, testInfo, "card-ui-mcp-terminal-dark");
 });
 
@@ -124,7 +130,7 @@ test("replaces the legacy approval ask with one CARD-01B decision card", async (
   // The projection is the only surface: the legacy ask never double-renders.
   await expect(page.locator("[data-intervention-id]")).toHaveCount(0);
   await expect(page.getByText("Allow once", { exact: true })).toHaveCount(1);
-  await card.scrollIntoViewIfNeeded();
+  await scrollIntoView(card);
   await captureScreenshot(page, testInfo, "card-ui-tool-approval");
 
   await card.getByTestId("approval-secondary").click();
@@ -153,7 +159,7 @@ test("edits and confirms an A10 outbound draft in the same card", async ({ page 
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card).toContainText("Outbound draft · r1");
   await expect(card).toContainText("Weekly digest");
-  await card.scrollIntoViewIfNeeded();
+  await scrollIntoView(card);
   await captureScreenshot(page, testInfo, "card-ui-outbound-r1-desktop");
 
   await card.getByTestId("outbound-edit").click();
@@ -194,10 +200,10 @@ test("edits and confirms an A10 outbound draft in the same card", async ({ page 
   await expect(page.getByTestId("outbound-draft-dialog")).toHaveCount(0);
   await expect(card).toBeVisible();
   await expect(card).toContainText("r2");
-  await card.scrollIntoViewIfNeeded();
+  await scrollIntoView(card);
   await captureScreenshot(page, testInfo, "card-ui-outbound-r2-card-375");
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await card.scrollIntoViewIfNeeded();
+  await scrollIntoView(card);
   await captureScreenshot(page, testInfo, "card-ui-outbound-r2-card-desktop");
 });
