@@ -1,8 +1,7 @@
 import { t } from "@lingui/core/macro";
-import { Trans } from "@lingui/react/macro";
 import type { ActionApprovalView } from "@rakazo/contracts";
 import { abortableDelay } from "@rakazo/core";
-import { Button, Dialog, DialogClose, DialogContent, DialogTitle, Textarea } from "@rakazo/ui-web";
+import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { connectMcpOauth } from "../../../lib/mcp-connect";
@@ -629,7 +628,6 @@ function PlaybookRow({ label, children }: { label: string; children: ReactNode }
 function SkillSaveCard({
   view,
   approval,
-  target,
   botName,
   conversationName,
   onRefresh,
@@ -643,11 +641,22 @@ function SkillSaveCard({
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"save" | "discard" | null>(null);
-  const [saved, setSaved] = useState(view.status === "answered");
-  const [discarded, setDiscarded] = useState(false);
+  // Transient echo only: the authoritative terminal state comes from the
+  // refreshed InteractionView, so a reload restores the same discarded card.
+  const [settled, setSettled] = useState<"saved" | "discarded" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const title = t`Save skill “${approval.name || approval.goal.slice(0, 40)}”`;
-  const terminal = saved || discarded || view.status !== "pending";
+  const terminal = view.status !== "pending" || settled !== null;
+  const terminalLabel =
+    view.status === "cancelled"
+      ? t`Discarded`
+      : view.status === "answered"
+        ? t`Saved`
+        : settled === "discarded"
+          ? t`Discarded`
+          : settled === "saved"
+            ? t`Saved`
+            : interactionStatusLabel(view);
 
   const save = async () => {
     if (busy || terminal) return;
@@ -660,7 +669,7 @@ function SkillSaveCard({
         playbook: approval.playbook,
       });
       await rpc.skills.save({ skillId: approval.skillId, name: approval.name });
-      setSaved(true);
+      setSettled("saved");
       await onRefresh?.().catch(() => undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t`Could not save this skill`);
@@ -675,7 +684,7 @@ function SkillSaveCard({
     setError(null);
     try {
       await rpc.skills.remove({ skillId: approval.skillId });
-      setDiscarded(true);
+      setSettled("discarded");
       await onRefresh?.().catch(() => undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t`Could not discard this skill`);
@@ -690,7 +699,7 @@ function SkillSaveCard({
         kind="action_approval"
         icon="S"
         title={title}
-        status={interactionStatusLabel(view)}
+        status={terminal ? terminalLabel : interactionStatusLabel(view)}
         tone={interactionTone(view)}
         subtitle={t`Goal: ${approval.goal}`}
         source={
@@ -730,11 +739,7 @@ function SkillSaveCard({
         <InteractionAction kind="text" onClick={() => setOpen(true)} testId="skill-save-open">
           {t`View playbook →`}
         </InteractionAction>
-        {terminal ? (
-          <InteractionNote>
-            {saved ? t`Saved` : discarded ? t`Discarded` : interactionStatusLabel(view)}
-          </InteractionNote>
-        ) : null}
+        {terminal ? <InteractionNote>{terminalLabel}</InteractionNote> : null}
         {error ? (
           <p role="alert" className="text-[12px] text-destructive">
             {error}
@@ -892,7 +897,6 @@ function AppAuthorizationCard({
 function McpAssignmentCard({
   view,
   approval,
-  target,
   botName,
   conversationName,
   onRefresh,

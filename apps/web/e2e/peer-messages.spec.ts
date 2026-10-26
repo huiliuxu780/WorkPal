@@ -88,6 +88,21 @@ test("shows peer chips in transcript and opens view-only peer chat", async ({ pa
   });
   await expect(view.getByRole("textbox")).toHaveCount(0);
   await expect(view.getByText("Loading")).toHaveCount(0);
+  // The current Bot's own message is authored and right-aligned in the pair view.
+  const sentRow = view
+    .locator('[data-testid="peer-message"][data-direction="sent"]')
+    .filter({ hasText: "peer-exchange-alpha" })
+    .first();
+  await expect(sentRow).toContainText("Chief");
+  const authorAvatar = sentRow.locator(".rakazo-agent-avatar");
+  await expect(authorAvatar).toBeVisible();
+  const transcriptBox = await view.getByTestId("peer-conversation-transcript").boundingBox();
+  const avatarBox = await authorAvatar.boundingBox();
+  expect(transcriptBox).not.toBeNull();
+  expect(avatarBox).not.toBeNull();
+  expect(avatarBox!.x + avatarBox!.width / 2).toBeGreaterThan(
+    transcriptBox!.x + transcriptBox!.width / 2,
+  );
   const peerTranscript = view.getByTestId("peer-conversation-transcript");
   await peerTranscript.evaluate((element) => {
     element.scrollTop = element.scrollHeight;

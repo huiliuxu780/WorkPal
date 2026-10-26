@@ -11,7 +11,7 @@ type SkillDraftBlock = {
   name: string;
   goal: string;
   playbook: SkillPlaybook;
-  status: "draft" | "saved";
+  status: "draft" | "saved" | "discarded";
 };
 
 function fieldLabel(id: string, title: React.ReactNode) {
@@ -66,6 +66,23 @@ export function SkillDraftCard({
   }
 
   const skillName = name || block.name || block.goal.slice(0, 80);
+
+  if (block.status === "discarded") {
+    return (
+      <div
+        data-testid="skill-draft-card"
+        className="w-[min(520px,92%)] rounded-2xl border border-border bg-card px-5 py-4"
+      >
+        <div className="text-[15px] font-medium text-foreground">
+          <Trans>Draft skill</Trans>
+        </div>
+        <div className="mt-1 text-[13.5px] text-muted-foreground">{block.goal}</div>
+        <p className="mt-3 text-[13px] text-muted-foreground">
+          <Trans>Discarded</Trans>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div

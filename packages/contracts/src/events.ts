@@ -487,7 +487,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
       approvalBoundaries: z.string(),
       failureHandling: z.string(),
     }),
-    status: z.enum(["draft", "saved"]),
+    status: z.enum(["draft", "saved", "discarded"]),
   }),
   ChartBlock,
   z.object({

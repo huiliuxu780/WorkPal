@@ -1732,6 +1732,48 @@ describe("CARD-01B gate integration", () => {
     expect(region?.textContent).toContain("STANDALONE-QUESTION");
     expect(host.querySelector('[data-testid="execution-card"]')).toBeNull();
   });
+
+  it("keeps a discarded run-less skill card at the tail after a refresh", () => {
+    const discarded = {
+      ...skillSaveInteraction(),
+      status: "cancelled" as const,
+      decision: "denied" as const,
+      source: {
+        spaceId: "space-1",
+        threadId: THREAD,
+        messageId: "m2",
+        runId: null,
+        botId: BOT,
+      },
+    };
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-SKILL" }]),
+        message("m2", "bot", [
+          { kind: "text", text: "DRAFT-READY" },
+          {
+            kind: "skill_draft",
+            skillId: "skill-1",
+            name: "Weekly digest",
+            goal: "Summarize the week.",
+            playbook: skillPlaybook,
+            status: "discarded",
+          },
+        ]),
+      ],
+      interactions: [discarded],
+      cardsUnifiedV2: true,
+    });
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.getAttribute("data-surface")).toBe("interaction-v2");
+    expect(region?.closest('[data-testid="execution-shell"]')).toBeNull();
+    expect(region?.textContent).toContain("Discarded");
+    expect(region?.textContent).toContain("Weekly digest");
+    expect(host.querySelector('[data-testid="skill-draft-card"]')).toBeNull();
+    expect(host.querySelector('[data-testid="skill-save-save"]')).toBeNull();
+    expect(host.querySelector('[data-testid="skill-save-discard"]')).toBeNull();
+  });
 });
 
 describe("private pair receipt transcript", () => {

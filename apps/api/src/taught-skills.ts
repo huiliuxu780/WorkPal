@@ -43,12 +43,14 @@ import {
   teachRecordingTtlMs,
 } from "@rakazo/core";
 import {
+  appendEventInTransaction,
   applyCancelTerminalPolicy,
   cancelChildrenOfCancelledRuns,
   cancelPolicyFor,
   type createRepos,
   expireComputerExecutionLeases,
   IsolationError,
+  type Prisma,
   type PrismaClient,
   type ThreadEvents,
 } from "@rakazo/db";
@@ -330,6 +332,56 @@ async function updateSkillDraftMessage(
   }
 }
 
+/**
+ * A discarded draft is terminal history, not a deleted message: the A8 card is
+ * rebuilt from this block after a refresh. The block flip, its update event and
+ * the skill-row delete share one transaction so a crash cannot leave either a
+ * live card for a deleted skill or a saved-looking block for a discarded one.
+ */
+async function discardSkillDraftMessageInTransaction(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  skill: TaughtSkillRow,
+): Promise<{ threadId: string; seq: number } | null> {
+  const bot = await tx.bot.findUnique({
+    where: { id: skill.botId },
+    include: { thread: true },
+  });
+  if (!bot?.thread) return null;
+
+  const messages = await tx.message.findMany({
+    where: { threadId: bot.thread.id, role: "bot" },
+    orderBy: { seq: "desc" },
+    take: 100,
+  });
+
+  for (const message of messages) {
+    const parsed = message.blocks as MessageBlock[];
+    if (!Array.isArray(parsed)) continue;
+    const index = parsed.findIndex(
+      (block) => block.kind === "skill_draft" && block.skillId === skill.id,
+    );
+    if (index === -1) continue;
+    const existing = parsed[index];
+    if (existing?.kind !== "skill_draft") continue;
+    const nextBlocks: MessageBlock[] = [...parsed];
+    nextBlocks[index] = { ...existing, status: "discarded" };
+    await tx.message.update({
+      where: { id: message.id },
+      data: { blocks: nextBlocks as never },
+    });
+    const event = await appendEventInTransaction(tx, {
+      spaceId: actor.spaceId,
+      threadId: bot.thread.id,
+      botId: bot.id,
+      type: "thread.message.updated",
+      payload: { messageId: message.id, role: "bot", blocks: nextBlocks },
+    });
+    return { threadId: bot.thread.id, seq: event.seq };
+  }
+  return null;
+}
+
 export async function expireTeachingSessionIfNeeded(deps: TaughtSkillsDeps, skillId: string) {
   return expireTaughtSkillTeaching(deps, skillId);
 }
@@ -600,7 +652,14 @@ export function createTaughtSkillsService(deps: TaughtSkillsDeps) {
           parseRecording(skill.recording).controlLeaseId,
         );
       }
-      await deps.prisma.taughtSkill.delete({ where: { id: skill.id } });
+      const notification = await deps.prisma.$transaction(async (tx) => {
+        const updated = await discardSkillDraftMessageInTransaction(tx, actor, skill);
+        await tx.taughtSkill.delete({ where: { id: skill.id } });
+        return updated;
+      });
+      if (notification) {
+        await deps.events.notify(notification.threadId, notification.seq).catch(() => undefined);
+      }
       return { ok: true as const };
     },
 

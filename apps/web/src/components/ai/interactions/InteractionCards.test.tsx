@@ -648,6 +648,21 @@ describe("skill save (A8)", () => {
     expect(host.textContent).toContain("Discarded");
     expect(byTestId(host, "skill-save-save")).toBeNull();
   });
+
+  it("restores the discarded card from the persisted cancelled view", async () => {
+    const host = await render(
+      <ActionApprovalCard
+        view={actionView(skillApproval(), { status: "cancelled", decision: "denied" })}
+        target={target}
+      />,
+    );
+
+    expect(host.textContent).toContain("Discarded");
+    expect(byTestId(host, "interaction-status")?.textContent).toContain("Discarded");
+    expect(byTestId(host, "skill-save-save")).toBeNull();
+    expect(byTestId(host, "skill-save-discard")).toBeNull();
+    expect(mocks.removeSkill).not.toHaveBeenCalled();
+  });
 });
 
 describe("account and assignment cards", () => {

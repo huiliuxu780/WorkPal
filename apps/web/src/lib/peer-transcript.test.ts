@@ -86,28 +86,33 @@ describe("loadPairPage", () => {
 });
 
 describe("pairTranscript", () => {
+  const currentBot = "b-1";
+
   it("keeps sent and received bodies in order with their timestamps", () => {
-    const entries = pairTranscript([
-      message(
-        "m-out",
-        [{ kind: "bot_message_sent", toBotId: "b-2", toBotName: "Analyst", text: "chart q3" }],
-        "bot",
-        "2026-10-25T10:00:00.000Z",
-      ),
-      message(
-        "m-in",
-        [
-          {
-            kind: "bot_message_received",
-            fromBotId: "b-2",
-            fromBotName: "Analyst",
-            text: "done",
-          },
-        ],
-        "bot",
-        "2026-10-25T10:01:00.000Z",
-      ),
-    ]);
+    const entries = pairTranscript(
+      [
+        message(
+          "m-out",
+          [{ kind: "bot_message_sent", toBotId: "b-2", toBotName: "Analyst", text: "chart q3" }],
+          "bot",
+          "2026-10-25T10:00:00.000Z",
+        ),
+        message(
+          "m-in",
+          [
+            {
+              kind: "bot_message_received",
+              fromBotId: "b-2",
+              fromBotName: "Analyst",
+              text: "done",
+            },
+          ],
+          "bot",
+          "2026-10-25T10:01:00.000Z",
+        ),
+      ],
+      currentBot,
+    );
 
     expect(entries).toEqual([
       {
@@ -125,49 +130,86 @@ describe("pairTranscript", () => {
     ]);
   });
 
-  it("drops the recipient wake copy when its outbound message is loaded", () => {
-    const entries = pairTranscript([
-      message("m-out", [
-        { kind: "bot_message_sent", toBotId: "b-2", toBotName: "Analyst", text: "chart q3" },
-      ]),
-      message("m-wake", [
-        {
-          kind: "bot_message_received",
-          fromBotId: "b-1",
-          fromBotName: "Writer",
-          text: "chart q3",
-          returnToMessageId: "m-out",
-        },
-      ]),
-    ]);
+  it("renders an A→B request as sent and drops its wake copy", () => {
+    const entries = pairTranscript(
+      [
+        message("m-out", [
+          { kind: "bot_message_sent", toBotId: "b-2", toBotName: "Analyst", text: "chart q3" },
+        ]),
+        message("m-wake", [
+          {
+            kind: "bot_message_received",
+            fromBotId: "b-1",
+            fromBotName: "Writer",
+            text: "chart q3",
+            returnToMessageId: "m-out",
+          },
+        ]),
+      ],
+      currentBot,
+    );
 
-    expect(entries.map((entry) => entry.id)).toEqual(["m-out"]);
+    expect(entries).toEqual([
+      expect.objectContaining({ id: "m-out", direction: "sent", text: "chart q3" }),
+    ]);
   });
 
-  it("still renders a legacy-only wake copy once", () => {
-    const entries = pairTranscript([
-      message("m-wake", [
-        {
-          kind: "bot_message_received",
-          fromBotId: "b-1",
-          fromBotName: "Writer",
-          text: "chart q3",
-          returnToMessageId: "m-not-on-page",
-        },
-      ]),
+  it("renders a B→A reply addressed to the current Bot as received", () => {
+    const entries = pairTranscript(
+      [
+        message("m-reply", [
+          { kind: "bot_message_sent", toBotId: "b-1", toBotName: "Writer", text: "done" },
+        ]),
+      ],
+      currentBot,
+    );
+
+    expect(entries).toEqual([
+      expect.objectContaining({ id: "m-reply", direction: "received", text: "done" }),
     ]);
+    // The same pair Thread from the other Bot flips the direction.
+    expect(
+      pairTranscript(
+        [
+          message("m-reply", [
+            { kind: "bot_message_sent", toBotId: "b-1", toBotName: "Writer", text: "done" },
+          ]),
+        ],
+        "b-2",
+      )[0]?.direction,
+    ).toBe("sent");
+  });
+
+  it("renders a legacy-only wake copy once with its sender direction", () => {
+    const entries = pairTranscript(
+      [
+        message("m-wake", [
+          {
+            kind: "bot_message_received",
+            fromBotId: "b-1",
+            fromBotName: "Writer",
+            text: "chart q3",
+            returnToMessageId: "m-not-on-page",
+          },
+        ]),
+      ],
+      currentBot,
+    );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.direction).toBe("received");
+    expect(entries[0]?.direction).toBe("sent");
   });
 
   it("hides empty bodies and keeps a user text direction as received", () => {
-    const entries = pairTranscript([
-      message("m-empty", [
-        { kind: "bot_message_sent", toBotId: "b-2", toBotName: "Analyst", text: "   " },
-      ]),
-      message("m-text", [{ kind: "text", text: "hello" }], "user"),
-    ]);
+    const entries = pairTranscript(
+      [
+        message("m-empty", [
+          { kind: "bot_message_sent", toBotId: "b-2", toBotName: "Analyst", text: "   " },
+        ]),
+        message("m-text", [{ kind: "text", text: "hello" }], "user"),
+      ],
+      currentBot,
+    );
 
     expect(entries).toEqual([
       expect.objectContaining({ id: "m-text", direction: "received", text: "hello" }),

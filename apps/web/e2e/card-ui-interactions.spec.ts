@@ -48,12 +48,16 @@ test("renders an MCP assignment as the unified CARD-01B card and settles it", as
 
   await send(page, "show an mcp approval card");
 
-  const region = page.locator('[data-testid="intervention-region"][data-surface="interaction-v2"]');
-  await expect(region).toBeVisible({ timeout: 30_000 });
   const card = page
     .locator('[data-testid="interaction-card"][data-kind="action_approval"]')
     .filter({ hasText: "MCP assignment" });
-  await expect(card).toBeVisible();
+  // The welcome flow can leave its own pending connection card on screen;
+  // scope the region assertion to this Run's MCP card.
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  const region = card.locator(
+    'xpath=ancestor::section[@data-testid="intervention-region"][@data-surface="interaction-v2"]',
+  );
+  await expect(region).toBeVisible();
   await expect(card.getByTestId("interaction-status")).toContainText("Waiting for your decision");
   await expect(card.getByTestId("mcp-allow-all-tools")).toContainText("allowAllTools: true");
   await expect(card).toContainText("All tools on this server");

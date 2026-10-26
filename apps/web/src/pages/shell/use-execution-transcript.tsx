@@ -845,12 +845,18 @@ export function useExecutionTranscript({
         </ExecutionShell>
       );
     });
-  // Views without a Run (for example an onboarding message) have no Execution
-  // shell to own them. Keep them reachable at the tail instead of dropping a
-  // valid pending request.
+  // Views without a Run (for example an onboarding question or a taught-skill
+  // draft message) have no Execution shell to own them. Keep pending requests
+  // and any terminal message-backed card at the tail: gate-on suppresses the
+  // legacy block, so dropping the settled card would erase its history. A
+  // terminal ask whose bubble already carries the settled state stays there.
   const standaloneInteractions =
     cardsUnifiedV2 && interactions
-      ? interactions.filter((view) => view.status === "pending" && view.source.runId === null)
+      ? interactions.filter(
+          (view) =>
+            view.source.runId === null &&
+            (view.source.messageId === null || coveredAsks.has(view.source.messageId)),
+        )
       : [];
   const standaloneRegion =
     standaloneInteractions.length > 0 ? (

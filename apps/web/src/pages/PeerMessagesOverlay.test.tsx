@@ -130,9 +130,37 @@ describe("PeerMessagesOverlay", () => {
     expect(document.body.textContent).toContain("RECEIVED-BODY");
     expect(document.body.textContent).toContain("cannot speak in the chat between Agents");
     expect(document.querySelectorAll('[data-testid="peer-message"]')).toHaveLength(2);
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="peer-message"]')];
+    expect(rows[0]?.getAttribute("data-direction")).toBe("sent");
+    expect(rows[0]?.getAttribute("data-author-id")).toBe("bot-1");
+    expect(rows[0]?.className).toContain("flex-row-reverse");
+    expect(rows[0]?.textContent).toContain("Writer");
+    expect(rows[0]?.querySelector(".rakazo-agent-avatar")).not.toBeNull();
+    expect(rows[1]?.getAttribute("data-direction")).toBe("received");
+    expect(rows[1]?.getAttribute("data-author-id")).toBe("bot-2");
+    expect(rows[1]?.className).not.toContain("flex-row-reverse");
+    expect(rows[1]?.textContent).toContain("Analyst");
+    expect(rows[1]?.querySelector(".rakazo-agent-avatar")).not.toBeNull();
     expect(document.querySelector("input, textarea")).toBeNull();
     expect(document.body.textContent).not.toContain("Send");
     expect(document.body.textContent).toContain("Close chat");
+  });
+
+  it("shows the other Bot's reply on the received side", async () => {
+    mocks.pairMessages.mockResolvedValue(
+      page([
+        message("m-reply", [
+          { kind: "bot_message_sent", toBotId: "bot-1", toBotName: "Writer", text: "REPLY-BODY" },
+        ]),
+      ]),
+    );
+    await renderOverlay();
+
+    const row = document.querySelector<HTMLElement>('[data-testid="peer-message"]');
+    expect(row?.getAttribute("data-direction")).toBe("received");
+    expect(row?.getAttribute("data-author-id")).toBe("bot-2");
+    expect(row?.textContent).toContain("Analyst");
+    expect(row?.className).not.toContain("flex-row-reverse");
   });
 
   it("renders the recipient wake copy once", async () => {

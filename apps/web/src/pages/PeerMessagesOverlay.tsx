@@ -124,7 +124,7 @@ export function PeerMessagesOverlay({
     }
   }, [sourceReceiptMessageId, pairThreadId, locatorMessageId, olderCursor]);
 
-  const transcript = useMemo(() => pairTranscript(messages), [messages]);
+  const transcript = useMemo(() => pairTranscript(messages, botId), [messages, botId]);
   const title = `${botName} · ${peerBotName}`;
 
   return (
@@ -219,18 +219,27 @@ export function PeerMessagesOverlay({
                   key={entry.id}
                   data-testid="peer-message"
                   data-direction={entry.direction}
-                  className="mb-4 grid grid-cols-[30px_minmax(0,1fr)] gap-2.5"
+                  data-author-id={authorId}
+                  className={`mb-4 flex gap-2.5 ${sent ? "flex-row-reverse" : ""}`}
                 >
                   <BotAvatar color={authorColor} identity={authorId} size={30} />
-                  <div className="min-w-0">
-                    <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                  <div className={`min-w-0 ${sent ? "text-right" : "text-left"}`}>
+                    <div
+                      className={`mb-1 flex items-center gap-2 text-[11px] text-muted-foreground/70 ${
+                        sent ? "justify-end" : ""
+                      }`}
+                    >
                       <span className="font-medium" dir="auto">
                         {author}
                       </span>
                       <span>{formatRelativeTime(entry.createdAt)}</span>
                     </div>
                     <div
-                      className="inline-block max-w-full rounded-[4px_14px_14px_14px] bg-muted px-3.5 py-2.5 text-[13.5px] leading-[1.5] text-foreground/90 sm:text-[14px]"
+                      className={`inline-block max-w-full px-3.5 py-2.5 text-[13.5px] leading-[1.5] text-foreground/90 sm:text-[14px] ${
+                        sent
+                          ? "rounded-[14px_4px_14px_14px] bg-primary/10"
+                          : "rounded-[4px_14px_14px_14px] bg-muted"
+                      }`}
                       dir="auto"
                     >
                       <ChatMarkdown>{entry.text}</ChatMarkdown>

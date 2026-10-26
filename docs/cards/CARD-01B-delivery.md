@@ -3,7 +3,7 @@
 状态：`in-review`（未合并）
 
 - 分支：`codex/card-ui-interactions`
-- Worktree：`/Users/rivers/Documents/WorkPal-worktrees/card-ui-interactions`
+- Worktree：仓库外的独立 `card-ui-interactions` worktree（按分支名定位，不记录本机路径）
 - Base：`43fb44517339e2822350feec6903e40dd37b703a`（`origin/main`）
 - Implementation head：`c78dd29`（本文件单独提交，PR head 以分支顶端为准）
 
@@ -15,8 +15,9 @@
 - `InterventionRegion` 在 `cardsUnifiedV2` 开启时委托给新 region；gate 关闭时保留原 `InterventionRegion` 路径。
 - 排序统一走 `compareInteractionViewsForDisplay`：pending 先于 terminal；pending 内 PlanReview → ActionApproval → InputRequest；SessionControl 使用独立 region。
 - `coveredAsks` 在 gate 开启时按 `InteractionView.source.messageId` 去重，并抑制同一消息上的 `app_connect`、`mcp_approval`、`skill_draft` 旧 block；`MessageView` 现在接收父级过滤后的 blocks，避免旧卡片从气泡再次渲染。
-- Execution headline 使用 server pending 视图的 `presentation.text`；无消息锚点的 pending interaction 渲染在 transcript tail。
+- Execution headline 使用 server pending 视图的 `presentation.text`；无 Run 的 interaction 渲染在 transcript tail（pending 以及仍有卡片的终态）。
 - 终态不使用整卡 opacity；使用 inset outline + 文字/符号状态。每张卡最多两个按钮加一个文字入口。
+- A8 丢弃是持久终态：`skill_draft.status` 新增 `discarded`；`skills.remove` 在同一事务内把消息 block 标记为 `discarded`、追加 `thread.message.updated` 事件并删除技能记录。投影把 `discarded` 映射为 `cancelled`，刷新后仍显示“Discarded”且没有保存/丢弃按钮。
 - `group_membership` 不套 Card Shell，继续使用 X-GROUP 内联卡；`GroupMembershipFailureCard` 独立失败态。无成员变更 RPC 时按钮禁用并明确说明尚不可用。
 - `session_control` 接管/交还独立显示；关闭面板不等于交还，交还必须点击明确动作。
 
@@ -25,6 +26,7 @@
 - pair 发货时源 Thread 写入 `collaboration_receipt`，包含 `target: { kind: "bot", botId }` 与 `destination: { kind: "pair_message", pairThreadId, messageId }`；pair Thread 保留完整正文。
 - `isPeerReceiptBlocks`、消息分页准入与 peer 事件转发识别 bot-target `collaboration_receipt`。
 - 新 `PeerReceiptRow` 单行为轻回执，多目标为展开名单；legacy 无 locator 回执显示为不可打开记录，不回退到通用 Thread 拉取。
+- `PeerMessagesOverlay` 方向以当前展示 Bot 为准：`bot_message_sent.toBotId` 等于当前 Bot 时是收到的回传，`bot_message_received.fromBotId` 等于当前 Bot 时是自己的发出；收到的回传显示在左侧、自己的消息显示在右侧，名称和头像跟随方向。`returnToMessageId` 仍用于去除同一投递的 wake 副本。
 - `PeerMessagesOverlay` 只调用 `threads.pairMessages`，必须携带 `sourceReceiptMessageId`、pair locator 和分页 cursor；只读无输入框。
 - `readPairMessages` 初始页从最新授权消息开始，避免回执之后的回复被 target boundary 隐藏；grant 仍校验 target 与 provenance。
 - 删除 `peer-history.ts` / `peer-messages.ts` 及对应测试，避免两套读取路径。
@@ -51,16 +53,18 @@
 | --- | --- |
 | `pnpm check` | 18/18 通过 |
 | `pnpm lint` | 0 error（仓库既有 warning/info 保留） |
-| `pnpm --filter @rakazo/web test` | 98 files / 752 tests 通过 |
-| `pnpm test:unit` | 454 files / 5472 passed / 2 skipped |
+| `pnpm --filter @rakazo/web test` | 98 files / 756 tests 通过 |
+| `pnpm test:unit` | 454 files / 5480 passed / 2 skipped |
 | `pnpm --filter @rakazo/web build` | 通过 |
-| `pnpm test:ci-select` | 98 tests 通过 |
+| `pnpm test:ci-select` | 99 tests 通过 |
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
-| `pnpm test:postgres` | 46/48 files 通过；`effect-execution-fence` 与 `execution-fenced-events` 共 10 个 lease-expired 失败，与本任务路径无关 |
+| `pnpm test:postgres` | 48/48 files、425 tests 通过（迁移后的独立 `workpal_e2e_*` 库） |
 | `git diff --check` | 通过 |
 | Gate-off 回归 | transcript 测试证明 gate off 时保留 legacy app/MCP/skill 卡片并忽略 `interactions` |
 | Gate-on 回归 | transcript 测试证明三张 legacy block 被抑制，新卡片位于 execution shell 且不出现双卡 |
-| 终态保留 | transcript 测试证明 Run 结算后 message-backed 卡仍在 shell 内，legacy block 不回潮 |
+| 终态保留 | transcript 测试证明 Run 结算后 message-backed 卡仍在 shell 内，legacy block 不回潮；无 Run 的丢弃卡在 tail 保留 |
+| pair 方向 | A→B 请求为 sent、B→A 回传为 received、legacy-only wake 为 sent；overlay 同步验证作者、头像与左右位置 |
+| A8 丢弃持久化 | 服务测试验证 block→`discarded`、`thread.message.updated` 事件与删除同事务；重复丢弃/错误用户/Space 无副作用；投影为 cancelled，Web 从服务端视图恢复“Discarded”且无按钮 |
 
 ### E2E 本地阻塞（需 CI 复核）
 
@@ -80,5 +84,4 @@
 2. `group_membership` 的成员变更 RPC 属于 RT-12。生产按钮禁用并显示“Joining from this card is not available yet.”；无权限失败卡已实现但没有服务端权限事实可驱动自动选择。
 3. A10 同卡编辑需要 Interaction contract 提供 draft body/revisions；当前仅按 revision + fingerprint 显示只读详情并绑定发送决定，未实现同卡编辑。
 4. A12 的“先选已保存项、完成后再出现独立付款审批”在 UI 和测试中分离成立，但 payment producer 缺失，无法端到端产生第二张付款卡。
-5. A8 discard 调用 `skills.remove` 后只更新本地终态；消息上的 `skill_draft` block 未被重写，刷新后可能在快照更新前重新显示。保存路径以 skill 事务为准。
-6. 生产截图未生成，原因见上节本地 E2E 阻塞。
+5. 生产截图未生成，原因见上节本地 E2E 阻塞。
