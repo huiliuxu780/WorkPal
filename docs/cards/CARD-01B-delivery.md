@@ -5,7 +5,7 @@
 - 分支：`codex/card-ui-interactions`
 - Worktree：仓库外的独立 `card-ui-interactions` worktree（按分支名定位，不记录本机路径）
 - Base：`43fb44517339e2822350feec6903e40dd37b703a`（`origin/main`）
-- Implementation head：`91c33b0`（A10 收尾实现；PR head 以分支顶端为准）
+- Implementation head：`fa4ea75`（A10 并发回滚与收件人校验修复；PR head 以分支顶端为准）
 
 ## 交付内容
 
