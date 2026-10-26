@@ -56,18 +56,20 @@ import {
   applyCancelTerminalPolicy,
   cancelEventPayload,
   cancelPolicyFor,
+  cardMessageFact,
+  loadBotComputerFacts,
+  loadOriginControlFacts,
+  projectThreadCardSurface,
   supersededCancelPolicy,
   createGroupRepos,
   createRepos,
   createThreadMessageInTransaction,
   currentThreadGeneration,
-  ExecutionActivityCursorError,
   expireComputerExecutionLeases,
   IsolationError,
   loadCurrentRunPlans,
   loadCurrentRunSteps,
   loadCurrentRunTodos,
-  loadExecutionSnapshot,
   loadExecutionSummaries,
   loadInterventionViews,
   lockOwnedStandardGroupThread,
@@ -636,7 +638,7 @@ export async function threadHead(prisma: PrismaClient, target: ThreadTarget) {
 }
 
 export async function threadSnapshot(
-  deps: { prisma: PrismaClient },
+  deps: { prisma: PrismaClient; cardsUnifiedV2?: boolean },
   target: ThreadTarget,
 ): Promise<ThreadSnapshot> {
   // Lock the thread row so messages, the event cursor, active runs, and live
@@ -652,44 +654,51 @@ export async function threadSnapshot(
       }),
       deps.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR SHARE`;
-        const [messagePage, last, waitingRun, busyOrFailed, recentTerminals] = await Promise.all([
-          loadMessagePage(tx, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
-          tx.event.findFirst({
-            where: { threadId: target.threadId },
-            orderBy: { seq: "desc" },
-            select: { seq: true },
-          }),
-          // Waiting asks win over a concurrent busy run (including peer bot_message).
-          tx.run.findFirst({
-            where: {
-              botId: target.botId,
-              threadId: target.threadId,
-              status: { in: ["waiting_input", "waiting_takeover"] },
-            },
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          }),
-          tx.run.findFirst({
-            where: {
-              botId: target.botId,
-              threadId: target.threadId,
-              // Hide peer bot_message busy/failed noise; waiting is handled above.
-              trigger: { not: "bot_message" },
-              status: { in: [...ACTIVE_RUN_STATUSES, "failed"] },
-            },
-            // The id tiebreak keeps ordering deterministic under equal
-            // timestamps, matching the supersession probe below.
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          }),
-          tx.run.findMany({
-            where: {
-              botId: target.botId,
-              threadId: target.threadId,
-              trigger: { not: "bot_message" },
-              status: { in: ["failed", "completed", "cancelled"] },
-            },
-            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-            take: 50,
-          }),
+        const [messagePage, last, waitingRun, busyOrFailed, recentTerminals, originControls] =
+          await Promise.all([
+            loadMessagePage(tx, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
+            tx.event.findFirst({
+              where: { threadId: target.threadId },
+              orderBy: { seq: "desc" },
+              select: { seq: true },
+            }),
+            // Waiting asks win over a concurrent busy run (including peer bot_message).
+            tx.run.findFirst({
+              where: {
+                botId: target.botId,
+                threadId: target.threadId,
+                status: { in: ["waiting_input", "waiting_takeover"] },
+              },
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            }),
+            tx.run.findFirst({
+              where: {
+                botId: target.botId,
+                threadId: target.threadId,
+                // Hide peer bot_message busy/failed noise; waiting is handled above.
+                trigger: { not: "bot_message" },
+                status: { in: [...ACTIVE_RUN_STATUSES, "failed"] },
+              },
+              // The id tiebreak keeps ordering deterministic under equal
+              // timestamps, matching the supersession probe below.
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            }),
+            tx.run.findMany({
+              where: {
+                botId: target.botId,
+                threadId: target.threadId,
+                trigger: { not: "bot_message" },
+                status: { in: ["failed", "completed", "cancelled"] },
+              },
+              orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+              take: 50,
+            }),
+            deps.cardsUnifiedV2
+              ? loadOriginControlFacts(tx, {
+                  spaceId: target.spaceId,
+                  threadId: target.threadId,
+                })
+              : Promise.resolve(null),
         ]);
         const run = waitingRun ?? busyOrFailed;
         // A failed run is only the thread's word while it is still the newest
@@ -774,6 +783,57 @@ export async function threadSnapshot(
             ...interventions.map((view) => view.runId),
           ],
         });
+        const cardSurface = deps.cardsUnifiedV2
+          ? projectThreadCardSurface({
+              spaceId: target.spaceId,
+              threadId: target.threadId,
+              messages: messagePage.messages.map((message) =>
+                cardMessageFact(message, target.spaceId),
+              ),
+              interventions,
+              runs: [
+                ...(currentRun
+                  ? [
+                      {
+                        id: currentRun.id,
+                        spaceId: currentRun.spaceId,
+                        threadId: currentRun.threadId,
+                        botId: currentRun.botId,
+                        status: currentRun.status,
+                        waitKind: currentRun.waitKind,
+                        createdAt: currentRun.createdAt,
+                        waitStartedAt: currentRun.waitStartedAt,
+                        executionLeaseActive: Boolean(
+                          (currentRun.status === "leased" || currentRun.status === "running") &&
+                            currentRun.leaseOwner &&
+                            (!currentRun.leaseExpiresAt ||
+                              currentRun.leaseExpiresAt.getTime() > Date.now()),
+                        ),
+                      },
+                    ]
+                  : []),
+                ...(originControls?.runs ?? []).filter((run) => run.id !== currentRun?.id),
+              ],
+              computers: [
+                ...(target.bot.computer
+                  ? [
+                      {
+                        id: target.bot.computer.id,
+                        botId: target.bot.id,
+                        controlHolder: target.bot.computer.controlHolder,
+                        controlBotId: target.bot.computer.controlBotId,
+                        controlRunId: target.bot.computer.controlRunId,
+                        controlLeaseId: target.bot.computer.controlLeaseId,
+                        controlLeaseExpiresAt: target.bot.computer.controlLeaseExpiresAt,
+                      },
+                    ]
+                  : []),
+                ...(originControls?.computers ?? []).filter(
+                  (computer) => computer.botId !== target.bot.id,
+                ),
+              ],
+            })
+          : null;
         return {
           messagePage,
           last,
@@ -786,6 +846,7 @@ export async function threadSnapshot(
           todos,
           interventions,
           executions,
+          cardSurface,
         };
       }),
     ]);
@@ -804,12 +865,19 @@ export async function threadSnapshot(
       todos: core.todos,
       interventions: core.interventions,
       executions: core.executions,
+      ...(core.cardSurface
+        ? {
+            interactionCapabilities: { cardsUnifiedV2: true as const },
+            interactions: core.cardSurface.interactions,
+            displayBlocks: core.cardSurface.displayBlocks,
+          }
+        : {}),
     };
   }
 
   const core = await deps.prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR SHARE`;
-    const [messagePage, last, activeRuns, recentTerminals] = await Promise.all([
+    const [messagePage, last, activeRuns, recentTerminals, originControls] = await Promise.all([
       loadMessagePage(tx, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
       tx.event.findFirst({
         where: { threadId: target.threadId },
@@ -839,6 +907,12 @@ export async function threadSnapshot(
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         take: 50,
       }),
+      deps.cardsUnifiedV2
+        ? loadOriginControlFacts(tx, {
+            spaceId: target.spaceId,
+            threadId: target.threadId,
+          })
+        : Promise.resolve(null),
     ]);
     const liveEvents =
       activeRuns.length > 0
@@ -885,6 +959,48 @@ export async function threadSnapshot(
         ...interventions.map((view) => view.runId),
       ],
     });
+    const cardComputers = deps.cardsUnifiedV2
+      ? await loadBotComputerFacts(tx, {
+          spaceId: target.spaceId,
+          botIds: [
+            ...activeRuns.map((run) => run.botId),
+            ...(originControls?.computers ?? []).map((computer) => computer.botId),
+          ],
+        })
+      : [];
+    const cardSurface = deps.cardsUnifiedV2
+      ? projectThreadCardSurface({
+          spaceId: target.spaceId,
+          threadId: target.threadId,
+          messages: messagePage.messages.map((message) =>
+            cardMessageFact(message, target.spaceId),
+          ),
+          interventions,
+          runs: [
+            ...activeRuns.map((run) => ({
+              id: run.id,
+              spaceId: run.spaceId,
+              threadId: run.threadId,
+              botId: run.botId,
+              status: run.status,
+              waitKind: run.waitKind,
+              createdAt: run.createdAt,
+              waitStartedAt: run.waitStartedAt,
+              executionLeaseActive: Boolean(
+                (run.status === "leased" || run.status === "running") &&
+                  run.leaseOwner &&
+                  (!run.leaseExpiresAt || run.leaseExpiresAt.getTime() > Date.now()),
+              ),
+            })),
+            ...(originControls?.runs ?? []).filter(
+              (run) => !activeRuns.some((active) => active.id === run.id),
+            ),
+          ],
+          // A group Thread has no single Computer; every Run resolves control
+          // against the Computer of the Bot executing it.
+          computers: cardComputers,
+        })
+      : null;
     return {
       messagePage,
       last,
@@ -898,6 +1014,7 @@ export async function threadSnapshot(
       todos,
       interventions,
       executions,
+      cardSurface,
     };
   });
   const primaryActiveRun = pickPrimaryActiveRun(core.activeRuns);
@@ -925,6 +1042,13 @@ export async function threadSnapshot(
     todos: core.todos,
     interventions: core.interventions,
     executions: core.executions,
+    ...(core.cardSurface
+      ? {
+          interactionCapabilities: { cardsUnifiedV2: true as const },
+          interactions: core.cardSurface.interactions,
+          displayBlocks: core.cardSurface.displayBlocks,
+        }
+      : {}),
   };
 }
 

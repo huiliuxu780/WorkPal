@@ -235,6 +235,226 @@ describe("reaction messages", () => {
   });
 });
 
+describe("CARD-01 snapshot gate", () => {
+  function fixture() {
+    const tx = {
+      backgroundAgentTask: { findMany: vi.fn().mockResolvedValue([]) },
+      runPlan: { findMany: vi.fn().mockResolvedValue([]) },
+      runStep: { findMany: vi.fn().mockResolvedValue([]) },
+      runTodo: { findMany: vi.fn().mockResolvedValue([]) },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
+      message: { findMany: vi.fn().mockResolvedValue([]) },
+      event: {
+        findFirst: vi.fn().mockResolvedValue({ seq: 0 }),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      run: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
+      thread: { findMany: vi.fn().mockResolvedValue([]) },
+      bot: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+    const target = {
+      kind: "bot",
+      botId: "bot-1",
+      threadId: "thread-1",
+      spaceId: "space-1",
+      bot: { name: "Bot", computer: null },
+    } as ThreadTarget;
+    return { prisma, target, tx };
+  }
+
+  it("leaves the old snapshot shape untouched while the gate is off", async () => {
+    const { prisma, target } = fixture();
+    const snapshot = await threadSnapshot({ prisma }, target);
+    expect(snapshot).not.toHaveProperty("interactionCapabilities");
+    expect(snapshot).not.toHaveProperty("interactions");
+    expect(snapshot).not.toHaveProperty("displayBlocks");
+  });
+
+  it("projects the capability and strict arrays only when the gate is on", async () => {
+    const { prisma, target } = fixture();
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+    expect(snapshot.interactionCapabilities).toEqual({ cardsUnifiedV2: true });
+    expect(snapshot.interactions).toEqual([]);
+    expect(snapshot.displayBlocks).toEqual([]);
+    expect(snapshot).not.toHaveProperty("attention");
+  });
+
+  it("projects a delegated takeover into the visible origin thread", async () => {
+    const { prisma, target, tx } = fixture();
+    const delegatedRun = {
+      id: "run-delegated",
+      spaceId: "space-1",
+      threadId: "pair-thread-1",
+      botId: "bot-2",
+      status: "waiting_takeover",
+      waitKind: "takeover",
+      createdAt: new Date("2026-10-24T10:00:00.000Z"),
+      waitStartedAt: new Date("2026-10-24T10:00:00.000Z"),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    };
+    tx.run.findMany.mockImplementation(async (args: { where?: { originThreadId?: unknown } }) =>
+      args?.where?.originThreadId ? [delegatedRun] : [],
+    );
+    tx.bot.findMany.mockResolvedValue([
+      {
+        id: "bot-2",
+        computer: {
+          id: "computer-2",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-delegated",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+      },
+    ]);
+
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+
+    expect(snapshot.interactions).toEqual([
+      expect.objectContaining({
+        kind: "session_control",
+        action: "takeover",
+        runId: "run-delegated",
+        botId: "bot-2",
+        computerId: "computer-2",
+        source: expect.objectContaining({
+          threadId: "thread-1",
+          runId: "run-delegated",
+          botId: "bot-2",
+        }),
+      }),
+    ]);
+    // The hidden pair Thread must never reach the visible snapshot.
+    expect(JSON.stringify(snapshot)).not.toContain("pair-thread-1");
+  });
+
+  it("projects a delegated takeover into the visible origin group thread", async () => {
+    const { prisma, target: botTarget, tx } = fixture();
+    const delegatedRun = {
+      id: "run-delegated",
+      spaceId: "space-1",
+      threadId: "pair-thread-1",
+      botId: "bot-2",
+      status: "waiting_takeover",
+      waitKind: "takeover",
+      createdAt: new Date("2026-10-24T10:00:00.000Z"),
+      waitStartedAt: new Date("2026-10-24T10:00:00.000Z"),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    };
+    tx.run.findMany.mockImplementation(async (args: { where?: { originThreadId?: unknown } }) =>
+      args?.where?.originThreadId ? [delegatedRun] : [],
+    );
+    tx.bot.findMany.mockResolvedValue([
+      {
+        id: "bot-2",
+        computer: {
+          id: "computer-2",
+          controlHolder: "none",
+          controlBotId: null,
+          controlRunId: "run-delegated",
+          controlLeaseId: null,
+          controlLeaseExpiresAt: null,
+        },
+      },
+    ]);
+    const target = {
+      kind: "group",
+      groupId: "group-1",
+      groupName: "Group",
+      spaceId: botTarget.kind === "bot" ? botTarget.spaceId : "space-1",
+      leadBotId: null,
+      members: [],
+      memberBotIds: [],
+      threadId: "thread-1",
+    } as ThreadTarget;
+
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+
+    expect(snapshot.interactions).toEqual([
+      expect.objectContaining({
+        kind: "session_control",
+        action: "takeover",
+        runId: "run-delegated",
+        computerId: "computer-2",
+        source: expect.objectContaining({ threadId: "thread-1", botId: "bot-2" }),
+      }),
+    ]);
+    expect(JSON.stringify(snapshot)).not.toContain("pair-thread-1");
+  });
+
+  it("resolves a direct group Run's hand-back against its own Bot computer", async () => {
+    const { prisma, tx } = fixture();
+    const activeRun = {
+      id: "run-group",
+      spaceId: "space-1",
+      threadId: "thread-1",
+      taskId: "task-1",
+      botId: "bot-2",
+      status: "waiting_takeover",
+      waitKind: "takeover",
+      trigger: "user",
+      modelProvider: null,
+      modelId: null,
+      error: null,
+      startedAt: null,
+      completedAt: null,
+      waitStartedAt: new Date("2026-10-24T10:00:00.000Z"),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      createdAt: new Date("2026-10-24T10:00:00.000Z"),
+      updatedAt: new Date("2026-10-24T10:00:00.000Z"),
+      snapshotRev: 0,
+    };
+    tx.run.findMany.mockImplementation(
+      async (args: { where?: { status?: { in?: string[] }; originThreadId?: unknown } }) => {
+        if (args?.where?.originThreadId) return [];
+        const statuses = args?.where?.status?.in ?? [];
+        return statuses.includes("waiting_takeover") ? [activeRun] : [];
+      },
+    );
+    tx.bot.findMany.mockResolvedValue([
+      {
+        id: "bot-2",
+        computer: {
+          id: "computer-2",
+          controlHolder: "user",
+          controlBotId: "bot-2",
+          controlRunId: "run-group",
+          controlLeaseId: "lease-2",
+          controlLeaseExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    ]);
+    const target = {
+      kind: "group",
+      groupId: "group-1",
+      groupName: "Group",
+      spaceId: "space-1",
+      leadBotId: null,
+      members: [],
+      memberBotIds: [],
+      threadId: "thread-1",
+    } as ThreadTarget;
+
+    const snapshot = await threadSnapshot({ prisma, cardsUnifiedV2: true }, target);
+
+    expect(snapshot.interactions).toEqual([
+      expect.objectContaining({
+        kind: "session_control",
+        action: "return",
+        runId: "run-group",
+        computerId: "computer-2",
+      }),
+    ]);
+  });
+});
+
 describe("threadSnapshot", () => {
   it("reloads tool-only live messages for an active run", async () => {
     const run = {

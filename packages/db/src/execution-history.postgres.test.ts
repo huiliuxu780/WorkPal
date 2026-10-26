@@ -217,6 +217,46 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
     expect(snapshot!.summary.rev).toBeGreaterThan(0);
   });
 
+  it("projects a message-backed MCP approval into execution interactions", async () => {
+    const { run } = await makeRun();
+    const approval = await botMessage(run.id, [
+      {
+        kind: "mcp_approval",
+        name: "Docs",
+        serverId: "server-1",
+        transport: "streamable_http",
+        endpoint: "https://mcp.example.test",
+        needsOAuth: true,
+        status: "pending",
+      },
+    ]);
+
+    const off = await loadExecutionSnapshot(prisma, {
+      threadId,
+      spaceId: id,
+      runId: run.id,
+    });
+    expect(off?.interactions).toBeUndefined();
+
+    const on = await loadExecutionSnapshot(prisma, {
+      threadId,
+      spaceId: id,
+      runId: run.id,
+      cardsUnifiedV2: true,
+    });
+    expect(on?.interactions).toEqual([
+      expect.objectContaining({
+        kind: "action_approval",
+        status: "pending",
+        source: expect.objectContaining({ messageId: approval.id, runId: run.id }),
+        approval: expect.objectContaining({
+          kind: "connect.mcp_assignment",
+          allowAllTools: true,
+        }),
+      }),
+    ]);
+  });
+
   it("uses the latest result after more than 500 bot messages", async () => {
     const { run } = await makeRun();
     const count = 502;

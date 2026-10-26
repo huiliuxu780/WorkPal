@@ -18,6 +18,7 @@ export * from "./bot-messages.js";
 export * from "./bot-sections.js";
 export * from "./call-nonce.js";
 export * from "./capability-rules.js";
+export * from "./cards-unified-feature-gate.js";
 export * from "./cloud-agent.js";
 export * from "./compose-update.js";
 export * from "./composer-mention-picker.js";
