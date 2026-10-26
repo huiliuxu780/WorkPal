@@ -71,7 +71,6 @@ import {
   loadCurrentRunSteps,
   loadCurrentRunTodos,
   loadExecutionSnapshot,
-  loadExecutionSummaries,
   loadExecutionSummariesForMessages,
   loadInterventionViews,
   lockOwnedStandardGroupThread,
