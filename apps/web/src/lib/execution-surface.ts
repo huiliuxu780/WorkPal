@@ -1,5 +1,6 @@
 import type {
   ExecutionSummary,
+  InteractionView,
   InterventionView,
   Run,
   RunPlanRevision,
@@ -45,6 +46,8 @@ export type EligibleExecutionRunIdsInput = {
   /** The rev-guarded detail cache shared with the render path. */
   executionDetails?: ExecutionDetailCache;
   interventions?: readonly InterventionView[] | null;
+  /** CARD-01B strict projection; gate-on only. */
+  interactions?: readonly InteractionView[] | null;
 };
 
 /**
@@ -61,6 +64,9 @@ export function eligibleExecutionRunIds(input: EligibleExecutionRunIdsInput): Re
   for (const run of input.runs) candidates.add(run.id);
   for (const runId of input.serverSummaries?.keys() ?? []) candidates.add(runId);
   for (const view of input.interventions ?? []) candidates.add(view.runId);
+  for (const view of input.interactions ?? []) {
+    if (view.source.runId) candidates.add(view.source.runId);
+  }
   for (const plan of input.plans ?? []) candidates.add(plan.runId);
   for (const step of input.steps ?? []) candidates.add(step.runId);
 
@@ -88,6 +94,9 @@ export function eligibleExecutionRunIds(input: EligibleExecutionRunIdsInput): Re
     const hasPendingIntervention =
       (input.interventions ?? []).some(
         (view) => view.runId === runId && view.status === "pending",
+      ) ||
+      (input.interactions ?? []).some(
+        (view) => view.source.runId === runId && view.status === "pending",
       ) ||
       // A waiting Run always owns a live interaction (approval/input card or
       // takeover), even before its Intervention projection arrives.

@@ -114,6 +114,7 @@ async function withoutPeerRunMessages<
   const admittedKinds = (block: MessageBlock) =>
     block.kind === "bot_message_sent" ||
     block.kind === "bot_message_received" ||
+    (block.kind === "collaboration_receipt" && block.target.kind === "bot") ||
     block.kind === "ask" ||
     block.kind === "text";
   return rows.filter((row) => {
@@ -184,6 +185,7 @@ export function shouldForwardPeerThreadEvent(event: {
         "kind" in block &&
         (block.kind === "bot_message_received" ||
           block.kind === "bot_message_sent" ||
+          (block.kind === "collaboration_receipt" && block.target.kind === "bot") ||
           block.kind === "ask" ||
           block.kind === "text" ||
           block.kind === "computer"),

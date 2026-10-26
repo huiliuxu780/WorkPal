@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import type {
   ActivityItem,
+  InteractionView,
   InterventionView,
   Run,
   ThreadMessage,
@@ -10,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExecutionActivity } from "../../components/ai/ExecutionActivity";
 import { ExecutionShell, FOCUSABLE_CONTROL } from "../../components/ai/ExecutionShell";
 import { InterventionRegion } from "../../components/ai/InterventionRegion";
+import { InteractionRegion } from "../../components/ai/interactions/InteractionRegion";
 import { RunPlanDisclosure } from "../../components/ai/RunPlanDisclosure";
 import { RunResult } from "../../components/ai/RunResult";
 import { RunStepsDisclosure } from "../../components/ai/RunStepsDisclosure";
@@ -45,7 +47,9 @@ import {
 import { eligibleExecutionRunIds } from "../../lib/execution-surface";
 import {
   coveredAskMessageIds,
+  coveredAskMessageIdsFromInteractions,
   mergeInterventionViews,
+  pendingInteractionKindsForRun,
   pendingInterventionKindsForRun,
 } from "../../lib/intervention-view";
 import { manualRetryErrorMessage } from "../../lib/manual-retry";
@@ -93,6 +97,13 @@ export type UseExecutionTranscriptInput = {
   runs: Run[];
   activeRunIds: string[];
   interventions?: ThreadSnapshot["interventions"];
+  /** CARD-01A strict projection; present only when the server gate is on. */
+  interactions?: ThreadSnapshot["interactions"];
+  cardsUnifiedV2?: boolean;
+  conversationName?: string;
+  groupNameOf?: (groupId: string) => string | undefined;
+  onOpenComputer?: (botId: string) => void;
+  onGroupDecision?: (view: InteractionView, answer: "approve" | "deny") => Promise<void> | void;
   /** Server per-Run summaries (HISTORY-001); absent on older servers. */
   executions?: ThreadSnapshot["executions"];
   activity?: ActivityItem[];
@@ -114,6 +125,12 @@ export function useExecutionTranscript({
   runs,
   activeRunIds,
   interventions,
+  interactions,
+  cardsUnifiedV2,
+  conversationName,
+  groupNameOf,
+  onOpenComputer,
+  onGroupDecision,
   executions,
   activity,
   showActivityAvatars,
@@ -156,8 +173,18 @@ export function useExecutionTranscript({
         serverSummaries,
         executionDetails,
         interventions: shownInterventions,
+        interactions: cardsUnifiedV2 ? interactions : undefined,
       }),
-    [runs, plans, steps, serverSummaries, executionDetails, shownInterventions],
+    [
+      runs,
+      plans,
+      steps,
+      serverSummaries,
+      executionDetails,
+      shownInterventions,
+      cardsUnifiedV2,
+      interactions,
+    ],
   );
   // Message ids whose bubble ask block already carries a settled status: a
   // settled Intervention of a surface-less Run yields its ask back to the
@@ -173,10 +200,15 @@ export function useExecutionTranscript({
     }
     return ids;
   }, [messages]);
-  const coveredAsks = useMemo(
-    () => coveredAskMessageIds(shownInterventions, { eligibleRunIds, settledAskMessageIds }),
-    [shownInterventions, eligibleRunIds, settledAskMessageIds],
-  );
+  const coveredAsks = useMemo(() => {
+    if (cardsUnifiedV2 && interactions) {
+      return coveredAskMessageIdsFromInteractions(interactions, {
+        eligibleRunIds,
+        settledAskMessageIds,
+      });
+    }
+    return coveredAskMessageIds(shownInterventions, { eligibleRunIds, settledAskMessageIds });
+  }, [cardsUnifiedV2, interactions, shownInterventions, eligibleRunIds, settledAskMessageIds]);
   const activityLoading = useRef<Record<string, boolean>>({});
   // The server-chosen anchor wins when its message is actually loaded; a
   // paged-out anchor must never hide a shell whose content is a pending
@@ -358,6 +390,26 @@ export function useExecutionTranscript({
       get(anchor, view.runId);
       runAnchor.set(view.runId, anchor);
     }
+    // CARD-01B message-backed approvals (app authorization, MCP assignment,
+    // skill drafts) have no legacy Intervention row but still own the same
+    // anchored shell and headline as a durable view.
+    for (const view of cardsUnifiedV2 ? (interactions ?? []) : []) {
+      const runId = view.source.runId;
+      if (!runId || runAnchor.has(runId)) continue;
+      const lastBot = [...messages]
+        .reverse()
+        .find((message) => message.runId === runId && message.role === "bot");
+      const sourceMessageId = view.source.messageId;
+      const anchor = anchorOf(
+        runId,
+        sourceMessageId && messageById.has(sourceMessageId)
+          ? sourceMessageId
+          : (lastBot?.id ?? "__tail"),
+      );
+      if (!anchor) continue;
+      get(anchor, runId);
+      runAnchor.set(runId, anchor);
+    }
     for (const run of runs) {
       if (isRunActive(run.status) && !runAnchor.has(run.id)) {
         const waiting = run.status === "waiting_input" || run.status === "waiting_takeover";
@@ -399,6 +451,8 @@ export function useExecutionTranscript({
     activeRunIds,
     runs,
     shownInterventions,
+    cardsUnifiedV2,
+    interactions,
     anchorOf,
     serverSummaries,
   ]);
@@ -602,6 +656,9 @@ export function useExecutionTranscript({
       const scopedInterventions = (runInterventions ?? []).filter(
         (view) => view.runId === execution.runId,
       );
+      const scopedInteractions = cardsUnifiedV2
+        ? (interactions ?? []).filter((view) => view.source.runId === execution.runId)
+        : undefined;
       const controlled = currentSummary !== null;
       const rev = currentSummary?.rev ?? 0;
       // UX-01B acceptance 4: no auto-expansion — every detail starts
@@ -668,11 +725,20 @@ export function useExecutionTranscript({
           key={execution.runId}
           run={displayRun}
           activity={runActivityItems}
-          pendingInterventionKinds={pendingInterventionKindsForRun(interventions, execution.runId)}
+          pendingInterventionKinds={
+            cardsUnifiedV2 && interactions
+              ? pendingInteractionKindsForRun(interactions, execution.runId)
+              : pendingInterventionKindsForRun(interventions, execution.runId)
+          }
           expansion={expansion}
           canExpand={currentSummary !== null}
           summary={currentSummary}
           pendingInterventionViews={scopedInterventions.filter((view) => view.status === "pending")}
+          pendingInteractionViews={
+            cardsUnifiedV2
+              ? scopedInteractions?.filter((view) => view.status === "pending")
+              : undefined
+          }
           plan={data.plan ?? null}
           steps={data.steps}
           hasResult={resultHasText(detachedResult)}
@@ -688,12 +754,18 @@ export function useExecutionTranscript({
           onRetry={() => retryRun(execution.runId)}
           onViewSuccessor={() => viewSuccessor(execution.runId)}
           interventions={
-            scopedInterventions.length > 0 ? (
+            scopedInterventions.length > 0 || (scopedInteractions?.length ?? 0) > 0 ? (
               <InterventionRegion
                 interventions={scopedInterventions}
+                interactions={scopedInteractions}
+                cardsUnifiedV2={cardsUnifiedV2}
                 messages={messages}
                 target={artifactTarget}
                 botNameOf={botNameOf}
+                conversationName={conversationName}
+                groupNameOf={groupNameOf}
+                onOpenComputer={onOpenComputer}
+                onGroupDecision={onGroupDecision}
                 onSettled={(view) =>
                   setSettledInterventions((current) => [
                     ...current.filter((item) => item.id !== view.id),
@@ -773,5 +845,25 @@ export function useExecutionTranscript({
         </ExecutionShell>
       );
     });
-  return { coveredAsks, renderExecutions };
+  // Views without a Run (for example an onboarding message) have no Execution
+  // shell to own them. Keep them reachable at the tail instead of dropping a
+  // valid pending request.
+  const standaloneInteractions =
+    cardsUnifiedV2 && interactions
+      ? interactions.filter((view) => view.status === "pending" && view.source.runId === null)
+      : [];
+  const standaloneRegion =
+    standaloneInteractions.length > 0 ? (
+      <InteractionRegion
+        interactions={standaloneInteractions}
+        target={artifactTarget}
+        botNameOf={botNameOf}
+        conversationName={conversationName}
+        groupNameOf={groupNameOf}
+        onOpenComputer={onOpenComputer}
+        onGroupDecision={onGroupDecision}
+        onRefresh={onRefresh}
+      />
+    ) : null;
+  return { coveredAsks, renderExecutions, standaloneRegion };
 }

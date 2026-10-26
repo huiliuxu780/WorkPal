@@ -586,11 +586,14 @@ async function messageBotInAgentPair(
       });
       let receiptMessageId = origin?.messageId;
       const receiptBlock: MessageBlock = {
-        kind: "bot_message_sent",
-        toBotId: mode.target.id,
-        toBotName: mode.target.name,
-        text: "",
-        intent: input.intent,
+        kind: "collaboration_receipt",
+        target: { kind: "bot", botId: mode.target.id },
+        state: "sent",
+        destination: {
+          kind: "pair_message",
+          pairThreadId,
+          messageId: outbound.id,
+        },
       };
       if (!writesToOrigin) {
         // The source Thread keeps only the fact that a private message was sent:

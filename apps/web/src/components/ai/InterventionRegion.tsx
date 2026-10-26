@@ -1,9 +1,10 @@
 import { t } from "@lingui/core/macro";
-import type { InterventionView, ThreadMessage } from "@rakazo/contracts";
+import type { InteractionView, InterventionView, ThreadMessage } from "@rakazo/contracts";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
 import { type AskBlock, AskCard } from "../AskCard";
+import { InteractionRegion } from "./interactions/InteractionRegion";
 import { PlanReviewCard } from "./PlanReviewCard";
 
 function authorityLabel(view: InterventionView): string {
@@ -173,20 +174,47 @@ function InterventionCard({
 
 export function InterventionRegion({
   interventions,
+  interactions,
+  cardsUnifiedV2,
   messages,
   target,
   botNameOf,
+  conversationName,
+  groupNameOf,
+  onOpenComputer,
+  onGroupDecision,
   onSettled,
   onRefresh,
 }: {
   interventions: readonly InterventionView[];
+  /** CARD-01A strict projection; present only when the server gate is on. */
+  interactions?: readonly InteractionView[];
+  cardsUnifiedV2?: boolean;
   messages: readonly ThreadMessage[];
   target: ArtifactTarget;
   /** UX-02: resolves a Bot display name for the plan review card header. */
   botNameOf?: (botId: string) => string | undefined;
+  conversationName?: string;
+  groupNameOf?: (groupId: string) => string | undefined;
+  onOpenComputer?: (botId: string) => void;
+  onGroupDecision?: (view: InteractionView, answer: "approve" | "deny") => Promise<void> | void;
   onSettled: (view: InterventionView) => void;
   onRefresh?: () => Promise<void>;
 }) {
+  if (cardsUnifiedV2 && interactions) {
+    return (
+      <InteractionRegion
+        interactions={interactions}
+        target={target}
+        botNameOf={botNameOf}
+        conversationName={conversationName}
+        groupNameOf={groupNameOf}
+        onOpenComputer={onOpenComputer}
+        onGroupDecision={onGroupDecision}
+        onRefresh={onRefresh}
+      />
+    );
+  }
   const byMessage = new Map(messages.map((message) => [message.id, message]));
   // Decision waits lead: a plan review gates the whole Run, then tool
   // approvals, then ordinary inputs; createdAt orders within one class.

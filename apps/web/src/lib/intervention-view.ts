@@ -1,4 +1,4 @@
-import type { InterventionView } from "@rakazo/contracts";
+import type { InteractionView, InterventionView } from "@rakazo/contracts";
 
 /**
  * A locally settled receipt only fills the gap between submit and the next
@@ -52,6 +52,57 @@ export function coveredAskMessageIds(
     covered.add(view.messageId);
   }
   return covered;
+}
+
+/**
+ * CARD-01B coverage: the strict InteractionView is the only surface when the
+ * gate is on, so a message-backed view (including app_connect, MCP assignment
+ * and skill drafts) must suppress its legacy block. The same "region gone,
+ * bubble settled" release applies as in the legacy helper.
+ */
+export function coveredAskMessageIdsFromInteractions(
+  interactions: readonly InteractionView[] | undefined,
+  context?: {
+    eligibleRunIds?: ReadonlySet<string>;
+    settledAskMessageIds?: ReadonlySet<string>;
+  },
+): ReadonlySet<string> {
+  if (!interactions) return new Set();
+  const covered = new Set<string>();
+  for (const view of interactions) {
+    const messageId = view.source.messageId;
+    if (!messageId) continue;
+    if (context) {
+      const runId = view.source.runId;
+      const regionGone =
+        view.status !== "pending" && (runId === null || !context.eligibleRunIds?.has(runId));
+      const bubbleSettled = context.settledAskMessageIds?.has(messageId) ?? false;
+      if (regionGone && bubbleSettled) continue;
+    }
+    covered.add(messageId);
+  }
+  return covered;
+}
+
+function interactionKindToInterventionKind(
+  kind: InteractionView["kind"],
+): "approval" | "input" | "plan_review" | null {
+  if (kind === "action_approval") return "approval";
+  if (kind === "input_request") return "input";
+  if (kind === "plan_review") return "plan_review";
+  return null;
+}
+
+/** Header kinds from the strict pending projection; session control has its own entry. */
+export function pendingInteractionKindsForRun(
+  interactions: readonly InteractionView[] | undefined,
+  runId: string,
+): Array<"approval" | "input" | "plan_review"> | undefined {
+  if (!interactions) return undefined;
+  return interactions
+    .filter((view) => view.source.runId === runId && view.status === "pending")
+    .map((view) => interactionKindToInterventionKind(view.kind))
+    .filter((kind): kind is "approval" | "input" | "plan_review" => kind !== null);
 }
 
 /**

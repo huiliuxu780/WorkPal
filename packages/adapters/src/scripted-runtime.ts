@@ -572,6 +572,25 @@ export function inferScript(
       },
     ];
   }
+  if (lower.includes("message both bots named")) {
+    const match =
+      /named\s+([A-Za-z0-9][A-Za-z0-9_-]{0,39})\s+and\s+([A-Za-z0-9][A-Za-z0-9_-]{0,39})\s+(?:saying|with|:)\s*([\s\S]+)$/i.exec(
+        prompt,
+      );
+    const first = match?.[1] ?? "Researcher";
+    const second = match?.[2] ?? "Analyst";
+    const message = match?.[3]?.trim() ?? `Please help with: ${prompt}`;
+    return [
+      {
+        assistant: "messaging both bots now.",
+        toolCalls: [
+          { name: "message_bot", args: { confirm_name: first, message, intent: "request" } },
+          { name: "message_bot", args: { confirm_name: second, message, intent: "request" } },
+        ],
+        complete: true,
+      },
+    ];
+  }
   if (lower.includes("message the bot named") || lower.includes("message bot named")) {
     const name = namedBot(prompt) ?? "Peer";
     const message =

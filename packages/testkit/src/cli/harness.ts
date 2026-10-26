@@ -112,6 +112,20 @@ async function main() {
     if (!integration && (!e2eSpec || e2eSpec.includes("message-group.spec.ts"))) {
       process.env.ROUNDTABLE_MESSAGE_GROUP_ENABLED = "true";
     }
+    // RT-09 private pair receipts only carry a pair locator when the pair
+    // delivery is on; these specs assert the bound private history instead of
+    // the legacy destination-chat fallback.
+    if (
+      !integration &&
+      e2eSpec &&
+      (e2eSpec.includes("peer-messages.spec.ts") ||
+        e2eSpec.includes("card-ui-interactions.spec.ts"))
+    ) {
+      process.env.ROUNDTABLE_PRIVATE_PAIR_ENABLED = "true";
+    }
+    if (!integration && e2eSpec?.includes("card-ui-interactions.spec.ts")) {
+      process.env.CARDS_UNIFIED_V2_ENABLED = "true";
+    }
     process.env.CI = "1";
     if (integration || agentRuntime === "agentscope") {
       javaRuntimeDirectory = await mkdtemp(path.join(reportDir, "runtime-"));

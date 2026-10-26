@@ -23,7 +23,10 @@ export type UserVisibleMessagesOptions = {
 
 export function isPeerReceiptBlocks(blocks: readonly MessageBlock[]): boolean {
   return blocks.some(
-    (block) => block.kind === "bot_message_sent" || block.kind === "bot_message_received",
+    (block) =>
+      block.kind === "bot_message_sent" ||
+      block.kind === "bot_message_received" ||
+      (block.kind === "collaboration_receipt" && block.target.kind === "bot"),
   );
 }
 

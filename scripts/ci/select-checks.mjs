@@ -39,6 +39,11 @@ const AVATAR_WEB_E2E = [
   "avatar-bot-change.spec.ts",
 ];
 const EXECUTION_WEB_E2E = ["execution-card.spec.ts", "task-center.spec.ts"];
+const CARD_UI_INTERACTIONS_WEB_E2E = [
+  "card-ui-interactions.spec.ts",
+  "peer-messages.spec.ts",
+  ...EXECUTION_WEB_E2E,
+];
 const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
 const ONBOARDING_WEB_E2E = [
   "onboarding-conversation.spec.ts",
@@ -460,6 +465,21 @@ function mappedWebE2e(file) {
     isUnder(file, "docs/avatar")
   ) {
     return AVATAR_WEB_E2E;
+  }
+  // CARD-01B renderers and the RT-09 private-pair receipt/overlay are one
+  // production path: a change here must run both the gate-on card spec and the
+  // bound private-history spec.
+  if (
+    isUnder(file, "apps/web/src/components/ai/interactions") ||
+    file.includes("PeerReceiptRow") ||
+    file.includes("peer-receipts") ||
+    file.includes("peer-transcript") ||
+    file.includes("PeerMessagesOverlay") ||
+    file.includes("InterventionRegion") ||
+    stemMatch(file, "apps/web/src/pages/Shell") ||
+    stemMatch(file, "apps/web/src/pages/shell/use-execution-transcript")
+  ) {
+    return CARD_UI_INTERACTIONS_WEB_E2E;
   }
   if (file.includes("GroupDestinationReceipt")) return MESSAGE_GROUP_WEB_E2E;
   if (

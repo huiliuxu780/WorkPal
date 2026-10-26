@@ -271,7 +271,7 @@ export function createThreadPolicy(prisma: PrismaClient): ThreadPolicy {
             pairThreadId: input.originLocator.pairThreadId,
           });
 
-          let boundarySeq = grant.targetSeq;
+          let boundarySeq: number;
           let includeBoundary = true;
           if (input.before) {
             const cursors = await tx.$queryRaw<Array<{ seq: number }>>(Prisma.sql`
@@ -282,6 +282,17 @@ export function createThreadPolicy(prisma: PrismaClient): ThreadPolicy {
             if (!cursor) throw new IsolationError();
             boundarySeq = cursor.seq;
             includeBoundary = false;
+          } else {
+            // The clicked locator authorizes the pair, but the transcript is the
+            // long-lived conversation: start at the latest authorized message so
+            // replies sent after the receipt remain readable.
+            const latest = await tx.$queryRaw<Array<{ seq: number | null }>>(Prisma.sql`
+              WITH authorized AS (${visible})
+              SELECT MAX(seq)::int AS seq FROM authorized
+            `);
+            const latestSeq = latest[0]?.seq;
+            if (latestSeq === null || latestSeq === undefined) throw new IsolationError();
+            boundarySeq = latestSeq;
           }
 
           const countRows = await tx.$queryRaw<Array<{ count: number }>>(Prisma.sql`
