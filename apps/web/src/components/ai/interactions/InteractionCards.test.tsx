@@ -482,6 +482,31 @@ describe("input request card", () => {
     expect(window.sessionStorage.getItem("i-input")).toBeNull();
   });
 
+  it("shows the supplied explanation on non-secret requests only", async () => {
+    const question = await render(
+      <InputRequestCard
+        view={inputView({ mode: "question", prompt: "Which city?", placeholder: "City" })}
+        target={target}
+      />,
+    );
+    expect(byTestId(question, "input-card-detail")?.textContent).toContain(
+      "One email to the requester.",
+    );
+
+    const secretHost = await render(
+      <InputRequestCard
+        view={inputView({
+          mode: "secret",
+          prompt: "Sign in",
+          purpose: "password",
+          credential: { name: "Acme", origin: "https://acme.test", authType: "login" },
+        })}
+        target={target}
+      />,
+    );
+    expect(byTestId(secretHost, "input-card-detail")).toBeNull();
+  });
+
   it("masks a login secret, requires both fields, and clears it after saving", async () => {
     const host = await render(
       <InputRequestCard

@@ -190,6 +190,15 @@ export function InputRequestCard({
         )
       }
     >
+      {input.mode !== "secret" && view.presentation.detail ? (
+        <pre
+          dir="auto"
+          data-testid="input-card-detail"
+          className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground"
+        >
+          {view.presentation.detail}
+        </pre>
+      ) : null}
       {terminal || submitted ? (
         <InteractionNote>
           {submitted ? t`Submitted. Syncing the current state…` : interactionStatusLabel(view)}

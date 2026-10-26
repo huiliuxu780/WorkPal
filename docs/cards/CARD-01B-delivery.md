@@ -24,6 +24,7 @@
 - Execution detail 的 interactions 按 `interactionId` 与 revision 合并进线程 projection；消息已翻出当前页时，展开 Run 仍能显示其中的卡片。
 - 统一 question 输入卡沿用 legacy `AskCard` 的草稿生命周期：按 `interactionId` 存取非密文回答，提交或终态后清除；secret 输入从不写入浏览器存储。
 - MCP assignment 卡在服务端把已批准视图重新打开为 pending（撤销授权）时清除本地 `Allowed` 覆盖，按钮恢复可用；乐观提交期间不误清。
+- 统一输入卡保留非 secret 请求的 `presentation.detail` 说明，位置在回答控件之前，与 legacy `AskCard` 一致；secret 请求继续不渲染说明。
 
 ### RT-09 private pair
 
@@ -57,8 +58,8 @@
 | --- | --- |
 | `pnpm check` | 18/18 通过 |
 | `pnpm lint` | 0 error（仓库既有 warning/info 保留） |
-| `pnpm --filter @rakazo/web test` | 98 files / 765 tests 通过 |
-| `pnpm test:unit` | 455 files / 5492 passed / 2 skipped |
+| `pnpm --filter @rakazo/web test` | 98 files / 766 tests 通过 |
+| `pnpm test:unit` | 455 files / 5493 passed / 2 skipped |
 | `pnpm --filter @rakazo/web build` | 通过 |
 | `pnpm test:ci-select` | 99 tests 通过 |
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
@@ -73,6 +74,7 @@
 | Execution detail 合并 | 消息翻出当前页后，展开 Run 仍从 detail interactions 恢复卡片；线程 projection 在相同 revision 优先 |
 | Input 草稿 | 非密文 question 回答按 `interactionId` 恢复，提交/终态清除；secret 不写入 sessionStorage |
 | MCP 撤销重开 | 服务端 answered→pending 时本地决定清空、授权按钮恢复；同卡重复授权可再次调用 RPC |
+| Input 说明 | question/choice/form 渲染服务端 detail；secret 请求不渲染 |
 
 ### E2E 本地阻塞（需 CI 复核）
 
