@@ -283,6 +283,81 @@ describe("CARD-01 strict InteractionView contract", () => {
     ).toBe(false);
   });
 
+  it("carries immutable outbound draft revisions and validates their bounds", () => {
+    const outbound = {
+      kind: "action_approval",
+      ...base,
+      decision: null,
+      approval: {
+        kind: "outbound",
+        authority: "external_effect",
+        effectId: "effect-outbound",
+        effectStatus: "intended",
+        channel: "email",
+        recipientCount: 1,
+        subject: "Weekly digest",
+        fingerprint: "sha256:aaaaaaaaaaaaaaaa",
+        draftState: {
+          channel: "email",
+          draft: {
+            revision: 2,
+            fingerprint: "sha256:bbbbbbbbbbbbbbbb",
+            recipients: ["ada@example.test"],
+            subject: "Weekly digest r2",
+            body: "Edited body",
+          },
+          revisions: [
+            {
+              revision: 1,
+              fingerprint: "sha256:aaaaaaaaaaaaaaaa",
+              subject: "Weekly digest",
+              createdAt,
+              status: "superseded",
+            },
+            {
+              revision: 2,
+              fingerprint: "sha256:bbbbbbbbbbbbbbbb",
+              subject: "Weekly digest r2",
+              createdAt,
+              status: "pending",
+            },
+          ],
+        },
+      },
+    };
+    const parsed = ActionApprovalViewSchema.parse(outbound) as ActionApprovalView;
+    if (parsed.approval.kind !== "outbound") throw new Error("outbound expected");
+    expect(parsed.approval.draftState?.draft.revision).toBe(2);
+    expect(parsed.approval.draftState?.revisions.map((entry) => entry.status)).toEqual([
+      "superseded",
+      "pending",
+    ]);
+    expect(
+      ActionApprovalViewSchema.safeParse({
+        ...outbound,
+        approval: {
+          ...outbound.approval,
+          draftState: {
+            ...outbound.approval.draftState,
+            draft: { ...outbound.approval.draftState.draft, recipients: [] },
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ActionApprovalViewSchema.safeParse({
+        ...outbound,
+        approval: {
+          ...outbound.approval,
+          draftState: {
+            ...outbound.approval.draftState,
+            draft: { ...outbound.approval.draftState.draft, body: "x".repeat(65_537) },
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("keeps plan review free of any approval or effect binding", () => {
     const planReview = planReviewView();
     expect(planReview).not.toHaveProperty("approval");

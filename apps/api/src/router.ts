@@ -210,6 +210,7 @@ import {
   TaskInstructionIntegrityError,
   touchGroupUpdatedAt,
   undoBotAvatarChangeInTransaction,
+  updateOutboundDraftRevision,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
@@ -2746,6 +2747,7 @@ export function createRouter(deps: RouterDeps) {
               answer: input.answer,
               username: input.username,
               feedback: input.feedback,
+              outbound: input.outbound,
             });
           } catch (error) {
             // Answering away from the executing Thread is a gated capability.
@@ -2790,6 +2792,40 @@ export function createRouter(deps: RouterDeps) {
             });
           }
           return { outcome: result.outcome, intervention: result.intervention };
+        },
+      ),
+      updateOutboundDraft: authed.threads.updateOutboundDraft.handler(
+        async ({ context, input }) => {
+          const target = await resolveHumanWritableThreadTarget(context.actor, input);
+          const result = await updateOutboundDraftRevision(deps.prisma, {
+            spaceId: context.actor.spaceId,
+            threadId: target.threadId,
+            userId: context.actor.userId,
+            interventionId: input.interventionId,
+            expectedRevision: input.expectedRevision,
+            recipients: input.recipients,
+            subject: input.subject,
+            body: input.body,
+          });
+          if (result.outcome === "rejected") {
+            if (result.reason === "forbidden") {
+              throw new ORPCError("FORBIDDEN", {
+                message: "Only the run owner can edit this draft",
+              });
+            }
+            if (result.reason === "not_found") {
+              throw new ORPCError("NOT_FOUND", { message: "Outbound draft was not found" });
+            }
+            throw new ORPCError("CONFLICT", {
+              message: "The draft moved on; reload the card before editing again",
+            });
+          }
+          if (result.seq > 0) {
+            await deps.events
+              .notify(result.threadId, result.seq)
+              .catch((error) => getLogger().error("outbound draft notify", error));
+          }
+          return result.state;
         },
       ),
       markRead: authed.threads.markRead.handler(async ({ context, input }) => {

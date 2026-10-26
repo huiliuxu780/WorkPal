@@ -2657,7 +2657,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const approvedEffects = await deps.prisma.externalEffect.findMany({
           where: { runId, status: "approved" },
           orderBy: APPROVED_EFFECT_REPLAY_ORDER,
-          select: { kind: true, request: true },
+          select: { kind: true, request: true, idempotencyKey: true },
         });
         const approvedEffectReplays = createApprovedEffectReplayQueue(approvedEffects);
         const baseComputerInstruction = heldForTakeover
@@ -2890,6 +2890,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
           executionId: string,
         ) => {
           context.signal.throwIfAborted();
+          // A10: an edited outbound draft replays with content that no longer
+          // hashes to the original approval key, so reuse the approved row's key.
+          let approvedReplayKey: string | undefined;
           const retryOperationId = takeRetryOperationId(args);
           if (handedOff) {
             return { error: "This stage was handed off. End the turn without more tool calls." };
@@ -3067,6 +3070,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               CATALOG_APPROVAL_TOOL,
             );
             if (resourceError) return { error: resourceError };
+            approvedReplayKey = approvedEffectReplays.nextKey();
             const approvedRequest = approvedEffectReplays.take(nextApprovedTool)!;
             const approvedCatalog = catalogApprovalDetails(approvedRequest, CATALOG_APPROVAL_TOOL);
             if (approvedCatalog && !catalogRemapped) {
@@ -3200,9 +3204,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ? 0
               : nextMutatingEffectOccurrence(replayEffectToolName, args);
           const effectKey =
-            usesApprovalKey && occurrence === 0
+            approvedReplayKey ??
+            (usesApprovalKey && occurrence === 0
               ? approvalEffectKey(runId, replayEffectToolName, args)
-              : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence);
+              : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence));
           // Connector read-only hints must not bypass approval or review. Retry
           // reuse skips declared reads so they re-read current state.
           let continueOperationId: string | undefined;

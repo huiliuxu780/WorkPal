@@ -8,6 +8,7 @@ import {
   legacyInterventionId,
   type MessageBlock,
   MessageBlock as MessageBlockSchema,
+  type OutboundDraftState,
   presentationFromAskBlock,
 } from "@rakazo/contracts";
 import {
@@ -17,6 +18,7 @@ import {
   isSecretAskBlock,
 } from "@rakazo/core";
 import type { Prisma } from "./client.js";
+import { loadOutboundDraftStates, readOutboundDraftBinding } from "./outbound-drafts.js";
 
 /** Same wait as input and approval runs. Kept here to avoid a cycle with wait-timeouts. */
 export const INTERVENTION_WAIT_MS = 24 * 60 * 60 * 1000;
@@ -134,7 +136,11 @@ async function readEffectStatus(
   return effect?.status ?? "unknown";
 }
 
-export function interventionView(row: InterventionRecord, effectStatus?: string): InterventionView {
+export function interventionView(
+  row: InterventionRecord,
+  effectStatus?: string,
+  outbound?: OutboundDraftState,
+): InterventionView {
   const parsedPresentation = InterventionPresentationSchema.safeParse(row.presentation);
   const presentation = parsedPresentation.success ? parsedPresentation.data : undefined;
   const parsedPlanReview = InterventionPlanReviewSchema.safeParse(row.planReview);
@@ -166,6 +172,7 @@ export function interventionView(row: InterventionRecord, effectStatus?: string)
       : undefined;
   if (approval && decision) approval.decision = decision;
   if (approval && actions) approval.actions = actions;
+  if (approval && outbound) approval.outbound = outbound;
   return {
     id: row.id,
     revision: row.revision,
@@ -837,8 +844,16 @@ export async function loadInterventionViews(
         })
       : [];
   const effectStatus = new Map(effects.map((effect) => [effect.id, effect.status]));
+  const outboundDrafts = await loadOutboundDraftStates(
+    tx,
+    rows.map((row) => ({ id: row.id, effectId: row.effectId })),
+  );
   const views = rows.map((row) =>
-    interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined),
+    interventionView(
+      row,
+      row.effectId ? effectStatus.get(row.effectId) : undefined,
+      outboundDrafts.get(row.id),
+    ),
   );
   const covered = new Set(views.map((view) => view.messageId));
   for (const message of messages) {
@@ -1021,6 +1036,8 @@ export async function resolveInterventionInTransaction(
     /** Thread of the bound Run, derived server-side from it. Never a client value. */
     executionThreadId: string;
     runId: string;
+    /** A10: the outbound draft revision and fingerprint the user confirmed. */
+    outbound?: { revision: number; fingerprint: string };
   },
   commit: (
     tx: InterventionTx,
@@ -1069,6 +1086,27 @@ export async function resolveInterventionInTransaction(
   }
   if (row && !(await boundAttemptIsCurrent(tx, row))) {
     return { outcome: "rejected", reason: "conflict" };
+  }
+  if (row && row.kind === "approval") {
+    // A10: an approving decision binds the draft revision and fingerprint it
+    // was shown. Once an edit exists, "allow" must name the latest revision;
+    // a denial does not approve content and stays unbound.
+    const approving = input.answer === "allow" || input.answer === "always";
+    if (approving) {
+      const binding = await readOutboundDraftBinding(tx, {
+        interventionId: row.id,
+        effectId: row.effectId,
+      });
+      if (binding === "invalid") return { outcome: "rejected", reason: "conflict" };
+      if (binding) {
+        const matches =
+          input.outbound?.revision === binding.revision &&
+          input.outbound?.fingerprint === binding.fingerprint;
+        if (binding.revision > 1 ? !matches : input.outbound !== undefined && !matches) {
+          return { outcome: "rejected", reason: "conflict" };
+        }
+      }
+    }
   }
   const committed = await commit(tx);
   if (!committed) {

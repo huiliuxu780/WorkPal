@@ -22,6 +22,7 @@
 - `session_control` 接管/交还独立显示；关闭面板不等于交还，交还必须点击明确动作。
 - App authorization 卡优先使用 interaction 的 `source.botId`；onboarding 历史消息未记录 botId 时回退到当前对话 Bot，授权与 `appConnected` 使用同一 Bot。
 - Execution detail 的 interactions 按 `interactionId` 与 revision 合并进线程 projection；消息已翻出当前页时，展开 Run 仍能显示其中的卡片。
+- A10 外发草稿：`send_email` ExternalEffect 投影为 outbound 卡；同一张卡/详情内编辑，保存写入不可变 `outbound_draft_revisions`（首次编辑前固化 r1 快照），pending 只显示最新 revision，旧 revision 显示 superseded。发送决定携带 revision + fingerprint；编辑后必须匹配最新，executor 复用已批准 effect key 重放编辑后的内容。
 - 统一 question 输入卡沿用 legacy `AskCard` 的草稿生命周期：按 `interactionId` 存取非密文回答，提交或终态后清除；secret 输入从不写入浏览器存储。
 - MCP assignment 卡在服务端把已批准视图重新打开为 pending（撤销授权）时清除本地 `Allowed` 覆盖，按钮恢复可用；乐观提交期间不误清。
 - 统一输入卡保留非 secret 请求的 `presentation.detail` 说明，位置在回答控件之前，与 legacy `AskCard` 一致；secret 请求继续不渲染说明。
@@ -58,12 +59,12 @@
 | --- | --- |
 | `pnpm check` | 18/18 通过 |
 | `pnpm lint` | 0 error（仓库既有 warning/info 保留） |
-| `pnpm --filter @rakazo/web test` | 98 files / 766 tests 通过 |
-| `pnpm test:unit` | 455 files / 5493 passed / 2 skipped |
+| `pnpm --filter @rakazo/web test` | 98 files / 770 tests 通过 |
+| `pnpm test:unit` | 456 files / 5502 passed / 2 skipped |
 | `pnpm --filter @rakazo/web build` | 通过 |
 | `pnpm test:ci-select` | 99 tests 通过 |
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
-| `pnpm test:postgres` | 48/48 files、425 tests 通过（迁移后的独立 `workpal_e2e_*` 库） |
+| `pnpm test:postgres` | 49/49 files、430 tests 通过（迁移后的独立 `workpal_e2e_*` 库） |
 | `git diff --check` | 通过 |
 | Gate-off 回归 | transcript 测试证明 gate off 时保留 legacy app/MCP/skill 卡片并忽略 `interactions` |
 | Gate-on 回归 | transcript 测试证明三张 legacy block 被抑制，新卡片位于 execution shell 且不出现双卡 |
@@ -73,6 +74,8 @@
 | App authorization 归属 | onboarding post 带上 `botId`；Web 对历史无 botId 卡片回退当前对话 Bot，授权与 `appConnected` 使用同一 Bot |
 | Execution detail 合并 | 消息翻出当前页后，展开 Run 仍从 detail interactions 恢复卡片；线程 projection 在相同 revision 优先 |
 | Input 草稿 | 非密文 question 回答按 `interactionId` 恢复，提交/终态清除；secret 不写入 sessionStorage |
+| A10 编辑 | 保存生成新 revision，r1 快照保留且 superseded，pending 只显示最新；effect request 与消息 block 同步 |
+| A10 绑定 | 编辑后 approve 不带 binding 或使用旧 fingerprint 返回 conflict；最新 revision 通过；deny 不要求 binding |
 | MCP 撤销重开 | 服务端 answered→pending 时本地决定清空、授权按钮恢复；同卡重复授权可再次调用 RPC |
 | Input 说明 | question/choice/form 渲染服务端 detail；secret 请求不渲染 |
 
@@ -90,8 +93,7 @@
 
 ## 已知缺口（未假装实现）
 
-1. `payment`、`routine`、`install`、`outbound` 的 Interaction 投影 producer 尚不存在（属于 CARD-01A 投影范围）；renderer 用严格 fixture 覆盖，但生产不会凭空出现这些卡。
+1. `payment`、`routine`、`install` 的 Interaction 投影 producer 尚不存在（属于 CARD-01A 投影范围）；renderer 用严格 fixture 覆盖，但生产不会凭空出现这些卡。`outbound` 已接通真实 `send_email` 审批路径。
 2. `group_membership` 的成员变更 RPC 属于 RT-12。生产按钮禁用并显示“Joining from this card is not available yet.”；无权限失败卡已实现但没有服务端权限事实可驱动自动选择。
-3. A10 同卡编辑需要 Interaction contract 提供 draft body/revisions；当前仅按 revision + fingerprint 显示只读详情并绑定发送决定，未实现同卡编辑。
-4. A12 的“先选已保存项、完成后再出现独立付款审批”在 UI 和测试中分离成立，但 payment producer 缺失，无法端到端产生第二张付款卡。
-5. 生产截图未生成，原因见上节本地 E2E 阻塞。
+3. A12 的“先选已保存项、完成后再出现独立付款审批”在 UI 和测试中分离成立，但 payment producer 缺失，无法端到端产生第二张付款卡。
+4. 生产截图未生成，原因见上节本地 E2E 阻塞。

@@ -1259,11 +1259,30 @@ model Intervention {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   submissions      InterventionSubmission[]
+  outboundRevisions OutboundDraftRevision[]
 
   @@index([threadId, status])
   @@index([runId, status])
   @@index([messageId])
   @@map("interventions")
+}
+
+/// A10: immutable outbound draft revisions. Revision 1 is the effect's own
+/// request; every saved edit appends a row. Rows are never updated or deleted
+/// while the card exists, so the audit keeps every body the user confirmed.
+model OutboundDraftRevision {
+  id             String       @id @default(cuid())
+  interventionId String
+  intervention   Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  revision       Int
+  recipients     Json
+  subject        String
+  body           String
+  fingerprint    String
+  createdAt      DateTime     @default(now())
+
+  @@unique([interventionId, revision])
+  @@map("outbound_draft_revisions")
 }
 
 model InterventionSubmission {

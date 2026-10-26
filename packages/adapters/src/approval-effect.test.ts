@@ -35,6 +35,17 @@ describe("approved effect replay", () => {
     expect(queue.take("destination.write")).toBeUndefined();
   });
 
+  it("exposes the approved key so an edited replay can reuse its effect", () => {
+    const edited = { to: ["ada@example.test"], subject: "r2", text: "Edited" };
+    const queue = createApprovedEffectReplayQueue([
+      { kind: "send_email", request: edited, idempotencyKey: "run:send_email:original" },
+    ]);
+
+    expect(queue.nextKey()).toBe("run:send_email:original");
+    expect(queue.take("send_email")).toEqual(edited);
+    expect(queue.nextKey()).toBeUndefined();
+  });
+
   it("keeps independently approved calls in creation order", () => {
     const queue = createApprovedEffectReplayQueue([
       { kind: "destination.write", request: { sequence: 1 } },

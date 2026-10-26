@@ -1,7 +1,16 @@
 import { t } from "@lingui/core/macro";
-import type { ActionApprovalView } from "@rakazo/contracts";
+import type { ActionApprovalView, OutboundDraftState } from "@rakazo/contracts";
 import { abortableDelay } from "@rakazo/core";
-import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+  Input,
+  Label,
+  Textarea,
+} from "@rakazo/ui-web";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { connectMcpOauth } from "../../../lib/mcp-connect";
@@ -62,7 +71,7 @@ function useDecision({
   const [busyAnswer, setBusyAnswer] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const decide = async (answer: string) => {
+  const decide = async (answer: string, outbound?: { revision: number; fingerprint: string }) => {
     if (busyAnswer || view.status !== "pending") return;
     setBusyAnswer(answer);
     setError(null);
@@ -72,6 +81,7 @@ function useDecision({
         interventionId: view.interactionId,
         clientSubmissionId: submissionId.current,
         answer,
+        ...(outbound ? { outbound } : {}),
       });
       setSubmitted(true);
       if (result.outcome === "already_handled") setError(t`This request was already handled.`);
@@ -324,19 +334,121 @@ function OutboundApprovalCard({
   conversationName?: string;
   onRefresh?: () => Promise<void>;
 }) {
-  const { busyAnswer, submitted, error, decide } = useDecision({ view, target, onRefresh });
+  const {
+    busyAnswer,
+    submitted,
+    error: decisionError,
+    decide,
+  } = useDecision({
+    view,
+    target,
+    onRefresh,
+  });
+  const reviewOnly = !approval.draftState;
+  const serverState = approval.draftState ?? null;
+  const serverKey = serverState
+    ? `${serverState.draft.revision}:${serverState.draft.fingerprint}`
+    : "";
+  const [draftState, setDraftState] = useState<OutboundDraftState | null>(serverState);
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"view" | "edit" | "confirm">("view");
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [recipientsText, setRecipientsText] = useState("");
+  const [subjectText, setSubjectText] = useState("");
+  const [bodyText, setBodyText] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const draft = draftState?.draft ?? null;
+  const revision = draft?.revision ?? view.revision;
   const channelLabel =
     approval.channel === "email" ? t`Email` : approval.channel === "message" ? t`Message` : t`Post`;
+  const recipientCount = draft ? draft.recipients.length : approval.recipientCount;
+  const dirty =
+    mode === "edit" &&
+    draft !== null &&
+    (recipientsText.trim() !== draft.recipients.join(", ") ||
+      subjectText !== draft.subject ||
+      bodyText !== draft.body);
+
+  // The server projection is authoritative; a refresh replaces any local view.
+  useEffect(() => {
+    setDraftState(serverState);
+  }, [serverKey]);
+
+  const openEditor = () => {
+    if (!draft) return;
+    setRecipientsText(draft.recipients.join(", "));
+    setSubjectText(draft.subject);
+    setBodyText(draft.body);
+    setEditError(null);
+    setMode("edit");
+    setOpen(true);
+  };
+  const openConfirm = () => {
+    setMode("confirm");
+    setOpen(true);
+  };
+  const requestClose = () => {
+    if (dirty) {
+      setDiscardOpen(true);
+      return;
+    }
+    setMode("view");
+    setOpen(false);
+  };
+  const discardChanges = () => {
+    setDiscardOpen(false);
+    setMode("view");
+    setOpen(false);
+  };
+  const saveRevision = async () => {
+    if (!draft || saving) return;
+    const recipients = recipientsText
+      .split(/[\n,]/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (recipients.length === 0 || !subjectText.trim() || !bodyText.trim()) {
+      setEditError(t`Recipients, subject, and body cannot be empty.`);
+      return;
+    }
+    setSaving(true);
+    setEditError(null);
+    try {
+      const next = await rpc.threads.updateOutboundDraft({
+        ...target,
+        interventionId: view.interactionId,
+        expectedRevision: draft.revision,
+        recipients,
+        subject: subjectText.trim(),
+        body: bodyText,
+      });
+      setDraftState(next);
+      setMode("view");
+      await onRefresh?.().catch(() => undefined);
+    } catch (cause) {
+      setEditError(cause instanceof Error ? cause.message : t`Could not save this revision`);
+      await onRefresh?.().catch(() => undefined);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const confirmSend = () => {
+    if (!draft) return;
+    setMode("view");
+    setOpen(false);
+    void decide("allow", { revision: draft.revision, fingerprint: draft.fingerprint });
+  };
+  const decline = () => void decide("deny");
+  const previewText = draft?.body ?? view.presentation.detail ?? null;
   return (
     <>
       <InteractionCardShell
         kind="action_approval"
         icon="✉"
-        title={t`Outbound draft · r${view.revision}`}
+        title={t`Outbound draft · r${revision}`}
         status={interactionStatusLabel(view)}
         tone={interactionTone(view)}
-        subtitle={t`${channelLabel} · ${approval.recipientCount} recipients`}
+        subtitle={t`${channelLabel} · ${recipientCount} recipients`}
         source={
           <InteractionSourceLine
             botName={botName}
@@ -346,46 +458,77 @@ function OutboundApprovalCard({
           />
         }
         actions={
-          <>
-            <DecisionButtons
-              view={view}
-              actions={[
-                { id: "deny", label: t`Do not send` },
-                { id: "approve", label: t`Confirm send` },
-              ]}
-              busyAnswer={busyAnswer}
-              onDecide={(answer) => void decide(answer)}
-            />
-            <InteractionAction kind="text" onClick={() => setOpen(true)} testId="outbound-open">
-              {t`View draft`}
-            </InteractionAction>
-          </>
+          view.status !== "pending" ? undefined : reviewOnly ? (
+            <>
+              <DecisionButtons
+                view={view}
+                actions={[
+                  { id: "deny", label: t`Do not send` },
+                  { id: "approve", label: t`Confirm send` },
+                ]}
+                busyAnswer={busyAnswer}
+                onDecide={(answer) => void decide(answer)}
+              />
+              <InteractionAction kind="text" onClick={() => setOpen(true)} testId="outbound-open">
+                {t`View draft`}
+              </InteractionAction>
+            </>
+          ) : (
+            <>
+              <InteractionAction
+                kind="primary"
+                disabled={!draft}
+                onClick={openConfirm}
+                testId="outbound-review"
+              >
+                {t`Review and send`}
+              </InteractionAction>
+              <InteractionAction disabled={!draft} onClick={openEditor} testId="outbound-edit">
+                {t`Edit draft`}
+              </InteractionAction>
+              <InteractionAction
+                kind="text"
+                disabled={Boolean(busyAnswer)}
+                onClick={decline}
+                testId="outbound-deny"
+              >
+                {t`Do not send`}
+              </InteractionAction>
+            </>
+          )
         }
       >
         <div className="rounded-xl bg-background px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--border)]">
           <div className="text-[13px] font-medium" dir="auto">
-            {approval.subject || t`No subject`}
+            {draft?.subject || approval.subject || t`No subject`}
           </div>
-          {view.presentation.detail ? (
+          {previewText ? (
             <p className="mt-1 line-clamp-2 text-[12.5px] text-muted-foreground" dir="auto">
-              {view.presentation.detail}
+              {previewText}
             </p>
           ) : null}
         </div>
         <InteractionNote>
-          {t`Sending binds this decision to the current revision and fingerprint.`}
+          {draft
+            ? t`Sending binds this decision to revision r${draft.revision} and its fingerprint.`
+            : t`Sending binds this decision to the current revision and fingerprint.`}
         </InteractionNote>
         {submitted && view.status === "pending" ? (
           <InteractionNote>{t`Submitted. Waiting for the current state…`}</InteractionNote>
         ) : null}
         <TerminalNote view={view} effectStatus={approval.effectStatus} />
-        {error ? (
+        {decisionError ? (
           <p role="alert" className="text-[12px] text-destructive">
-            {error}
+            {decisionError}
           </p>
         ) : null}
       </InteractionCardShell>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) requestClose();
+        }}
+      >
         <DialogContent
           showCloseButton={false}
           data-testid="outbound-draft-dialog"
@@ -393,38 +536,201 @@ function OutboundApprovalCard({
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <DialogTitle className="text-[15px]">
-                {t`Outbound draft · r${view.revision}`}
-              </DialogTitle>
+              <DialogTitle className="text-[15px]">{t`Outbound draft · r${revision}`}</DialogTitle>
               <p className="mt-1 text-[12px] text-muted-foreground">
-                {t`${channelLabel} · ${approval.recipientCount} recipients`}
+                {t`${channelLabel} · ${recipientCount} recipients`}
               </p>
             </div>
-            <DialogClose render={<Button variant="ghost" size="sm" />}>{t`Close`}</DialogClose>
+            <Button variant="ghost" size="sm" onClick={requestClose}>
+              {t`Close`}
+            </Button>
           </div>
-          <InteractionKeyValue
-            rows={[
-              { label: t`Subject`, value: approval.subject || t`No subject` },
-              {
-                label: t`Fingerprint`,
-                value: approval.fingerprint,
-                mono: true,
-              },
-            ]}
-          />
-          <div>
-            <div className="mb-1 text-[12px] text-muted-foreground">{t`Draft body`}</div>
-            <pre
-              data-testid="outbound-draft-body"
-              className="max-h-[45dvh] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3 py-2.5 font-sans text-[13px] leading-5 text-foreground"
-              dir="auto"
+          {mode === "edit" && draft ? (
+            <div className="flex flex-col gap-2" data-testid="outbound-edit-form">
+              <Label htmlFor="outbound-recipients" className="text-[12px] text-muted-foreground">
+                {t`Recipients`}
+              </Label>
+              <Textarea
+                id="outbound-recipients"
+                value={recipientsText}
+                disabled={saving}
+                rows={2}
+                className="max-h-32"
+                onChange={(event) => setRecipientsText(event.target.value)}
+              />
+              <Label htmlFor="outbound-subject" className="text-[12px] text-muted-foreground">
+                {t`Subject`}
+              </Label>
+              <Input
+                id="outbound-subject"
+                value={subjectText}
+                disabled={saving}
+                onChange={(event) => setSubjectText(event.target.value)}
+              />
+              <Label htmlFor="outbound-body" className="text-[12px] text-muted-foreground">
+                {t`Body`}
+              </Label>
+              <Textarea
+                id="outbound-body"
+                value={bodyText}
+                disabled={saving}
+                rows={8}
+                className="max-h-[45dvh]"
+                onChange={(event) => setBodyText(event.target.value)}
+              />
+              <InteractionNote>
+                {t`Saving creates a new immutable revision; the previous one stays as superseded.`}
+              </InteractionNote>
+              {editError ? (
+                <p
+                  role="alert"
+                  data-testid="outbound-edit-error"
+                  className="text-[12px] text-destructive"
+                >
+                  {editError}
+                </p>
+              ) : null}
+              <div className="flex gap-2">
+                <InteractionAction
+                  kind="primary"
+                  loading={saving}
+                  onClick={() => void saveRevision()}
+                  testId="outbound-save"
+                >
+                  {t`Save new revision`}
+                </InteractionAction>
+                <InteractionAction
+                  disabled={saving}
+                  onClick={() => {
+                    if (dirty) setDiscardOpen(true);
+                    else setMode("view");
+                  }}
+                  testId="outbound-cancel-edit"
+                >
+                  {t`Cancel`}
+                </InteractionAction>
+              </div>
+            </div>
+          ) : mode === "confirm" && draft ? (
+            <div className="flex flex-col gap-2" data-testid="outbound-confirm">
+              <InteractionNote>
+                {t`Your decision binds revision r${draft.revision} and this fingerprint; it never approves older content.`}
+              </InteractionNote>
+              <InteractionKeyValue
+                rows={[
+                  { label: t`Revision`, value: `r${draft.revision}`, mono: true },
+                  { label: t`Fingerprint`, value: draft.fingerprint, mono: true },
+                  { label: t`Recipients`, value: draft.recipients.join(", ") },
+                  { label: t`Subject`, value: draft.subject },
+                ]}
+              />
+              <pre
+                data-testid="outbound-confirm-body"
+                className="max-h-[45dvh] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3 py-2.5 font-sans text-[13px] leading-5 text-foreground"
+                dir="auto"
+              >
+                {draft.body}
+              </pre>
+              <div className="flex gap-2">
+                <InteractionAction
+                  kind="primary"
+                  loading={busyAnswer === "allow"}
+                  onClick={confirmSend}
+                  testId="outbound-confirm-send"
+                >
+                  {t`Confirm send`}
+                </InteractionAction>
+                <InteractionAction onClick={() => setMode("view")} testId="outbound-back">
+                  {t`Back`}
+                </InteractionAction>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2" data-testid="outbound-view">
+              <InteractionKeyValue
+                rows={[
+                  { label: t`Subject`, value: draft?.subject || approval.subject || t`No subject` },
+                  {
+                    label: t`Fingerprint`,
+                    value: draft?.fingerprint ?? approval.fingerprint,
+                    mono: true,
+                  },
+                ]}
+              />
+              <pre
+                data-testid="outbound-draft-body"
+                className="max-h-[45dvh] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3 py-2.5 font-sans text-[13px] leading-5 text-foreground"
+                dir="auto"
+              >
+                {previewText || t`No draft preview was provided.`}
+              </pre>
+              {draftState ? (
+                <div className="flex flex-col gap-1" data-testid="outbound-revisions">
+                  <div className="text-[12px] text-muted-foreground">
+                    {t`Revision audit (only the latest pending is decided)`}
+                  </div>
+                  {draftState.revisions.map((entry) => (
+                    <div
+                      key={entry.revision}
+                      className="flex items-center justify-between gap-2 rounded-lg bg-background px-2.5 py-1.5 text-[12px] shadow-[inset_0_0_0_1px_var(--border)]"
+                      data-testid={`outbound-revision-${entry.revision}`}
+                    >
+                      <span className="font-mono">r{entry.revision}</span>
+                      <span className="min-w-0 flex-1 truncate" dir="auto">
+                        {entry.subject}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {entry.status === "pending" ? t`Pending` : t`Superseded`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <InteractionNote>
+                {t`Closing this view does not reject, cancel, or send the draft.`}
+              </InteractionNote>
+              {draft ? (
+                <div className="flex gap-2">
+                  <InteractionAction kind="primary" onClick={openConfirm} testId="outbound-prepare">
+                    {t`Prepare send`}
+                  </InteractionAction>
+                  <InteractionAction onClick={openEditor} testId="outbound-edit-view">
+                    {t`Edit draft`}
+                  </InteractionAction>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <DialogContent
+          showCloseButton={false}
+          data-testid="outbound-discard-dialog"
+          className="w-[min(420px,calc(100vw-24px))] sm:max-w-[420px]"
+        >
+          <DialogTitle className="text-[15px]">{t`Discard unsaved changes?`}</DialogTitle>
+          <p className="text-[13px] text-muted-foreground">
+            {t`Closing or Esc never rejects or cancels the request. This only asks whether to drop the current edit.`}
+          </p>
+          <div className="flex gap-2">
+            <InteractionAction
+              kind="primary"
+              onClick={() => {
+                setDiscardOpen(false);
+              }}
+              testId="outbound-discard-keep"
             >
-              {view.presentation.detail || t`No draft preview was provided.`}
-            </pre>
+              {t`Keep editing`}
+            </InteractionAction>
+            <InteractionAction
+              kind="danger"
+              onClick={discardChanges}
+              testId="outbound-discard-confirm"
+            >
+              {t`Discard changes`}
+            </InteractionAction>
           </div>
-          <InteractionNote>
-            {t`Closing this view does not reject, cancel, or send the draft.`}
-          </InteractionNote>
         </DialogContent>
       </Dialog>
     </>

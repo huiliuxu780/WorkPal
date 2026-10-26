@@ -7,6 +7,7 @@ import {
   type InterventionView,
 } from "./intervention.js";
 import { McpTransportSchema } from "./mcp.js";
+import { OutboundDraftStateSchema } from "./outbound-draft.js";
 import { PlanReviewContentSchema, PlanReviewDecisionSchema } from "./run-plans.js";
 
 /**
@@ -173,6 +174,11 @@ export const ActionApprovalPayloadSchema = z.discriminatedUnion("kind", [
     subject: z.string().max(200).nullable(),
     /** Binds the decision to the exact content revision that was confirmed. */
     fingerprint: z.string().min(8).max(128),
+    /**
+     * Immutable revision history. Present when the server can resolve the
+     * draft for same-card editing; absent means preview-only.
+     */
+    draftState: OutboundDraftStateSchema.optional(),
   }),
   z.strictObject({
     kind: z.literal("routine"),
@@ -573,17 +579,30 @@ export function interactionViewFromIntervention(view: InterventionView): Interac
   }
 
   if (view.kind === "approval" && view.approval) {
+    const outbound = view.approval.outbound;
     const parsed = ActionApprovalViewSchema.safeParse({
       kind: "action_approval",
       ...base,
       decision: approvalDecision(view),
-      approval: {
-        kind: "tool",
-        authority: "external_effect",
-        effectId: view.approval.effectId,
-        effectStatus: view.approval.effectStatus,
-        actions: view.approval.actions ?? [],
-      },
+      approval: outbound
+        ? {
+            kind: "outbound",
+            authority: "external_effect",
+            effectId: view.approval.effectId,
+            effectStatus: view.approval.effectStatus,
+            channel: outbound.channel,
+            recipientCount: outbound.draft.recipients.length,
+            subject: outbound.draft.subject,
+            fingerprint: outbound.draft.fingerprint,
+            draftState: outbound,
+          }
+        : {
+            kind: "tool",
+            authority: "external_effect",
+            effectId: view.approval.effectId,
+            effectStatus: view.approval.effectStatus,
+            actions: view.approval.actions ?? [],
+          },
     });
     return parsed.success ? parsed.data : null;
   }

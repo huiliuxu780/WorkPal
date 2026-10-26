@@ -6,6 +6,7 @@ import type {
   InputRequestPayload,
   InputRequestView,
   InterventionPresentation,
+  OutboundDraftState,
   PlanReviewView,
   SessionControlView,
 } from "@rakazo/contracts";
@@ -17,6 +18,7 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 const mocks = vi.hoisted(() => ({
   resolveIntervention: vi.fn(),
+  updateOutboundDraft: vi.fn(),
   updateDraft: vi.fn(),
   saveSkill: vi.fn(),
   removeSkill: vi.fn(),
@@ -38,7 +40,10 @@ vi.mock("@lingui/react/macro", () => ({
 }));
 vi.mock("../../../lib/rpc", () => ({
   rpc: {
-    threads: { resolveIntervention: mocks.resolveIntervention },
+    threads: {
+      resolveIntervention: mocks.resolveIntervention,
+      updateOutboundDraft: mocks.updateOutboundDraft,
+    },
     skills: {
       updateDraft: mocks.updateDraft,
       save: mocks.saveSkill,
@@ -191,6 +196,38 @@ const outboundApproval = (): ActionApprovalPayload => ({
   recipientCount: 2,
   subject: "Weekly digest",
   fingerprint: "fp-12345678",
+});
+
+const outboundDraftState = (): OutboundDraftState => ({
+  channel: "email",
+  draft: {
+    revision: 2,
+    fingerprint: "fp-r2-12345678",
+    recipients: ["ada@example.test", "lin@example.test"],
+    subject: "Weekly digest r2",
+    body: "Edited body for r2",
+  },
+  revisions: [
+    {
+      revision: 1,
+      fingerprint: "fp-r1-12345678",
+      subject: "Weekly digest",
+      createdAt: ISO,
+      status: "superseded",
+    },
+    {
+      revision: 2,
+      fingerprint: "fp-r2-12345678",
+      subject: "Weekly digest r2",
+      createdAt: ISO,
+      status: "pending",
+    },
+  ],
+});
+
+const outboundDraftApproval = (): Extract<ActionApprovalPayload, { kind: "outbound" }> => ({
+  ...(outboundApproval() as Extract<ActionApprovalPayload, { kind: "outbound" }>),
+  draftState: outboundDraftState(),
 });
 
 const routineApproval = (): ActionApprovalPayload => ({
@@ -653,6 +690,144 @@ describe("action approval cards", () => {
     expect(button(dialog!, "Edit")).toBeUndefined();
 
     await act(async () => button(dialog!, "Close")?.click());
+    expect(mocks.resolveIntervention).not.toHaveBeenCalled();
+  });
+
+  it("edits the outbound draft as a new immutable revision and keeps the audit", async () => {
+    const host = await render(
+      <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
+    );
+
+    expect(host.textContent).toContain("Outbound draft · r2");
+    await act(async () => (byTestId(host, "outbound-edit") as HTMLButtonElement).click());
+    const editForm = document.querySelector('[data-testid="outbound-edit-form"]');
+    await act(async () =>
+      (
+        editForm!.querySelector('[data-testid="outbound-cancel-edit"]') as HTMLButtonElement
+      ).click(),
+    );
+    const audit = document.querySelector('[data-testid="outbound-view"]');
+    expect(audit?.textContent).toContain("r1");
+    expect(audit?.textContent).toContain("Superseded");
+    expect(audit?.textContent).toContain("r2");
+    expect(audit?.textContent).toContain("Pending");
+
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-edit-view"]') as HTMLButtonElement).click(),
+    );
+    await typeInto(document.querySelector("#outbound-subject"), "Weekly digest r3");
+    mocks.updateOutboundDraft.mockResolvedValue({
+      channel: "email",
+      draft: {
+        revision: 3,
+        fingerprint: "fp-r3-12345678",
+        recipients: ["ada@example.test", "lin@example.test"],
+        subject: "Weekly digest r3",
+        body: "Edited body for r2",
+      },
+      revisions: [
+        ...outboundDraftState().revisions.map((entry) => ({
+          ...entry,
+          status: "superseded" as const,
+        })),
+        {
+          revision: 3,
+          fingerprint: "fp-r3-12345678",
+          subject: "Weekly digest r3",
+          createdAt: ISO,
+          status: "pending" as const,
+        },
+      ],
+    });
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-save"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+
+    expect(mocks.updateOutboundDraft).toHaveBeenCalledWith({
+      ...target,
+      interventionId: "i-action",
+      expectedRevision: 2,
+      recipients: ["ada@example.test", "lin@example.test"],
+      subject: "Weekly digest r3",
+      body: "Edited body for r2",
+    });
+    expect(host.textContent).toContain("Outbound draft · r3");
+    const view = document.querySelector('[data-testid="outbound-view"]');
+    expect(view?.textContent).toContain("r3");
+    expect(view?.textContent).toContain("Pending");
+  });
+
+  it("binds the confirmed revision to the send decision", async () => {
+    const host = await render(
+      <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
+    );
+
+    await act(async () => (byTestId(host, "outbound-review") as HTMLButtonElement).click());
+    const confirm = document.querySelector('[data-testid="outbound-confirm"]');
+    expect(confirm?.textContent).toContain("r2");
+    expect(confirm?.textContent).toContain("fp-r2-12345678");
+    expect(confirm?.textContent).toContain("Edited body for r2");
+
+    await act(async () =>
+      (
+        document.querySelector('[data-testid="outbound-confirm-send"]') as HTMLButtonElement
+      ).click(),
+    );
+    await flush();
+
+    expect(mocks.resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({
+        answer: "allow",
+        outbound: { revision: 2, fingerprint: "fp-r2-12345678" },
+      }),
+    );
+  });
+
+  it("denies an outbound draft without naming a revision", async () => {
+    const host = await render(
+      <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
+    );
+
+    await act(async () => (byTestId(host, "outbound-deny") as HTMLButtonElement).click());
+    await flush();
+
+    expect(mocks.resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({ answer: "deny" }),
+    );
+    expect(mocks.resolveIntervention.mock.calls[0]![0]).not.toHaveProperty("outbound");
+  });
+
+  it("asks before discarding unsaved outbound edits", async () => {
+    const host = await render(
+      <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
+    );
+
+    await act(async () => (byTestId(host, "outbound-edit") as HTMLButtonElement).click());
+    await typeInto(document.querySelector("#outbound-body"), "Unsaved body");
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-cancel-edit"]') as HTMLButtonElement).click(),
+    );
+
+    const discard = document.querySelector('[data-testid="outbound-discard-dialog"]');
+    expect(discard).not.toBeNull();
+    await act(async () =>
+      (
+        document.querySelector('[data-testid="outbound-discard-keep"]') as HTMLButtonElement
+      ).click(),
+    );
+    expect(document.querySelector('[data-testid="outbound-edit-form"]')).not.toBeNull();
+
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-cancel-edit"]') as HTMLButtonElement).click(),
+    );
+    await act(async () =>
+      (
+        document.querySelector('[data-testid="outbound-discard-confirm"]') as HTMLButtonElement
+      ).click(),
+    );
+    expect(document.querySelector('[data-testid="outbound-edit-form"]')).toBeNull();
+    expect(mocks.updateOutboundDraft).not.toHaveBeenCalled();
     expect(mocks.resolveIntervention).not.toHaveBeenCalled();
   });
 
