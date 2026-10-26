@@ -284,6 +284,14 @@ async function render(node: ReactNode): Promise<HTMLElement> {
   return host;
 }
 
+async function rerender(node: ReactNode): Promise<void> {
+  const current = rendered.at(-1);
+  if (!current) throw new Error("nothing is mounted");
+  await act(async () => {
+    current.root.render(node);
+  });
+}
+
 async function typeInto(
   element: HTMLInputElement | HTMLTextAreaElement | null,
   value: string,
@@ -818,6 +826,34 @@ describe("account and assignment cards", () => {
       threadId: "thread-1",
     });
     expect(mocks.resolveIntervention).not.toHaveBeenCalled();
+  });
+
+  it("re-enables the MCP card when the server reopens a revoked assignment", async () => {
+    const host = await render(
+      <ActionApprovalCard view={actionView(mcpAssignment())} target={target} />,
+    );
+
+    await act(async () => (byTestId(host, "mcp-assignment-approve") as HTMLButtonElement).click());
+    expect(host.textContent).toContain("Allowed");
+    expect(byTestId(host, "mcp-assignment-approve")).toBeNull();
+
+    const chosen = actionView(mcpAssignment());
+    await rerender(
+      <ActionApprovalCard
+        view={{ ...chosen, status: "answered", decision: "approved" }}
+        target={target}
+      />,
+    );
+    expect(byTestId(host, "mcp-assignment-approve")).toBeNull();
+
+    // Removing the assignment reopens the authoritative view; the local
+    // "Allowed" override must drop with it.
+    await rerender(<ActionApprovalCard view={chosen} target={target} />);
+    expect(host.textContent).not.toContain("Allowed");
+    const approve = byTestId(host, "mcp-assignment-approve") as HTMLButtonElement;
+    expect(approve).not.toBeNull();
+    await act(async () => approve.click());
+    expect(mocks.approveAssignment).toHaveBeenCalledTimes(2);
   });
 });
 

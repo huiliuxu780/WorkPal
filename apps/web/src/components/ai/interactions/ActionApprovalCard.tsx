@@ -919,6 +919,14 @@ function McpAssignmentCard({
     view.status === "answered" ? "connected" : null,
   );
   const [error, setError] = useState<string | null>(null);
+  const previousStatus = useRef(view.status);
+
+  // Revoking the assignment reopens the pending view while the card stays
+  // mounted; drop the in-session decision so it can be authorized again.
+  useEffect(() => {
+    if (previousStatus.current !== "pending" && view.status === "pending") setDone(null);
+    previousStatus.current = view.status;
+  }, [view.status]);
 
   const approve = async () => {
     if (!view.source.botId || busy) {
