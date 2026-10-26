@@ -1,8 +1,9 @@
 import { t } from "@lingui/core/macro";
 import type { InputRequestView } from "@rakazo/contracts";
 import { Input, Label, Textarea } from "@rakazo/ui-web";
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
+import { availableAskDraftStorage, readAskDraft, writeAskDraft } from "../../../lib/ask-draft";
 import { rpc } from "../../../lib/rpc";
 import {
   InteractionAction,
@@ -42,8 +43,13 @@ export function InputRequestCard({
 }) {
   const input = view.input;
   const terminal = view.status !== "pending";
+  const draftEnabled = input.mode === "question" && !terminal;
+  const draftStorage = useRef(availableAskDraftStorage());
+  const initialDraft = useRef(
+    draftEnabled ? readAskDraft(draftStorage.current, view.interactionId, false) : "",
+  );
   const submissionId = useRef(crypto.randomUUID());
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialDraft.current);
   const [username, setUsername] = useState("");
   const [secret, setSecret] = useState("");
   const [choice, setChoice] = useState<string | null>(null);
@@ -52,6 +58,18 @@ export function InputRequestCard({
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Free-text questions keep an unsent answer across conversation switches,
+  // keyed like the legacy AskCard. Secret values never touch storage.
+  useEffect(() => {
+    if (input.mode !== "question") return;
+    writeAskDraft(
+      draftStorage.current,
+      view.interactionId,
+      draftEnabled && !submitted ? text : "",
+      false,
+    );
+  }, [draftEnabled, input.mode, submitted, text, view.interactionId]);
 
   const submit = async (answer: string, usernameValue?: string) => {
     if (busy || terminal) return;
@@ -66,6 +84,7 @@ export function InputRequestCard({
         ...(usernameValue ? { username: usernameValue } : {}),
       });
       setSubmitted(true);
+      if (input.mode === "question") setText("");
       setSecret("");
       setUsername("");
       if (result.outcome === "already_handled") setError(t`This request was already handled.`);
@@ -191,6 +210,14 @@ export function InputRequestCard({
             rows={3}
             className="max-h-48"
           />
+          {initialDraft.current && !submitted ? (
+            <p
+              className="mt-2 text-xs text-muted-foreground"
+              data-testid="input-card-draft-restored"
+            >
+              {t`Restored your unsent answer`}
+            </p>
+          ) : null}
         </form>
       ) : input.mode === "choice" ? (
         <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={input.prompt}>

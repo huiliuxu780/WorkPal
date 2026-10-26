@@ -316,6 +316,7 @@ async function flush(): Promise<void> {
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.resolveIntervention.mockResolvedValue({ outcome: "applied", intervention: null });
   mocks.updateDraft.mockResolvedValue(undefined);
@@ -413,6 +414,64 @@ describe("input request card", () => {
       }),
     );
     expect(host.textContent).toContain("Submitted. Syncing the current state");
+  });
+
+  it("restores an unsent question draft by interaction id and clears it on submit", async () => {
+    window.sessionStorage.setItem("i-input", "Paris");
+    const host = await render(
+      <InputRequestCard
+        view={inputView({ mode: "question", prompt: "Which city?", placeholder: "City" })}
+        target={target}
+      />,
+    );
+
+    const textarea = host.querySelector("textarea") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Paris");
+    expect(byTestId(host, "input-card-draft-restored")).not.toBeNull();
+
+    await act(async () => (byTestId(host, "input-card-submit") as HTMLButtonElement).click());
+    await flush();
+
+    expect(mocks.resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({ answer: "Paris" }),
+    );
+    expect(window.sessionStorage.getItem("i-input")).toBeNull();
+  });
+
+  it("never stores a secret answer as a draft", async () => {
+    const host = await render(
+      <InputRequestCard
+        view={inputView({
+          mode: "secret",
+          prompt: "Sign in",
+          purpose: "password",
+          credential: { name: "Acme", origin: "https://acme.test", authType: "login" },
+        })}
+        target={target}
+      />,
+    );
+
+    await typeInto(host.querySelector('input[aria-label="Password"]'), "hunter2");
+    await flush();
+
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("does not restore and clears a stale draft once the request settled", async () => {
+    window.sessionStorage.setItem("i-input", "stale answer");
+    const host = await render(
+      <InputRequestCard
+        view={inputView(
+          { mode: "question", prompt: "Which city?", placeholder: "City" },
+          { status: "answered" },
+        )}
+        target={target}
+      />,
+    );
+
+    expect(host.querySelector("textarea")).toBeNull();
+    expect(byTestId(host, "input-card-draft-restored")).toBeNull();
+    expect(window.sessionStorage.getItem("i-input")).toBeNull();
   });
 
   it("masks a login secret, requires both fields, and clears it after saving", async () => {
