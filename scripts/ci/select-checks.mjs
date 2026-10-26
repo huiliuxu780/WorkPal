@@ -583,6 +583,7 @@ export function selectChecks(input) {
   const selected = new Set();
   const reasons = {};
   const webE2e = new Set();
+  const directSpecs = new Set();
   const fileReasons = [];
   let harnessMode = null;
   let sawUnitChange = false;
@@ -595,6 +596,8 @@ export function selectChecks(input) {
     if (traits.isPostgres && !jobs.includes("db-postgres")) jobs.push("db-postgres");
     for (const job of jobs) selected.add(job);
     for (const spec of classified.webE2e) webE2e.add(spec);
+    const directSpec = executableWebSpecName(file);
+    if (directSpec) directSpecs.add(directSpec);
     fileReasons.push({ file, jobs, reason: classified.reason });
     if (!reasons[jobs.join("+")]) {
       reasons[jobs.join("+")] = `${file}: ${classified.reason}`;
@@ -609,6 +612,15 @@ export function selectChecks(input) {
   }
   if (harnessMode) {
     harnessMode = forceHarnessFull ? "full" : sawUnitChange ? "unit" : "inventory";
+  }
+
+  // The CARD/pair specs run with feature gates enabled for the whole
+  // Playwright invocation. Do not mix in legacy execution specs that assert
+  // the gate-off card path unless that spec itself changed.
+  if (webE2e.has("card-ui-interactions.spec.ts")) {
+    for (const spec of ["execution-card.spec.ts", "task-center.spec.ts"]) {
+      if (!directSpecs.has(spec)) webE2e.delete(spec);
+    }
   }
 
   return buildResult({
