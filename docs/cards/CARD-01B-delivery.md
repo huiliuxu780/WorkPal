@@ -5,7 +5,7 @@
 - 分支：`codex/card-ui-interactions`
 - Worktree：仓库外的独立 `card-ui-interactions` worktree（按分支名定位，不记录本机路径）
 - Base：`43fb44517339e2822350feec6903e40dd37b703a`（`origin/main`）
-- Implementation head：`c78dd29`（本文件单独提交，PR head 以分支顶端为准）
+- Implementation head：`91c33b0`（A10 收尾实现；PR head 以分支顶端为准）
 
 ## 交付内容
 
@@ -79,9 +79,9 @@
 | MCP 撤销重开 | 服务端 answered→pending 时本地决定清空、授权按钮恢复；同卡重复授权可再次调用 RPC |
 | Input 说明 | question/choice/form 渲染服务端 detail；secret 请求不渲染 |
 
-### E2E 本地阻塞（需 CI 复核）
+### E2E 与截图证据
 
-本地 scripted E2E 中所有工具调用路径停在 `running`，未产生工具消息或 intervention：
+本地 scripted E2E 中工具调用路径停在 `running`，未产生工具消息或 intervention，因此本地无法生成交互卡的生产截图：
 
 - 新 `card-ui-interactions.spec.ts` 两项失败于等待卡片/`waiting_input`。
 - 未修改的 `mcp-approval-card.spec.ts` 同样失败（找不到 legacy `mcp-approval-card`）。
@@ -89,11 +89,11 @@
 - 无工具调用的 `choice-card.spec.ts` 通过，说明 harness、数据库与 onboarding 本身可用。
 - `peer-messages.spec.ts` 的 pair 路径同样停在工具调用后，Postgres 适配器测试则证明 pair 事务本身通过。
 
-因此本 PR 未伪造“生产截图”。新增 E2E 已通过 `playwright test --list` 与 `@rakazo/web check`，需要在 CI 的 scripted E2E 环境复核并生成截图工件。A8 与 X-GROUP 的视觉基线目前引用已确认原型与组件级截图能力。
+CI 已复核 head `91c33b0`：`select-checks` 选择的 `webE2eSpec` 为 `card-ui-interactions.spec.ts|ui-appearance.spec.ts|settings-shell.spec.ts|peer-messages.spec.ts`，`web` job 以 scripted runtime 运行上述 spec 并通过（run `40302887165`）。`web` job 只在失败或取消时上传 Playwright 证据；`Daily web screenshots` 只在 schedule 或手动 `mode=visual` 时运行，本次 PR 跳过。因此本 PR 没有生产截图工件，也未伪造截图；A8 与 X-GROUP 的视觉基线仍引用已确认原型与组件级测试证据。
 
 ## 已知缺口（未假装实现）
 
 1. `payment`、`routine`、`install` 的 Interaction 投影 producer 尚不存在（属于 CARD-01A 投影范围）；renderer 用严格 fixture 覆盖，但生产不会凭空出现这些卡。`outbound` 已接通真实 `send_email` 审批路径。
 2. `group_membership` 的成员变更 RPC 属于 RT-12。生产按钮禁用并显示“Joining from this card is not available yet.”；无权限失败卡已实现但没有服务端权限事实可驱动自动选择。
 3. A12 的“先选已保存项、完成后再出现独立付款审批”在 UI 和测试中分离成立，但 payment producer 缺失，无法端到端产生第二张付款卡。
-4. 生产截图未生成，原因见上节本地 E2E 阻塞。
+4. 生产截图工件未生成：CI 的 `web` job 仅在失败时上传 Playwright 证据，截图任务只在每日/手动模式运行；本地 scripted 工具调用受阻。E2E 已在 CI 通过，但本 PR 不声称持有生产截图。
