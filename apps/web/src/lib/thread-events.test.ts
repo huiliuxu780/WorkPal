@@ -1,5 +1,6 @@
 import type {
   ComputerStatus,
+  InteractionView,
   ProductEvent,
   ThreadMessage,
   ThreadSnapshot,
@@ -2022,6 +2023,68 @@ describe("activity projection reduction (Phase 4)", () => {
       reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions,
     ).toEqual([]);
     expect(isThreadSnapshotEvent(event({ type: "intervention.created" }))).toBe(true);
+  });
+
+  it("settles the strict interaction projection when an intervention resolves", () => {
+    const base = snapshot([]);
+    const pending: InteractionView = {
+      kind: "action_approval",
+      interactionId: "intervention-1",
+      revision: 1,
+      status: "pending",
+      createdAt: "2026-10-12T00:00:00.000Z",
+      expiresAt: null,
+      attentionAt: "2026-10-12T00:00:00.000Z",
+      source: {
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        messageId: "message-1",
+        runId: "run-1",
+        botId: "bot-1",
+      },
+      presentation: { text: "Review the action" },
+      decision: null,
+      approval: {
+        kind: "tool",
+        authority: "external_effect",
+        effectId: "effect-1",
+        effectStatus: "intended",
+        actions: [{ id: "allow", label: "Allow once" }],
+      },
+    };
+    const resolved = reduceThreadSnapshot(
+      { ...base, interactions: [pending] },
+      event({
+        type: "intervention.resolved",
+        seq: 4,
+        payload: {
+          interventionId: "intervention-1",
+          revision: 2,
+          kind: "approval",
+          status: "answered",
+          runId: "run-1",
+          attemptId: "attempt-1",
+          messageId: "message-1",
+          botId: "bot-1",
+          createdAt: "2026-10-12T00:00:00.000Z",
+          actor: { botId: "bot-1" },
+          approval: {
+            effectId: "effect-1",
+            decision: "approved",
+            effectStatus: "approved",
+            actions: [{ id: "allow", label: "Allow once" }],
+          },
+          presentation: { text: "Review the action" },
+        },
+      }),
+    );
+    expect(resolved?.interactions?.[0]).toMatchObject({
+      interactionId: "intervention-1",
+      revision: 2,
+      status: "answered",
+      decision: "approved",
+      approval: { kind: "tool", effectStatus: "approved" },
+    });
   });
 
   it("carries the plan review projection and its decision through the reducer (UX-02)", () => {

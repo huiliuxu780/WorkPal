@@ -8,8 +8,10 @@ import type {
   ThreadSnapshot,
 } from "@rakazo/contracts";
 import {
+  type InteractionView,
   InterventionEventPayloadSchema,
   type InterventionView,
+  interactionViewFromIntervention,
   RunPlanRevisionSchema,
   RunStepSnapshotSchema,
   RunTodoSnapshotSchema,
@@ -743,9 +745,70 @@ function reduceThreadSnapshotBase(
     const current = prev.interventions?.find((item) => item.id === view.id);
     if (current && current.revision >= view.revision) return { ...prev, cursor: event.seq };
     const rest = (prev.interventions ?? []).filter((item) => item.id !== view.id);
-    return { ...prev, cursor: event.seq, interventions: [view, ...rest] };
+    const interactions = prev.interactions;
+    if (!interactions) {
+      return { ...prev, cursor: event.seq, interventions: [view, ...rest] };
+    }
+    const existing = interactions.find((item) => item.interactionId === view.id);
+    const next = interactionFromLiveEvent(existing, view);
+    const nextInteractions = next
+      ? existing
+        ? interactions.map((item) => (item.interactionId === view.id ? next : item))
+        : [next, ...interactions]
+      : interactions;
+    return {
+      ...prev,
+      cursor: event.seq,
+      interventions: [view, ...rest],
+      interactions: nextInteractions,
+    };
   }
   return prev;
+}
+
+function interactionFromLiveEvent(
+  existing: InteractionView | undefined,
+  view: InterventionView,
+): InteractionView | null {
+  if (!existing) return interactionViewFromIntervention(view);
+  // Session control is a derived lease view, never an Intervention settlement.
+  if (existing.kind === "session_control") return existing;
+  const common = {
+    revision: view.revision,
+    status: view.status,
+    ...(view.presentation ? { presentation: view.presentation } : {}),
+    ...(view.expiresAt !== undefined ? { expiresAt: view.expiresAt } : {}),
+  };
+  if (existing.kind === "action_approval") {
+    const decision = view.approval?.decision ?? existing.decision ?? null;
+    const approval = existing.approval;
+    if (approval.kind === "outbound" || approval.kind === "tool") {
+      const effectStatus = view.approval?.effectStatus ?? approval.effectStatus;
+      return {
+        ...existing,
+        ...common,
+        decision,
+        approval:
+          approval.kind === "outbound"
+            ? { ...approval, effectStatus }
+            : {
+                ...approval,
+                effectStatus,
+                actions: view.approval?.actions ?? approval.actions,
+              },
+      };
+    }
+    return { ...existing, ...common, decision };
+  }
+  if (existing.kind === "plan_review") {
+    return {
+      ...existing,
+      ...common,
+      decision: view.planReview?.decision ?? existing.decision,
+      feedback: view.planReview?.feedback ?? existing.feedback,
+    };
+  }
+  return { ...existing, ...common };
 }
 
 function updateMemberStatus(
