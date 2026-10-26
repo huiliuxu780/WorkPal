@@ -24,7 +24,8 @@
 - Execution detail 的 interactions 按 `interactionId` 与 revision 合并进线程 projection；消息已翻出当前页时，展开 Run 仍能显示其中的卡片。
 - A10 外发草稿：`send_email` ExternalEffect 投影为 outbound 卡；同一张卡/详情内编辑，保存写入不可变 `outbound_draft_revisions`（首次编辑前固化 r1 快照），pending 只显示最新 revision，旧 revision 显示 superseded。发送决定携带 revision + fingerprint；编辑后必须匹配最新，executor 复用已批准 effect key 重放编辑后的内容。
 - A10 编辑事务与审批使用同一锁序（Thread → Run → Intervention），并在 effect 条件更新失败、revision 唯一键冲突或卡片已结算时抛出哨兵回滚全部 revision 写入；不会把冲突编辑投影成最新 pending。
-- A10 收件人保存前按真实发送端 `validateOutgoingMail()` 的规则校验：邮件格式、长度、1–20 个、去重；编辑器直接提示，服务端 RPC/DB 同样拒绝，不会保存必然发送失败的 revision。
+- A10 收件人保存前按真实发送端 `validateOutgoingMail()` 的规则校验：邮件格式、长度、1–20 个、去重；正文同时按 UTF-8 字节上限 65,536 校验。编辑器直接提示，服务端 RPC/DB 同样拒绝，不会保存必然发送失败的 revision。
+- A10 编辑支持委托 Bot 在展示 Thread 中等待的场景：从绑定 Run 派生执行 Thread，按执行 Thread → 展示 Thread 加锁，保留展示 Thread 匹配与 Run owner 校验，不再要求 Run 与展示 Thread 相同。
 - 统一 question 输入卡沿用 legacy `AskCard` 的草稿生命周期：按 `interactionId` 存取非密文回答，提交或终态后清除；secret 输入从不写入浏览器存储。
 - MCP assignment 卡在服务端把已批准视图重新打开为 pending（撤销授权）时清除本地 `Allowed` 覆盖，按钮恢复可用；乐观提交期间不误清。
 - 统一输入卡保留非 secret 请求的 `presentation.detail` 说明，位置在回答控件之前，与 legacy `AskCard` 一致；secret 请求继续不渲染说明。
@@ -66,7 +67,7 @@
 | `pnpm --filter @rakazo/web build` | 通过 |
 | `pnpm test:ci-select` | 99 tests 通过 |
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
-| `pnpm test:postgres` | 49/49 files、432 tests 通过（迁移后的独立 `workpal_e2e_*` 库） |
+| `pnpm test:postgres` | 49/49 files、433 tests 通过（迁移后的独立 `workpal_e2e_*` 库） |
 | Scripted E2E | `card-ui-interactions.spec.ts|peer-messages.spec.ts` 5/5 通过（含 A10 同卡编辑） |
 | 视觉证据 | 20 张实际页面截图保存在 `docs/cards/evidence/card-ui-interactions/`，对照记录见 `CARD-01B-visual-evidence.md` |
 | `git diff --check` | 通过 |
@@ -82,12 +83,14 @@
 | A10 绑定 | 编辑后 approve 不带 binding 或使用旧 fingerprint 返回 conflict；最新 revision 通过；deny 不要求 binding |
 | A10 冲突回滚 | 测试触发器在 revision 写入后把 effect 置为 approved；编辑返回 conflict 且 r1/r2、effect request、message 事件全部回滚。把哨兵回滚改为正常 return 时该测试失败（变异验证） |
 | A10 收件人校验 | contract/RPC 拒绝 `abc` 与重复地址；DB 在写入前拒绝且不留 revision；Web 编辑器显示格式/去重错误且不调用 RPC |
+| A10 正文字节上限 | 22,000 个中文字符（66,000 UTF-8 bytes）在 contract/DB 被拒绝；Web 编辑器显示 64 KB 错误且不调用 RPC |
+| A10 跨 Thread 编辑 | 通过 `pauseRunForInput` 的 presentation Thread + origin 构造真实跨 Thread approval；编辑成功并写入 r1/r2。把执行 Run 查询改回要求展示 Thread 时该测试失败（变异验证） |
 | A10 E2E | 真实页面打开 r1，编辑并保存 r2，断言 r1 Superseded / r2 Pending，确认页含 revision + fingerprint，关闭后仍 pending；桌面/390/375 截图 |
 | 截图对照 | 新卡片、A10、pair 的实际页面截图已保留，见 `CARD-01B-visual-evidence.md` |
 | MCP 撤销重开 | 服务端 answered→pending 时本地决定清空、授权按钮恢复；同卡重复授权可再次调用 RPC |
 | Input 说明 | question/choice/form 渲染服务端 detail；secret 请求不渲染 |
 
-全量 `pnpm test:postgres` 首次运行出现一次 `memory-facts` outbox 用例失败；该文件单独重跑 15/15 通过，随后全量重跑 49/49、432 tests 通过。该用例与本次改动路径无关，暂按并行执行偶发处理。
+本地全量 `pnpm test:postgres` 在复用的一次性库上先后命中 `memory-facts` / `wakeup` 的 Graphile 任务计数残留；重建并重新 migrate 该 disposable 库后 49/49、433 tests 通过。失败来自本地库残留状态，不是代码路径回归，也不把残留状态当作基线。
 
 ### E2E 与截图证据
 

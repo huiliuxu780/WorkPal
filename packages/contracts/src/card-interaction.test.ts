@@ -12,7 +12,7 @@ import {
   projectAttentionItems,
   projectGroupMembershipApproval,
 } from "./card-interaction.js";
-import { outboundDraftRecipientIssue } from "./outbound-draft.js";
+import { outboundDraftBodyBytes, outboundDraftRecipientIssue } from "./outbound-draft.js";
 
 const createdAt = "2026-10-24T10:00:00.000Z";
 const source = {
@@ -371,6 +371,21 @@ describe("CARD-01 strict InteractionView contract", () => {
         }).success,
       ).toBe(false);
     }
+    const multibyteBody = "密".repeat(22_000);
+    expect(multibyteBody.length).toBeLessThan(65_536);
+    expect(outboundDraftBodyBytes(multibyteBody)).toBeGreaterThan(65_536);
+    expect(
+      ActionApprovalViewSchema.safeParse({
+        ...outbound,
+        approval: {
+          ...outbound.approval,
+          draftState: {
+            ...outbound.approval.draftState,
+            draft: { ...outbound.approval.draftState.draft, body: multibyteBody },
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("mirrors the mail sender's recipient acceptance rules", () => {

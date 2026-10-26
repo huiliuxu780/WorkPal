@@ -8,6 +8,7 @@ import * as z from "zod";
 export const OUTBOUND_DRAFT_MAX_RECIPIENTS = 20;
 export const OUTBOUND_DRAFT_MAX_SUBJECT_CHARS = 200;
 export const OUTBOUND_DRAFT_MAX_BODY_CHARS = 65_536;
+export const OUTBOUND_DRAFT_MAX_BODY_BYTES = 65_536;
 export const OUTBOUND_DRAFT_RECIPIENT_MAX_CHARS = 320;
 /** Mirrors the production mail sender's recipient parser. */
 export const OUTBOUND_DRAFT_RECIPIENT_PATTERN =
@@ -54,10 +55,23 @@ export const OutboundDraftRecipientsSchema = z
     message: "Recipient addresses must be unique.",
   });
 
+export function outboundDraftBodyBytes(body: string): number {
+  return new TextEncoder().encode(body).length;
+}
+
+export const OutboundDraftBodySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(OUTBOUND_DRAFT_MAX_BODY_CHARS)
+  .refine((body) => outboundDraftBodyBytes(body) <= OUTBOUND_DRAFT_MAX_BODY_BYTES, {
+    message: "The email body must be at most 64 KB.",
+  });
+
 export const OutboundDraftContentSchema = z.strictObject({
   recipients: OutboundDraftRecipientsSchema,
   subject: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_SUBJECT_CHARS),
-  body: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_BODY_CHARS),
+  body: OutboundDraftBodySchema,
 });
 export type OutboundDraftContent = z.infer<typeof OutboundDraftContentSchema>;
 

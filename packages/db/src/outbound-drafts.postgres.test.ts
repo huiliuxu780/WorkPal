@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveRoundtableFeatureGates } from "@rakazo/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cardMessageFact, projectThreadCardSurface } from "./card-interactions.js";
 import { createDb, type PrismaClient } from "./client.js";
@@ -333,9 +334,22 @@ describePostgres("A10 outbound draft revisions (PostgreSQL)", () => {
     ).resolves.toMatchObject({ outcome: "rejected", reason: "not_found" });
   });
 
-  it("rejects malformed and duplicate recipients before writing a revision", async () => {
+  it("rejects invalid recipients and oversized UTF-8 bodies before writing a revision", async () => {
     const { effect, intervention } = await seedOutbound();
-    for (const recipients of [["abc"], ["ada@example.test", "ada@example.test"]]) {
+    const invalidEdits = [
+      { recipients: ["abc"], subject: "Invalid recipients", body: "Must not persist" },
+      {
+        recipients: ["ada@example.test", "ada@example.test"],
+        subject: "Duplicate recipients",
+        body: "Must not persist",
+      },
+      {
+        recipients: ["ada@example.test"],
+        subject: "Oversized body",
+        body: "密".repeat(22_000),
+      },
+    ];
+    for (const edit of invalidEdits) {
       await expect(
         updateOutboundDraftRevision(prisma, {
           spaceId: id,
@@ -343,9 +357,7 @@ describePostgres("A10 outbound draft revisions (PostgreSQL)", () => {
           userId: id,
           interventionId: intervention.id,
           expectedRevision: 1,
-          recipients,
-          subject: "Invalid recipients",
-          body: "Must not persist",
+          ...edit,
         }),
       ).rejects.toThrow();
     }
@@ -359,6 +371,127 @@ describePostgres("A10 outbound draft revisions (PostgreSQL)", () => {
       subject: "Weekly digest",
       text: "Original body",
     });
+  });
+
+  it("edits an outbound draft presented from another Thread", async () => {
+    const presentationBot = await prisma.bot.create({
+      data: { spaceId: id, userId: id, name: "Presentation bot", color: "test" },
+    });
+    const presentationThread = await prisma.thread.create({
+      data: { spaceId: id, userId: id, botId: presentationBot.id },
+    });
+    const sourceTask = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: presentationBot.id,
+        threadId: presentationThread.id,
+        prompt: "Cross-thread source",
+        status: "running",
+      },
+    });
+    const sourceRun = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId: presentationBot.id,
+        threadId: presentationThread.id,
+        taskId: sourceTask.id,
+        status: "running",
+        trigger: "user",
+      },
+    });
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId,
+        threadId,
+        prompt: "Cross-thread outbound",
+        status: "running",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId,
+        threadId,
+        taskId: task.id,
+        status: "running",
+        trigger: "user",
+        leaseOwner: "worker",
+        leaseFence: 1,
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const attempt = await prisma.attempt.create({
+      data: { runId: run.id, fence: 1, status: "running" },
+    });
+    const effect = await prisma.externalEffect.create({
+      data: {
+        spaceId: id,
+        runId: run.id,
+        kind: "send_email",
+        idempotencyKey: `cross-thread-${run.id}`,
+        status: "intended",
+        request: {
+          to: ["ada@example.test"],
+          subject: "Cross-thread draft",
+          text: "Original body",
+        },
+      },
+    });
+    const paused = await pauseRunForInput(prisma, {
+      spaceId: id,
+      threadId,
+      presentationThreadId: presentationThread.id,
+      origin: { sourceThreadId: presentationThread.id, sourceRunId: sourceRun.id },
+      gates: resolveRoundtableFeatureGates({ ROUNDTABLE_PRIVATE_PAIR_ENABLED: "true" }),
+      botId,
+      runId: run.id,
+      attemptId: attempt.id,
+      leaseOwner: "worker",
+      leaseFence: 1,
+      blocks: [
+        {
+          kind: "ask",
+          text: "Review before send_email",
+          detail: "to: ada@example.test\nsubject: Cross-thread draft\nbody: Original body",
+          status: "pending",
+          approvalEffectId: effect.id,
+          actions: [
+            { id: "allow", label: "Allow once" },
+            { id: "always", label: "Always allow" },
+            { id: "deny", label: "Deny" },
+          ],
+        },
+      ],
+    });
+    expect(paused).toBe(true);
+    const intervention = await prisma.intervention.findFirstOrThrow({ where: { runId: run.id } });
+    expect(intervention.threadId).toBe(presentationThread.id);
+
+    const saved = await updateOutboundDraftRevision(prisma, {
+      spaceId: id,
+      threadId: presentationThread.id,
+      userId: id,
+      interventionId: intervention.id,
+      expectedRevision: 1,
+      recipients: ["ada@example.test"],
+      subject: "Cross-thread r2",
+      body: "Cross-thread body",
+    });
+    expect(saved).toMatchObject({ outcome: "updated" });
+    expect(
+      (
+        await prisma.outboundDraftRevision.findMany({
+          where: { interventionId: intervention.id },
+          orderBy: { revision: "asc" },
+          select: { revision: true },
+        })
+      ).map((row) => row.revision),
+    ).toEqual([1, 2]);
   });
 
   it("rolls back revision writes when the effect settles before the conditional update", async () => {

@@ -295,7 +295,7 @@ export async function updateOutboundDraftRevision(
         return { outcome: "rejected", reason: "not_found" } as const;
       }
       const initialRun = await tx.run.findFirst({
-        where: { id: initial.runId, spaceId: input.spaceId, threadId: input.threadId },
+        where: { id: initial.runId, spaceId: input.spaceId },
         select: { userId: true, threadId: true },
       });
       if (!initialRun || initialRun.userId !== input.userId) {
@@ -315,7 +315,7 @@ export async function updateOutboundDraftRevision(
         return { outcome: "rejected", reason: "not_found" } as const;
       }
       const run = await tx.run.findFirst({
-        where: { id: row.runId, spaceId: input.spaceId, threadId: input.threadId },
+        where: { id: row.runId, spaceId: input.spaceId },
         select: { userId: true },
       });
       if (!run || run.userId !== input.userId) {

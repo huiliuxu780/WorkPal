@@ -758,7 +758,7 @@ describe("action approval cards", () => {
     expect(view?.textContent).toContain("Pending");
   });
 
-  it("rejects malformed and duplicate recipients before saving", async () => {
+  it("rejects malformed recipients, duplicates, and oversized bodies before saving", async () => {
     const host = await render(
       <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
     );
@@ -785,6 +785,17 @@ describe("action approval cards", () => {
     expect(mocks.updateOutboundDraft).not.toHaveBeenCalled();
     expect(document.querySelector('[data-testid="outbound-edit-error"]')?.textContent).toContain(
       "Recipient addresses must be unique.",
+    );
+
+    await typeInto(document.querySelector("#outbound-recipients"), "ada@example.test");
+    await typeInto(document.querySelector("#outbound-body"), "密".repeat(22_000));
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-save"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(mocks.updateOutboundDraft).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="outbound-edit-error"]')?.textContent).toContain(
+      "The email body must be at most 64 KB.",
     );
   });
 

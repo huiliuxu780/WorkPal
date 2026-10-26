@@ -130,8 +130,8 @@ import {
   MemorySummarySchema,
 } from "./memory-facts.js";
 import {
-  OUTBOUND_DRAFT_MAX_BODY_CHARS,
   OUTBOUND_DRAFT_MAX_SUBJECT_CHARS,
+  OutboundDraftBodySchema,
   OutboundDraftRecipientsSchema,
   OutboundDraftStateSchema,
 } from "./outbound-draft.js";
@@ -638,7 +638,7 @@ export const appContract = {
           expectedRevision: z.number().int().positive(),
           recipients: OutboundDraftRecipientsSchema,
           subject: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_SUBJECT_CHARS),
-          body: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_BODY_CHARS),
+          body: OutboundDraftBodySchema,
         }),
       )
       .output(OutboundDraftStateSchema),

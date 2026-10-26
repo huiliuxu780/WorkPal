@@ -1,8 +1,10 @@
 import { t } from "@lingui/core/macro";
 import {
   type ActionApprovalView,
+  OUTBOUND_DRAFT_MAX_BODY_BYTES,
   OUTBOUND_DRAFT_MAX_RECIPIENTS,
   type OutboundDraftState,
+  outboundDraftBodyBytes,
   outboundDraftRecipientIssue,
 } from "@rakazo/contracts";
 import { abortableDelay } from "@rakazo/core";
@@ -427,6 +429,10 @@ function OutboundApprovalCard({
     }
     if (!subjectText.trim() || !bodyText.trim()) {
       setEditError(t`Subject and body cannot be empty.`);
+      return;
+    }
+    if (outboundDraftBodyBytes(bodyText.trim()) > OUTBOUND_DRAFT_MAX_BODY_BYTES) {
+      setEditError(t`The email body must be at most 64 KB.`);
       return;
     }
     setSaving(true);
