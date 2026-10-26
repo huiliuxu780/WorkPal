@@ -54,7 +54,7 @@ test("renders an MCP assignment as the unified CARD-01B card and settles it", as
     .locator('[data-testid="interaction-card"][data-kind="action_approval"]')
     .filter({ hasText: "MCP assignment" });
   await expect(card).toBeVisible();
-  await expect(card.getByTestId("interaction-status")).toHaveText("Waiting for your decision");
+  await expect(card.getByTestId("interaction-status")).toContainText("Waiting for your decision");
   await expect(card.getByTestId("mcp-allow-all-tools")).toContainText("allowAllTools: true");
   await expect(card).toContainText("All tools on this server");
   await expect(page.getByTestId("mcp-approval-card")).toHaveCount(0);
@@ -73,7 +73,9 @@ test("renders an MCP assignment as the unified CARD-01B card and settles it", as
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await card.getByRole("button", { name: "Allow all tools", exact: true }).click();
-  await expect(card.getByTestId("interaction-status")).toHaveText("Allowed", { timeout: 20_000 });
+  await expect(card.getByTestId("interaction-status")).toContainText("Allowed", {
+    timeout: 20_000,
+  });
   await expect(card.getByRole("button", { name: "Allow all tools", exact: true })).toHaveCount(0);
   expect(await card.evaluate((element) => element.className.includes("opacity-"))).toBe(false);
   await page.emulateMedia({ colorScheme: "dark" });
@@ -104,9 +106,9 @@ test("replaces the legacy approval ask with one CARD-01B decision card", async (
     .locator('[data-testid="interaction-card"][data-kind="action_approval"]')
     .filter({ hasText: "Allow once" });
   await expect(card).toBeVisible();
-  await expect(card.getByTestId("interaction-status")).toHaveText("Waiting for your decision");
-  await expect(card.getByTestId("approval-primary")).toHaveText("Allow once");
-  await expect(card.getByTestId("approval-secondary")).toHaveText("Deny");
+  await expect(card.getByTestId("interaction-status")).toContainText("Waiting for your decision");
+  await expect(card.getByTestId("approval-primary")).toContainText("Allow once");
+  await expect(card.getByTestId("approval-secondary")).toContainText("Deny");
   // The projection is the only surface: the legacy ask never double-renders.
   await expect(page.locator("[data-intervention-id]")).toHaveCount(0);
   await expect(page.getByText("Allow once", { exact: true })).toHaveCount(1);

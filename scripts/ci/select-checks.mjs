@@ -39,11 +39,7 @@ const AVATAR_WEB_E2E = [
   "avatar-bot-change.spec.ts",
 ];
 const EXECUTION_WEB_E2E = ["execution-card.spec.ts", "task-center.spec.ts"];
-const CARD_UI_INTERACTIONS_WEB_E2E = [
-  "card-ui-interactions.spec.ts",
-  "peer-messages.spec.ts",
-  ...EXECUTION_WEB_E2E,
-];
+const CARD_UI_INTERACTIONS_WEB_E2E = ["card-ui-interactions.spec.ts", "peer-messages.spec.ts"];
 const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
 const ONBOARDING_WEB_E2E = [
   "onboarding-conversation.spec.ts",
