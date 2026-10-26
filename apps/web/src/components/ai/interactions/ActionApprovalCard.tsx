@@ -363,6 +363,12 @@ function OutboundApprovalCard({
   const [recipientsText, setRecipientsText] = useState("");
   const [subjectText, setSubjectText] = useState("");
   const [bodyText, setBodyText] = useState("");
+  const [editorBase, setEditorBase] = useState<{
+    revision: number;
+    recipients: string;
+    subject: string;
+    body: string;
+  } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const draft = draftState?.draft ?? null;
@@ -372,10 +378,10 @@ function OutboundApprovalCard({
   const recipientCount = draft ? draft.recipients.length : approval.recipientCount;
   const dirty =
     mode === "edit" &&
-    draft !== null &&
-    (recipientsText.trim() !== draft.recipients.join(", ") ||
-      subjectText !== draft.subject ||
-      bodyText !== draft.body);
+    editorBase !== null &&
+    (recipientsText.trim() !== editorBase.recipients ||
+      subjectText !== editorBase.subject ||
+      bodyText !== editorBase.body);
 
   // The server projection is authoritative; a refresh replaces any local view.
   useEffect(() => {
@@ -384,6 +390,12 @@ function OutboundApprovalCard({
 
   const openEditor = () => {
     if (!draft) return;
+    setEditorBase({
+      revision: draft.revision,
+      recipients: draft.recipients.join(", "),
+      subject: draft.subject,
+      body: draft.body,
+    });
     setRecipientsText(draft.recipients.join(", "));
     setSubjectText(draft.subject);
     setBodyText(draft.body);
@@ -400,16 +412,18 @@ function OutboundApprovalCard({
       setDiscardOpen(true);
       return;
     }
+    setEditorBase(null);
     setMode("view");
     setOpen(false);
   };
   const discardChanges = () => {
     setDiscardOpen(false);
+    setEditorBase(null);
     setMode("view");
     setOpen(false);
   };
   const saveRevision = async () => {
-    if (!draft || saving) return;
+    if (!draft || !editorBase || saving) return;
     const recipients = recipientsText
       .split(/[\n,]/)
       .map((value) => value.trim())
@@ -441,12 +455,13 @@ function OutboundApprovalCard({
       const next = await rpc.threads.updateOutboundDraft({
         ...target,
         interventionId: view.interactionId,
-        expectedRevision: draft.revision,
+        expectedRevision: editorBase.revision,
         recipients,
         subject: subjectText.trim(),
         body: bodyText,
       });
       setDraftState(next);
+      setEditorBase(null);
       setMode("view");
       await onRefresh?.().catch(() => undefined);
     } catch (cause) {
@@ -626,8 +641,12 @@ function OutboundApprovalCard({
                 <InteractionAction
                   disabled={saving}
                   onClick={() => {
-                    if (dirty) setDiscardOpen(true);
-                    else setMode("view");
+                    if (dirty) {
+                      setDiscardOpen(true);
+                    } else {
+                      setEditorBase(null);
+                      setMode("view");
+                    }
                   }}
                   testId="outbound-cancel-edit"
                 >

@@ -27,6 +27,7 @@
 - A10 收件人保存前按真实发送端 `validateOutgoingMail()` 的规则校验：邮件格式、长度、1–20 个、去重；正文同时按 UTF-8 字节上限 65,536 校验。编辑器直接提示，服务端 RPC/DB 同样拒绝，不会保存必然发送失败的 revision。
 - A10 编辑支持委托 Bot 在展示 Thread 中等待的场景：从绑定 Run 派生执行 Thread，按执行 Thread → 展示 Thread 加锁，保留展示 Thread 匹配与 Run owner 校验，不再要求 Run 与展示 Thread 相同。
 - A10 的 legacy（gate 关闭）审批路径同样在存在 `outbound.draftState` 时提交 revision + fingerprint binding；关闭 `CARDS_UNIFIED_V2_ENABLED` 后，已编辑草稿仍可由旧卡完成审批，不会 stranded。
+- A10 编辑器在打开时固定 base revision 与初始内容；其他 tab 推进服务器 revision 时，保存仍以打开时的 revision 做乐观检查，不会用新 revision 提交旧内容。冲突后需关闭/重开编辑器再基于最新 revision 编辑。
 - 统一 question 输入卡沿用 legacy `AskCard` 的草稿生命周期：按 `interactionId` 存取非密文回答，提交或终态后清除；secret 输入从不写入浏览器存储。
 - MCP assignment 卡在服务端把已批准视图重新打开为 pending（撤销授权）时清除本地 `Allowed` 覆盖，按钮恢复可用；乐观提交期间不误清。
 - 统一输入卡保留非 secret 请求的 `presentation.detail` 说明，位置在回答控件之前，与 legacy `AskCard` 一致；secret 请求继续不渲染说明。
@@ -64,8 +65,8 @@
 | --- | --- |
 | `pnpm check` | 18/18 通过 |
 | `pnpm lint` | 0 error（仓库既有 warning/info 保留） |
-| `pnpm --filter @rakazo/web test` | 98 files / 772 tests 通过 |
-| `pnpm test:unit` | 457 files / 5507 passed / 2 skipped |
+| `pnpm --filter @rakazo/web test` | 98 files / 773 tests 通过 |
+| `pnpm test:unit` | 457 files / 5508 passed / 2 skipped |
 | `pnpm --filter @rakazo/web build` | 通过 |
 | `pnpm test:ci-select` | 99 tests 通过 |
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
@@ -88,6 +89,7 @@
 | A10 正文字节上限 | 22,000 个中文字符（66,000 UTF-8 bytes）在 contract/DB 被拒绝；Web 编辑器显示 64 KB 错误且不调用 RPC |
 | A10 跨 Thread 编辑 | 通过 `pauseRunForInput` 的 presentation Thread + origin 构造真实跨 Thread approval；编辑成功并写入 r1/r2。把执行 Run 查询改回要求展示 Thread 时该测试失败（变异验证） |
 | A10 legacy 审批绑定 | gate 关闭的 `InterventionRegion` 在存在 outbound draftState 时，点击 Allow once 会提交 r2 + fingerprint；单元测试断言 RPC 入参 |
+| A10 编辑器 base revision | 打开 r2 编辑器后服务器推进到 r3，保存仍发送 `expectedRevision: 2` 与打开时的内容；把基准改回 `draft.revision` 时该测试失败（变异验证） |
 | 全量 E2E 拆批 | 单元测试证明 gate-off 正则排除 card/peer、gate-on 批次包含两者；两个批次分别跑 legacy MCP 与 unified MCP 用例均通过 |
 | A10 E2E | 真实页面打开 r1，编辑并保存 r2，断言 r1 Superseded / r2 Pending，确认页含 revision + fingerprint，关闭后仍 pending；桌面/390/375 截图 |
 | 截图对照 | 新卡片、A10、pair 的实际页面截图已保留，见 `CARD-01B-visual-evidence.md` |

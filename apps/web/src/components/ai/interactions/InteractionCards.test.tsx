@@ -758,6 +758,54 @@ describe("action approval cards", () => {
     expect(view?.textContent).toContain("Pending");
   });
 
+  it("keeps the editor's base revision when the server draft advances", async () => {
+    const host = await render(
+      <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
+    );
+    await act(async () => (byTestId(host, "outbound-edit") as HTMLButtonElement).click());
+    await typeInto(document.querySelector("#outbound-subject"), "Edited from the old base");
+
+    const base = outboundDraftState();
+    const advanced: OutboundDraftState = {
+      ...base,
+      draft: {
+        ...base.draft,
+        revision: 3,
+        fingerprint: "fp-r3-12345678",
+        subject: "Weekly digest r3",
+        body: "Other tab body",
+      },
+      revisions: [
+        ...base.revisions.map((entry) => ({ ...entry, status: "superseded" as const })),
+        {
+          revision: 3,
+          fingerprint: "fp-r3-12345678",
+          subject: "Weekly digest r3",
+          createdAt: ISO,
+          status: "pending" as const,
+        },
+      ],
+    };
+    mocks.updateOutboundDraft.mockResolvedValue(advanced);
+    await rerender(
+      <ActionApprovalCard
+        view={actionView({ ...outboundDraftApproval(), draftState: advanced })}
+        target={target}
+      />,
+    );
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-save"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+
+    expect(mocks.updateOutboundDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedRevision: 2,
+        subject: "Edited from the old base",
+      }),
+    );
+  });
+
   it("rejects malformed recipients, duplicates, and oversized bodies before saving", async () => {
     const host = await render(
       <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
