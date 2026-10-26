@@ -758,6 +758,36 @@ describe("action approval cards", () => {
     expect(view?.textContent).toContain("Pending");
   });
 
+  it("rejects malformed and duplicate recipients before saving", async () => {
+    const host = await render(
+      <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,
+    );
+
+    await act(async () => (byTestId(host, "outbound-edit") as HTMLButtonElement).click());
+    await typeInto(document.querySelector("#outbound-recipients"), "abc");
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-save"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(mocks.updateOutboundDraft).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="outbound-edit-error"]')?.textContent).toContain(
+      "Enter valid email addresses.",
+    );
+
+    await typeInto(
+      document.querySelector("#outbound-recipients"),
+      "ada@example.test, ada@example.test",
+    );
+    await act(async () =>
+      (document.querySelector('[data-testid="outbound-save"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(mocks.updateOutboundDraft).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="outbound-edit-error"]')?.textContent).toContain(
+      "Recipient addresses must be unique.",
+    );
+  });
+
   it("binds the confirmed revision to the send decision", async () => {
     const host = await render(
       <ActionApprovalCard view={actionView(outboundDraftApproval())} target={target} />,

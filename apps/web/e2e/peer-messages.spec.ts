@@ -1,10 +1,18 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
+
+async function finishWelcomeSetup(page: Page) {
+  const choice = page.getByRole("button", { name: /Day-to-day work/ });
+  if (await choice.isVisible().catch(() => false)) {
+    await choice.click();
+  }
+}
 
 test("shows peer chips in transcript and opens view-only peer chat", async ({ page }, testInfo) => {
   const stamp = Date.now();
   await signup(page, `peer-msg-${stamp}@rakazo.test`, "password12", "Peer Msg");
   await completeOnboarding(page);
+  await finishWelcomeSetup(page);
   await page.goto("/app");
   await page.waitForURL(/\/app\/[^/]+$/);
 
@@ -61,6 +69,7 @@ test("shows peer chips in transcript and opens view-only peer chat", async ({ pa
 
   await assertReceiptCompact();
   await expect(composer).toBeVisible();
+  await receipt.scrollIntoViewIfNeeded();
   await captureScreenshot(page, testInfo, "peer-receipt-desktop");
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -123,6 +132,7 @@ test("expands a multi-target receipt and opens one bound private pair", async ({
   const stamp = Date.now();
   await signup(page, `peer-multi-${stamp}@rakazo.test`, "password12", "Peer Multi");
   await completeOnboarding(page);
+  await finishWelcomeSetup(page);
   await page.goto("/app");
   await page.waitForURL(/\/app\/[^/]+$/);
 
@@ -146,6 +156,7 @@ test("expands a multi-target receipt and opens one bound private pair", async ({
   await expect(row).toBeVisible({ timeout: 60_000 });
   await expect(row).toHaveAttribute("data-receipt-count", "2");
   await expect(row).not.toContainText("peer-multi-alpha");
+  await row.scrollIntoViewIfNeeded();
   await captureScreenshot(page, testInfo, "peer-receipt-multi-desktop");
 
   const toggle = row.getByRole("button", {

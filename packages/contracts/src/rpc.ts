@@ -131,9 +131,8 @@ import {
 } from "./memory-facts.js";
 import {
   OUTBOUND_DRAFT_MAX_BODY_CHARS,
-  OUTBOUND_DRAFT_MAX_RECIPIENTS,
   OUTBOUND_DRAFT_MAX_SUBJECT_CHARS,
-  OutboundDraftRecipientSchema,
+  OutboundDraftRecipientsSchema,
   OutboundDraftStateSchema,
 } from "./outbound-draft.js";
 import { MessageReactionSchema } from "./reactions.js";
@@ -637,10 +636,7 @@ export const appContract = {
           interventionId: Id,
           /** Optimistic guard: the revision the editor was based on. */
           expectedRevision: z.number().int().positive(),
-          recipients: z
-            .array(OutboundDraftRecipientSchema)
-            .min(1)
-            .max(OUTBOUND_DRAFT_MAX_RECIPIENTS),
+          recipients: OutboundDraftRecipientsSchema,
           subject: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_SUBJECT_CHARS),
           body: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_BODY_CHARS),
         }),

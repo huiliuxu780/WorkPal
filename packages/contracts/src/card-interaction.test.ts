@@ -12,6 +12,7 @@ import {
   projectAttentionItems,
   projectGroupMembershipApproval,
 } from "./card-interaction.js";
+import { outboundDraftRecipientIssue } from "./outbound-draft.js";
 
 const createdAt = "2026-10-24T10:00:00.000Z";
 const source = {
@@ -356,6 +357,35 @@ describe("CARD-01 strict InteractionView contract", () => {
         },
       }).success,
     ).toBe(false);
+    for (const recipients of [["abc"], ["ada@example.test", "ada@example.test"]]) {
+      expect(
+        ActionApprovalViewSchema.safeParse({
+          ...outbound,
+          approval: {
+            ...outbound.approval,
+            draftState: {
+              ...outbound.approval.draftState,
+              draft: { ...outbound.approval.draftState.draft, recipients },
+            },
+          },
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("mirrors the mail sender's recipient acceptance rules", () => {
+    expect(outboundDraftRecipientIssue(["ada@example.test"])).toBeNull();
+    expect(outboundDraftRecipientIssue([])).toBe("empty");
+    expect(outboundDraftRecipientIssue(["abc"])).toBe("invalid");
+    expect(outboundDraftRecipientIssue(["ada@example.test", "ADA@example.test"])).toBeNull();
+    expect(outboundDraftRecipientIssue(["ada@example.test", " ada@example.test "])).toBe(
+      "duplicate",
+    );
+    expect(
+      outboundDraftRecipientIssue(
+        Array.from({ length: 21 }, (_, index) => `user${index}@example.test`),
+      ),
+    ).toBe("too_many");
   });
 
   it("keeps plan review free of any approval or effect binding", () => {

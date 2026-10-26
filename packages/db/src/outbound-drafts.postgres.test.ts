@@ -333,6 +333,87 @@ describePostgres("A10 outbound draft revisions (PostgreSQL)", () => {
     ).resolves.toMatchObject({ outcome: "rejected", reason: "not_found" });
   });
 
+  it("rejects malformed and duplicate recipients before writing a revision", async () => {
+    const { effect, intervention } = await seedOutbound();
+    for (const recipients of [["abc"], ["ada@example.test", "ada@example.test"]]) {
+      await expect(
+        updateOutboundDraftRevision(prisma, {
+          spaceId: id,
+          threadId,
+          userId: id,
+          interventionId: intervention.id,
+          expectedRevision: 1,
+          recipients,
+          subject: "Invalid recipients",
+          body: "Must not persist",
+        }),
+      ).rejects.toThrow();
+    }
+    expect(
+      await prisma.outboundDraftRevision.count({ where: { interventionId: intervention.id } }),
+    ).toBe(0);
+    expect(
+      (await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } })).request,
+    ).toEqual({
+      to: ["ada@example.test"],
+      subject: "Weekly digest",
+      text: "Original body",
+    });
+  });
+
+  it("rolls back revision writes when the effect settles before the conditional update", async () => {
+    const { effect, intervention } = await seedOutbound();
+    await prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION workpal_outbound_force_settle() RETURNS trigger AS $$
+      BEGIN
+        UPDATE "external_effects"
+        SET "status" = 'approved'
+        WHERE "id" = (
+          SELECT "effectId" FROM "interventions" WHERE "id" = NEW."interventionId"
+        );
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER workpal_outbound_force_settle
+      AFTER INSERT ON "outbound_draft_revisions"
+      FOR EACH ROW EXECUTE FUNCTION workpal_outbound_force_settle();
+    `);
+    try {
+      await expect(
+        updateOutboundDraftRevision(prisma, {
+          spaceId: id,
+          threadId,
+          userId: id,
+          interventionId: intervention.id,
+          expectedRevision: 1,
+          recipients: ["ada@example.test"],
+          subject: "Must roll back",
+          body: "Must roll back",
+        }),
+      ).resolves.toMatchObject({ outcome: "rejected", reason: "conflict" });
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS workpal_outbound_force_settle ON "outbound_draft_revisions"`,
+      );
+      await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS workpal_outbound_force_settle()`);
+    }
+    expect(
+      await prisma.outboundDraftRevision.count({ where: { interventionId: intervention.id } }),
+    ).toBe(0);
+    const stored = await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } });
+    expect(stored.status).toBe("intended");
+    expect(stored.request).toEqual({
+      to: ["ada@example.test"],
+      subject: "Weekly digest",
+      text: "Original body",
+    });
+    expect(
+      await prisma.event.count({ where: { runId: effect.runId, type: "thread.message.updated" } }),
+    ).toBe(0);
+  });
+
   it("ignores non-email effects and rejects edits after the card settles", async () => {
     const tool = await seedOutbound({ token: "opaque" }, "tool");
     const toolSurface = await surfaceFor(tool.run.id);

@@ -6,6 +6,7 @@ import {
 } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "./client.js";
 import { appendEventInTransaction } from "./events.js";
+import { lockIntervention, lockInterventionThreads, lockRun } from "./locks.js";
 
 /**
  * A10 outbound drafts.
@@ -239,6 +240,10 @@ export type OutboundDraftUpdateOutcome =
   | { outcome: "updated"; state: OutboundDraftState; threadId: string; seq: number }
   | { outcome: "rejected"; reason: "not_found" | "forbidden" | "conflict" };
 
+class OutboundDraftConflictError extends Error {}
+
+const OUTBOUND_DRAFT_TRANSACTION = { timeout: 20_000, maxWait: 20_000 } as const;
+
 function approvalDetail(input: {
   recipients: readonly string[];
   subject: string;
@@ -267,166 +272,205 @@ export async function updateOutboundDraftRevision(
     body: string;
   },
 ): Promise<OutboundDraftUpdateOutcome> {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
-    if (!row || row.spaceId !== input.spaceId || row.threadId !== input.threadId) {
-      return { outcome: "rejected", reason: "not_found" } as const;
-    }
-    if (!row.effectId || row.kind !== "approval") {
-      return { outcome: "rejected", reason: "not_found" } as const;
-    }
-    const run = await tx.run.findFirst({
-      where: { id: row.runId, spaceId: input.spaceId, threadId: input.threadId },
-      select: { userId: true },
-    });
-    if (!run || run.userId !== input.userId) {
-      return { outcome: "rejected", reason: "forbidden" } as const;
-    }
-    if (row.status !== "pending") {
-      return { outcome: "rejected", reason: "conflict" } as const;
-    }
-    const effect = await tx.externalEffect.findUnique({
-      where: { id: row.effectId },
-      select: { id: true, kind: true, request: true, status: true, createdAt: true },
-    });
-    if (!effect || !outboundChannelForEffect(effect.kind)) {
-      return { outcome: "rejected", reason: "not_found" } as const;
-    }
-    if (effect.status !== "intended") {
-      return { outcome: "rejected", reason: "conflict" } as const;
-    }
-    const existing = await tx.outboundDraftRevision.findMany({
-      where: { interventionId: row.id },
-      orderBy: { revision: "asc" },
-      select: {
-        revision: true,
-        recipients: true,
-        subject: true,
-        body: true,
-        fingerprint: true,
-        createdAt: true,
-      },
-    });
-    const latestRevision = existing.reduce((max, row) => Math.max(max, row.revision), 1);
-    if (latestRevision !== input.expectedRevision) {
-      return { outcome: "rejected", reason: "conflict" } as const;
-    }
-    const content = OutboundDraftContentSchema.parse({
-      recipients: input.recipients,
-      subject: input.subject,
-      body: input.body,
-    });
-    const fingerprint = outboundDraftFingerprint(content);
-    const nextRevision = latestRevision + 1;
-    let created: { createdAt: Date } | null = null;
-    try {
-      // The effect request is about to move; snapshot the original as r1 first
-      // so the immutable audit keeps every body the user could have confirmed.
-      if (!existing.some((row) => row.revision === 1)) {
-        const original = outboundDraftContentFromEffectRequest(effect.request);
-        if (!original) return { outcome: "rejected", reason: "conflict" } as const;
+  try {
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const initial = await tx.intervention.findUnique({
+        where: { id: input.interventionId },
+        select: {
+          id: true,
+          spaceId: true,
+          threadId: true,
+          runId: true,
+          kind: true,
+          effectId: true,
+        },
+      });
+      if (
+        !initial ||
+        initial.spaceId !== input.spaceId ||
+        initial.threadId !== input.threadId ||
+        !initial.effectId ||
+        initial.kind !== "approval"
+      ) {
+        return { outcome: "rejected", reason: "not_found" } as const;
+      }
+      const initialRun = await tx.run.findFirst({
+        where: { id: initial.runId, spaceId: input.spaceId, threadId: input.threadId },
+        select: { userId: true, threadId: true },
+      });
+      if (!initialRun || initialRun.userId !== input.userId) {
+        return { outcome: "rejected", reason: "forbidden" } as const;
+      }
+      // Same lock order as resolveInterventionInTransaction (Threads → Run →
+      // Intervention), so an approval cannot settle the card between the pending
+      // read and the effect write that follows.
+      await lockInterventionThreads(tx, initialRun.threadId, initial.threadId);
+      await lockRun(tx, initial.runId);
+      await lockIntervention(tx, initial.id);
+      const row = await tx.intervention.findUnique({ where: { id: initial.id } });
+      if (!row || row.spaceId !== input.spaceId || row.threadId !== input.threadId) {
+        return { outcome: "rejected", reason: "not_found" } as const;
+      }
+      if (!row.effectId || row.kind !== "approval") {
+        return { outcome: "rejected", reason: "not_found" } as const;
+      }
+      const run = await tx.run.findFirst({
+        where: { id: row.runId, spaceId: input.spaceId, threadId: input.threadId },
+        select: { userId: true },
+      });
+      if (!run || run.userId !== input.userId) {
+        return { outcome: "rejected", reason: "forbidden" } as const;
+      }
+      if (row.status !== "pending") {
+        return { outcome: "rejected", reason: "conflict" } as const;
+      }
+      const effect = await tx.externalEffect.findUnique({
+        where: { id: row.effectId },
+        select: { id: true, kind: true, request: true, status: true, createdAt: true },
+      });
+      if (!effect || !outboundChannelForEffect(effect.kind)) {
+        return { outcome: "rejected", reason: "not_found" } as const;
+      }
+      if (effect.status !== "intended") {
+        return { outcome: "rejected", reason: "conflict" } as const;
+      }
+      const existing = await tx.outboundDraftRevision.findMany({
+        where: { interventionId: row.id },
+        orderBy: { revision: "asc" },
+        select: {
+          revision: true,
+          recipients: true,
+          subject: true,
+          body: true,
+          fingerprint: true,
+          createdAt: true,
+        },
+      });
+      const latestRevision = existing.reduce((max, row) => Math.max(max, row.revision), 1);
+      if (latestRevision !== input.expectedRevision) {
+        return { outcome: "rejected", reason: "conflict" } as const;
+      }
+      const content = OutboundDraftContentSchema.parse({
+        recipients: input.recipients,
+        subject: input.subject,
+        body: input.body,
+      });
+      const fingerprint = outboundDraftFingerprint(content);
+      const nextRevision = latestRevision + 1;
+      try {
+        // The effect request is about to move; snapshot the original as r1 first
+        // so the immutable audit keeps every body the user could have confirmed.
+        if (!existing.some((row) => row.revision === 1)) {
+          const original = outboundDraftContentFromEffectRequest(effect.request);
+          if (!original) return { outcome: "rejected", reason: "conflict" } as const;
+          await tx.outboundDraftRevision.create({
+            data: {
+              interventionId: row.id,
+              revision: 1,
+              recipients: original.recipients as Prisma.InputJsonValue,
+              subject: original.subject,
+              body: original.body,
+              fingerprint: outboundDraftFingerprint(original),
+              createdAt: effect.createdAt,
+            },
+          });
+        }
         await tx.outboundDraftRevision.create({
           data: {
             interventionId: row.id,
-            revision: 1,
-            recipients: original.recipients as Prisma.InputJsonValue,
-            subject: original.subject,
-            body: original.body,
-            fingerprint: outboundDraftFingerprint(original),
-            createdAt: effect.createdAt,
+            revision: nextRevision,
+            recipients: content.recipients as Prisma.InputJsonValue,
+            subject: content.subject,
+            body: content.body,
+            fingerprint,
           },
         });
-      }
-      created = await tx.outboundDraftRevision.create({
-        data: {
-          interventionId: row.id,
-          revision: nextRevision,
-          recipients: content.recipients as Prisma.InputJsonValue,
-          subject: content.subject,
-          body: content.body,
-          fingerprint,
-        },
-        select: { createdAt: true },
-      });
-    } catch (error) {
-      if (typeof error === "object" && error && "code" in error && error.code === "P2002") {
-        return { outcome: "rejected", reason: "conflict" } as const;
-      }
-      throw error;
-    }
-    const moved = await tx.externalEffect.updateMany({
-      where: { id: effect.id, status: "intended" },
-      data: {
-        request: {
-          to: [...content.recipients],
-          subject: content.subject,
-          text: content.body,
-        } as Prisma.InputJsonValue,
-      },
-    });
-    if (moved.count !== 1) return { outcome: "rejected", reason: "conflict" } as const;
-    const detail = approvalDetail(content);
-    const presentation =
-      row.presentation && typeof row.presentation === "object" && !Array.isArray(row.presentation)
-        ? { ...(row.presentation as Record<string, unknown>), detail }
-        : { text: "", detail };
-    await tx.intervention.updateMany({
-      where: { id: row.id, status: "pending" },
-      data: { presentation: presentation as Prisma.InputJsonValue },
-    });
-    // Realtime follows the message block: the pending card rides this message.
-    let seq = 0;
-    const message = await tx.message.findFirst({
-      where: { id: row.messageId },
-      select: { id: true, blocks: true },
-    });
-    if (message) {
-      const blocks = Array.isArray(message.blocks) ? (message.blocks as unknown[]) : [];
-      const nextBlocks = blocks.map((block) => {
-        if (
-          !block ||
-          typeof block !== "object" ||
-          (block as { kind?: unknown }).kind !== "ask" ||
-          (block as { approvalEffectId?: unknown }).approvalEffectId !== effect.id
-        ) {
-          return block;
+      } catch (error) {
+        if (typeof error === "object" && error && "code" in error && error.code === "P2002") {
+          throw new OutboundDraftConflictError();
         }
-        return { ...(block as Record<string, unknown>), detail };
+        throw error;
+      }
+      const moved = await tx.externalEffect.updateMany({
+        where: { id: effect.id, status: "intended" },
+        data: {
+          request: {
+            to: [...content.recipients],
+            subject: content.subject,
+            text: content.body,
+          } as Prisma.InputJsonValue,
+        },
       });
-      await tx.message.update({
-        where: { id: message.id },
-        data: { blocks: nextBlocks as Prisma.InputJsonValue },
+      if (moved.count !== 1) throw new OutboundDraftConflictError();
+      const detail = approvalDetail(content);
+      const presentation =
+        row.presentation && typeof row.presentation === "object" && !Array.isArray(row.presentation)
+          ? { ...(row.presentation as Record<string, unknown>), detail }
+          : { text: "", detail };
+      const updated = await tx.intervention.updateMany({
+        where: { id: row.id, status: "pending" },
+        data: { presentation: presentation as Prisma.InputJsonValue },
       });
-      const event = await appendEventInTransaction(tx, {
-        spaceId: row.spaceId,
-        threadId: row.threadId,
-        botId: row.botId,
-        runId: row.runId,
-        type: "thread.message.updated",
-        payload: { messageId: message.id, role: "bot", blocks: nextBlocks },
+      if (updated.count !== 1) throw new OutboundDraftConflictError();
+      // Realtime follows the message block: the pending card rides this message.
+      let seq = 0;
+      const message = await tx.message.findFirst({
+        where: { id: row.messageId },
+        select: { id: true, blocks: true },
       });
-      seq = event.seq;
+      if (message) {
+        const blocks = Array.isArray(message.blocks) ? (message.blocks as unknown[]) : [];
+        const nextBlocks = blocks.map((block) => {
+          if (
+            !block ||
+            typeof block !== "object" ||
+            (block as { kind?: unknown }).kind !== "ask" ||
+            (block as { approvalEffectId?: unknown }).approvalEffectId !== effect.id
+          ) {
+            return block;
+          }
+          return { ...(block as Record<string, unknown>), detail };
+        });
+        await tx.message.update({
+          where: { id: message.id },
+          data: { blocks: nextBlocks as Prisma.InputJsonValue },
+        });
+        const event = await appendEventInTransaction(tx, {
+          spaceId: row.spaceId,
+          threadId: row.threadId,
+          botId: row.botId,
+          runId: row.runId,
+          type: "thread.message.updated",
+          payload: { messageId: message.id, role: "bot", blocks: nextBlocks },
+        });
+        seq = event.seq;
+      }
+      const rowsAfter = await tx.outboundDraftRevision.findMany({
+        where: { interventionId: row.id },
+        orderBy: { revision: "asc" },
+        select: {
+          revision: true,
+          recipients: true,
+          subject: true,
+          body: true,
+          fingerprint: true,
+          createdAt: true,
+        },
+      });
+      const state = buildState(
+        {
+          ...effect,
+          request: { to: [...content.recipients], subject: content.subject, text: content.body },
+        },
+        rowsAfter,
+      );
+      if (!state) throw new OutboundDraftConflictError();
+      return { outcome: "updated", state, threadId: row.threadId, seq } as const;
+    }, OUTBOUND_DRAFT_TRANSACTION);
+  } catch (error) {
+    if (error instanceof OutboundDraftConflictError) {
+      return { outcome: "rejected", reason: "conflict" };
     }
-    const rowsAfter = await tx.outboundDraftRevision.findMany({
-      where: { interventionId: row.id },
-      orderBy: { revision: "asc" },
-      select: {
-        revision: true,
-        recipients: true,
-        subject: true,
-        body: true,
-        fingerprint: true,
-        createdAt: true,
-      },
-    });
-    const state = buildState(
-      {
-        ...effect,
-        request: { to: [...content.recipients], subject: content.subject, text: content.body },
-      },
-      rowsAfter,
-    );
-    if (!state) return { outcome: "rejected", reason: "conflict" } as const;
-    return { outcome: "updated", state, threadId: row.threadId, seq } as const;
-  });
+    throw error;
+  }
 }

@@ -1,5 +1,10 @@
 import { t } from "@lingui/core/macro";
-import type { ActionApprovalView, OutboundDraftState } from "@rakazo/contracts";
+import {
+  type ActionApprovalView,
+  OUTBOUND_DRAFT_MAX_RECIPIENTS,
+  type OutboundDraftState,
+  outboundDraftRecipientIssue,
+} from "@rakazo/contracts";
 import { abortableDelay } from "@rakazo/core";
 import {
   Button,
@@ -407,8 +412,21 @@ function OutboundApprovalCard({
       .split(/[\n,]/)
       .map((value) => value.trim())
       .filter(Boolean);
-    if (recipients.length === 0 || !subjectText.trim() || !bodyText.trim()) {
-      setEditError(t`Recipients, subject, and body cannot be empty.`);
+    const recipientIssue = outboundDraftRecipientIssue(recipients);
+    if (recipientIssue) {
+      setEditError(
+        recipientIssue === "duplicate"
+          ? t`Recipient addresses must be unique.`
+          : recipientIssue === "too_many"
+            ? t`Use at most ${OUTBOUND_DRAFT_MAX_RECIPIENTS} recipients.`
+            : recipientIssue === "empty"
+              ? t`Add at least one recipient.`
+              : t`Enter valid email addresses.`,
+      );
+      return;
+    }
+    if (!subjectText.trim() || !bodyText.trim()) {
+      setEditError(t`Subject and body cannot be empty.`);
       return;
     }
     setSaving(true);

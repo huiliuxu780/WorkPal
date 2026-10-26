@@ -46,11 +46,11 @@ import {
   insertPausedIntervention,
   interventionStore,
   legacyMessageId,
-  lockInterventionThreads,
   type ResolveInterventionOutcome,
   resolveInterventionInTransaction,
   settleAnsweredIntervention,
 } from "./interventions.js";
+import { lockInterventionThreads } from "./locks.js";
 import { invalidateThreadMemoryEvidence } from "./memory-facts.js";
 import {
   assertRunCanWriteHistory,
