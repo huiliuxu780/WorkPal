@@ -224,6 +224,228 @@ describe.skipIf(!databaseAvailable)("AG-03 scenario contracts on the production 
     120_000,
   );
 
+  // --- RT-27/U03: one active AgentScope Run takes the steering ------------------
+  it(
+    "RT-27 steers the only active run and answers it once",
+    async () => {
+      let releaseHold: (() => void) | undefined;
+      let markOpen: () => void = () => undefined;
+      const opened = new Promise<void>((resolve) => {
+        markOpen = resolve;
+      });
+      const model = await startModelEmulator({
+        apiKey: fixtureKey,
+        steps: [
+          {
+            expect(request) {
+              expect(JSON.stringify(request.messages)).toContain("first AgentScope request");
+            },
+            response: {
+              type: "hold",
+              text: "Working on the first request.",
+              onOpen(release) {
+                releaseHold = release;
+                markOpen();
+              },
+            },
+          },
+          {
+            expect(request) {
+              // The steering message is carried into the continuation turn.
+              expect(JSON.stringify(request.messages)).toContain("also consider the footer");
+            },
+            response: { type: "text", text: "First request and steering are both handled." },
+          },
+        ],
+      });
+      try {
+        const cookie = await signup("rt27u03");
+        await connectModel(cookie, model);
+        const bot = await createBot(cookie, model, "Steering fixture");
+        const first = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "first AgentScope request",
+        });
+        await opened;
+        await waitForRun(first.runId, "running");
+        const run = await handles.prisma.run.findUniqueOrThrow({ where: { id: first.runId } });
+        const tasksBefore = await handles.prisma.task.count({ where: { threadId: run.threadId } });
+        const runsBefore = await handles.prisma.run.count({ where: { threadId: run.threadId } });
+
+        const second = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "also consider the footer",
+        });
+        expect(second.runId).toBe(first.runId);
+        const steering = await handles.prisma.steeringMessage.findMany({
+          where: { runId: first.runId, message: { threadId: run.threadId } },
+        });
+        expect(steering).toHaveLength(1);
+        // Exactly one candidate: no second Task or Run for the steering request.
+        expect(await handles.prisma.task.count({ where: { threadId: run.threadId } })).toBe(
+          tasksBefore,
+        );
+        expect(await handles.prisma.run.count({ where: { threadId: run.threadId } })).toBe(
+          runsBefore,
+        );
+
+        releaseHold!();
+        await expect
+          .poll(
+            async () => {
+              const continuation = await handles.prisma.run.findFirst({
+                where: {
+                  threadId: run.threadId,
+                  id: { not: first.runId },
+                  trigger: "follow_up",
+                },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              });
+              return continuation?.status ?? "missing";
+            },
+            { timeout: 60_000, interval: 100 },
+          )
+          .toBe("completed");
+        const continuation = await handles.prisma.run.findFirstOrThrow({
+          where: {
+            threadId: run.threadId,
+            id: { not: first.runId },
+            trigger: "follow_up",
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        });
+        expect(continuation.trigger).toBe("follow_up");
+        // The continuation claimed the steering row and the run finalized it.
+        expect(
+          await handles.prisma.steeringMessage.findUnique({ where: { id: steering[0]!.id } }),
+        ).toBeNull();
+        expect(continuation.sourceMessageId).toBe(steering[0]!.messageId);
+        expect(await handles.prisma.run.findUniqueOrThrow({ where: { id: first.runId } })).toMatchObject(
+          { status: "completed" },
+        );
+        model.assertComplete();
+      } finally {
+        await model.close();
+      }
+    },
+    120_000,
+  );
+
+  // --- RT-27/C03: a second candidate queues behind the admitted Run ------------
+  it(
+    "RT-27 queues an independent run behind the busy AgentScope session",
+    async () => {
+      let releaseHold: (() => void) | undefined;
+      let markOpen: () => void = () => undefined;
+      const opened = new Promise<void>((resolve) => {
+        markOpen = resolve;
+      });
+      const model = await startModelEmulator({
+        apiKey: fixtureKey,
+        steps: [
+          {
+            expect(request) {
+              expect(JSON.stringify(request.messages)).toContain("first AgentScope request");
+            },
+            response: {
+              type: "hold",
+              text: "Working on the first request.",
+              onOpen(release) {
+                releaseHold = release;
+                markOpen();
+              },
+            },
+          },
+          {
+            expect(request) {
+              expect(JSON.stringify(request.messages)).toContain("second AgentScope request");
+            },
+            response: { type: "text", text: "The second request ran after the session freed." },
+          },
+        ],
+      });
+      try {
+        const cookie = await signup("rt27c03");
+        await connectModel(cookie, model);
+        const bot = await createBot(cookie, model, "Admission fixture");
+        const first = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "first AgentScope request",
+        });
+        await opened;
+        await waitForRun(first.runId, "running");
+        const running = await handles.prisma.run.findUniqueOrThrow({
+          where: { id: first.runId },
+        });
+        // A second eligible candidate forces the new message into its own Run
+        // instead of steering either active turn. Its retry window keeps the
+        // fixture out of the Worker's queued sweep, so only the new Run competes
+        // for the session this test is about.
+        const otherTask = await handles.prisma.task.create({
+          data: {
+            spaceId: running.spaceId,
+            userId: running.userId,
+            botId: running.botId,
+            threadId: running.threadId,
+            prompt: "older queued candidate",
+            status: "queued",
+          },
+        });
+        await handles.prisma.run.create({
+          data: {
+            spaceId: running.spaceId,
+            userId: running.userId,
+            botId: running.botId,
+            threadId: running.threadId,
+            taskId: otherTask.id,
+            status: "queued",
+            trigger: "follow_up",
+            retryAt: new Date(Date.now() + 60 * 60_000),
+          },
+        });
+
+        const second = await rpc<{ runId: string }>(cookie, "threads/send", {
+          botId: bot.id,
+          text: "second AgentScope request",
+        });
+        expect(second.runId).not.toBe(first.runId);
+        expect(
+          await handles.prisma.steeringMessage.count({ where: { runId: first.runId } }),
+        ).toBe(0);
+        // The queued Run cannot reach AgentScope while the first Run owns the
+        // Bot's shared execution resources, and it is not recorded as a failure.
+        await expect
+          .poll(
+            async () => {
+              const queued = await handles.prisma.run.findUniqueOrThrow({
+                where: { id: second.runId },
+              });
+              return queued.status;
+            },
+            { timeout: 30_000, interval: 100 },
+          )
+          .toBe("queued");
+        expect(model.requests).toHaveLength(1);
+        expect(
+          await handles.prisma.event.count({
+            where: { runId: second.runId, type: "run.failed" },
+          }),
+        ).toBe(0);
+        expect(await handles.prisma.attempt.count({ where: { runId: second.runId } })).toBe(0);
+
+        releaseHold!();
+        await waitForRun(second.runId, "completed", 90_000);
+        expect(await handles.prisma.run.findUniqueOrThrow({ where: { id: first.runId } })).toMatchObject(
+          { status: "completed" },
+        );
+        model.assertComplete();
+      } finally {
+        await model.close();
+      }
+    },
+    150_000,
+  );
+
   // --- S03-C2: creation intro can only speak ----------------------------------
   it(
     "S03-C2 intro run has no tool surface",

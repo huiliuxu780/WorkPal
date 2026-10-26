@@ -43,6 +43,7 @@ export * from "./memory-content-safety.js";
 export * from "./message-inlines.js";
 export * from "./message-pages.js";
 export * from "./message-reactions.js";
+export * from "./message-routing.js";
 export * from "./message-visibility.js";
 export * from "./messaging-commands.js";
 export * from "./messaging-prompts.js";

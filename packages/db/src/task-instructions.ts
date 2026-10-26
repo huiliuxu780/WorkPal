@@ -17,7 +17,7 @@ import {
   TaskInstructionEnvelopeSchema,
   TaskInstructionViewSchema,
 } from "@rakazo/contracts";
-import { pickExecutionResult } from "@rakazo/core";
+import { type AmendmentTargetFact, pickExecutionResult } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
 import { appendEventInTransaction } from "./events.js";
 import { createThreadMessageInTransaction } from "./messages.js";
@@ -800,6 +800,53 @@ export async function applyTaskAmendmentInTransaction(
     data: { botId: targetRun.botId, runId: associatedRunId },
   });
   return { ...appended, application: decision };
+}
+
+/**
+ * RT-27 read-only route fact for an explicitly addressed Task. The query is
+ * scoped by Space, Thread, owner, and (when known) Bot so a foreign Task is
+ * indistinguishable from a missing one. `amendable` is false when the Task
+ * exists but its Run lineage or status projection cannot take a revision; the
+ * amendment itself re-validates under locks.
+ *
+ * RT-27 also rejects terminal Tasks at the routing layer: RT-14 can record or
+ * follow up on a terminal Task internally, but an explicit chat supplement is
+ * not the retry/recovery path for work that already finished.
+ */
+export async function readAmendmentTargetInTransaction(
+  tx: Prisma.TransactionClient,
+  input: {
+    targetTaskId: string;
+    spaceId: string;
+    threadId: string;
+    actorUserId: string;
+    botId?: string;
+  },
+): Promise<AmendmentTargetFact | null> {
+  const task = await tx.task.findFirst({
+    where: {
+      id: input.targetTaskId,
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      userId: input.actorUserId,
+      ...(input.botId ? { botId: input.botId } : {}),
+    },
+    select: TASK_SELECT,
+  });
+  if (!task) return null;
+  const runs = await tx.run.findMany({
+    where: { taskId: task.id },
+    select: TASK_RUN_SELECT,
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  const targetRun = boundTaskRun(runs);
+  if (!targetRun) return null;
+  const status = RunStatus.safeParse(targetRun.status);
+  const terminal =
+    status.success &&
+    (status.data === "completed" || status.data === "failed" || status.data === "cancelled");
+  const amendable = status.success && !terminal && task.status === expectedTaskStatus(status.data);
+  return { taskId: task.id, botId: task.botId, amendable };
 }
 
 /** Read the current (or requested historical) envelope without writing anything. */

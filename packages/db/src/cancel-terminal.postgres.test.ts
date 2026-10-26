@@ -7,7 +7,7 @@ import {
   settleReleasedSteeringForBot,
   supersededCancelPolicy,
 } from "./cancel-terminal.js";
-import type { PrismaClient } from "./client.js";
+import { createDb, type PrismaClient } from "./client.js";
 import { createThreadMessage } from "./messages.js";
 import {
   createIsolatedPostgresDatabase,
@@ -177,6 +177,40 @@ describePostgres("CANCEL-01 terminal policy (PostgreSQL)", () => {
     expect(await prisma.cancelOutcomeOutbox.count({ where: { runId: run.id } })).toBe(1);
     expect(await visibleText()).not.toMatch(FORBIDDEN_VISIBLE);
     expect(calls).toBeTruthy();
+  });
+
+  it("does not duplicate a continuation after a Worker restart", async () => {
+    const run = await delegatedRun("waiting_input");
+    await steer(run.id, "continue after restart");
+    await expireWaitingRuns(prisma);
+    const continuations = await prisma.run.findMany({
+      where: { threadId, botId, status: "queued" },
+      select: { id: true },
+    });
+    expect(continuations).toHaveLength(1);
+
+    // A restarted Worker is a fresh client with no in-memory state: the
+    // continuation identity has to come from the committed rows alone.
+    const restarted = createDb(isolated!.databaseUrl, {
+      applicationName: "cancel01-restart",
+    });
+    try {
+      await expireWaitingRuns(restarted.prisma);
+      expect(await settleReleasedSteeringForBot(restarted.prisma, botId)).toEqual([]);
+    } finally {
+      await restarted.prisma.$disconnect().catch(() => undefined);
+      await restarted.pool.end().catch(() => undefined);
+    }
+
+    expect(
+      await prisma.run.findMany({
+        where: { threadId, botId, status: "queued" },
+        select: { id: true },
+      }),
+    ).toEqual(continuations);
+    const pending = await prisma.steeringMessage.findMany({ where: { botId } });
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.runId).toBe(continuations[0]?.id);
   });
 
   it("abandons pending steering when stop finds no active run", async () => {
