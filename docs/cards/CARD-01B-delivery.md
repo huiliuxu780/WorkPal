@@ -68,7 +68,7 @@
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
 | `pnpm test:postgres` | 49/49 files、432 tests 通过（迁移后的独立 `workpal_e2e_*` 库） |
 | Scripted E2E | `card-ui-interactions.spec.ts|peer-messages.spec.ts` 5/5 通过（含 A10 同卡编辑） |
-| 视觉证据 | 19 张实际页面截图保存在 `docs/cards/evidence/card-ui-interactions/`，对照记录见 `CARD-01B-visual-evidence.md` |
+| 视觉证据 | 20 张实际页面截图保存在 `docs/cards/evidence/card-ui-interactions/`，对照记录见 `CARD-01B-visual-evidence.md` |
 | `git diff --check` | 通过 |
 | Gate-off 回归 | transcript 测试证明 gate off 时保留 legacy app/MCP/skill 卡片并忽略 `interactions` |
 | Gate-on 回归 | transcript 测试证明三张 legacy block 被抑制，新卡片位于 execution shell 且不出现双卡 |

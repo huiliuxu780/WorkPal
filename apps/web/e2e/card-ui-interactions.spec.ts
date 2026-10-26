@@ -195,5 +195,9 @@ test("edits and confirms an A10 outbound draft in the same card", async ({ page 
   await expect(card).toBeVisible();
   await expect(card).toContainText("r2");
   await card.scrollIntoViewIfNeeded();
+  await captureScreenshot(page, testInfo, "card-ui-outbound-r2-card-375");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await card.scrollIntoViewIfNeeded();
   await captureScreenshot(page, testInfo, "card-ui-outbound-r2-card-desktop");
 });

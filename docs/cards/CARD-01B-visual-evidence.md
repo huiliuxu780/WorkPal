@@ -30,7 +30,8 @@
 | 发送确认页（revision + fingerprint） | ![A10 confirm](./evidence/card-ui-interactions/card-ui-outbound-confirm-desktop.png) | [A10 detail](./source/card-unification-v2/mockup/cards-hifi-v4/shot-a-detail.png) |
 | 发送确认页（390） | ![A10 confirm 390](./evidence/card-ui-interactions/card-ui-outbound-confirm-390.png) | [mobile 390](./source/card-unification-v2/mockup/cards-hifi-v4/shot-mobile-390.png) |
 | 发送确认页（375） | ![A10 confirm 375](./evidence/card-ui-interactions/card-ui-outbound-confirm-375.png) | [mobile 375](./source/card-unification-v2/mockup/cards-hifi-v4/shot-mobile-375.png) |
-| 关闭确认页后仍为待处理 r2 | ![A10 r2 card](./evidence/card-ui-interactions/card-ui-outbound-r2-card-desktop.png) | [A10 cards scene](./source/card-unification-v2/mockup/cards-hifi-v4/shot-cards.png) |
+| 关闭确认页后仍为待处理 r2（桌面） | ![A10 r2 card](./evidence/card-ui-interactions/card-ui-outbound-r2-card-desktop.png) | [A10 cards scene](./source/card-unification-v2/mockup/cards-hifi-v4/shot-cards.png) |
+| 关闭确认页后仍为待处理 r2（375） | ![A10 r2 card 375](./evidence/card-ui-interactions/card-ui-outbound-r2-card-375.png) | [mobile 375](./source/card-unification-v2/mockup/cards-hifi-v4/shot-mobile-375.png) |
 
 观察结果：
 
