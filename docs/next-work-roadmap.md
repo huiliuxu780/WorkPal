@@ -96,7 +96,7 @@ This is the cross-program critical path. Each item still obeys its own task-card
 3. 并行：**CARD-01A**（协议、投影和默认关闭的 gate）、**RT-27**（确定性 steering 与 session 排队；仍受其卡片的 RT-14/RT-25 依赖约束）、**PD-01P**（集中 message→runs 投影）。
 4. UI 串行：**PD-01F** → **RT-09**。
 5. **CARD-01B** — Card Shell、Interaction renderer 和统一排序；依赖 CARD-01A 与 RT-09，保留 private receipt 非卡片语义。
-6. **CARD-01C** — DisplayBlock registry、详情和安全 HTML；已在 `codex/card-display-content` 交付，九类真实数据路径、页面 E2E 与 1440/390/375 截图齐备，PR 等待合并指令；只通过 B 冻结的接入接口进入 Shell。
+6. **CARD-01C** — DisplayBlock registry、详情和安全 HTML；已在 `codex/card-display-content` 交付（[PR #145](https://github.com/huiliuxu780/WorkPal/pull/145)），九类真实数据路径、页面 E2E 与 1440/390/375 截图齐备，PR 等待合并指令；只通过 B 冻结的接入接口进入 Shell。
 7. 并行：**RT-12**（依赖 RT-04、RT-11、CARD-01A、CARD-01B；严格 `group_membership`，不得临时实现第二套审批卡）、**CARD-01D**（attention queue 与通知；排除 receipt/private receipt/task_status/PD-01）、**VERIFY-01**。
 8. AgentScope 解锁链：新版本同时证明三项最低能力并重新通过 RT-15 后，**RT-16** → **RT-17** → **RT-18**。
 9. **RT-19** 与 **RT-20**。

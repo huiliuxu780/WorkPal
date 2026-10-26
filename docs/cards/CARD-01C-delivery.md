@@ -1,7 +1,8 @@
 # CARD-01C delivery record
 
-状态：`in-review`（PR 未合并）
+状态：`in-review`（PR #145 未合并）
 
+- PR：https://github.com/huiliuxu780/WorkPal/pull/145
 - 分支：`codex/card-display-content`
 - Base：`dc9be3811d1d89129e98521bb57fe27d11f95c69`（main，PR #144 合并后）
 - 实现 head：以分支顶端为准（本文件随实现提交）

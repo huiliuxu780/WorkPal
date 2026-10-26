@@ -2,7 +2,7 @@
 
 状态：`in-review`
 
-交付记录：[CARD-01C delivery](../cards/CARD-01C-delivery.md) · [visual evidence](../cards/CARD-01C-visual-evidence.md)。
+交付记录：[CARD-01C delivery](../cards/CARD-01C-delivery.md) · [visual evidence](../cards/CARD-01C-visual-evidence.md) · [PR #145](https://github.com/huiliuxu780/WorkPal/pull/145)。
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
