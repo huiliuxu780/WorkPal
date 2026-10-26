@@ -1,5 +1,7 @@
 import type {
   ComputerStatus,
+  InteractionView,
+  MessageBlock,
   ProductEvent,
   Run,
   RunStatus,
@@ -8,7 +10,6 @@ import type {
   ThreadSnapshot,
 } from "@rakazo/contracts";
 import {
-  type InteractionView,
   InterventionEventPayloadSchema,
   type InterventionView,
   interactionViewFromIntervention,
@@ -714,7 +715,12 @@ function reduceThreadSnapshotBase(
     const liveId = progressMessageId(event);
     const { remaining } = takeLiveMessage(prev.messages, liveId);
     const without = remaining.filter((message) => !replacedSubagent(message, replacedSubagentIds));
-    return { ...prev, cursor: event.seq, messages: upsertMessageById(without, next) };
+    const nextInteractions =
+      event.type === "thread.message.updated" && prev.interactions
+        ? reconcileMessageInteractions(prev.interactions, id, blocks)
+        : null;
+    const nextSnapshot = { ...prev, cursor: event.seq, messages: upsertMessageById(without, next) };
+    return nextInteractions ? { ...nextSnapshot, interactions: nextInteractions } : nextSnapshot;
   }
   if (event.type === "intervention.created" || event.type === "intervention.resolved") {
     if (event.seq <= prev.cursor) return prev;
@@ -764,6 +770,63 @@ function reduceThreadSnapshotBase(
     };
   }
   return prev;
+}
+
+function messageBlockInteractionStatus(block: MessageBlock): InteractionView["status"] | null {
+  if (block.kind === "app_connect") {
+    return block.status === "pending" ? "pending" : "answered";
+  }
+  if (block.kind === "mcp_approval") {
+    if (block.status === "connected") return "answered";
+    if (block.status === "dismissed") return "cancelled";
+    return "pending";
+  }
+  if (block.kind === "skill_draft") {
+    if (block.status === "draft") return "pending";
+    if (block.status === "discarded") return "cancelled";
+    return "answered";
+  }
+  return null;
+}
+
+function messageBlockDecision(status: InteractionView["status"]): "approved" | "denied" | null {
+  if (status === "answered") return "approved";
+  if (status === "cancelled") return "denied";
+  return null;
+}
+
+/**
+ * Legacy message-backed approvals (app connection, MCP assignment, skill
+ * draft) have no Intervention event when another tab settles them; their
+ * message block changes instead. Reconcile the strict view from that block.
+ */
+function reconcileMessageInteractions(
+  interactions: readonly InteractionView[],
+  messageId: string,
+  blocks: readonly MessageBlock[],
+): InteractionView[] | null {
+  let changed = false;
+  const next = interactions.map((interaction): InteractionView => {
+    if (
+      interaction.kind === "session_control" ||
+      interaction.source.messageId !== messageId ||
+      !interaction.interactionId.startsWith("legacy_block:")
+    ) {
+      return interaction;
+    }
+    const [, kind, , rawIndex] = interaction.interactionId.split(":");
+    const block = blocks[Number(rawIndex)];
+    if (!block || block.kind !== kind) return interaction;
+    const status = messageBlockInteractionStatus(block);
+    if (!status || status === interaction.status) return interaction;
+    if (interaction.status !== "pending" && status === "pending") return interaction;
+    changed = true;
+    if (interaction.kind === "action_approval") {
+      return { ...interaction, status, decision: messageBlockDecision(status) };
+    }
+    return { ...interaction, status };
+  });
+  return changed ? next : null;
 }
 
 function interactionFromLiveEvent(

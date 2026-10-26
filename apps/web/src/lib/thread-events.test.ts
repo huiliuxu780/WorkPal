@@ -2087,6 +2087,71 @@ describe("activity projection reduction (Phase 4)", () => {
     });
   });
 
+  it("settles a message-backed skill card when another tab updates the message", () => {
+    const playbook = {
+      whenToUse: "Every Friday.",
+      inputs: [],
+      steps: ["Summarize"],
+      howToCheck: "Five bullets",
+      whatToReturn: "Digest",
+      approvalBoundaries: "Never send without approval.",
+      failureHandling: "Report missing sources.",
+    };
+    const pending: InteractionView = {
+      kind: "action_approval",
+      interactionId: "legacy_block:skill_draft:message-1:0",
+      revision: 1,
+      status: "pending",
+      createdAt: "2026-10-12T00:00:00.000Z",
+      expiresAt: null,
+      attentionAt: "2026-10-12T00:00:00.000Z",
+      source: {
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        messageId: "message-1",
+        runId: "run-1",
+        botId: "bot-1",
+      },
+      presentation: { text: "Digest", detail: "Friday summary" },
+      decision: null,
+      approval: {
+        kind: "skill_save",
+        authority: "business_transaction",
+        skillId: "skill-1",
+        name: "Digest",
+        goal: "Friday summary",
+        contentRevision: 1,
+        playbook,
+      },
+    };
+    const updated = reduceThreadSnapshot(
+      { ...snapshot([]), interactions: [pending] },
+      event({
+        type: "thread.message.updated",
+        seq: 4,
+        payload: {
+          messageId: "message-1",
+          role: "bot",
+          blocks: [
+            {
+              kind: "skill_draft",
+              skillId: "skill-1",
+              name: "Digest",
+              goal: "Friday summary",
+              playbook,
+              status: "discarded",
+            },
+          ],
+        },
+      }),
+    );
+    expect(updated?.interactions?.[0]).toMatchObject({
+      interactionId: "legacy_block:skill_draft:message-1:0",
+      status: "cancelled",
+      decision: "denied",
+    });
+  });
+
   it("carries the plan review projection and its decision through the reducer (UX-02)", () => {
     const payload = {
       interventionId: "intervention-plan",
