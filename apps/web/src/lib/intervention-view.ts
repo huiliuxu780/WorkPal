@@ -84,6 +84,26 @@ export function coveredAskMessageIdsFromInteractions(
   return covered;
 }
 
+/**
+ * The thread projection only sees messages in the loaded page; the execution
+ * snapshot also projects its own Run's messages, which may be paged out. Merge
+ * detail views in so an expanded execution can still show its approval cards.
+ * The thread view wins at an equal revision (it is the live lifecycle); a
+ * strictly newer detail view replaces it.
+ */
+export function mergeInteractionViews(
+  thread: readonly InteractionView[] | undefined,
+  detail: readonly InteractionView[] | undefined,
+): InteractionView[] | undefined {
+  if (!thread) return detail ? [...detail] : undefined;
+  const byId = new Map(thread.map((view) => [view.interactionId, view]));
+  for (const view of detail ?? []) {
+    const current = byId.get(view.interactionId);
+    if (!current || view.revision > current.revision) byId.set(view.interactionId, view);
+  }
+  return [...byId.values()];
+}
+
 function interactionKindToInterventionKind(
   kind: InteractionView["kind"],
 ): "approval" | "input" | "plan_review" | null {

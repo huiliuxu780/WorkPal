@@ -80,6 +80,7 @@ async function post(
       role: "bot",
       originKind: "system",
       blocks,
+      botId: target.botId,
     });
     const event = await appendEventInTransaction(tx, {
       spaceId: target.spaceId,
@@ -149,6 +150,7 @@ export async function promptFocus(
       role: "bot",
       originKind: "system",
       blocks,
+      botId: target.botId,
     });
     const event = await appendEventInTransaction(tx, {
       spaceId: target.spaceId,

@@ -2,7 +2,7 @@ import type * as db from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { chooseFocus, markAppConnected } from "./onboarding.js";
 
-const posted = vi.hoisted(() => [] as Array<{ blocks: unknown[] }>);
+const posted = vi.hoisted(() => [] as Array<{ blocks: unknown[]; botId?: string }>);
 vi.mock("@rakazo/db", async (original) => ({
   ...(await original<typeof db>()),
   createThreadMessageInTransaction: vi.fn(async (_tx, input) => {
@@ -57,6 +57,8 @@ describe("onboarding connection suggestions", () => {
     ).toEqual([
       expect.objectContaining({ connectorId: "pipedream", provider: "slack", name: "Slack" }),
     ]);
+    // Onboarding cards carry the owning Bot so gate-on authorization can bind.
+    expect(posted.every((message) => message.botId === "bot")).toBe(true);
   });
 });
 

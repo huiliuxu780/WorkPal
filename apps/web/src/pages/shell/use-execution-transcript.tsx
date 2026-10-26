@@ -49,6 +49,7 @@ import {
   coveredAskMessageIds,
   coveredAskMessageIdsFromInteractions,
   mergeInterventionViews,
+  mergeInteractionViews,
   pendingInteractionKindsForRun,
   pendingInterventionKindsForRun,
 } from "../../lib/intervention-view";
@@ -657,7 +658,9 @@ export function useExecutionTranscript({
         (view) => view.runId === execution.runId,
       );
       const scopedInteractions = cardsUnifiedV2
-        ? (interactions ?? []).filter((view) => view.source.runId === execution.runId)
+        ? mergeInteractionViews(interactions, detail?.interactions)?.filter(
+            (view) => view.source.runId === execution.runId,
+          )
         : undefined;
       const controlled = currentSummary !== null;
       const rev = currentSummary?.rev ?? 0;

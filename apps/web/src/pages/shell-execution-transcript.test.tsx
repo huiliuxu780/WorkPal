@@ -1700,6 +1700,68 @@ describe("CARD-01B gate integration", () => {
     expect(host.textContent).not.toContain("LEGACY-APP-COPY");
   });
 
+  it("restores a message-backed card from the execution detail when its message is paged out", async () => {
+    rpcMocks.executionSnapshot.mockResolvedValue({
+      summary: summary({
+        runId: "run-detail",
+        rev: 2,
+        status: "completed",
+        title: "DETAIL-RUN",
+        anchorMessageId: "m2",
+      }),
+      steps: { items: [step("run-detail", "detail-step", "DETAIL-STEP", 0)], truncated: false },
+      todos: { items: [], truncated: false },
+      timeline: [],
+      activityPage: { items: [], olderCursor: null, truncated: false },
+      interventions: [],
+      interactions: [
+        {
+          ...mcpAssignmentInteraction(),
+          status: "answered",
+          decision: "approved",
+          source: {
+            spaceId: "space-1",
+            threadId: THREAD,
+            messageId: "m-paged-out",
+            runId: "run-detail",
+            botId: BOT,
+          },
+        },
+      ],
+    } as never);
+    const host = renderTranscript({
+      messages: [
+        message("m1", "user", [{ kind: "text", text: "USER-DETAIL" }]),
+        message("m2", "bot", [{ kind: "text", text: "DETAIL-READY" }], "run-detail"),
+      ],
+      steps: [step("run-detail", "thread-step", "THREAD-STEP", 0)],
+      runs: [run("run-detail", "completed")],
+      executions: [
+        summary({ runId: "run-detail", rev: 2, status: "completed", anchorMessageId: "m2" }),
+      ],
+      interactions: [],
+      cardsUnifiedV2: true,
+    });
+
+    const card = host.querySelector('article[data-testid="execution-card"]');
+    expect(card).not.toBeNull();
+    act(() => {
+      card
+        ?.querySelector<HTMLElement>(".exc-entry")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await sleep(60);
+    });
+    expect(rpcMocks.executionSnapshot).toHaveBeenCalled();
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.closest('[data-testid="execution-shell"]')).not.toBeNull();
+    expect(region?.textContent).toContain("MCP assignment");
+    expect(region?.textContent).toContain("Allowed");
+    expect(host.querySelector('[data-testid="mcp-allow-all-tools"]')).not.toBeNull();
+  });
+
   it("keeps the legacy blocks and ignores the projection when the gate is off", () => {
     const host = renderTranscript({
       ...card01BProps,

@@ -20,6 +20,8 @@
 - A8 丢弃是持久终态：`skill_draft.status` 新增 `discarded`；`skills.remove` 在同一事务内把消息 block 标记为 `discarded`、追加 `thread.message.updated` 事件并删除技能记录。投影把 `discarded` 映射为 `cancelled`，刷新后仍显示“Discarded”且没有保存/丢弃按钮。
 - `group_membership` 不套 Card Shell，继续使用 X-GROUP 内联卡；`GroupMembershipFailureCard` 独立失败态。无成员变更 RPC 时按钮禁用并明确说明尚不可用。
 - `session_control` 接管/交还独立显示；关闭面板不等于交还，交还必须点击明确动作。
+- App authorization 卡优先使用 interaction 的 `source.botId`；onboarding 历史消息未记录 botId 时回退到当前对话 Bot，授权与 `appConnected` 使用同一 Bot。
+- Execution detail 的 interactions 按 `interactionId` 与 revision 合并进线程 projection；消息已翻出当前页时，展开 Run 仍能显示其中的卡片。
 
 ### RT-09 private pair
 
@@ -53,8 +55,8 @@
 | --- | --- |
 | `pnpm check` | 18/18 通过 |
 | `pnpm lint` | 0 error（仓库既有 warning/info 保留） |
-| `pnpm --filter @rakazo/web test` | 98 files / 757 tests 通过 |
-| `pnpm test:unit` | 455 files / 5484 passed / 2 skipped |
+| `pnpm --filter @rakazo/web test` | 98 files / 761 tests 通过 |
+| `pnpm test:unit` | 455 files / 5488 passed / 2 skipped |
 | `pnpm --filter @rakazo/web build` | 通过 |
 | `pnpm test:ci-select` | 99 tests 通过 |
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
@@ -65,6 +67,8 @@
 | 终态保留 | transcript 测试证明 Run 结算后 message-backed 卡仍在 shell 内，legacy block 不回潮；无 Run 的丢弃卡在 tail 保留 |
 | pair 方向 | A→B 请求为 sent、B→A 回传为 received、legacy-only wake 为 sent；overlay 同步验证作者、头像与左右位置 |
 | A8 丢弃持久化 | 服务测试验证 block→`discarded`、`thread.message.updated` 事件与删除同事务；重复丢弃/错误用户/Space 无副作用；投影为 cancelled，Web 从服务端视图恢复“Discarded”且无按钮 |
+| App authorization 归属 | onboarding post 带上 `botId`；Web 对历史无 botId 卡片回退当前对话 Bot，授权与 `appConnected` 使用同一 Bot |
+| Execution detail 合并 | 消息翻出当前页后，展开 Run 仍从 detail interactions 恢复卡片；线程 projection 在相同 revision 优先 |
 
 ### E2E 本地阻塞（需 CI 复核）
 

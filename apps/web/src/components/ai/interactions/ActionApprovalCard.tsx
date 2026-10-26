@@ -784,12 +784,14 @@ function SkillSaveCard({
 function AppAuthorizationCard({
   view,
   approval,
+  target,
   botName,
   conversationName,
   onRefresh,
 }: {
   view: ActionApprovalView;
   approval: AppAuthorizationApproval;
+  target: ArtifactTarget;
   botName?: string;
   conversationName?: string;
   onRefresh?: () => Promise<void>;
@@ -800,9 +802,13 @@ function AppAuthorizationCard({
   const attempt = useRef<AbortController | null>(null);
   useEffect(() => () => attempt.current?.abort(), []);
 
+  // Onboarding posts app cards without a message botId; the enclosing
+  // conversation is the authorized Bot and keeps those historical cards usable.
+  const ownerBotId = view.source.botId ?? ("botId" in target ? target.botId : null);
+
   const authorize = async () => {
-    if (!view.source.botId || busy) {
-      if (!view.source.botId) setError(t`This connection is not bound to a Bot.`);
+    if (!ownerBotId || busy) {
+      if (!ownerBotId) setError(t`This connection is not bound to a Bot.`);
       return;
     }
     attempt.current?.abort();
@@ -828,7 +834,7 @@ function AppAuthorizationCard({
           if (controller.signal.aborted) return;
           await rpc.onboarding
             .appConnected({
-              botId: view.source.botId,
+              botId: ownerBotId,
               provider: approval.provider,
               connectorId: approval.connectorId ?? undefined,
             })
@@ -1245,6 +1251,7 @@ export function ActionApprovalCard({
         <AppAuthorizationCard
           view={view}
           approval={approval}
+          target={target}
           botName={botName}
           conversationName={conversationName}
           onRefresh={onRefresh}

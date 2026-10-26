@@ -721,6 +721,29 @@ describe("account and assignment cards", () => {
     expect(mocks.resolveIntervention).not.toHaveBeenCalled();
   });
 
+  it("authorizes a legacy onboarding card through the enclosing Bot", async () => {
+    const host = await render(
+      <ActionApprovalCard
+        view={actionView(appAuthorization(), {
+          source: { ...base.source, botId: null },
+        })}
+        target={target}
+      />,
+    );
+
+    await act(async () =>
+      (byTestId(host, "app-authorization-approve") as HTMLButtonElement).click(),
+    );
+
+    expect(mocks.beginConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "notion", connectorId: "connector-1" }),
+    );
+    expect(mocks.appConnected).toHaveBeenCalledWith(
+      expect.objectContaining({ botId: "bot-1", provider: "notion" }),
+    );
+    expect(host.textContent).toContain("Authorized");
+  });
+
   it("exposes the allow-all-tools risk and routes to the assignment RPC", async () => {
     const host = await render(
       <ActionApprovalCard view={actionView(mcpAssignment())} target={target} />,
