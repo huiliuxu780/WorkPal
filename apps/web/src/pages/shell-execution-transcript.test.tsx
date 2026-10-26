@@ -1825,4 +1825,32 @@ describe("private pair receipt transcript", () => {
       }),
     );
   });
+
+  it("keeps a legacy nonempty sent receipt as a non-openable row without its body", () => {
+    const host = renderTranscript({
+      messages: [
+        message(
+          "m-legacy",
+          "bot",
+          [
+            {
+              kind: "bot_message_sent",
+              toBotId: "bot-2",
+              toBotName: "Analyst",
+              text: "LEGACY-PRIVATE-BODY",
+            },
+          ],
+          "run-legacy",
+        ),
+      ],
+      botNameOf: (botId) => (botId === "bot-2" ? "Analyst" : undefined),
+      onOpenPeerMessages: vi.fn(),
+    });
+
+    const row = host.querySelector('[data-testid="peer-receipt-row"]');
+    expect(row?.textContent).toContain("Messaged");
+    expect(row?.textContent).toContain("Analyst");
+    expect(host.querySelector('[data-testid="peer-receipt-unavailable"]')).not.toBeNull();
+    expect(host.textContent).not.toContain("LEGACY-PRIVATE-BODY");
+  });
 });

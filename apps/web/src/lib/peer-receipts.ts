@@ -34,9 +34,11 @@ type ReceiptBlock =
 
 function isReceiptBlock(block: MessageBlock): block is ReceiptBlock {
   if (block.kind === "collaboration_receipt") return block.target.kind === "bot";
-  // Pair-side bodies keep their text; only the empty source-thread marker is a
-  // user-visible receipt.
-  if (block.kind === "bot_message_sent") return block.text.trim() === "";
+  // Legacy private sends live in the sender's own Thread and carry the body.
+  // Group Threads never reach this helper (their sent blocks are public
+  // delegations), and pair-side bodies are read through the pair overlay, so a
+  // nonempty source-thread send is still a receipt — rendered without its text.
+  if (block.kind === "bot_message_sent") return true;
   return block.kind === "bot_message_received";
 }
 

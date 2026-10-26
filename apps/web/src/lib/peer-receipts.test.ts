@@ -66,13 +66,18 @@ describe("peer receipts", () => {
     expect(groups.groupByMessageId.size).toBe(0);
   });
 
-  it("does not swallow a pair body that happens to use bot_message_sent", () => {
+  it("keeps a legacy nonempty sent receipt without exposing its body", () => {
     const groups = groupPeerReceipts([
       message("m1", [
-        { kind: "bot_message_sent", toBotId: "bot-blue", toBotName: "Blue", text: "body" },
+        { kind: "bot_message_sent", toBotId: "bot-blue", toBotName: "Blue", text: "LEGACY-BODY" },
       ]),
     ]);
-    expect(groups.groups).toEqual([]);
+    expect(groups.groups[0]!.targets[0]).toMatchObject({
+      botId: "bot-blue",
+      destination: null,
+      sourceReceiptMessageId: "m1",
+    });
+    expect(JSON.stringify(groups)).not.toContain("LEGACY-BODY");
   });
 
   it("groups adjacent receipts from one Run and keeps each target locator", () => {

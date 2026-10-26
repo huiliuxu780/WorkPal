@@ -25,7 +25,7 @@
 
 - pair 发货时源 Thread 写入 `collaboration_receipt`，包含 `target: { kind: "bot", botId }` 与 `destination: { kind: "pair_message", pairThreadId, messageId }`；pair Thread 保留完整正文。
 - `isPeerReceiptBlocks`、消息分页准入与 peer 事件转发识别 bot-target `collaboration_receipt`。
-- 新 `PeerReceiptRow` 单行为轻回执，多目标为展开名单；legacy 无 locator 回执显示为不可打开记录，不回退到通用 Thread 拉取。
+- 新 `PeerReceiptRow` 单行为轻回执，多目标为展开名单；legacy 无 locator 回执显示为不可打开记录，不回退到通用 Thread 拉取。legacy 非空 `bot_message_sent` 仍按轻回执显示且不展示正文；群 Thread 的非空 send 仍由 `PublicDelegationMessage` 处理，因为群 Thread 不进入 receipt helper。
 - `PeerMessagesOverlay` 方向以当前展示 Bot 为准：`bot_message_sent.toBotId` 等于当前 Bot 时是收到的回传，`bot_message_received.fromBotId` 等于当前 Bot 时是自己的发出；收到的回传显示在左侧、自己的消息显示在右侧，名称和头像跟随方向。`returnToMessageId` 仍用于去除同一投递的 wake 副本。
 - `PeerMessagesOverlay` 只调用 `threads.pairMessages`，必须携带 `sourceReceiptMessageId`、pair locator 和分页 cursor；只读无输入框。
 - `readPairMessages` 初始页从最新授权消息开始，避免回执之后的回复被 target boundary 隐藏；grant 仍校验 target 与 provenance。
@@ -53,8 +53,8 @@
 | --- | --- |
 | `pnpm check` | 18/18 通过 |
 | `pnpm lint` | 0 error（仓库既有 warning/info 保留） |
-| `pnpm --filter @rakazo/web test` | 98 files / 756 tests 通过 |
-| `pnpm test:unit` | 454 files / 5480 passed / 2 skipped |
+| `pnpm --filter @rakazo/web test` | 98 files / 757 tests 通过 |
+| `pnpm test:unit` | 455 files / 5484 passed / 2 skipped |
 | `pnpm --filter @rakazo/web build` | 通过 |
 | `pnpm test:ci-select` | 99 tests 通过 |
 | `bot-messages-pair.postgres.test.ts` | 27 tests 通过 |
