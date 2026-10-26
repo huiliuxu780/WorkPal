@@ -1,6 +1,8 @@
 # CARD-01B：核心 Interaction 与 Card Shell
 
-状态：`not-started`
+状态：`in-review`
+
+交付记录：[CARD-01B delivery](../cards/CARD-01B-delivery.md)
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
