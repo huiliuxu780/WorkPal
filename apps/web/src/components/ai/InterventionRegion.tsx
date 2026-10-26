@@ -121,12 +121,16 @@ function InterventionCard({
   }, [announce, view.revision, view.status]);
 
   async function onAnswer(text: string, username?: string) {
+    const outbound = view.approval?.outbound?.draft;
     const result = await rpc.threads.resolveIntervention({
       ...target,
       interventionId: view.id,
       clientSubmissionId: submissionId.current,
       answer: text,
       ...(username ? { username } : {}),
+      ...(outbound && (text === "allow" || text === "always")
+        ? { outbound: { revision: outbound.revision, fingerprint: outbound.fingerprint } }
+        : {}),
     });
     if (result.outcome === "accepted") setLocalAnswer(text);
     if (result.outcome === "already_handled") setAnnounce(true);

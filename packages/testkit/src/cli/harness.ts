@@ -15,6 +15,7 @@ import {
   requirePort,
 } from "../resources/leases.js";
 import { assertWorkpalE2eDatabaseUrl, taskSlugFrom } from "../resources/plan.js";
+import { FULL_E2E_GATE_OFF_SPEC, FULL_E2E_GATED_SPEC, specSelects } from "./e2e-spec-selection.js";
 import { startJavaRuntime } from "./java-runtime.js";
 import { runProcess } from "./process.js";
 
@@ -43,6 +44,7 @@ if (integration && sandboxProvider !== "fake") {
 if (agentRuntime !== "agentscope" && agentRuntime !== "scripted") {
   throw new Error('Runtime must be "agentscope" or "scripted"');
 }
+
 if (sandboxProvider === "e2b" && !process.env.E2B_API_KEY) {
   throw new Error("E2B_API_KEY is required when --sandbox=e2b");
 }
@@ -54,6 +56,22 @@ if (sandboxProvider === "box" && !process.env.BOX_API_KEY) {
 }
 
 async function main() {
+  if (e2e && !e2eSpec) {
+    // The unified-card and private-pair specs require gates the rest of the
+    // suite must run without. A full run is therefore two gate-compatible
+    // batches, each with its own API/Web/DB lifecycle.
+    const baseArgs = process.argv
+      .slice(2)
+      .filter((arg) => arg !== "--e2e" && !arg.startsWith("--spec="));
+    console.log("Full E2E: gate-off batch");
+    await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${FULL_E2E_GATE_OFF_SPEC}`], {
+      ...process.env,
+      WORKPAL_E2E_FULL_BATCH: "gate-off",
+    });
+    console.log("Full E2E: gate-on batch");
+    await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${FULL_E2E_GATED_SPEC}`], process.env);
+    return;
+  }
   const mode = integration ? "integration" : "e2e";
   const reportDir = path.resolve("test-report", mode);
   await mkdir(reportDir, { recursive: true });
@@ -109,7 +127,11 @@ async function main() {
     // The in-process E2E API exercises the gated cross-session handoff when
     // that spec runs; the production default stays closed. Integration suites
     // opt in themselves.
-    if (!integration && (!e2eSpec || e2eSpec.includes("message-group.spec.ts"))) {
+    if (
+      !integration &&
+      (process.env.WORKPAL_E2E_FULL_BATCH === "gate-off" ||
+        specSelects(e2eSpec, "message-group.spec.ts"))
+    ) {
       process.env.ROUNDTABLE_MESSAGE_GROUP_ENABLED = "true";
     }
     // RT-09 private pair receipts only carry a pair locator when the pair
@@ -117,13 +139,12 @@ async function main() {
     // the legacy destination-chat fallback.
     if (
       !integration &&
-      e2eSpec &&
-      (e2eSpec.includes("peer-messages.spec.ts") ||
-        e2eSpec.includes("card-ui-interactions.spec.ts"))
+      (specSelects(e2eSpec, "peer-messages.spec.ts") ||
+        specSelects(e2eSpec, "card-ui-interactions.spec.ts"))
     ) {
       process.env.ROUNDTABLE_PRIVATE_PAIR_ENABLED = "true";
     }
-    if (!integration && e2eSpec?.includes("card-ui-interactions.spec.ts")) {
+    if (!integration && specSelects(e2eSpec, "card-ui-interactions.spec.ts")) {
       process.env.CARDS_UNIFIED_V2_ENABLED = "true";
     }
     process.env.CI = "1";

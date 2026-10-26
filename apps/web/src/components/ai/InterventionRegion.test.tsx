@@ -133,6 +133,48 @@ function pairApproval(): InterventionView {
   });
 }
 
+function outboundApproval(): InterventionView {
+  return view({
+    id: "outbound-approval",
+    messageId: "message-approval",
+    approval: {
+      effectId: "effect-1",
+      effectStatus: "intended",
+      actions: [
+        { id: "allow", label: "Allow once" },
+        { id: "always", label: "Always allow" },
+        { id: "deny", label: "Deny" },
+      ],
+      outbound: {
+        channel: "email",
+        draft: {
+          revision: 2,
+          fingerprint: "fp-r2-12345678",
+          recipients: ["ada@example.test"],
+          subject: "Weekly digest r2",
+          body: "Edited body",
+        },
+        revisions: [
+          {
+            revision: 1,
+            fingerprint: "fp-r1-12345678",
+            subject: "Weekly digest",
+            createdAt: "2026-10-12T00:00:00.000Z",
+            status: "superseded",
+          },
+          {
+            revision: 2,
+            fingerprint: "fp-r2-12345678",
+            subject: "Weekly digest r2",
+            createdAt: "2026-10-12T00:00:00.000Z",
+            status: "pending",
+          },
+        ],
+      },
+    },
+  });
+}
+
 /** Feeds a settled view back into the prop, the way the shell does. */
 function ProjectionHarness({
   initial,
@@ -264,6 +306,45 @@ describe("InterventionRegion", () => {
       const submissionId = resolveIntervention.mock.calls[0]?.[0]?.clientSubmissionId as string;
       expect(submissionId.length).toBeGreaterThanOrEqual(8);
       expect(submissionId).not.toContain("deny");
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("binds an edited outbound approval in the legacy card", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const outbound = outboundApproval();
+    resolveIntervention.mockResolvedValue({
+      outcome: "accepted",
+      intervention: { ...outbound, status: "answered", revision: 2 },
+    });
+    try {
+      await act(async () => {
+        root.render(
+          <InterventionRegion
+            interventions={[outbound]}
+            messages={[approvalMessage]}
+            target={{ botId: "bot-1" }}
+            onSettled={() => undefined}
+          />,
+        );
+      });
+      const allow = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Allow once",
+      );
+      await act(async () => {
+        allow?.click();
+      });
+      expect(resolveIntervention).toHaveBeenCalledWith(
+        expect.objectContaining({
+          interventionId: "outbound-approval",
+          answer: "allow",
+          outbound: { revision: 2, fingerprint: "fp-r2-12345678" },
+        }),
+      );
     } finally {
       await act(async () => root.unmount());
       host.remove();
