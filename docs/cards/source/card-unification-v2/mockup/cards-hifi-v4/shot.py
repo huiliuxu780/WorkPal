@@ -39,20 +39,35 @@ def capture():
             page = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
             page.emulate_media(reduced_motion='reduce')
             page.goto(file.as_uri(), wait_until='load')
+            page.wait_for_load_state('networkidle')
             page.evaluate('document.fonts.ready')
             if name == 'a-detail':
                 page.locator('[data-panel-open="report-panel"]').click()
+            page.evaluate('window.scrollTo(0, 0)')
             page.screenshot(path=ROOT / f'shot-{name}.png', full_page=True, animations='disabled', caret='hide')
             print(name, page.evaluate('document.documentElement.scrollWidth + "x" + document.documentElement.scrollHeight'))
+            if name == 'a-detail':
+                page.locator('#v8 [data-open="a8-playbook"]').click()
+                page.screenshot(path=ROOT / 'shot-a8.png', full_page=False, animations='disabled', caret='hide')
+                print('a8', page.evaluate('document.documentElement.scrollWidth + "x" + document.documentElement.scrollHeight'))
             page.close()
         for width in (390, 375):
             page = browser.new_page(viewport={'width': width, 'height': 844}, device_scale_factor=1)
             page.emulate_media(reduced_motion='reduce')
             page.goto((ROOT / 'cards.html').as_uri(), wait_until='load')
+            page.wait_for_load_state('networkidle')
             page.evaluate('document.fonts.ready')
             page.locator('section.col:has(#a7-mcp-assignment)').screenshot(path=ROOT / f'shot-a7-{width}.png', animations='disabled', caret='hide')
             page.locator('section.col:has(#a13-plan-review)').screenshot(path=ROOT / f'shot-a13-{width}.png', animations='disabled', caret='hide')
             print(f'a7-{width}/a13-{width}', page.evaluate('document.documentElement.scrollWidth + "x" + document.documentElement.scrollHeight'))
+            if width == 390:
+                page.goto((ROOT / 'a-detail.html').as_uri(), wait_until='load')
+                page.wait_for_load_state('networkidle')
+                page.evaluate('document.fonts.ready')
+                page.evaluate('window.scrollTo(0, 0)')
+                page.locator('#v8 [data-open="a8-playbook"]').click()
+                page.screenshot(path=ROOT / 'shot-a8-390.png', full_page=False, animations='disabled', caret='hide')
+                print('a8-390', page.evaluate('document.documentElement.scrollWidth + "x" + document.documentElement.scrollHeight'))
             page.close()
         architecture = ROOT.parents[1] / 'card-unification.html'
         if not requested and architecture.exists():

@@ -48,7 +48,7 @@ col('A7 · connect.app_authorization + connect.mcp_assignment', scene('授权 ·
     note('app authorization 与 MCP assignment 使用不同严格 payload；MCP 卡必须在标题、风险说明和主操作中明确“全部工具”。')
 ]))
 col('A8 · requestApproval(skill_save)', scene('保存技能 · 业务事务', [
-    M('小紫', K('wait', 'S', '保存技能“周报整理”', '等待本人决定', '<div class="s">目标：把本周记录整理成周报。保存绑定当前内容快照。</div><div class="t">保存权威：TaughtSkill 业务事务，不是工具执行。</div>', B(('l', '丢弃'), ('p', '保存')), ident='a8-skill-save', source='来源 Bot：小紫 · Task：技能教学 · skill_draft → requestApproval(skill_save) · revision：skill-r1')),
+    M('小紫', K('wait', 'S', '保存技能“周报整理”', '等待本人决定', '<div class="s">目标：把本周记录整理成周报。保存绑定当前内容快照。</div><div class="t">保存权威：TaughtSkill 业务事务，不是工具执行。</div><a class="more" href="a-detail.html#v8">查看 playbook →</a>', B(('l', '丢弃'), ('p', '保存')), ident='a8-skill-save', source='来源 Bot：小紫 · Task：技能教学 · skill_draft → requestApproval(skill_save) · revision：skill-r1')),
 ]))
 col('A9 · requestSessionControl(takeover)', scene('接管电脑 · 只暂停当前 Bot', [
     M('小橙', K('wait', '▭', '需要你完成验证码', '等待接管', '<div class="s">打开桌面后由你操作；不收集密码或验证码。</div>', B(('l', '不做了'), ('p', '打开桌面')), source='来源 Bot：小橙 · Task：车票预订 · session：takeover-demo-09')),

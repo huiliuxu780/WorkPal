@@ -225,7 +225,7 @@ with sync_playwright() as p:
         assert 'connect.mcp_assignment' in protocol_text and 'skill_save' in protocol_text, (
             '目标协议缺少 connect.mcp_assignment 或 skill_save 独立成员。')
         open_page('a-detail')
-        assert page.locator('section[id^="v"]').count() == 7
+        assert page.locator('section[id^="v"]').count() == 8
         open_page('b-alerts')
         assert page.locator('section[id^="n"]').count() == 4
         for name in PAGES[1:]:
@@ -236,9 +236,59 @@ with sync_playwright() as p:
             assert not forbidden, f'{name}: {forbidden}'
             opacities = page.locator('.k.rej .body,.k.void .body,.k.exp .body,.k.done .body,.k.fail .body').evaluate_all('(ns) => [...new Set(ns.map(n => getComputedStyle(n).opacity))]')
             assert all(x == '1' for x in opacities), f'{name}: {opacities}'
-        return '27/7/4 scenes; A7/A8 strict approval variants; button limits; no forbidden action labels; terminal body opacity 1'
+        return '27/8/4 scenes; A7/A8 strict approval variants; button limits; no forbidden action labels; terminal body opacity 1'
 
     record('Scene counts, button limits, terminal readability', structure_and_buttons)
+
+    def a8_playbook():
+        open_page('cards')
+        info = page.evaluate('''() => {
+          const cols = [...document.querySelectorAll('.grid > section.col')];
+          const c = cols.find(x => (x.querySelector('.top')?.textContent || '').trim().startsWith('A8'));
+          if (!c) return null;
+          const card = c.querySelector('.k');
+          return {
+            buttons: [...card.querySelectorAll(':scope > .bt > .btn')].map(b => b.textContent.trim()),
+            entries: [...card.querySelectorAll('a.more, .text-entry')].map(a => a.textContent.trim()),
+            text: c.innerText,
+          };
+        }''')
+        assert info, 'cards.html 缺少 A8 场景'
+        assert info['buttons'] == ['丢弃', '保存'], info['buttons']
+        assert len(info['entries']) == 1 and '查看 playbook' in info['entries'][0], info['entries']
+        assert 'requestApproval(skill_save)' in info['text'] and 'TaughtSkill' in info['text']
+        open_page('a-detail')
+        trigger = page.locator('#v8 [data-open="a8-playbook"]')
+        assert trigger.count() == 1, 'a-detail.html 缺少 A8 playbook 入口'
+        trigger.click()
+        dialog = page.locator('#a8-playbook')
+        assert dialog.evaluate('(d) => d.open'), 'A8 playbook 详情没有打开'
+        text = dialog.inner_text()
+        for label in ('名称', '目标', '适用时机', '输入', '步骤', '检查方式', '返回内容', '授权边界', '失败处理'):
+            assert label in text, f'A8 playbook 详情缺少“{label}”'
+        assert dialog.locator('input, textarea, select').count() == 0, 'A8 playbook 详情出现了可编辑控件'
+        labels = [t.strip() for t in dialog.locator('button').all_inner_texts()]
+        assert all(t in ('', '✕', '关闭') for t in labels), labels
+        assert '等待本人决定' in page.locator('#a8-skill-save-detail .bd').inner_text()
+        page.keyboard.press('Escape')
+        assert not dialog.evaluate('(d) => d.open'), 'Esc 没有关闭 A8 playbook 详情'
+        assert page.evaluate('document.activeElement?.dataset.open') == 'a8-playbook', (
+            '关闭后焦点没有返回“查看 playbook”')
+        assert '等待本人决定' in page.locator('#a8-skill-save-detail .bd').inner_text()
+        page.set_viewport_size({'width': 390, 'height': 844})
+        open_page('a-detail')
+        page.locator('#v8 [data-open="a8-playbook"]').click()
+        dialog = page.locator('#a8-playbook')
+        assert dialog.evaluate('(d) => d.open')
+        box = dialog.bounding_box()
+        assert box and box['x'] >= 0 and box['x'] + box['width'] <= 390.5, box
+        assert page.evaluate('document.documentElement.scrollWidth <= 390')
+        assert dialog.evaluate('(d) => d.scrollWidth <= d.clientWidth')
+        page.keyboard.press('Escape')
+        page.set_viewport_size({'width': 1452, 'height': 900})
+        return 'one text entry; read-only detail; no edit controls; Esc restores focus; 390 fits'
+
+    record('A8 read-only playbook detail', a8_playbook)
 
     def a13_plan_review_semantics():
         open_page('cards')
