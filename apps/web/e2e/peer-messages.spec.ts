@@ -44,15 +44,19 @@ test("shows peer chips in transcript and opens view-only peer chat", async ({ pa
   ).toHaveCount(1);
   const assertReceiptCompact = async () => {
     const transcriptBox = await transcript.boundingBox();
-    const receiptBox = await receipt.boundingBox();
+    // The row is a full-width centering track; the visible receipt pill is the
+    // compact unit the prototype constrains.
+    const pillBox = await receipt
+      .getByRole("button", { name: "Messaged Researcher" })
+      .boundingBox();
     expect(transcriptBox).not.toBeNull();
-    expect(receiptBox).not.toBeNull();
+    expect(pillBox).not.toBeNull();
     // The prototype centers the lightweight receipt divider in the transcript.
     const transcriptCenter = transcriptBox!.x + transcriptBox!.width / 2;
-    const receiptCenter = receiptBox!.x + receiptBox!.width / 2;
-    expect(Math.abs(transcriptCenter - receiptCenter)).toBeLessThanOrEqual(24);
+    const pillCenter = pillBox!.x + pillBox!.width / 2;
+    expect(Math.abs(transcriptCenter - pillCenter)).toBeLessThanOrEqual(24);
     // Stay under 75% of the transcript width so the row cannot become a full-width bar.
-    expect(receiptBox!.width).toBeLessThan(transcriptBox!.width * 0.75);
+    expect(pillBox!.width).toBeLessThan(transcriptBox!.width * 0.75);
   };
 
   await assertReceiptCompact();

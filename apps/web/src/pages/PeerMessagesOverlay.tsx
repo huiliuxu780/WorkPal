@@ -1,4 +1,4 @@
-import { Trans, useLingui } from "@lingui/react/macro";
+import { Trans } from "@lingui/react/macro";
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type { PairThreadMessage } from "@rakazo/contracts";
 import {
@@ -43,7 +43,6 @@ export function PeerMessagesOverlay({
   locator: { kind: "pair_message"; pairThreadId: string; messageId: string };
   onClose: () => void;
 }) {
-  const { t } = useLingui();
   const [messages, setMessages] = useState<readonly PairThreadMessage[]>([]);
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
@@ -119,7 +118,7 @@ export function PeerMessagesOverlay({
     } catch {
       // Keep the loaded window; the reader can retry by scrolling again.
       restoreScrollRef.current = null;
-      } finally {
+    } finally {
       loadingOlderRef.current = false;
       setLoadingOlder(false);
     }

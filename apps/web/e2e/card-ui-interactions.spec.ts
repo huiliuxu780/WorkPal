@@ -77,6 +77,9 @@ test("renders an MCP assignment as the unified CARD-01B card and settles it", as
     timeout: 20_000,
   });
   await expect(card.getByRole("button", { name: "Allow all tools", exact: true })).toHaveCount(0);
+  // The settled card owns an Execution surface even after the Run finishes, so
+  // it must stay in the DOM rather than vanishing with the pending signal.
+  await expect(card).toBeVisible();
   expect(await card.evaluate((element) => element.className.includes("opacity-"))).toBe(false);
   await page.emulateMedia({ colorScheme: "dark" });
   await card.scrollIntoViewIfNeeded();
@@ -100,12 +103,16 @@ test("replaces the legacy approval ask with one CARD-01B decision card", async (
   await send(page, "write this to the destination crm as a note");
   await waitForWaitingRun(page, botId);
 
-  const region = page.locator('[data-testid="intervention-region"][data-surface="interaction-v2"]');
-  await expect(region).toBeVisible({ timeout: 30_000 });
-  const card = region
+  const card = page
     .locator('[data-testid="interaction-card"][data-kind="action_approval"]')
     .filter({ hasText: "Allow once" });
-  await expect(card).toBeVisible();
+  // The welcome flow can leave its own pending connection card on screen;
+  // scope every assertion to this Run's decision card.
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  const region = card.locator(
+    'xpath=ancestor::section[@data-testid="intervention-region"][@data-surface="interaction-v2"]',
+  );
+  await expect(region).toBeVisible();
   await expect(card.getByTestId("interaction-status")).toContainText("Waiting for your decision");
   await expect(card.getByTestId("approval-primary")).toContainText("Allow once");
   await expect(card.getByTestId("approval-secondary")).toContainText("Deny");

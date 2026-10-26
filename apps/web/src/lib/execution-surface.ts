@@ -15,11 +15,16 @@ import {
 /**
  * UX-01B core rule 1: whether a Run gets an Execution surface at all.
  *
- * Exactly four signals create one — a structured Plan, a semantic Step, a
- * pending Intervention (or any waiting state), or failure. Todos, tool
- * Activity, `MessageBlock.kind="steps"`, native `plan_write` output and plain
- * running states never create a surface on their own; a plain Run lives in
- * the lightweight one-line progress state until its final reply.
+ * Four signals create one — a structured Plan, a semantic Step, a pending
+ * Intervention (or any waiting state), or failure. Todos, tool Activity,
+ * `MessageBlock.kind="steps"`, native `plan_write` output and plain running
+ * states never create a surface on their own; a plain Run lives in the
+ * lightweight one-line progress state until its final reply.
+ *
+ * CARD-01B adds a fifth, gate-on-only signal: a strict InteractionView of any
+ * status. The Interaction Region is the only surface for message-backed cards
+ * (gate-on also suppresses their legacy blocks), so a settled card must keep
+ * its shell — otherwise terminal history would vanish from the transcript.
  *
  * Pure derivation only: no DOM, no RPC, no global state.
  */
@@ -28,12 +33,17 @@ export type ExecutionSurfaceSignals = {
   hasPlan: boolean;
   hasSemanticSteps: boolean;
   hasPendingIntervention: boolean;
+  hasInteraction: boolean;
   failed: boolean;
 };
 
 export function shouldRenderExecutionSurface(signals: ExecutionSurfaceSignals): boolean {
   return (
-    signals.hasPlan || signals.hasSemanticSteps || signals.hasPendingIntervention || signals.failed
+    signals.hasPlan ||
+    signals.hasSemanticSteps ||
+    signals.hasPendingIntervention ||
+    signals.hasInteraction ||
+    signals.failed
   );
 }
 
@@ -102,11 +112,15 @@ export function eligibleExecutionRunIds(input: EligibleExecutionRunIdsInput): Re
       // takeover), even before its Intervention projection arrives.
       status === "waiting_input" ||
       status === "waiting_takeover";
+    // Strict interactions own their shell in every status: the region is their
+    // only surface, so settling a card must not delete it from history.
+    const hasInteraction = (input.interactions ?? []).some((view) => view.source.runId === runId);
     if (
       shouldRenderExecutionSurface({
         hasPlan: Boolean(data.plan),
         hasSemanticSteps: data.steps.length > 0 || (summary?.counts?.steps ?? 0) > 0,
         hasPendingIntervention,
+        hasInteraction,
         failed: status === "failed",
       })
     ) {

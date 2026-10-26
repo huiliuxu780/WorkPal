@@ -1666,6 +1666,40 @@ describe("CARD-01B gate integration", () => {
     expect(shell?.textContent).toContain("CARD-APP-AUTH");
   });
 
+  it("keeps a settled message-backed card and its shell after the Run completes", () => {
+    // CARD-01B gate-on: legacy app/MCP/skill blocks stay suppressed, so the
+    // strict region is the only surface. A terminal card must survive the Run
+    // losing every pending/Plan/Step signal — otherwise history vanishes.
+    const host = renderTranscript({
+      ...card01BProps,
+      runs: [run("run-4", "completed")],
+      activeRunIds: [],
+      executions: [
+        summary({
+          runId: "run-4",
+          rev: 3,
+          status: "completed",
+          title: "COMPLETED-RUN-TITLE",
+          anchorMessageId: "m2",
+        }),
+      ],
+      interactions: [
+        { ...appAuthorizationInteraction(), status: "answered", decision: "approved" },
+      ],
+      cardsUnifiedV2: true,
+    });
+
+    const region = host.querySelector('[data-testid="intervention-region"]');
+    expect(region?.getAttribute("data-surface")).toBe("interaction-v2");
+    expect(region?.closest('[data-testid="execution-shell"]')).not.toBeNull();
+    expect(region?.textContent).toContain("CARD-APP-AUTH");
+    expect(region?.textContent).toContain("Authorized");
+    expect(region?.querySelector('[data-testid="interaction-actions"]')).toBeNull();
+    // The legacy block does not come back as a fallback.
+    expect(host.querySelector('[aria-label="Notion connection"]')).toBeNull();
+    expect(host.textContent).not.toContain("LEGACY-APP-COPY");
+  });
+
   it("keeps the legacy blocks and ignores the projection when the gate is off", () => {
     const host = renderTranscript({
       ...card01BProps,

@@ -28,6 +28,11 @@
 - `PeerMessagesOverlay` 只调用 `threads.pairMessages`，必须携带 `sourceReceiptMessageId`、pair locator 和分页 cursor；只读无输入框。
 - `readPairMessages` 初始页从最新授权消息开始，避免回执之后的回复被 target boundary 隐藏；grant 仍校验 target 与 provenance。
 - 删除 `peer-history.ts` / `peer-messages.ts` 及对应测试，避免两套读取路径。
+- 推出说明：只有 `ROUNDTABLE_PRIVATE_PAIR_ENABLED=true` 时才会写入带 locator 的 bot-target 回执并可打开 pair 浮窗；历史上的无 locator 回执按设计显示为不可打开的记录，不做通用 Thread 回退。
+
+### 终态交互卡
+
+- strict `InteractionView`（任意状态）本身即为 Execution surface 信号：gate 开启时旧的 `app_connect`/`mcp_approval`/`skill_draft` block 被抑制，若 Run 结算后丢失 surface，终态卡会连同历史一起消失。`execution-surface.ts` 因此保留有 strict interaction 的 Run，终态卡在 region 内按统一排序继续显示。
 
 ### CI 选择
 
@@ -46,7 +51,7 @@
 | --- | --- |
 | `pnpm check` | 18/18 通过 |
 | `pnpm lint` | 0 error（仓库既有 warning/info 保留） |
-| `pnpm --filter @rakazo/web test` | 98 files / 748 tests 通过 |
+| `pnpm --filter @rakazo/web test` | 98 files / 752 tests 通过 |
 | `pnpm test:unit` | 454 files / 5472 passed / 2 skipped |
 | `pnpm --filter @rakazo/web build` | 通过 |
 | `pnpm test:ci-select` | 98 tests 通过 |
@@ -55,6 +60,7 @@
 | `git diff --check` | 通过 |
 | Gate-off 回归 | transcript 测试证明 gate off 时保留 legacy app/MCP/skill 卡片并忽略 `interactions` |
 | Gate-on 回归 | transcript 测试证明三张 legacy block 被抑制，新卡片位于 execution shell 且不出现双卡 |
+| 终态保留 | transcript 测试证明 Run 结算后 message-backed 卡仍在 shell 内，legacy block 不回潮 |
 
 ### E2E 本地阻塞（需 CI 复核）
 
