@@ -21,6 +21,7 @@ import {
   type ActivityRunContext,
   type ActivitySourceEvent,
   buildExecutionSummary,
+  callIdFromClientNonce,
   composeRunRev,
   decodeExecutionActivityCursor,
   type ExecutionSummaryFacts,
@@ -762,7 +763,14 @@ export async function loadExecutionSnapshot(
       // as its final result or miss a later legacy Ask in the same window.
       orderBy: { seq: "desc" },
       take: SUMMARY_MESSAGE_SCAN_LIMIT,
-      select: { id: true, runId: true, blocks: true, createdAt: true },
+      select: {
+        id: true,
+        role: true,
+        runId: true,
+        clientNonce: true,
+        blocks: true,
+        createdAt: true,
+      },
     }),
   ]);
   const summary = summaries[0];
@@ -789,6 +797,8 @@ export async function loadExecutionSnapshot(
               botId: run.botId,
               runId: message.runId ?? run.id,
               createdAt: message.createdAt.toISOString(),
+              role: message.role,
+              callId: callIdFromClientNonce(message.clientNonce),
               blocks: message.blocks as MessageBlock[],
             }),
           ),

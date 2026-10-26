@@ -3,6 +3,7 @@ import { FULL_E2E_GATE_OFF_SPEC, FULL_E2E_GATED_SPEC, specSelects } from "./e2e-
 
 const legacy = "apps/web/e2e/mcp-approval-card.spec.ts";
 const card = "apps/web/e2e/card-ui-interactions.spec.ts";
+const display = "apps/web/e2e/card-display-content.spec.ts";
 const pair = "apps/web/e2e/peer-messages.spec.ts";
 
 describe("full E2E gate batches", () => {
@@ -13,6 +14,8 @@ describe("full E2E gate batches", () => {
     expect(gated.test(legacy)).toBe(false);
     expect(gateOff.test(card)).toBe(false);
     expect(gated.test(card)).toBe(true);
+    expect(gateOff.test(display)).toBe(false);
+    expect(gated.test(display)).toBe(true);
     expect(gateOff.test(pair)).toBe(false);
     expect(gated.test(pair)).toBe(true);
   });

@@ -40,6 +40,7 @@ const AVATAR_WEB_E2E = [
 ];
 const EXECUTION_WEB_E2E = ["execution-card.spec.ts", "task-center.spec.ts"];
 const CARD_UI_INTERACTIONS_WEB_E2E = ["card-ui-interactions.spec.ts", "peer-messages.spec.ts"];
+const CARD_DISPLAY_WEB_E2E = ["card-display-content.spec.ts"];
 const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
 const ONBOARDING_WEB_E2E = [
   "onboarding-conversation.spec.ts",
@@ -462,9 +463,22 @@ function mappedWebE2e(file) {
   ) {
     return AVATAR_WEB_E2E;
   }
+  // CARD-01C display components and the shared table/markdown adapters.
+  if (
+    isUnder(file, "apps/web/src/components/ai/display") ||
+    file.includes("ArtifactFileCard") ||
+    file.includes("SandboxedHtmlViewer") ||
+    file.includes("VoiceChatCard") ||
+    file.includes("CloudAgentCard") ||
+    stemMatch(file, "apps/web/src/pages/shell/message-cards") ||
+    stemMatch(file, "apps/web/src/pages/Artifacts") ||
+    file.includes("packages/chat-ui/src/markdown-table")
+  ) {
+    return CARD_DISPLAY_WEB_E2E;
+  }
   // CARD-01B renderers and the RT-09 private-pair receipt/overlay are one
   // production path: a change here must run both the gate-on card spec and the
-  // bound private-history spec.
+  // bound private-history spec. Display content shares Shell/execution mounts.
   if (
     isUnder(file, "apps/web/src/components/ai/interactions") ||
     file.includes("PeerReceiptRow") ||
@@ -475,7 +489,7 @@ function mappedWebE2e(file) {
     stemMatch(file, "apps/web/src/pages/Shell") ||
     stemMatch(file, "apps/web/src/pages/shell/use-execution-transcript")
   ) {
-    return CARD_UI_INTERACTIONS_WEB_E2E;
+    return unique([...CARD_UI_INTERACTIONS_WEB_E2E, ...CARD_DISPLAY_WEB_E2E]);
   }
   if (file.includes("GroupDestinationReceipt")) return MESSAGE_GROUP_WEB_E2E;
   if (

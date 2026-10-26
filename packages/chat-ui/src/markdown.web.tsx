@@ -123,3 +123,5 @@ export const ChatMarkdown = memo(function ChatMarkdown({
 });
 
 export type { ChatMarkdownProps } from "./markdown";
+export { TableCard } from "./markdown-table";
+export type { ExtractedTable, TableAlign } from "./table-utils";

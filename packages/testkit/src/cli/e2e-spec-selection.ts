@@ -4,8 +4,9 @@
  * fail, so they cannot share one harness process with the rest of the suite.
  */
 export const FULL_E2E_GATE_OFF_SPEC =
-  "^(?!.*(?:card-ui-interactions\\.spec\\.ts|peer-messages\\.spec\\.ts)).*\\.spec\\.ts$";
-export const FULL_E2E_GATED_SPEC = "card-ui-interactions.spec.ts|peer-messages.spec.ts";
+  "^(?!.*(?:card-ui-interactions\\.spec\\.ts|card-display-content\\.spec\\.ts|peer-messages\\.spec\\.ts)).*\\.spec\\.ts$";
+export const FULL_E2E_GATED_SPEC =
+  "card-ui-interactions.spec.ts|card-display-content.spec.ts|peer-messages.spec.ts";
 
 /** Exact filename selection used by the harness; regex filters never enable gates. */
 export function specSelects(e2eSpec: string | undefined, name: string): boolean {

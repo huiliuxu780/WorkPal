@@ -21,7 +21,12 @@ import {
   type SessionControlView,
   type ThreadMessage,
 } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
+import {
+  ACTIVE_RUN_STATUSES,
+  groupVoiceChats,
+  speechFromBlocks,
+  voiceChatDuration,
+} from "@rakazo/core";
 import { CHAT_GROUP_KIND_AGENT_PAIR } from "./agent-pairs.js";
 import type { Prisma } from "./client.js";
 
@@ -32,11 +37,16 @@ export interface CardMessageFact {
   botId: string | null;
   runId: string | null;
   createdAt: string;
+  role?: string;
+  callId?: string | null;
   blocks: MessageBlock[];
 }
 
 export function cardMessageFact(
-  message: Pick<ThreadMessage, "id" | "threadId" | "botId" | "runId" | "createdAt" | "blocks">,
+  message: Pick<ThreadMessage, "id" | "threadId" | "botId" | "runId" | "createdAt" | "blocks"> & {
+    role?: ThreadMessage["role"];
+    callId?: string | null;
+  },
   spaceId: string,
 ): CardMessageFact {
   return {
@@ -46,6 +56,8 @@ export function cardMessageFact(
     botId: message.botId ?? null,
     runId: message.runId ?? null,
     createdAt: message.createdAt,
+    role: message.role,
+    callId: message.callId ?? null,
     blocks: message.blocks,
   };
 }
@@ -426,10 +438,10 @@ export function interactionViewsFromMessages(messages: readonly CardMessageFact[
         if (planReview) interactions.push(planReview);
         return;
       }
-      const display = displayBlockFrom(message, block, index);
-      if (display) displayBlocks.push(display);
+      displayBlocks.push(...displayBlocksFrom(message, block, index));
     });
   }
+  displayBlocks.push(...voiceDisplayBlocks(messages));
   return { interactions, displayBlocks };
 }
 
@@ -447,19 +459,79 @@ const CLOUD_AGENT_STATUS = {
   cancelled: "cancelled",
 } as const;
 
-function displayBlockFrom(
+const DISPLAY_TABLE_MAX_ROWS = 10_000;
+const DISPLAY_TABLE_MAX_COLUMNS = 20;
+const DISPLAY_CELL_MAX_CHARS = 4_000;
+
+function displayCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.slice(0, DISPLAY_CELL_MAX_CHARS);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return (JSON.stringify(value) ?? "").slice(0, DISPLAY_CELL_MAX_CHARS);
+  } catch {
+    return String(value).slice(0, DISPLAY_CELL_MAX_CHARS);
+  }
+}
+
+/** The accessible data table that accompanies a chart's real data rows. */
+function chartDataTable(blockId: string, data: readonly unknown[]): unknown | null {
+  const rows = data.filter(
+    (row): row is Record<string, unknown> =>
+      typeof row === "object" && row !== null && !Array.isArray(row),
+  );
+  if (rows.length === 0) return null;
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(
+    0,
+    DISPLAY_TABLE_MAX_COLUMNS,
+  );
+  if (keys.length === 0) return null;
+  return {
+    kind: "table",
+    blockId: `${blockId}:table`,
+    columns: keys.map((key, index) => ({
+      id: `column-${index + 1}`,
+      label: key.slice(0, 200) || `Column ${index + 1}`,
+    })),
+    rows: rows
+      .slice(0, DISPLAY_TABLE_MAX_ROWS)
+      .map((row) => keys.map((key) => displayCell(row[key]))),
+  };
+}
+
+function displayBlocksFrom(
   message: CardMessageFact,
   block: MessageBlock,
   index: number,
-): DisplayBlock | null {
+): DisplayBlock[] {
   const blockId = `${message.id}:${index}:${block.kind}`;
-  let candidate: unknown;
+  const candidates: unknown[] = [];
   if (block.kind === "text") {
-    candidate = { kind: "markdown", blockId, text: block.text };
+    candidates.push({ kind: "markdown", blockId, text: block.text });
+  } else if (block.kind === "card") {
+    candidates.push({
+      kind: "collection",
+      blockId,
+      title: null,
+      items: block.lines.slice(0, 200).map((line, lineIndex) => ({
+        id: `line-${lineIndex + 1}`,
+        label: (line.k.trim() || `Item ${lineIndex + 1}`).slice(0, 200),
+        value: line.v.slice(0, 2_000),
+        detail: null,
+      })),
+    });
   } else if (block.kind === "chart") {
-    candidate = { kind: "chart", blockId, name: block.name, spec: block.spec, data: block.data };
+    candidates.push({
+      kind: "chart",
+      blockId,
+      name: block.name,
+      spec: block.spec,
+      data: block.data,
+    });
+    const table = chartDataTable(blockId, block.data);
+    if (table) candidates.push(table);
   } else if (block.kind === "image") {
-    candidate = {
+    candidates.push({
       kind: "media",
       blockId,
       mediaKind: "image",
@@ -467,40 +539,93 @@ function displayBlockFrom(
       name: block.name,
       mimeType: block.mimeType,
       size: null,
-    };
+    });
   } else if (block.kind === "file") {
-    candidate = {
-      kind: "media",
-      blockId,
-      mediaKind: "file",
-      artifactId: block.artifactId,
-      name: block.name,
-      mimeType: block.mimeType,
-      size: block.size,
-    };
+    const mimeType = block.mimeType.toLowerCase();
+    if (mimeType === "text/html") {
+      candidates.push({
+        kind: "html",
+        blockId,
+        artifactId: block.artifactId,
+        title: block.name.slice(0, 500) || null,
+        sandboxed: true,
+      });
+    } else if (mimeType === "text/markdown" || mimeType === "application/pdf") {
+      candidates.push({
+        kind: "page",
+        blockId,
+        pageId: block.artifactId,
+        title: block.name.slice(0, 500),
+        available: true,
+      });
+    } else {
+      candidates.push({
+        kind: "media",
+        blockId,
+        mediaKind: "file",
+        artifactId: block.artifactId,
+        name: block.name,
+        mimeType: block.mimeType,
+        size: block.size,
+      });
+    }
   } else if (block.kind === "subagent") {
-    candidate = {
+    candidates.push({
       kind: "task_status",
       blockId,
       status: SUBAGENT_STATUS[block.status],
       title: block.name,
       summary: block.progress ?? null,
       source: { threadId: message.threadId, messageId: message.id, runId: message.runId },
-    };
+    });
   } else if (block.kind === "cloud_agent") {
-    candidate = {
+    candidates.push({
       kind: "task_status",
       blockId,
       status: CLOUD_AGENT_STATUS[block.status],
       title: block.title,
       summary: null,
       source: { threadId: message.threadId, messageId: message.id, runId: message.runId },
-    };
-  } else {
-    return null;
+    });
   }
-  const parsed = DisplayBlockSchema.safeParse(candidate);
-  return parsed.success ? parsed.data : null;
+  return candidates.flatMap((candidate) => {
+    const parsed = DisplayBlockSchema.safeParse(candidate);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+function voiceDisplayBlocks(messages: readonly CardMessageFact[]): DisplayBlock[] {
+  const groups = groupVoiceChats(
+    messages.map((message) => ({
+      id: message.id,
+      role: message.role ?? "bot",
+      ...(message.runId ? { runId: message.runId } : {}),
+      ...(message.callId ? { callId: message.callId } : {}),
+      createdAt: message.createdAt,
+      blocks: message.blocks,
+    })),
+  );
+  const blocks: DisplayBlock[] = [];
+  for (const group of groups) {
+    if (group.kind !== "voiceChat") continue;
+    const anchor = group.marker ?? group.messages[0];
+    if (!anchor) continue;
+    const transcript = group.messages
+      .filter((message) => message !== group.marker)
+      .map((message) => speechFromBlocks(message.blocks).trim())
+      .filter(Boolean)
+      .join("\n\n")
+      .slice(0, 20_000);
+    const parsed = DisplayBlockSchema.safeParse({
+      kind: "voice",
+      blockId: `${anchor.id}:voice`,
+      artifactId: null,
+      durationMs: voiceChatDuration(group) * 1_000,
+      transcript: transcript || null,
+    });
+    if (parsed.success) blocks.push(parsed.data);
+  }
+  return blocks;
 }
 
 /**
@@ -656,12 +781,12 @@ export function projectExecutionDisplayBlocks(
     botId: null,
     runId: source.runId,
     createdAt: "",
+    role: "bot",
     blocks: [...blocks],
   };
   const projected: DisplayBlock[] = [];
   message.blocks.forEach((block, index) => {
-    const display = displayBlockFrom(message, block, index);
-    if (display) projected.push(display);
+    projected.push(...displayBlocksFrom(message, block, index));
   });
   return projected;
 }

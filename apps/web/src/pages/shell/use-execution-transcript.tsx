@@ -12,6 +12,7 @@ import { ExecutionActivity } from "../../components/ai/ExecutionActivity";
 import { ExecutionShell, FOCUSABLE_CONTROL } from "../../components/ai/ExecutionShell";
 import { InterventionRegion } from "../../components/ai/InterventionRegion";
 import { InteractionRegion } from "../../components/ai/interactions/InteractionRegion";
+import { DisplayBlockList } from "../../components/ai/display/DisplayBlockView";
 import { RunPlanDisclosure } from "../../components/ai/RunPlanDisclosure";
 import { RunResult } from "../../components/ai/RunResult";
 import { RunStepsDisclosure } from "../../components/ai/RunStepsDisclosure";
@@ -845,6 +846,11 @@ export function useExecutionTranscript({
             </button>
           ) : null}
           {detachedResult ? <RunResult result={detachedResult} /> : null}
+          {detail?.displayBlocks?.length ? (
+            <div className="ms-1 my-2">
+              <DisplayBlockList blocks={detail.displayBlocks} target={artifactTarget} />
+            </div>
+          ) : null}
         </ExecutionShell>
       );
     });

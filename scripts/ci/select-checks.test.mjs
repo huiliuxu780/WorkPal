@@ -331,6 +331,22 @@ describe("selectChecks", () => {
     }
   });
 
+  it("selects the display-content spec for CARD-01C production paths", () => {
+    for (const file of [
+      "apps/web/src/components/ai/display/DisplayBlockView.tsx",
+      "apps/web/src/components/ArtifactFileCard.tsx",
+      "apps/web/src/components/SandboxedHtmlViewer.tsx",
+      "apps/web/src/pages/shell/message-cards.tsx",
+      "packages/chat-ui/src/markdown-table.tsx",
+    ]) {
+      const result = selectChecks({ files: [file] });
+      assert.match(result.webE2eSpec, /card-display-content\.spec\.ts/, file);
+    }
+    const shell = selectChecks({ files: ["apps/web/src/pages/Shell.tsx"] });
+    assert.match(shell.webE2eSpec, /card-display-content\.spec\.ts/);
+    assert.match(shell.webE2eSpec, /card-ui-interactions\.spec\.ts/);
+  });
+
   it("keeps an explicitly changed legacy execution spec in the batch", () => {
     const result = selectChecks({
       files: [

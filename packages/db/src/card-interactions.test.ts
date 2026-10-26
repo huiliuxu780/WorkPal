@@ -462,18 +462,108 @@ describe("CARD-01 thread card surface", () => {
     expect(surface.displayBlocks.map((block) => block.kind)).toEqual([
       "markdown",
       "chart",
+      "table",
       "media",
       "media",
       "task_status",
       "task_status",
+      "collection",
     ]);
-    expect(surface.displayBlocks[4]).toMatchObject({
+    expect(surface.displayBlocks[5]).toMatchObject({
       kind: "task_status",
       status: "completed",
       source: { messageId: "message-1", runId: "run-1" },
     });
+    expect(surface.displayBlocks[2]).toMatchObject({
+      kind: "table",
+      columns: [{ label: "x" }],
+      rows: [["1"]],
+    });
+    expect(surface.displayBlocks[7]).toMatchObject({
+      kind: "collection",
+      items: [{ label: "A", value: "B" }],
+    });
     expect(surface.interactions).toEqual([]);
     expect(surface.attention).toEqual([]);
+  });
+
+  it("maps HTML, document and voice data to read-only display blocks", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message(
+          [
+            {
+              kind: "file",
+              artifactId: "report-1",
+              mimeType: "text/html",
+              name: "report.html",
+              size: 10,
+            },
+            {
+              kind: "file",
+              artifactId: "doc-1",
+              mimeType: "text/markdown",
+              name: "brief.md",
+              size: 20,
+            },
+            {
+              kind: "file",
+              artifactId: "pdf-1",
+              mimeType: "application/pdf",
+              name: "brief.pdf",
+              size: 30,
+            },
+          ],
+          { id: "message-files", role: "bot" },
+        ),
+        message(
+          [
+            {
+              kind: "voice_call",
+              callId: "call-1",
+              title: "Weather check",
+              farewell: "Bye",
+            },
+          ],
+          { id: "message-voice", role: "bot", callId: "call-1", createdAt },
+        ),
+        message([{ kind: "text", text: "The weather is sunny." }], {
+          id: "message-user",
+          role: "user",
+          callId: "call-1",
+        }),
+      ],
+    });
+    expect(surface.displayBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "html",
+          blockId: "message-files:0:file",
+          artifactId: "report-1",
+          sandboxed: true,
+        }),
+        expect.objectContaining({
+          kind: "page",
+          blockId: "message-files:1:file",
+          pageId: "doc-1",
+          available: true,
+        }),
+        expect.objectContaining({
+          kind: "page",
+          blockId: "message-files:2:file",
+          pageId: "pdf-1",
+          available: true,
+        }),
+        expect.objectContaining({
+          kind: "voice",
+          blockId: "message-voice:voice",
+          artifactId: null,
+          durationMs: expect.any(Number),
+          transcript: "The weather is sunny.",
+        }),
+      ]),
+    );
   });
 
   it("derives takeover/return only from current Run and Computer facts", () => {

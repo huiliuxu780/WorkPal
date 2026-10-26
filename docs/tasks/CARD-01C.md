@@ -1,6 +1,8 @@
 # CARD-01C：DisplayBlock、详情视图与安全 HTML
 
-状态：`not-started`
+状态：`in-review`
+
+交付记录：[CARD-01C delivery](../cards/CARD-01C-delivery.md) · [visual evidence](../cards/CARD-01C-visual-evidence.md)。
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
