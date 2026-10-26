@@ -314,6 +314,15 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
   );
 }
 
+/** Takeover lifecycle changes can add, replace or remove a session-control card. */
+export function isSessionControlLifecycleEvent(event: ProductEvent): boolean {
+  return (
+    event.type === "computer.takeover.requested" ||
+    event.type === "computer.takeover.granted" ||
+    event.type === "computer.takeover.released"
+  );
+}
+
 function isActivityEventType(type: string): boolean {
   return (ACTIVITY_EVENT_TYPES as readonly string[]).includes(type);
 }

@@ -243,6 +243,7 @@ import {
   computerPanelNeedsMaintenance,
   computerTakeoverBlocked,
   isComputerStatusEvent,
+  isSessionControlLifecycleEvent,
   isThreadSnapshotEvent,
   prependThreadMessagePage,
   reconcileRefreshedThread,
@@ -1432,6 +1433,11 @@ export function ShellPage() {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
         } else if (isComputerStatusEvent(event)) {
+          if (isSessionControlLifecycleEvent(event)) {
+            // The session-control card is derived from the authoritative
+            // snapshot; a screen-only refresh leaves it stale or missing.
+            void refreshThread(active.id).catch(() => undefined);
+          }
           void refreshComputerScreen(active.id).catch(() => undefined);
         }
       },

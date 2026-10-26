@@ -15,6 +15,7 @@ import {
   computerPanelAutoUsesBoot,
   computerPanelNeedsMaintenance,
   computerTakeoverBlocked,
+  isSessionControlLifecycleEvent,
   isThreadSnapshotEvent,
   mergeThreadSnapshot,
   prependThreadMessagePage,
@@ -2023,6 +2024,18 @@ describe("activity projection reduction (Phase 4)", () => {
       reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions,
     ).toEqual([]);
     expect(isThreadSnapshotEvent(event({ type: "intervention.created" }))).toBe(true);
+  });
+
+  it("refreshes the thread on takeover lifecycle events only", () => {
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.takeover.requested" }))).toBe(
+      true,
+    );
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.takeover.granted" }))).toBe(true);
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.takeover.released" }))).toBe(
+      true,
+    );
+    expect(isSessionControlLifecycleEvent(event({ type: "run.waiting_input" }))).toBe(false);
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.status" }))).toBe(false);
   });
 
   it("settles the strict interaction projection when an intervention resolves", () => {
