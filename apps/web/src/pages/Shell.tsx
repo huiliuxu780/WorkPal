@@ -4656,7 +4656,21 @@ export function ShellPage() {
                 pinnedAroundRef.current = null;
                 historyEpoch.current += 1;
                 updateSnapshot((current) =>
-                  current ? { ...current, messages: [], olderCursor: null, run: null } : current,
+                  current
+                    ? {
+                        ...current,
+                        messages: [],
+                        olderCursor: null,
+                        run: null,
+                        activeRuns: [],
+                        plans: [],
+                        steps: [],
+                        todos: [],
+                        interventions: [],
+                        interactions: [],
+                        displayBlocks: [],
+                      }
+                    : current,
                 );
               }
               setClearTarget(null);

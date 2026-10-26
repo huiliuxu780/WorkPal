@@ -395,6 +395,8 @@ function reduceThreadSnapshotBase(
       steps: [],
       todos: [],
       interventions: [],
+      interactions: [],
+      displayBlocks: [],
     };
   }
   if (event.type === "plan.revised") {

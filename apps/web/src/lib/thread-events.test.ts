@@ -2098,6 +2098,15 @@ describe("activity projection reduction (Phase 4)", () => {
       decision: "approved",
       approval: { kind: "tool", effectStatus: "approved" },
     });
+    const cleared = reduceThreadSnapshot(
+      {
+        ...resolved!,
+        displayBlocks: [{ kind: "markdown", blockId: "block-1", text: "Hello" }],
+      },
+      event({ type: "thread.cleared", seq: 5 }),
+    );
+    expect(cleared?.interactions).toEqual([]);
+    expect(cleared?.displayBlocks).toEqual([]);
   });
 
   it("updates an outbound draft projection from a revision event", () => {

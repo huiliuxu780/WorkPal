@@ -32,6 +32,7 @@
 - `thread.message.updated` 也会按消息 block 状态同步 message-backed strict 卡（app_connect / mcp_approval / skill_draft）：另一 tab 保存或丢弃 skill 后，当前 tab 的卡立即变为 answered/cancelled，不再保留会失败的 Save/Discard 控件。
 - A10 保存 revision 时追加 `outbound.draft.updated` 事件（携带 authoritative `OutboundDraftState`）。其他 tab 的 strict interaction 与 legacy intervention 立即更新 recipients/subject/fingerprint/draftState；打开中的编辑器仍保留自己的 base revision，不会被远端刷新覆盖。
 - `computer.takeover.requested/granted/released` 生命周期事件现在触发 thread snapshot 刷新，而不只是 screen URL 刷新：新 takeover 卡会出现，另一个 tab 取得控制后卡会替换为 hand-back，释放后移除。
+- `thread.cleared` 与 Shell 的清空确认同时清空 `interactions` 和 `displayBlocks`；没有 Run 的 app/MCP/skill 卡不会残留在已清空的会话里。
 - 统一 question 输入卡沿用 legacy `AskCard` 的草稿生命周期：按 `interactionId` 存取非密文回答，提交或终态后清除；secret 输入从不写入浏览器存储。
 - MCP assignment 卡在服务端把已批准视图重新打开为 pending（撤销授权）时清除本地 `Allowed` 覆盖，按钮恢复可用；乐观提交期间不误清。
 - 统一输入卡保留非 secret 请求的 `presentation.detail` 说明，位置在回答控件之前，与 legacy `AskCard` 一致；secret 请求继续不渲染说明。
@@ -99,6 +100,7 @@
 | 实时 outbound revision | `outbound.draft.updated` reducer 测试把 r2 更新为 r3 的 recipients/subject/fingerprint/draftState；DB 测试断言每次保存各写一条事件 |
 | E2E 滚动竞态 | 卡片截图前用 `toPass` 重试 `scrollIntoViewIfNeeded`，避免 live interaction 重渲染导致 detached element；5/5 页面用例通过 |
 | Session-control 刷新 | 单元测试证明只有 takeover requested/granted/released 触发 thread refresh；普通 computer.status / run.waiting_input 不触发 |
+| 清空会话 | `thread.cleared` reducer 测试证明 interactions 与 displayBlocks 一并清空；Shell 乐观清空也重置这些集合 |
 | 全量 E2E 拆批 | 单元测试证明 gate-off 正则排除 card/peer、gate-on 批次包含两者；两个批次分别跑 legacy MCP 与 unified MCP 用例均通过 |
 | A10 E2E | 真实页面打开 r1，编辑并保存 r2，断言 r1 Superseded / r2 Pending，确认页含 revision + fingerprint，关闭后仍 pending；桌面/390/375 截图 |
 | 截图对照 | 新卡片、A10、pair 的实际页面截图已保留，见 `CARD-01B-visual-evidence.md` |
