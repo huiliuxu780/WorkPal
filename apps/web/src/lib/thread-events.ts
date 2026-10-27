@@ -794,6 +794,7 @@ function reduceThreadSnapshotBase(
       ...(payload.expiresAt ? { expiresAt: payload.expiresAt } : {}),
       ...(payload.resolvedAt ? { resolvedAt: payload.resolvedAt } : {}),
       ...(payload.resolvedByUserId ? { resolvedByUserId: payload.resolvedByUserId } : {}),
+      ...(payload.decision ? { decision: payload.decision } : {}),
       requestingActor: payload.actor,
       ...(payload.input ? { input: payload.input } : {}),
       ...(payload.approval ? { approval: payload.approval } : {}),
@@ -895,7 +896,7 @@ function interactionFromLiveEvent(
     ...(view.expiresAt !== undefined ? { expiresAt: view.expiresAt } : {}),
   };
   if (existing.kind === "action_approval") {
-    const decision = view.approval?.decision ?? existing.decision ?? null;
+    const decision = view.decision ?? view.approval?.decision ?? existing.decision ?? null;
     const approval = existing.approval;
     if (approval.kind === "outbound" || approval.kind === "tool") {
       const effectStatus = view.approval?.effectStatus ?? approval.effectStatus;
