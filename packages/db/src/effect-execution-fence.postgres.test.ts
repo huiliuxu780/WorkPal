@@ -548,5 +548,22 @@ describePostgres("effect execution fence (PostgreSQL)", () => {
       ).resolves.toBe(true);
       expect(await effectStatus(effect.id)).toBe("intended");
     });
+
+    it("restores an approved secret request without losing its approval", async () => {
+      const run = await seedRun();
+      const effect = await seedEffect(run.id, "executing");
+
+      await expect(
+        releaseExternalEffectClaim(
+          prisma,
+          {
+            effectId: effect.id,
+            execution: identity(run.id),
+          },
+          { to: "approved" },
+        ),
+      ).resolves.toBe(true);
+      expect(await effectStatus(effect.id)).toBe("approved");
+    });
   });
 });

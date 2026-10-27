@@ -5473,10 +5473,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 // gate and reach the bound request instead of reading the
                 // pause as an uncertain side effect.
                 if (applied && claimedEffect) {
-                  const released = await releaseExternalEffectClaim(deps.prisma, {
-                    effectId: applied.effect.id,
-                    execution: { runId, leaseOwner: workerId, leaseFence: fence },
-                  });
+                  const priorStatus =
+                    applied.effect.status === "approved" ? "approved" : "intended";
+                  const released = await releaseExternalEffectClaim(
+                    deps.prisma,
+                    {
+                      effectId: applied.effect.id,
+                      execution: { runId, leaseOwner: workerId, leaseFence: fence },
+                    },
+                    { to: priorStatus },
+                  );
                   if (!released) return finish(uncertainEffectResult(name));
                   claimedEffect = false;
                 }
