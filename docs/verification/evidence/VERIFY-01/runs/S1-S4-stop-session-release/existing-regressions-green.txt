@@ -1,5 +1,5 @@
 
-[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/verify-lifecycle-concurrency[39m
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m<worktree>[39m
 
  [32m✓[39m packages/db/src/cancel-terminal.postgres.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 5661[2mms[22m[39m
  [32m✓[39m packages/db/src/effect-execution-fence.postgres.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 2737[2mms[22m[39m

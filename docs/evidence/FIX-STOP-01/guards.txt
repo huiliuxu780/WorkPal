@@ -13,7 +13,7 @@ $ pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts \
     packages/db/src/wait-timeouts.postgres.test.ts --no-file-parallelism
 
 
-[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/verify-lifecycle-concurrency[39m
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m<worktree>[39m
 
  [32m✓[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 628[2mms[22m[39m
  [32m✓[39m packages/db/src/cancel-terminal.postgres.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1284[2mms[22m[39m

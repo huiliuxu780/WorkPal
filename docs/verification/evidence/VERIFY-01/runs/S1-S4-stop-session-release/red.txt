@@ -27,7 +27,7 @@ $ VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e
     pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts --no-file-parallelism
 
 
-[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/verify-lifecycle-concurrency[39m
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m<worktree>[39m
 
  [31m❯[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[33m 768[2mms[22m[39m
 [31m     [31m×[31m S1: cancelling an in-flight generation lets the next message run[39m[32m 152[2mms[22m[39m
