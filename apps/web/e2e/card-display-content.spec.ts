@@ -107,9 +107,7 @@ test("renders all nine DisplayBlock kinds from the server projection", async ({
   );
   // The result wraps far beyond the three-line clamp; the full text must stay
   // reachable through the same read-full-text entry as the markdown card.
-  const taskStatus = page
-    .locator('[data-testid="display-block"][data-kind="task_status"]')
-    .first();
+  const taskStatus = page.locator('[data-testid="display-block"][data-kind="task_status"]').first();
   await expect(taskStatus.getByRole("button", { name: "Read full text" })).toBeVisible();
   await taskStatus.getByRole("button", { name: "Read full text" }).click();
   await expect(page.getByRole("dialog")).toContainText("Line 14");
