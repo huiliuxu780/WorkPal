@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@rakazo/contracts";
+import type { DisplayBlock, MessageBlock } from "@rakazo/contracts";
 import { speechFromBlocks } from "./speech-text.js";
 
 /** The fields grouping reads; web `ThreadMessage` and mobile `MobileMessage` both satisfy it. */
@@ -122,4 +122,42 @@ export function voiceChatDuration(group: VoiceChatGroup): number {
   if (!first || !last) return 0;
   const seconds = (Date.parse(last.createdAt ?? "") - Date.parse(first.createdAt ?? "")) / 1000;
   return Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+}
+
+const TRANSCRIPT_MAX = 20_000;
+
+/**
+ * Recompute the voice display from the merged group instead of trusting one
+ * server projection: a call spanning the recent snapshot and an older page is
+ * projected partially by each response with different anchors, so per-page
+ * blocks can drop turns. Mirrors the server projection's transcript join and
+ * duration; `artifactId` comes from the projected block when one exists.
+ */
+export function voiceDisplayBlockFromGroup(
+  group: VoiceChatGroup,
+  artifactId: string | null,
+): DisplayBlock {
+  const anchor = group.marker ?? group.messages[0];
+  if (!anchor) {
+    return {
+      kind: "voice",
+      blockId: "",
+      artifactId,
+      durationMs: 0,
+      transcript: null,
+    };
+  }
+  const transcript = group.messages
+    .filter((message) => message !== group.marker)
+    .map((message) => speechFromBlocks(message.blocks).trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, TRANSCRIPT_MAX);
+  return {
+    kind: "voice",
+    blockId: `${anchor.id}:voice`,
+    artifactId,
+    durationMs: voiceChatDuration(group) * 1_000,
+    transcript: transcript || null,
+  };
 }

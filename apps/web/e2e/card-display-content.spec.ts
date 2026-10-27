@@ -189,3 +189,40 @@ test("markdown card re-measures overflow when the viewport changes", async ({
   await scrollIntoView(probeCard);
   await captureScreenshot(page, testInfo, "display-markdown-320-reflow");
 });
+
+test("renders projected cards beside narration text", async ({ page }) => {
+  const stamp = Date.now();
+  await signup(page, `display-narration-${stamp}@rakazo.test`, "password12", "Display Narration");
+  await completeOnboarding(page);
+  const botId = activeBotId(page);
+  const snapshot = await rpc<{ threadId: string }>(page, "threads/get", { botId });
+  const image = await rpc<{ id: string }>(page, "artifacts/create", {
+    botId,
+    name: "narration.png",
+    mimeType: "image/png",
+    contentBase64: Buffer.from(DISPLAY_IMAGE, "base64").toString("base64"),
+  });
+  const seeded = await page.request.post(`${process.env.API_URL}/__e2e/display-blocks`, {
+    data: {
+      botId,
+      threadId: snapshot.threadId,
+      imageId: image.id,
+      fileId: image.id,
+      htmlId: image.id,
+      pageId: image.id,
+      narrationImageId: image.id,
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  await page.reload();
+
+  // The remaining short text turns the message into a narration bubble; the
+  // projected card must still render next to it instead of being dropped.
+  const narrationMessage = page
+    .locator("[data-message-id]")
+    .filter({ hasText: "Here is the chart capture you asked for." });
+  await expect(narrationMessage).toBeVisible({ timeout: 30_000 });
+  await expect(narrationMessage.locator('[data-kind="media"] img')).toBeVisible({
+    timeout: 15_000,
+  });
+});

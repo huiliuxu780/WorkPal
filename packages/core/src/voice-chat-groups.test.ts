@@ -5,6 +5,7 @@ import {
   latestSpokenCallReply,
   voiceChatDuration,
   voiceChatSummary,
+  voiceDisplayBlockFromGroup,
 } from "./voice-chat-groups.js";
 
 let seq = 0;
@@ -185,5 +186,50 @@ describe("voiceChatDuration", () => {
     expect(group?.kind === "voiceChat" && voiceChatDuration(group)).toBe(
       Math.round((Date.parse(end.createdAt) - Date.parse(start.createdAt)) / 1000),
     );
+  });
+});
+
+describe("voiceDisplayBlockFromGroup", () => {
+  it("joins every loaded turn into one transcript anchored to the marker", () => {
+    const [group] = groupVoiceChats([
+      message({ role: "user", callId: "call-1", runId: "run-1" }),
+      message({ role: "bot", runId: "run-1", blocks: [{ kind: "text", text: "Deploy is green." }] }),
+      message({
+        role: "bot",
+        runId: "run-1",
+        blocks: [{ kind: "voice_call", callId: "call-1", title: "Deploy check", farewell: "Bye" }],
+      }),
+    ]);
+    if (group?.kind !== "voiceChat") throw new Error("expected a voice group");
+
+    const block = voiceDisplayBlockFromGroup(group, null);
+    if (block.kind !== "voice") throw new Error("expected a voice block");
+    expect(block.blockId).toBe(`${group.marker?.id}:voice`);
+    expect(block.transcript).toBe("Hello\n\nDeploy is green.");
+    expect(block.artifactId).toBeNull();
+    expect(block.durationMs).toBe(voiceChatDuration(group) * 1_000);
+  });
+
+  it("keeps turns loaded from older pages in the transcript", () => {
+    const older = message({ role: "user", callId: "call-1", runId: "run-1" });
+    const reply = message({ role: "bot", runId: "run-1", blocks: [{ kind: "text", text: "First answer." }] });
+    const newer = message({ role: "user", callId: "call-1", runId: "run-2" });
+    const marker = message({
+      role: "bot",
+      runId: "run-2",
+      blocks: [{ kind: "voice_call", callId: "call-1", title: "Wrap up", farewell: "Bye" }],
+    });
+    const [recentGroup] = groupVoiceChats([newer, marker]);
+    if (recentGroup?.kind !== "voiceChat") throw new Error("expected a voice group");
+    // The recent page projects only its own turns…
+    const recentBlock = voiceDisplayBlockFromGroup(recentGroup, null);
+    if (recentBlock.kind !== "voice") throw new Error("expected a voice block");
+    expect(recentBlock.transcript).not.toContain("First answer.");
+    // …while the merged group (all loaded messages) keeps them.
+    const [mergedGroup] = groupVoiceChats([older, reply, newer, marker]);
+    if (mergedGroup?.kind !== "voiceChat") throw new Error("expected a voice group");
+    const mergedBlock = voiceDisplayBlockFromGroup(mergedGroup, null);
+    if (mergedBlock.kind !== "voice") throw new Error("expected a voice block");
+    expect(mergedBlock.transcript).toBe("Hello\n\nFirst answer.\n\nHello");
   });
 });

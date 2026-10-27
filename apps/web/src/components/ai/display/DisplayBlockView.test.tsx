@@ -40,6 +40,14 @@ beforeEach(() => {
   getArtifact.mockReset();
   URL.createObjectURL = vi.fn(() => "blob:artifact");
   URL.revokeObjectURL = vi.fn();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 });
 
 afterEach(async () => {

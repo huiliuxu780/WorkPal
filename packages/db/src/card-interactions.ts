@@ -23,6 +23,7 @@ import {
 } from "@rakazo/contracts";
 import {
   ACTIVE_RUN_STATUSES,
+  cloudAgentHttpsUrl,
   groupVoiceChats,
   speechFromBlocks,
   voiceChatDuration,
@@ -587,6 +588,9 @@ function displayBlocksFrom(
       status: CLOUD_AGENT_STATUS[block.status],
       title: block.title,
       summary: null,
+      // The legacy CloudAgentCard linked to the PR or the agent URL; the
+      // unified task card must keep that destination reachable.
+      destination: cloudAgentHttpsUrl(block.prUrl) ?? cloudAgentHttpsUrl(block.url) ?? null,
       source: { threadId: message.threadId, messageId: message.id, runId: message.runId },
     });
   }

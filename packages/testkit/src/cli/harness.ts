@@ -305,6 +305,7 @@ async function main() {
             htmlId?: string;
             pageId?: string;
             probeText?: string;
+            narrationImageId?: string;
           };
           if (
             !input.botId ||
@@ -402,6 +403,28 @@ async function main() {
             },
           });
           const callId = "display-call";
+          if (input.narrationImageId) {
+            // A short bot text plus an image: after the image is suppressed by
+            // its media card, the message qualifies as narration, so the
+            // projected card must render from the narration path too.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  { kind: "text", text: "Here is the chart capture you asked for." },
+                  {
+                    kind: "image",
+                    artifactId: input.narrationImageId,
+                    mimeType: "image/png",
+                    name: "chart.png",
+                  },
+                ] as never,
+              },
+            });
+          }
           if (input.probeText) {
             // A separate bot message so the viewport-reflow regression gets a
             // markdown card whose fold decision flips on narrow viewports.

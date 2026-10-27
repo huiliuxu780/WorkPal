@@ -68,6 +68,7 @@ import {
   stripMentionToken,
   truncateSlashDescription,
   userVisibleMessages,
+  voiceDisplayBlockFromGroup,
   withLiveStreamingProgress,
 } from "@rakazo/core";
 import {
@@ -155,6 +156,7 @@ import {
   DisplayBlockView,
   displayBlockMessageIndex,
   groupDisplayBlocksByMessage,
+  VoiceDisplay,
 } from "../components/ai/display/DisplayBlockView";
 import { PeerReceiptRow } from "../components/ai/PeerReceiptRow";
 import { GroupDestinationReceipt } from "../components/ai/GroupDestinationReceipt";
@@ -5419,17 +5421,26 @@ export const Transcript = memo(function Transcript({
         ) : null}
         {groupVoiceChats(reactionView.visibleMessages).map((item) => {
           if (item.kind === "voiceChat") {
-            const voiceBlock = cardsUnifiedV2
-              ? item.messages
-                  .flatMap((message) => displayBlocksByMessage.get(message.id) ?? [])
-                  .find((block) => block.kind === "voice")
-              : undefined;
-            if (voiceBlock) {
+            if (cardsUnifiedV2) {
+              // Recompute from the merged group: per-page projections only
+              // cover their own window, so trusting one would drop the turns
+              // loaded from older pages. The artifactId, when audio exists,
+              // is the only part taken from the projection.
+              const projectedArtifactId = item.messages
+                .flatMap((message) => displayBlocksByMessage.get(message.id) ?? [])
+                .find((block) => block.kind === "voice");
               return (
-                <DisplayBlockList
+                <VoiceDisplay
                   key={item.key}
-                  blocks={[voiceBlock]}
+                  block={voiceDisplayBlockFromGroup(
+                    item,
+                    projectedArtifactId?.kind === "voice"
+                      ? projectedArtifactId.artifactId
+                      : null,
+                  )}
                   target={artifactTarget}
+                  group={item}
+                  revealMessageId={scrollRequest?.messageId}
                 />
               );
             }
@@ -7128,6 +7139,11 @@ const MessageView = memo(function MessageView({
             ) : null}
           </div>
         </div>
+        {displayBlocks?.length ? (
+          <div className="mt-2">
+            <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+          </div>
+        ) : null}
       </>
     );
   }

@@ -409,6 +409,8 @@ export const DisplayBlockSchema = z.discriminatedUnion("kind", [
     status: TaskStatusValueSchema,
     title: z.string().min(1).max(500),
     summary: z.string().max(2_000).nullable(),
+    /** Validated https destination carried over from a replaced cloud-agent card. */
+    destination: z.string().max(2_000).nullable().optional(),
     source: z.strictObject({
       threadId: Id,
       messageId: Id,

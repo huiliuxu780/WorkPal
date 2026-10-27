@@ -487,8 +487,37 @@ describe("CARD-01 thread card surface", () => {
     expect(surface.attention).toEqual([]);
   });
 
-  it("prefers the subagent result over stale progress in task_status summaries", () => {
+  it("keeps the cloud-agent destination link on the task_status card", () => {
     const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "cloud_agent",
+            agentId: "cloud-1",
+            title: "Remote fix",
+            status: "finished",
+            url: "https://cloud.example.test",
+            prUrl: "https://github.example.test/pr/42",
+          },
+          {
+            kind: "cloud_agent",
+            agentId: "cloud-2",
+            title: "Insecure link",
+            status: "running",
+            url: "http://cloud.example.test",
+          },
+        ]),
+      ],
+    });
+    expect(
+      surface.displayBlocks.map((block) =>
+        block.kind === "task_status" ? block.destination ?? null : null,
+      ),
+    ).toEqual(["https://github.example.test/pr/42", null]);
+  });
+
+  it("prefers the subagent result over stale progress in task_status summaries", () => {    const surface = projectThreadCardSurface({
       ...baseInput,
       messages: [
         message([

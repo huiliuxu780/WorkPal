@@ -20,14 +20,15 @@
 | 390 深色 | ![Display 390 dark](./evidence/card-display-content/display-blocks-390-dark.png) | [mobile 390](./source/card-unification-v2/mockup/cards-hifi-v4/shot-mobile-390.png) |
 | 390 下段：media/html/page/task_status/voice | ![Display 390](./evidence/card-display-content/display-blocks-390.png) | [mobile 390](./source/card-unification-v2/mockup/cards-hifi-v4/shot-mobile-390.png) |
 | 375 下段 | ![Display 375](./evidence/card-display-content/display-blocks-375.png) | [mobile 375](./source/card-unification-v2/mockup/cards-hifi-v4/shot-mobile-375.png) |
+| 320 折叠卡重测：同文案缩窄后出现“展开全文” | ![Markdown reflow](./evidence/card-display-content/display-markdown-320-reflow.png) | [mobile 390](./source/card-unification-v2/mockup/cards-hifi-v4/shot-mobile-390.png) |
 
 ## 观察结果
 
-- 长 Markdown 由高度折叠，展开入口打开完整正文；普通短回复仍走气泡，不改变原消息。
+- 长 Markdown 由高度折叠，展开入口打开完整正文；普通短回复仍走气泡，不改变原消息。折叠判定跟随渲染尺寸：视口变化时 ResizeObserver 重测（320 缩窄出现入口、1440 放宽入口消失均有 E2E 断言与截图）。
 - 结构化 table 有真实 columns/rows、排序、分页、展开与复制；它不是 Markdown 表格增强。chart 的数据表是该图表真实 `data` 的 columns/rows 派生。
 - collection 来自 legacy `card` KV 的只读兼容，没有批准、付款、发送、删除或授权控件。
 - image 可放大；file 走真实 artifact 预览/下载；HTML 只在 `SandboxedHtmlViewer` 中打开；Page 打开现有 artifact 文档路由。
-- task_status 只展示工作投影，不进入 attention queue；voice 展示真实 voice group 的 transcript 与 duration。当前 `voice_call` 没有音频 artifact，因此明确显示“Audio is not recorded for this call.”，不伪造播放。
+- task_status 只展示工作投影，不进入 attention queue；voice 展示真实 voice group 的 transcript 与 duration——transcript 由客户端按合并后的 group 重算，跨分页调用不丢 turn，且每轮保留 `data-message-id` 锚点可跳转。当前 `voice_call` 没有音频 artifact，因此明确显示“Audio is not recorded for this call.”，不伪造播放。cloud agent 的 task 卡保留经 https 校验的外部链接（PR 或 agent URL）。
 - 390/375 无横向溢出；深色模式可读；卡片不使用整卡 opacity。
 
 ## 已知数据边界

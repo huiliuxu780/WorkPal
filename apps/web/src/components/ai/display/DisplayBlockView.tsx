@@ -1,6 +1,8 @@
 import { t } from "@lingui/core/macro";
 import { ChatMarkdown, type ExtractedTable, TableCard } from "@rakazo/chat-ui/web";
 import type { DisplayBlock } from "@rakazo/contracts";
+import type { VoiceChatGroup } from "@rakazo/core";
+import { speechFromBlocks } from "@rakazo/core";
 import { Button, cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -324,6 +326,16 @@ function TaskStatusDisplay({
           {block.summary}
         </p>
       ) : null}
+      {block.destination ? (
+        <a
+          href={block.destination}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 block w-fit text-[12.5px] text-primary underline-offset-2 hover:underline"
+        >
+          {t`Open external agent`}
+        </a>
+      ) : null}
     </DisplayCard>
   );
 }
@@ -353,12 +365,18 @@ function PageDisplay({ block }: { block: Extract<DisplayBlock, { kind: "page" }>
   );
 }
 
-function VoiceDisplay({
+export function VoiceDisplay({
   block,
   target,
+  group,
+  revealMessageId,
 }: {
   block: Extract<DisplayBlock, { kind: "voice" }>;
   target: ArtifactTarget;
+  /** The merged call group; present only in the transcript flow, where turn
+      anchors stay jumpable. Detail surfaces render the flat transcript. */
+  group?: VoiceChatGroup;
+  revealMessageId?: string;
 }) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioError, setAudioError] = useState(false);
@@ -401,7 +419,31 @@ function VoiceDisplay({
           {audioError ? t`Could not load the recording.` : t`Audio is not recorded for this call.`}
         </DisplayNote>
       )}
-      {block.transcript ? (
+      {group ? (
+        <div className="mt-2 max-h-48 space-y-1.5 overflow-auto text-[12.5px] leading-[18px]">
+          {group.messages.map((message) => {
+            // The marker is the card's summary line, never a transcript turn.
+            const text = message === group.marker ? "" : speechFromBlocks(message.blocks).trim();
+            if (!text) {
+              return <span key={message.id} data-message-id={message.id} className="sr-only" />;
+            }
+            return (
+              <p
+                key={message.id}
+                data-message-id={message.id}
+                dir="auto"
+                className={
+                  message.role === "user"
+                    ? "text-end text-muted-foreground"
+                    : "rounded-md bg-muted/60 px-2 py-1.5 text-foreground"
+                }
+              >
+                {text}
+              </p>
+            );
+          })}
+        </div>
+      ) : block.transcript ? (
         <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[12.5px] leading-[18px] text-muted-foreground">
           {block.transcript}
         </p>
