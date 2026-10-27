@@ -463,6 +463,9 @@ const CLOUD_AGENT_STATUS = {
 const DISPLAY_TABLE_MAX_ROWS = 10_000;
 const DISPLAY_TABLE_MAX_COLUMNS = 20;
 const DISPLAY_CELL_MAX_CHARS = 4_000;
+const DISPLAY_COLLECTION_MAX_ITEMS = 200;
+const DISPLAY_COLLECTION_MAX_LABEL_CHARS = 200;
+const DISPLAY_COLLECTION_MAX_VALUE_CHARS = 2_000;
 
 function displayCell(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -475,29 +478,63 @@ function displayCell(value: unknown): string {
   }
 }
 
-/** The accessible data table that accompanies a chart's real data rows. */
+/**
+ * The accessible data table that accompanies a chart's real data rows.
+ * Returns null when the data exceeds the table limits: a silently clipped
+ * table would claim to be the chart's full data, so the chart card simply
+ * carries no companion table instead.
+ */
 function chartDataTable(blockId: string, data: readonly unknown[]): unknown | null {
   const rows = data.filter(
     (row): row is Record<string, unknown> =>
       typeof row === "object" && row !== null && !Array.isArray(row),
   );
   if (rows.length === 0) return null;
-  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(
-    0,
-    DISPLAY_TABLE_MAX_COLUMNS,
-  );
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))];
   if (keys.length === 0) return null;
+  if (rows.length > DISPLAY_TABLE_MAX_ROWS || keys.length > DISPLAY_TABLE_MAX_COLUMNS) {
+    return null;
+  }
+  if (keys.some((key) => key.length > DISPLAY_COLLECTION_MAX_LABEL_CHARS)) return null;
+  if (
+    rows.some((row) => keys.some((key) => displayCell(row[key]).length >= DISPLAY_CELL_MAX_CHARS))
+  ) {
+    return null;
+  }
   return {
     kind: "table",
     blockId: `${blockId}:table`,
     columns: keys.map((key, index) => ({
       id: `column-${index + 1}`,
-      label: key.slice(0, 200) || `Column ${index + 1}`,
+      label: key || `Column ${index + 1}`,
     })),
-    rows: rows
-      .slice(0, DISPLAY_TABLE_MAX_ROWS)
-      .map((row) => keys.map((key) => displayCell(row[key]))),
+    rows: rows.map((row) => keys.map((key) => displayCell(row[key]))),
   };
+}
+
+/**
+ * The collection card is a read-only projection of a legacy `card` KV. When
+ * the lines exceed what the display schema can carry, the projection is
+ * skipped so the complete legacy card stays visible instead of silently
+ * losing the excess.
+ */
+function collectionProjection(block: Extract<MessageBlock, { kind: "card" }>): unknown | null {
+  if (block.lines.length > DISPLAY_COLLECTION_MAX_ITEMS) return null;
+  if (
+    block.lines.some(
+      (line) =>
+        line.k.trim().length > DISPLAY_COLLECTION_MAX_LABEL_CHARS ||
+        line.v.length > DISPLAY_COLLECTION_MAX_VALUE_CHARS,
+    )
+  ) {
+    return null;
+  }
+  return block.lines.map((line, lineIndex) => ({
+    id: `line-${lineIndex + 1}`,
+    label: line.k.trim() || `Item ${lineIndex + 1}`,
+    value: line.v,
+    detail: null,
+  }));
 }
 
 function displayBlocksFrom(
@@ -510,17 +547,15 @@ function displayBlocksFrom(
   if (block.kind === "text") {
     candidates.push({ kind: "markdown", blockId, text: block.text });
   } else if (block.kind === "card") {
-    candidates.push({
-      kind: "collection",
-      blockId,
-      title: null,
-      items: block.lines.slice(0, 200).map((line, lineIndex) => ({
-        id: `line-${lineIndex + 1}`,
-        label: (line.k.trim() || `Item ${lineIndex + 1}`).slice(0, 200),
-        value: line.v.slice(0, 2_000),
-        detail: null,
-      })),
-    });
+    const items = collectionProjection(block);
+    if (items) {
+      candidates.push({
+        kind: "collection",
+        blockId,
+        title: null,
+        items,
+      });
+    }
   } else if (block.kind === "chart") {
     candidates.push({
       kind: "chart",
@@ -544,21 +579,27 @@ function displayBlocksFrom(
   } else if (block.kind === "file") {
     const mimeType = block.mimeType.toLowerCase();
     if (mimeType === "text/html") {
-      candidates.push({
-        kind: "html",
-        blockId,
-        artifactId: block.artifactId,
-        title: block.name.slice(0, 500) || null,
-        sandboxed: true,
-      });
+      // A title beyond the schema cap would be silently clipped, so such a
+      // document keeps its complete legacy card instead.
+      if (block.name.length <= 500) {
+        candidates.push({
+          kind: "html",
+          blockId,
+          artifactId: block.artifactId,
+          title: block.name || null,
+          sandboxed: true,
+        });
+      }
     } else if (mimeType === "text/markdown" || mimeType === "application/pdf") {
-      candidates.push({
-        kind: "page",
-        blockId,
-        pageId: block.artifactId,
-        title: block.name.slice(0, 500),
-        available: true,
-      });
+      if (block.name.length <= 500) {
+        candidates.push({
+          kind: "page",
+          blockId,
+          pageId: block.artifactId,
+          title: block.name,
+          available: true,
+        });
+      }
     } else {
       candidates.push({
         kind: "media",

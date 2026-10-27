@@ -126,33 +126,32 @@ export function voiceChatDuration(group: VoiceChatGroup): number {
 
 const TRANSCRIPT_MAX = 20_000;
 
+/** The full spoken transcript of every loaded turn, in order (uncapped). */
+export function voiceTranscriptFromGroup(group: VoiceChatGroup): string {
+  return group.messages
+    .filter((message) => message !== group.marker)
+    .map((message) => speechFromBlocks(message.blocks).trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 /**
  * Recompute the voice display from the merged group instead of trusting one
  * server projection: a call spanning the recent snapshot and an older page is
  * projected partially by each response with different anchors, so per-page
  * blocks can drop turns. Mirrors the server projection's transcript join and
  * duration; `artifactId` comes from the projected block when one exists.
+ * Returns null when the transcript exceeds the display schema's cap so the
+ * caller can fall back to the complete legacy card instead of clipping.
  */
 export function voiceDisplayBlockFromGroup(
   group: VoiceChatGroup,
   artifactId: string | null,
-): Extract<DisplayBlock, { kind: "voice" }> {
+): Extract<DisplayBlock, { kind: "voice" }> | null {
   const anchor = group.marker ?? group.messages[0];
-  if (!anchor) {
-    return {
-      kind: "voice",
-      blockId: "",
-      artifactId,
-      durationMs: 0,
-      transcript: null,
-    };
-  }
-  const transcript = group.messages
-    .filter((message) => message !== group.marker)
-    .map((message) => speechFromBlocks(message.blocks).trim())
-    .filter(Boolean)
-    .join("\n\n")
-    .slice(0, TRANSCRIPT_MAX);
+  if (!anchor) return null;
+  const transcript = voiceTranscriptFromGroup(group);
+  if (transcript.length > TRANSCRIPT_MAX) return null;
   return {
     kind: "voice",
     blockId: `${anchor.id}:voice`,

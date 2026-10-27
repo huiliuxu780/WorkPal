@@ -239,3 +239,51 @@ test("renders projected cards beside narration text", async ({ page }) => {
     timeout: 15_000,
   });
 });
+
+test("renders projected cards when only tool activity remains", async ({ page }) => {
+  const stamp = Date.now();
+  await signup(page, `display-tools-${stamp}@rakazo.test`, "password12", "Display Tools");
+  await completeOnboarding(page);
+  await page.setViewportSize({ width: 1440, height: 1200 });
+  const botId = activeBotId(page);
+  const snapshot = await rpc<{ threadId: string }>(page, "threads/get", { botId });
+  const image = await rpc<{ id: string }>(page, "artifacts/create", {
+    botId,
+    name: "probe.png",
+    mimeType: "image/png",
+    contentBase64: Buffer.from(DISPLAY_IMAGE, "base64").toString("base64"),
+  });
+  const seeded = await page.request.post(`${process.env.API_URL}/__e2e/display-blocks`, {
+    data: {
+      botId,
+      threadId: snapshot.threadId,
+      imageId: image.id,
+      fileId: image.id,
+      htmlId: image.id,
+      pageId: image.id,
+      toolProbeImageId: image.id,
+      toolProbeText: "deep",
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  await page.reload();
+
+  // Tool activity is hidden by default: the messages reduce to tool-only
+  // narration, and their projected cards must still render.
+  const mediaCard = page.locator('[data-testid="display-block"][data-kind="media"]').last();
+  await expect(mediaCard.locator("img")).toBeVisible({ timeout: 30_000 });
+  const markdownCard = page.locator('[data-testid="display-block"][data-kind="markdown"]').last();
+  await expect(markdownCard).toContainText("Tool probe");
+  await expect(page.getByTestId("tool-activity-line")).toHaveCount(0);
+
+  // Showing tool activity keeps the same cards next to the steps.
+  await page.evaluate(() => localStorage.setItem("rakazo.showToolActivity", "on"));
+  await page.reload();
+  await expect(page.getByTestId("tool-activity-line").first()).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.locator('[data-testid="display-block"][data-kind="media"]').last().locator("img"),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-testid="display-block"][data-kind="markdown"]').last(),
+  ).toContainText("Tool probe");
+});

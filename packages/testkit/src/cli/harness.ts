@@ -306,6 +306,8 @@ async function main() {
             pageId?: string;
             probeText?: string;
             narrationImageId?: string;
+            toolProbeImageId?: string;
+            toolProbeText?: string;
           };
           if (
             !input.botId ||
@@ -432,6 +434,52 @@ async function main() {
                     mimeType: "image/png",
                     name: "chart.png",
                   },
+                ] as never,
+              },
+            });
+          }
+          if (input.toolProbeImageId) {
+            // Steps plus an image: once the image is suppressed by its media
+            // card, only tool activity remains, so the card must survive the
+            // tool-only narration paths with the preference on and off.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  {
+                    kind: "steps",
+                    steps: [{ label: "Read the chart", count: 1 }],
+                    durationMs: 1_200,
+                  },
+                  {
+                    kind: "image",
+                    artifactId: input.toolProbeImageId,
+                    mimeType: "image/png",
+                    name: "probe.png",
+                  },
+                ] as never,
+              },
+            });
+          }
+          if (input.toolProbeText) {
+            // Steps plus a long text: the text folds into its markdown card
+            // and only the steps remain visible.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  {
+                    kind: "steps",
+                    steps: [{ label: "Summarize the report", count: 1 }],
+                    durationMs: 900,
+                  },
+                  { kind: "text", text: `Tool probe\n\n${longText}` },
                 ] as never,
               },
             });

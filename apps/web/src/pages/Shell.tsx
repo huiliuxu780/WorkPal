@@ -5429,17 +5429,22 @@ export const Transcript = memo(function Transcript({
               const projectedArtifactId = item.messages
                 .flatMap((message) => displayBlocksByMessage.get(message.id) ?? [])
                 .find((block) => block.kind === "voice");
+              const voiceBlock = voiceDisplayBlockFromGroup(
+                item,
+                projectedArtifactId?.kind === "voice" ? projectedArtifactId.artifactId : null,
+              );
+              if (voiceBlock) {
+                return (
+                  <VoiceDisplay key={item.key} block={voiceBlock} target={artifactTarget} group={item} />
+                );
+              }
+              // The transcript exceeds the display schema's cap; keep the
+              // complete legacy card instead of a clipped projection.
               return (
-                <VoiceDisplay
+                <VoiceChatCard
                   key={item.key}
-                  block={voiceDisplayBlockFromGroup(
-                    item,
-                    projectedArtifactId?.kind === "voice"
-                      ? projectedArtifactId.artifactId
-                      : null,
-                  )}
-                  target={artifactTarget}
                   group={item}
+                  revealMessageId={scrollRequest?.messageId}
                 />
               );
             }
@@ -7055,12 +7060,30 @@ const MessageView = memo(function MessageView({
     </>
   );
   if (isNarration) {
-    if (visibleNarrationBlocks.length === 0) return null;
+    if (visibleNarrationBlocks.length === 0) {
+      // Every narration block was suppressed (tool activity hidden and the
+      // remaining text became its markdown card). Keep the projected cards
+      // instead of dropping the message entirely.
+      if (!displayBlocks?.length) return null;
+      return (
+        <>
+          {messageContext}
+          <div className="mt-2">
+            <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+          </div>
+        </>
+      );
+    }
     if (isToolOnlyNarration(messageBlocks, showToolActivity)) {
       return (
         <>
           {messageContext}
           <ToolOnlyNarration blocks={visibleNarrationBlocks} live={isLive} />
+          {displayBlocks?.length ? (
+            <div className="mt-2">
+              <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+            </div>
+          ) : null}
         </>
       );
     }

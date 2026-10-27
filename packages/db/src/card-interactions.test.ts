@@ -842,3 +842,48 @@ describe("CARD-01 thread card surface", () => {
     ).toEqual([expect.objectContaining({ kind: "markdown", text: "Result" })]);
   });
 });
+
+describe("projection limits keep the legacy block", () => {
+  it("skips the collection projection when the lines exceed the display schema", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          { kind: "card", lines: [{ k: "A", v: "short" }] },
+          {
+            kind: "card",
+            lines: Array.from({ length: 201 }, (_, index) => ({ k: `K${index}`, v: "v" })),
+          },
+          { kind: "card", lines: [{ k: "A", v: "x".repeat(2_001) }] },
+        ]),
+      ],
+    });
+    expect(surface.displayBlocks.map((block) => block.kind)).toEqual(["collection"]);
+    expect(surface.displayBlocks[0]).toMatchObject({ items: [{ label: "A", value: "short" }] });
+  });
+
+  it("skips a chart data table that would silently drop rows or cells", () => {
+    const chart = (data: unknown[]) => ({
+      kind: "chart" as const,
+      name: "Trend",
+      spec: { title: "Trend", marks: [] },
+      data,
+    });
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          chart([{ day: "Mon", count: 3 }]),
+          chart(Array.from({ length: 10_001 }, (_, index) => ({ day: `D${index}`, count: index }))),
+          chart([{ day: "Mon", note: "x".repeat(4_001) }]),
+        ]),
+      ],
+    });
+    expect(surface.displayBlocks.map((block) => block.kind)).toEqual([
+      "chart",
+      "table",
+      "chart",
+      "chart",
+    ]);
+  });
+});
