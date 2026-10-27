@@ -281,6 +281,7 @@ const AGENTSCOPE_REQUEST = [
 
 const NODE_TEST_CI = [
   "scripts/ci/check-docs.test.mjs",
+  "scripts/ci/check-repo-hygiene.test.mjs",
   "scripts/ci/select-checks.test.mjs",
   "scripts/ci/verify-result.test.mjs",
   "scripts/testing/test-inventory.test.mjs",
