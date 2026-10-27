@@ -1,0 +1,30 @@
+# AG-04 final-request golden baseline at the fix SHA - passes with NO regeneration
+
+Date 2026-10-28. Host macOS arm64. JDK: Homebrew openjdk 21.0.12.1 via JAVA_HOME only; no system
+Java was installed and no system configuration was changed. Maven 3.10.0.
+Baseline SHA (red): dc7d0723daacca43c321b7d3a32d6b99c78f09c6  = main a409140 + the new test only
+Fix SHA (green):    ff8666de1d1960b47fb70bd014ecbfd79efecfdd
+Test: services/agent-runtime/src/test/java/com/workpal/runtime/RuntimeProjectIsolationTest.java
+      -> startupDirectoryAgentsMdNeverReachesTheModel
+Command (identical for red and green):
+  export JAVA_HOME=<jdk21>; export PATH="$JAVA_HOME/bin:$PATH"
+  mvn -B -f services/agent-runtime/pom.xml test -Dtest=RuntimeProjectIsolationTest
+No real model, no scripted runtime and no capture proxy: the test drives RuntimeEngine.execute
+against a recording fixture model on 127.0.0.1 and asserts on the captured request body.
+Host paths below are replaced with <worktree>. No credential appears in these files.
+
+Docker via colima: DOCKER_HOST=unix://<home>/.colima/default/docker.sock and
+TESTCONTAINERS_RYUK_DISABLED=true (colima cannot mount the socket path for Ryuk).
+AGENT_RUNTIME_SKIP_BUILD=1 with the jar built from this branch.
+Prerequisite the bare command does not do: pnpm --filter @rakazo/db generate.
+
+$ pnpm exec vitest run packages/testkit/src/prompt-files-baseline.integration.test.ts
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+
+Why this matters: an earlier attempt fixed the leak with .disableWorkspaceContext(), which also
+deletes the "## AgentStateStore Context" section that the committed golden contains. That drifted
+the baseline at byte 7718 ("## Available Skills" replacing it). Pinning the project instead leaves
+the golden byte-identical, because the fixtures already carry an empty <agents_context> - which is
+also why this baseline stayed green on main while production leaked.

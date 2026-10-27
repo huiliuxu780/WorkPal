@@ -1,0 +1,38 @@
+# Full Java runtime suite at the fix SHA
+
+Date 2026-10-28. Host macOS arm64. JDK: Homebrew openjdk 21.0.12.1 via JAVA_HOME only; no system
+Java was installed and no system configuration was changed. Maven 3.10.0.
+Baseline SHA (red): dc7d0723daacca43c321b7d3a32d6b99c78f09c6  = main a409140 + the new test only
+Fix SHA (green):    ff8666de1d1960b47fb70bd014ecbfd79efecfdd
+Test: services/agent-runtime/src/test/java/com/workpal/runtime/RuntimeProjectIsolationTest.java
+      -> startupDirectoryAgentsMdNeverReachesTheModel
+Command (identical for red and green):
+  export JAVA_HOME=<jdk21>; export PATH="$JAVA_HOME/bin:$PATH"
+  mvn -B -f services/agent-runtime/pom.xml test -Dtest=RuntimeProjectIsolationTest
+No real model, no scripted runtime and no capture proxy: the test drives RuntimeEngine.execute
+against a recording fixture model on 127.0.0.1 and asserts on the captured request body.
+Host paths below are replaced with <worktree>. No credential appears in these files.
+
+$ mvn -B -f services/agent-runtime/pom.xml test
+
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.548 s -- in com.workpal.runtime.DelegationSuspensionTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.workpal.runtime.InterruptibleTaskRepositoryTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.297 s -- in com.workpal.runtime.CompactionBoundaryIntegrationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s -- in com.workpal.runtime.SessionCheckpointRestartRecoveryTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.112 s -- in com.workpal.runtime.SessionCheckpointIntegrationTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 9.526 s -- in com.workpal.runtime.AgentScopeSubagentFactoryProbeTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.079 s -- in com.workpal.runtime.SessionCheckpointStoreTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.611 s -- in com.workpal.runtime.ToolResultEvictionBoundaryTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s -- in com.workpal.runtime.CompactionTokenBudgetTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.103 s -- in com.workpal.runtime.ToolVisibilityRefreshIntegrationTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.346 s -- in com.workpal.runtime.MemoryCompactionPurgeIntegrationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.674 s -- in com.workpal.runtime.UntrustedContentBoundaryTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in com.workpal.runtime.PromptComposerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.038 s -- in com.workpal.runtime.PermissionRevokedResumeIntegrationTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in com.workpal.runtime.RunRequestPolicyTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.593 s -- in com.workpal.runtime.AgentScopeBackgroundProbeTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in com.workpal.runtime.RuntimeProjectIsolationTest
+[INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 11.04 s -- in com.workpal.runtime.RuntimeIntegrationTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.workpal.runtime.SessionAdmissionKeyTest
+[INFO] Tests run: 127, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
