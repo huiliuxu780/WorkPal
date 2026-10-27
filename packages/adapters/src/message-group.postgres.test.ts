@@ -131,12 +131,13 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     await isolated?.drop();
   }, 60_000);
 
-  function deps(gates = GATES) {
+  function deps(gates = GATES, cardsUnifiedV2 = false) {
     return {
       prisma,
       events: { notify: vi.fn(async () => undefined) },
       jobs: { enqueue: vi.fn(async () => undefined), cancel: vi.fn(async () => undefined) },
       roundtableFeatures: gates,
+      cardsUnifiedV2,
     } as unknown as Parameters<typeof messageGroup>[0];
   }
 
@@ -158,11 +159,12 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
       deliveryKey?: string;
       gates?: typeof GATES;
       sourceRun?: string;
+      cardsUnifiedV2?: boolean;
     } = {},
   ) {
     const key = options.key ?? nextKey();
     const result = await messageGroup(
-      deps(options.gates),
+      deps(options.gates, options.cardsUnifiedV2),
       {
         id: options.sourceRun ?? sourceRunId,
         spaceId,
@@ -778,4 +780,119 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
     ).toBe(1);
   });
 
+
+  describe("membership approval handoff", () => {
+    let openGroup: { id: string; threadId: string; name: string };
+    beforeAll(async () => {
+      const created = await prisma.chatGroup.create({
+        data: {
+          spaceId,
+          userId: ownerId,
+          kind: CHAT_GROUP_KIND_STANDARD,
+          name: "Open approval room",
+        },
+      });
+      const thread = await prisma.thread.create({
+        data: { spaceId, userId: ownerId, groupId: created.id },
+      });
+      const extra = await prisma.bot.create({
+        data: { spaceId, userId: ownerId, name: "Extra", color: "test" },
+      });
+      await prisma.chatGroupMember.createMany({
+        data: [
+          { groupId: created.id, botId: blue.id },
+          { groupId: created.id, botId: extra.id },
+        ],
+      });
+      openGroup = { id: created.id, threadId: thread.id, name: created.name };
+    });
+
+    it("asks for a scoped membership decision instead of failing, without target writes", async () => {
+      const source = await createSourceRun();
+      const before = await counts();
+      const { result } = await send(
+        { group_id: openGroup.id },
+        { sourceRun: source.id, cardsUnifiedV2: true },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok || !("kind" in result)) throw new Error("expected membership_required");
+      expect(result.kind).toBe("membership_required");
+      if (result.kind !== "membership_required") return;
+      expect(result.groupId).toBe(openGroup.id);
+      expect(result.message).toContain("Check the launch performance risk");
+      expect(result.deliveryKey).toBeTruthy();
+      expect(await counts()).toEqual(before);
+      expect(await prisma.message.count({ where: { threadId: openGroup.threadId } })).toBe(0);
+    });
+
+    it("keeps the pre-RT-12 error when the cards gate is off", async () => {
+      const source = await createSourceRun();
+      const { result } = await send({ group_id: openGroup.id }, { sourceRun: source.id });
+      expect(result).toEqual({ ok: false, error: "you are not a member of this group" });
+      expect(
+        await prisma.message.count({ where: { threadId: openGroup.threadId } }),
+      ).toBe(0);
+    });
+
+    it("returns the settled denial for the same delivery key", async () => {
+      const source = await createSourceRun();
+      const key = nextKey();
+      const askMessage = await prisma.$transaction((tx) =>
+        createThreadMessageInTransaction(tx, {
+          threadId: joyThreadId,
+          role: "bot",
+          originKind: "system",
+          blocks: [{ kind: "text", text: "Membership decision" }],
+          botId: joy.id,
+          runId: source.id,
+        }),
+      );
+      const interventionId = randomUUID();
+      await prisma.intervention.create({
+        data: {
+          id: interventionId,
+          kind: "approval",
+          status: "answered",
+          spaceId,
+          threadId: joyThreadId,
+          runId: source.id,
+          attemptId: "legacy",
+          botId: joy.id,
+          messageId: askMessage.id,
+          pendingRunKey: null,
+          decision: "denied",
+          resolvedAt: new Date(),
+          presentation: { text: "Add Joy?" },
+          createdAt: new Date(),
+        },
+      });
+      await prisma.groupMembershipRequest.create({
+        data: {
+          id: randomUUID(),
+          spaceId,
+          userId: ownerId,
+          botId: joy.id,
+          groupId: openGroup.id,
+          groupName: openGroup.name,
+          sourceThreadId: joyThreadId,
+          sourceRunId: source.id,
+          cardMessageId: askMessage.id,
+          interventionId,
+          deliveryKey: key,
+          requestRevision: 1,
+          message: "Check the launch performance risk and report back.",
+          topic: "性能风险核对",
+          presentation: { text: "Add Joy?" },
+        },
+      });
+      const { result } = await send(
+        { group_id: openGroup.id },
+        { sourceRun: source.id, deliveryKey: key, cardsUnifiedV2: true },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok || !("kind" in result)) throw new Error("expected membership_denied");
+      expect(result.kind).toBe("membership_denied");
+      expect(await prisma.message.count({ where: { threadId: openGroup.threadId } })).toBe(0);
+    });
+  });
 });

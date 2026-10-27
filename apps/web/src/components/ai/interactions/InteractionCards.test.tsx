@@ -1147,15 +1147,15 @@ describe("account and assignment cards", () => {
 });
 
 describe("group membership exception (X-GROUP)", () => {
-  it("uses the confirmed inline card, not the generic card shell", async () => {
-    const onGroupDecision = vi.fn();
+  it("uses the confirmed inline card and submits through resolveIntervention", async () => {
+    const onRefresh = vi.fn(async () => undefined);
     const host = await render(
       <ActionApprovalCard
         view={actionView(groupMembership())}
         target={target}
         botName="Scout"
         groupNameOf={() => "Design"}
-        onGroupDecision={onGroupDecision}
+        onRefresh={onRefresh}
       />,
     );
 
@@ -1168,12 +1168,14 @@ describe("group membership exception (X-GROUP)", () => {
     await act(async () =>
       (byTestId(host, "group-membership-approve") as HTMLButtonElement).click(),
     );
-    expect(onGroupDecision).toHaveBeenCalledWith(expect.anything(), "approve");
+    expect(mocks.resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({ interventionId: "i-action", answer: "approve" }),
+    );
     expect(host.textContent).toContain("Joined");
-    expect(mocks.resolveIntervention).not.toHaveBeenCalled();
+    expect(onRefresh).toHaveBeenCalled();
   });
 
-  it("disables the join while no membership mutation exists", async () => {
+  it("submits a denial without joining and shows the terminal state", async () => {
     const host = await render(
       <ActionApprovalCard
         view={actionView(groupMembership())}
@@ -1183,8 +1185,33 @@ describe("group membership exception (X-GROUP)", () => {
       />,
     );
 
-    expect((byTestId(host, "group-membership-approve") as HTMLButtonElement).disabled).toBe(true);
-    expect(host.textContent).toContain("Joining from this card is not available yet.");
+    await act(async () => (byTestId(host, "group-membership-deny") as HTMLButtonElement).click());
+    expect(mocks.resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({ answer: "deny" }),
+    );
+    expect(host.textContent).toContain("Not joined");
+  });
+
+  it("does not render a pending card without member-management permission", async () => {
+    const { projectGroupMembershipApproval } = await import("@rakazo/contracts");
+    const projected = projectGroupMembershipApproval({
+      interactionId: "i-group",
+      revision: 1,
+      groupId: "g-1",
+      botId: "bot-1",
+      messageGroupRequestId: "req-1",
+      requestRevision: 1,
+      sourceSpaceId: "space-1",
+      sourceThreadId: "thread-1",
+      sourceMessageId: "msg-1",
+      sourceRunId: "run-1",
+      sourceBotId: "bot-1",
+      createdAt: "2026-10-27T00:00:00.000Z",
+      expiresAt: null,
+      presentation: { text: "Add Scout to “Design”?" },
+      canManageMembers: false,
+    });
+    expect(projected).toBeNull();
   });
 
   it("renders a failed join as its own card with no actions", async () => {

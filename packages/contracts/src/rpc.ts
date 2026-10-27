@@ -623,6 +623,11 @@ export const appContract = {
             })
             .strict()
             .optional(),
+          /**
+           * RT-12: the bound message_group request revision the card showed.
+           * A decision against a different request version is a conflict.
+           */
+          requestRevision: z.number().int().positive().optional(),
         }),
       )
       .output(ResolveInterventionResultSchema),

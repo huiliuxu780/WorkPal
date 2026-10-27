@@ -5,7 +5,6 @@ import {
   collaborationFromOrchestration,
   outcomeResumptionCollaboration,
   parseCollaborationReceipt,
-  parseDestinationLocator,
   parseRunOrchestration,
   RoundtableFeatureDisabledError,
   turnExecutionForSource,
@@ -15,13 +14,14 @@ import {
 import {
   appendEventInTransaction,
   CHAT_GROUP_KIND_STANDARD,
-  createThreadMessageInTransaction,
+  deliverGroupMessageInTransaction,
+  groupReceiptNonce,
   IsolationError,
   lockOwnedGroup,
   lockThreadsForBackgroundTasks,
   type Prisma,
   type PrismaClient,
-  touchGroupUpdatedAt,
+  recordGroupMembershipFailureInTransaction,
   withTransactionRetry,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
@@ -40,12 +40,11 @@ const ERROR_NOT_OWNER = "message_group is only available to the owner of this tu
 const ERROR_GROUP_UNAVAILABLE = "this group is no longer available";
 const ERROR_INCOMPLETE = "recorded message_group delivery is incomplete";
 
-const RECEIPT_PREFIX = "group-message:";
 const MAX_TOPIC_LENGTH = 80;
 
 type MessageGroupDeps = Pick<
   ExecutorDeps,
-  "prisma" | "events" | "jobs" | "roundtableFeatures"
+  "prisma" | "events" | "jobs" | "roundtableFeatures" | "cardsUnifiedV2"
 >;
 
 type MessageGroupRun = {
@@ -86,6 +85,41 @@ export type MessageGroupDelivery = Readonly<{
 
 type MessageGroupFailure = Readonly<{ ok: false; error: string }>;
 
+export type MessageGroupMembershipRequired = Readonly<{
+  ok: false;
+  kind: "membership_required";
+  groupId: string;
+  groupName: string;
+  /** Original redacted content; the approval delivery reuses it verbatim. */
+  message: string;
+  topic: string;
+  requestRevision: number;
+  deliveryKey: string;
+}>;
+
+export type MessageGroupMembershipStop = Readonly<{
+  ok: false;
+  kind: "membership_pending" | "membership_denied" | "membership_cancelled";
+  groupId: string;
+  groupName: string;
+}>;
+
+export type MessageGroupMembershipForbidden = Readonly<{
+  ok: false;
+  kind: "membership_forbidden";
+  groupId: string;
+  groupName: string;
+  threadId?: string;
+  eventSeq?: number;
+}>;
+
+export type MessageGroupResult =
+  | MessageGroupDelivery
+  | MessageGroupFailure
+  | MessageGroupMembershipRequired
+  | MessageGroupMembershipStop
+  | MessageGroupMembershipForbidden;
+
 type TerminalStatus = "completed" | "failed" | "cancelled";
 
 /**
@@ -99,7 +133,7 @@ export async function messageGroup(
   sender: { id: string; name: string },
   input: MessageGroupInput,
   options?: { deliveryKey?: string },
-): Promise<MessageGroupDelivery | MessageGroupFailure> {
+): Promise<MessageGroupResult> {
   if (deps.roundtableFeatures?.message_group !== true) {
     throw new RoundtableFeatureDisabledError("message_group");
   }
@@ -121,7 +155,7 @@ export async function messageGroup(
   if (!preview.ok) return preview;
 
   const deliveryKey = options?.deliveryKey?.trim() || input.deliveryKey?.trim();
-  const receiptNonce = deliveryKey ? `${RECEIPT_PREFIX}${deliveryKey}` : undefined;
+  const receiptNonce = deliveryKey ? groupReceiptNonce(deliveryKey) : undefined;
 
   try {
     const committed = await withTransactionRetry(() =>
@@ -187,6 +221,7 @@ export async function messageGroup(
           select: {
             id: true,
             name: true,
+            userId: true,
             thread: { select: { id: true } },
             members: {
               where: { botId: run.botId },
@@ -201,128 +236,160 @@ export async function messageGroup(
         if (!group?.thread) return { ok: false as const, error: ERROR_ARCHIVED_GROUP };
         const targetThreadId = group.thread.id;
         const member = group.members[0]?.bot;
-        if (
-          !member ||
-          member.id !== sender.id ||
-          member.archivedAt ||
-          member.spaceId !== run.spaceId ||
-          member.userId !== run.userId
-        ) {
-          return { ok: false as const, error: ERROR_NOT_MEMBER };
+        const memberMatches =
+          Boolean(member) &&
+          member!.id === sender.id &&
+          !member!.archivedAt &&
+          member!.spaceId === run.spaceId &&
+          member!.userId === run.userId;
+
+        if (memberMatches && deliveryKey) {
+          // A resumed turn must continue the request the user approved, not a
+          // regenerated one. If this Run already delivered an approved
+          // membership request under another key, replay that delivery.
+          const approved = await tx.groupMembershipRequest.findFirst({
+            where: {
+              sourceRunId: sourceRun.id,
+              targetRunId: { not: null },
+              deliveryKey: { not: deliveryKey },
+            },
+            orderBy: { createdAt: "desc" },
+            select: {
+              groupId: true,
+              groupName: true,
+              targetRunId: true,
+              receiptMessageId: true,
+            },
+          });
+          if (approved?.targetRunId && approved.receiptMessageId) {
+            const receiptMessage = await tx.message.findUnique({
+              where: { id: approved.receiptMessageId },
+              select: { id: true, blocks: true },
+            });
+            const receipt = receiptMessage ? receiptFromBlocks(receiptMessage.blocks) : null;
+            if (receipt?.destination) {
+              return {
+                ok: true as const,
+                replayed: true as const,
+                groupId: approved.groupId,
+                groupName: approved.groupName,
+                targetRunId: approved.targetRunId,
+                receiptMessageId: approved.receiptMessageId,
+                locator: receipt.destination,
+                note: "This delivery already happened; the same work is still the one in progress.",
+              };
+            }
+          }
+        }
+
+        if (!memberMatches) {
+          if (!deliveryKey) return { ok: false as const, error: ERROR_NOT_MEMBER };
+          const pendingRequest = deliveryKey
+            ? await tx.groupMembershipRequest.findUnique({
+                where: { sourceRunId_deliveryKey: { sourceRunId: sourceRun.id, deliveryKey } },
+                select: { interventionId: true },
+              })
+            : null;
+          if (pendingRequest?.interventionId) {
+            const intervention = await tx.intervention.findUnique({
+              where: { id: pendingRequest.interventionId },
+              select: { status: true, decision: true },
+            });
+            if (intervention?.status === "pending") {
+              return {
+                ok: false as const,
+                kind: "membership_pending" as const,
+                groupId: group.id,
+                groupName: group.name,
+              };
+            }
+            if (intervention?.status === "answered" && intervention.decision === "denied") {
+              return {
+                ok: false as const,
+                kind: "membership_denied" as const,
+                groupId: group.id,
+                groupName: group.name,
+              };
+            }
+            if (intervention?.status === "expired" || intervention?.status === "cancelled") {
+              return {
+                ok: false as const,
+                kind: "membership_cancelled" as const,
+                groupId: group.id,
+                groupName: group.name,
+              };
+            }
+            if (intervention?.status === "answered") {
+              return { ok: false as const, error: ERROR_INCOMPLETE };
+            }
+          }
+
+          const bot = await tx.bot.findFirst({
+            where: {
+              id: run.botId,
+              spaceId: run.spaceId,
+              userId: run.userId,
+              archivedAt: null,
+            },
+            select: { id: true, name: true },
+          });
+          if (deps.cardsUnifiedV2 !== true) {
+            // Gate off keeps the pre-RT-12 behaviour: no wait, no card.
+            return { ok: false as const, error: ERROR_NOT_MEMBER };
+          }
+          const canManageMembers = Boolean(bot) && group.userId === run.userId;
+          if (!canManageMembers) {
+            // X-GROUP-FAIL is a durable server fact; the request never becomes
+            // a pending approval the user could not act on.
+            const failure = await recordGroupMembershipFailureInTransaction(tx, {
+              spaceId: run.spaceId,
+              threadId: sourceThread.id,
+              botId: run.botId,
+              runId: sourceRun.id,
+              groupId: group.id,
+              groupName: group.name,
+              deliveryKey: deliveryKey ?? sourceRun.id,
+            });
+            return {
+              ok: false as const,
+              kind: "membership_forbidden" as const,
+              groupId: group.id,
+              groupName: group.name,
+              threadId: failure?.messageId ? sourceThread.id : undefined,
+              eventSeq: failure?.seq,
+            };
+          }
+          return {
+            ok: false as const,
+            kind: "membership_required" as const,
+            groupId: group.id,
+            groupName: group.name,
+            message,
+            topic: receiptTopic(input.topic, message),
+            requestRevision: 1,
+            deliveryKey: deliveryKey!,
+          };
         }
 
         const topic = receiptTopic(input.topic, message);
-        const targetBlock: MessageBlock = { kind: "text", text: message };
-        const targetMessage = await createThreadMessageInTransaction(tx, {
-          threadId: targetThreadId,
-          role: "bot",
-          originKind: "bot",
-          blocks: [targetBlock],
-          botId: run.botId,
-          markUnread: true,
-        });
-
-        const locator = parseDestinationLocator({
-          kind: "group_message",
-          groupId: group.id,
-          threadId: targetThreadId,
-          messageId: targetMessage.id,
-        });
-        const receipt = parseCollaborationReceipt({
-          kind: "collaboration_receipt",
-          target: { kind: "group", groupId: group.id, threadId: targetThreadId },
-          state: "sent",
-          destination: locator,
-          display: { groupName: group.name, topic },
-        });
-        const receiptBlock = receipt as MessageBlock;
-        const receiptMessage = await createThreadMessageInTransaction(tx, {
-          threadId: sourceThread.id,
-          role: "bot",
-          originKind: "bot",
-          blocks: [receiptBlock],
-          botId: run.botId,
-          runId: sourceRun.id,
-          clientNonce: receiptNonce,
-          markUnread: false,
-        });
-
-        const task = await tx.task.create({
-          data: {
+        const delivered = await deliverGroupMessageInTransaction(tx, {
+          sourceRun: {
+            id: sourceRun.id,
             spaceId: run.spaceId,
+            threadId: run.threadId,
             botId: run.botId,
-            threadId: targetThreadId,
             userId: run.userId,
-            prompt: message,
-            status: "queued",
+            orchestration: sourceRun.orchestration,
           },
-          select: { id: true },
-        });
-        const lineage = collaborationFromOrchestration(sourceRun.orchestration);
-        const nextRun = await tx.run.create({
-          data: {
-            spaceId: run.spaceId,
-            botId: run.botId,
-            threadId: targetThreadId,
-            taskId: task.id,
-            userId: run.userId,
-            status: "queued",
-            trigger: "message_group",
-            sourceMessageId: targetMessage.id,
-            originThreadId: sourceThread.id,
-            originRunId: sourceRun.id,
-            originMessageId: receiptMessage.id,
-            orchestration: buildRunOrchestration({
-              kind: "bot_message",
-              ownerBotId: sender.id,
-              responseMode: "single",
-              ownershipMode: "owner",
-              execution: turnExecutionForSource("chat"),
-              collaboration: {
-                role: "owner",
-                source: "bot_message",
-                fromBotId: sender.id,
-                parentRunId: sourceRun.id,
-                handoffDepth: lineage?.handoffDepth ?? 0,
-                messageHop: 0,
-              },
-            }),
-          },
-          select: { id: true },
-        });
-        await tx.message.update({
-          where: { id: targetMessage.id },
-          data: { runId: nextRun.id },
+          sourceThreadId: sourceThread.id,
+          sender,
+          group: { id: group.id, name: group.name, threadId: targetThreadId },
+          message,
+          topic,
+          deliveryKey: deliveryKey ?? sourceRun.id,
         });
 
-        const targetEvent = await appendEventInTransaction(tx, {
-          spaceId: run.spaceId,
-          threadId: targetThreadId,
-          botId: run.botId,
-          type: "thread.message.created",
-          runId: nextRun.id,
-          payload: { messageId: targetMessage.id, role: "bot", blocks: [targetBlock] },
-        });
-        const receiptEvent = await appendEventInTransaction(tx, {
-          spaceId: run.spaceId,
-          threadId: sourceThread.id,
-          botId: run.botId,
-          type: "thread.message.created",
-          runId: sourceRun.id,
-          payload: { messageId: receiptMessage.id, role: "bot", blocks: [receiptBlock] },
-        });
-        await touchGroupUpdatedAt(tx, group.id);
-
-        return {
-          ok: true as const,
-          groupId: group.id,
-          groupName: group.name,
-          targetRunId: nextRun.id,
-          receiptMessageId: receiptMessage.id,
-          locator,
-          targetEventSeq: targetEvent.seq,
-          receiptEventSeq: receiptEvent.seq,
-        };
+        return { ok: true as const, ...delivered };
       }),
     );
 

@@ -1407,28 +1407,42 @@ function McpAssignmentCard({
 export function GroupMembershipApprovalCard({
   view,
   approval,
+  target,
   botName,
   groupName,
-  onDecision,
+  onRefresh,
 }: {
   view: ActionApprovalView;
   approval: GroupMembershipApproval;
+  target: ArtifactTarget;
   botName: string;
   groupName?: string;
-  onDecision?: (answer: "approve" | "deny") => void | Promise<void>;
+  onRefresh?: () => Promise<void>;
 }) {
+  const submissionId = useRef(crypto.randomUUID());
   const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"approved" | "denied" | null>(
     view.status === "answered" ? (view.decision === "denied" ? "denied" : "approved") : null,
   );
   const targetGroup = groupName ?? t`this room`;
   const terminal = done !== null || view.status !== "pending";
   const decide = async (answer: "approve" | "deny") => {
-    if (!onDecision || busy || terminal) return;
+    if (busy || terminal) return;
     setBusy(answer);
+    setError(null);
     try {
-      await onDecision(answer);
+      await rpc.threads.resolveIntervention({
+        ...target,
+        interventionId: view.interactionId,
+        clientSubmissionId: submissionId.current,
+        answer,
+        requestRevision: approval.requestRevision,
+      });
       setDone(answer === "approve" ? "approved" : "denied");
+      await onRefresh?.().catch(() => undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t`Could not submit this decision`);
     } finally {
       setBusy(null);
     }
@@ -1446,9 +1460,6 @@ export function GroupMembershipApprovalCard({
         {approval.presentation.detail ||
           t`${botName} can read the discussion, speak in the room, and continue this work.`}
       </p>
-      <p className="mt-1.5 text-[11.5px] leading-4 text-muted-foreground/80" dir="auto">
-        {t`Joining only allows this Bot into the standard room and continues the bound message request.`}
-      </p>
       {terminal ? (
         <p role="status" className="mt-2 text-[12.5px] font-medium text-foreground">
           {done === "approved"
@@ -1460,7 +1471,7 @@ export function GroupMembershipApprovalCard({
       ) : (
         <div className="mt-2.5 flex flex-wrap justify-end gap-2">
           <InteractionAction
-            disabled={!onDecision || Boolean(busy)}
+            disabled={Boolean(busy)}
             loading={busy === "deny"}
             onClick={() => void decide("deny")}
             testId="group-membership-deny"
@@ -1469,7 +1480,7 @@ export function GroupMembershipApprovalCard({
           </InteractionAction>
           <InteractionAction
             kind="primary"
-            disabled={!onDecision || Boolean(busy)}
+            disabled={Boolean(busy)}
             loading={busy === "approve"}
             onClick={() => void decide("approve")}
             testId="group-membership-approve"
@@ -1478,9 +1489,9 @@ export function GroupMembershipApprovalCard({
           </InteractionAction>
         </div>
       )}
-      {!onDecision && !terminal ? (
-        <p className="mt-2 text-[11.5px] text-muted-foreground">
-          {t`Joining from this card is not available yet.`}
+      {error ? (
+        <p role="alert" className="mt-2 text-[11.5px] text-destructive">
+          {error}
         </p>
       ) : null}
     </div>
@@ -1525,7 +1536,6 @@ export function ActionApprovalCard({
   conversationName,
   groupNameOf,
   onRefresh,
-  onGroupDecision,
 }: {
   view: ActionApprovalView;
   target: ArtifactTarget;
@@ -1533,7 +1543,6 @@ export function ActionApprovalCard({
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
   onRefresh?: () => Promise<void>;
-  onGroupDecision?: (view: ActionApprovalView, answer: "approve" | "deny") => Promise<void> | void;
 }) {
   const approval = view.approval;
   switch (approval.kind) {
@@ -1630,9 +1639,10 @@ export function ActionApprovalCard({
         <GroupMembershipApprovalCard
           view={view}
           approval={approval}
+          target={target}
           botName={botName ?? t`Bot`}
           groupName={groupNameOf?.(approval.groupId)}
-          onDecision={onGroupDecision ? (answer) => onGroupDecision(view, answer) : undefined}
+          onRefresh={onRefresh}
         />
       );
   }

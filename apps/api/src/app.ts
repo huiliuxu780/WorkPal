@@ -194,6 +194,7 @@ export async function createApp(
   const events = createThreadEvents(prisma, realtime, {
     runSecretWriter: createRunSecretWriter(secrets),
     roundtableFeatures: env.roundtableFeatures,
+    cardsUnifiedV2: env.cardsUnifiedFeature.cardsUnifiedV2,
   });
   const environmentSignupPolicy = signupPolicyFromEnv(env);
   const deploymentSettings = await prisma.deploymentSettings.upsert({
@@ -460,6 +461,7 @@ export async function createApp(
     home,
     artifacts,
     roundtableFeatures: env.roundtableFeatures,
+    cardsUnifiedV2: env.cardsUnifiedFeature.cardsUnifiedV2,
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: async (userId) => {

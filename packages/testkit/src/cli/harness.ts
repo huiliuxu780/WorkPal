@@ -130,7 +130,8 @@ async function main() {
     if (
       !integration &&
       (process.env.WORKPAL_E2E_FULL_BATCH === "gate-off" ||
-        specSelects(e2eSpec, "message-group.spec.ts"))
+        specSelects(e2eSpec, "message-group.spec.ts") ||
+        specSelects(e2eSpec, "group-membership.spec.ts"))
     ) {
       process.env.ROUNDTABLE_MESSAGE_GROUP_ENABLED = "true";
     }
@@ -147,7 +148,8 @@ async function main() {
     if (
       !integration &&
       (specSelects(e2eSpec, "card-ui-interactions.spec.ts") ||
-        specSelects(e2eSpec, "card-display-content.spec.ts"))
+        specSelects(e2eSpec, "card-display-content.spec.ts") ||
+        specSelects(e2eSpec, "group-membership.spec.ts"))
     ) {
       process.env.CARDS_UNIFIED_V2_ENABLED = "true";
     }

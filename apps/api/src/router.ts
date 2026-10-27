@@ -2748,6 +2748,7 @@ export function createRouter(deps: RouterDeps) {
               username: input.username,
               feedback: input.feedback,
               outbound: input.outbound,
+              requestRevision: input.requestRevision,
             });
           } catch (error) {
             // Answering away from the executing Thread is a gated capability.
@@ -2790,6 +2791,15 @@ export function createRouter(deps: RouterDeps) {
             await deps.jobs.enqueue(runContinueJob(result.intervention.runId)).catch((error) => {
               getLogger().error("thread answer enqueue", error);
             });
+          }
+          if (result.applied && result.membershipDelivery) {
+            // The approving transaction committed the target Run; this is only
+            // its wake. The reconciler repairs a missed one.
+            await deps.jobs
+              .enqueue(runContinueJob(result.membershipDelivery.targetRunId))
+              .catch((error) => {
+                getLogger().error("group membership target enqueue", error);
+              });
           }
           return { outcome: result.outcome, intervention: result.intervention };
         },

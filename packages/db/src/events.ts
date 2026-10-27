@@ -42,6 +42,7 @@ import {
   assertSafeClientSubmissionId,
   emitInterventionCreated,
   findOrdinaryTextAsks,
+  INTERVENTION_WAIT_MS,
   InterventionRejected,
   insertPausedIntervention,
   interventionStore,
@@ -49,6 +50,7 @@ import {
   type ResolveInterventionOutcome,
   resolveInterventionInTransaction,
   settleAnsweredIntervention,
+  settleMembershipIntervention,
 } from "./interventions.js";
 import { lockInterventionThreads } from "./locks.js";
 import { invalidateThreadMemoryEvidence } from "./memory-facts.js";
@@ -98,6 +100,9 @@ export interface ThreadEvents {
   finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunResult | false>;
   notify(threadId: string, seq: number): Promise<void>;
   pauseRunForInput(input: PauseRunForInput): Promise<boolean>;
+  pauseRunForGroupMembership(
+    input: PauseRunForGroupMembershipInput,
+  ): Promise<PauseRunForGroupMembershipResult>;
   pauseRunForTakeover(input: PauseRunForTakeover): Promise<boolean>;
   sendUserMessage(input: SendUserMessageInput): Promise<SendUserMessageResult>;
   follow(threadId: string, cursor: number, signal?: AbortSignal): AsyncGenerator<ProductEvent>;
@@ -244,6 +249,43 @@ export interface PauseRunForInput {
   };
 }
 
+/**
+ * RT-12: pause the source Run on a scoped "join the group and continue"
+ * request. The request row, the Intervention and the card Message commit
+ * together; no target-group write happens before the decision.
+ */
+export interface PauseRunForGroupMembershipInput {
+  spaceId: string;
+  threadId: string;
+  botId: string;
+  runId: string;
+  attemptId: string;
+  leaseOwner: string;
+  leaseFence: number;
+  executionFence?: number;
+  suspensionKey?: string;
+  gates?: RoundtableFeatureGates;
+  groupId: string;
+  botName: string;
+  /** Original redacted message_group content; never regenerated after approval. */
+  message: string;
+  topic?: string | null;
+  deliveryKey: string;
+}
+
+export type PauseRunForGroupMembershipResult =
+  | {
+      outcome: "paused";
+      requestId: string;
+      interventionId: string;
+      messageId: string;
+      expiresAt: string;
+    }
+  | { outcome: "already_member" }
+  | { outcome: "not_manageable" }
+  | { outcome: "unavailable" }
+  | { outcome: "run_not_running" };
+
 const CHOICE_ASK_CHECKPOINT_KIND = "choice_ask_v1";
 
 function choiceAskCheckpoint(
@@ -332,6 +374,8 @@ export interface ResolveInterventionInput {
   feedback?: string;
   /** A10: the outbound draft revision and fingerprint the user confirmed. */
   outbound?: { revision: number; fingerprint: string };
+  /** RT-12: the bound message_group request revision the card showed. */
+  requestRevision?: number;
   /** Deployment gates; absent means every roundtable capability is off. */
   gates?: RoundtableFeatureGates;
 }
@@ -387,6 +431,8 @@ export function createThreadEvents(
     runSecretWriter?: RunSecretWriter;
     /** Process-wide roundtable gates; absent means every capability is off. */
     roundtableFeatures?: RoundtableFeatureGates;
+    /** RT-12: the unified card surface must exist before membership waits are created. */
+    cardsUnifiedV2?: boolean;
   } = {},
 ): ThreadEvents {
   const gates = options.roundtableFeatures ?? ROUNDTABLE_GATES_DISABLED;
@@ -398,6 +444,7 @@ export function createThreadEvents(
         { ...input, gates: input.gates ?? gates },
         realtime,
         options.runSecretWriter,
+        { cardsUnifiedV2: options.cardsUnifiedV2 === true },
       ),
     append: (input) => appendEvent(prisma, input, realtime),
     claimSteering: (input) => claimSteering(prisma, input),
@@ -408,6 +455,8 @@ export function createThreadEvents(
     notify: (threadId, seq) => notifyRealtime(realtime, threadId, seq),
     pauseRunForInput: (input) =>
       pauseRunForInput(prisma, { ...input, gates: input.gates ?? gates }, realtime),
+    pauseRunForGroupMembership: (input) =>
+      pauseRunForGroupMembership(prisma, { ...input, gates: input.gates ?? gates }, realtime),
     pauseRunForTakeover: (input) => pauseRunForTakeover(prisma, input, realtime),
     sendUserMessage: (input) => sendUserMessage(prisma, input, realtime),
     follow: (threadId, cursor, signal) =>
@@ -1374,6 +1423,7 @@ export async function resolveIntervention(
   input: ResolveInterventionInput,
   realtime?: RealtimeFanout,
   runSecretWriter?: RunSecretWriter,
+  options?: { cardsUnifiedV2?: boolean },
 ): Promise<ResolveInterventionOutcome> {
   try {
     assertSafeClientSubmissionId(input.clientSubmissionId, input.answer);
@@ -1399,22 +1449,22 @@ export async function resolveIntervention(
           tx,
           { ...input, runId: located.runId, executionThreadId: located.executionThreadId },
           (transaction) =>
-            commitAnswerRunInput(
-              transaction,
-              {
-                spaceId: input.spaceId,
-                threadId: located.executionThreadId,
-                presentationThreadId: input.threadId,
-                runId: located.runId,
-                messageId: located.messageId,
-                answeredByUserId: input.answeredByUserId,
-                answer: input.answer,
-                username: input.username,
-                clientSubmissionId: input.clientSubmissionId,
-                feedback: input.feedback,
-              },
+            commitInterventionDecision(transaction, {
+              spaceId: input.spaceId,
+              threadId: located.executionThreadId,
+              presentationThreadId: input.threadId,
+              runId: located.runId,
+              messageId: located.messageId,
+              interventionId: input.interventionId,
+              answeredByUserId: input.answeredByUserId,
+              answer: input.answer,
+              username: input.username,
+              clientSubmissionId: input.clientSubmissionId,
+              feedback: input.feedback,
+              requestRevision: input.requestRevision,
+              cardsUnifiedV2: options?.cardsUnifiedV2 === true,
               runSecretWriter,
-            ),
+            }),
         ),
       INTERVENTION_TRANSACTION,
     );
@@ -1440,7 +1490,106 @@ export async function resolveIntervention(
   ) {
     await notifyRealtime(realtime, outcome.presentationThreadId, outcome.presentationSeq);
   }
+  if (outcome.applied && outcome.membershipDelivery) {
+    await notifyRealtime(
+      realtime,
+      outcome.membershipDelivery.targetThreadId,
+      outcome.membershipDelivery.targetEventSeq,
+    );
+  }
   return outcome;
+}
+
+/**
+ * One submission entry with two explicit business branches: a bound
+ * group-membership request resolves through its own transaction, everything
+ * else keeps the ordinary ask/tool-approval answer path.
+ */
+async function commitInterventionDecision(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    threadId: string;
+    presentationThreadId: string;
+    runId: string;
+    messageId: string;
+    interventionId: string;
+    answeredByUserId: string;
+    answer: string;
+    username?: string;
+    clientSubmissionId: string;
+    feedback?: string;
+    requestRevision?: number;
+    cardsUnifiedV2: boolean;
+    runSecretWriter?: RunSecretWriter;
+  },
+): Promise<{
+  threadId: string;
+  seq: number;
+  cancelledRunId?: string;
+  membershipDelivery?: {
+    targetRunId: string;
+    targetThreadId: string;
+    targetEventSeq: number;
+  };
+} | null> {
+  const { loadGroupMembershipRequestForIntervention, resolveGroupMembershipDecisionInTransaction } =
+    await import("./group-membership.js");
+  const membership = await loadGroupMembershipRequestForIntervention(tx, input.interventionId);
+  if (membership) {
+    // A deployment without the unified card surface must not settle a wait the
+    // user could not see; refusing keeps the card and the decision atomic.
+    if (!input.cardsUnifiedV2) return null;
+    const resolved = await resolveGroupMembershipDecisionInTransaction(
+      tx,
+      {
+        spaceId: input.spaceId,
+        threadId: input.presentationThreadId,
+        executionThreadId: input.threadId,
+        runId: input.runId,
+        interventionId: input.interventionId,
+        answeredByUserId: input.answeredByUserId,
+        answer: input.answer,
+        clientSubmissionId: input.clientSubmissionId,
+        expectedRevision: input.requestRevision,
+      },
+      async (status, decision) => {
+        await settleMembershipIntervention(tx, {
+          interventionId: input.interventionId,
+          status,
+          ...(decision ? { decision } : {}),
+          ...(status === "answered" ? { resolvedByUserId: input.answeredByUserId } : {}),
+          clientSubmissionId: input.clientSubmissionId,
+        });
+        const remaining = await tx.intervention.count({
+          where: { runId: input.runId, status: "pending" },
+        });
+        if (remaining > 0) throw new Error("Run still has a pending intervention");
+      },
+    );
+    if (!resolved.ok) return null;
+    return {
+      threadId: resolved.threadId,
+      seq: resolved.seq,
+      ...(resolved.delivery ? { membershipDelivery: resolved.delivery } : {}),
+    };
+  }
+  return commitAnswerRunInput(
+    tx,
+    {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      presentationThreadId: input.presentationThreadId,
+      runId: input.runId,
+      messageId: input.messageId,
+      answeredByUserId: input.answeredByUserId,
+      answer: input.answer,
+      username: input.username,
+      clientSubmissionId: input.clientSubmissionId,
+      feedback: input.feedback,
+    },
+    input.runSecretWriter,
+  );
 }
 
 /**
@@ -1692,6 +1841,185 @@ export async function pauseRunForInput(
     await notifyRealtime(realtime, committed.presentation.threadId, committed.presentation.seq);
   }
   return true;
+}
+
+export async function pauseRunForGroupMembership(
+  prisma: PrismaClient,
+  input: PauseRunForGroupMembershipInput,
+  realtime?: RealtimeFanout,
+): Promise<PauseRunForGroupMembershipResult> {
+  const threads = resolveInterventionThreads({
+    gates: input.gates ?? ROUNDTABLE_GATES_DISABLED,
+    executionThreadId: input.threadId,
+  });
+  const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await lockInterventionThreads(tx, threads.executionThreadId, threads.presentationThreadId);
+    const run = await tx.run.findFirst({
+      where: {
+        id: input.runId,
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        status: "running",
+        leaseOwner: input.leaseOwner,
+        leaseFence: input.leaseFence,
+      },
+      select: { userId: true, taskId: true, sourceMessageId: true },
+    });
+    if (!run) return { outcome: "run_not_running" as const };
+    // The source Run is a Bot's direct chat; a group Run never asks to join
+    // another group on the user's behalf.
+    const sourceThread = await tx.thread.findFirst({
+      where: {
+        id: input.threadId,
+        spaceId: input.spaceId,
+        userId: run.userId,
+        botId: input.botId,
+      },
+      select: { id: true, groupId: true },
+    });
+    if (!sourceThread || sourceThread.groupId) {
+      return { outcome: "not_manageable" as const };
+    }
+    const { inspectGroupMembershipTarget, buildGroupMembershipPresentation } = await import(
+      "./group-membership.js"
+    );
+    const target = await inspectGroupMembershipTarget(tx, {
+      spaceId: input.spaceId,
+      userId: run.userId,
+      botId: input.botId,
+      groupId: input.groupId,
+    });
+    if (!target.ok) {
+      return {
+        outcome:
+          target.reason === "not_manageable"
+            ? ("not_manageable" as const)
+            : ("unavailable" as const),
+      };
+    }
+    if (target.isMember) return { outcome: "already_member" as const };
+
+    const waitStartedAt = new Date();
+    const paused = await tx.run.updateMany({
+      where: {
+        id: input.runId,
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        status: "running",
+        leaseOwner: input.leaseOwner,
+        leaseFence: input.leaseFence,
+      },
+      data: {
+        status: "waiting_input",
+        waitKind: "approval",
+        waitStartedAt,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+      },
+    });
+    if (paused.count !== 1) return { outcome: "run_not_running" as const };
+    const attempt = await tx.attempt.updateMany({
+      where: {
+        id: input.attemptId,
+        runId: input.runId,
+        fence: input.leaseFence,
+        status: "running",
+      },
+      data: { status: "waiting_input", finishedAt: new Date() },
+    });
+    if (attempt.count !== 1) throw new Error("Active run attempt was not available to pause");
+
+    const presentation = buildGroupMembershipPresentation({
+      botName: input.botName,
+      groupName: target.group.name,
+    });
+    const askBlock: MessageBlock = {
+      kind: "ask",
+      text: presentation.text,
+      detail: presentation.detail,
+      status: "pending",
+      actions: [
+        { id: "approve", label: "Join and continue" },
+        { id: "deny", label: "Not now" },
+      ],
+    };
+    const messageId = randomUUID();
+    const requestId = randomUUID();
+    const pausedIntervention = await insertPausedIntervention(tx, {
+      spaceId: input.spaceId,
+      threads,
+      botId: input.botId,
+      runId: input.runId,
+      attemptId: input.attemptId,
+      ...(input.executionFence !== undefined ? { executionFence: input.executionFence } : {}),
+      ...(input.suspensionKey ? { suspensionKey: input.suspensionKey } : {}),
+      messageId,
+      blocks: [askBlock],
+      waitStartedAt,
+      groupMembership: {
+        id: requestId,
+        spaceId: input.spaceId,
+        userId: run.userId,
+        botId: input.botId,
+        groupId: target.group.id,
+        groupName: target.group.name,
+        sourceThreadId: sourceThread.id,
+        sourceRunId: input.runId,
+        requestMessageId: run.sourceMessageId ?? null,
+        deliveryKey: input.deliveryKey,
+        requestRevision: 1,
+        message: input.message,
+        topic: input.topic ?? null,
+      },
+    });
+    const message = await createThreadMessageInTransaction(tx, {
+      id: messageId,
+      threadId: input.threadId,
+      role: "bot",
+      originKind: "system",
+      blocks: pausedIntervention.blocks,
+      botId: input.botId,
+      runId: input.runId,
+    });
+    await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: input.botId,
+      type: "thread.message.created",
+      runId: input.runId,
+      payload: { messageId: message.id, role: "bot", blocks: pausedIntervention.blocks },
+    });
+    await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: input.botId,
+      type: "run.waiting_input",
+      runId: input.runId,
+      payload: { waitKind: "approval" },
+    });
+    const interventionEvent = await emitInterventionCreated(tx, pausedIntervention.id);
+    await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
+    return {
+      outcome: "paused" as const,
+      requestId,
+      interventionId: pausedIntervention.id,
+      messageId: message.id,
+      expiresAt: new Date(waitStartedAt.getTime() + INTERVENTION_WAIT_MS).toISOString(),
+      seq: interventionEvent.seq,
+    };
+  }, INTERVENTION_TRANSACTION);
+
+  if (committed.outcome !== "paused") return committed;
+  await notifyRealtime(realtime, input.threadId, committed.seq);
+  return {
+    outcome: "paused",
+    requestId: committed.requestId,
+    interventionId: committed.interventionId,
+    messageId: committed.messageId,
+    expiresAt: committed.expiresAt,
+  };
 }
 
 export async function pauseRunForTakeover(

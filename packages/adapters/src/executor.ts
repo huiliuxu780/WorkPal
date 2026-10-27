@@ -166,6 +166,7 @@ import {
   readTaskInstructionsForRun,
   reconcileAttemptFenceConflict,
   recordCheckpointProof,
+  recordGroupMembershipFailureInTransaction,
   recordLegacyNativePlanDecision,
   registerBackgroundTaskProjection,
   releaseExternalEffectClaim,
@@ -880,6 +881,12 @@ export interface ExecutorDeps {
   mail?: AgentlyMailService | null;
   /** Server-resolved roundtable gates. Absent means every roundtable capability is closed. */
   roundtableFeatures?: RoundtableFeatureGates;
+  /**
+   * RT-12: membership approvals only exist on the unified card surface; with
+   * the gate off the tool returns its ordinary not-a-member error instead of
+   * leaving a card no client can answer.
+   */
+  cardsUnifiedV2?: boolean;
   /** Optional Auto Review verifier. When omitted, the factory selects from env (llm | jev | scripted). */
   autoReview?: AutoReviewProvider;
   /**
@@ -5413,9 +5420,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (args.targetTaskId !== undefined || args.target_task_id !== undefined) {
               return finish({ error: "message_group cannot attach to existing work" });
             }
-            let sent: Awaited<ReturnType<typeof messageGroup>>;
-            try {
-              sent = await messageGroup(
+            const sendToGroup = () =>
+              messageGroup(
                 deps,
                 { ...run, sourceMessageId: run.sourceMessageId },
                 { id: bot.id, name: bot.name },
@@ -5428,6 +5434,25 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 },
                 { deliveryKey: effectKey },
               );
+            const deliveredResult = (sent: {
+              groupId: string;
+              groupName: string;
+              targetRunId: string;
+              locator: unknown;
+              note: string;
+              replayed?: true;
+            }) => ({
+              ok: true as const,
+              groupId: sent.groupId,
+              groupName: sent.groupName,
+              targetRunId: sent.targetRunId,
+              locator: sent.locator,
+              note: sent.note,
+              ...(sent.replayed ? { replayed: true } : {}),
+            });
+            let sent: Awaited<ReturnType<typeof messageGroup>>;
+            try {
+              sent = await sendToGroup();
             } catch (error) {
               if (error instanceof RoundtableFeatureDisabledError) {
                 return finish({
@@ -5440,16 +5465,100 @@ export function createRunExecutor(deps: ExecutorDeps) {
               }
               throw error;
             }
-            if (!sent.ok) return finish({ error: sent.error });
-            return finish({
-              ok: true,
-              groupId: sent.groupId,
-              groupName: sent.groupName,
-              targetRunId: sent.targetRunId,
-              locator: sent.locator,
-              note: sent.note,
-              ...(sent.replayed ? { replayed: true } : {}),
-            });
+            if (!sent.ok && "kind" in sent) {
+              if (sent.kind === "membership_required") {
+                const paused = await deps.events.pauseRunForGroupMembership({
+                  spaceId: run.spaceId,
+                  threadId: run.threadId,
+                  botId: bot.id,
+                  runId,
+                  attemptId: attempt.id,
+                  leaseOwner: workerId,
+                  leaseFence: fence,
+                  ...pauseBinding(),
+                  groupId: sent.groupId,
+                  botName: bot.name,
+                  message: sent.message,
+                  topic: sent.topic,
+                  deliveryKey: sent.deliveryKey,
+                });
+                if (paused.outcome === "paused") {
+                  approvalPausePending = true;
+                  return approvalPausedToolResult();
+                }
+                if (paused.outcome === "already_member") {
+                  const retried = await sendToGroup();
+                  if (retried.ok) return finish(deliveredResult(retried));
+                  if (!retried.ok && "error" in retried) return finish({ error: retried.error });
+                  return finish({ error: "message_group could not start this work" });
+                }
+                if (paused.outcome === "not_manageable") {
+                  const failure = await deps.prisma
+                    .$transaction((tx) =>
+                      recordGroupMembershipFailureInTransaction(tx, {
+                        spaceId: run.spaceId,
+                        threadId: run.threadId,
+                        botId: bot.id,
+                        runId,
+                        groupId: sent.groupId,
+                        groupName: sent.groupName,
+                        deliveryKey: sent.deliveryKey,
+                      }),
+                    )
+                    .catch((error) => {
+                      getLogger().error("group membership failure card", error);
+                      return null;
+                    });
+                  if (failure) {
+                    await deps.events
+                      .notify(run.threadId, failure.seq)
+                      .catch(() => undefined);
+                  }
+                  return finish({
+                    error:
+                      "You do not have member-management permission for this group, so the work has not started. Ask the group owner or an admin to continue.",
+                  });
+                }
+                if (paused.outcome === "unavailable") {
+                  return finish({ error: "This group is no longer available." });
+                }
+                throw new Error("Could not pause this run for the membership decision.");
+              }
+              if (sent.kind === "membership_forbidden") {
+                if (sent.threadId && sent.eventSeq !== undefined) {
+                  await deps.events.notify(sent.threadId, sent.eventSeq).catch(() => undefined);
+                }
+                return finish({
+                  error:
+                    "You do not have member-management permission for this group, so the work has not started. Ask the group owner or an admin to continue.",
+                });
+              }
+              if (sent.kind === "membership_denied") {
+                return finish({
+                  ok: true,
+                  denied: true,
+                  note: "The user chose not to add this Bot to the group. The work has not started and nothing was sent. Do not retry unless the user asks again.",
+                });
+              }
+              if (sent.kind === "membership_cancelled") {
+                return finish({
+                  ok: true,
+                  denied: true,
+                  note: "The membership request expired or was withdrawn before the user decided. The work has not started. Do not retry unless the user asks again.",
+                });
+              }
+              return finish({
+                ok: true,
+                pending: true,
+                note: "This request is already waiting for the user's membership decision. It has not been sent again.",
+              });
+            }
+            if (!sent.ok) {
+              return finish({
+                error: "error" in sent ? sent.error : "message_group could not start this work",
+              });
+            }
+            return finish(deliveredResult(sent));
           }
           if (name === "message_bot") {
             // Async public delegation creates a support Run without this Run's

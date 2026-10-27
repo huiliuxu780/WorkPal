@@ -35,7 +35,6 @@ export function InteractionRegion({
   groupNameOf,
   onRefresh,
   onOpenComputer,
-  onGroupDecision,
 }: {
   interactions: readonly InteractionView[];
   target: ArtifactTarget;
@@ -44,7 +43,6 @@ export function InteractionRegion({
   groupNameOf?: (groupId: string) => string | undefined;
   onRefresh?: () => Promise<void>;
   onOpenComputer?: (botId: string) => void;
-  onGroupDecision?: (view: InteractionView, answer: "approve" | "deny") => Promise<void> | void;
 }) {
   const cards = interactionCardsForDisplay(interactions);
   const sessionControls = sessionControlsForDisplay(interactions);
@@ -76,7 +74,6 @@ export function InteractionRegion({
               view={view}
               {...shared}
               groupNameOf={groupNameOf}
-              onGroupDecision={onGroupDecision}
             />
           );
         }

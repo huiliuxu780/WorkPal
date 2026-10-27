@@ -76,6 +76,7 @@ import {
   loadCurrentRunTodos,
   loadExecutionSnapshot,
   loadExecutionSummariesForMessages,
+  loadGroupMembershipApprovalFacts,
   loadInterventionViews,
   lockOwnedStandardGroupThread,
   planMessageRoute,
@@ -861,6 +862,15 @@ export async function threadSnapshot(
             ...interventions.map((view) => view.runId),
           ],
         });
+        const groupMembershipApprovals = deps.cardsUnifiedV2
+          ? await loadGroupMembershipApprovalFacts(tx, {
+              spaceId: target.spaceId,
+              userId: target.bot.userId,
+              threadId: target.threadId,
+              messageIds: messagePage.messages.map((message) => message.id),
+              recentRunIds: interventionRunWindow,
+            })
+          : [];
         const cardSurface = deps.cardsUnifiedV2
           ? projectThreadCardSurface({
               spaceId: target.spaceId,
@@ -869,6 +879,7 @@ export async function threadSnapshot(
                 cardMessageFact(message, target.spaceId),
               ),
               interventions,
+              groupMembershipApprovals,
               runs: [
                 ...(currentRun
                   ? [

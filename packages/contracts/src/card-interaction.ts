@@ -786,25 +786,32 @@ export interface GroupMembershipApprovalFacts {
   createdAt: string;
   attentionAt?: string;
   expiresAt: string | null;
+  /** Lifecycle owned by the bound Intervention row; absent means pending. */
+  status?: z.infer<typeof InterventionStatusSchema>;
+  decision?: "approved" | "denied" | null;
   presentation: z.infer<typeof InterventionPresentationSchema>;
   canManageMembers: boolean;
 }
 
 /**
  * Strict group membership approval projection. A user without member
- * management permission gets no ActionApprovalView at all; the existing
- * X-GROUP-FAIL fact owns that path. Approval only authorizes adding this Bot to
- * this standard group for the bound message_group request.
+ * management permission gets no pending ActionApprovalView at all; the
+ * existing X-GROUP-FAIL fact owns that path. A settled request keeps its
+ * historical card even after the group becomes unreadable or unmanageable,
+ * because the stored presentation was sanitized when the request was created.
+ * Approval only authorizes adding this Bot to this standard group for the
+ * bound message_group request.
  */
 export function projectGroupMembershipApproval(
   facts: GroupMembershipApprovalFacts,
 ): ActionApprovalView | null {
-  if (!facts.canManageMembers) return null;
+  const status = facts.status ?? "pending";
+  if (!facts.canManageMembers && status === "pending") return null;
   const parsed = ActionApprovalViewSchema.safeParse({
     kind: "action_approval",
     interactionId: facts.interactionId,
     revision: facts.revision,
-    status: "pending",
+    status,
     createdAt: facts.createdAt,
     expiresAt: facts.expiresAt,
     attentionAt: facts.attentionAt ?? facts.createdAt,
@@ -816,7 +823,7 @@ export function projectGroupMembershipApproval(
       botId: facts.sourceBotId,
     },
     presentation: facts.presentation,
-    decision: null,
+    decision: status === "pending" ? null : (facts.decision ?? null),
     approval: {
       kind: "group_membership",
       authority: "business_transaction",
