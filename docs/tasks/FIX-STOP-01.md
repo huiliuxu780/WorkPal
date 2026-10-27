@@ -64,6 +64,40 @@
 - **没有**缩短 lease、加重试或加 sleep；S1–S4 的时钟全部显式传入。
 - **没有**改 cancel 的业务语义（steering disposition、notice、continuation 都不动）；`cancel-terminal.postgres.test.ts` 12 项、`effect-execution-fence.postgres.test.ts` 18 项修复后仍然绿。
 
+## 阻塞：与三个已交付的进程级契约直接冲突（待负责人裁决）
+
+`pnpm test:worker-chain` 在 fix SHA `6ce9376` 上 **3 failed / 2 passed**，证据见 [chain-conflict.txt](../evidence/FIX-STOP-01/chain-conflict.txt)。三个失败用例不是过时断言，而是**故意**要求相反行为：
+
+| 用例 | 位置 | 它断言什么 |
+| --- | --- | --- |
+| `a retry after an in-flight cancellation stays queued behind recovering admission` | `apps/web/e2e/worker-chain.spec.ts:402` | 取消后（`source.status === "cancelled"`）admission 必须变成 `recovering`；等 12 秒后手动重试 Run 仍是 `queued`、`leaseOwner` 为 null、**模型夹具没有被调用**（`task.requests.length` 不变）、转录里没有回复；`agentSessionAdmissionRequest` 仍是 `queued` |
+| `a Routine failure queues one delivery behind recovering chat admission` | `:546` | Routine 失败后 admission 必须停在 `{ state: "recovering", ownerRunId: runId }`，投递排在其后 |
+| `an outbox restart creates one queued delivery behind recovering admission` | `:785` | outbox 重启后同样必须停在 `recovering` |
+
+失败形式：修复后 admission 被释放为 `available`，后继 acquire 覆盖了 `ownerRunId`，于是 `agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: original.id } })` 找不到记录并抛 `PrismaClientKnownRequestError`。
+
+两个通过的用例正是必须保住的护栏：`a Worker killed mid-Run parks chat admission in recovering without retrying`（owner 非终态，仍 park）与 `a user Run stays queued while the Worker is down...`。
+
+**冲突的本质**：`:402` 断言的行为，就是 2026-10-27 QA 报的 P0-3 现象本身（取消后新消息永远 Queued）。executor.ts:7727-7735 的注释写明了它的理由——"its Worker-side abort chain may still be settling and the delivery that follows must queue behind the admission instead of entering a half-persisted session"。也就是说：
+
+- 现有契约认为：取消后立刻放行，可能让后继进入一个**尚未持久化完成**的 AgentScope 会话。
+- 本卡的前提认为：owner 已终态 `cancelled` 就是可释放的证明，否则会话永久不可用。
+
+两者不能同时成立。这不是实现问题，是范围/设计裁决，按 AGENTS.md「修复超出既定范围时提交具体反例、最小修复建议及影响，等待范围决定」上交，**不自行改写这三个已交付用例来让修复变绿**（那等于放宽断言、拆掉 RT-26 的护栏）。
+
+### 可选方向与影响
+
+| 方案 | 做法 | 代价与风险 |
+| --- | --- | --- |
+| A 接受新契约 | 保留当前修复，改写 `:402`/`:546`/`:785`，把"必须停在 recovering"改成"终态 owner 释放后后继可执行"，并保留一个 owner 非终态仍 park 的用例 | 直接放弃"不进入半持久化会话"的保护。需要先证明：取消时 Worker 侧 abort 链是否真的可能留下半持久化会话；若可能，会出现上下文错乱这类更难查的缺陷 |
+| B 用持久事实替代等待 | 释放条件从"owner 终态"收紧为"owner 终态 **且** abort 链已落定"（例如该 Run 的 ExternalEffect / DeliveryRecord 全部终态、execution revocation 已记录），并据此改写三个用例：已落定→放行，未落定→仍 park | 需要确认"abort 链已落定"有哪些可查的持久事实；工作量中等，但两边契约都能保住，且符合 RT-26「不用时间当证明」的原则 |
+| C 给终态 owner 一条真实证明路径 | 保持 `recovering`，但让 reconciler 能对新起的 runtime 做一次 inspect/detach 取得证明，而不是依赖已死的 Worker | 最忠于现有语义，改动面最大（要动 runtime 证明获取路径），且需要 Java 侧配合 |
+| D 撤回修复 | 只交付 S1–S4 的红作为反例证据，设计定案后再修 | P0 用户可见缺陷继续存在 |
+
+实施者建议 **B**：它同时满足"Stop 后会话必须能用"和"不进入半持久化会话"，并且不需要用时间当证明。但 B 需要先确认哪些持久事实能证明 abort 链已落定，这一步需要负责人确认边界后再做。
+
+在裁决之前：本卡不判定完成，`chain.log` 的"通过"要求未满足，PR #149 不是 `ready-to-merge`。
+
 ## 完成标准
 
 证据放在 `docs/evidence/FIX-STOP-01/`：

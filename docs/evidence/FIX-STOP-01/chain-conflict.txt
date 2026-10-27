@@ -1,0 +1,868 @@
+# FIX-STOP-01 chain run — worker-chain at the fix SHA: CONTRACT CONFLICT, 3 failed / 2 passed
+
+fix SHA: 6ce9376 (evidence commit ccb3fc8). Date 2026-10-28.
+JAVA_HOME: Homebrew openjdk 21.0.12.1 (no system Java was installed; no system config changed).
+DOCKER_HOST: colima socket. TESTCONTAINERS_RYUK_DISABLED=true because colima cannot mount the
+socket path for Ryuk; without it testcontainers fails with HTTP 500 on the mount source path.
+PostgreSQL: testcontainers postgres:16 started by the harness itself.
+INFO/DEBUG per-request log lines are omitted here to keep the file readable; the full capture
+was 1645 lines. Host paths are replaced with <worktree>. No credential appears below.
+
+$ pnpm test:worker-chain
+exit=1
+
+## Result
+3 failed, 2 passed (5.7m)
+  x worker-chain.spec.ts:402 a retry after an in-flight cancellation stays queued behind recovering admission
+  x worker-chain.spec.ts:546 a Routine failure queues one delivery behind recovering chat admission
+  x worker-chain.spec.ts:785 an outbox restart creates one queued delivery behind recovering admission
+  ok worker-chain.spec.ts:281 a user Run stays queued while the Worker is down and is claimed and executed
+  ok worker-chain.spec.ts:965 a Worker killed mid-Run parks chat admission in recovering without retrying
+
+## Why they fail
+All three assert the admission row is still parked under the ORIGINAL owner, e.g.
+  db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: original.id } })
+  -> expects { state: 'recovering', ownerRunId: runId }
+After the fix the row is released to 'available' and the successor's acquire overwrites
+ownerRunId, so findFirstOrThrow finds no record and throws PrismaClientKnownRequestError.
+
+The two passing specs are the guards that still hold: a Worker killed mid-Run leaves a
+non-terminal owner, so it stays parked (RT-25 unchanged).
+
+## Trimmed log
+
+
+> workpal@0.1.0 test:worker-chain <worktree>
+> tsx packages/testkit/src/cli/worker-chain.ts
+
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+
+> @rakazo/db@0.1.0 generate <worktree>/packages/db
+> prisma generate
+
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+
+✔ Generated Prisma Client (7.10.0) to ./src/generated/prisma in 475ms
+
+◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+Datasource "db": PostgreSQL database "test", schema "public" at "localhost:32967"
+
+130 migrations found in prisma/migrations
+
+Applying migration `0001_init`
+Applying migration `0002_bot_parent`
+Applying migration `0003_computer_host`
+Applying migration `0004_thread_sequences`
+Applying migration `0005_bot_pinned`
+Applying migration `0005_reconciliation_cursor_index`
+Applying migration `0006_computer_control_lease_expiry`
+Applying migration `0006_thread_unread`
+Applying migration `0007_computer_control_lease_expiry_index`
+Applying migration `0008_bot_deletions`
+Applying migration `0008_bot_spawn_key`
+Applying migration `0008_team_computers`
+Applying migration `0009_computer_execution_leases`
+Applying migration `0010_add_history_compacted_up_to_seq`
+Applying migration `0010_taught_skills`
+Applying migration `0010_voice`
+Applying migration `0011_action_approval_rules`
+Applying migration `0011_taught_skills_one_recording`
+Applying migration `0011_voice_credential_provider_unique`
+Applying migration `0012_bot_sections`
+Applying migration `0013_group_chats`
+Applying migration `0013_mcp_registry`
+Applying migration `20260819054109_add_workspace_memory_config`
+Applying migration `20260821091013_add_history_compaction_summary`
+Applying migration `20260823030000_harden_group_chat_sends`
+Applying migration `20260823120000_multiple_connectors`
+Applying migration `20260823133000_add_message_reply_index`
+Applying migration `20260823151500_bind_control_leases_to_runs`
+Applying migration `20260823180000_validate_bot_memory_scope`
+Applying migration `20260823200000_generalize_workspace_memory_provider`
+Applying migration `20260824120000_persist_mcp_oauth_sessions`
+Applying migration `20260825080000_bot_model_override`
+Applying migration `20260825100000_agent_skills`
+Applying migration `20260825103000_agent_skills_name_ci`
+Applying migration `20260825120000_scratchpad_items`
+Applying migration `20260825140000_routine_multi_schedule_and_run_routine_id`
+Applying migration `20260825140001_runs_routineid_idx_concurrent`
+Applying migration `20260825140002_runs_routineid_fkey_not_valid`
+Applying migration `20260825140003_runs_routineid_fkey_validate`
+Applying migration `20260827140000_add_avatar_style`
+Applying migration `20260827170000_bot_webhook_secret`
+Applying migration `20260828010000_initialize_signup_policy`
+Applying migration `20260828013000_routine_webhook_enabled`
+Applying migration `20260828090000_group_organization`
+Applying migration `20260828090001_group_organization_list_idx_concurrent`
+Applying migration `20260828090002_group_organization_section_idx_concurrent`
+Applying migration `20260828090002a_group_organization_repair_invalid_idx`
+Applying migration `20260828090003_group_organization_section_fkey_not_valid`
+Applying migration `20260828090004_group_organization_section_fkey_validate`
+Applying migration `20260828090005_group_organization_old_idx_drop_concurrent`
+Applying migration `20260828120000_phone_surface`
+Applying migration `20260828130000_agent_connections`
+Applying migration `20260828130000_auto_review`
+Applying migration `20260828214500_bot_outcome_return`
+Applying migration `20260828214501_bot_outcome_return_idx_concurrent`
+Applying migration `20260829120000_phone_outbound_attempts`
+Applying migration `20260829210000_phone_outbound_next_attempt`
+Applying migration `20260829210001_phone_outbound_next_attempt_idx_concurrent`
+Applying migration `20260829210002_phone_outbound_status_idx_drop_concurrent`
+Applying migration `20260830010000_bot_position`
+Applying migration `20260830010000_routine_thread_target_fkey_not_valid`
+Applying migration `20260830010001_routine_thread_target_fkey_validate`
+Applying migration `20260830150000_organization_spaces`
+Applying migration `20260830200000_space_scope_names_and_user_credentials`
+Applying migration `20260831090000_message_thumbs_up`
+Applying migration `20260831235900_steering_messages`
+Applying migration `20260901040000_messaging_mirror_recovery`
+Applying migration `20260901040001_messaging_mirror_recovery_idx_concurrent`
+Applying migration `20260901120000_messaging_surface`
+Applying migration `20260906010000_cloud_agents`
+Applying migration `20260906020000_bot_secrets`
+Applying migration `20260906120000_messaging_team_chat`
+Applying migration `20260906120100_agent_secrets`
+Applying migration `20260907010000_routine_github_enabled`
+Applying migration `20260907020000_user_model_vision`
+Applying migration `20260907120000_routine_message_provider`
+Applying migration `20260907130000_usage_records_keep_bot_attribution`
+Applying migration `20260907200000_invitation_created_at`
+Applying migration `20260908000000_integration_provider_configs`
+Applying migration `20260908010000_computer_updates`
+Applying migration `20260908090000_message_reaction`
+Applying migration `20260908120000_space_lifecycle_state`
+Applying migration `20260909000000_screen_generation`
+Applying migration `20260914150000_ai_data_consent`
+Applying migration `20260915000000_message_reply_quote`
+Applying migration `20260925120000_artifact_versions`
+Applying migration `20260925130000_usage_record_cache_tokens`
+Applying migration `20260925223000_steering_origin_trigger`
+Applying migration `20260927170000_voice_speech_model`
+Applying migration `20261008000000_background_agent_tasks`
+Applying migration `20261008100000_product_harness_phase1`
+Applying migration `20261012000000_avatar_style_bloub_default`
+Applying migration `20261013000000_task18_event_envelope`
+Applying migration `20261013010000_task18_delivery_outbox`
+Applying migration `20261013015000_task18_run_retry`
+Applying migration `20261013016000_task18_run_budget`
+Applying migration `20261013020000_task18_capability_rules`
+Applying migration `20261013030000_structured_run_plans`
+Applying migration `20261013040000_semantic_run_steps`
+Applying migration `20261013050000_run_todos`
+Applying migration `20261013060000_run_wait_started_at`
+Applying migration `20261013070000_attempt_fence_uniqueness`
+Applying migration `20261013080000_execution_revocation_outbox`
+Applying migration `20261013090000_background_task_lookup_indexes`
+Applying migration `20261013100000_interventions`
+Applying migration `20261013110000_intervention_presentation`
+Applying migration `20261013120000_execution_history_indexes`
+Applying migration `20261013130000_run_snapshot_rev`
+Applying migration `20261016100000_message_provenance`
+Applying migration `20261017000000_bot_avatar_identity`
+Applying migration `20261017010000_avatar_failure_receipts`
+Applying migration `20261017020000_convert_legacy_bot_avatars`
+Applying migration `20261017030000_bot_avatar_changes`
+Applying migration `20261017040000_bot_avatar_changes_write_order`
+Applying migration `20261019090000_manual_retry_lineage`
+Applying migration `20261019120000_avatar_body_color`
+Applying migration `20261019150000_manual_retry_operation_identity`
+Applying migration `20261020090000_unified_plan_review`
+Applying migration `20261020100000_memory_facts_three_layer`
+Applying migration `20261022000000_agent_pair_chat_groups`
+Applying migration `20261023120000_task_instruction_envelope`
+Applying migration `20261023130000_agent_pair_message_origins`
+Applying migration `20261023150000_session_admission_lease`
+Applying migration `20261023150000_task_amendment_followup`
+Applying migration `20261024090000_session_checkpoint`
+Applying migration `20261024100000_run_private_pair_origin`
+Applying migration `20261025120000_cancel_terminal_policy`
+Applying migration `20261025130000_cancel_outcome_retry_rotation`
+Applying migration `20261026090000_outbound_draft_revisions`
+Applying migration `20261027120000_group_membership_requests`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 0001_init/
+    └─ migration.sql
+  └─ 0002_bot_parent/
+    └─ migration.sql
+  └─ 0003_computer_host/
+    └─ migration.sql
+  └─ 0004_thread_sequences/
+    └─ migration.sql
+  └─ 0005_bot_pinned/
+    └─ migration.sql
+  └─ 0005_reconciliation_cursor_index/
+    └─ migration.sql
+  └─ 0006_computer_control_lease_expiry/
+    └─ migration.sql
+  └─ 0006_thread_unread/
+    └─ migration.sql
+  └─ 0007_computer_control_lease_expiry_index/
+    └─ migration.sql
+  └─ 0008_bot_deletions/
+    └─ migration.sql
+  └─ 0008_bot_spawn_key/
+    └─ migration.sql
+  └─ 0008_team_computers/
+    └─ migration.sql
+  └─ 0009_computer_execution_leases/
+    └─ migration.sql
+  └─ 0010_add_history_compacted_up_to_seq/
+    └─ migration.sql
+  └─ 0010_taught_skills/
+    └─ migration.sql
+  └─ 0010_voice/
+    └─ migration.sql
+  └─ 0011_action_approval_rules/
+    └─ migration.sql
+  └─ 0011_taught_skills_one_recording/
+    └─ migration.sql
+  └─ 0011_voice_credential_provider_unique/
+    └─ migration.sql
+  └─ 0012_bot_sections/
+    └─ migration.sql
+  └─ 0013_group_chats/
+    └─ migration.sql
+  └─ 0013_mcp_registry/
+    └─ migration.sql
+  └─ 20260819054109_add_workspace_memory_config/
+    └─ migration.sql
+  └─ 20260821091013_add_history_compaction_summary/
+    └─ migration.sql
+  └─ 20260823030000_harden_group_chat_sends/
+    └─ migration.sql
+  └─ 20260823120000_multiple_connectors/
+    └─ migration.sql
+  └─ 20260823133000_add_message_reply_index/
+    └─ migration.sql
+  └─ 20260823151500_bind_control_leases_to_runs/
+    └─ migration.sql
+  └─ 20260823180000_validate_bot_memory_scope/
+    └─ migration.sql
+  └─ 20260823200000_generalize_workspace_memory_provider/
+    └─ migration.sql
+  └─ 20260824120000_persist_mcp_oauth_sessions/
+    └─ migration.sql
+  └─ 20260825080000_bot_model_override/
+    └─ migration.sql
+  └─ 20260825100000_agent_skills/
+    └─ migration.sql
+  └─ 20260825103000_agent_skills_name_ci/
+    └─ migration.sql
+  └─ 20260825120000_scratchpad_items/
+    └─ migration.sql
+  └─ 20260825140000_routine_multi_schedule_and_run_routine_id/
+    └─ migration.sql
+  └─ 20260825140001_runs_routineid_idx_concurrent/
+    └─ migration.sql
+  └─ 20260825140002_runs_routineid_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260825140003_runs_routineid_fkey_validate/
+    └─ migration.sql
+  └─ 20260827140000_add_avatar_style/
+    └─ migration.sql
+  └─ 20260827170000_bot_webhook_secret/
+    └─ migration.sql
+  └─ 20260828010000_initialize_signup_policy/
+    └─ migration.sql
+  └─ 20260828013000_routine_webhook_enabled/
+    └─ migration.sql
+  └─ 20260828090000_group_organization/
+    └─ migration.sql
+  └─ 20260828090001_group_organization_list_idx_concurrent/
+    └─ migration.sql
+  └─ 20260828090002_group_organization_section_idx_concurrent/
+    └─ migration.sql
+  └─ 20260828090002a_group_organization_repair_invalid_idx/
+    └─ migration.sql
+  └─ 20260828090003_group_organization_section_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260828090004_group_organization_section_fkey_validate/
+    └─ migration.sql
+  └─ 20260828090005_group_organization_old_idx_drop_concurrent/
+    └─ migration.sql
+  └─ 20260828120000_phone_surface/
+    └─ migration.sql
+  └─ 20260828130000_agent_connections/
+    └─ migration.sql
+  └─ 20260828130000_auto_review/
+    └─ migration.sql
+  └─ 20260828214500_bot_outcome_return/
+    └─ migration.sql
+  └─ 20260828214501_bot_outcome_return_idx_concurrent/
+    └─ migration.sql
+  └─ 20260829120000_phone_outbound_attempts/
+    └─ migration.sql
+  └─ 20260829210000_phone_outbound_next_attempt/
+    └─ migration.sql
+  └─ 20260829210001_phone_outbound_next_attempt_idx_concurrent/
+    └─ migration.sql
+  └─ 20260829210002_phone_outbound_status_idx_drop_concurrent/
+    └─ migration.sql
+  └─ 20260830010000_bot_position/
+    └─ migration.sql
+  └─ 20260830010000_routine_thread_target_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260830010001_routine_thread_target_fkey_validate/
+    └─ migration.sql
+  └─ 20260830150000_organization_spaces/
+    └─ migration.sql
+  └─ 20260830200000_space_scope_names_and_user_credentials/
+    └─ migration.sql
+  └─ 20260831090000_message_thumbs_up/
+    └─ migration.sql
+  └─ 20260831235900_steering_messages/
+    └─ migration.sql
+  └─ 20260901040000_messaging_mirror_recovery/
+    └─ migration.sql
+  └─ 20260901040001_messaging_mirror_recovery_idx_concurrent/
+    └─ migration.sql
+  └─ 20260901120000_messaging_surface/
+    └─ migration.sql
+  └─ 20260906010000_cloud_agents/
+    └─ migration.sql
+  └─ 20260906020000_bot_secrets/
+    └─ migration.sql
+  └─ 20260906120000_messaging_team_chat/
+    └─ migration.sql
+  └─ 20260906120100_agent_secrets/
+    └─ migration.sql
+  └─ 20260907010000_routine_github_enabled/
+    └─ migration.sql
+  └─ 20260907020000_user_model_vision/
+    └─ migration.sql
+  └─ 20260907120000_routine_message_provider/
+    └─ migration.sql
+  └─ 20260907130000_usage_records_keep_bot_attribution/
+    └─ migration.sql
+  └─ 20260907200000_invitation_created_at/
+    └─ migration.sql
+  └─ 20260908000000_integration_provider_configs/
+    └─ migration.sql
+  └─ 20260908010000_computer_updates/
+    └─ migration.sql
+  └─ 20260908090000_message_reaction/
+    └─ migration.sql
+  └─ 20260908120000_space_lifecycle_state/
+    └─ migration.sql
+  └─ 20260909000000_screen_generation/
+    └─ migration.sql
+  └─ 20260914150000_ai_data_consent/
+    └─ migration.sql
+  └─ 20260915000000_message_reply_quote/
+    └─ migration.sql
+  └─ 20260925120000_artifact_versions/
+    └─ migration.sql
+  └─ 20260925130000_usage_record_cache_tokens/
+    └─ migration.sql
+  └─ 20260925223000_steering_origin_trigger/
+    └─ migration.sql
+  └─ 20260927170000_voice_speech_model/
+    └─ migration.sql
+  └─ 20261008000000_background_agent_tasks/
+    └─ migration.sql
+  └─ 20261008100000_product_harness_phase1/
+    └─ migration.sql
+  └─ 20261012000000_avatar_style_bloub_default/
+    └─ migration.sql
+  └─ 20261013000000_task18_event_envelope/
+    └─ migration.sql
+  └─ 20261013010000_task18_delivery_outbox/
+    └─ migration.sql
+  └─ 20261013015000_task18_run_retry/
+    └─ migration.sql
+  └─ 20261013016000_task18_run_budget/
+    └─ migration.sql
+  └─ 20261013020000_task18_capability_rules/
+    └─ migration.sql
+  └─ 20261013030000_structured_run_plans/
+    └─ migration.sql
+  └─ 20261013040000_semantic_run_steps/
+    └─ migration.sql
+  └─ 20261013050000_run_todos/
+    └─ migration.sql
+  └─ 20261013060000_run_wait_started_at/
+    └─ migration.sql
+  └─ 20261013070000_attempt_fence_uniqueness/
+    └─ migration.sql
+  └─ 20261013080000_execution_revocation_outbox/
+    └─ migration.sql
+  └─ 20261013090000_background_task_lookup_indexes/
+    └─ migration.sql
+  └─ 20261013100000_interventions/
+    └─ migration.sql
+  └─ 20261013110000_intervention_presentation/
+    └─ migration.sql
+  └─ 20261013120000_execution_history_indexes/
+    └─ migration.sql
+  └─ 20261013130000_run_snapshot_rev/
+    └─ migration.sql
+  └─ 20261016100000_message_provenance/
+    └─ migration.sql
+  └─ 20261017000000_bot_avatar_identity/
+    └─ migration.sql
+  └─ 20261017010000_avatar_failure_receipts/
+    └─ migration.sql
+  └─ 20261017020000_convert_legacy_bot_avatars/
+    └─ migration.sql
+  └─ 20261017030000_bot_avatar_changes/
+    └─ migration.sql
+  └─ 20261017040000_bot_avatar_changes_write_order/
+    └─ migration.sql
+  └─ 20261019090000_manual_retry_lineage/
+    └─ migration.sql
+  └─ 20261019120000_avatar_body_color/
+    └─ migration.sql
+  └─ 20261019150000_manual_retry_operation_identity/
+    └─ migration.sql
+  └─ 20261020090000_unified_plan_review/
+    └─ migration.sql
+  └─ 20261020100000_memory_facts_three_layer/
+    └─ migration.sql
+  └─ 20261022000000_agent_pair_chat_groups/
+    └─ migration.sql
+  └─ 20261023120000_task_instruction_envelope/
+    └─ migration.sql
+  └─ 20261023130000_agent_pair_message_origins/
+    └─ migration.sql
+  └─ 20261023150000_session_admission_lease/
+    └─ migration.sql
+  └─ 20261023150000_task_amendment_followup/
+    └─ migration.sql
+  └─ 20261024090000_session_checkpoint/
+    └─ migration.sql
+  └─ 20261024100000_run_private_pair_origin/
+    └─ migration.sql
+  └─ 20261025120000_cancel_terminal_policy/
+    └─ migration.sql
+  └─ 20261025130000_cancel_outcome_retry_rotation/
+    └─ migration.sql
+  └─ 20261026090000_outbound_draft_revisions/
+    └─ migration.sql
+  └─ 20261027120000_group_membership_requests/
+    └─ migration.sql
+
+All migrations have been successfully applied.
+2026-10-27T17:47:17.048Z WARN [Better Auth]: [better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a randomly generated secret for production.
+
+Running 5 tests using 1 worker
+
+[WebServer] [BABEL] Note: The code generator has deoptimised the styling of <worktree>/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+agentscope.signal event=PRE_CALL run=cmvqzabc20009xvx0sqz0fric thread=cmvqzabbi0005xvx0i1l5pudk generation=0 elapsed_ms=283
+agentscope.signal event=POST_CALL run=cmvqzabc20009xvx0sqz0fric thread=cmvqzabbi0005xvx0i1l5pudk generation=0 elapsed_ms=349 messages=0
+agentscope.signal event=PRE_CALL run=cmvqzacaq000fxvx0rsv0jiqe thread=cmvqzabbi0005xvx0i1l5pudk generation=0 elapsed_ms=33
+agentscope.signal event=POST_CALL run=cmvqzacaq000fxvx0rsv0jiqe thread=cmvqzabbi0005xvx0i1l5pudk generation=0 elapsed_ms=277 messages=0
+worker-chain timings (ms): {"claimToRunningMs":4021}
+  ✓  1 [chromium] › e2e/worker-chain.spec.ts:281:1 › a user Run stays queued while the Worker is down and is claimed and executed by the Worker process (17.9s)
+agentscope.signal event=PRE_CALL run=cmvqzap3f000qxvx0rskb2hth thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=100
+agentscope.signal event=POST_CALL run=cmvqzap3f000qxvx0rskb2hth thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=109 messages=0
+agentscope.signal event=PRE_CALL run=cmvqzappx000wxvx0ynpzod0r thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=21
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=27
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=55
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+
+::error file=e2e/worker-chain.spec.ts,title=[chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission,line=509,col=13::  1) [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission %0A    PrismaClientKnownRequestError: %0A    Invalid `prisma.agentSessionAdmission.findFirstOrThrow()` invocation:%0A%0A%0A    An operation failed because it depends on one or more records that were required but not found. No record was found for a query.%0A%0A      507 |         async () =>%0A      508 |           (%0A    > 509 |             await db.prisma.agentSessionAdmission.findFirstOrThrow({%0A          |             ^%0A      510 |               where: { ownerRunId: original.id },%0A      511 |             })%0A      512 |           ).state,%0A        at vn.handleRequestError (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/RequestHandler.ts:238:13)%0A        at vn.handleAndLogRequestError (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/RequestHandler.ts:184:12)%0A        at vn.request (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/RequestHandler.ts:153:12)%0A        at a (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:1014:24)%0A        at expect.poll.timeout (<worktree>/apps/web/e2e/worker-chain.spec.ts:509:13)%0A        at <worktree>/apps/web/e2e/worker-chain.spec.ts:505:5
+  ✘  2 [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission (18.2s)
+agentscope.signal event=PRE_CALL run=cmvqzb3u4001bxvx0kx8591mu thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=104
+agentscope.signal event=POST_CALL run=cmvqzb3u4001bxvx0kx8591mu thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=114 messages=0
+agentscope.signal event=PRE_CALL run=cmvqzb4fy001ixvx01d1oxmdc thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=17
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=16
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=28
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=13
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=21
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+
+::error file=e2e/worker-chain.spec.ts,title=[chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission,line=661,col=16::  2) [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission %0A    Error: expect(received).resolves.toMatchObject()%0A%0A    Received promise rejected instead of resolved%0A    Rejected to value: [PrismaClientKnownRequestError:·%0A    Invalid `prisma.agentSessionAdmission.findFirstOrThrow()` invocation:··%0A    An operation failed because it depends on one or more records that were required but not found. No record was found for a query.]%0A%0A      659 |     await expect(%0A      660 |       db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),%0A    > 661 |     ).resolves.toMatchObject({ state: "recovering", ownerRunId: runId });%0A          |                ^%0A      662 |%0A      663 |     // The durable chain reaches delivery.created → queued delivery Run. It%0A      664 |     // cannot produce a bot message or delivery.sent before RT-26 releases the owner.%0A        at <worktree>/apps/web/e2e/worker-chain.spec.ts:661:16
+  ✘  3 [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission (38.8s)
+agentscope.signal event=PRE_CALL run=cmvqzbyqi001sxvx0atrcaunk thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=107
+agentscope.signal event=POST_CALL run=cmvqzbyqi001sxvx0atrcaunk thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=117 messages=0
+agentscope.signal event=PRE_CALL run=cmvqzbzfm001zxvx0n3wl1zlt thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=16
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=28
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=21
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=23
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=29
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=39
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=50
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=19
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=17
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=27
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=23
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=17
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=32
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=15
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=15
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=16
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=20
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=22
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=31
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=12
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=17
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=15
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=15
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=21
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=24
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=16
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=30
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=14
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=13
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=21
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=15
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=18
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=28
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=13
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=19
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=16
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=13
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=19
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=23
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.BadRequestException
+  at io.agentscope.extensions.model.openai.exception.OpenAIException.create(OpenAIException.java:81)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:455)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=18
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=31
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=15
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=17
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=23
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=25
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=17
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=37
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+
+::error file=e2e/worker-chain.spec.ts,title=[chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission,line=901,col=8::  3) [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission %0A    Error: expect(received).toBe(expected) // Object.is equality%0A%0A    Expected: "queued:none:1"%0A    Received: "queued:none:0"%0A%0A    Call Log:%0A    - Timeout 180000ms exceeded while waiting on the predicate%0A%0A      899 |         { timeout: 180_000 },%0A      900 |       )%0A    > 901 |       .toBe("queued:none:1");%0A          |        ^%0A      902 |     const recovery = await db.prisma.deliveryRecord.findUniqueOrThrow({%0A      903 |       where: { id: pending.id },%0A      904 |     });%0A        at <worktree>/apps/web/e2e/worker-chain.spec.ts:901:8
+  ✘  4 [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission (3.9m)
+agentscope.signal event=PRE_CALL run=cmvqzgzta0029xvx06ly3f1in thread=cmvqzgzsu0025xvx0d75ft0bi generation=0 elapsed_ms=114
+agentscope.signal event=POST_CALL run=cmvqzgzta0029xvx06ly3f1in thread=cmvqzgzsu0025xvx0d75ft0bi generation=0 elapsed_ms=121 messages=0
+agentscope.signal event=PRE_CALL run=cmvqzh0g4002fxvx0kgyzuh5n thread=cmvqzgzsu0025xvx0d75ft0bi generation=0 elapsed_ms=17
+agentscope.signal event=PRE_CALL run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=20
+agentscope.signal event=PRE_CALL run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=17
+agentscope.signal event=PRE_CALL run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=17
+agentscope.signal event=ERROR run=cmvqzbumy000kfzx0s29wlb37 thread=cmvqzb3tu0017xvx05izz4n0i generation=0 elapsed_ms=28
+agentscope.signal event=ERROR run=cmvqzd03h0001wnx0d0z3iu0v thread=cmvqzbyq9001oxvx0d2fmxkvb generation=0 elapsed_ms=26
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+agentscope.signal event=ERROR run=cmvqzar5g0010xvx0r7c9vfh4 thread=cmvqzap34000mxvx0kapzltf9 generation=0 elapsed_ms=43
+Agent runtime failure: io.agentscope.extensions.model.openai.exception.OpenAIException
+  at io.agentscope.extensions.model.openai.OpenAIClient.lambda$stream$2(OpenAIClient.java:458)
+  at reactor.core.publisher.Flux.lambda$onErrorMap$0(Flux.java:7315)
+  at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:95)
+  at reactor.core.publisher.FluxHandle$HandleSubscriber.onError(FluxHandle.java:216)
+worker-chain timings (ms): {}
+Agent runtime failure: java.lang.IllegalStateException
+  at com.workpal.runtime.RuntimeEngine.execute(RuntimeEngine.java:755)
+  at com.workpal.runtime.RuntimeServer.runs(RuntimeServer.java:176)
+  at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+  at jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(AuthFilter.java:82)
+  ✓  5 [chromium] › e2e/worker-chain.spec.ts:965:1 › a Worker killed mid-Run parks chat admission in recovering without retrying (25.8s)
+::notice title=🎭 Playwright Run Summary::  3 failed%0A    [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission %0A    [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission %0A    [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission %0A  2 passed (5.7m)
+
+
+  1) [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission 
+
+    PrismaClientKnownRequestError: 
+    Invalid `prisma.agentSessionAdmission.findFirstOrThrow()` invocation:
+
+
+    An operation failed because it depends on one or more records that were required but not found. No record was found for a query.
+
+      507 |         async () =>
+      508 |           (
+    > 509 |             await db.prisma.agentSessionAdmission.findFirstOrThrow({
+          |             ^
+      510 |               where: { ownerRunId: original.id },
+      511 |             })
+      512 |           ).state,
+        at vn.handleRequestError (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/RequestHandler.ts:238:13)
+        at vn.handleAndLogRequestError (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/RequestHandler.ts:184:12)
+        at vn.request (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/RequestHandler.ts:153:12)
+        at a (<worktree>/node_modules/.pnpm/@prisma+client@7.10.0_prisma@7.10.0_@types+react-dom@19.2.7_@types+react@19.2.18__@types+reac_6tinzrvja734evzdewma6seh4i/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:1014:24)
+        at expect.poll.timeout (<worktree>/apps/web/e2e/worker-chain.spec.ts:509:13)
+        at <worktree>/apps/web/e2e/worker-chain.spec.ts:505:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/worker-chain-a-retry-after-a774b-behind-recovering-admission-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/worker-chain-a-retry-after-a774b-behind-recovering-admission-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/worker-chain-a-retry-after-a774b-behind-recovering-admission-chromium/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/worker-chain-a-retry-after-a774b-behind-recovering-admission-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/worker-chain-a-retry-after-a774b-behind-recovering-admission-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission 
+
+    Error: expect(received).resolves.toMatchObject()
+
+    Received promise rejected instead of resolved
+    Rejected to value: [PrismaClientKnownRequestError:·
+    Invalid `prisma.agentSessionAdmission.findFirstOrThrow()` invocation:··
+    An operation failed because it depends on one or more records that were required but not found. No record was found for a query.]
+
+      659 |     await expect(
+      660 |       db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),
+    > 661 |     ).resolves.toMatchObject({ state: "recovering", ownerRunId: runId });
+          |                ^
+      662 |
+      663 |     // The durable chain reaches delivery.created → queued delivery Run. It
+      664 |     // cannot produce a bot message or delivery.sent before RT-26 releases the owner.
+        at <worktree>/apps/web/e2e/worker-chain.spec.ts:661:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/worker-chain-a-Routine-fai-c7145-d-recovering-chat-admission-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/worker-chain-a-Routine-fai-c7145-d-recovering-chat-admission-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/worker-chain-a-Routine-fai-c7145-d-recovering-chat-admission-chromium/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/worker-chain-a-Routine-fai-c7145-d-recovering-chat-admission-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/worker-chain-a-Routine-fai-c7145-d-recovering-chat-admission-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "queued:none:1"
+    Received: "queued:none:0"
+
+    Call Log:
+    - Timeout 180000ms exceeded while waiting on the predicate
+
+      899 |         { timeout: 180_000 },
+      900 |       )
+    > 901 |       .toBe("queued:none:1");
+          |        ^
+      902 |     const recovery = await db.prisma.deliveryRecord.findUniqueOrThrow({
+      903 |       where: { id: pending.id },
+      904 |     });
+        at <worktree>/apps/web/e2e/worker-chain.spec.ts:901:8
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/worker-chain-an-outbox-res-18d5d-behind-recovering-admission-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/worker-chain-an-outbox-res-18d5d-behind-recovering-admission-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/worker-chain-an-outbox-res-18d5d-behind-recovering-admission-chromium/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/worker-chain-an-outbox-res-18d5d-behind-recovering-admission-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/worker-chain-an-outbox-res-18d5d-behind-recovering-admission-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission 
+    [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission 
+    [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission 
+  2 passed (5.7m)
+undefined
+<worktree>/apps/web:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: playwright test --workers=1 worker-chain.spec.ts
+Failed agent runs: [
+  {
+    id: 'cmvqzb4fy001ixvx01d1oxmdc',
+    trigger: 'routine',
+    error: 'budget_exceeded:duration_sec'
+  },
+  {
+    id: 'cmvqzbzfm001zxvx0n3wl1zlt',
+    trigger: 'routine',
+    error: 'budget_exceeded:duration_sec'
+  }
+]
+Non-terminal runs at failure: [
+  {
+    id: 'cmvqzd03h0001wnx0d0z3iu0v',
+    status: 'queued',
+    trigger: 'delivery',
+    leaseOwner: null
+  },
+  {
+    id: 'cmvqzh0g4002fxvx0kgyzuh5n',
+    status: 'queued',
+    trigger: 'user',
+    leaseOwner: null
+  },
+  {
+    id: 'cmvqzbumy000kfzx0s29wlb37',
+    status: 'queued',
+    trigger: 'delivery',
+    leaseOwner: null
+  },
+  {
+    id: 'cmvqzar5g0010xvx0r7c9vfh4',
+    status: 'queued',
+    trigger: 'user',
+    leaseOwner: null
+  }
+]
+Worker logs: <worktree>/test-report/worker-chain/worker-*.log
+Error: pnpm --filter @rakazo/web exec playwright test --workers=1 worker-chain.spec.ts exited 1
+    at ChildProcess.<anonymous> (<worktree>/packages/testkit/src/cli/process.ts:9:19)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess._handle.onexit (node:internal/child_process:293:12)
+    at Process.callbackTrampoline (node:internal/async_hooks:130:17)
+ ELIFECYCLE  Command failed with exit code 1.
+exit=1

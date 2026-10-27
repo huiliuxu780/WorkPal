@@ -46,12 +46,14 @@ VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e2e
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| `chain.log`：`pnpm test:worker-chain` | 进行中/待补 | 本机原先没有可用 Java（`/usr/libexec/java_home` 找不到运行时），改用 Homebrew 的 openjdk@21 后已启动运行；结果与退出码在跑完后补入本目录，不用 CI 结果冒充本地运行 |
-| `chain.log`：`pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | 未执行 | 需要已构建的 runtime jar 与 Playwright 浏览器；执行后补入，失败或因环境无法执行都如实记录 |
+| `chain.log`：`pnpm test:worker-chain` | **已执行，红，阻塞** | 3 failed / 2 passed（5.7m）。三个失败用例是**已交付的进程级契约**，故意要求"取消/失败后 admission 必须停在 `recovering`、后继必须继续排队"，与本卡的释放前提直接矛盾。证据与四个可选方向见 [chain-conflict.txt](./chain-conflict.txt) 和 [任务卡的"阻塞"一节](../../tasks/FIX-STOP-01.md)。**没有**通过改写这三个用例来让修复变绿 |
+| `chain.log`：`pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | 未执行 | 在 worker-chain 的契约冲突裁决前执行没有意义；裁决后一并补 |
 | 真模型手测截图（Stop 后发新消息正常收到回复） | **未执行** | 需要 `pnpm dev:app` + DashScope 真模型 + 浏览器操作。不用持久层测试或 scripted 夹具冒充真模型验证 |
-| 回写 RT-25、RT-26 与 CANCEL-01 / #139 的 AC | 未执行 | 需在 chain 与手测证据齐了以后写，避免把未验证的结论写进别的卡片 |
+| 回写 RT-25、RT-26 与 CANCEL-01 / #139 的 AC | 未执行 | 契约冲突未裁决前回写会把未定案的结论写进别的卡片 |
 | 顶栏不再显示 Running / Queued | **未验证** | 属 API/Web 层，持久层测试观察不到；需要手测或 E2E |
-| 日志里没有 `could not be proven` | **未验证** | 需要 worker/executor 进程链日志；worker-chain 跑完后可核对 |
+| 日志里没有 `could not be proven` | **未验证** | worker-chain 的日志已捕获（见 chain-conflict.txt），但该项要在契约裁决与修复定案后再核对 |
+
+本机环境事实（都已解决，不是缺陷）：系统没有安装 Java（`/usr/libexec/java_home` 找不到运行时），改用 Homebrew 的 openjdk@21 并只设置 `JAVA_HOME`，未改动系统配置；Docker 走 colima，testcontainers 需要显式 `DOCKER_HOST`，且必须 `TESTCONTAINERS_RYUK_DISABLED=true`，否则 Ryuk 挂载 socket 路径会以 HTTP 500 失败。
 
 按 [AGENTS.md](../../../AGENTS.md) 第 6 条，上述缺项在本分支补齐，不另拆"补验收"任务；在补齐之前本卡不判定完成，也不建议合并。
 
