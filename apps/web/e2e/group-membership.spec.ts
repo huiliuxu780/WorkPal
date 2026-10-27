@@ -51,61 +51,85 @@ test.describe("group membership approval (X-GROUP)", () => {
     const card = page.getByTestId("group-membership-approval");
     await expect(card).toBeVisible({ timeout: 60_000 });
     await expect(card).toContainText(`Add Joy to “${APPROVE_GROUP}”?`);
-    await expect(card).toContainText("Join and continue");
-    await expect(card).toContainText("Not now");
-    for (const term of ["Intervention", "revision", "Run", "Task", "Thread"]) {
-      await expect(card).not.toContainText(term);
+    // The paused mutating tool released its executing claim: the resumed call
+    // must reach the bound request instead of reading an uncertain effect.
+    const { prisma, pool } = createDb(process.env.DATABASE_URL!);
+    try {
+      const effect = await prisma.externalEffect.findFirstOrThrow({
+        where: { kind: "message_group" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(effect.status).toBe("intended");
+      await expect(card).toContainText("Join and continue");
+      await expect(card).toContainText("Not now");
+      for (const term of ["Intervention", "revision", "Run", "Task", "Thread"]) {
+        await expect(card).not.toContainText(term);
+      }
+      // No target work exists before the decision.
+      expect(await groupTexts(page, group.id)).toEqual([]);
+      await captureScreenshot(page, testInfo, "X-GROUP-APPROVE-1440");
+
+      await page.setViewportSize({ width: 430, height: 900 });
+      await expect(card).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      ).toBe(true);
+      await captureScreenshot(page, testInfo, "X-GROUP-APPROVE-430");
+      await page.setViewportSize({ width: 1440, height: 900 });
+
+      // A reload restores the same pending card from the server.
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card).toContainText("Join and continue");
+
+      await card.getByTestId("group-membership-approve").click();
+      await expect(card).toContainText("Joined");
+
+      await expect
+        .poll(
+          async () =>
+            (await groupTexts(page, group.id)).some((text) => text.includes(GROUP_PROMPT)),
+          {
+            timeout: 90_000,
+            intervals: [500, 1_000, 2_000],
+          },
+        )
+        .toBe(true);
+      await expect
+        .poll(
+          async () =>
+            (await sourceTexts(page, joy.id)).some((text) => text.includes(RETURN_SUMMARY)),
+          { timeout: 120_000, intervals: [1_000, 2_000, 3_000] },
+        )
+        .toBe(true);
+      await expect
+        .poll(
+          async () =>
+            (await groupTexts(page, group.id)).filter((text) => text.includes(GROUP_PROMPT)).length,
+          {
+            timeout: 30_000,
+            intervals: [500, 1_000],
+          },
+        )
+        .toBe(1);
+
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page.getByTestId("group-membership-approval")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("group-membership-approval")).toContainText("Joined");
+      await expect(page.getByText(RETURN_SUMMARY, { exact: false })).toBeVisible({
+        timeout: 30_000,
+      });
+      expect(
+        (
+          await prisma.externalEffect.findFirstOrThrow({
+            where: { kind: "message_group" },
+            orderBy: { createdAt: "desc" },
+          })
+        ).status,
+      ).toBe("completed");
+    } finally {
+      await pool.end();
     }
-    // No target work exists before the decision.
-    expect(await groupTexts(page, group.id)).toEqual([]);
-    await captureScreenshot(page, testInfo, "X-GROUP-APPROVE-1440");
-
-    await page.setViewportSize({ width: 430, height: 900 });
-    await expect(card).toBeVisible();
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
-    ).toBe(true);
-    await captureScreenshot(page, testInfo, "X-GROUP-APPROVE-430");
-    await page.setViewportSize({ width: 1440, height: 900 });
-
-    // A reload restores the same pending card from the server.
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(card).toBeVisible({ timeout: 30_000 });
-    await expect(card).toContainText("Join and continue");
-
-    await card.getByTestId("group-membership-approve").click();
-    await expect(card).toContainText("Joined");
-
-    await expect
-      .poll(
-        async () => (await groupTexts(page, group.id)).some((text) => text.includes(GROUP_PROMPT)),
-        {
-          timeout: 90_000,
-          intervals: [500, 1_000, 2_000],
-        },
-      )
-      .toBe(true);
-    await expect
-      .poll(
-        async () => (await sourceTexts(page, joy.id)).some((text) => text.includes(RETURN_SUMMARY)),
-        { timeout: 120_000, intervals: [1_000, 2_000, 3_000] },
-      )
-      .toBe(true);
-    await expect
-      .poll(
-        async () =>
-          (await groupTexts(page, group.id)).filter((text) => text.includes(GROUP_PROMPT)).length,
-        {
-          timeout: 30_000,
-          intervals: [500, 1_000],
-        },
-      )
-      .toBe(1);
-
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("group-membership-approval")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("group-membership-approval")).toContainText("Joined");
-    await expect(page.getByText(RETURN_SUMMARY, { exact: false })).toBeVisible({ timeout: 30_000 });
     await captureScreenshot(page, testInfo, "X-GROUP-APPROVE-terminal-1440");
 
     await page.setViewportSize({ width: 430, height: 900 });

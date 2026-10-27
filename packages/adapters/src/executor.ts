@@ -5467,6 +5467,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             if (!sent.ok && "kind" in sent) {
               if (sent.kind === "membership_required") {
+                // message_group is a mutating tool, so its effect was already
+                // claimed as executing. Return the claim to intended before
+                // suspending: the resumed call must pass the duplicate-effect
+                // gate and reach the bound request instead of reading the
+                // pause as an uncertain side effect.
+                if (applied && claimedEffect) {
+                  const released = await releaseExternalEffectClaim(deps.prisma, {
+                    effectId: applied.effect.id,
+                    execution: { runId, leaseOwner: workerId, leaseFence: fence },
+                  });
+                  if (!released) return finish(uncertainEffectResult(name));
+                  claimedEffect = false;
+                }
                 const paused = await deps.events.pauseRunForGroupMembership({
                   spaceId: run.spaceId,
                   threadId: run.threadId,
