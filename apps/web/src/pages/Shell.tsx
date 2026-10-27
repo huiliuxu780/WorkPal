@@ -5440,7 +5440,6 @@ export const Transcript = memo(function Transcript({
                   )}
                   target={artifactTarget}
                   group={item}
-                  revealMessageId={scrollRequest?.messageId}
                 />
               );
             }
