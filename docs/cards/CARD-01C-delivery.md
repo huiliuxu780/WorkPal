@@ -62,5 +62,5 @@
 
 1. 没有独立 table/collection/page producer：table 来自 chart data，collection 来自 legacy card KV，page 来自 markdown/PDF artifact；不新增模型工具或实体。
 2. voice 没有音频 artifact；只展示真实 transcript/duration，播放控件明确不可用。
-3. displayBlocks 只在当前 snapshot 消息窗口和 Execution result 投影；更早分页消息继续走 legacy 展示路径，未在本任务扩展分页投影。
+3. displayBlocks 只在 Execution result 投影；分页消息的 displayBlocks 已接入投影（`ThreadMessagePageSchema.displayBlocks` + `mergeDisplayBlocks` 首见优先合并），不再有 legacy 分页缺口。
 4. 生产 gate 保持默认关闭；本 PR 未开启任何环境 gate。

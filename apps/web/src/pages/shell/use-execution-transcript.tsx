@@ -845,11 +845,20 @@ export function useExecutionTranscript({
               {t`Load earlier activity`}
             </button>
           ) : null}
-          {detachedResult ? <RunResult result={detachedResult} /> : null}
-          {detail?.displayBlocks?.length ? (
-            <div className="ms-1 my-2">
-              <DisplayBlockList blocks={detail.displayBlocks} target={artifactTarget} />
-            </div>
+          {detachedResult ? (
+            <>
+              <RunResult result={detachedResult} />
+              {detail?.displayBlocks?.length ? (
+                <div className="ms-1 my-2">
+                  {/* Markdown mirrors the text RunResult already shows; only
+                      non-text projections add information here. */}
+                  <DisplayBlockList
+                    blocks={detail.displayBlocks.filter((block) => block.kind !== "markdown")}
+                    target={artifactTarget}
+                  />
+                </div>
+              ) : null}
+            </>
           ) : null}
         </ExecutionShell>
       );

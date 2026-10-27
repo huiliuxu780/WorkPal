@@ -36,4 +36,4 @@
 - collection 来自 legacy `card` KV；没有新的 collection producer。
 - Page 是现有 markdown/PDF artifact 的只读入口，不是新的 Page 实体。
 - voice 只投影 voice group 的 transcript/duration；音频未持久化，播放控件保持缺失并明确说明。
-- displayBlocks 只在服务端当前消息窗口/Execution result 投影；更早分页消息继续使用 legacy 展示路径，直到后续扩展分页投影。
+- displayBlocks 已接入分页投影：历史分页接口按 gate 投影 displayBlocks，客户端按 blockId 首见优先合并，刷新与翻页展示一致。

@@ -5071,6 +5071,29 @@ export const Transcript = memo(function Transcript({
     () => groupDisplayBlocksByMessage(displayBlocks ?? []),
     [displayBlocks],
   );
+  const markdownByMessage = useMemo(() => {
+    const map = new Map<string, ThreadSnapshot["displayBlocks"]>();
+    if (cardsUnifiedV2) {
+      for (const block of displayBlocks ?? []) {
+        if (block.kind !== "markdown") continue;
+        const messageId = block.blockId.slice(0, block.blockId.indexOf(":"));
+        const list = map.get(messageId) ?? [];
+        list.push(block);
+        map.set(messageId, list);
+      }
+    }
+    return map;
+  }, [displayBlocks, cardsUnifiedV2]);
+  const [markdownHeights, setMarkdownHeights] = useState<Map<string, number>>(new Map());
+  const onMarkdownMeasure = useCallback((blockId: string, height: number) => {
+    const rounded = Math.round(height);
+    setMarkdownHeights((prev) => {
+      if (prev.get(blockId) === rounded) return prev;
+      const next = new Map(prev);
+      next.set(blockId, rounded);
+      return next;
+    });
+  }, []);
   // UX-01A: the execution region (anchor merge, server summaries, expansion,
   // detail cache, Interventions, execution-nav return focus and the per-anchor
   // ExecutionShell rendering) is owned by useExecutionTranscript; messageById
@@ -5494,39 +5517,47 @@ export const Transcript = memo(function Transcript({
             );
           }
           const suppressAsk = coveredAsks.has(message.id);
-          let visibleBlocks = suppressAsk
-            ? message.blocks.filter(
-                (block) =>
-                  block.kind !== "ask" &&
-                  (!cardsUnifiedV2 ||
-                    (block.kind !== "app_connect" &&
-                      block.kind !== "mcp_approval" &&
-                      block.kind !== "skill_draft")),
-              )
-            : message.blocks;
-          // Only a long bot text becomes the markdown display card; ordinary
-          // replies stay in the bubble. Every other projected kind replaces
-          // the legacy block it was derived from.
+          // Only a bot text whose rendered bubble is taller than the card
+          // fold threshold becomes the markdown display card; ordinary
+          // replies stay in the bubble. Measuring the real render also covers
+          // single-paragraph text that wraps tall on narrow viewports. Every
+          // other projected kind replaces the legacy block it derived from.
           const messageDisplayBlocks = cardsUnifiedV2
             ? (displayBlocksByMessage.get(message.id) ?? [])
             : [];
           const longMarkdown =
             message.role === "bot"
               ? messageDisplayBlocks.find(
-                  (block) => block.kind === "markdown" && block.text.split("\n").length > 10,
+                  (block) =>
+                    block.kind === "markdown" &&
+                    (markdownHeights.get(block.blockId) ?? 0) > LONG_MARKDOWN_HEIGHT_PX,
                 )
               : undefined;
           const selectedDisplayBlocks = messageDisplayBlocks.filter(
             (block) => block.kind !== "markdown" || block === longMarkdown,
           );
-          if (selectedDisplayBlocks.length > 0) {
-            const replacedIndexes = new Set(
-              selectedDisplayBlocks
-                .map((block) => displayBlockMessageIndex(block.blockId, message.id))
-                .filter((index): index is number => index !== null),
-            );
-            visibleBlocks = visibleBlocks.filter((_, index) => !replacedIndexes.has(index));
+          // Both suppression predicates key off the original message.blocks
+          // indexes: filtering covered interactions first would shift the
+          // indexes the display blocks point at and remove the wrong block.
+          const hiddenIndexes = new Set<number>();
+          if (suppressAsk) {
+            message.blocks.forEach((block, index) => {
+              if (
+                block.kind === "ask" ||
+                (cardsUnifiedV2 &&
+                  (block.kind === "app_connect" ||
+                    block.kind === "mcp_approval" ||
+                    block.kind === "skill_draft"))
+              ) {
+                hiddenIndexes.add(index);
+              }
+            });
           }
+          for (const block of selectedDisplayBlocks) {
+            const index = displayBlockMessageIndex(block.blockId, message.id);
+            if (index !== null) hiddenIndexes.add(index);
+          }
+          const visibleBlocks = message.blocks.filter((_, index) => !hiddenIndexes.has(index));
           const showMessage =
             messageHasVisibleBlocks(visibleBlocks, showToolActivity) ||
             selectedDisplayBlocks.length > 0;
@@ -5591,6 +5622,8 @@ export const Transcript = memo(function Transcript({
                       message={message}
                       blocks={visibleBlocks}
                       displayBlocks={selectedDisplayBlocks}
+                      markdownCandidates={markdownByMessage.get(message.id)}
+                      onMarkdownMeasure={onMarkdownMeasure}
                       canAnswer
                       suppressAsk={suppressAsk}
                       onOpenBot={onOpenBot}
@@ -6861,6 +6894,41 @@ function GroupReceiptNavigation({
   );
 }
 
+/** A bot bubble text taller than this (the card fold cap, max-h-40) is long. */
+const LONG_MARKDOWN_HEIGHT_PX = 160;
+
+/**
+ * Reports the natural rendered height of an in-bubble bot text so the parent
+ * can decide whether the text becomes a folded markdown display card. A
+ * ResizeObserver re-reports on reflow, so narrow viewports that wrap a
+ * single paragraph into a tall column are covered.
+ */
+function MeasuredBotText({
+  text,
+  blockId,
+  onMeasure,
+}: {
+  text: string;
+  blockId: string;
+  onMeasure: (blockId: string, height: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const report = () => onMeasure(blockId, el.scrollHeight);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [blockId, onMeasure]);
+  return (
+    <div ref={ref}>
+      <ChatMarkdown>{text}</ChatMarkdown>
+    </div>
+  );
+}
+
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
@@ -6868,6 +6936,8 @@ const MessageView = memo(function MessageView({
   message,
   blocks,
   displayBlocks,
+  markdownCandidates,
+  onMarkdownMeasure,
   onAnswer,
   onOpenBot,
   speakerName,
@@ -6894,6 +6964,9 @@ const MessageView = memo(function MessageView({
   blocks?: ThreadMessage["blocks"];
   /** CARD-01C display projection for this message, after legacy suppression. */
   displayBlocks?: ThreadSnapshot["displayBlocks"];
+  /** CARD-01C markdown candidates whose source text still renders in-bubble. */
+  markdownCandidates?: ThreadSnapshot["displayBlocks"];
+  onMarkdownMeasure?: (blockId: string, height: number) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
   speakerName?: string;
@@ -7015,12 +7088,29 @@ const MessageView = memo(function MessageView({
                 );
               }
               if (block.kind === "text" || block.kind === "progress") {
+                const markdownCandidate =
+                  block.kind === "text"
+                    ? (markdownCandidates ?? []).find(
+                        (candidate) =>
+                          candidate.kind === "markdown" && candidate.text === block.text,
+                      )
+                    : undefined;
                 return (
                   <div
                     key={i}
                     data-quote-message-id={block.kind === "text" ? quoteMessageId : undefined}
                   >
-                    <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
+                    {markdownCandidate && onMarkdownMeasure ? (
+                      <MeasuredBotText
+                        text={block.text}
+                        blockId={markdownCandidate.blockId}
+                        onMeasure={onMarkdownMeasure}
+                      />
+                    ) : (
+                      <ChatMarkdown streaming={block.kind === "progress"}>
+                        {block.text}
+                      </ChatMarkdown>
+                    )}
                   </div>
                 );
               }
@@ -7325,6 +7415,19 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text") {
+          const markdownCandidate = (markdownCandidates ?? []).find(
+            (candidate) => candidate.kind === "markdown" && candidate.text === block.text,
+          );
+          const markdownNode = markdownCandidate && onMarkdownMeasure ? (
+            <MeasuredBotText
+              key={markdownCandidate.blockId}
+              text={block.text}
+              blockId={markdownCandidate.blockId}
+              onMeasure={onMarkdownMeasure}
+            />
+          ) : (
+            <ChatMarkdown key={`md-${i}`}>{block.text}</ChatMarkdown>
+          );
           return (
             <div
               key={i}
@@ -7335,9 +7438,7 @@ const MessageView = memo(function MessageView({
                 className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
                 dir="auto"
               >
-                <div data-quote-message-id={quoteMessageId}>
-                  <ChatMarkdown>{block.text}</ChatMarkdown>
-                </div>
+                <div data-quote-message-id={quoteMessageId}>{markdownNode}</div>
                 {voiceReady ? (
                   <button
                     type="button"

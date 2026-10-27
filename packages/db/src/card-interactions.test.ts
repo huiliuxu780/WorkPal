@@ -487,6 +487,36 @@ describe("CARD-01 thread card surface", () => {
     expect(surface.attention).toEqual([]);
   });
 
+  it("prefers the subagent result over stale progress in task_status summaries", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "subagent",
+            agentId: "agent-1",
+            name: "Researcher",
+            task: "Find",
+            status: "completed",
+            progress: "Still working",
+            result: "Final answer",
+          },
+          {
+            kind: "subagent",
+            agentId: "agent-2",
+            name: "Summarizer",
+            task: "Recap",
+            status: "running",
+            progress: "Halfway",
+          },
+        ]),
+      ],
+    });
+    expect(
+      surface.displayBlocks.map((block) => (block.kind === "task_status" ? block.summary : null)),
+    ).toEqual(["Final answer", "Halfway"]);
+  });
+
   it("maps HTML, document and voice data to read-only display blocks", () => {
     const surface = projectThreadCardSurface({
       ...baseInput,

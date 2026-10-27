@@ -575,7 +575,9 @@ function displayBlocksFrom(
       blockId,
       status: SUBAGENT_STATUS[block.status],
       title: block.name,
-      summary: block.progress ?? null,
+      // The legacy subagent card showed `result || progress`; the unified
+      // card must surface the final result, not stale running progress.
+      summary: block.result ?? block.progress ?? null,
       source: { threadId: message.threadId, messageId: message.id, runId: message.runId },
     });
   } else if (block.kind === "cloud_agent") {
