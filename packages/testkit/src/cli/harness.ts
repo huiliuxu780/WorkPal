@@ -131,7 +131,8 @@ async function main() {
       !integration &&
       (process.env.WORKPAL_E2E_FULL_BATCH === "gate-off" ||
         specSelects(e2eSpec, "message-group.spec.ts") ||
-        specSelects(e2eSpec, "group-membership.spec.ts"))
+        specSelects(e2eSpec, "group-membership.spec.ts") ||
+        specSelects(e2eSpec, "card-attention.spec.ts"))
     ) {
       process.env.ROUNDTABLE_MESSAGE_GROUP_ENABLED = "true";
     }

@@ -385,6 +385,69 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(plan?.conversationName).toBe("Build room");
   });
 
+  it("queues RT-12 membership approvals and drops them once settled", async () => {
+    const membershipGroup = await prisma.chatGroup.create({
+      data: { spaceId, userId: ownerId, kind: "standard", name: "Join room" },
+    });
+    const groupThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, groupId: membershipGroup.id },
+    });
+    const run = await taskRun(dmThreadId, "Join the room");
+    const message = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Add Scout to Join room?", status: "pending" },
+    ]);
+    const interventionId = randomUUID();
+    await pendingIntervention({
+      id: interventionId,
+      threadId: dmThreadId,
+      runId: run.id,
+      messageId: message.id,
+      kind: "approval",
+      presentation: { text: "Add Scout to “Join room”?" },
+    });
+    await prisma.groupMembershipRequest.create({
+      data: {
+        id: randomUUID(),
+        spaceId,
+        userId: ownerId,
+        botId: bot.id,
+        groupId: membershipGroup.id,
+        groupName: membershipGroup.name,
+        sourceThreadId: dmThreadId,
+        sourceRunId: run.id,
+        cardMessageId: message.id,
+        interventionId,
+        deliveryKey: randomUUID(),
+        requestRevision: 1,
+        message: "Check the build.",
+        presentation: { text: "Add Scout to “Join room”?" },
+      },
+    });
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(page.items.find((item) => item.interactionId === interventionId)).toMatchObject({
+      kind: "action_approval",
+      // The user answers in the source direct chat; the target group only
+      // appears in the sanitized request summary.
+      conversationKind: "direct",
+      conversationName: "Scout",
+      presentation: { text: "Add Scout to “Join room”?" },
+    });
+
+    await prisma.intervention.update({
+      where: { id: interventionId },
+      data: {
+        status: "answered",
+        decision: "denied",
+        pendingRunKey: null,
+        resolvedAt: new Date(),
+      },
+    });
+    const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(after.items.some((item) => item.interactionId === interventionId)).toBe(false);
+    // The group thread itself carries no queue rows.
+    expect(after.items.some((item) => item.source.threadId === groupThread.id)).toBe(false);
+  });
+
   it("pages with the frozen sort without duplicating rows", async () => {
     const first = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 2 });
     expect(first.items).toHaveLength(2);

@@ -6,10 +6,12 @@ import {
   decodeAttentionCursor,
   deriveSessionControlViews,
   encodeAttentionCursor,
+  type GroupMembershipApprovalFacts,
   type InteractionView,
   interactionViewFromIntervention,
   type MessageBlock,
   projectAttentionItems,
+  projectGroupMembershipApproval,
   type SessionControlComputerFact,
   type SessionControlRunFact,
 } from "@rakazo/contracts";
@@ -109,7 +111,54 @@ async function loadPendingViews(
         })
       : [];
   const effectStatus = new Map(effects.map((effect) => [effect.id, effect.status]));
+  // RT-12 membership requests project through their strict business facts; the
+  // generic Intervention projection intentionally yields nothing for them.
+  const membershipRequests =
+    pendingRows.length > 0
+      ? await tx.groupMembershipRequest.findMany({
+          where: {
+            spaceId: input.spaceId,
+            userId: input.userId,
+            interventionId: { in: pendingRows.map((row) => row.id) },
+          },
+        })
+      : [];
+  const membershipByIntervention = new Map(
+    membershipRequests
+      .filter((row): row is typeof row & { interventionId: string } => Boolean(row.interventionId))
+      .map((row) => [row.interventionId, row]),
+  );
+  const membershipGroups = await loadManagedMembershipGroupIds(
+    tx,
+    input.spaceId,
+    input.userId,
+    membershipRequests.map((row) => row.groupId),
+  );
   for (const row of pendingRows) {
+    const membership = membershipByIntervention.get(row.id);
+    if (membership) {
+      const presentation = membership.presentation as GroupMembershipApprovalFacts["presentation"];
+      const projected = projectGroupMembershipApproval({
+        interactionId: row.id,
+        revision: row.revision,
+        groupId: membership.groupId,
+        botId: membership.botId,
+        messageGroupRequestId: membership.id,
+        requestRevision: membership.requestRevision,
+        sourceSpaceId: membership.spaceId,
+        sourceThreadId: membership.sourceThreadId,
+        sourceMessageId: membership.cardMessageId ?? row.messageId,
+        sourceRunId: membership.sourceRunId,
+        sourceBotId: membership.botId,
+        createdAt: row.createdAt.toISOString(),
+        expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+        status: "pending",
+        presentation,
+        canManageMembers: membershipGroups.has(membership.groupId),
+      });
+      if (projected) views.push(projected);
+      continue;
+    }
     const projected = interactionViewFromIntervention(
       interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined),
     );
@@ -215,6 +264,21 @@ async function loadPendingViews(
   }
 
   return views;
+}
+
+async function loadManagedMembershipGroupIds(
+  tx: Prisma.TransactionClient,
+  spaceId: string,
+  userId: string,
+  groupIds: readonly string[],
+): Promise<Set<string>> {
+  const unique = [...new Set(groupIds)];
+  if (unique.length === 0) return new Set();
+  const groups = await tx.chatGroup.findMany({
+    where: { id: { in: unique }, spaceId, userId, kind: "standard", archivedAt: null },
+    select: { id: true },
+  });
+  return new Set(groups.map((group) => group.id));
 }
 
 function pageItems(items: AttentionItem[], cursor: string | null, limit: number): AttentionItem[] {

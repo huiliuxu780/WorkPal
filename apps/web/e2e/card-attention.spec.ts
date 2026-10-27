@@ -160,6 +160,62 @@ test.describe("attention queue (N1-N4)", () => {
     );
     await page.waitForURL(new RegExp(`/app/${scout.id}\\?.*i=`), { timeout: 15_000 });
 
+    // RT-12 integration: a pending membership approval is a real queue item;
+    // approving it in the source card removes it from the queue.
+    const scarlet = await createBot(page, "Scarlet");
+    const membershipRoom = "Membership room";
+    const membershipGroup = await rpc<{ id: string }>(page, "groups/create", {
+      name: membershipRoom,
+      botIds: [blue.id, scarlet.id],
+    });
+    await rpc(page, "threads/send", {
+      botId: joy.id,
+      text: `Take the performance risk review to the group named "${membershipRoom}".`,
+    });
+    await page.goto(`/app/${joy.id}`);
+    await page.waitForURL(new RegExp(`/app/${joy.id}$`));
+    const membershipCard = page.getByTestId("group-membership-approval");
+    await expect(membershipCard).toBeVisible({ timeout: 90_000 });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(page.getByTestId("attention-entry")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("attention-entry").click();
+    const membershipItem = page
+      .getByTestId("attention-queue")
+      .getByTestId("attention-item")
+      .filter({ hasText: `Add Joy to “${membershipRoom}”?` });
+    await expect(membershipItem).toBeVisible({ timeout: 30_000 });
+    await expect(membershipItem).toHaveAttribute("data-kind", "action_approval");
+    await membershipItem.click();
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => document.activeElement?.getAttribute("data-interaction-id") ?? null),
+        { timeout: 15_000, intervals: [200, 500, 1_000] },
+      )
+      .not.toBeNull();
+    await membershipCard.getByTestId("group-membership-approve").click();
+    await expect(membershipCard).toContainText("Joined", { timeout: 30_000 });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect
+      .poll(
+        async () => {
+          await page.getByTestId("attention-entry").click();
+          return page
+            .getByTestId("attention-queue")
+            .getByTestId("attention-item")
+            .filter({ hasText: `Add Joy to “${membershipRoom}”?` })
+            .count();
+        },
+        { timeout: 30_000, intervals: [1_000, 2_000] },
+      )
+      .toBe(0);
+    await expect
+      .poll(async () => (await groupTexts(page, membershipGroup.id)).length, {
+        timeout: 90_000,
+        intervals: [1_000, 2_000],
+      })
+      .toBeGreaterThan(0);
+
     // N2: the group member marker comes from that group's own pending item.
     const group = await rpc<{ id: string }>(page, "groups/create", {
       name: GROUP_NAME,
@@ -197,7 +253,6 @@ test.describe("attention queue (N1-N4)", () => {
       class DeniedNotification {
         static permission = "denied";
         static requestPermission = async () => "denied";
-        constructor() {}
         close() {}
       }
       (window as unknown as { Notification: unknown }).Notification = DeniedNotification;
@@ -221,6 +276,18 @@ test.describe("attention queue (N1-N4)", () => {
     await captureScreenshot(page, testInfo, "N1-queue-denied-1440");
   });
 });
+
+async function groupTexts(page: Parameters<typeof rpc>[0], groupId: string) {
+  const snapshot = await rpc<{
+    messages: Array<{ blocks: Array<{ kind: string; text?: string }> }>;
+  }>(page, "threads/get", { groupId });
+  return snapshot.messages.flatMap((message) =>
+    message.blocks
+      .filter((block) => block.kind === "text")
+      .map((block) => block.text ?? "")
+      .filter(Boolean),
+  );
+}
 
 async function createBot(page: Parameters<typeof rpc>[0], name: string) {
   return rpc<{ id: string; name: string }>(page, "bots/create", {

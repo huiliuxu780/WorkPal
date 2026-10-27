@@ -68,13 +68,7 @@ export function InteractionRegion({
         } else if (view.kind === "input_request") {
           card = <InputRequestCard view={view} {...shared} />;
         } else if (view.kind === "action_approval") {
-          card = (
-            <ActionApprovalCard
-              view={view}
-              {...shared}
-              groupNameOf={groupNameOf}
-            />
-          );
+          card = <ActionApprovalCard view={view} {...shared} groupNameOf={groupNameOf} />;
         }
         return (
           <div
