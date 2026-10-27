@@ -38,6 +38,7 @@ export function AttentionQueue({
   const [retryToken, setRetryToken] = useState(0);
   const baseline = useRef<Set<string> | null>(null);
   const notified = useRef(new Set<string>());
+  const requestSeq = useRef(0);
   const permissionRequested = useRef(false);
   const activeTargetRef = useRef(activeTarget);
   activeTargetRef.current = activeTarget;
@@ -104,11 +105,17 @@ export function AttentionQueue({
 
   const load = useCallback(
     async (options?: { cursor?: string | null; append?: boolean }) => {
+      // Poll, focus, refresh and load-more can overlap. Only the most recently
+      // started request may write state: a slow response landing after a newer
+      // one would resurrect requests the user already settled and notify them
+      // again as new work.
+      const seq = ++requestSeq.current;
       try {
         const page = await rpc.attention.list({
           limit: 50,
           ...(options?.cursor ? { cursor: options.cursor } : {}),
         });
+        if (seq !== requestSeq.current) return;
         const base = options?.append ? itemsRef.current : [];
         const seen = new Set(base.map(attentionKey));
         const merged = [...base, ...page.items.filter((item) => !seen.has(attentionKey(item)))];
@@ -123,6 +130,7 @@ export function AttentionQueue({
           silent: Boolean(options?.append),
         });
       } catch {
+        if (seq !== requestSeq.current) return;
         setError(true);
       } finally {
         setLoading(false);

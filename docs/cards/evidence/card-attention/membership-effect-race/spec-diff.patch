@@ -1,0 +1,30 @@
+diff --git a/apps/web/e2e/group-membership.spec.ts b/apps/web/e2e/group-membership.spec.ts
+index cc6500d..3e04760 100644
+--- a/apps/web/e2e/group-membership.spec.ts
++++ b/apps/web/e2e/group-membership.spec.ts
+@@ -119,14 +119,17 @@ test.describe("group membership approval (X-GROUP)", () => {
+       await expect(page.getByText(RETURN_SUMMARY, { exact: false })).toBeVisible({
+         timeout: 30_000,
+       });
+-      expect(
+-        (
+-          await prisma.externalEffect.findFirstOrThrow({
+-            where: { kind: "message_group" },
+-            orderBy: { createdAt: "desc" },
+-          })
+-        ).status,
+-      ).toBe("completed");
++      // The resumed call records its tool result after the summary is already
++      // visible, so poll the row captured while this card was pending: a single
++      // read races the transition, and an unscoped "newest effect" read can pick
++      // up another spec's row in a shared batch database.
++      await expect
++        .poll(
++          async () =>
++            (await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } })).status,
++          { timeout: 60_000, intervals: [500, 1_000, 2_000] },
++        )
++        .toBe("completed");
+     } finally {
+       await pool.end();
+     }

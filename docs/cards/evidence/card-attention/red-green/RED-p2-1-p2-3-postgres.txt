@@ -1,0 +1,121 @@
+CARD-01D P2 red-first evidence — PostgreSQL attention query
+===========================================================
+Findings: PR #147 review comment 4390254749 (a settled mcp_approval block in the
+          same message removed its pending sibling from the queue and its total)
+          and comment 4390254772 (an archived destination still entered the queue
+          although its source cannot be opened).
+Regression cases (packages/db/src/attention.postgres.test.ts):
+  - "keeps a pending MCP approval whose sibling in the same message settled"
+    (also pins that a pre-upgrade MCP block with no status still reaches the queue)
+  - "drops requests whose group was archived"
+  - "drops requests whose direct chat bot was archived"
+    (repos.getBot() rejects an archived Bot exactly like getGroupTarget() rejects
+    an archived group, so both destinations are unopenable)
+
+BASELINE (red) version
+----------------------
+git HEAD           : 7e463570f5f86ee9e792a65b509ee41fe4a8c13e (codex/card-attention)
+source under test  : packages/db/src/attention.ts exactly as committed at 7e46357,
+                     restored with
+                       git stash push -- packages/db/src/attention.ts \
+                                         apps/web/src/pages/AttentionQueue.tsx
+                     (verified: git stash list shows the entry, git status shows only
+                     the two test files modified)
+test file          : the final version of attention.postgres.test.ts, byte-identical
+                     to the green run below
+node / pnpm        : v22.23.3 / 9.15.0
+vitest             : 4.1.11
+database           : isolated clone of the migrated template
+                     (createIsolatedPostgresDatabase("card01d_attention"))
+captured at        : 2026-10-27T15:57:19Z (local run, 2.06s)
+
+Command
+-------
+export $(grep -E '^DATABASE_URL=' /Users/rivers/Documents/WorkPal/.env | xargs)
+export VERIFY_DATABASE=1
+pnpm exec vitest run packages/db/src/attention.postgres.test.ts -t "sibling|archived|retired"
+
+Output
+------
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/card-attention[39m
+
+ [31m❯[39m packages/db/src/attention.postgres.test.ts [2m([22m[2m9 tests[22m[2m | [22m[31m3 failed[39m[2m | [22m[33m6 skipped[39m[2m)[22m[33m 702[2mms[22m[39m
+     [2m[90m↓[39m[22m returns only pending Interventions, session controls and strict business approvals
+     [2m[90m↓[39m[22m queues RT-12 membership approvals and drops them once settled
+     [2m[90m↓[39m[22m rebases a delegated desktop handoff onto the visible origin and hides pair threads
+     [2m[90m↓[39m[22m pages with the frozen sort without duplicating rows
+[31m     [31m×[31m keeps a pending MCP approval whose sibling in the same message settled[39m[32m 113[2mms[22m[39m
+[31m     [31m×[31m drops requests whose group was archived[39m[32m 51[2mms[22m[39m
+[31m     [31m×[31m drops requests whose direct chat bot was archived[39m[32m 56[2mms[22m[39m
+     [2m[90m↓[39m[22m continues after a cursor whose anchor row settled
+     [2m[90m↓[39m[22m excludes expired pending rows and keeps revision dedupe
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mkeeps a pending MCP approval whose sibling in the same message settled
+[31m[1mAssertionError[22m: expected undefined to match object { kind: 'action_approval', …(1) }[39m
+
+[32m- Expected:[39m
+{
+  "kind": "action_approval",
+  "status": "pending",
+}
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m packages/db/src/attention.postgres.test.ts:[2m588:21[22m[39m
+    [90m586|[39m     const page = await loadAttentionPage(prisma, { spaceId, userId: ow…
+    [90m587|[39m     const pending = page.items.find((item) => item.presentation.text =…
+    [90m588|[39m     expect(pending).toMatchObject({ kind: "action_approval", status: "…
+    [90m   |[39m                     [31m^[39m
+    [90m589|[39m     expect(page.items.some((item) => item.presentation.text === "Settl…
+    [90m590|[39m     expect(page.items.some((item) => item.presentation.text === "Legac…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mdrops requests whose group was archived
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m packages/db/src/attention.postgres.test.ts:[2m624:83[22m[39m
+    [90m622|[39m     })[33m;[39m
+    [90m623|[39m     const page = await loadAttentionPage(prisma, { spaceId, userId: ow…
+    [90m624|[39m     expect(page.items.some((item) => item.source.threadId === archived…
+    [90m   |[39m                                                                                   [31m^[39m
+    [90m625|[39m     expect(page.items.some((item) => item.presentation.text === "Archi…
+    [90m626|[39m       [35mfalse[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mdrops requests whose direct chat bot was archived
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m packages/db/src/attention.postgres.test.ts:[2m693:82[22m[39m
+    [90m691|[39m     })[33m;[39m
+    [90m692|[39m     const page = await loadAttentionPage(prisma, { spaceId, userId: ow…
+    [90m693|[39m     expect(page.items.some((item) => item.source.threadId === retiredT…
+    [90m   |[39m                                                                                  [31m^[39m
+    [90m694|[39m     expect(page.items.some((item) => item.presentation.text === "Retir…
+    [90m695|[39m       [35mfalse[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[33m6 skipped[39m[90m (9)[39m
+[2m   Start at [22m 23:57:19
+[2m   Duration [22m 2.06s[2m (transform 845ms, setup 22ms, import 1.20s, tests 702ms, environment 0ms)[22m
+

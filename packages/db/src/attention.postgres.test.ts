@@ -120,6 +120,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expiresAt?: Date | null;
     createdAt?: Date;
     revision?: number;
+    botId?: string;
   }) {
     return prisma.intervention.create({
       data: {
@@ -131,7 +132,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
         threadId: input.threadId,
         runId: input.runId,
         attemptId: "legacy",
-        botId: bot.id,
+        botId: input.botId ?? bot.id,
         messageId: input.messageId,
         pendingRunKey: input.status === "pending" ? input.runId : null,
         expiresAt: input.expiresAt ?? null,
@@ -539,6 +540,160 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     );
     expect(keys.size).toBe(first.items.length + second.items.length);
     expect(second.total).toBe(first.total);
+  });
+
+  it("keeps a pending MCP approval whose sibling in the same message settled", async () => {
+    const mixedMessage = await botMessage(group.threadId, [
+      {
+        kind: "mcp_approval",
+        name: "Settled sibling",
+        serverId: "server-settled",
+        transport: "streamable_http",
+        endpoint: "https://mcp.example.test/settled-sibling",
+        needsOAuth: false,
+        status: "connected",
+      },
+      {
+        kind: "mcp_approval",
+        name: "Still pending",
+        serverId: "server-pending",
+        transport: "streamable_http",
+        endpoint: "https://mcp.example.test/pending-sibling",
+        needsOAuth: false,
+        status: "pending",
+      },
+    ]);
+    await pendingIntervention({
+      threadId: group.threadId,
+      runId: (await taskRun(group.threadId, "Mixed MCP")).id,
+      messageId: mixedMessage.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Mixed MCP" },
+    });
+    // A pre-upgrade block can omit the schema-defaulted status, which the
+    // projection treats as open; it must survive the same message-level filter.
+    await botMessage(group.threadId, [
+      {
+        kind: "mcp_approval",
+        name: "Legacy pending",
+        serverId: "server-legacy",
+        transport: "streamable_http",
+        endpoint: "https://mcp.example.test/legacy-sibling",
+        needsOAuth: false,
+      } as unknown as MessageBlock,
+    ]);
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const pending = page.items.find((item) => item.presentation.text === "Still pending");
+    expect(pending).toMatchObject({ kind: "action_approval", status: "pending" });
+    expect(page.items.some((item) => item.presentation.text === "Settled sibling")).toBe(false);
+    expect(page.items.some((item) => item.presentation.text === "Legacy pending")).toBe(true);
+  });
+
+  it("drops requests whose group was archived", async () => {
+    const archivedGroup = await prisma.chatGroup.create({
+      data: { spaceId, userId: ownerId, kind: "standard", name: "Archived room" },
+    });
+    const archivedThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, groupId: archivedGroup.id },
+    });
+    const run = await taskRun(archivedThread.id, "Work in the archived room");
+    const message = await botMessage(archivedThread.id, [
+      {
+        kind: "app_connect",
+        provider: "github",
+        name: "GitHub archived",
+        description: "Read repositories",
+        logo: null,
+        status: "pending",
+      },
+    ]);
+    await pendingIntervention({
+      threadId: archivedThread.id,
+      runId: run.id,
+      messageId: message.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Archived room approval" },
+    });
+    await prisma.chatGroup.update({
+      where: { id: archivedGroup.id },
+      data: { archivedAt: new Date() },
+    });
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(page.items.some((item) => item.source.threadId === archivedThread.id)).toBe(false);
+    expect(page.items.some((item) => item.presentation.text === "Archived room approval")).toBe(
+      false,
+    );
+  });
+
+  it("drops requests whose direct chat bot was archived", async () => {
+    // Same navigability rule as groups: repos.getBot() rejects an archived Bot,
+    // so the source of such a request cannot be opened either.
+    const retiredBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Retired", color: "test" },
+    });
+    const retiredThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, botId: retiredBot.id },
+    });
+    const task = await prisma.task.create({
+      data: {
+        spaceId,
+        botId: retiredBot.id,
+        threadId: retiredThread.id,
+        userId: ownerId,
+        prompt: "Work in the retired chat",
+        status: "waiting_input",
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        spaceId,
+        botId: retiredBot.id,
+        threadId: retiredThread.id,
+        taskId: task.id,
+        userId: ownerId,
+        status: "waiting_input",
+        trigger: "user",
+      },
+    });
+    const message = await prisma.$transaction((tx) =>
+      createThreadMessageInTransaction(tx, {
+        threadId: retiredThread.id,
+        role: "bot",
+        originKind: "system",
+        blocks: [
+          {
+            kind: "app_connect",
+            provider: "github",
+            name: "GitHub retired",
+            description: "Read repositories",
+            logo: null,
+            status: "pending",
+          },
+        ],
+        botId: retiredBot.id,
+        runId: run.id,
+      }),
+    );
+    await pendingIntervention({
+      threadId: retiredThread.id,
+      runId: run.id,
+      messageId: message.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Retired chat approval" },
+      botId: retiredBot.id,
+    });
+    await prisma.bot.update({
+      where: { id: retiredBot.id },
+      data: { archivedAt: new Date() },
+    });
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(page.items.some((item) => item.source.threadId === retiredThread.id)).toBe(false);
+    expect(page.items.some((item) => item.presentation.text === "Retired chat approval")).toBe(
+      false,
+    );
   });
 
   it("continues after a cursor whose anchor row settled", async () => {

@@ -57,10 +57,12 @@ export async function loadAttentionPage(
         // Human-visible conversations only: a direct chat or a standard group.
         // Hidden agent_pair threads share the same userId and must never be
         // addressed directly; their delegated controls are rebased below.
+        // Archived conversations are not navigable, so their requests stay out
+        // of the queue instead of pointing at a source the user cannot open.
         where: {
           spaceId: input.spaceId,
           userId: input.userId,
-          OR: [{ botId: { not: null } }, { group: { kind: "standard" } }],
+          OR: [{ bot: { archivedAt: null } }, { group: { kind: "standard", archivedAt: null } }],
         },
         select: { id: true, botId: true, groupId: true },
       });
@@ -252,17 +254,21 @@ async function loadPendingViews(
   }
 
   // 3. Strictly mapped pending business approvals that live in message blocks.
-  // The JSONB filter targets the block itself, never "the recent messages".
+  // The JSONB filter only decides which messages are worth reading; whether a
+  // block is pending is answered per block by the projection below, so one
+  // settled card can never hide its pending sibling in the same message.
   const approvalMessages = await tx.message.findMany({
     where: {
       threadId: { in: input.threadIds },
       role: "bot",
       OR: [
         { blocks: { array_contains: [{ kind: "app_connect", status: "pending" }] } },
+        { blocks: { array_contains: [{ kind: "mcp_approval", status: "pending" }] } },
         {
-          // MCP approvals may be legacy rows without a status; exclude the
-          // settled ones in SQL so they cannot crowd out older pending rows
-          // before the source limit.
+          // A pre-upgrade MCP block can omit the schema-defaulted status, which
+          // the projection treats as open. Those cannot be matched positively,
+          // so admit messages whose MCP blocks are all unsettled and keep the
+          // settled ones out of the source limit.
           AND: [
             { blocks: { array_contains: [{ kind: "mcp_approval" }] } },
             {

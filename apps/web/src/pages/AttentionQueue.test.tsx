@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { AttentionQueueItem } from "@rakazo/contracts";
+import type { AttentionQueueItem, AttentionQueuePage } from "@rakazo/contracts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,6 +62,29 @@ async function flush() {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+/** Render plus a rerender hook so a prop change (refreshToken) can start a second load. */
+async function renderRerenderable(node: React.ReactNode) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  rendered.push({ host, root });
+  await act(async () => root.render(node));
+  return {
+    host,
+    rerender: async (next: React.ReactNode) => {
+      await act(async () => root.render(next));
+    },
+  };
 }
 
 class FakeNotification {
@@ -333,5 +356,44 @@ describe("AttentionQueue", () => {
       (retryHost.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
     );
     expect(document.body.textContent).toContain("Couldn't load pending requests.");
+  });
+
+  it("drops a superseded response so a settled request cannot resurrect", async () => {
+    const onItems = vi.fn();
+    const stale = deferred<AttentionQueuePage>();
+    list.mockImplementationOnce(() => stale.promise);
+    const queue = (refreshToken: number) => (
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={refreshToken}
+        onOpenItem={() => undefined}
+        onItems={onItems}
+      />
+    );
+    const { host, rerender } = await renderRerenderable(queue(0));
+
+    // Shell answers the request locally and bumps refreshToken while the poll
+    // is still in flight, so two loads now race.
+    const fresh = deferred<AttentionQueuePage>();
+    list.mockImplementationOnce(() => fresh.promise);
+    await rerender(queue(1));
+
+    // The newer request settles first and proves the queue is empty.
+    await act(async () => {
+      fresh.resolve({ items: [], total: 0, nextCursor: null });
+      await Promise.resolve();
+    });
+    // The superseded response lands afterwards with the request still pending.
+    await act(async () => {
+      stale.resolve({ items: [item()], total: 1, nextCursor: null });
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(FakeNotification.instances).toHaveLength(0);
+    expect(onItems).toHaveBeenLastCalledWith([]);
+    expect(host.querySelector('[data-testid="attention-count"]')).toBeNull();
   });
 });

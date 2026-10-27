@@ -1,0 +1,10 @@
+-- run B disposable database (workpal_e2e_gateab_b), queried after the run finished
+-- psql "SELECT id, status, \"runId\", \"createdAt\", \"updatedAt\" FROM external_effects WHERE kind='message_group' ORDER BY \"createdAt\";"
+            id             |  status   |           runId           |        createdAt        |        updatedAt        
+---------------------------+-----------+---------------------------+-------------------------+-------------------------
+ cmvquvgfk001vs0x0xmqhnj65 | completed | cmvquvg9z001ns0x0ln1g75vb | 2026-10-27 15:43:59.216 | 2026-10-27 15:44:01.203
+ cmvqux8n400ads0x05679c44m | completed | cmvqux8j500a4s0x0z7odj1ds | 2026-10-27 15:45:22.432 | 2026-10-27 15:45:40.573
+ cmvquxqn700cls0x0nm683jkf | completed | cmvquxqi400ccs0x0nl066lio | 2026-10-27 15:45:45.763 | 2026-10-27 15:45:46.933
+ cmvquxvm600e0s0x0wwl9sv0u | completed | cmvquxvgq00drs0x0q8zm294t | 2026-10-27 15:45:52.206 | 2026-10-27 15:45:53.313
+(4 行记录)
+
