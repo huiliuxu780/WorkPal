@@ -1,5 +1,7 @@
 # UX-01B + UX-01C 连续开工提示词
 
+> **历史提示词。** 本文件是 UX-01B/UX-01C 的派发记录，两项均已合入 `main`（见 [UX-01B](./UX-01B.md)、[UX-01C](./UX-01C.md)）。其中的 stacked PR 与 base retarget 做法是当时的个案安排，不是现行默认；现行交付规则以 [AGENTS.md](../../AGENTS.md) 和 [开发与验收流程](../development-workflow.md) 为准（跨单元依赖默认等前置合入 `main`，不默认建立 stacked PR 队列）。保留本文件只为追溯当时的派发口径。
+
 你负责连续交付 WorkPal 的 UX-01B 和 UX-01C。两项连续开发，但必须保留独立分支、提交、PR diff 和验收证据；不得自行合并或部署。
 
 ## 必读

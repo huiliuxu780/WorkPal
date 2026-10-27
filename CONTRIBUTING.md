@@ -11,6 +11,11 @@ required secrets, and startup commands.
 
 | Command | When to run |
 | --- | --- |
+| `pnpm test:unit` | Hermetic units selected by the tracked inventory (`vitest.unit.config.ts`). No PostgreSQL, JDK, Docker, or provider keys. Runs in the CI `harness` job. |
+| `pnpm test:postgres` | Every inventory entry classified `postgres`, run serially. Needs a reachable PostgreSQL in `DATABASE_URL`; never point it at a production database. |
+| `pnpm test:process` | Process-level inventory entries (standalone Worker and CLI chains), run serially. |
+| `pnpm test:inventory` | Inventory completeness gate: fails when a tracked test file has no entrypoint. |
+| `pnpm test:docs` | Documentation verifiers in `docs/roundtable/*.test.mjs`. |
 | `pnpm test` | Default. Units, properties, and in-process contracts. Scripted runtime, fake sandbox, in-memory wakeup — no live connector or model-provider calls. |
 | `pnpm test:integration` | Postgres via Testcontainers: product journeys, authorization, executor lifecycle, Graphile / LISTEN/NOTIFY. Needs Docker. |
 | `pnpm test:e2e` | Playwright against the emulated API. Needs Docker. |
@@ -28,19 +33,14 @@ CI selects jobs from the changed-file set (docs / web / backend / AgentScope / w
 
 ## Adding a UI language
 
-The web and Electron-hosted UI use Lingui catalogs. To add a locale, register it in
+This is a web-only product; `apps/` contains `api`, `web`, and `worker`. The web UI uses Lingui
+catalogs. To add a locale, register it in
 `apps/web/lingui.config.ts`, `apps/web/src/lib/ui-locale.ts`, and
 `apps/web/src/lib/i18n.ts`, then run `pnpm --filter @rakazo/web intl:extract`, fill the new
 `apps/web/src/locales/<locale>/messages.po` catalog, and validate it with
 `pnpm --filter @rakazo/web intl:compile`. Keep message IDs, placeholders, JSX markers, and
-ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files.
-
-Expo mobile has its own catalog and locale registry. Add the locale to
-`apps/mobile/lib/ui-locale.ts`, add `apps/mobile/lib/locales/<locale>.ts`, and register the
-catalog in `apps/mobile/lib/i18n.ts`. Web PO entries do not translate mobile automatically.
-Update the locale unit tests and a UI E2E scenario for each supported surface. The marketing
-homepage in `apps/www` and the native Electron setup window have separate localization paths;
-scope and test those changes explicitly instead of assuming the web catalog covers them.
+ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files. Update the
+locale unit tests and a UI E2E scenario for each supported surface.
 
 See [agent verification](docs/agent-verification.md) for the distinction between
 deterministic execution tests, computer replay, and real-model quality evals.
@@ -51,12 +51,11 @@ The default Playwright suite uses the fake sandbox. To run the same scripted-age
 real computers, set the matching `E2B_API_KEY`, `DAYTONA_API_KEY`, or `BOX_API_KEY` and choose a provider:
 
 ```bash
-pnpm test:e2e -- --sandbox=e2b
-pnpm test:e2e -- --sandbox=daytona
-pnpm test:e2e -- --sandbox=box
+pnpm test:e2e --sandbox=e2b
+pnpm test:e2e --sandbox=daytona
+pnpm test:e2e --sandbox=box
 ```
 
-The Playwright workflow also accepts these providers through its manual **Sandbox provider** input.
 These runs provision real machines and destroy them after the suite. Automatic runs use `fake`.
 For the separate real-model desktop acceptance test, see
 [computer verification](docs/computer-runtime.md#verification).
@@ -76,10 +75,25 @@ capability config, fixtures, logs, or snapshots; use the encrypted secret store 
 
 ## Pull requests
 
-- Keep PRs small and easy to review.
-- Target the `main` branch.
-- Describe why the change is needed, what changed, and **how you tested** (e.g. `pnpm test`, manual steps).
-- Link related issues when applicable.
+One delivery unit per branch and PR; drive sub-tasks with commits instead of opening a PR per
+step. Target `main` and fill in [.github/pull_request_template.md](.github/pull_request_template.md):
+task card, the commands you actually ran with their results, real runtime evidence, red/green logs
+for bug fixes, risk, documentation writeback, and the UI prototype reference or an explicit
+"no UI change" declaration.
+
+Review judges the **final** head SHA. A green run on an older commit does not substitute for it,
+and a required check that never ran is not a pass. Delivery and acceptance rules live in
+[AGENTS.md](AGENTS.md) and [docs/development-workflow.md](docs/development-workflow.md).
+
+## Repository hygiene gate
+
+`pnpm repo:hygiene` rejects tracked `.env*` credential files, paths under restricted directories,
+worktrees nested inside the repository, and unexpectedly large additions. Frozen prototypes,
+generated assets, and test fixtures pass through an explicit allowlist rather than one global size
+threshold. CI runs the same check, so a clone without any hook installed is still blocked.
+
+`pnpm hooks:install` adds the optional local reminder hook. The hook is a convenience and never
+the gate.
 
 ## Contact
 
