@@ -1,6 +1,6 @@
 # FIX-PERSONA-01 运行时不再把启动目录的 AGENTS.md 注入模型
 
-状态：`in-progress`（2026-10-28 在 `codex/fix-persona-agents-context` 上完成修复与 Java 侧红绿；TS→Java 链路与真模型复测见"完成标准"）
+状态：`in-progress`（2026-10-28 在 `codex/fix-persona-agents-context` / PR [#150](https://github.com/huiliuxu780/WorkPal/pull/150) 上完成修复、红绿、Java 全套与 TS→Java 链路：worker-chain 5 passed、agentscope product E2E 6 passed、AG-04 golden 无需重生成。**仍缺真模型复测与生产镜像内容核对**，因此不是 `ready-to-merge`）
 
 - 类型：bug
 - 高风险：否（只动 prompt 组装，不涉及工具桥接、session admission 和取消）。但改动必须跑真实的 TS→Java 链路测试，原因是 system prompt 会变。

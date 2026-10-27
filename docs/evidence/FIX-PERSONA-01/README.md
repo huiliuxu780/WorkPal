@@ -20,7 +20,7 @@
 | [green.log](./green.log) | 修复后，**同一条命令、同一个用例** | exit 0，`Tests run: 1, Failures: 0`，BUILD SUCCESS |
 | [java-suite.txt](./java-suite.txt) | 修复后完整 Java 套件 | `Tests run: 127, Failures: 0, Errors: 0`，BUILD SUCCESS（分支前是 126，多的 1 个就是新用例） |
 | [golden-baseline.txt](./golden-baseline.txt) | 修复后 AG-04 final-request golden 基线（真实 TS→Java 链路） | 1 passed，**不需要重生成基线** |
-| `chain.log` | `pnpm test:worker-chain` 与 `pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | 见下方状态 |
+| `chain.log` | `pnpm test:worker-chain` 与 `pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | **两条都通过**：worker-chain exit 0、5 passed（4.1m）；agentscope product E2E exit 0、6 passed（1.1m）。都跑在本分支构建的 jar 上 |
 
 ## 红为什么是目标缺陷
 
@@ -49,8 +49,8 @@
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| `chain.log`：`pnpm test:worker-chain` | 运行中 | 本机可跑：`JAVA_HOME` 指 Homebrew JDK21、`DOCKER_HOST` 指 colima socket、`TESTCONTAINERS_RYUK_DISABLED=true`（colima 挂不了 socket 路径给 Ryuk）。结果与退出码跑完后补入本目录 |
-| `chain.log`：`pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | 运行中 | 同上，接在 worker-chain 之后跑 |
+| `chain.log`：`pnpm test:worker-chain` | **已完成，通过** | exit 0，5 passed（4.1m）。本机前提：`JAVA_HOME` 指 Homebrew JDK21、`DOCKER_HOST` 指 colima socket、`TESTCONTAINERS_RYUK_DISABLED=true`（colima 挂不了 socket 路径给 Ryuk），jar 由本分支 `mvn package -DskipTests` 构建后配 `AGENT_RUNTIME_SKIP_BUILD=1` |
+| `chain.log`：`pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | **已完成，通过** | exit 0，6 passed（1.1m），同一 jar、真实 Java runtime |
 | 真模型复测（仓库根 `pnpm dev:app`，问"你是谁"，截图 + 抓包里 `<agents_context>` 为空的片段） | **未执行** | 需要真模型凭据、抓包代理与浏览器操作。**不用** fixture model 的绿冒充真模型复测；负责人的 `persona-capture/` 抓包不在本仓库，也不当作已核对证据引用 |
 | 生产镜像影响核对（`WORKDIR /app` 下是否已有 AGENTS.md / `knowledge/` / MEMORY.md） | 未执行 | 修复后无论镜像里放什么都不会被注入，但"当前镜像里有没有"这一事实未核对 |
 

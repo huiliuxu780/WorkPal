@@ -28,7 +28,34 @@ Selected log lines:
 ::notice title=🎭 Playwright Run Summary::  5 passed (4.1m)
   5 passed (4.1m)
 
-## 2. pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
+## 2. pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts  ->  PASSED
 
-Status at the time of this commit: RUNNING. Its result and exit code will be appended here; it is
-not reported as passed before it finishes.
+$ pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
+exit=0
+6 passed (1.1m)
+
+Real AgentScope product journey through the Java runtime built from this branch, driven by
+Playwright against the emulated API. Selected log lines:
+
+  ✓  1 [chromium] › e2e/agentscope-product.spec.ts:6:1 › Web chat completes a Java Harness tool round trip (7.0s)
+  ✓  2 [chromium] › e2e/agentscope-product.spec.ts:116:1 › Java Run reaches a duration budget and Web cancels its waiting card (34.9s)
+  ✓  3 [chromium] › e2e/agentscope-product.spec.ts:236:1 › Web chat resumes a native Harness plan after approval (5.6s)
+  ✓  4 [chromium] › e2e/agentscope-product.spec.ts:358:1 › Web chat never offers native subagent delegation while suspended (4.7s)
+  ✓  5 [chromium] › e2e/agentscope-product.spec.ts:433:1 › Java publishes a structured Plan and Step into one Web execution (6.0s)
+  ✓  6 [chromium] › e2e/agentscope-product.spec.ts:630:1 › Web chat refuses background helper spawns while delegation is suspended (4.8s)
+::notice title=🎭 Playwright Run Summary::  6 passed (1.1m)
+  6 passed (1.1m)
+
+## Summary
+
+Both chain commands required by the task card pass at the fix SHA:
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:worker-chain` | exit 0, 5 passed (4.1m) |
+| `pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | exit 0, 6 passed (1.1m) |
+
+Still outstanding for this card, and not covered by anything above: the real-model retest
+(`pnpm dev:app` at the repository root, ask who the bot is, screenshot plus a capture showing an
+empty `<agents_context>`) and an audit of what the production image actually has under its
+`WORKDIR`. Both are recorded in the evidence README as not done.
