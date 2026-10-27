@@ -227,7 +227,21 @@ test.describe("attention queue (N1-N4)", () => {
     await expect(groupComposer).toBeVisible();
     await groupComposer.fill(ASK_PROMPT);
     await groupComposer.press("Enter");
-    await expect(page.getByTestId("attention-count")).toBeVisible({ timeout: 60_000 });
+    // Wait for this group's own pending item, not any earlier count: the
+    // marker must come from that group's real queue row.
+    await expect
+      .poll(
+        async () => {
+          const data = await rpc<{
+            items: Array<{ conversationKind: string; conversationId: string }>;
+          }>(page, "attention/list", {});
+          return data.items.some(
+            (item) => item.conversationKind === "group" && item.conversationId === group.id,
+          );
+        },
+        { timeout: 60_000, intervals: [500, 1_000, 2_000] },
+      )
+      .toBe(true);
 
     await page.getByTestId("bot-settings-trigger").click();
     const panel = page.getByTestId("side-panel");
