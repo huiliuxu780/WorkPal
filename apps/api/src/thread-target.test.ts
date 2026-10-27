@@ -251,6 +251,7 @@ describe("CARD-01 snapshot gate", () => {
       run: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
       thread: { findMany: vi.fn().mockResolvedValue([]) },
       bot: { findMany: vi.fn().mockResolvedValue([]) },
+      intervention: { findMany: vi.fn().mockResolvedValue([]) },
       groupMembershipRequest: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const prisma = {
