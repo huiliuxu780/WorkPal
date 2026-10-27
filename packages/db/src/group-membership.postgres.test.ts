@@ -586,6 +586,33 @@ describePostgres("RT-12 group membership approval (PostgreSQL)", () => {
     }
   });
 
+  it("loads membership facts for an older page beyond the newest rows", async () => {
+    const oldestSource = await createSourceRun();
+    const oldestKey = nextKey();
+    const oldest = await pause(oldestSource, oldestKey);
+    if (oldest.outcome !== "paused") throw new Error("pause failed");
+    // More than 50 newer requests must not hide the older card's fact.
+    for (let index = 0; index < 55; index += 1) {
+      const source = await createSourceRun();
+      const paused = await pause(source, nextKey());
+      if (paused.outcome !== "paused") throw new Error("pause failed");
+      await prisma.intervention.update({
+        where: { id: paused.interventionId },
+        data: { status: "cancelled", pendingRunKey: null, resolvedAt: new Date() },
+      });
+    }
+    const facts = await prisma.$transaction((tx) =>
+      loadGroupMembershipApprovalFacts(tx, {
+        spaceId: ownerId,
+        userId: ownerId,
+        threadId: joyThreadId,
+        messageIds: [oldest.messageId],
+        recentRunIds: [],
+      }),
+    );
+    expect(facts.some((fact) => fact.interactionId === oldest.interventionId)).toBe(true);
+  });
+
   it("records X-GROUP-FAIL once as a durable card", async () => {
     const source = await createSourceRun();
     const key = nextKey();

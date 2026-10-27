@@ -166,14 +166,34 @@ export async function loadGroupMembershipApprovalFacts(
     recentRunIds: readonly string[];
   },
 ): Promise<GroupMembershipApprovalFacts[]> {
+  // The window is applied to Interventions first: pending rows always, plus
+  // terminal rows inside the snapshot's own bound (its recent Runs or the
+  // card message on the loaded page). Never "the newest N requests", which
+  // would strand older cards on an older page.
+  const windowInterventions = await tx.intervention.findMany({
+    where: {
+      threadId: input.threadId,
+      OR: [
+        { status: "pending" },
+        ...(input.recentRunIds.length > 0
+          ? [{ status: { not: "pending" }, runId: { in: [...input.recentRunIds] } }]
+          : []),
+        ...(input.messageIds.length > 0
+          ? [{ status: { not: "pending" }, messageId: { in: [...input.messageIds] } }]
+          : []),
+      ],
+    },
+    select: { id: true },
+  });
+  if (windowInterventions.length === 0) return [];
   const requests = await tx.groupMembershipRequest.findMany({
     where: {
       spaceId: input.spaceId,
       userId: input.userId,
       sourceThreadId: input.threadId,
+      interventionId: { in: windowInterventions.map((row) => row.id) },
     },
     orderBy: { createdAt: "desc" },
-    take: 50,
   });
   if (requests.length === 0) return [];
   const interventionIds = requests

@@ -891,10 +891,84 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
         { sourceRun: source.id, deliveryKey: key, cardsUnifiedV2: true },
       );
       expect(result.ok).toBe(false);
-      if (result.ok || !("kind" in result)) throw new Error("expected membership_failed");
-      expect(result.kind).toBe("membership_failed");
+      if (result.ok || !("kind" in result) || result.kind !== "membership_failed") {
+        throw new Error("expected membership_failed");
+      }
       expect(result.reason).toBe("not_manageable");
       expect(await prisma.message.count({ where: { threadId: openGroup.threadId } })).toBe(0);
+    });
+
+    it("denies the bound request even after the Bot joined independently", async () => {
+      const source = await createSourceRun();
+      const key = nextKey();
+      const askMessage = await prisma.$transaction((tx) =>
+        createThreadMessageInTransaction(tx, {
+          threadId: joyThreadId,
+          role: "bot",
+          originKind: "system",
+          blocks: [{ kind: "text", text: "Membership decision" }],
+          botId: joy.id,
+          runId: source.id,
+        }),
+      );
+      const interventionId = randomUUID();
+      await prisma.intervention.create({
+        data: {
+          id: interventionId,
+          kind: "approval",
+          status: "answered",
+          spaceId,
+          threadId: joyThreadId,
+          runId: source.id,
+          attemptId: "legacy",
+          botId: joy.id,
+          messageId: askMessage.id,
+          pendingRunKey: null,
+          decision: "denied",
+          resolvedAt: new Date(),
+          presentation: { text: "Add Joy?" },
+          createdAt: new Date(),
+        },
+      });
+      await prisma.groupMembershipRequest.create({
+        data: {
+          id: randomUUID(),
+          spaceId,
+          userId: ownerId,
+          botId: joy.id,
+          groupId: openGroup.id,
+          groupName: openGroup.name,
+          sourceThreadId: joyThreadId,
+          sourceRunId: source.id,
+          cardMessageId: askMessage.id,
+          interventionId,
+          deliveryKey: key,
+          requestRevision: 1,
+          message: "Check the launch performance risk and report back.",
+          topic: "性能风险核对",
+          presentation: { text: "Add Joy?" },
+        },
+      });
+      // Someone adds Joy independently while the card is still the decision of
+      // record; a denial must still suppress the bound delivery.
+      await prisma.chatGroupMember.create({
+        data: { groupId: openGroup.id, botId: joy.id },
+      });
+      try {
+        const before = await prisma.message.count({ where: { threadId: openGroup.threadId } });
+        const { result } = await send(
+          { group_id: openGroup.id },
+          { sourceRun: source.id, deliveryKey: key, cardsUnifiedV2: true },
+        );
+        expect(result.ok).toBe(false);
+        if (result.ok || !("kind" in result)) throw new Error("expected membership_denied");
+        expect(result.kind).toBe("membership_denied");
+        expect(await prisma.message.count({ where: { threadId: openGroup.threadId } })).toBe(before);
+      } finally {
+        await prisma.chatGroupMember.deleteMany({
+          where: { groupId: openGroup.id, botId: joy.id },
+        });
+      }
     });
 
     it("returns the settled denial for the same delivery key", async () => {

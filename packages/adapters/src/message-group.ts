@@ -252,57 +252,67 @@ export async function messageGroup(
           member!.spaceId === run.spaceId &&
           member!.userId === run.userId;
 
+        // A bound request's decision governs the replay even when the Bot was
+        // added to the group independently while the card was waiting: a
+        // denial must never turn into a delivery just because membership now
+        // holds.
+        const boundRequest = deliveryKey
+          ? await tx.groupMembershipRequest.findUnique({
+              where: { sourceRunId_deliveryKey: { sourceRunId: sourceRun.id, deliveryKey } },
+              select: { interventionId: true, failureReason: true, targetRunId: true },
+            })
+          : null;
+        if (boundRequest) {
+          if (!boundRequest.interventionId) {
+            return { ok: false as const, error: ERROR_INCOMPLETE };
+          }
+          const intervention = await tx.intervention.findUnique({
+            where: { id: boundRequest.interventionId },
+            select: { status: true, decision: true },
+          });
+          if (!intervention) return { ok: false as const, error: ERROR_INCOMPLETE };
+          if (intervention.status === "pending") {
+            return {
+              ok: false as const,
+              kind: "membership_pending" as const,
+              groupId: group.id,
+              groupName: group.name,
+            };
+          }
+          if (intervention.status === "answered" && intervention.decision === "denied") {
+            return {
+              ok: false as const,
+              kind: "membership_denied" as const,
+              groupId: group.id,
+              groupName: group.name,
+            };
+          }
+          if (intervention.status === "expired" || intervention.status === "cancelled") {
+            return {
+              ok: false as const,
+              kind: "membership_cancelled" as const,
+              groupId: group.id,
+              groupName: group.name,
+            };
+          }
+          if (intervention.status === "answered") {
+            if (boundRequest.failureReason) {
+              return {
+                ok: false as const,
+                kind: "membership_failed" as const,
+                groupId: group.id,
+                groupName: group.name,
+                reason: boundRequest.failureReason,
+              };
+            }
+            // Approved but no replayable delivery exists: never fabricate a
+            // second join or a regenerated message.
+            return { ok: false as const, error: ERROR_INCOMPLETE };
+          }
+        }
+
         if (!memberMatches) {
           if (!deliveryKey) return { ok: false as const, error: ERROR_NOT_MEMBER };
-          const pendingRequest = deliveryKey
-            ? await tx.groupMembershipRequest.findUnique({
-                where: { sourceRunId_deliveryKey: { sourceRunId: sourceRun.id, deliveryKey } },
-                select: { interventionId: true, failureReason: true, targetRunId: true },
-              })
-            : null;
-          if (pendingRequest?.interventionId) {
-            const intervention = await tx.intervention.findUnique({
-              where: { id: pendingRequest.interventionId },
-              select: { status: true, decision: true },
-            });
-            if (intervention?.status === "pending") {
-              return {
-                ok: false as const,
-                kind: "membership_pending" as const,
-                groupId: group.id,
-                groupName: group.name,
-              };
-            }
-            if (intervention?.status === "answered" && intervention.decision === "denied") {
-              return {
-                ok: false as const,
-                kind: "membership_denied" as const,
-                groupId: group.id,
-                groupName: group.name,
-              };
-            }
-            if (intervention?.status === "expired" || intervention?.status === "cancelled") {
-              return {
-                ok: false as const,
-                kind: "membership_cancelled" as const,
-                groupId: group.id,
-                groupName: group.name,
-              };
-            }
-            if (intervention?.status === "answered") {
-              if (pendingRequest.failureReason) {
-                return {
-                  ok: false as const,
-                  kind: "membership_failed" as const,
-                  groupId: group.id,
-                  groupName: group.name,
-                  reason: pendingRequest.failureReason,
-                };
-              }
-              return { ok: false as const, error: ERROR_INCOMPLETE };
-            }
-          }
-
           const bot = await tx.bot.findFirst({
             where: {
               id: run.botId,
