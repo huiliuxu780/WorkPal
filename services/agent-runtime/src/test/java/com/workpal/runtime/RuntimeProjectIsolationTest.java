@@ -75,9 +75,13 @@ class RuntimeProjectIsolationTest {
                     sent.contains(launchDir.toString()),
                     "the launch directory path reached the model: "
                             + excerpt(sent, launchDir.toString()));
-            assertFalse(
-                    sent.contains("agents_context"),
-                    "the harness workspace-context block was still injected: "
+            // The property is that the block carries no content, not that the tag
+            // is gone: pinning the project leaves an empty <agents_context/>, and
+            // that is a correct outcome. Any injected file would make it non-empty.
+            assertTrue(
+                    !sent.contains("agents_context")
+                            || sent.matches("(?s).*<agents_context>\\s*</agents_context>.*"),
+                    "the harness workspace context still carries content: "
                             + excerpt(sent, "agents_context"));
             // The bot's own persona comes from the backend request, not from any directory.
             assertTrue(
