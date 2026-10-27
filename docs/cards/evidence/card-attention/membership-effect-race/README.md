@@ -69,3 +69,26 @@ read another spec's row.
 
 Run C — same spec union, post-split harness, hardened spec, fresh disposable
 database `workpal_e2e_gateab_c`: see `../gate-batches/C-split-batches-green.txt`.
+
+## Same class of race: the 375px overflow read in `card-attention.spec.ts`
+
+On 2026-10-28 a local run of `card-attention.spec.ts` (head `d15cc7e` plus the
+nested-origin fix) failed `attention queue (N1-N4) › queues pending requests…`
+at `card-attention.spec.ts:84`:
+
+```
+expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+Expected: true  Received: false
+```
+
+The read ran immediately after `page.setViewportSize({ width: 375 })`, while the
+popover clamps itself on the frame *after* the resize. The post-failure
+screenshot (`apps/web/test-results/card-attention-attention-q-f915f-…/test-failed-1.png`)
+shows the panel already clamped inside the viewport (right edge ≈355px of 375),
+and the page snapshot shows the expected single queue row — so neither the queue
+content nor the layout was wrong at rest; the single read caught the pre-clamp
+position (the panel laid out for 1440px overhangs 375px by construction).
+
+The spec now polls the same measurement (10 s bound, 100/250/500 ms intervals),
+which keeps the acceptance — the panel must fit at 375px — without racing the
+relayout. Verified by a clean focused run of the spec afterwards.

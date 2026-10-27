@@ -746,4 +746,129 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     const duplicated = page.items.filter((item) => item.interactionId === expired.id);
     expect(duplicated).toHaveLength(1);
   });
+
+  it("keeps a nested delegated takeover whose first hop already completed", async () => {
+    const nestedBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Nested", color: "test" },
+    });
+    const outerBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Outer", color: "test" },
+    });
+    const visibleThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, botId: nestedBot.id },
+    });
+    async function pairThread(name: string) {
+      const pairGroup = await prisma.chatGroup.create({
+        data: {
+          spaceId,
+          userId: ownerId,
+          kind: "agent_pair",
+          pairKey: `attention-nested-${name}-${randomUUID()}`,
+          name,
+        },
+      });
+      const thread = await prisma.thread.create({
+        data: { spaceId, userId: ownerId, groupId: pairGroup.id },
+      });
+      return thread.id;
+    }
+    async function delegatedRun(input: {
+      threadId: string;
+      botId: string;
+      originThreadId: string;
+      originRunId: string;
+      status: string;
+    }) {
+      const task = await prisma.task.create({
+        data: {
+          spaceId,
+          botId: input.botId,
+          threadId: input.threadId,
+          userId: ownerId,
+          prompt: "Delegated",
+          status: input.status,
+        },
+      });
+      return prisma.run.create({
+        data: {
+          spaceId,
+          botId: input.botId,
+          threadId: input.threadId,
+          taskId: task.id,
+          userId: ownerId,
+          status: input.status,
+          trigger: "bot_message",
+          originThreadId: input.originThreadId,
+          originRunId: input.originRunId,
+          originMessageId: "origin-message",
+        },
+      });
+    }
+    const visibleTask = await prisma.task.create({
+      data: {
+        spaceId,
+        botId: nestedBot.id,
+        threadId: visibleThread.id,
+        userId: ownerId,
+        prompt: "Nested parent",
+        status: "completed",
+      },
+    });
+    const visibleRun = await prisma.run.create({
+      data: {
+        spaceId,
+        botId: nestedBot.id,
+        threadId: visibleThread.id,
+        taskId: visibleTask.id,
+        userId: ownerId,
+        status: "completed",
+        trigger: "user",
+      },
+    });
+    const outerPairThreadId = await pairThread("nested-outer-pair");
+    const innerPairThreadId = await pairThread("nested-inner-pair");
+    // The hop delegated from the visible conversation has finished; the pending
+    // takeover lives one hidden pair Thread deeper.
+    const outerRun = await delegatedRun({
+      threadId: outerPairThreadId,
+      botId: outerBot.id,
+      originThreadId: visibleThread.id,
+      originRunId: visibleRun.id,
+      status: "completed",
+    });
+    const nestedRun = await delegatedRun({
+      threadId: innerPairThreadId,
+      botId: nestedBot.id,
+      originThreadId: outerPairThreadId,
+      originRunId: outerRun.id,
+      status: "waiting_takeover",
+    });
+    const computer = await prisma.computer.create({
+      data: {
+        spaceId,
+        userId: ownerId,
+        scopeKey: `${ownerId}:nested-computer`,
+        homeKey: `${ownerId}:nested-home`,
+        kind: "docker",
+        state: "running",
+        controlHolder: "none",
+        controlRunId: nestedRun.id,
+      },
+    });
+    await prisma.bot.update({
+      where: { id: nestedBot.id },
+      data: { computerId: computer.id },
+    });
+
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const control = page.items.find(
+      (item) => item.kind === "session_control" && item.source.runId === nestedRun.id,
+    );
+    expect(control).toMatchObject({
+      status: "pending",
+      source: { threadId: visibleThread.id, runId: nestedRun.id },
+    });
+    expect(page.items.every((item) => item.source.threadId !== innerPairThreadId)).toBe(true);
+    expect(page.items.every((item) => item.source.threadId !== outerPairThreadId)).toBe(true);
+  });
 });

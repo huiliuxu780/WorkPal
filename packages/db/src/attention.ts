@@ -23,6 +23,7 @@ import {
   interactionViewsFromMessages,
   loadBotComputerFacts,
   loadOriginControlFacts,
+  ORIGIN_CONTROL_MAX_DEPTH,
 } from "./card-interactions.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { interventionView } from "./interventions.js";
@@ -223,22 +224,53 @@ async function loadPendingViews(
     );
   }
   // Delegated Runs execute in hidden pair Threads; project their live controls
-  // into the visible origin Thread the user can actually open.
-  const delegatedOrigins = await tx.run.findMany({
+  // into the visible origin Thread the user can actually open. Discovery starts
+  // from the Runs that are active somewhere in a chain and walks the hidden
+  // lineage back up: requiring the hop delegated from the visible Thread to
+  // still be active would drop a nested takeover whose first hop completed,
+  // which loadOriginControlFacts deliberately traverses.
+  const visibleThreadIds = new Set(input.threadIds);
+  const activeDelegated = await tx.run.findMany({
     where: {
       spaceId: input.spaceId,
-      originThreadId: { in: input.threadIds },
+      status: { in: [...ACTIVE_RUN_STATUSES] },
+      originThreadId: { not: null },
       originRunId: { not: null },
       originMessageId: { not: null },
       trigger: { not: "message_group" },
-      status: { in: [...ACTIVE_RUN_STATUSES] },
     },
     select: { originThreadId: true },
-    distinct: ["originThreadId"],
+    take: SOURCE_LIMIT,
   });
-  for (const candidate of delegatedOrigins) {
-    const originThreadId = candidate.originThreadId;
+  const candidateOrigins = new Set<string>();
+  let hiddenFrontier = new Set<string>();
+  for (const run of activeDelegated) {
+    const originThreadId = run.originThreadId;
     if (!originThreadId) continue;
+    if (visibleThreadIds.has(originThreadId)) candidateOrigins.add(originThreadId);
+    else hiddenFrontier.add(originThreadId);
+  }
+  for (let depth = 0; depth < ORIGIN_CONTROL_MAX_DEPTH && hiddenFrontier.size > 0; depth += 1) {
+    const parents = await tx.run.findMany({
+      where: {
+        spaceId: input.spaceId,
+        threadId: { in: [...hiddenFrontier] },
+        originThreadId: { not: null },
+        trigger: { not: "message_group" },
+      },
+      select: { originThreadId: true },
+      distinct: ["originThreadId"],
+    });
+    const nextFrontier = new Set<string>();
+    for (const parent of parents) {
+      const originThreadId = parent.originThreadId;
+      if (!originThreadId) continue;
+      if (visibleThreadIds.has(originThreadId)) candidateOrigins.add(originThreadId);
+      else nextFrontier.add(originThreadId);
+    }
+    hiddenFrontier = nextFrontier;
+  }
+  for (const originThreadId of candidateOrigins) {
     const originControls = await loadOriginControlFacts(tx, {
       spaceId: input.spaceId,
       threadId: originThreadId,

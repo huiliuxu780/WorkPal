@@ -76,12 +76,20 @@ test.describe("attention queue (N1-N4)", () => {
     await expect(row).not.toContainText("Intervention");
     await captureScreenshot(page, testInfo, "N1-queue-1440");
 
-    // 375px and dark: the panel stays inside the viewport.
+    // 375px and dark: the panel stays inside the viewport. The popover clamps
+    // itself on the frame after the resize, so a single read can catch the
+    // pre-clamp position; poll the measurement instead of racing the relayout.
     await page.setViewportSize({ width: 375, height: 900 });
     await expect(queue).toBeVisible();
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
-    ).toBe(true);
+    await expect
+      .poll(
+        () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+        {
+          timeout: 10_000,
+          intervals: [100, 250, 500],
+        },
+      )
+      .toBe(true);
     await captureScreenshot(page, testInfo, "N1-queue-375");
     await page.emulateMedia({ colorScheme: "dark" });
     // The appearance listener resolves on the next frame; capture only after

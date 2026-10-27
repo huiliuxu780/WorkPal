@@ -1,0 +1,43 @@
+CARD-01D P2 green evidence — nested delegated origin (PostgreSQL)
+=================================================================
+FIXED version
+-------------
+git HEAD          : d15cc7efb8db420c2a9509e307c41ec0c5f1e93c (codex/card-attention)
+source under test : packages/db/src/attention.ts + packages/db/src/card-interactions.ts
+                    = d15cc7e + fix-diff-nested-origin.patch (this directory).
+                    Discovery now starts from Runs that are active anywhere in a
+                    chain and walks the hidden pair lineage up to the visible
+                    Thread, bounded by ORIGIN_CONTROL_MAX_DEPTH (now exported from
+                    card-interactions.ts so both walks share one bound);
+                    loadOriginControlFacts still decides which controls are real.
+test file         : identical to the red run
+node / pnpm       : v22.23.3 / 9.15.0
+vitest            : 4.1.11
+database          : fresh isolated clone of the migrated template
+captured at       : 2026-10-27T16:36:27Z (local run, 1.16s)
+
+Command (whole file: the new case plus the nine already-green ones, which include
+the direct-hop rebasing case and the pair-thread hiding assertions)
+---------------------------------------------------------------------------------
+export $(grep -E '^DATABASE_URL=' /Users/rivers/Documents/WorkPal/.env | xargs)
+export VERIFY_DATABASE=1
+pnpm exec vitest run packages/db/src/attention.postgres.test.ts
+
+Companion suites (unchanged behaviour of the shared traversal helper)
+---------------------------------------------------------------------
+pnpm exec vitest run packages/db/src/card-interactions.postgres.test.ts \
+                     packages/db/src/card-interactions.test.ts
+-> Test Files 2 passed (2), Tests 24 passed (24)
+
+Output
+------
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/card-attention[39m
+
+ [32m✓[39m packages/db/src/attention.postgres.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 578[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m10 passed[39m[22m[90m (10)[39m
+[2m   Start at [22m 00:36:27
+[2m   Duration [22m 1.16s[2m (transform 379ms, setup 8ms, import 514ms, tests 578ms, environment 0ms)[22m
+

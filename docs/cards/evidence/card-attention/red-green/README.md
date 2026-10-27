@@ -62,7 +62,36 @@ Archived destinations entered the queue, and their source could not be opened.
   API decides what is navigable (for example `apps/api/src/search.ts`).
 - Green: same log as finding 1.
 
-Red totals: 3 failed / 6 skipped. Green totals: 9 passed (whole file).
+## Finding 4 — comment 4391155487 (`packages/db/src/attention.ts:234`)
+
+A nested delegated takeover whose first hop from the visible conversation had
+already completed never reached the queue: discovery required the Run delegated
+*from the visible Thread* to still be active, while `loadOriginControlFacts`
+deliberately traverses terminal intermediate hops.
+
+- Regression case: `packages/db/src/attention.postgres.test.ts` →
+  `keeps a nested delegated takeover whose first hop already completed`
+  (visible DM → pair-Thread run `completed` → inner pair-Thread run
+  `waiting_takeover` with a computer bound to the nested Bot; the control must be
+  rebased onto the visible Thread and neither pair Thread may appear as a source).
+- Red at `d15cc7e` (the head the finding was reported against; `attention.ts` had
+  no working-tree change, so the red run used the committed source):
+  [`RED-p2-4-nested-origin.txt`](./RED-p2-4-nested-origin.txt) — the control was
+  `undefined` in the page.
+- Fix: discovery now starts from Runs that are active anywhere in a chain and
+  walks the hidden pair lineage up to the visible Thread, bounded by
+  `ORIGIN_CONTROL_MAX_DEPTH` (exported from `card-interactions.ts` so both walks
+  share one bound); `loadOriginControlFacts` still decides which controls exist.
+  Dropping the active-status filter from the old query alone was rejected: its
+  candidate set would become "every Thread that ever delegated", each costing a
+  traversal on a 15s poll.
+- Green: [`GREEN-p2-4-nested-origin.txt`](./GREEN-p2-4-nested-origin.txt) — whole
+  file 10/10, plus `card-interactions.postgres.test.ts` + `card-interactions.test.ts`
+  24/24 (the shared traversal helper is unchanged in behaviour).
+- Source delta: [`fix-diff-nested-origin.patch`](./fix-diff-nested-origin.patch).
+
+Red totals across the round: 3 + 1 failed on the PostgreSQL cases, 1 on the web
+race. Green totals: 10 PostgreSQL, 8 web.
 
 ## Commands
 
