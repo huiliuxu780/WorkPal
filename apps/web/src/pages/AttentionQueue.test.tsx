@@ -195,6 +195,41 @@ describe("AttentionQueue", () => {
     expect(FakeNotification.instances).toHaveLength(0);
   });
 
+  it("loads the next page and keeps rows unique", async () => {
+    list.mockResolvedValueOnce({
+      items: [item()],
+      total: 2,
+      nextCursor: "cursor-1",
+    });
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    list.mockResolvedValueOnce({
+      items: [item(), item({ interactionId: "i-2", stableId: "i-2" })],
+      total: 2,
+      nextCursor: null,
+    });
+    await act(async () =>
+      (host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
+    );
+    const more = document.querySelector('[data-testid="attention-load-more"]') as HTMLButtonElement;
+    expect(more.textContent).toContain("1 remaining");
+    await act(async () => more.click());
+    await flush();
+    expect(list).toHaveBeenLastCalledWith({ limit: 50, cursor: "cursor-1" });
+    const rows = document.querySelectorAll('[data-testid="attention-item"]');
+    expect(rows).toHaveLength(2);
+    expect(document.querySelector('[data-testid="attention-load-more"]')).toBeNull();
+  });
+
   it("opens a row without submitting any decision", async () => {
     const onOpenItem = vi.fn();
     list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });

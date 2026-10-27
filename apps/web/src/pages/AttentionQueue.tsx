@@ -28,8 +28,12 @@ export function AttentionQueue({
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AttentionQueueItem[]>([]);
+  const itemsRef = useRef<AttentionQueueItem[]>([]);
+  itemsRef.current = items;
   const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const baseline = useRef<Set<string> | null>(null);
@@ -85,20 +89,37 @@ export function AttentionQueue({
     }
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const page = await rpc.attention.list({ limit: 50 });
-      setItems(page.items);
-      setTotal(page.total);
-      setError(false);
-      onItemsRef.current(page.items);
-      notifyNewItems(page.items);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [notifyNewItems]);
+  const load = useCallback(
+    async (options?: { cursor?: string | null; append?: boolean }) => {
+      try {
+        const page = await rpc.attention.list({
+          limit: 50,
+          ...(options?.cursor ? { cursor: options.cursor } : {}),
+        });
+        const base = options?.append ? itemsRef.current : [];
+        const seen = new Set(base.map(attentionKey));
+        const merged = [...base, ...page.items.filter((item) => !seen.has(attentionKey(item)))];
+        itemsRef.current = merged;
+        setItems(merged);
+        setTotal(page.total);
+        setNextCursor(page.nextCursor);
+        setError(false);
+        onItemsRef.current(merged);
+        notifyNewItems(page.items);
+      } catch {
+        setError(true);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [notifyNewItems],
+  );
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    await load({ cursor: nextCursor, append: true });
+  }, [load, loadingMore, nextCursor]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -249,6 +270,19 @@ export function AttentionQueue({
               </ul>
             )}
           </div>
+          {nextCursor ? (
+            <button
+              type="button"
+              data-testid="attention-load-more"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              className="border-t border-border px-3.5 py-2 text-left text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-60"
+            >
+              {loadingMore
+                ? t`Loading…`
+                : t`Load more (${Math.max(total - items.length, 0)} remaining)`}
+            </button>
+          ) : null}
           <p className="border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground">
             {t`Opening a request only returns to its source card.`}
           </p>

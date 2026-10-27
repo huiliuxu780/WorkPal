@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { MessageBlock } from "@rakazo/contracts";
+import { compareAttentionItems, encodeAttentionCursor, type MessageBlock } from "@rakazo/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadAttentionPage } from "./attention.js";
 import type { PrismaClient } from "./client.js";
@@ -263,6 +263,17 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
       presentation: { text: "MCP card" },
       createdAt: new Date("2026-10-27T08:03:00.000Z"),
     });
+    await botMessage(group.threadId, [
+      {
+        kind: "mcp_approval",
+        name: "Settled server",
+        serverId: "server-2",
+        transport: "streamable_http",
+        endpoint: "https://mcp.example.test/settled",
+        needsOAuth: false,
+        status: "connected",
+      },
+    ]);
     const skillMessage = await botMessage(group.threadId, [
       {
         kind: "skill_draft",
@@ -375,6 +386,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(page.items.some((item) => item.presentation.text === "Answered")).toBe(false);
     expect(page.items.some((item) => item.presentation.text === "Not yours")).toBe(false);
     expect(page.items.every((item) => item.source.threadId !== otherThreadId)).toBe(true);
+    expect(page.items.some((item) => item.presentation.text === "Settled server")).toBe(false);
     expect(page.total).toBe(page.items.length);
     expect(page.items[0]?.kind).toBe("input_request");
     expect(page.items[0]?.conversationKind).toBe("direct");
@@ -463,6 +475,35 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     );
     expect(keys.size).toBe(first.items.length + second.items.length);
     expect(second.total).toBe(first.total);
+  });
+
+  it("continues after a cursor whose anchor row settled", async () => {
+    const all = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const anchor = all.items.find(
+      (item) => item.kind === "input_request" && item.source.messageId !== null,
+    );
+    if (!anchor) throw new Error("expected a pending input anchor");
+    await prisma.intervention.update({
+      where: { id: anchor.interactionId },
+      data: {
+        status: "answered",
+        decision: "denied",
+        pendingRunKey: null,
+        resolvedAt: new Date(),
+      },
+    });
+    const next = await loadAttentionPage(prisma, {
+      spaceId,
+      userId: ownerId,
+      limit: 2,
+      cursor: encodeAttentionCursor(anchor),
+    });
+    expect(next.items.length).toBeGreaterThan(0);
+    for (const item of next.items) {
+      expect(compareAttentionItems(item, anchor)).toBeGreaterThan(0);
+      expect(item.interactionId).not.toBe(anchor.interactionId);
+    }
+    expect(next.total).toBeGreaterThan(0);
   });
 
   it("excludes expired pending rows and keeps revision dedupe", async () => {

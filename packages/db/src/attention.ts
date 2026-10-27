@@ -1,6 +1,7 @@
 import {
   type ActionApprovalView,
   type AttentionItem,
+  compareAttentionItems,
   type AttentionQueueItem,
   type AttentionQueuePage,
   decodeAttentionCursor,
@@ -67,7 +68,7 @@ export async function loadAttentionPage(
       });
       const items = projectAttentionItems(views);
       const total = items.length;
-      const page = pageItems(items, input.cursor ?? null, limit);
+      const { page, hasMore } = pageItems(items, input.cursor ?? null, limit);
       const display = await loadDisplayFacts(tx, {
         spaceId: input.spaceId,
         threads: threadById,
@@ -76,7 +77,7 @@ export async function loadAttentionPage(
       return {
         items: page.map((item) => display.get(item.interactionId) ?? fallbackDisplay(item)),
         total,
-        nextCursor: page.length === limit ? encodeAttentionCursor(page[page.length - 1]!) : null,
+        nextCursor: hasMore ? encodeAttentionCursor(page[page.length - 1]!) : null,
       };
     },
     { timeout: 20_000, maxWait: 20_000 },
@@ -220,7 +221,16 @@ async function loadPendingViews(
       role: "bot",
       OR: [
         { blocks: { array_contains: [{ kind: "app_connect", status: "pending" }] } },
-        { blocks: { array_contains: [{ kind: "mcp_approval" }] } },
+        {
+          // MCP approvals may be legacy rows without a status; exclude the
+          // settled ones in SQL so they cannot crowd out older pending rows
+          // before the source limit.
+          AND: [
+            { blocks: { array_contains: [{ kind: "mcp_approval" }] } },
+            { NOT: { blocks: { array_contains: [{ kind: "mcp_approval", status: "connected" }] } } },
+            { NOT: { blocks: { array_contains: [{ kind: "mcp_approval", status: "dismissed" }] } } },
+          ],
+        },
         { blocks: { array_contains: [{ kind: "skill_draft", status: "draft" }] } },
       ],
     },
@@ -281,18 +291,24 @@ async function loadManagedMembershipGroupIds(
   return new Set(groups.map((group) => group.id));
 }
 
-function pageItems(items: AttentionItem[], cursor: string | null, limit: number): AttentionItem[] {
-  if (!cursor) return items.slice(0, limit);
+function pageItems(
+  items: AttentionItem[],
+  cursor: string | null,
+  limit: number,
+): { page: AttentionItem[]; hasMore: boolean } {
+  if (!cursor) return { page: items.slice(0, limit), hasMore: items.length > limit };
   const decoded = decodeAttentionCursor(cursor);
-  if (!decoded) return items.slice(0, limit);
-  // Keyed by the frozen comparator: skip through the cursor row itself.
-  const index = items.findIndex(
-    (item) =>
-      item.stableId === decoded.stableId &&
-      item.attentionAt === decoded.attentionAt &&
-      item.expiresAt === decoded.expiresAt,
-  );
-  return items.slice(index < 0 ? 0 : index + 1, index < 0 ? limit : index + 1 + limit);
+  if (!decoded) return { page: items.slice(0, limit), hasMore: items.length > limit };
+  // Compare against the cursor's sort tuple instead of locating the anchor row:
+  // it may have settled between page requests and would otherwise restart the
+  // list at page one.
+  const anchor = {
+    expiresAt: decoded.expiresAt,
+    attentionAt: decoded.attentionAt,
+    stableId: decoded.stableId,
+  } as AttentionItem;
+  const rest = items.filter((item) => compareAttentionItems(item, anchor) > 0);
+  return { page: rest.slice(0, limit), hasMore: rest.length > limit };
 }
 
 async function loadDisplayFacts(

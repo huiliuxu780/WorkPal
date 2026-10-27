@@ -87,14 +87,20 @@ export function InteractionRegion({
           className="flex flex-col gap-2 border-t border-border/60 pt-2"
         >
           {sessionControls.map((view) => (
-            <SessionControlCard
+            <div
               key={view.interactionId}
-              view={view}
-              botName={botNameOf?.(view.botId)}
-              conversationName={conversationName}
-              onOpenComputer={onOpenComputer}
-              onRefresh={onRefresh}
-            />
+              data-interaction-id={view.interactionId}
+              tabIndex={-1}
+              className="focus:outline-none"
+            >
+              <SessionControlCard
+                view={view}
+                botName={botNameOf?.(view.botId)}
+                conversationName={conversationName}
+                onOpenComputer={onOpenComputer}
+                onRefresh={onRefresh}
+              />
+            </div>
           ))}
         </div>
       ) : null}
