@@ -5,6 +5,7 @@ import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
   ActivityItem,
   AgentSkillCatalogEntry,
+  AttentionQueueItem,
   Bot,
   BotSection,
   CollaborationReceiptBlock,
@@ -277,6 +278,7 @@ import {
 import { speaker } from "../lib/tts";
 import { createUsageLoader, type UsageLoader, type UsageLoadState } from "../lib/usage-loader";
 import { ActivityList } from "./ActivityList";
+import { AttentionQueue } from "./AttentionQueue";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
@@ -513,6 +515,8 @@ export function ShellPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [groupTab, setGroupTab] = useState<GroupPanelTab>("details");
+  const [attentionItems, setAttentionItems] = useState<AttentionQueueItem[]>([]);
+  const [attentionRefresh, setAttentionRefresh] = useState(0);
   const [settingsTab, setSettingsTab] = useState<"detail" | "library" | "computer">("detail");
   const [peerConversation, setPeerConversation] = useState<{
     peerBotId: string;
@@ -1865,6 +1869,59 @@ export function ShellPage() {
     : snapshot?.botId === active?.id
       ? snapshot
       : null;
+  const attentionEnabled = activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true;
+  const openAttentionItem = useCallback(
+    (item: AttentionQueueItem) => {
+      const params = new URLSearchParams();
+      if (item.source.messageId) params.set("m", item.source.messageId);
+      params.set("i", item.interactionId);
+      navigate({
+        pathname:
+          item.conversationKind === "group"
+            ? `/app/g/${item.conversationId}`
+            : `/app/${item.conversationId}`,
+        search: `?${params.toString()}`,
+      });
+    },
+    [navigate],
+  );
+  const focusedAttentionInteraction = useRef<string | null>(null);
+  useEffect(() => {
+    const interactionId = searchParams.get("i");
+    if (!interactionId || focusedAttentionInteraction.current === interactionId) return;
+    let cancelled = false;
+    let attempts = 0;
+    const focusCard = () => {
+      if (cancelled) return;
+      const element = [...document.querySelectorAll<HTMLElement>("[data-interaction-id]")].find(
+        (candidate) => candidate.dataset.interactionId === interactionId,
+      );
+      if (element) {
+        element.tabIndex = -1;
+        element.focus({ preventScroll: true });
+        element.scrollIntoView({ block: "center" });
+        focusedAttentionInteraction.current = interactionId;
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) window.setTimeout(focusCard, 150);
+    };
+    const frame = window.requestAnimationFrame(focusCard);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [searchParams, activeSnapshot?.threadId]);
+  const waitingMembers = useMemo(() => {
+    const waiting = new Map<string, AttentionQueueItem>();
+    if (!activeGroup) return waiting;
+    for (const item of attentionItems) {
+      if (item.conversationKind !== "group" || item.conversationId !== activeGroup.id) continue;
+      const botId = item.source.botId;
+      if (botId && !waiting.has(botId)) waiting.set(botId, item);
+    }
+    return waiting;
+  }, [activeGroup, attentionItems]);
   // Keep the armed reply even when its parent leaves the loaded page: the
   // server resolves a paged-out target and degrades a deleted one to a plain
   // reply instead of failing the send.
@@ -2471,11 +2528,13 @@ export function ShellPage() {
     const groupId = activeGroupId.current;
     if (groupId) {
       await refreshGroupThreadRef.current(groupId);
-      return;
+    } else {
+      const id = activeBotId.current;
+      if (!id) return;
+      await refreshThreadRef.current(id);
     }
-    const id = activeBotId.current;
-    if (!id) return;
-    await refreshThreadRef.current(id);
+    // A local decision must leave the attention list and count immediately.
+    setAttentionRefresh((value) => value + 1);
   }, []);
   // Teach chrome needs skills applied before this resolves — refreshThread only
   // kicks skills.list off in the background, so Stop teaching would never mount
@@ -3058,6 +3117,22 @@ export function ShellPage() {
           />
         </InputGroup>
         <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
+          <AttentionQueue
+            enabled={attentionEnabled}
+            activeTarget={
+              inGroup && groupId
+                ? { groupId }
+                : !inGroup && active
+                  ? { botId: active.id }
+                  : null
+            }
+            botNotificationsEnabled={(botId) =>
+              Boolean(bots.find((bot) => bot.id === botId)?.notifyOnFinish)
+            }
+            refreshToken={attentionRefresh}
+            onOpenItem={openAttentionItem}
+            onItems={setAttentionItems}
+          />
           {showSpaceSearch ? (
             <SpaceSearchResults
               hits={searchHits}
@@ -4020,6 +4095,8 @@ export function ShellPage() {
                   );
                 }}
                 onManageMembers={() => setPanel("group-settings")}
+                waitingMembers={waitingMembers}
+                onOpenAttentionItem={openAttentionItem}
                 routines={groupPanel.routines}
                 routinesError={groupPanel.routinesError}
                 artifacts={groupPanel.artifacts}

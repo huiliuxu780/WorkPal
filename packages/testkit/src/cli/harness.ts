@@ -149,7 +149,8 @@ async function main() {
       !integration &&
       (specSelects(e2eSpec, "card-ui-interactions.spec.ts") ||
         specSelects(e2eSpec, "card-display-content.spec.ts") ||
-        specSelects(e2eSpec, "group-membership.spec.ts"))
+        specSelects(e2eSpec, "group-membership.spec.ts") ||
+        specSelects(e2eSpec, "card-attention.spec.ts"))
     ) {
       process.env.CARDS_UNIFIED_V2_ENABLED = "true";
     }

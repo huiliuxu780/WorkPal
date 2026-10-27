@@ -12,6 +12,7 @@ import {
   BotAvatarChangeViewSchema,
   BotAvatarStateSchema,
 } from "./bot-avatar.js";
+import { AttentionQueuePageSchema } from "./card-interaction.js";
 import {
   ActionApprovalRuleSchema,
   ActionAutoReviewSettingsSchema,
@@ -461,6 +462,21 @@ export const appContract = {
     members: {
       list: oc.input(groupId).output(GroupMembersSchema),
     },
+  },
+  attention: {
+    /**
+     * CARD-01D bounded pending queue for the current actor: durable pending
+     * Interventions, current SessionControls and strictly mapped business
+     * approvals in the actor's own Threads.
+     */
+    list: oc
+      .input(
+        z.object({
+          cursor: z.string().max(300).optional(),
+          limit: z.number().int().min(1).max(50).optional(),
+        }),
+      )
+      .output(AttentionQueuePageSchema),
   },
   botSections: {
     list: oc.output(z.array(BotSectionSchema)),

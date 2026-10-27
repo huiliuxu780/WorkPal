@@ -45,6 +45,7 @@ const CARD_UI_INTERACTIONS_WEB_E2E = [
   "group-membership.spec.ts",
 ];
 const CARD_DISPLAY_WEB_E2E = ["card-display-content.spec.ts"];
+const CARD_ATTENTION_WEB_E2E = ["card-attention.spec.ts", ...DEFAULT_WEB_E2E];
 const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
 const GROUP_MEMBERSHIP_WEB_E2E = [
   "group-membership.spec.ts",
