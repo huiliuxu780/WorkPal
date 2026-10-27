@@ -129,9 +129,7 @@ test("renders all nine DisplayBlock kinds from the server projection", async ({
   await captureScreenshot(page, testInfo, "display-blocks-375");
 });
 
-test("markdown card re-measures overflow when the viewport changes", async ({
-  page,
-}, testInfo) => {
+test("markdown card re-measures overflow when the viewport changes", async ({ page }, testInfo) => {
   const stamp = Date.now();
   await signup(page, `display-reflow-${stamp}@rakazo.test`, "password12", "Display Reflow");
   await completeOnboarding(page);

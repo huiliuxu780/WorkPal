@@ -193,7 +193,11 @@ describe("voiceDisplayBlockFromGroup", () => {
   it("joins every loaded turn into one transcript anchored to the marker", () => {
     const [group] = groupVoiceChats([
       message({ role: "user", callId: "call-1", runId: "run-1" }),
-      message({ role: "bot", runId: "run-1", blocks: [{ kind: "text", text: "Deploy is green." }] }),
+      message({
+        role: "bot",
+        runId: "run-1",
+        blocks: [{ kind: "text", text: "Deploy is green." }],
+      }),
       message({
         role: "bot",
         runId: "run-1",
@@ -212,7 +216,11 @@ describe("voiceDisplayBlockFromGroup", () => {
 
   it("keeps turns loaded from older pages in the transcript", () => {
     const older = message({ role: "user", callId: "call-1", runId: "run-1" });
-    const reply = message({ role: "bot", runId: "run-1", blocks: [{ kind: "text", text: "First answer." }] });
+    const reply = message({
+      role: "bot",
+      runId: "run-1",
+      blocks: [{ kind: "text", text: "First answer." }],
+    });
     const newer = message({ role: "user", callId: "call-1", runId: "run-2" });
     const marker = message({
       role: "bot",

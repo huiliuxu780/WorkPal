@@ -512,12 +512,13 @@ describe("CARD-01 thread card surface", () => {
     });
     expect(
       surface.displayBlocks.map((block) =>
-        block.kind === "task_status" ? block.destination ?? null : null,
+        block.kind === "task_status" ? (block.destination ?? null) : null,
       ),
     ).toEqual(["https://github.example.test/pr/42", null]);
   });
 
-  it("prefers the subagent result over stale progress in task_status summaries", () => {    const surface = projectThreadCardSurface({
+  it("prefers the subagent result over stale progress in task_status summaries", () => {
+    const surface = projectThreadCardSurface({
       ...baseInput,
       messages: [
         message([
