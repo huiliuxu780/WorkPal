@@ -6,7 +6,11 @@
 
 ## CX-1（P0-3）Stop 之后会话执行权不释放，会话永久卡在 queued
 
-**状态：已复现，红。归属 [FIX-STOP-01](../../../tasks/FIX-STOP-01.md)，本单元不修。**
+**状态：已复现（红），并已在同一分支的独立 commit 中修复（绿）。归属 [FIX-STOP-01](../../../tasks/FIX-STOP-01.md)，验证与修复分开 commit：红在 `e72108f`，修复在 `6ce9376`。修复证据见 [docs/evidence/FIX-STOP-01/](../../../evidence/FIX-STOP-01/README.md)。**
+
+修复后同一用例、同一命令、同样断言：exit 0，`Tests 5 passed (5)`。RT-25/RT-26 的邻接护栏没有被削弱（6 文件 65 测试全绿，含"仅凭过期不移交"与"recovering 需新证明"两条），`pnpm test:postgres` 全组 51 文件 454 测试全绿。
+
+**未验证的部分仍然未验证**：进程链（worker-chain / agentscope E2E）、真模型手测截图、顶栏状态、以及日志里不再出现 `could not be proven`。持久层的绿不能替代这些，见 FIX-STOP-01 证据索引的未完成项。
 
 ### 复现
 

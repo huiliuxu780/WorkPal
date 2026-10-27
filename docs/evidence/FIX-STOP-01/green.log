@@ -1,0 +1,25 @@
+# FIX-STOP-01 green — same cases, same command, after the fix
+
+baseline SHA (red):  e72108f
+fix SHA (green):     6ce9376cfbe4412fba926622529fda5797f97a41
+test file:           packages/db/src/stop-session-release.postgres.test.ts
+date:                2026-10-28
+Environment and database: identical to red.log (same throwaway container, same isolated clone
+mechanism, same prerequisite commands). No assertion was skipped, weakened, or retried; the
+test file is byte-identical between the red and green runs apart from a type-only signature
+change (SessionAdmissionLease) made before the red was captured.
+
+$ VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 \
+    pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts --no-file-parallelism
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/verify-lifecycle-concurrency[39m
+
+ [32m✓[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 698[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m   Start at [22m 01:42:33
+[2m   Duration [22m 1.79s[2m (transform 718ms, setup 16ms, import 977ms, tests 698ms, environment 0ms)[22m
+
+exit=0

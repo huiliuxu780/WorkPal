@@ -1,0 +1,53 @@
+# FIX-STOP-01 full PostgreSQL group at the fix SHA
+
+fix SHA: 6ce9376cfbe4412fba926622529fda5797f97a41. Date 2026-10-28.
+
+Prerequisite that the bare command does NOT do for you: 'pnpm --filter @rakazo/db generate' and
+'pnpm --filter @rakazo/db exec prisma migrate deploy' against DATABASE_URL. Without migrate deploy
+the first attempt at this group reported 12 failed files / 24 failed tests with
+'The table public.organization does not exist in the current database'. That is an environment
+gap, not a regression, and it is NOT counted as a red for the target defect. After migrate deploy
+the same command is green below.
+
+$ pnpm test:postgres
+
+ [32m✓[39m packages/db/src/task-instructions.postgres.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 1283[2mms[22m[39m
+ [32m✓[39m packages/db/src/manual-retry.postgres.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 1403[2mms[22m[39m
+ [32m✓[39m packages/db/src/cancel-terminal.postgres.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1321[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/message-group.postgres.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 1321[2mms[22m[39m
+(node:71094) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m packages/db/src/execution-contract.postgres.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1484[2mms[22m[39m
+ [32m✓[39m packages/db/src/outbound-drafts.postgres.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1055[2mms[22m[39m
+ [32m✓[39m packages/db/src/avatar-changes.postgres.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1337[2mms[22m[39m
+     [33m[2m✓[22m[39m retains at most 50 visible records while keeping Bot dedup tombstones [33m 478[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps a metadata-only Bot operation tombstone after 50 later changes [33m 417[2mms[22m[39m
+ [32m✓[39m packages/db/src/session-admission.postgres.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 982[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/run-budget-enforcement.postgres.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 917[2mms[22m[39m
+ [32m✓[39m apps/api/src/thread-target.postgres.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 869[2mms[22m[39m
+ [32m✓[39m packages/db/src/session-checkpoint.postgres.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 841[2mms[22m[39m
+ [32m✓[39m packages/db/src/wait-timeouts.postgres.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 685[2mms[22m[39m
+ [32m✓[39m packages/db/src/run-plans.postgres.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 845[2mms[22m[39m
+ [32m✓[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 783[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/session-checkpoint-recovery.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 688[2mms[22m[39m
+ [32m✓[39m packages/db/src/avatar-activity.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 643[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/session-checkpoint-lost-input.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 700[2mms[22m[39m
+     [33m[2m✓[22m[39m releases the admission after rebuilding the lost input request, and the answered card still resumes the checkpoint [33m 424[2mms[22m[39m
+ [32m✓[39m packages/db/src/repos-avatar.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 614[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/session-checkpoint-watermark.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 559[2mms[22m[39m
+ [32m✓[39m packages/db/src/card-interactions.postgres.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 552[2mms[22m[39m
+ [32m✓[39m apps/api/src/thread-execution-projection.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 530[2mms[22m[39m
+ [32m✓[39m apps/api/src/group-queries.postgres.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 500[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/lease-loss-recovery.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 457[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/executor-bot-directory.postgres.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 346[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/manual-retry-effects.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 334[2mms[22m[39m
+ [32m✓[39m packages/db/src/avatar-migration.postgres.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 289[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/realtime.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 253[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/job-reconciler.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 32[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m51 passed[39m[22m[90m (51)[39m
+[2m      Tests [22m [1m[32m454 passed[39m[22m[90m (454)[39m
+[2m   Start at [22m 01:40:29
+[2m   Duration [22m 101.51s[2m (transform 2.39s, setup 147ms, import 27.19s, tests 69.12s, environment 3ms)[22m
+
+exit=0
