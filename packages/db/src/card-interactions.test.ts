@@ -462,18 +462,168 @@ describe("CARD-01 thread card surface", () => {
     expect(surface.displayBlocks.map((block) => block.kind)).toEqual([
       "markdown",
       "chart",
+      "table",
       "media",
       "media",
       "task_status",
       "task_status",
+      "collection",
     ]);
-    expect(surface.displayBlocks[4]).toMatchObject({
+    expect(surface.displayBlocks[5]).toMatchObject({
       kind: "task_status",
       status: "completed",
       source: { messageId: "message-1", runId: "run-1" },
     });
+    expect(surface.displayBlocks[2]).toMatchObject({
+      kind: "table",
+      columns: [{ label: "x" }],
+      rows: [["1"]],
+    });
+    expect(surface.displayBlocks[7]).toMatchObject({
+      kind: "collection",
+      items: [{ label: "A", value: "B" }],
+    });
     expect(surface.interactions).toEqual([]);
     expect(surface.attention).toEqual([]);
+  });
+
+  it("keeps the cloud-agent destination link on the task_status card", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "cloud_agent",
+            agentId: "cloud-1",
+            title: "Remote fix",
+            status: "finished",
+            url: "https://cloud.example.test",
+            prUrl: "https://github.example.test/pr/42",
+          },
+          {
+            kind: "cloud_agent",
+            agentId: "cloud-2",
+            title: "Insecure link",
+            status: "running",
+            url: "http://cloud.example.test",
+          },
+        ]),
+      ],
+    });
+    expect(
+      surface.displayBlocks.map((block) =>
+        block.kind === "task_status" ? (block.destination ?? null) : null,
+      ),
+    ).toEqual(["https://github.example.test/pr/42", null]);
+  });
+
+  it("prefers the subagent result over stale progress in task_status summaries", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          {
+            kind: "subagent",
+            agentId: "agent-1",
+            name: "Researcher",
+            task: "Find",
+            status: "completed",
+            progress: "Still working",
+            result: "Final answer",
+          },
+          {
+            kind: "subagent",
+            agentId: "agent-2",
+            name: "Summarizer",
+            task: "Recap",
+            status: "running",
+            progress: "Halfway",
+          },
+        ]),
+      ],
+    });
+    expect(
+      surface.displayBlocks.map((block) => (block.kind === "task_status" ? block.summary : null)),
+    ).toEqual(["Final answer", "Halfway"]);
+  });
+
+  it("maps HTML, document and voice data to read-only display blocks", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message(
+          [
+            {
+              kind: "file",
+              artifactId: "report-1",
+              mimeType: "text/html",
+              name: "report.html",
+              size: 10,
+            },
+            {
+              kind: "file",
+              artifactId: "doc-1",
+              mimeType: "text/markdown",
+              name: "brief.md",
+              size: 20,
+            },
+            {
+              kind: "file",
+              artifactId: "pdf-1",
+              mimeType: "application/pdf",
+              name: "brief.pdf",
+              size: 30,
+            },
+          ],
+          { id: "message-files", role: "bot" },
+        ),
+        message(
+          [
+            {
+              kind: "voice_call",
+              callId: "call-1",
+              title: "Weather check",
+              farewell: "Bye",
+            },
+          ],
+          { id: "message-voice", role: "bot", callId: "call-1", createdAt },
+        ),
+        message([{ kind: "text", text: "The weather is sunny." }], {
+          id: "message-user",
+          role: "user",
+          callId: "call-1",
+        }),
+      ],
+    });
+    expect(surface.displayBlocks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "html",
+          blockId: "message-files:0:file",
+          artifactId: "report-1",
+          sandboxed: true,
+        }),
+        expect.objectContaining({
+          kind: "page",
+          blockId: "message-files:1:file",
+          pageId: "doc-1",
+          available: true,
+        }),
+        expect.objectContaining({
+          kind: "page",
+          blockId: "message-files:2:file",
+          pageId: "pdf-1",
+          available: true,
+        }),
+        expect.objectContaining({
+          kind: "voice",
+          blockId: "message-voice:voice",
+          artifactId: null,
+          durationMs: expect.any(Number),
+          transcript: "The weather is sunny.",
+        }),
+      ]),
+    );
   });
 
   it("derives takeover/return only from current Run and Computer facts", () => {
@@ -690,5 +840,50 @@ describe("CARD-01 thread card surface", () => {
         runId: "run-1",
       }),
     ).toEqual([expect.objectContaining({ kind: "markdown", text: "Result" })]);
+  });
+});
+
+describe("projection limits keep the legacy block", () => {
+  it("skips the collection projection when the lines exceed the display schema", () => {
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          { kind: "card", lines: [{ k: "A", v: "short" }] },
+          {
+            kind: "card",
+            lines: Array.from({ length: 201 }, (_, index) => ({ k: `K${index}`, v: "v" })),
+          },
+          { kind: "card", lines: [{ k: "A", v: "x".repeat(2_001) }] },
+        ]),
+      ],
+    });
+    expect(surface.displayBlocks.map((block) => block.kind)).toEqual(["collection"]);
+    expect(surface.displayBlocks[0]).toMatchObject({ items: [{ label: "A", value: "short" }] });
+  });
+
+  it("skips a chart data table that would silently drop rows or cells", () => {
+    const chart = (data: unknown[]) => ({
+      kind: "chart" as const,
+      name: "Trend",
+      spec: { title: "Trend", marks: [] },
+      data,
+    });
+    const surface = projectThreadCardSurface({
+      ...baseInput,
+      messages: [
+        message([
+          chart([{ day: "Mon", count: 3 }]),
+          chart(Array.from({ length: 10_001 }, (_, index) => ({ day: `D${index}`, count: index }))),
+          chart([{ day: "Mon", note: "x".repeat(4_001) }]),
+        ]),
+      ],
+    });
+    expect(surface.displayBlocks.map((block) => block.kind)).toEqual([
+      "chart",
+      "table",
+      "chart",
+      "chart",
+    ]);
   });
 });

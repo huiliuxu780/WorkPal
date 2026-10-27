@@ -3,7 +3,7 @@ import type { MessageBlock } from "@rakazo/contracts";
 import { abortableDelay } from "@rakazo/core";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { BuiCard, SuccessPop } from "../../components/ai/primitives";
 import { type ArtifactTarget, decodeArtifactBase64 } from "../../lib/artifact-open";
 import { chartViewport } from "../../lib/chart-viewport";
@@ -239,7 +239,7 @@ export function AppConnectCard({
   );
 }
 
-function ChartCanvas({
+export function ChartCanvas({
   spec,
   data,
   width,
@@ -455,10 +455,12 @@ export function ChartBlockView({
   name,
   spec,
   data,
+  dataTable,
 }: {
   name: string;
   spec: Record<string, unknown>;
   data: unknown[];
+  dataTable?: ReactNode;
 }) {
   const { t } = useLingui();
   const [expanded, setExpanded] = useState(false);
@@ -509,6 +511,7 @@ export function ChartBlockView({
             width={expandedViewport.width}
             height={expandedViewport.height}
           />
+          {dataTable ? <div className="mt-6">{dataTable}</div> : null}
         </DialogContent>
       </Dialog>
     </>

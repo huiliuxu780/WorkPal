@@ -144,7 +144,11 @@ async function main() {
     ) {
       process.env.ROUNDTABLE_PRIVATE_PAIR_ENABLED = "true";
     }
-    if (!integration && specSelects(e2eSpec, "card-ui-interactions.spec.ts")) {
+    if (
+      !integration &&
+      (specSelects(e2eSpec, "card-ui-interactions.spec.ts") ||
+        specSelects(e2eSpec, "card-display-content.spec.ts"))
+    ) {
       process.env.CARDS_UNIFIED_V2_ENABLED = "true";
     }
     process.env.CI = "1";
@@ -286,6 +290,246 @@ async function main() {
       getRequestListener(async (request) => {
         if (new URL(request.url).pathname === "/__e2e/emails") {
           return Response.json(email.sent, { headers: { "cache-control": "no-store" } });
+        }
+        if (
+          new URL(request.url).pathname === "/__e2e/display-blocks" &&
+          request.method === "POST"
+        ) {
+          // CARD-01C visual fixture: persist real message blocks and artifacts
+          // so the server projection produces every DisplayBlock kind.
+          const input = (await request.json()) as {
+            botId?: string;
+            threadId?: string;
+            imageId?: string;
+            fileId?: string;
+            htmlId?: string;
+            pageId?: string;
+            probeText?: string;
+            narrationImageId?: string;
+            toolProbeImageId?: string;
+            toolProbeText?: string;
+          };
+          if (
+            !input.botId ||
+            !input.threadId ||
+            !input.imageId ||
+            !input.fileId ||
+            !input.htmlId ||
+            !input.pageId
+          ) {
+            return Response.json({ error: "botId, threadId and artifacts are required" }, { status: 400 });
+          }
+          const bot = await handles.prisma.bot.findUnique({ where: { id: input.botId } });
+          const thread = await handles.prisma.thread.findFirst({
+            where: { id: input.threadId, botId: input.botId },
+          });
+          if (!bot || !thread || thread.spaceId !== bot.spaceId || thread.userId !== bot.userId) {
+            return Response.json({ error: "bot thread not found" }, { status: 404 });
+          }
+          const head = await handles.prisma.message.aggregate({
+            where: { threadId: thread.id },
+            _max: { seq: true },
+          });
+          let seq = (head._max.seq ?? 0) + 1;
+          const longText = Array.from(
+            { length: 14 },
+            (_, index) => `Line ${index + 1}: the weekly report records a measurable change.`,
+          ).join("\n");
+          const displayMessage = await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "bot",
+              botId: bot.id,
+              blocks: [
+                { kind: "text", text: `Weekly report\n\n${longText}` },
+                {
+                  kind: "chart",
+                  name: "Weekly trend",
+                  spec: {
+                    title: "Weekly trend",
+                    marks: [
+                      {
+                        type: "dot",
+                        options: { x: "day", y: "count", fill: "currentColor", r: 8 },
+                      },
+                    ],
+                  },
+                  data: [
+                    { day: "Mon", count: 3 },
+                    { day: "Tue", count: 5 },
+                  ],
+                },
+                {
+                  kind: "card",
+                  lines: [
+                    { k: "Owner", v: "Ada" },
+                    { k: "Status", v: "Ready" },
+                  ],
+                },
+                {
+                  kind: "image",
+                  artifactId: input.imageId,
+                  mimeType: "image/png",
+                  name: "chart.png",
+                },
+                {
+                  kind: "file",
+                  artifactId: input.fileId,
+                  mimeType: "text/plain",
+                  name: "notes.txt",
+                  size: 5,
+                },
+                {
+                  kind: "file",
+                  artifactId: input.htmlId,
+                  mimeType: "text/html",
+                  name: "report.html",
+                  size: 64,
+                },
+                {
+                  kind: "file",
+                  artifactId: input.pageId,
+                  mimeType: "text/markdown",
+                  name: "brief.md",
+                  size: 32,
+                },
+                {
+                  kind: "subagent",
+                  agentId: "display-agent",
+                  name: "Researcher",
+                  task: "Collect the weekly metrics",
+                  status: "completed",
+                  // A result that wraps far beyond the three-line clamp so the
+                  // task card must offer the full-text entry.
+                  result: longText,
+                },
+                {
+                  kind: "cloud_agent",
+                  agentId: "display-cloud-agent",
+                  title: "Remote fix",
+                  status: "finished",
+                  url: "https://cloud.example.test/agents/1",
+                  prUrl: "https://github.example.test/demo/pull/9",
+                },
+              ] as never,
+            },
+          });
+          const callId = "display-call";
+          if (input.narrationImageId) {
+            // A short bot text plus an image: after the image is suppressed by
+            // its media card, the message qualifies as narration, so the
+            // projected card must render from the narration path too.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  { kind: "text", text: "Here is the chart capture you asked for." },
+                  {
+                    kind: "image",
+                    artifactId: input.narrationImageId,
+                    mimeType: "image/png",
+                    name: "chart.png",
+                  },
+                ] as never,
+              },
+            });
+          }
+          if (input.toolProbeImageId) {
+            // Steps plus an image: once the image is suppressed by its media
+            // card, only tool activity remains, so the card must survive the
+            // tool-only narration paths with the preference on and off.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  {
+                    kind: "steps",
+                    steps: [{ label: "Read the chart", count: 1 }],
+                    durationMs: 1_200,
+                  },
+                  {
+                    kind: "image",
+                    artifactId: input.toolProbeImageId,
+                    mimeType: "image/png",
+                    name: "probe.png",
+                  },
+                ] as never,
+              },
+            });
+          }
+          if (input.toolProbeText) {
+            // Steps plus a long text: the text folds into its markdown card
+            // and only the steps remain visible.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  {
+                    kind: "steps",
+                    steps: [{ label: "Summarize the report", count: 1 }],
+                    durationMs: 900,
+                  },
+                  { kind: "text", text: `Tool probe\n\n${longText}` },
+                ] as never,
+              },
+            });
+          }
+          if (input.probeText) {
+            // A separate bot message so the viewport-reflow regression gets a
+            // markdown card whose fold decision flips on narrow viewports.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [{ kind: "text", text: input.probeText }] as never,
+              },
+            });
+          }
+          await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "user",
+              blocks: [{ kind: "text", text: "The weather is sunny." }],
+              clientNonce: `call:${callId}:user`,
+            },
+          });
+          await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "bot",
+              botId: bot.id,
+              blocks: [{ kind: "text", text: "Sunny and 22 degrees." }],
+              clientNonce: `call:${callId}:reply`,
+            },
+          });
+          await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "bot",
+              botId: bot.id,
+              blocks: [{ kind: "voice_call", title: "Weather check", farewell: "Bye" }],
+              clientNonce: `call:${callId}:marker`,
+            },
+          });
+          return Response.json(
+            { messageId: displayMessage.id },
+            { headers: { "cache-control": "no-store" } },
+          );
         }
         if (
           new URL(request.url).pathname === "/__e2e/outbound-draft" &&

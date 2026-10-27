@@ -12,6 +12,7 @@ import { ExecutionActivity } from "../../components/ai/ExecutionActivity";
 import { ExecutionShell, FOCUSABLE_CONTROL } from "../../components/ai/ExecutionShell";
 import { InterventionRegion } from "../../components/ai/InterventionRegion";
 import { InteractionRegion } from "../../components/ai/interactions/InteractionRegion";
+import { DisplayBlockList } from "../../components/ai/display/DisplayBlockView";
 import { RunPlanDisclosure } from "../../components/ai/RunPlanDisclosure";
 import { RunResult } from "../../components/ai/RunResult";
 import { RunStepsDisclosure } from "../../components/ai/RunStepsDisclosure";
@@ -844,7 +845,21 @@ export function useExecutionTranscript({
               {t`Load earlier activity`}
             </button>
           ) : null}
-          {detachedResult ? <RunResult result={detachedResult} /> : null}
+          {detachedResult ? (
+            <>
+              <RunResult result={detachedResult} />
+              {detail?.displayBlocks?.length ? (
+                <div className="ms-1 my-2">
+                  {/* Markdown mirrors the text RunResult already shows; only
+                      non-text projections add information here. */}
+                  <DisplayBlockList
+                    blocks={detail.displayBlocks.filter((block) => block.kind !== "markdown")}
+                    target={artifactTarget}
+                  />
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </ExecutionShell>
       );
     });

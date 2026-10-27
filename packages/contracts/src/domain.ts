@@ -1031,6 +1031,13 @@ export const ThreadMessagePageSchema = z.object({
    * relying on the snapshot's recent-Run window. Absent from older servers.
    */
   executions: z.array(ExecutionSummarySchema).optional(),
+  /**
+   * CARD-01C display projection for this page's messages, matching the
+   * snapshot's recent window so paginated history renders identically.
+   * Present only when the server-side cards_unified_v2 gate is enabled;
+   * absent on older servers and gate-off deployments.
+   */
+  displayBlocks: z.array(DisplayBlockSchema).optional(),
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
 

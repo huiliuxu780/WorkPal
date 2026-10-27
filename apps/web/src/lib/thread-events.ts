@@ -25,6 +25,7 @@ import {
   mergeThreadHistory,
   prependThreadHistoryPage,
   progressMessageId,
+  reconcileCloudAgentDisplayBlocks,
   reduceActivity,
   reduceLiveMessageBlocks,
   runFailureError,
@@ -692,10 +693,12 @@ function reduceThreadSnapshotBase(
   }
 
   if (event.type === "thread.cloud_agent") {
+    const messages = updateCloudAgentMessages(prev.messages, event.payload ?? {});
     return {
       ...prev,
       cursor: event.seq,
-      messages: updateCloudAgentMessages(prev.messages, event.payload ?? {}),
+      messages,
+      displayBlocks: reconcileCloudAgentDisplayBlocks(messages, prev.displayBlocks),
     };
   }
   if (event.type === "thread.message.created" || event.type === "thread.message.updated") {

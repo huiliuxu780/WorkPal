@@ -60,6 +60,7 @@ import {
   cancelEventPayload,
   cancelPolicyFor,
   cardMessageFact,
+  interactionViewsFromMessages,
   loadBotComputerFacts,
   loadOriginControlFacts,
   projectThreadCardSurface,
@@ -1139,7 +1140,7 @@ export async function threadSnapshot(
  * the only message→Run path.
  */
 export async function threadMessagePage(
-  deps: { prisma: PrismaClient },
+  deps: { prisma: PrismaClient; cardsUnifiedV2?: boolean },
   target: ThreadTarget,
   input: {
     before?: number;
@@ -1165,7 +1166,18 @@ export async function threadMessagePage(
       messageIds: page.messages.map((message) => message.id),
       runIds: page.messages.flatMap((message) => (message.runId ? [message.runId] : [])),
     });
-    return { ...page, executions };
+    // CARD-01C: a history page carries the same display projection as the
+    // snapshot's recent window, so paginated history renders identically.
+    const displayBlocks = deps.cardsUnifiedV2
+      ? interactionViewsFromMessages(
+          page.messages.map((message) => cardMessageFact(message, target.spaceId)),
+        ).displayBlocks
+      : undefined;
+    return {
+      ...page,
+      executions,
+      ...(displayBlocks && displayBlocks.length > 0 ? { displayBlocks } : {}),
+    };
   });
 }
 

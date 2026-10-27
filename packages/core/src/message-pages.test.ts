@@ -1,4 +1,4 @@
-import type { ExecutionSummary } from "@rakazo/contracts";
+import type { DisplayBlock, ExecutionSummary } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
 import {
   mergeExecutionsByRun,
@@ -12,7 +12,12 @@ type Snapshot = {
   messages: Message[];
   olderCursor: number | null;
   executions?: ExecutionSummary[];
+  displayBlocks?: DisplayBlock[];
 };
+
+function displayBlock(blockId: string, text = "card text"): DisplayBlock {
+  return { kind: "markdown", blockId, text } as DisplayBlock;
+}
 
 function summary(runId: string, rev: number, title = runId): ExecutionSummary {
   return {
@@ -65,5 +70,51 @@ describe("mergeExecutionsByRun", () => {
     // A refresh without a page (older server omits the field) must not erase it.
     const refreshed = mergeThreadHistory(loaded, { ...snapshot([{ id: "m10", seq: 10 }], [summary("run-live", 1)]), olderCursor: null }, true);
     expect(refreshed.executions?.map((item) => item.runId).sort()).toEqual(["run-live", "run-page"]);
+  });
+});
+
+describe("displayBlocks merge", () => {
+  it("keeps page display blocks across a window-only refresh and de-dupes by blockId", () => {
+    const base: Snapshot = {
+      threadId: "thread-1",
+      messages: [{ id: "m9", seq: 9 }],
+      olderCursor: 8,
+      displayBlocks: [displayBlock("m9:0:markdown")],
+    };
+    const page = {
+      threadId: "thread-1",
+      messages: [{ id: "m2", seq: 2 }],
+      olderCursor: null,
+      displayBlocks: [displayBlock("m2:0:markdown")],
+    };
+    const loaded = prependThreadHistoryPage(base, page)!;
+    expect(loaded.displayBlocks?.map((block) => block.blockId)).toEqual([
+      "m9:0:markdown",
+      "m2:0:markdown",
+    ]);
+
+    // A refresh without a page (older server omits the field) must not erase it.
+    const refreshed = mergeThreadHistory(
+      loaded,
+      { ...snapshot([{ id: "m10", seq: 10 }]), olderCursor: null },
+      true,
+    );
+    expect(refreshed.displayBlocks?.map((block) => block.blockId)).toEqual([
+      "m9:0:markdown",
+      "m2:0:markdown",
+    ]);
+  });
+
+  it("prefers the fresher projection when both sides carry the same blockId", () => {
+    const recent = {
+      ...snapshot([{ id: "m9", seq: 9 }]),
+      displayBlocks: [displayBlock("m9:0:markdown", "fresh")],
+    };
+    const previous = {
+      ...snapshot([{ id: "m8", seq: 8 }]),
+      displayBlocks: [displayBlock("m9:0:markdown", "stale")],
+    };
+    const merged = mergeThreadHistory(previous, recent, true);
+    expect(merged.displayBlocks).toEqual([displayBlock("m9:0:markdown", "fresh")]);
   });
 });

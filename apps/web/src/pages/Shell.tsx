@@ -68,6 +68,7 @@ import {
   stripMentionToken,
   truncateSlashDescription,
   userVisibleMessages,
+  voiceDisplayBlockFromGroup,
   withLiveStreamingProgress,
 } from "@rakazo/core";
 import {
@@ -150,6 +151,13 @@ import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { MessageText } from "../components/ai/AgentMentionText";
+import {
+  DisplayBlockList,
+  DisplayBlockView,
+  displayBlockMessageIndex,
+  groupDisplayBlocksByMessage,
+  VoiceDisplay,
+} from "../components/ai/display/DisplayBlockView";
 import { PeerReceiptRow } from "../components/ai/PeerReceiptRow";
 import { GroupDestinationReceipt } from "../components/ai/GroupDestinationReceipt";
 import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
@@ -3779,6 +3787,7 @@ export function ShellPage() {
             loadingOlder={loadingOlder}
             interventions={activeSnapshot?.interventions}
             interactions={activeSnapshot?.interactions}
+            displayBlocks={activeSnapshot?.displayBlocks}
             cardsUnifiedV2={activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true}
             conversationName={
               inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
@@ -4962,6 +4971,7 @@ export const Transcript = memo(function Transcript({
   loadingOlder,
   interventions,
   interactions,
+  displayBlocks,
   cardsUnifiedV2,
   conversationName,
   groupNameOf,
@@ -5014,6 +5024,8 @@ export const Transcript = memo(function Transcript({
   interventions?: ThreadSnapshot["interventions"];
   /** CARD-01A strict projection; present only when the server gate is on. */
   interactions?: ThreadSnapshot["interactions"];
+  /** CARD-01C display projection; present only when the server gate is on. */
+  displayBlocks?: ThreadSnapshot["displayBlocks"];
   cardsUnifiedV2?: boolean;
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
@@ -5057,6 +5069,33 @@ export const Transcript = memo(function Transcript({
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  const displayBlocksByMessage = useMemo(
+    () => groupDisplayBlocksByMessage(displayBlocks ?? []),
+    [displayBlocks],
+  );
+  const markdownByMessage = useMemo(() => {
+    const map = new Map<string, ThreadSnapshot["displayBlocks"]>();
+    if (cardsUnifiedV2) {
+      for (const block of displayBlocks ?? []) {
+        if (block.kind !== "markdown") continue;
+        const messageId = block.blockId.slice(0, block.blockId.indexOf(":"));
+        const list = map.get(messageId) ?? [];
+        list.push(block);
+        map.set(messageId, list);
+      }
+    }
+    return map;
+  }, [displayBlocks, cardsUnifiedV2]);
+  const [markdownHeights, setMarkdownHeights] = useState<Map<string, number>>(new Map());
+  const onMarkdownMeasure = useCallback((blockId: string, height: number) => {
+    const rounded = Math.round(height);
+    setMarkdownHeights((prev) => {
+      if (prev.get(blockId) === rounded) return prev;
+      const next = new Map(prev);
+      next.set(blockId, rounded);
+      return next;
+    });
+  }, []);
   // UX-01A: the execution region (anchor merge, server summaries, expansion,
   // detail cache, Interventions, execution-nav return focus and the per-anchor
   // ExecutionShell rendering) is owned by useExecutionTranscript; messageById
@@ -5382,6 +5421,33 @@ export const Transcript = memo(function Transcript({
         ) : null}
         {groupVoiceChats(reactionView.visibleMessages).map((item) => {
           if (item.kind === "voiceChat") {
+            if (cardsUnifiedV2) {
+              // Recompute from the merged group: per-page projections only
+              // cover their own window, so trusting one would drop the turns
+              // loaded from older pages. The artifactId, when audio exists,
+              // is the only part taken from the projection.
+              const projectedArtifactId = item.messages
+                .flatMap((message) => displayBlocksByMessage.get(message.id) ?? [])
+                .find((block) => block.kind === "voice");
+              const voiceBlock = voiceDisplayBlockFromGroup(
+                item,
+                projectedArtifactId?.kind === "voice" ? projectedArtifactId.artifactId : null,
+              );
+              if (voiceBlock) {
+                return (
+                  <VoiceDisplay key={item.key} block={voiceBlock} target={artifactTarget} group={item} />
+                );
+              }
+              // The transcript exceeds the display schema's cap; keep the
+              // complete legacy card instead of a clipped projection.
+              return (
+                <VoiceChatCard
+                  key={item.key}
+                  group={item}
+                  revealMessageId={scrollRequest?.messageId}
+                />
+              );
+            }
             return (
               <VoiceChatCard
                 key={item.key}
@@ -5466,17 +5532,50 @@ export const Transcript = memo(function Transcript({
             );
           }
           const suppressAsk = coveredAsks.has(message.id);
-          const visibleBlocks = suppressAsk
-            ? message.blocks.filter(
-                (block) =>
-                  block.kind !== "ask" &&
-                  (!cardsUnifiedV2 ||
-                    (block.kind !== "app_connect" &&
-                      block.kind !== "mcp_approval" &&
-                      block.kind !== "skill_draft")),
-              )
-            : message.blocks;
-          const showMessage = messageHasVisibleBlocks(visibleBlocks, showToolActivity);
+          // Only a bot text whose rendered bubble is taller than the card
+          // fold threshold becomes the markdown display card; ordinary
+          // replies stay in the bubble. Measuring the real render also covers
+          // single-paragraph text that wraps tall on narrow viewports. Every
+          // other projected kind replaces the legacy block it derived from.
+          const messageDisplayBlocks = cardsUnifiedV2
+            ? (displayBlocksByMessage.get(message.id) ?? [])
+            : [];
+          const longMarkdown =
+            message.role === "bot"
+              ? messageDisplayBlocks.find(
+                  (block) =>
+                    block.kind === "markdown" &&
+                    (markdownHeights.get(block.blockId) ?? 0) > LONG_MARKDOWN_HEIGHT_PX,
+                )
+              : undefined;
+          const selectedDisplayBlocks = messageDisplayBlocks.filter(
+            (block) => block.kind !== "markdown" || block === longMarkdown,
+          );
+          // Both suppression predicates key off the original message.blocks
+          // indexes: filtering covered interactions first would shift the
+          // indexes the display blocks point at and remove the wrong block.
+          const hiddenIndexes = new Set<number>();
+          if (suppressAsk) {
+            message.blocks.forEach((block, index) => {
+              if (
+                block.kind === "ask" ||
+                (cardsUnifiedV2 &&
+                  (block.kind === "app_connect" ||
+                    block.kind === "mcp_approval" ||
+                    block.kind === "skill_draft"))
+              ) {
+                hiddenIndexes.add(index);
+              }
+            });
+          }
+          for (const block of selectedDisplayBlocks) {
+            const index = displayBlockMessageIndex(block.blockId, message.id);
+            if (index !== null) hiddenIndexes.add(index);
+          }
+          const visibleBlocks = message.blocks.filter((_, index) => !hiddenIndexes.has(index));
+          const showMessage =
+            messageHasVisibleBlocks(visibleBlocks, showToolActivity) ||
+            selectedDisplayBlocks.length > 0;
           if (!showMessage) {
             // The bubble is invisible (an activity-only live progress
             // placeholder, or a steps-only message with tool activity off),
@@ -5537,6 +5636,9 @@ export const Transcript = memo(function Transcript({
                       artifactTarget={artifactTarget}
                       message={message}
                       blocks={visibleBlocks}
+                      displayBlocks={selectedDisplayBlocks}
+                      markdownCandidates={markdownByMessage.get(message.id)}
+                      onMarkdownMeasure={onMarkdownMeasure}
                       canAnswer
                       suppressAsk={suppressAsk}
                       onOpenBot={onOpenBot}
@@ -6807,12 +6909,50 @@ function GroupReceiptNavigation({
   );
 }
 
+/** A bot bubble text taller than this (the card fold cap, max-h-40) is long. */
+const LONG_MARKDOWN_HEIGHT_PX = 160;
+
+/**
+ * Reports the natural rendered height of an in-bubble bot text so the parent
+ * can decide whether the text becomes a folded markdown display card. A
+ * ResizeObserver re-reports on reflow, so narrow viewports that wrap a
+ * single paragraph into a tall column are covered.
+ */
+function MeasuredBotText({
+  text,
+  blockId,
+  onMeasure,
+}: {
+  text: string;
+  blockId: string;
+  onMeasure: (blockId: string, height: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const report = () => onMeasure(blockId, el.scrollHeight);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [blockId, onMeasure]);
+  return (
+    <div ref={ref}>
+      <ChatMarkdown>{text}</ChatMarkdown>
+    </div>
+  );
+}
+
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
   suppressAsk = false,
   message,
   blocks,
+  displayBlocks,
+  markdownCandidates,
+  onMarkdownMeasure,
   onAnswer,
   onOpenBot,
   speakerName,
@@ -6837,6 +6977,11 @@ const MessageView = memo(function MessageView({
   message: ThreadMessage;
   /** Parent-filtered blocks; defaults to the message's own blocks. */
   blocks?: ThreadMessage["blocks"];
+  /** CARD-01C display projection for this message, after legacy suppression. */
+  displayBlocks?: ThreadSnapshot["displayBlocks"];
+  /** CARD-01C markdown candidates whose source text still renders in-bubble. */
+  markdownCandidates?: ThreadSnapshot["displayBlocks"];
+  onMarkdownMeasure?: (blockId: string, height: number) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
   speakerName?: string;
@@ -6915,12 +7060,30 @@ const MessageView = memo(function MessageView({
     </>
   );
   if (isNarration) {
-    if (visibleNarrationBlocks.length === 0) return null;
+    if (visibleNarrationBlocks.length === 0) {
+      // Every narration block was suppressed (tool activity hidden and the
+      // remaining text became its markdown card). Keep the projected cards
+      // instead of dropping the message entirely.
+      if (!displayBlocks?.length) return null;
+      return (
+        <>
+          {messageContext}
+          <div className="mt-2">
+            <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+          </div>
+        </>
+      );
+    }
     if (isToolOnlyNarration(messageBlocks, showToolActivity)) {
       return (
         <>
           {messageContext}
           <ToolOnlyNarration blocks={visibleNarrationBlocks} live={isLive} />
+          {displayBlocks?.length ? (
+            <div className="mt-2">
+              <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+            </div>
+          ) : null}
         </>
       );
     }
@@ -6958,12 +7121,29 @@ const MessageView = memo(function MessageView({
                 );
               }
               if (block.kind === "text" || block.kind === "progress") {
+                const markdownCandidate =
+                  block.kind === "text"
+                    ? (markdownCandidates ?? []).find(
+                        (candidate) =>
+                          candidate.kind === "markdown" && candidate.text === block.text,
+                      )
+                    : undefined;
                 return (
                   <div
                     key={i}
                     data-quote-message-id={block.kind === "text" ? quoteMessageId : undefined}
                   >
-                    <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
+                    {markdownCandidate && onMarkdownMeasure ? (
+                      <MeasuredBotText
+                        text={block.text}
+                        blockId={markdownCandidate.blockId}
+                        onMeasure={onMarkdownMeasure}
+                      />
+                    ) : (
+                      <ChatMarkdown streaming={block.kind === "progress"}>
+                        {block.text}
+                      </ChatMarkdown>
+                    )}
                   </div>
                 );
               }
@@ -6981,6 +7161,11 @@ const MessageView = memo(function MessageView({
             ) : null}
           </div>
         </div>
+        {displayBlocks?.length ? (
+          <div className="mt-2">
+            <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+          </div>
+        ) : null}
       </>
     );
   }
@@ -7268,6 +7453,19 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text") {
+          const markdownCandidate = (markdownCandidates ?? []).find(
+            (candidate) => candidate.kind === "markdown" && candidate.text === block.text,
+          );
+          const markdownNode = markdownCandidate && onMarkdownMeasure ? (
+            <MeasuredBotText
+              key={markdownCandidate.blockId}
+              text={block.text}
+              blockId={markdownCandidate.blockId}
+              onMeasure={onMarkdownMeasure}
+            />
+          ) : (
+            <ChatMarkdown key={`md-${i}`}>{block.text}</ChatMarkdown>
+          );
           return (
             <div
               key={i}
@@ -7278,9 +7476,7 @@ const MessageView = memo(function MessageView({
                 className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
                 dir="auto"
               >
-                <div data-quote-message-id={quoteMessageId}>
-                  <ChatMarkdown>{block.text}</ChatMarkdown>
-                </div>
+                <div data-quote-message-id={quoteMessageId}>{markdownNode}</div>
                 {voiceReady ? (
                   <button
                     type="button"
@@ -7374,6 +7570,11 @@ const MessageView = memo(function MessageView({
         }
         return null;
       })}
+      {displayBlocks?.length ? (
+        <div className="mt-2">
+          <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+        </div>
+      ) : null}
     </>
   );
 });
