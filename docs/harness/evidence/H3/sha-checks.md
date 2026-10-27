@@ -46,6 +46,26 @@ gh run list --commit <sha> --json databaseId,event,status,conclusion,createdAt
 - 同一 SHA 的多个 attempt 只认最终 attempt。#147 分支记录了 `runtime-jar` 的既有 flake（`docs/roundtable/audits/evidence/runtime-jar-flake/`，同 SHA attempt 1–5 红、attempt 6 绿），说明 attempt 序号必须一起读。
 - 修复推送后，旧 head 的证据（截图、日志、red/green）如果覆盖的行为已改变，必须重跑，不能沿用。
 
+## 本 PR 自己的一手案例：同 SHA 四个 attempt
+
+H3 交付 head `23f42b24521fd738b26f80cf5320cabd805deac1`，run [40547603862](https://github.com/huiliuxu780/WorkPal/actions/runs/40547603862)。因为改了 `.github/workflows/ci.yml` 与 `package.json`，选择器强制 full，`SELECT_RESULT` 里 9 个 job 全部 selected。
+
+| attempt | 触发方式 | 结果 |
+| --- | --- | --- |
+| 1 | 首次 PR run | `runtime-jar` fail（`AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession:253`，126 个 Java 测试里 1 个）→ `agentscope`/`worker-chain` skipped → `CI result` fail |
+| 2 | `gh run rerun --failed` | `runtime-jar` pass，但 `agentscope` fail（`agentscope-untrusted-content.integration.test.ts` 套件级失败：`Tests 55 passed \| 6 skipped`，**0 个测试失败**，错误 `AgentScopeSessionConflictError: Session already has an active run`）→ `CI result` fail |
+| 3 | `gh run rerun --failed` | `agentscope` 再次同样失败 → `CI result` fail |
+| 4 | `gh run rerun`（**完整重跑**，所有 job 同一 attempt） | 全部 pass：`CI result`、`select-checks`、`docs`、`harness`、`web`、`backend`、`db-postgres`、`runtime-jar`、`agentscope`(6m20s)、`worker-chain`(5m47s)、`agent-runtime-image`；`Daily web screenshots` skipped（PR 事件不请求它，符合 H3-02 修复后的预期）。run conclusion `success` |
+
+从这次真实经历得到的审核口径，比抽象规则更有用：
+
+1. **同 SHA 连续两次红不能直接判 flake**，但也不能直接判回归。要先看红的形态：attempt 2/3 的 `agentscope` 是**套件级**失败且 0 个测试失败（未处理错误，不是断言回归），attempt 1 的 `runtime-jar` 是 126 个里 1 个 Java 断言。
+2. **归因要用 diff 事实，不用猜测。** 本 head 相对 `a409140` 的改动分布是 `docs` 23、`scripts` 7、`.github` 2、`package.json` 1、`CONTRIBUTING.md` 1、`AGENTS.md` 1，`services/`、`packages/`、`apps/` 下**一个文件都没有**。因此 Java runtime 与 AgentScope 集成套件的失败不可能由本 head 的产品代码引起。命令：`git diff --name-only <base>..<head>`。
+3. **`--failed` 局部重跑会让不同 job 来自不同 attempt。** attempt 2/3 里 `agentscope` 用的是另一次 attempt 产出的 `agent-runtime-jar-<sha>` artifact；两次局部重跑都失败、而一次完整重跑全绿，说明"只重跑失败 job"本身会引入 attempt 混合状态。**结论：判定最终 head 要用一次所有相关 job 都在同一 attempt 内完成的 run**，局部重跑的绿灯或红灯都不能单独作为最终依据。
+4. **`CI result` 在这四次里都给出了正确判定**：attempt 1–3 因选中 job 失败而 fail，attempt 4 全绿而 pass；`Daily web screenshots` 在 PR 事件下 skipped 且没有把 `CI result` 拖红——这正是 H3-02 修复要保住的两侧行为，等于在真实 GitHub 上验证了它。
+
+注意这一段是**判定口径的案例**，不是"本 PR 最终 head 的 CI 已绿"的声明。把该记录提交进分支本身就会移动 head，所以 `23f42b2` 只是案例里的那个 head。审核时必须按上面四条口径，核对**实际最终 head** 自己的 run：所有相关 job 在同一 attempt 内完成、conclusion 逐项确认、被 skipped 的 job 能用选择器输出解释。
+
 ## 本项未做
 
 - 没有制造"旧 head 绿、新 head 红"的受控样例。原因：需要一个真实 PR 的两次推送，而本批不授权创建新 PR；上表两个真实 head 已能证明每个 head 各自一套 check run，机制部分由 `concurrency` 配置和 GitHub 的按 commit 评估语义覆盖。
