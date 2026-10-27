@@ -230,6 +230,48 @@ describe("AttentionQueue", () => {
     expect(document.querySelector('[data-testid="attention-load-more"]')).toBeNull();
   });
 
+  it("does not replay older pages as new notifications", async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) =>
+      item({ interactionId: `page-1-${index}`, stableId: `page-1-${index}` }),
+    );
+    list.mockResolvedValueOnce({ items: firstPage, total: 51, nextCursor: "cursor-1" });
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    await act(async () =>
+      (host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
+    );
+    list.mockResolvedValueOnce({
+      items: [item({ interactionId: "page-2-1", stableId: "page-2-1" })],
+      total: 51,
+      nextCursor: null,
+    });
+    await act(async () =>
+      (document.querySelector('[data-testid="attention-load-more"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    // The next poll reads page one again; its keys must still be known as
+    // already-seen even though page two was the last snapshot.
+    list.mockResolvedValueOnce({ items: firstPage, total: 51, nextCursor: "cursor-1" });
+    await act(async () => {
+      host.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
+    });
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+  });
+
   it("opens a row without submitting any decision", async () => {
     const onOpenItem = vi.fn();
     list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });

@@ -48,46 +48,59 @@ export function AttentionQueue({
   const onItemsRef = useRef(onItems);
   onItemsRef.current = onItems;
 
-  const notifyNewItems = useCallback((next: AttentionQueueItem[]) => {
-    const keys = new Set(next.map(attentionKey));
-    if (baseline.current === null) {
-      baseline.current = keys;
-      notified.current = new Set(keys);
-      return;
-    }
-    const fresh = next.filter((item) => !notified.current.has(attentionKey(item)));
-    for (const item of fresh) notified.current.add(attentionKey(item));
-    // Settled rows leave the set so a later revision can notify once again.
-    for (const key of [...notified.current]) {
-      if (!keys.has(key)) notified.current.delete(key);
-    }
-    if (fresh.length === 0) return;
-    if (typeof Notification === "undefined") return;
-    const target = activeTargetRef.current;
-    const foreground = (item: AttentionQueueItem) =>
-      document.visibilityState === "visible" &&
-      document.hasFocus() &&
-      ((item.conversationKind === "group" && target?.groupId === item.conversationId) ||
-        (item.conversationKind === "direct" && target?.botId === item.conversationId));
-    for (const item of fresh) {
-      if (foreground(item)) continue;
-      if (!notifyEnabledRef.current(item.source.botId ?? null)) continue;
-      if (Notification.permission !== "granted") continue;
-      try {
-        const notification = new Notification(notificationTitle(item), {
-          body: notificationBody(item),
-          tag: item.interactionId,
-        });
-        notification.onclick = () => {
-          window.focus();
-          openItemRef.current(item);
-          notification.close();
-        };
-      } catch {
-        // A failed Notification must never break the queue.
+  const notifyNewItems = useCallback(
+    (next: AttentionQueueItem[], options?: { complete?: boolean; silent?: boolean }) => {
+      const keys = new Set(next.map(attentionKey));
+      if (baseline.current === null) {
+        baseline.current = keys;
+        notified.current = new Set(keys);
+        return;
       }
-    }
-  }, []);
+      if (options?.silent) {
+        // Loading an older page is navigation, not new work.
+        for (const key of keys) notified.current.add(key);
+      }
+      const fresh = options?.silent
+        ? []
+        : next.filter((item) => !notified.current.has(attentionKey(item)));
+      for (const item of fresh) notified.current.add(attentionKey(item));
+      // Only a complete snapshot can prove a row settled. A single page (or a
+      // later page) must never prune keys from other pages, or the next poll
+      // would replay every existing request as new.
+      if (options?.complete) {
+        for (const key of [...notified.current]) {
+          if (!keys.has(key)) notified.current.delete(key);
+        }
+      }
+      if (fresh.length === 0) return;
+      if (typeof Notification === "undefined") return;
+      const target = activeTargetRef.current;
+      const foreground = (item: AttentionQueueItem) =>
+        document.visibilityState === "visible" &&
+        document.hasFocus() &&
+        ((item.conversationKind === "group" && target?.groupId === item.conversationId) ||
+          (item.conversationKind === "direct" && target?.botId === item.conversationId));
+      for (const item of fresh) {
+        if (foreground(item)) continue;
+        if (!notifyEnabledRef.current(item.source.botId ?? null)) continue;
+        if (Notification.permission !== "granted") continue;
+        try {
+          const notification = new Notification(notificationTitle(item), {
+            body: notificationBody(item),
+            tag: item.interactionId,
+          });
+          notification.onclick = () => {
+            window.focus();
+            openItemRef.current(item);
+            notification.close();
+          };
+        } catch {
+          // A failed Notification must never break the queue.
+        }
+      }
+    },
+    [],
+  );
 
   const load = useCallback(
     async (options?: { cursor?: string | null; append?: boolean }) => {
@@ -105,7 +118,10 @@ export function AttentionQueue({
         setNextCursor(page.nextCursor);
         setError(false);
         onItemsRef.current(merged);
-        notifyNewItems(page.items);
+        notifyNewItems(merged, {
+          complete: !page.nextCursor,
+          silent: Boolean(options?.append),
+        });
       } catch {
         setError(true);
       } finally {

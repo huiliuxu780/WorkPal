@@ -802,6 +802,7 @@ export function ShellPage() {
   const manuallyUnread = useRef(new Set<string>());
   const readVisibleGroups = useRef(new Set<string>());
   const notifiedBrowserEvents = useRef(new Set<string>());
+  const cardsUnifiedV2Ref = useRef(false);
   const pendingBrowserNotifications = useRef(new Map<string, PendingBrowserNotification>());
   const computerVisible = useRef(false);
   computerVisible.current = (panel === "settings" && settingsTab === "computer") || computerOpen;
@@ -931,6 +932,23 @@ export function ShellPage() {
         notifiedEventIds: notifiedBrowserEvents.current,
       });
       if (!eligible || !enabled) return;
+      // With the unified card surface on, an interaction-producing message is
+      // announced by the attention queue (one notification per request); the
+      // legacy bot-message notification would duplicate it with another tag.
+      if (cardsUnifiedV2Ref.current && event.type === "thread.message.created") {
+        const blocks = Array.isArray(event.payload.blocks) ? event.payload.blocks : [];
+        const interactionBacked = blocks.some((block) => {
+          if (!block || typeof block !== "object") return false;
+          const kind = (block as { kind?: unknown }).kind;
+          return (
+            kind === "ask" ||
+            kind === "app_connect" ||
+            kind === "mcp_approval" ||
+            kind === "skill_draft"
+          );
+        });
+        if (interactionBacked) return;
+      }
       const pending = {
         event,
         botId,
@@ -1870,11 +1888,14 @@ export function ShellPage() {
       ? snapshot
       : null;
   const attentionEnabled = activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true;
+  cardsUnifiedV2Ref.current = attentionEnabled;
   const openAttentionItem = useCallback(
     (item: AttentionQueueItem) => {
       const params = new URLSearchParams();
       if (item.source.messageId) params.set("m", item.source.messageId);
       params.set("i", item.interactionId);
+      // Each open is a distinct focus attempt, even for the same interaction.
+      params.set("r", String(Date.now()));
       navigate({
         pathname:
           item.conversationKind === "group"
@@ -1888,7 +1909,12 @@ export function ShellPage() {
   const focusedAttentionInteraction = useRef<string | null>(null);
   useEffect(() => {
     const interactionId = searchParams.get("i");
-    if (!interactionId || focusedAttentionInteraction.current === interactionId) return;
+    if (!interactionId) {
+      focusedAttentionInteraction.current = null;
+      return;
+    }
+    const attempt = `${interactionId}:${searchParams.get("r") ?? ""}`;
+    if (focusedAttentionInteraction.current === attempt) return;
     let cancelled = false;
     let attempts = 0;
     const focusCard = () => {
@@ -1900,7 +1926,7 @@ export function ShellPage() {
         element.tabIndex = -1;
         element.focus({ preventScroll: true });
         element.scrollIntoView({ block: "center" });
-        focusedAttentionInteraction.current = interactionId;
+        focusedAttentionInteraction.current = attempt;
         return;
       }
       attempts += 1;

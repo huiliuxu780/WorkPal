@@ -460,6 +460,70 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(after.items.some((item) => item.source.threadId === groupThread.id)).toBe(false);
   });
 
+  it("rebases a delegated desktop handoff onto the visible origin and hides pair threads", async () => {
+    const pairGroup = await prisma.chatGroup.create({
+      data: {
+        spaceId,
+        userId: ownerId,
+        kind: "agent_pair",
+        pairKey: `attention-pair-${randomUUID()}`,
+        name: "Hidden pair",
+      },
+    });
+    const pairThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, groupId: pairGroup.id },
+    });
+    const originRun = await taskRun(dmThreadId, "Delegated parent");
+    const pairTask = await prisma.task.create({
+      data: {
+        spaceId,
+        botId: bot.id,
+        threadId: pairThread.id,
+        userId: ownerId,
+        prompt: "Delegated child",
+        status: "waiting_takeover",
+      },
+    });
+    const pairRun = await prisma.run.create({
+      data: {
+        spaceId,
+        botId: bot.id,
+        threadId: pairThread.id,
+        taskId: pairTask.id,
+        userId: ownerId,
+        status: "waiting_takeover",
+        trigger: "bot_message",
+        originThreadId: dmThreadId,
+        originRunId: originRun.id,
+        originMessageId: "origin-message",
+      },
+    });
+    // A wait that lives in the hidden pair Thread must never be addressed there.
+    const hiddenMessage = await botMessage(pairThread.id, [
+      { kind: "ask", text: "Hidden?", status: "pending" },
+    ]);
+    await pendingIntervention({
+      threadId: pairThread.id,
+      runId: pairRun.id,
+      messageId: hiddenMessage.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Hidden wait" },
+    });
+
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const control = page.items.find(
+      (item) => item.kind === "session_control" && item.source.runId === pairRun.id,
+    );
+    expect(control).toMatchObject({
+      conversationKind: "direct",
+      conversationName: "Scout",
+      source: { threadId: dmThreadId, runId: pairRun.id },
+    });
+    expect(page.items.some((item) => item.presentation.text === "Hidden wait")).toBe(false);
+    expect(page.items.every((item) => item.source.threadId !== pairThread.id)).toBe(true);
+  });
+
   it("pages with the frozen sort without duplicating rows", async () => {
     const first = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 2 });
     expect(first.items).toHaveLength(2);

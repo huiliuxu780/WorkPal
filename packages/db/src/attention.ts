@@ -22,6 +22,7 @@ import {
   cardMessageFact,
   interactionViewsFromMessages,
   loadBotComputerFacts,
+  loadOriginControlFacts,
 } from "./card-interactions.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { interventionView } from "./interventions.js";
@@ -53,7 +54,14 @@ export async function loadAttentionPage(
   return prisma.$transaction(
     async (tx) => {
       const threads = await tx.thread.findMany({
-        where: { spaceId: input.spaceId, userId: input.userId },
+        // Human-visible conversations only: a direct chat or a standard group.
+        // Hidden agent_pair threads share the same userId and must never be
+        // addressed directly; their delegated controls are rebased below.
+        where: {
+          spaceId: input.spaceId,
+          userId: input.userId,
+          OR: [{ botId: { not: null } }, { group: { kind: "standard" } }],
+        },
         select: { id: true, botId: true, groupId: true },
       });
       if (threads.length === 0) return { items: [], total: 0, nextCursor: null };
@@ -210,6 +218,36 @@ async function loadPendingViews(
     const computerFacts: SessionControlComputerFact[] = computers;
     views.push(
       ...deriveSessionControlViews({ runs: runFacts, computers: computerFacts, now: new Date() }),
+    );
+  }
+  // Delegated Runs execute in hidden pair Threads; project their live controls
+  // into the visible origin Thread the user can actually open.
+  const delegatedOrigins = await tx.run.findMany({
+    where: {
+      spaceId: input.spaceId,
+      originThreadId: { in: input.threadIds },
+      originRunId: { not: null },
+      originMessageId: { not: null },
+      trigger: { not: "message_group" },
+      status: { in: [...ACTIVE_RUN_STATUSES] },
+    },
+    select: { originThreadId: true },
+    distinct: ["originThreadId"],
+  });
+  for (const candidate of delegatedOrigins) {
+    const originThreadId = candidate.originThreadId;
+    if (!originThreadId) continue;
+    const originControls = await loadOriginControlFacts(tx, {
+      spaceId: input.spaceId,
+      threadId: originThreadId,
+    });
+    if (originControls.runs.length === 0) continue;
+    views.push(
+      ...deriveSessionControlViews({
+        runs: originControls.runs,
+        computers: originControls.computers,
+        now: new Date(),
+      }),
     );
   }
 
