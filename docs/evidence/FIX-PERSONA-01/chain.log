@@ -1,0 +1,34 @@
+# FIX-PERSONA-01 chain.log - real TS -> Java chain at the fix SHA
+
+fix SHA: ff8666de1d1960b47fb70bd014ecbfd79efecfdd. Date 2026-10-28.
+JAVA_HOME: Homebrew openjdk 21.0.12.1 (no system Java installed, no system config changed).
+Runtime jar: built from this branch with mvn package -DskipTests, then AGENT_RUNTIME_SKIP_BUILD=1.
+Docker: colima. DOCKER_HOST=unix://<home>/.colima/default/docker.sock and
+TESTCONTAINERS_RYUK_DISABLED=true are required, otherwise testcontainers fails with
+"Could not find a working container runtime strategy" and then HTTP 500 mounting the socket for Ryuk.
+
+## 1. pnpm test:worker-chain  ->  PASSED
+
+$ pnpm test:worker-chain
+exit=0
+5 passed (4.1m)
+
+This is the standalone-Worker production chain: a separate apps/worker process claims Graphile jobs
+from the API, executes through the real Java AgentScope runtime and the local model fixture, and
+covers lease loss, crash recovery and cross-Space isolation. It exercises the modified
+RuntimeEngine prompt assembly end to end.
+
+Selected log lines:
+
+  ✓  1 [chromium] › e2e/worker-chain.spec.ts:281:1 › a user Run stays queued while the Worker is down and is claimed and executed by the Worker process (17.6s)
+  ✓  2 [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission (30.4s)
+  ✓  3 [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission (1.4m)
+  ✓  4 [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission (1.3m)
+  ✓  5 [chromium] › e2e/worker-chain.spec.ts:965:1 › a Worker killed mid-Run parks chat admission in recovering without retrying (25.1s)
+::notice title=🎭 Playwright Run Summary::  5 passed (4.1m)
+  5 passed (4.1m)
+
+## 2. pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
+
+Status at the time of this commit: RUNNING. Its result and exit code will be appended here; it is
+not reported as passed before it finishes.
