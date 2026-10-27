@@ -95,8 +95,25 @@ test("renders all nine DisplayBlock kinds from the server projection", async ({
     "brief.md",
   );
   await expect(
-    page.locator('[data-testid="display-block"][data-kind="task_status"]'),
+    page.locator('[data-testid="display-block"][data-kind="task_status"]').first(),
   ).toContainText("Researcher");
+  // A replaced cloud-agent card keeps its https destination reachable.
+  const cloudAgentCard = page
+    .locator('[data-testid="display-block"][data-kind="task_status"]')
+    .filter({ hasText: "Remote fix" });
+  await expect(cloudAgentCard.getByRole("link", { name: "Open external agent" })).toHaveAttribute(
+    "href",
+    "https://github.example.test/demo/pull/9",
+  );
+  // The result wraps far beyond the three-line clamp; the full text must stay
+  // reachable through the same read-full-text entry as the markdown card.
+  const taskStatus = page
+    .locator('[data-testid="display-block"][data-kind="task_status"]')
+    .first();
+  await expect(taskStatus.getByRole("button", { name: "Read full text" })).toBeVisible();
+  await taskStatus.getByRole("button", { name: "Read full text" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Line 14");
+  await page.getByRole("button", { name: "Close full text" }).click();
   const voice = page.locator('[data-testid="display-block"][data-kind="voice"]');
   await expect(voice).toContainText("The weather is sunny.");
   await scrollIntoView(voice);

@@ -398,6 +398,17 @@ async function main() {
                   name: "Researcher",
                   task: "Collect the weekly metrics",
                   status: "completed",
+                  // A result that wraps far beyond the three-line clamp so the
+                  // task card must offer the full-text entry.
+                  result: longText,
+                },
+                {
+                  kind: "cloud_agent",
+                  agentId: "display-cloud-agent",
+                  title: "Remote fix",
+                  status: "finished",
+                  url: "https://cloud.example.test/agents/1",
+                  prUrl: "https://github.example.test/demo/pull/9",
                 },
               ] as never,
             },

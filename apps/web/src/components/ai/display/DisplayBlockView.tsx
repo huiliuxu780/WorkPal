@@ -38,12 +38,12 @@ function DisplayNote({ children }: { children: ReactNode }) {
   return <p className="mt-1 text-[12px] leading-4 text-muted-foreground">{children}</p>;
 }
 
-function MarkdownDisplay({ text }: { text: string }) {
-  const body = useRef<HTMLDivElement>(null);
+/** Tracks whether a clamped body overflows its box; re-measures on reflow. */
+function useBoxOverflow(source: string | undefined) {
+  const ref = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
-  const [open, setOpen] = useState(false);
   useEffect(() => {
-    const element = body.current;
+    const element = ref.current;
     if (!element) return;
     const report = () => setOverflowing(element.scrollHeight > element.clientHeight + 1);
     report();
@@ -52,7 +52,43 @@ function MarkdownDisplay({ text }: { text: string }) {
     const observer = new ResizeObserver(report);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [text]);
+  }, [source]);
+  return { ref, overflowing };
+}
+
+function FullTextDialog({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-[88vh] w-[min(760px,94vw)] overflow-auto sm:max-w-[760px]"
+      >
+        <div className="flex items-center justify-between">
+          <DialogTitle className="text-[15px]">{t`Full text`}</DialogTitle>
+          <DialogClose
+            aria-label={t`Close full text`}
+            render={<Button variant="ghost" size="icon-sm" />}
+          >
+            <X />
+          </DialogClose>
+        </div>
+        <div className="mt-3 text-[13px] leading-[18px]">{children}</div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MarkdownDisplay({ text }: { text: string }) {
+  const { ref: body, overflowing } = useBoxOverflow(text);
+  const [open, setOpen] = useState(false);
   return (
     <DisplayCard kind="markdown">
       <div
@@ -73,25 +109,9 @@ function MarkdownDisplay({ text }: { text: string }) {
           {t`Read full text`}
         </Button>
       ) : null}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="max-h-[88vh] w-[min(760px,94vw)] overflow-auto sm:max-w-[760px]"
-        >
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-[15px]">{t`Full text`}</DialogTitle>
-            <DialogClose
-              aria-label={t`Close full text`}
-              render={<Button variant="ghost" size="icon-sm" />}
-            >
-              <X />
-            </DialogClose>
-          </div>
-          <div className="mt-3 text-[13px] leading-[18px]">
-            <ChatMarkdown>{text}</ChatMarkdown>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <FullTextDialog open={open} onOpenChange={setOpen}>
+        <ChatMarkdown>{text}</ChatMarkdown>
+      </FullTextDialog>
     </DisplayCard>
   );
 }
@@ -291,6 +311,10 @@ function TaskStatusDisplay({
   block: Extract<DisplayBlock, { kind: "task_status" }>;
   onOpenRun?: (runId: string) => void;
 }) {
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const { ref: summaryBody, overflowing: summaryOverflowing } = useBoxOverflow(
+    block.summary ?? undefined,
+  );
   const label =
     block.status === "completed"
       ? t`Completed`
@@ -322,9 +346,29 @@ function TaskStatusDisplay({
         ) : null}
       </div>
       {block.summary ? (
-        <p className="mt-2 line-clamp-3 text-[12.5px] text-muted-foreground" dir="auto">
-          {block.summary}
-        </p>
+        <>
+          <div
+            ref={summaryBody}
+            className="mt-2 line-clamp-3 text-[12.5px] text-muted-foreground"
+            dir="auto"
+          >
+            {block.summary}
+          </div>
+          {summaryOverflowing ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="mt-1 h-8 px-0 text-[12px]"
+              onClick={() => setSummaryOpen(true)}
+            >
+              {t`Read full text`}
+            </Button>
+          ) : null}
+          <FullTextDialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+            <ChatMarkdown>{block.summary}</ChatMarkdown>
+          </FullTextDialog>
+        </>
       ) : null}
       {block.destination ? (
         <a
@@ -369,14 +413,12 @@ export function VoiceDisplay({
   block,
   target,
   group,
-  revealMessageId,
 }: {
   block: Extract<DisplayBlock, { kind: "voice" }>;
   target: ArtifactTarget;
   /** The merged call group; present only in the transcript flow, where turn
       anchors stay jumpable. Detail surfaces render the flat transcript. */
   group?: VoiceChatGroup;
-  revealMessageId?: string;
 }) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioError, setAudioError] = useState(false);
