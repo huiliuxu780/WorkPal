@@ -34,6 +34,7 @@ export function AttentionQueue({
   const [retryToken, setRetryToken] = useState(0);
   const baseline = useRef<Set<string> | null>(null);
   const notified = useRef(new Set<string>());
+  const permissionRequested = useRef(false);
   const activeTargetRef = useRef(activeTarget);
   activeTargetRef.current = activeTarget;
   const notifyEnabledRef = useRef(botNotificationsEnabled);
@@ -124,12 +125,13 @@ export function AttentionQueue({
   }, [enabled, load]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || permissionRequested.current) return;
     // Asking for permission stays behind the existing notification setting:
-    // only when this Bot may notify and there is already pending work.
+    // only once, when this Bot may notify and there is already pending work.
     if (items.length === 0 || typeof Notification === "undefined") return;
     if (Notification.permission !== "default") return;
     if (!items.some((item) => notifyEnabledRef.current(item.source.botId ?? null))) return;
+    permissionRequested.current = true;
     void requestBrowserNotificationPermission();
   }, [enabled, items]);
 
