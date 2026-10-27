@@ -186,7 +186,6 @@ export function InterventionRegion({
   conversationName,
   groupNameOf,
   onOpenComputer,
-  onGroupDecision,
   onSettled,
   onRefresh,
 }: {
@@ -201,7 +200,6 @@ export function InterventionRegion({
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
   onOpenComputer?: (botId: string) => void;
-  onGroupDecision?: (view: InteractionView, answer: "approve" | "deny") => Promise<void> | void;
   onSettled: (view: InterventionView) => void;
   onRefresh?: () => Promise<void>;
 }) {
@@ -214,7 +212,6 @@ export function InterventionRegion({
         conversationName={conversationName}
         groupNameOf={groupNameOf}
         onOpenComputer={onOpenComputer}
-        onGroupDecision={onGroupDecision}
         onRefresh={onRefresh}
       />
     );

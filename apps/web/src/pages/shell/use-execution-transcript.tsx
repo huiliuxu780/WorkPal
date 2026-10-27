@@ -105,7 +105,6 @@ export type UseExecutionTranscriptInput = {
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
   onOpenComputer?: (botId: string) => void;
-  onGroupDecision?: (view: InteractionView, answer: "approve" | "deny") => Promise<void> | void;
   /** Server per-Run summaries (HISTORY-001); absent on older servers. */
   executions?: ThreadSnapshot["executions"];
   activity?: ActivityItem[];
@@ -132,7 +131,6 @@ export function useExecutionTranscript({
   conversationName,
   groupNameOf,
   onOpenComputer,
-  onGroupDecision,
   executions,
   activity,
   showActivityAvatars,
@@ -769,7 +767,6 @@ export function useExecutionTranscript({
                 conversationName={conversationName}
                 groupNameOf={groupNameOf}
                 onOpenComputer={onOpenComputer}
-                onGroupDecision={onGroupDecision}
                 onSettled={(view) =>
                   setSettledInterventions((current) => [
                     ...current.filter((item) => item.id !== view.id),
@@ -885,7 +882,6 @@ export function useExecutionTranscript({
         conversationName={conversationName}
         groupNameOf={groupNameOf}
         onOpenComputer={onOpenComputer}
-        onGroupDecision={onGroupDecision}
         onRefresh={onRefresh}
       />
     ) : null;

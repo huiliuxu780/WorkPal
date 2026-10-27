@@ -1297,6 +1297,53 @@ model InterventionSubmission {
   @@map("intervention_submissions")
 }
 
+/// RT-12: one bound message_group request that needs the requesting user to add
+/// the Bot to a standard group before it can run. The Intervention row owns the
+/// decision lifecycle (pending/answered/expired/cancelled); this row owns the
+/// immutable original request (never re-derived from card copy), the delivery
+/// identity, and the exact business result the approval transaction produced.
+/// No relations: it is an audit fact that must outlive the group or Bot.
+model GroupMembershipRequest {
+  id               String    @id
+  spaceId          String
+  userId           String
+  botId            String
+  groupId          String
+  /// Safe display name captured while the group was readable.
+  groupName        String
+  sourceThreadId   String
+  sourceRunId      String
+  /// The user's originating message in the source direct chat.
+  requestMessageId String?
+  /// The Ask message that carries the approval card (the Intervention anchor).
+  cardMessageId    String?
+  interventionId   String?   @unique
+  /// Tool-call delivery identity, so an approval replay and the resumed tool
+  /// call resolve to the same single delivery.
+  deliveryKey      String
+  requestRevision  Int       @default(1)
+  /// Authoritative message_group content; the resumed delivery never regenerates it.
+  message          String    @db.Text
+  topic            String?
+  presentation     Json
+  expiresAt        DateTime?
+  /// Approval results: set only by the approving business transaction.
+  receiptMessageId String?
+  targetMessageId  String?
+  targetRunId      String?
+  /// Set when an approved request could not be applied (for example the
+  /// requester lost member-management permission). Audit only; the user sees
+  /// the X-GROUP-FAIL card.
+  failureReason    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([sourceRunId, deliveryKey])
+  @@index([interventionId])
+  @@index([sourceThreadId, createdAt])
+  @@map("group_membership_requests")
+}
+
 model Routine {
   id             String    @id @default(cuid())
   spaceId        String

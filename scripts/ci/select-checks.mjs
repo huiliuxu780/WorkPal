@@ -39,9 +39,18 @@ const AVATAR_WEB_E2E = [
   "avatar-bot-change.spec.ts",
 ];
 const EXECUTION_WEB_E2E = ["execution-card.spec.ts", "task-center.spec.ts"];
-const CARD_UI_INTERACTIONS_WEB_E2E = ["card-ui-interactions.spec.ts", "peer-messages.spec.ts"];
+const CARD_UI_INTERACTIONS_WEB_E2E = [
+  "card-ui-interactions.spec.ts",
+  "peer-messages.spec.ts",
+  "group-membership.spec.ts",
+];
 const CARD_DISPLAY_WEB_E2E = ["card-display-content.spec.ts"];
 const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
+const GROUP_MEMBERSHIP_WEB_E2E = [
+  "group-membership.spec.ts",
+  "message-group.spec.ts",
+  ...DEFAULT_WEB_E2E,
+];
 const ONBOARDING_WEB_E2E = [
   "onboarding-conversation.spec.ts",
   "onboarding-model-auto-skip.spec.ts",
@@ -297,6 +306,20 @@ export function classifyPath(file) {
       jobs: ["backend", "agentscope", "db-postgres", "web"],
       reason: "message_group delivery, receipt, and return path",
       webE2e: MESSAGE_GROUP_WEB_E2E,
+    };
+  }
+
+  // RT-12: the membership request binding, its approval branch, and the
+  // X-GROUP cards are one closed loop across the DB, API, and web surface.
+  if (
+    stemMatch(p, "packages/db/src/group-membership") ||
+    stemMatch(p, "packages/db/src/message-group-delivery") ||
+    stemMatch(p, "packages/contracts/src/card-interaction")
+  ) {
+    return {
+      jobs: ["backend", "agentscope", "db-postgres", "web"],
+      reason: "group membership approval and the X-GROUP card surface",
+      webE2e: GROUP_MEMBERSHIP_WEB_E2E,
     };
   }
 

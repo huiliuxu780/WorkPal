@@ -197,6 +197,7 @@ export function interventionView(
     ...(row.resolvedAt ? { resolvedAt: row.resolvedAt.toISOString() } : {}),
     ...(row.resolvedByUserId ? { resolvedByUserId: row.resolvedByUserId } : {}),
     ...(row.supersededById ? { supersededById: row.supersededById } : {}),
+    ...(decision ? { decision } : {}),
     requestingActor: {
       botId: row.botId,
       ...(row.agentId ? { agentId: row.agentId } : {}),
@@ -223,6 +224,7 @@ function eventPayload(view: InterventionView): Record<string, unknown> {
     ...(view.expiresAt ? { expiresAt: view.expiresAt } : {}),
     ...(view.resolvedAt ? { resolvedAt: view.resolvedAt } : {}),
     ...(view.resolvedByUserId ? { resolvedByUserId: view.resolvedByUserId } : {}),
+    ...(view.decision ? { decision: view.decision } : {}),
     actor: view.requestingActor,
     ...(view.input ? { input: view.input } : {}),
     ...(view.approval ? { approval: view.approval } : {}),
@@ -303,8 +305,28 @@ export async function insertPausedIntervention(
     messageId: string;
     blocks: MessageBlock[];
     waitStartedAt: Date;
+    /**
+     * RT-12: bind a group membership request to this wait. The row is written
+     * in the same transaction as the Intervention; approval status stays on the
+     * Intervention, the request only owns the original content and binding.
+     */
+    groupMembership?: {
+      id: string;
+      spaceId: string;
+      userId: string;
+      botId: string;
+      groupId: string;
+      groupName: string;
+      sourceThreadId: string;
+      sourceRunId: string;
+      requestMessageId: string | null;
+      deliveryKey: string;
+      requestRevision: number;
+      message: string;
+      topic: string | null;
+    };
   },
-): Promise<{ id: string; blocks: MessageBlock[] }> {
+): Promise<{ id: string; blocks: MessageBlock[]; groupMembershipRequestId?: string }> {
   const store = interventionStore(tx);
   if (!store) throw new Error("Intervention store is not available");
   const asks = asksIn(input.blocks);
@@ -324,9 +346,12 @@ export async function insertPausedIntervention(
     if (!effect) throw new Error("Approval intervention requires its external effect");
     effectId = effect.id;
   }
+  if (input.groupMembership && (effectId || ask.planReview)) {
+    throw new Error("A group membership request is a business approval, not a tool approval");
+  }
   const id = randomUUID();
-  const mode = inputModeOf(ask);
-  const actions = whitelistedActions(ask.actions);
+  const mode = input.groupMembership ? null : inputModeOf(ask);
+  const actions = input.groupMembership ? undefined : whitelistedActions(ask.actions);
   const presentation = presentationFromAskBlock(ask);
   const createdAt = input.waitStartedAt;
   // A plan review carries its version binding instead of an external effect:
@@ -339,7 +364,13 @@ export async function insertPausedIntervention(
     data: {
       id,
       revision: 1,
-      kind: planReview ? "plan_review" : effectId ? "approval" : "input",
+      kind: input.groupMembership
+        ? "approval"
+        : planReview
+          ? "plan_review"
+          : effectId
+            ? "approval"
+            : "input",
       status: "pending",
       spaceId: input.spaceId,
       threadId: input.threads.presentationThreadId,
@@ -360,10 +391,24 @@ export async function insertPausedIntervention(
       createdAt,
     },
   });
+  if (input.groupMembership) {
+    const { createGroupMembershipRequestInTransaction } = await import("./group-membership.js");
+    await createGroupMembershipRequestInTransaction(tx, {
+      ...input.groupMembership,
+      interventionId: id,
+      cardMessageId: input.messageId,
+      presentation,
+      expiresAt: new Date(input.waitStartedAt.getTime() + INTERVENTION_WAIT_MS),
+    });
+  }
   const blocks = input.blocks.map((block) =>
     block.kind === "ask" ? { ...block, interventionId: id } : block,
   );
-  return { id, blocks };
+  return {
+    id,
+    blocks,
+    ...(input.groupMembership ? { groupMembershipRequestId: input.groupMembership.id } : {}),
+  };
 }
 
 /**
@@ -639,6 +684,38 @@ export async function settleAnsweredIntervention(
   await tx.interventionSubmission.create({
     data: { interventionId: id, clientSubmissionId: input.clientSubmissionId },
   });
+}
+
+/**
+ * RT-12: settle a membership Intervention from the business branch. The
+ * decision lifecycle stays here; membership, messages, Task/Run and receipts
+ * are committed by the caller in the same transaction.
+ */
+export async function settleMembershipIntervention(
+  tx: InterventionTx,
+  input: {
+    interventionId: string;
+    status: "answered" | "expired" | "cancelled";
+    decision?: "approved" | "denied";
+    resolvedByUserId?: string;
+    clientSubmissionId?: string;
+  },
+): Promise<InterventionRecord | null> {
+  if (!interventionStore(tx)) return null;
+  await lockIntervention(tx, input.interventionId);
+  const row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
+  if (!row || row.status !== "pending") return null;
+  const next = await transitionPending(tx, row, input.status, {
+    ...(input.resolvedByUserId ? { resolvedByUserId: input.resolvedByUserId } : {}),
+    ...(input.decision ? { decision: input.decision } : {}),
+  });
+  if (!next) return null;
+  if (input.clientSubmissionId) {
+    await tx.interventionSubmission.create({
+      data: { interventionId: next.id, clientSubmissionId: input.clientSubmissionId },
+    });
+  }
+  return next;
 }
 
 export async function cancelPendingInterventions(
@@ -918,6 +995,15 @@ export type ResolveInterventionOutcome =
        */
       presentationThreadId?: string;
       presentationSeq?: number;
+      /**
+       * RT-12: the target group Run created by an approving membership
+       * decision, so the API can wake it and publish its Thread.
+       */
+      membershipDelivery?: {
+        targetRunId: string;
+        targetThreadId: string;
+        targetEventSeq: number;
+      };
       applied: boolean;
     }
   | { outcome: "rejected"; reason: InterventionRejected["reason"] };
@@ -986,9 +1072,16 @@ export async function resolveInterventionInTransaction(
     /** A10: the outbound draft revision and fingerprint the user confirmed. */
     outbound?: { revision: number; fingerprint: string };
   },
-  commit: (
-    tx: InterventionTx,
-  ) => Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null>,
+  commit: (tx: InterventionTx) => Promise<{
+    threadId: string;
+    seq: number;
+    cancelledRunId?: string;
+    membershipDelivery?: {
+      targetRunId: string;
+      targetThreadId: string;
+      targetEventSeq: number;
+    };
+  } | null>,
 ): Promise<ResolveInterventionOutcome> {
   await lockInterventionThreads(tx, input.executionThreadId, input.threadId);
   await lockRun(tx, input.runId);
@@ -1087,6 +1180,7 @@ export async function resolveInterventionInTransaction(
     intervention: await viewFor(tx, settled),
     resume: !committed.cancelledRunId,
     ...(committed.cancelledRunId ? { cancelledRunId: committed.cancelledRunId } : {}),
+    ...(committed.membershipDelivery ? { membershipDelivery: committed.membershipDelivery } : {}),
     seq: committed.seq,
     threadId: committed.threadId,
     ...(crossThread

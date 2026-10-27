@@ -2274,6 +2274,64 @@ describe("activity projection reduction (Phase 4)", () => {
     });
   });
 
+  it("carries a business membership decision through the live reducer", () => {
+    const presentation = { text: "Add Joy to “Design”?" };
+    const membership: InteractionView = {
+      kind: "action_approval",
+      interactionId: "intervention-membership",
+      revision: 1,
+      status: "pending",
+      createdAt: "2026-10-27T00:00:00.000Z",
+      expiresAt: null,
+      attentionAt: "2026-10-27T00:00:00.000Z",
+      source: {
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        messageId: "message-membership",
+        runId: "run-1",
+        botId: "bot-1",
+      },
+      presentation,
+      decision: null,
+      approval: {
+        kind: "group_membership",
+        authority: "business_transaction",
+        action: "add_bot_to_group",
+        groupId: "group-1",
+        botId: "bot-1",
+        messageGroupRequestId: "request-1",
+        requestRevision: 1,
+        sourceThreadId: "thread-1",
+        sourceMessageId: "message-membership",
+        presentation,
+      },
+    };
+    const payload = {
+      interventionId: membership.interactionId,
+      revision: 2,
+      kind: "approval",
+      status: "answered",
+      runId: "run-1",
+      attemptId: "attempt-1",
+      messageId: "message-membership",
+      botId: "bot-1",
+      createdAt: "2026-10-27T00:00:00.000Z",
+      actor: { botId: "bot-1" },
+      presentation,
+      decision: "denied",
+    };
+    const updated = reduceThreadSnapshot(
+      { ...snapshot([]), interactions: [membership] },
+      event({ type: "intervention.resolved", seq: 4, payload }),
+    );
+    expect(updated?.interventions?.[0]).toMatchObject({ status: "answered", decision: "denied" });
+    expect(updated?.interactions?.[0]).toMatchObject({
+      interactionId: "intervention-membership",
+      status: "answered",
+      decision: "denied",
+    });
+  });
+
   it("carries the plan review projection and its decision through the reducer (UX-02)", () => {
     const payload = {
       interventionId: "intervention-plan",

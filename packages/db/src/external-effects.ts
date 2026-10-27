@@ -107,6 +107,10 @@ export async function claimExternalEffectForExecution(
 export async function releaseExternalEffectClaim(
   prisma: PrismaClient,
   input: { effectId: string; execution: ExecutionIdentity },
+  options?: {
+    /** Status to restore; an already-approved effect must stay approved. */
+    to?: "intended" | "approved";
+  },
 ): Promise<boolean> {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const run = await lockRunLease(tx, input.execution.runId);
@@ -117,7 +121,7 @@ export async function releaseExternalEffectClaim(
         runId: input.execution.runId,
         status: "executing",
       },
-      data: { status: "intended" },
+      data: { status: options?.to ?? "intended" },
     });
     return released.count === 1;
   });

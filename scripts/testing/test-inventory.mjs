@@ -212,6 +212,7 @@ const POSTGRES_ONLY = [
   "packages/db/src/card-interactions.postgres.test.ts",
   "packages/db/src/delivery-records.test.ts",
   "packages/db/src/effect-execution-fence.postgres.test.ts",
+  "packages/db/src/group-membership.postgres.test.ts",
   "packages/db/src/execution-contract.postgres.test.ts",
   "packages/db/src/execution-fenced-events.postgres.test.ts",
   "packages/db/src/execution-history.postgres.test.ts",

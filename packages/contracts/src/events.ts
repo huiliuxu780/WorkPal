@@ -564,6 +564,19 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     /** Links in a bot-started chain; absent when a person started it. */
     hop: z.number().int().nonnegative().optional(),
   }),
+  z.object({
+    /**
+     * X-GROUP-FAIL: the cross-group request stopped before any work started
+     * because the requesting user may not manage the target group's members.
+     * A server-written fact, never a model-authored card: the no-permission
+     * branch must stay distinct from a tool approval and from generic failures.
+     */
+    kind: z.literal("group_membership_failure"),
+    groupId: Id,
+    groupName: z.string().min(1).max(200),
+    botId: Id,
+    reason: z.literal("member_permission"),
+  }),
 ]);
 export type MessageBlock = z.infer<typeof MessageBlock>;
 

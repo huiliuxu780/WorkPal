@@ -160,6 +160,7 @@ import {
 } from "../components/ai/display/DisplayBlockView";
 import { PeerReceiptRow } from "../components/ai/PeerReceiptRow";
 import { GroupDestinationReceipt } from "../components/ai/GroupDestinationReceipt";
+import { GroupMembershipFailureCard } from "../components/ai/interactions/ActionApprovalCard";
 import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
@@ -7360,6 +7361,16 @@ const MessageView = memo(function MessageView({
               }
               onChanged={onBotChanged}
             />
+          );
+        }
+        if (block.kind === "group_membership_failure") {
+          return (
+            <div key={i} className="flex justify-start py-1">
+              <GroupMembershipFailureCard
+                botName={message.botId ? (botNameOf?.(message.botId) ?? t`Bot`) : t`Bot`}
+                groupName={block.groupName}
+              />
+            </div>
           );
         }
         if (block.kind === "choice") {

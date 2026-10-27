@@ -61,6 +61,7 @@ import {
   sandboxProviderOptionsFromEnv,
 } from "@rakazo/adapters";
 import {
+  resolveCardsUnifiedFeatureGate,
   resolveEncryptionKey,
   resolveRoundtableFeatureGates,
   resolveSupervisorToken,
@@ -89,6 +90,7 @@ async function main() {
   // Fail fast on invalid deployment gates. Consumed by the Intervention pause
   // path, which is the only roundtable entry point the Worker drives today.
   const roundtableFeatures = resolveRoundtableFeatureGates(process.env);
+  const cardsUnifiedV2 = resolveCardsUnifiedFeatureGate(process.env).cardsUnifiedV2;
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
   // Shared by Prisma, the reconciliation leadership lock, and both graphile-worker
@@ -108,6 +110,7 @@ async function main() {
   const events = createThreadEvents(prisma, realtime, {
     runSecretWriter: createRunSecretWriter(secrets),
     roundtableFeatures,
+    cardsUnifiedV2,
   });
   // Task credentials and callbacks live in the Worker process. A stopped Worker cannot
   // resume a native local supplier; expire its projection after missed heartbeats.
@@ -463,6 +466,7 @@ async function main() {
     home,
     artifacts,
     roundtableFeatures,
+    cardsUnifiedV2,
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: async (userId) => {
