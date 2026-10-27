@@ -242,6 +242,50 @@ async function parkRunForRecovery(
   });
 }
 
+/**
+ * FIX-STOP-01: a Run that reached a terminal state cannot be executing, so its
+ * hold on the session is a stale fact rather than an unproven suspension. This
+ * is not a timeout shortcut — RT-26 keeps refusing to treat elapsed time as
+ * proof, and the terminal status set is the same one the request sweeps already
+ * use. Without it, one Stop parks the session forever: the executor marks the
+ * admission `recovering` for a Run that ended unconfirmed, the only exit needs a
+ * Runtime checkpoint proof that the Stop already aborted, and the expiry sweep
+ * reads `owned` rows only.
+ */
+async function releaseTerminalOwnerAdmission(
+  tx: Prisma.TransactionClient,
+  row: AdmissionRow,
+  now: Date,
+): Promise<boolean> {
+  if (!row.ownerRunId) return false;
+  if (row.state !== "owned" && row.state !== "recovering") return false;
+  const terminal = await tx.run.findFirst({
+    where: { id: row.ownerRunId, status: { in: ["completed", "failed", "cancelled"] } },
+    select: { id: true },
+  });
+  if (!terminal) return false;
+  const updated = await tx.$executeRaw`
+    UPDATE "agent_session_admissions"
+    SET "state" = 'available',
+        "expiresAt" = NULL,
+        "lastReleaseReason" = 'owner_run_terminal',
+        "updatedAt" = ${now}
+    WHERE "sessionKey" = ${row.sessionKey}
+      AND "state" IN ('owned', 'recovering')
+      AND "ownerRunId" = ${row.ownerRunId}
+      AND "fence" = ${row.fence}
+  `;
+  if (updated !== 1) return false;
+  await tx.$executeRaw`
+    UPDATE "agent_session_admission_requests"
+    SET "state" = 'released', "updatedAt" = ${now}
+    WHERE "sessionKey" = ${row.sessionKey}
+      AND "state" IN ('owned', 'recovering')
+      AND "runId" = ${row.ownerRunId}
+  `;
+  return true;
+}
+
 export async function acquireSessionAdmission(
   prisma: PrismaClient,
   input: SessionAdmissionIdentity,
@@ -270,6 +314,9 @@ export async function acquireSessionAdmission(
     `;
     let row = await lockAdmission(tx, sessionKey);
     assertMatchingIdentity(row, input);
+    if (await releaseTerminalOwnerAdmission(tx, row, now)) {
+      row = await lockAdmission(tx, sessionKey);
+    }
     const request = await insertAndReadRequest(tx, input, sessionKey);
 
     if (
@@ -568,6 +615,40 @@ export async function recoverExpiredSessionAdmissions(
       if (row.ownerRunId) recovered.push({ sessionKey: row.sessionKey, runId: row.ownerRunId });
     }
     return recovered;
+  });
+}
+
+/**
+ * FIX-STOP-01: frees sessions still held by a Run that already reached a
+ * terminal state, whatever the admission state or expiry. `recoverExpiredSessionAdmissions`
+ * cannot do this: it reads `owned` rows only, so a Stop that parked the session
+ * as `recovering` was never swept and the conversation stayed unusable past the
+ * lease horizon. The proof here is the owner's durable terminal status, not
+ * elapsed time, so RT-25/RT-26 keep refusing to hand a session over on expiry
+ * alone.
+ */
+export async function releaseSessionAdmissionsWithTerminalOwner(
+  prisma: PrismaClient,
+  now = new Date(),
+  limit = 100,
+): Promise<Array<{ sessionKey: string; nextRunId: string | null }>> {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<AdmissionRow[]>`
+      SELECT admission.* FROM "agent_session_admissions" admission
+      JOIN "runs" run ON run."id" = admission."ownerRunId"
+      WHERE admission."state" IN ('owned', 'recovering')
+        AND run."status" IN ('completed', 'failed', 'cancelled')
+      ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
+      LIMIT ${limit}
+      FOR UPDATE OF admission SKIP LOCKED
+    `;
+    const released: Array<{ sessionKey: string; nextRunId: string | null }> = [];
+    for (const row of rows) {
+      if (!(await releaseTerminalOwnerAdmission(tx, row, now))) continue;
+      const next = await firstQueuedRequest(tx, row.sessionKey);
+      released.push({ sessionKey: row.sessionKey, nextRunId: next?.runId ?? null });
+    }
+    return released;
   });
 }
 
