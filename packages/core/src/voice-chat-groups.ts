@@ -136,7 +136,7 @@ const TRANSCRIPT_MAX = 20_000;
 export function voiceDisplayBlockFromGroup(
   group: VoiceChatGroup,
   artifactId: string | null,
-): DisplayBlock {
+): Extract<DisplayBlock, { kind: "voice" }> {
   const anchor = group.marker ?? group.messages[0];
   if (!anchor) {
     return {
