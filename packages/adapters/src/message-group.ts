@@ -104,6 +104,14 @@ export type MessageGroupMembershipStop = Readonly<{
   groupName: string;
 }>;
 
+export type MessageGroupMembershipFailed = Readonly<{
+  ok: false;
+  kind: "membership_failed";
+  groupId: string;
+  groupName: string;
+  reason: string;
+}>;
+
 export type MessageGroupMembershipForbidden = Readonly<{
   ok: false;
   kind: "membership_forbidden";
@@ -118,6 +126,7 @@ export type MessageGroupResult =
   | MessageGroupFailure
   | MessageGroupMembershipRequired
   | MessageGroupMembershipStop
+  | MessageGroupMembershipFailed
   | MessageGroupMembershipForbidden;
 
 type TerminalStatus = "completed" | "failed" | "cancelled";
@@ -243,51 +252,12 @@ export async function messageGroup(
           member!.spaceId === run.spaceId &&
           member!.userId === run.userId;
 
-        if (memberMatches && deliveryKey) {
-          // A resumed turn must continue the request the user approved, not a
-          // regenerated one. If this Run already delivered an approved
-          // membership request under another key, replay that delivery.
-          const approved = await tx.groupMembershipRequest.findFirst({
-            where: {
-              sourceRunId: sourceRun.id,
-              targetRunId: { not: null },
-              deliveryKey: { not: deliveryKey },
-            },
-            orderBy: { createdAt: "desc" },
-            select: {
-              groupId: true,
-              groupName: true,
-              targetRunId: true,
-              receiptMessageId: true,
-            },
-          });
-          if (approved?.targetRunId && approved.receiptMessageId) {
-            const receiptMessage = await tx.message.findUnique({
-              where: { id: approved.receiptMessageId },
-              select: { id: true, blocks: true },
-            });
-            const receipt = receiptMessage ? receiptFromBlocks(receiptMessage.blocks) : null;
-            if (receipt?.destination) {
-              return {
-                ok: true as const,
-                replayed: true as const,
-                groupId: approved.groupId,
-                groupName: approved.groupName,
-                targetRunId: approved.targetRunId,
-                receiptMessageId: approved.receiptMessageId,
-                locator: receipt.destination,
-                note: "This delivery already happened; the same work is still the one in progress.",
-              };
-            }
-          }
-        }
-
         if (!memberMatches) {
           if (!deliveryKey) return { ok: false as const, error: ERROR_NOT_MEMBER };
           const pendingRequest = deliveryKey
             ? await tx.groupMembershipRequest.findUnique({
                 where: { sourceRunId_deliveryKey: { sourceRunId: sourceRun.id, deliveryKey } },
-                select: { interventionId: true },
+                select: { interventionId: true, failureReason: true, targetRunId: true },
               })
             : null;
           if (pendingRequest?.interventionId) {
@@ -320,6 +290,15 @@ export async function messageGroup(
               };
             }
             if (intervention?.status === "answered") {
+              if (pendingRequest.failureReason) {
+                return {
+                  ok: false as const,
+                  kind: "membership_failed" as const,
+                  groupId: group.id,
+                  groupName: group.name,
+                  reason: pendingRequest.failureReason,
+                };
+              }
               return { ok: false as const, error: ERROR_INCOMPLETE };
             }
           }

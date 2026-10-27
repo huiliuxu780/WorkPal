@@ -5547,6 +5547,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   note: "The membership request expired or was withdrawn before the user decided. The work has not started. Do not retry unless the user asks again.",
                 });
               }
+              if (sent.kind === "membership_failed") {
+                return finish({
+                  ok: true,
+                  failed: true,
+                  note: "The membership change could not be applied, so the work has not started and nothing was sent. Tell the user briefly that the group owner or an admin must handle it. Do not retry unless the user asks again.",
+                });
+              }
               return finish({
                 ok: true,
                 pending: true,

@@ -506,6 +506,7 @@ async function settleUnavailableApproval(
   messageId: string,
   run: { botId: string },
   request: {
+    id: string;
     botId: string;
     groupId: string;
     groupName: string;
@@ -517,6 +518,10 @@ async function settleUnavailableApproval(
     decision?: "approved" | "denied",
   ) => Promise<unknown>,
 ): Promise<MembershipDecisionOutcome> {
+  await tx.groupMembershipRequest.update({
+    where: { id: request.id },
+    data: { failureReason: reason },
+  });
   const updated =
     reason === "not_manageable"
       ? ([
@@ -542,7 +547,10 @@ async function settleUnavailableApproval(
     payload: { messageId, role: "bot", blocks: updated },
   });
   await queueResumedRun(tx, input);
-  await settle("cancelled");
+  // The wait must settle as answered so the suspended AgentScope checkpoint
+  // can resume; the failure reason (not a decision) is what tells the replay
+  // that no target work was written.
+  await settle("answered", "approved");
   return { ok: true, threadId: event.threadId, seq: event.seq };
 }
 

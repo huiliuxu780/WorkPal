@@ -1192,6 +1192,31 @@ describe("group membership exception (X-GROUP)", () => {
     expect(host.textContent).toContain("Not joined");
   });
 
+  it("shows the decision another tab committed instead of the clicked button", async () => {
+    mocks.resolveIntervention.mockResolvedValueOnce({
+      outcome: "already_handled",
+      intervention: {
+        ...actionView(groupMembership()),
+        status: "answered",
+        decision: "denied",
+      },
+    });
+    const host = await render(
+      <ActionApprovalCard
+        view={actionView(groupMembership())}
+        target={target}
+        botName="Scout"
+        groupNameOf={() => "Design"}
+      />,
+    );
+
+    await act(async () =>
+      (byTestId(host, "group-membership-approve") as HTMLButtonElement).click(),
+    );
+    expect(host.textContent).toContain("Not joined");
+    expect(host.textContent).not.toContain("Joined");
+  });
+
   it("does not render a pending card without member-management permission", async () => {
     const { projectGroupMembershipApproval } = await import("@rakazo/contracts");
     const projected = projectGroupMembershipApproval({

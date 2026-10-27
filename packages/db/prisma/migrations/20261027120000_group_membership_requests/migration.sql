@@ -23,6 +23,7 @@ CREATE TABLE "group_membership_requests" (
     "receiptMessageId" TEXT,
     "targetMessageId" TEXT,
     "targetRunId" TEXT,
+    "failureReason" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

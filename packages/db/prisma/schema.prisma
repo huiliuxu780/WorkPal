@@ -1331,6 +1331,10 @@ model GroupMembershipRequest {
   receiptMessageId String?
   targetMessageId  String?
   targetRunId      String?
+  /// Set when an approved request could not be applied (for example the
+  /// requester lost member-management permission). Audit only; the user sees
+  /// the X-GROUP-FAIL card.
+  failureReason    String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

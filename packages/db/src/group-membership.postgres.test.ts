@@ -562,7 +562,14 @@ describePostgres("RT-12 group membership approval (PostgreSQL)", () => {
       const intervention = await prisma.intervention.findUniqueOrThrow({
         where: { id: paused.interventionId },
       });
-      expect(intervention.status).toBe("cancelled");
+      // The wait settles as answered so the suspended checkpoint can resume;
+      // the failure reason, not a decision, records that nothing was applied.
+      expect(intervention).toMatchObject({ status: "answered", decision: "approved" });
+      const request = await prisma.groupMembershipRequest.findUniqueOrThrow({
+        where: { id: paused.requestId },
+      });
+      expect(request.failureReason).toBe("not_manageable");
+      expect(request.targetRunId).toBeNull();
       const ask = await prisma.message.findUniqueOrThrow({ where: { id: paused.messageId } });
       expect(ask.blocks).toMatchObject([
         { kind: "group_membership_failure", groupId: group.id, groupName: group.name },

@@ -104,6 +104,8 @@ export const InterventionViewSchema = z
     resolvedAt: z.string().optional(),
     resolvedByUserId: Id.optional(),
     supersededById: Id.optional(),
+    /** Business approvals (group membership) carry their decision here too. */
+    decision: InterventionDecisionSchema.optional(),
     requestingActor: z
       .object({
         botId: Id,
@@ -155,6 +157,8 @@ export const InterventionEventPayloadSchema = z
     expiresAt: z.string().optional(),
     resolvedAt: z.string().optional(),
     resolvedByUserId: Id.optional(),
+    /** Business approvals (group membership) carry their decision here too. */
+    decision: InterventionDecisionSchema.optional(),
     actor: z
       .object({
         botId: Id,

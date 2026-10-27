@@ -834,6 +834,69 @@ describePostgres("message_group delivery (PostgreSQL)", () => {
       ).toBe(0);
     });
 
+    it("returns the recorded failure after an unavailable approval", async () => {
+      const source = await createSourceRun();
+      const key = nextKey();
+      const askMessage = await prisma.$transaction((tx) =>
+        createThreadMessageInTransaction(tx, {
+          threadId: joyThreadId,
+          role: "bot",
+          originKind: "system",
+          blocks: [{ kind: "text", text: "Membership decision" }],
+          botId: joy.id,
+          runId: source.id,
+        }),
+      );
+      const interventionId = randomUUID();
+      await prisma.intervention.create({
+        data: {
+          id: interventionId,
+          kind: "approval",
+          status: "answered",
+          spaceId,
+          threadId: joyThreadId,
+          runId: source.id,
+          attemptId: "legacy",
+          botId: joy.id,
+          messageId: askMessage.id,
+          pendingRunKey: null,
+          decision: "approved",
+          resolvedAt: new Date(),
+          presentation: { text: "Add Joy?" },
+          createdAt: new Date(),
+        },
+      });
+      await prisma.groupMembershipRequest.create({
+        data: {
+          id: randomUUID(),
+          spaceId,
+          userId: ownerId,
+          botId: joy.id,
+          groupId: openGroup.id,
+          groupName: openGroup.name,
+          sourceThreadId: joyThreadId,
+          sourceRunId: source.id,
+          cardMessageId: askMessage.id,
+          interventionId,
+          deliveryKey: key,
+          requestRevision: 1,
+          message: "Check the launch performance risk and report back.",
+          topic: "性能风险核对",
+          presentation: { text: "Add Joy?" },
+          failureReason: "not_manageable",
+        },
+      });
+      const { result } = await send(
+        { group_id: openGroup.id },
+        { sourceRun: source.id, deliveryKey: key, cardsUnifiedV2: true },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok || !("kind" in result)) throw new Error("expected membership_failed");
+      expect(result.kind).toBe("membership_failed");
+      expect(result.reason).toBe("not_manageable");
+      expect(await prisma.message.count({ where: { threadId: openGroup.threadId } })).toBe(0);
+    });
+
     it("returns the settled denial for the same delivery key", async () => {
       const source = await createSourceRun();
       const key = nextKey();

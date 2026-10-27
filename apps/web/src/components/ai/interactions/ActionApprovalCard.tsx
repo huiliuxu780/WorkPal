@@ -1432,14 +1432,27 @@ export function GroupMembershipApprovalCard({
     setBusy(answer);
     setError(null);
     try {
-      await rpc.threads.resolveIntervention({
+      const result = await rpc.threads.resolveIntervention({
         ...target,
         interventionId: view.interactionId,
         clientSubmissionId: submissionId.current,
         answer,
         requestRevision: approval.requestRevision,
       });
-      setDone(answer === "approve" ? "approved" : "denied");
+      // Another tab may have settled this request, or the approval may have
+      // been applied as a failure. Show what the server committed, not what
+      // this tab clicked; a terminal failure/cancel falls back to the refreshed
+      // projection.
+      const settled = result.intervention;
+      if (settled?.status === "answered" && settled.decision) {
+        setDone(settled.decision);
+      } else if (settled && settled.status !== "answered") {
+        // Cancelled/expired by revalidation: the refreshed projection owns the
+        // terminal surface (for example the X-GROUP-FAIL card).
+        setDone(null);
+      } else {
+        setDone(answer === "approve" ? "approved" : "denied");
+      }
       await onRefresh?.().catch(() => undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t`Could not submit this decision`);

@@ -197,6 +197,7 @@ export function interventionView(
     ...(row.resolvedAt ? { resolvedAt: row.resolvedAt.toISOString() } : {}),
     ...(row.resolvedByUserId ? { resolvedByUserId: row.resolvedByUserId } : {}),
     ...(row.supersededById ? { supersededById: row.supersededById } : {}),
+    ...(decision ? { decision } : {}),
     requestingActor: {
       botId: row.botId,
       ...(row.agentId ? { agentId: row.agentId } : {}),
@@ -223,6 +224,7 @@ function eventPayload(view: InterventionView): Record<string, unknown> {
     ...(view.expiresAt ? { expiresAt: view.expiresAt } : {}),
     ...(view.resolvedAt ? { resolvedAt: view.resolvedAt } : {}),
     ...(view.resolvedByUserId ? { resolvedByUserId: view.resolvedByUserId } : {}),
+    ...(view.decision ? { decision: view.decision } : {}),
     actor: view.requestingActor,
     ...(view.input ? { input: view.input } : {}),
     ...(view.approval ? { approval: view.approval } : {}),
