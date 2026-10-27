@@ -5472,9 +5472,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 // suspending: the resumed call must pass the duplicate-effect
                 // gate and reach the bound request instead of reading the
                 // pause as an uncertain side effect.
+                const priorStatus =
+                  applied?.effect.status === "approved" ? "approved" : "intended";
+                let releasedForPause = false;
                 if (applied && claimedEffect) {
-                  const priorStatus =
-                    applied.effect.status === "approved" ? "approved" : "intended";
                   const released = await releaseExternalEffectClaim(
                     deps.prisma,
                     {
@@ -5485,6 +5486,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   );
                   if (!released) return finish(uncertainEffectResult(name));
                   claimedEffect = false;
+                  releasedForPause = true;
                 }
                 const paused = await deps.events.pauseRunForGroupMembership({
                   spaceId: run.spaceId,
@@ -5504,6 +5506,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 if (paused.outcome === "paused") {
                   approvalPausePending = true;
                   return approvalPausedToolResult();
+                }
+                // The wait did not happen, so this attempt continues. Reclaim
+                // the effect before any retry or failure result so the resumed
+                // call and the completion stay fenced.
+                if (releasedForPause && applied) {
+                  const reclaimed = await claimOrReturn(priorStatus);
+                  if (reclaimed !== undefined) return finish(reclaimed);
                 }
                 if (paused.outcome === "already_member") {
                   const retried = await sendToGroup();
