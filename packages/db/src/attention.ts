@@ -1,9 +1,9 @@
 import {
   type ActionApprovalView,
   type AttentionItem,
-  compareAttentionItems,
   type AttentionQueueItem,
   type AttentionQueuePage,
+  compareAttentionItems,
   decodeAttentionCursor,
   deriveSessionControlViews,
   encodeAttentionCursor,
@@ -227,8 +227,12 @@ async function loadPendingViews(
           // before the source limit.
           AND: [
             { blocks: { array_contains: [{ kind: "mcp_approval" }] } },
-            { NOT: { blocks: { array_contains: [{ kind: "mcp_approval", status: "connected" }] } } },
-            { NOT: { blocks: { array_contains: [{ kind: "mcp_approval", status: "dismissed" }] } } },
+            {
+              NOT: { blocks: { array_contains: [{ kind: "mcp_approval", status: "connected" }] } },
+            },
+            {
+              NOT: { blocks: { array_contains: [{ kind: "mcp_approval", status: "dismissed" }] } },
+            },
           ],
         },
         { blocks: { array_contains: [{ kind: "skill_draft", status: "draft" }] } },
