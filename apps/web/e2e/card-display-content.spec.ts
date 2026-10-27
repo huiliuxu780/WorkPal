@@ -128,3 +128,64 @@ test("renders all nine DisplayBlock kinds from the server projection", async ({
   ).toBeLessThanOrEqual(1);
   await captureScreenshot(page, testInfo, "display-blocks-375");
 });
+
+test("markdown card re-measures overflow when the viewport changes", async ({
+  page,
+}, testInfo) => {
+  const stamp = Date.now();
+  await signup(page, `display-reflow-${stamp}@rakazo.test`, "password12", "Display Reflow");
+  await completeOnboarding(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const botId = activeBotId(page);
+  const snapshot = await rpc<{ threadId: string }>(page, "threads/get", { botId });
+  const image = await rpc<{ id: string }>(page, "artifacts/create", {
+    botId,
+    name: "probe.png",
+    mimeType: "image/png",
+    contentBase64: Buffer.from(DISPLAY_IMAGE, "base64").toString("base64"),
+  });
+  const probeText =
+    "The team reviewed the weekly metrics and adjusted the rollout plan for the next sprint. " +
+    "The dashboard shows steady growth across every region and the support queue is finally " +
+    "moving again after the holiday slowdown. We agreed to keep the current pacing.";
+  const seeded = await page.request.post(`${process.env.API_URL}/__e2e/display-blocks`, {
+    data: {
+      botId,
+      threadId: snapshot.threadId,
+      imageId: image.id,
+      fileId: image.id,
+      htmlId: image.id,
+      pageId: image.id,
+      probeText,
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  await page.reload();
+
+  // At 390px the bubble exceeds the fold threshold so the message swaps to
+  // the markdown card, whose content still fits at this width.
+  const probeCard = page
+    .locator('[data-testid="display-block"][data-kind="markdown"]')
+    .filter({ hasText: "rollout plan" });
+  await expect(probeCard).toBeVisible({ timeout: 30_000 });
+  await scrollIntoView(probeCard);
+  await expect(probeCard.getByRole("button", { name: "Read full text" })).toHaveCount(0);
+
+  // Narrowing must re-measure the same mounted card: the text is unchanged,
+  // but the narrower card wraps taller and crosses the fold cap.
+  await page.setViewportSize({ width: 320, height: 700 });
+  await scrollIntoView(probeCard);
+  await expect(probeCard.getByRole("button", { name: "Read full text" })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Widening again re-fits the content and the entry must go away.
+  await page.setViewportSize({ width: 1440, height: 1200 });
+  await scrollIntoView(probeCard);
+  await expect(probeCard.getByRole("button", { name: "Read full text" })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await page.setViewportSize({ width: 320, height: 700 });
+  await scrollIntoView(probeCard);
+  await captureScreenshot(page, testInfo, "display-markdown-320-reflow");
+});

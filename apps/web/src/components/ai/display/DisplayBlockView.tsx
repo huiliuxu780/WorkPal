@@ -43,7 +43,13 @@ function MarkdownDisplay({ text }: { text: string }) {
   useEffect(() => {
     const element = body.current;
     if (!element) return;
-    setOverflowing(element.scrollHeight > element.clientHeight + 1);
+    const report = () => setOverflowing(element.scrollHeight > element.clientHeight + 1);
+    report();
+    // Viewport changes reflow the text without changing it, so the fold
+    // decision must follow the rendered box, not just the text content.
+    const observer = new ResizeObserver(report);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [text]);
   return (
     <DisplayCard kind="markdown">

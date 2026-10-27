@@ -304,6 +304,7 @@ async function main() {
             fileId?: string;
             htmlId?: string;
             pageId?: string;
+            probeText?: string;
           };
           if (
             !input.botId ||
@@ -401,6 +402,19 @@ async function main() {
             },
           });
           const callId = "display-call";
+          if (input.probeText) {
+            // A separate bot message so the viewport-reflow regression gets a
+            // markdown card whose fold decision flips on narrow viewports.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [{ kind: "text", text: input.probeText }] as never,
+              },
+            });
+          }
           await handles.prisma.message.create({
             data: {
               threadId: thread.id,
