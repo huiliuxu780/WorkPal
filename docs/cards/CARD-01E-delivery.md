@@ -4,7 +4,7 @@
 
 - 任务书：`docs/tasks/second-batch-20261028/CARD-01E.md`（第二批；该目录在主工作区未跟踪，本分支不新增）+ [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
 - 分支：`codex/card-system-completion`
-- 基线：`8054caccb9cf347ad4cc7ca1630014814ccb016a`（`origin/main`，PR #153 合入后）
+- 基线：`a29c71123d50929faa05d2df588f487169eaad79`（最新本地 `origin/main`，PR #149 后；分支已 rebase 到该点。原始红基线 A/B 使用 `8054cac`）
 - 实现 head：以分支顶端提交为准
 
 ## 用户现在能完成的流程
@@ -67,7 +67,7 @@
 
 ## 本地运行命令与结果
 
-在 base `8054cac` 的独立 worktree 执行；E2E 使用 colima Docker 启动一次性 PostgreSQL，API/Worker/Web 为真实进程，runtime 为仓库 scripted runtime。
+在最新 `origin/main`（`a29c711`）的独立 worktree 执行；E2E 使用 colima Docker 启动一次性 PostgreSQL，API/Worker/Web 为真实进程，runtime 为仓库 scripted runtime。
 
 | 命令 | 结果 |
 | --- | --- |

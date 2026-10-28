@@ -1,6 +1,6 @@
 # CARD-01E evidence
 
-Base: `8054caccb9cf347ad4cc7ca1630014814ccb016a`（`origin/main`，PR #153 后）
+Base: `a29c71123d50929faa05d2df588f487169eaad79`（最新本地 `origin/main`，PR #149 后；原始 A/B 红基线为 `8054cac`）
 Branch: `codex/card-system-completion`
 
 本目录保存 CARD-01E 的产品运行截图、测试摘要和红绿/变异证据。命令在从 base 新建的独立 worktree 执行；E2E 使用本机 colima Docker（将 `DOCKER_HOST` 指向 colima socket）启动一次性 PostgreSQL 与真实 API/Worker/Web。
@@ -59,7 +59,7 @@ Branch: `codex/card-system-completion`
 - `approval-resume-branch-red.txt` / `approval-resume-base-red.txt`：同一过期断言在分支和干净 base `8054cac` 上都红（Expected 2 / Received 0）。
 - `approval-resume-green.txt`：按 FIX-127 契约更新断言后 **1 passed**。
 - `e2e-gate-on.txt`：任务书指定五个 gate-on spec **13 passed**。
-- `unit-full.txt`：`pnpm test:unit` → 458/459 files，5541 passed；唯一失败为 `infra/sandboxes/supervisor/computer-loopback.test.ts` 的 4 条 401，`supervisor-baseline-red.txt` 在 base `8054cac` 上同样红。
+- `unit-full.txt`：`pnpm test:unit` → 458/459 files，5543 passed；唯一失败为 `infra/sandboxes/supervisor/computer-loopback.test.ts` 的 4 条 401，`supervisor-baseline-red.txt` 在 base `8054cac` 上同样红。
 - `postgres-full.txt`：最终无并发完整重跑 `pnpm test:postgres` → **51/51 files, 465/465 passed**；一次并发运行中出现过 `wakeup.postgres.test.ts` 的 3 条 500/600ms 窗口失败，单独重跑即绿。
 - `checks.txt`：`pnpm lint` 0 error / 76 warning / 5 info；`pnpm check` 18/18；`pnpm --filter @rakazo/web build` 首次 16.33s、最终增量 3.12s；`check-docs` 169 个 markdown 链接正常。
 - `real-model-e2e.txt`：`card-real-model.spec.ts` 在 AgentScope Java Runtime + DashScope `qwen3.8-flash` 下 **1 passed (36.3s)**；key 只来自 `REAL_MODEL_API_KEY`，未进入仓库、日志或截图。

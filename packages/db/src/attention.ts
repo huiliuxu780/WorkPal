@@ -249,7 +249,16 @@ async function countUnrenderableComplex(
     WHERE ${durableFilters({ ...input, cursor: null })}
       AND (
         intervention."kind" = 'plan_review'
-        OR (intervention."kind" = 'approval' AND intervention."effectId" IS NULL)
+        OR (
+          intervention."kind" = 'approval'
+          AND (
+            intervention."effectId" IS NULL
+            OR EXISTS (
+              SELECT 1 FROM "group_membership_requests" AS request
+              WHERE request."interventionId" = intervention."id"
+            )
+          )
+        )
       )
   `);
   let unrenderable = 0;
@@ -333,13 +342,13 @@ function durableFilters(input: {
       OR (
         intervention."kind" = 'approval'
         AND (
-          (
-            intervention."effectId" IS NOT NULL
-            AND (effect."id" IS NULL OR effect."status" <> '')
-          )
-          OR EXISTS (
+          EXISTS (
             SELECT 1 FROM "group_membership_requests" AS request
             WHERE request."interventionId" = intervention."id"
+          )
+          OR (
+            intervention."effectId" IS NOT NULL
+            AND (effect."id" IS NULL OR effect."status" <> '')
           )
         )
       )
