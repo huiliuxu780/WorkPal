@@ -50,19 +50,33 @@
 4. 时间兜底扫不到：`recoverExpiredSessionAdmissions`（`:552`）只选 `state='owned'`；`listAvailableSessionAdmissionHeads`（`:849`）只认 `state='available'`。
 5. 唯一出口 `releaseRecoveredSessionAdmission`（`:759`）需要 runtime checkpoint 证明，而 Stop 已经中止了那个 runtime 会话，证明函数在 `executor.ts:1407-1413` 记 `recovering session admission could not be proven` 并返回 false。
 
-## 已实施修复
+## 已实施修复（收窄方案 B：仅 Stop/取消路径）
 
-- `packages/db/src/session-admission.ts`：新增内部 `releaseTerminalOwnerAdmission(tx, row, now)`——owner Run 处于 `completed`/`failed`/`cancelled` 时把 admission 置回 `available`，`lastReleaseReason='owner_run_terminal'`，并释放其 request 行。终态集合与文件里既有的两处 request sweep（`:172`、`:834`）一致。
-- `acquireSessionAdmission` 在锁行之后、判定 `recovering`/`owned` 之前调用它，因此下一条消息在**同一个事务、同一个事件检查周期**内就能取得执行权（覆盖 S1/S1b/S2/S4）。
-- 新增导出 `releaseSessionAdmissionsWithTerminalOwner(prisma, now, limit)`，用 `FOR UPDATE ... SKIP LOCKED` 批量释放，并返回每个会话的排队后继。
-- `apps/worker/src/session-admission-reconciler.ts`：在过期 sweep **之前**先跑终态释放（终态优先于过期，避免把已终态的 owner 又 park 成 recovering），把释放出的后继与可用 FIFO head 去重后各入队一次，返回值新增 `released`。
+- `packages/db/src/session-admission.ts`：新增内部 `releaseCancelledOwnerAdmission(tx, row, now)`。放行必须**同时**满足两条，缺一不可：
+  1. owner Run 是 `cancelled`（不是"任意终态"）；
+  2. 该 Run 的 `run_abort` execution revocation 已经不存在。
+  满足时把 admission 置回 `available`，`lastReleaseReason='cancelled_owner_abort_confirmed'`，并释放其 request 行。查询顺序是**先读 owner 终态、再读 revocation**，且都在调用方的事务内：READ COMMITTED 下两次读之间被删掉的行，是因为 abort 已返回才被删的；反过来先读 revocation 会把"还没写入"误判成"已经 abort 完"。
+- `acquireSessionAdmission` 在锁行之后、判定 `recovering`/`owned` 之前调用它，因此下一条消息在**同一个事务**内就能取得执行权。
+- 新增导出 `releaseSettledCancelledSessionAdmissions(prisma, now, limit)`：`FOR UPDATE OF admission SKIP LOCKED`，候选查询带 `run.status = 'cancelled'` 与 `NOT EXISTS (run_abort revocation)` 两个条件，未确认 abort 的行不会被选中。
+- `apps/worker/src/session-admission-reconciler.ts`：在过期 sweep 之前先跑这条释放，把释放出的后继与可用 FIFO head 去重后各入队一次，返回值新增 `released`。
 
-没有做的事，以及为什么这样不算削弱护栏：
+**`failed` / `completed` owner 明确不在本规则内**：这两条路径根本不写 `run_abort` 行，所以"没有 revocation"对它们恒真；按它放行会在会话状态尚未落定时就移交，正是 `worker-chain.spec.ts:546`/`:785` 禁止的。新增 PG 用例 "a failed owner stays parked" 把这条边界钉成断言，而不是只靠代码形状。
 
-- **没有**把 `recoverExpiredSessionAdmissions` 扩大到 `recovering`。仅凭过期仍然不移交：`session-admission.postgres.test.ts` 的 "moves every crash point to recovering after expiry and never hands off" 修复后仍然绿（其 owner Run 是 `queued`，非终态，不落入新规则）。
-- **没有**改 RT-26 的证明语义：`session-checkpoint.postgres.test.ts` 的 "keeps an RT-25 recovering owner until a fresh proof is acknowledged" 与 "releases a suspended admission only after the proof is acknowledged" 修复后仍然绿。
+没有做的事，以及为什么不算削弱护栏：
+
+- **没有**把 `recoverExpiredSessionAdmissions` 扩大到 `recovering`。仅凭过期仍然不移交：`session-admission.postgres.test.ts` 的 "moves every crash point to recovering after expiry and never hands off" 仍然绿。
+- **没有**改 RT-26 的证明语义：`session-checkpoint.postgres.test.ts` 的两条 proving 用例仍然绿。
+- **没有**用时间阈值：S4 显式把时钟推到 `expiresAt + 5min` 并跑 reconciler，abort 未确认时断言仍然 `recovering`。
 - **没有**缩短 lease、加重试或加 sleep；S1–S4 的时钟全部显式传入。
-- **没有**改 cancel 的业务语义（steering disposition、notice、continuation 都不动）；`cancel-terminal.postgres.test.ts` 12 项、`effect-execution-fence.postgres.test.ts` 18 项修复后仍然绿。
+- **没有**改 cancel 的业务语义（steering disposition、notice、continuation 都不动）；`cancel-terminal` 12 项、`effect-execution-fence` 18 项仍然绿。
+
+## 失败场景（`:546`/`:785`）的三个未决问题：另记为后续调查
+
+按负责人裁决，本交付单元只处理 Stop/取消路径，失败场景保持现状。以下三点不塞进本单元，作为独立调查：
+
+1. 失败 Run 的 Attempt 由谁、在哪一步之后写终态；
+2. worker 中途被杀时该 Attempt 停在什么状态（必须停在 `running` 才符合"未落定"）；
+3. `:546`/`:785` 两个用例里失败 Run 的 Attempt 实际处于什么状态。
 
 ## 阻塞：与三个已交付的进程级契约直接冲突（待负责人裁决）
 

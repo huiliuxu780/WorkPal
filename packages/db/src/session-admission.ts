@@ -243,32 +243,54 @@ async function parkRunForRecovery(
 }
 
 /**
- * FIX-STOP-01: a Run that reached a terminal state cannot be executing, so its
- * hold on the session is a stale fact rather than an unproven suspension. This
- * is not a timeout shortcut — RT-26 keeps refusing to treat elapsed time as
- * proof, and the terminal status set is the same one the request sweeps already
- * use. Without it, one Stop parks the session forever: the executor marks the
- * admission `recovering` for a Run that ended unconfirmed, the only exit needs a
- * Runtime checkpoint proof that the Stop already aborted, and the expiry sweep
- * reads `owned` rows only.
+ * FIX-STOP-01 (scheme B, scoped to Stop): a session held by a Run the user
+ * cancelled stays parked until the native AgentScope abort is confirmed. Two
+ * facts must hold together, and neither is a timeout:
+ *
+ *   1. the owner Run is `cancelled`, and
+ *   2. the `run_abort` execution revocation written in that same cancel
+ *      transaction is gone.
+ *
+ * `recordRunAbortRevocations` inserts that row inside `cancelRunsInTransaction`,
+ * so a cancelled Run always starts with it; `deliverRunAborts` deletes it only
+ * after `runtime.abort()` returns successfully, and keeps it (bumping attempts,
+ * recording lastError) when the abort throws. "Owner cancelled and row absent"
+ * therefore means the abort returned — the settling RT-26 waited for, expressed
+ * as a deletion rather than as elapsed time.
+ *
+ * The owner status is read before the revocation on purpose. Under READ
+ * COMMITTED each statement takes a fresh snapshot, so a row that disappears
+ * between the two reads disappeared because the abort returned, which is the
+ * fact we want; reading the revocation first could mistake "not inserted yet"
+ * for "already aborted".
+ *
+ * `failed` and `completed` owners are deliberately NOT released. Those paths
+ * write no `run_abort` row at all, so the same predicate would be vacuously
+ * true, and worker-chain.spec.ts:546/:785 require them to stay parked until the
+ * RT-26 proof lands. Widening that is a separate decision, not this unit.
  */
-async function releaseTerminalOwnerAdmission(
+async function releaseCancelledOwnerAdmission(
   tx: Prisma.TransactionClient,
   row: AdmissionRow,
   now: Date,
 ): Promise<boolean> {
   if (!row.ownerRunId) return false;
   if (row.state !== "owned" && row.state !== "recovering") return false;
-  const terminal = await tx.run.findFirst({
-    where: { id: row.ownerRunId, status: { in: ["completed", "failed", "cancelled"] } },
+  const cancelledOwner = await tx.run.findFirst({
+    where: { id: row.ownerRunId, status: "cancelled" },
     select: { id: true },
   });
-  if (!terminal) return false;
+  if (!cancelledOwner) return false;
+  const pendingAbort = await tx.executionRevocation.findFirst({
+    where: { kind: "run_abort", subjectId: row.ownerRunId },
+    select: { id: true },
+  });
+  if (pendingAbort) return false;
   const updated = await tx.$executeRaw`
     UPDATE "agent_session_admissions"
     SET "state" = 'available',
         "expiresAt" = NULL,
-        "lastReleaseReason" = 'owner_run_terminal',
+        "lastReleaseReason" = 'cancelled_owner_abort_confirmed',
         "updatedAt" = ${now}
     WHERE "sessionKey" = ${row.sessionKey}
       AND "state" IN ('owned', 'recovering')
@@ -314,7 +336,7 @@ export async function acquireSessionAdmission(
     `;
     let row = await lockAdmission(tx, sessionKey);
     assertMatchingIdentity(row, input);
-    if (await releaseTerminalOwnerAdmission(tx, row, now)) {
+    if (await releaseCancelledOwnerAdmission(tx, row, now)) {
       row = await lockAdmission(tx, sessionKey);
     }
     const request = await insertAndReadRequest(tx, input, sessionKey);
@@ -619,15 +641,18 @@ export async function recoverExpiredSessionAdmissions(
 }
 
 /**
- * FIX-STOP-01: frees sessions still held by a Run that already reached a
- * terminal state, whatever the admission state or expiry. `recoverExpiredSessionAdmissions`
- * cannot do this: it reads `owned` rows only, so a Stop that parked the session
- * as `recovering` was never swept and the conversation stayed unusable past the
- * lease horizon. The proof here is the owner's durable terminal status, not
- * elapsed time, so RT-25/RT-26 keep refusing to hand a session over on expiry
- * alone.
+ * FIX-STOP-01: frees sessions still held by a cancelled Run whose native abort
+ * has been confirmed, whatever the admission state or expiry.
+ * `recoverExpiredSessionAdmissions` cannot do this: it reads `owned` rows only,
+ * so a Stop that parked the session as `recovering` was never swept and the
+ * conversation stayed unusable past the lease horizon.
+ *
+ * The candidate filter is the same two-fact predicate as
+ * `releaseCancelledOwnerAdmission`: owner cancelled AND no outstanding
+ * `run_abort` revocation. Rows whose abort is still undelivered are excluded
+ * here, so they stay parked exactly as RT-26 requires.
  */
-export async function releaseSessionAdmissionsWithTerminalOwner(
+export async function releaseSettledCancelledSessionAdmissions(
   prisma: PrismaClient,
   now = new Date(),
   limit = 100,
@@ -637,14 +662,19 @@ export async function releaseSessionAdmissionsWithTerminalOwner(
       SELECT admission.* FROM "agent_session_admissions" admission
       JOIN "runs" run ON run."id" = admission."ownerRunId"
       WHERE admission."state" IN ('owned', 'recovering')
-        AND run."status" IN ('completed', 'failed', 'cancelled')
+        AND run."status" = 'cancelled'
+        AND NOT EXISTS (
+          SELECT 1 FROM "execution_revocations" revocation
+          WHERE revocation."kind" = 'run_abort'
+            AND revocation."subjectId" = admission."ownerRunId"
+        )
       ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
       LIMIT ${limit}
       FOR UPDATE OF admission SKIP LOCKED
     `;
     const released: Array<{ sessionKey: string; nextRunId: string | null }> = [];
     for (const row of rows) {
-      if (!(await releaseTerminalOwnerAdmission(tx, row, now))) continue;
+      if (!(await releaseCancelledOwnerAdmission(tx, row, now))) continue;
       const next = await firstQueuedRequest(tx, row.sessionKey);
       released.push({ sessionKey: row.sessionKey, nextRunId: next?.runId ?? null });
     }

@@ -22,32 +22,41 @@ const describePostgres =
   process.env.VERIFY_DATABASE && process.env.DATABASE_URL ? describe.sequential : describe.skip;
 
 /**
- * VERIFY-01 S1–S4: one Bot, one conversation, no child Runs, no takeover, no
- * multi-Bot. This is the most common user path — press Stop, then say something
- * else — and it is the 2026-10-27 QA P0-3 counterexample: the Run becomes
- * `cancelled` and every later message in that conversation stays `queued` past
- * the five-minute lease horizon.
+ * VERIFY-01 S1–S4 + FIX-STOP-01: one Bot, one conversation, no child Runs, no
+ * takeover, no multi-Bot. This is the most common user path — press Stop, then
+ * say something else — and it is the 2026-10-27 QA P0-3 counterexample: the Run
+ * becomes `cancelled` and every later message in that conversation stays
+ * `queued` past the five-minute lease horizon.
  *
  * Production paths exercised here:
  *   - Stop: `apps/api/src/thread-target.ts` `stopThreadRuns()` →
- *     `applyCancelTerminalPolicy(cancelPolicyFor("user_stopped"))`. Neither
- *     touches session admission.
- *   - Admission: `packages/adapters/src/executor.ts` sets
- *     `sessionMayRelease = false` once the runtime started, and its `finally`
- *     block calls `markSessionAdmissionRecovering(...,
+ *     `applyCancelTerminalPolicy(cancelPolicyFor("user_stopped"))`, which writes
+ *     the Run's `run_abort` execution revocation in the same transaction.
+ *   - Native abort: `apps/worker/src/index.ts` sweeps that revocation through
+ *     `deliverRunAborts(() => runtime.abort(id))`, which deletes the row only
+ *     after the abort returns. This file models that deletion with
+ *     `confirmNativeAbort()` instead of importing the adapter layer.
+ *   - Admission: `packages/adapters/src/executor.ts` sets `sessionMayRelease =
+ *     false` once the runtime started, and its `finally` block calls
+ *     `markSessionAdmissionRecovering(...,
  *     "agentscope_runtime_outcome_unconfirmed")` for a Run that ended
  *     unconfirmed and is not parked on a card. A cancelled Run is exactly that.
  *     A normally completed Run goes through `completeSessionAdmission`.
  *   - Fallback: `apps/worker/src/session-admission-reconciler.ts` →
- *     `recoverExpiredSessionAdmissions()`.
+ *     `recoverExpiredSessionAdmissions()` and
+ *     `releaseSettledCancelledSessionAdmissions()`.
  *
- * These tests record facts; they do not fix anything. The fix belongs to
- * FIX-STOP-01. Two assertions from the task card are deliberately NOT made here
- * because the persistence layer cannot observe them: the conversation header no
- * longer showing Running/Queued, and the absence of "recovering session
- * admission could not be proven" in the worker log. Both need the executor /
- * worker chain or the real-model manual run, and the scenario map records them
- * as not covered by this file rather than claiming them.
+ * FIX-STOP-01 releases the session only when the owner is `cancelled` AND its
+ * `run_abort` revocation is gone. Every cancellation scenario therefore asserts
+ * BOTH branches: still parked while the abort is undelivered, handed over once it
+ * is confirmed. A `failed` owner is asserted to stay parked — that is the
+ * boundary worker-chain.spec.ts:546/:785 guard.
+ *
+ * Two assertions from the task card are deliberately NOT made here because the
+ * persistence layer cannot observe them: the conversation header no longer
+ * showing Running/Queued, and the absence of "recovering session admission could
+ * not be proven" in the worker log. The scenario map records them as uncovered
+ * by this file rather than claiming them.
  */
 describePostgres("Stop must hand the session execution right back (PostgreSQL)", () => {
   let isolated: IsolatedPostgresDatabase | undefined;
@@ -167,9 +176,7 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     const acquired = await acquireSessionAdmission(
       prisma,
       identity(run, `exec-${randomUUID()}`, lease),
-      {
-        ttlMs: options.ttlMs,
-      },
+      { ttlMs: options.ttlMs },
     );
     expect(acquired.kind).toBe("acquired");
     if (acquired.kind !== "acquired") throw new Error("admission was not acquired");
@@ -206,6 +213,25 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     );
   }
 
+  /**
+   * What `deliverRunAborts` does once `runtime.abort(id)` returns: the
+   * `run_abort` revocation is deleted. A thrown abort leaves the row in place,
+   * which the "still parked" assertions below model.
+   */
+  function confirmNativeAbort(runId: string) {
+    return prisma.executionRevocation.deleteMany({
+      where: { kind: "run_abort", subjectId: runId },
+    });
+  }
+
+  async function abortPending(runId: string) {
+    const row = await prisma.executionRevocation.findFirst({
+      where: { kind: "run_abort", subjectId: runId },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async function steer(runId: string | null, threadId: string, botId: string, text: string) {
     const message = await createThreadMessage(prisma, {
       threadId,
@@ -232,60 +258,35 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     `;
   }
 
+  async function terminalHolders(sessionKey: string) {
+    return (await holders(sessionKey)).filter(
+      (row) => row.ownerRunId !== null && TERMINAL.includes(row.runStatus ?? ""),
+    );
+  }
+
   /** One reconciler pass on an explicit clock. No sleeping, no TTL wait. */
   async function oneEventCheckTick(now: Date) {
     await recoverExpiredSessionAdmissions(prisma, now);
     return listAvailableSessionAdmissionHeads(prisma);
   }
 
-  /**
-   * Both card assertions in one fact, so a stuck admission cannot hide the
-   * handover result and vice versa: the next Run owns the session within one
-   * event-check tick, and no admission is left held by a terminal Run.
-   */
-  async function expectSessionHandedOver(
-    label: string,
-    sessionKey: string,
-    next: {
-      id: string;
-      userId: string;
-      spaceId: string;
-      botId: string;
-      threadId: string;
-      taskId: string;
-    },
-    now: Date,
-  ) {
-    await oneEventCheckTick(now);
-    const acquired = await acquireSessionAdmission(
-      prisma,
-      identity(next, `exec-${randomUUID()}`, await claimRun(next)),
-      { now },
-    );
-    const stuck = (await holders(sessionKey)).filter(
-      (row) => row.ownerRunId !== null && TERMINAL.includes(row.runStatus ?? ""),
-    );
-    expect(
-      {
-        scenario: label,
-        nextRunAdmission: acquired.kind,
-        nextRunId: acquired.kind === "acquired" ? acquired.runId : null,
-        expectedNextRunId: next.id,
-        admissionHeldByTerminalRun: stuck,
-      },
-      `${label}: Stop must hand the session to the next Run in the same event-check tick`,
-    ).toEqual({
-      scenario: label,
-      nextRunAdmission: "acquired",
-      nextRunId: next.id,
-      expectedNextRunId: next.id,
-      admissionHeldByTerminalRun: [],
-    });
+  /** Prepare the successor Run and one stable attempt identity for it. */
+  async function prepareSuccessor(botId: string, threadId: string, prompt: string) {
+    const next = await newRun(botId, threadId, prompt);
+    const lease = await claimRun(next);
+    return { next, lease, executionId: `exec-${randomUUID()}` };
   }
 
-  it("S1: cancelling an in-flight generation lets the next message run", async () => {
-    // The QA reproduction: the runtime already started, so the executor parks
-    // the admission instead of releasing it, and Stop cancels the Run.
+  /** Same identity both times, so the queued request is reused, not duplicated. */
+  function attempt(prepared: Awaited<ReturnType<typeof prepareSuccessor>>, now: Date) {
+    return acquireSessionAdmission(
+      prisma,
+      identity(prepared.next, prepared.executionId, prepared.lease),
+      { now },
+    );
+  }
+
+  it("S1: cancelling an in-flight generation hands the session over only after the abort is confirmed", async () => {
     const { bot, thread, sessionKey } = await newDirectSession();
     const stopped = await newRun(bot.id, thread.id);
     const admission = await ownAdmission(stopped, await claimRun(stopped), {
@@ -297,17 +298,53 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
       botId: bot.id,
     });
     expect(settled.rows.map((row) => row.id)).toEqual([stopped.id]);
+    // Stop writes the abort revocation in the same transaction as the status flip.
+    expect(await abortPending(stopped.id), "Stop must leave a run_abort revocation").toBe(true);
     await parkAsExecutorDoes(admission);
 
-    const next = await newRun(bot.id, thread.id, "1+1 等于几");
-    await expectSessionHandedOver("S1", sessionKey, next, new Date());
+    const successor = await prepareSuccessor(bot.id, thread.id, "1+1 等于几");
+    const now = new Date();
+
+    // Branch 1 — abort still undelivered: the session stays parked and queued.
+    const blocked = await attempt(successor, now);
+    expect(
+      {
+        phase: "abort-pending",
+        admission: blocked.kind,
+        holders: await holders(sessionKey),
+      },
+      "a cancelled owner whose native abort has not returned must keep the session",
+    ).toEqual({
+      phase: "abort-pending",
+      admission: "recovering",
+      holders: [{ state: "recovering", ownerRunId: stopped.id, runStatus: "cancelled" }],
+    });
+
+    // Branch 2 — the Worker's deliverRunAborts deleted the revocation.
+    expect((await confirmNativeAbort(stopped.id)).count).toBe(1);
+    const released = await attempt(successor, now);
+    expect(
+      {
+        phase: "abort-confirmed",
+        admission: released.kind,
+        runId: released.kind === "acquired" ? released.runId : null,
+        expected: successor.next.id,
+        terminalHolders: await terminalHolders(sessionKey),
+      },
+      "once the abort is confirmed the next Run must own the session in the same tick",
+    ).toEqual({
+      phase: "abort-confirmed",
+      admission: "acquired",
+      runId: successor.next.id,
+      expected: successor.next.id,
+      terminalHolders: [],
+    });
   });
 
-  it("S1b: cancelling before the runtime started must not wait out the admission TTL", async () => {
+  it("S1b: cancelling before the runtime started follows the same two facts, not the TTL", async () => {
     const { bot, thread, sessionKey } = await newDirectSession();
     const stopped = await newRun(bot.id, thread.id);
-    // TTL far in the future: the admission is still valid when Stop lands, so
-    // only the owner's terminal state can free the session.
+    // TTL far in the future: only the abort confirmation can free the session.
     await ownAdmission(stopped, await claimRun(stopped), {
       runtimeStarted: false,
       ttlMs: 300_000,
@@ -317,12 +354,29 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
       threadId: thread.id,
       botId: bot.id,
     });
+    expect(await abortPending(stopped.id)).toBe(true);
 
-    const next = await newRun(bot.id, thread.id, "还在吗");
-    await expectSessionHandedOver("S1b", sessionKey, next, new Date());
+    const successor = await prepareSuccessor(bot.id, thread.id, "还在吗");
+    const now = new Date();
+    const blocked = await attempt(successor, now);
+    // The runtime never started, so the admission is still `owned` rather than
+    // `recovering`; the successor therefore queues instead of being told to wait
+    // for recovery. Both states block, and this pins the exact one.
+    expect(
+      { admission: blocked.kind, holders: await holders(sessionKey) },
+      "abort pending must still block even with a valid TTL",
+    ).toEqual({
+      admission: "queued",
+      holders: [{ state: "owned", ownerRunId: stopped.id, runStatus: "cancelled" }],
+    });
+
+    expect((await confirmNativeAbort(stopped.id)).count).toBe(1);
+    const released = await attempt(successor, now);
+    expect(released.kind).toBe("acquired");
+    expect(await terminalHolders(sessionKey)).toEqual([]);
   });
 
-  it("S2: appended steering is explicitly discarded and the conversation keeps working", async () => {
+  it("S2: appended steering is explicitly discarded and the session follows the same abort fact", async () => {
     const { bot, thread, sessionKey } = await newDirectSession();
     const stopped = await newRun(bot.id, thread.id);
     const admission = await ownAdmission(stopped, await claimRun(stopped), {
@@ -338,17 +392,22 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     });
     await parkAsExecutorDoes(admission);
 
-    // Recorded before the session assertions so a stuck admission cannot hide
-    // the steering fact. `user_stopped` carries steering: "delete", so the
-    // appends must be gone rather than left pending for a later continuation.
+    // Recorded before the session assertions so a parked admission cannot hide
+    // the steering fact. `user_stopped` carries steering: "delete".
     const remaining = await prisma.steeringMessage.findMany({
       where: { id: { in: [first.id, second.id] } },
-      select: { id: true, claimedAt: true },
+      select: { id: true },
     });
     expect(remaining, "S2: appended steering must be explicitly discarded by Stop").toEqual([]);
 
-    const next = await newRun(bot.id, thread.id, "重新写一版");
-    await expectSessionHandedOver("S2", sessionKey, next, new Date());
+    const successor = await prepareSuccessor(bot.id, thread.id, "重新写一版");
+    const now = new Date();
+    expect((await attempt(successor, now)).kind).toBe("recovering");
+
+    expect((await confirmNativeAbort(stopped.id)).count).toBe(1);
+    const released = await attempt(successor, now);
+    expect(released.kind).toBe("acquired");
+    expect(await terminalHolders(sessionKey)).toEqual([]);
   });
 
   it("S3: Stop that lands on an already terminal Run changes nothing and leaves the session usable", async () => {
@@ -371,6 +430,7 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
       botId: bot.id,
     });
     expect(settled.rows, "S3: a completed Run must not be cancelled again").toEqual([]);
+    expect(await abortPending(finished.id), "S3: no abort revocation for a no-op Stop").toBe(false);
 
     const afterStop = await prisma.run.findUniqueOrThrow({
       where: { id: finished.id },
@@ -383,14 +443,17 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     });
     expect(cancelledEvents, "S3: no extra terminal event for an already finished Run").toBe(0);
 
-    const next = await newRun(bot.id, thread.id, "再来一条");
-    await expectSessionHandedOver("S3", sessionKey, next, new Date());
+    const successor = await prepareSuccessor(bot.id, thread.id, "再来一条");
+    const now = new Date();
+    await oneEventCheckTick(now);
+    const acquired = await attempt(successor, now);
+    expect(acquired.kind, "S3: the session must stay usable after a raced Stop").toBe("acquired");
+    expect(await terminalHolders(sessionKey)).toEqual([]);
   });
 
-  it("S4: a worker restart or expired lease must still free a session whose owner was cancelled", async () => {
+  it("S4: a worker restart or expired lease frees a cancelled session only after the abort is confirmed", async () => {
     const { bot, thread, sessionKey } = await newDirectSession();
     const stopped = await newRun(bot.id, thread.id);
-    // Short TTL so the lease horizon is reachable with a controllable clock.
     const admission = await ownAdmission(stopped, await claimRun(stopped), {
       runtimeStarted: true,
       ttlMs: 1_000,
@@ -408,10 +471,40 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
       "S4 precondition: parked as recovering",
     ).toEqual(["recovering"]);
 
-    // The worker is gone and the lease horizon has passed. Lease recovery is the
-    // documented fallback, so it has to actually free the session.
+    // The worker is gone and the lease horizon has passed, but the native abort
+    // was never confirmed: time alone must not hand the session over.
     const afterHorizon = new Date(admission.expiresAt.getTime() + 5 * 60_000);
-    const next = await newRun(bot.id, thread.id, "你还在吗");
-    await expectSessionHandedOver("S4", sessionKey, next, afterHorizon);
+    const successor = await prepareSuccessor(bot.id, thread.id, "你还在吗");
+    await oneEventCheckTick(afterHorizon);
+    const blocked = await attempt(successor, afterHorizon);
+    expect(blocked.kind, "S4: an undelivered abort must not be replaced by the lease horizon").toBe(
+      "recovering",
+    );
+
+    // Now the abort is confirmed; the same successor must take the session.
+    expect((await confirmNativeAbort(stopped.id)).count).toBe(1);
+    const released = await attempt(successor, afterHorizon);
+    expect(released.kind).toBe("acquired");
+    expect(await terminalHolders(sessionKey)).toEqual([]);
+  });
+
+  it("a failed owner stays parked: the boundary worker-chain.spec.ts:546 and :785 guard", async () => {
+    const { bot, thread, sessionKey } = await newDirectSession();
+    const failed = await newRun(bot.id, thread.id);
+    const admission = await ownAdmission(failed, await claimRun(failed), {
+      runtimeStarted: true,
+    });
+    // A Run that fails on its own never writes a run_abort revocation, so the
+    // "no revocation" half of the predicate is vacuously true for it. Releasing
+    // on that would hand the session over while the failed Run's session state is
+    // still unsettled, which is exactly what those two worker-chain specs forbid.
+    await prisma.run.update({ where: { id: failed.id }, data: { status: "failed" } });
+    await parkAsExecutorDoes(admission);
+    expect(await abortPending(failed.id), "a failed Run has no run_abort revocation").toBe(false);
+
+    const successor = await prepareSuccessor(bot.id, thread.id, "失败后再问一次");
+    const blocked = await attempt(successor, new Date());
+    expect(blocked.kind, "a failed owner must keep the RT-26 park").toBe("recovering");
+    expect((await holders(sessionKey)).map((row) => row.state)).toEqual(["recovering"]);
   });
 });

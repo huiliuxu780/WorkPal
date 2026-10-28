@@ -3,17 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   recoverExpiredSessionAdmissions,
   listAvailableSessionAdmissionHeads,
-  releaseSessionAdmissionsWithTerminalOwner,
+  releaseSettledCancelledSessionAdmissions,
 } = vi.hoisted(() => ({
   recoverExpiredSessionAdmissions: vi.fn(),
   listAvailableSessionAdmissionHeads: vi.fn(),
-  releaseSessionAdmissionsWithTerminalOwner: vi.fn(),
+  releaseSettledCancelledSessionAdmissions: vi.fn(),
 }));
 
 vi.mock("@rakazo/db", () => ({
   recoverExpiredSessionAdmissions,
   listAvailableSessionAdmissionHeads,
-  releaseSessionAdmissionsWithTerminalOwner,
+  releaseSettledCancelledSessionAdmissions,
 }));
 
 import { reconcileSessionAdmissions } from "./session-admission-reconciler.js";
@@ -21,7 +21,7 @@ import { reconcileSessionAdmissions } from "./session-admission-reconciler.js";
 describe("session admission reconciler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    releaseSessionAdmissionsWithTerminalOwner.mockResolvedValue([]);
+    releaseSettledCancelledSessionAdmissions.mockResolvedValue([]);
     recoverExpiredSessionAdmissions.mockResolvedValue([]);
     listAvailableSessionAdmissionHeads.mockResolvedValue([]);
   });
@@ -48,7 +48,7 @@ describe("session admission reconciler", () => {
   });
 
   it("wakes the successor of a session freed from a terminal owner", async () => {
-    releaseSessionAdmissionsWithTerminalOwner.mockResolvedValue([
+    releaseSettledCancelledSessionAdmissions.mockResolvedValue([
       { sessionKey: "stopped-session", nextRunId: "queued-after-stop" },
       { sessionKey: "finished-session", nextRunId: null },
     ]);
@@ -70,7 +70,7 @@ describe("session admission reconciler", () => {
   it("releases terminal owners before parking anything on expiry", async () => {
     const enqueue = vi.fn().mockResolvedValue(undefined);
     await reconcileSessionAdmissions({} as never, { enqueue } as never);
-    expect(releaseSessionAdmissionsWithTerminalOwner).toHaveBeenCalledBefore(
+    expect(releaseSettledCancelledSessionAdmissions).toHaveBeenCalledBefore(
       recoverExpiredSessionAdmissions,
     );
     expect(recoverExpiredSessionAdmissions).toHaveBeenCalledBefore(

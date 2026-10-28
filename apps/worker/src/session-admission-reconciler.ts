@@ -4,7 +4,7 @@ import {
   listAvailableSessionAdmissionHeads,
   type PrismaClient,
   recoverExpiredSessionAdmissions,
-  releaseSessionAdmissionsWithTerminalOwner,
+  releaseSettledCancelledSessionAdmissions,
 } from "@rakazo/db";
 
 /**
@@ -12,16 +12,17 @@ import {
  * only missed wakeups for sessions that are already available. It never turns
  * expiry into permission for a successor to enter AgentScope.
  *
- * FIX-STOP-01 adds one earlier pass: a Run that already reached a terminal state
- * cannot be executing, so its hold is released on that durable fact — not on
- * elapsed time. Without it a single Stop left the session parked as `recovering`
- * with no proof path and no expiry exit, so the conversation never ran again.
+ * FIX-STOP-01 adds one earlier pass, scoped to Stop: a cancelled Run whose
+ * native abort has been confirmed (its `run_abort` revocation is gone) hands the
+ * session back on that fact — not on elapsed time. A cancelled Run whose abort
+ * is still undelivered, and every failed or completed owner, keep the RT-26
+ * recovering park unchanged.
  */
 export async function reconcileSessionAdmissions(
   prisma: PrismaClient,
   jobs: JobPublisher,
 ): Promise<{ recovered: number; released: number; scheduled: number }> {
-  const released = await releaseSessionAdmissionsWithTerminalOwner(prisma);
+  const released = await releaseSettledCancelledSessionAdmissions(prisma);
   const recovered = await recoverExpiredSessionAdmissions(prisma);
   const heads = await listAvailableSessionAdmissionHeads(prisma);
   const wake: string[] = [];
