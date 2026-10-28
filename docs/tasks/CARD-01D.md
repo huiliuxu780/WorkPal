@@ -1,6 +1,6 @@
 # CARD-01D：Attention queue 与 Web 通知
 
-状态：`in-progress`（PR #147 未合入。复审轮的 P2 已在分支上修复；原验收项中有两项未闭合，等负责人裁决后才能重新进入验收，见下方"未闭合的原验收项"）
+状态：`done`（PR #147 已合入 `main`，merge commit `db59035`，2026-10-28；`@我` 与 `total` 边界按记录分别拆到 CARD-01F 与后续单元）
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
@@ -78,6 +78,8 @@
 - 复审轮修复：删除 attention 读取的每源 500 行上限（`total` 不再静默少算，见下）；通知正文改为按类型的固定文案（不再拼接 Bot 生成的 `presentation.text`，与更新后的 N4 原型一致，红绿见 `red-green/RED-p2-5-*`/`GREEN-p2-5-*`）；gate 开启时停用旧的按 Bot 通知（`shouldNotifyLegacyBrowser`），普通消息与终态不再提醒；N3 增加未读圆点与数字计数分离的断言和截图；修正 E2E 中失效的敏感扫描正则。
 - P2 修复（复审意见 `4391533935`）：`FULL_E2E_GATED_SPEC` / `FULL_E2E_GATE_OFF_SPEC` 现在由 `E2E_GATE_SPECS` 推导，`card-attention.spec.ts`、`group-membership.spec.ts`、`message-group.spec.ts` 不再落进 gate-off 批次被自身 gate 跳过；`e2e-spec-selection.test.ts` 增加回归，断言每个 gate spec 都在完整 gate-on 批次且不被 gate-off 正则匹配。
 - 代码 head `ad7f8d9` 的 CI：[run 40661217374](https://github.com/huiliuxu780/WorkPal/actions/runs/40661217374)。该 run 经确认：`run_attempt=2` 单次 attempt 覆盖全部相关 job，`web` job 实跑 `card-attention.spec.ts` 2 passed（不是 skipped、不是只收集）。P2 修复提交之后的 head 需要重新跑最终 CI，判定以新的 head 为准。
+
+- 最终代码 head `c13507d`（P2 的完整 E2E selector 修复、去上限、GIN 索引）已合入 `main`，merge commit `db59035`；合入后只有本收尾文档 PR 改状态。
 
 ## 未闭合的原验收项（不是开发可以自行关闭的）
 
