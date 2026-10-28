@@ -34,7 +34,7 @@
 | 2 revocation 仍在 | `branch 2: a started session with the abort still outstanding stays parked` | 绿 |
 | 3 revocation 删除但无 proof | `branch 3: revocation gone but no detach proof still keeps the session parked` | **旧实现红**（`expected 'acquired' to be 'recovering'`），新实现绿 |
 | 3b 时间不是证明 | `branch 3b: the lease horizon is still not a proof` | 绿 |
-| 4 proof 落库后释放 | 释放半边由 `session-checkpoint.postgres.test.ts` 既有用例覆盖（"releases a suspended admission only after the proof is acknowledged"）；触发重投由 `session-admission-reconciler.test.ts` 的 "re-dispatches a cancelled owner whose runtime started instead of releasing it" 覆盖 | 绿 |
+| 4 proof 落库后释放 | 释放半边由既有用例覆盖：`packages/adapters/src/session-checkpoint-recovery.postgres.test.ts` 的 **"releases a terminal owner's recovering admission without resuming that Run"**（terminal owner + recovering → 走 RT-26 proof 释放、且不恢复该 Run）；触发重投由 `apps/worker/src/session-admission-reconciler.test.ts` 的 "re-dispatches a cancelled owner whose runtime started instead of releasing it" 覆盖；端到端由 `apps/web/e2e/worker-chain.spec.ts` 的 proof gate 覆盖（gate 3） | 既有绿 + 新增 |
 
 红绿：[v2-red.log](./v2-red.log)（`c53bea1` 的两个源文件 + 新测试，6 红）、[v2-green.log](./v2-green.log)（新实现，7 绿）。
 
@@ -43,7 +43,9 @@
 - runtime 不可达、旧 binding 无法重新认领、manifest 缺失或 proof 冲突时，会话会持续 `recovering`。这并非"所有 JVM 重启都永久阻塞"：已有 manifest 且 binding 完整时支持重新认领。没有 manifest 的极端情况需要一个单独的人工/运维出口，本卡不提供时间兜底。
 - 旧版 `docs/evidence/FIX-STOP-01/README.md`、`real-model/` 与 `chain.log` 对应的是被撤回的实现，**不能**作为本规则的证据；本文件才是。
 
-## 尚未完成
+## 完成情况
 
-- `worker-chain.spec.ts` 的时序修正：需在停 Worker **之前**断言 `runtimeStartedAt` 非空，再停 Worker、再 Stop（否则会落入 branch 1 的快速释放分支）；其分支断言也要按新规则重写（revocation 消失后仍应停在 `recovering`，直到 proof 到达）。
-- 真模型受控验收需按新规则重跑（此前那次对应被撤回的实现）。
+- `apps/web/e2e/worker-chain.spec.ts` 已改为确定性三栅：runtime 已启动断言 → 停 Worker 后 Stop（revocation 存在、阻塞）→ 用生产 `deliverRunAborts` 送 abort（revocation 消失、仍阻塞）→ 启动 Worker，由真实 RT-26 链产出并 ack proof 后放行。worker-chain **5/5 通过**。
+- 分类器补上"转成 recovering"：Worker 先停会让 admission 停在 `owned`，而 RT-26 hook 只认 `recovering`，因此 `listCancelledSessionsToRecover` 先用 `parkRunForRecovery` 把 `owned` 转成 `recovering`（该 Run 已终态，不会被重新入队）。
+- 受控真模型验收已按新规则重做：[real-model-v2/README.md](./real-model-v2/README.md)。
+- branch 4 的释放半边由既有 `session-checkpoint-recovery.postgres.test.ts` 覆盖，本次护栏运行包含它（6 文件 65 测试全绿）。

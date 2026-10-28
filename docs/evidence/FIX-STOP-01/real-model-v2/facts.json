@@ -1,0 +1,159 @@
+{
+  "generatedAt": "2026-10-28T06:06:20.326Z",
+  "environment": "SANDBOX_PROVIDER=fake + real DashScope qwen3.8-flash + real Java runtime from this branch; NOT the production Docker sandbox path. FIX-STOP-01's rule lives in Stop, the abort revocation and the RT-26 proof gate, which this run exercises.",
+  "email": "stop-v2-1793167552104@rakazo.test",
+  "botId": "bdda4034-ffb9-4df0-a43d-8bf3a3ae8000",
+  "runs": [
+    {
+      "id": "cmvrpnxfg00090qx00ucdiqh8",
+      "trigger": "created",
+      "status": "completed",
+      "createdAt": "2026-10-28T06:05:56.092Z",
+      "startedAt": "2026-10-28T06:05:56.154Z",
+      "error": null
+    },
+    {
+      "id": "cmvrpo564000e0qx0iei2e48j",
+      "trigger": "user",
+      "status": "cancelled",
+      "createdAt": "2026-10-28T06:06:06.124Z",
+      "startedAt": "2026-10-28T06:06:06.154Z",
+      "error": null
+    },
+    {
+      "id": "cmvrpo8ci000k0qx06xatjkva",
+      "trigger": "user",
+      "status": "completed",
+      "createdAt": "2026-10-28T06:06:10.242Z",
+      "startedAt": "2026-10-28T06:06:17.801Z",
+      "error": null
+    }
+  ],
+  "attempts": [
+    {
+      "id": "cmvrpnxha00010ox0q34863us",
+      "runId": "cmvrpnxfg00090qx00ucdiqh8",
+      "status": "completed",
+      "fence": 1,
+      "startedAt": "2026-10-28T06:05:56.158Z",
+      "finishedAt": "2026-10-28T06:06:05.931Z"
+    },
+    {
+      "id": "cmvrpo570000v0ox0vwgu312q",
+      "runId": "cmvrpo564000e0qx0iei2e48j",
+      "status": "cancelled",
+      "fence": 1,
+      "startedAt": "2026-10-28T06:06:06.156Z",
+      "finishedAt": "2026-10-28T06:06:09.938Z"
+    },
+    {
+      "id": "cmvrpoe6k00120ox04ayjf372",
+      "runId": "cmvrpo8ci000k0qx06xatjkva",
+      "status": "completed",
+      "fence": 2,
+      "startedAt": "2026-10-28T06:06:17.804Z",
+      "finishedAt": "2026-10-28T06:06:18.631Z"
+    }
+  ],
+  "admissions": [
+    {
+      "sessionKey": "agentscope:chat:v1:df2cc9fda1a26bb86737e1e8c576c95b4c8cff3bec160a928bdcbc4a518fcaca:03794e3251aa4a69d65547443e0fb70488c7ca51407ff33f266b860c9d09db23",
+      "state": "available",
+      "ownerRunId": "cmvrpo8ci000k0qx06xatjkva",
+      "lastReleaseReason": "completed",
+      "runtimeStartedAt": "2026-10-28T06:06:17.875Z",
+      "updatedAt": "2026-10-28T06:06:18.659Z"
+    }
+  ],
+  "revocations": [],
+  "checkpoints": [
+    {
+      "runId": "cmvrpo564000e0qx0iei2e48j",
+      "attemptId": "cmvrpo570000v0ox0vwgu312q",
+      "admissionFence": 2,
+      "proofKind": "clean",
+      "status": "recorded",
+      "ackedAt": "2026-10-28T06:06:17.772Z",
+      "detachedAt": "2026-10-28T06:06:17.763Z"
+    }
+  ],
+  "timeline": [
+    {
+      "at": "2026-10-28T06:05:54.979Z",
+      "event": "signed_up",
+      "email": "stop-v2-1793167552104@rakazo.test"
+    },
+    {
+      "at": "2026-10-28T06:05:56.479Z",
+      "event": "bot_ready",
+      "botId": "bdda4034-ffb9-4df0-a43d-8bf3a3ae8000"
+    },
+    {
+      "at": "2026-10-28T06:06:06.069Z",
+      "event": "intro_settled",
+      "status": "none"
+    },
+    {
+      "at": "2026-10-28T06:06:06.679Z",
+      "event": "generating",
+      "generating": true
+    },
+    {
+      "at": "2026-10-28T06:06:09.923Z",
+      "event": "runtime_started",
+      "runId": "cmvrpo564000e0qx0iei2e48j",
+      "runtimeStartedAt": "2026-10-28T06:06:06.239Z"
+    },
+    {
+      "at": "2026-10-28T06:06:10.134Z",
+      "event": "run_cancelled",
+      "cancelled": true,
+      "runId": "cmvrpo564000e0qx0iei2e48j"
+    },
+    {
+      "at": "2026-10-28T06:06:10.196Z",
+      "event": "revocation_after_stop",
+      "present": false
+    },
+    {
+      "at": "2026-10-28T06:06:10.480Z",
+      "event": "followup_created",
+      "runId": "cmvrpo8ci000k0qx06xatjkva",
+      "status": "queued"
+    },
+    {
+      "at": "2026-10-28T06:06:10.482Z",
+      "event": "followup_status",
+      "status": "queued"
+    },
+    {
+      "at": "2026-10-28T06:06:17.937Z",
+      "event": "followup_status",
+      "status": "running"
+    },
+    {
+      "at": "2026-10-28T06:06:17.937Z",
+      "event": "proof_acked",
+      "proofKind": "clean",
+      "status": "recorded",
+      "ackedAt": "2026-10-28T06:06:17.772Z"
+    },
+    {
+      "at": "2026-10-28T06:06:18.698Z",
+      "event": "followup_status",
+      "status": "completed"
+    },
+    {
+      "at": "2026-10-28T06:06:18.698Z",
+      "event": "followup_final",
+      "status": "completed",
+      "sequence": [
+        "queued",
+        "running",
+        "completed"
+      ],
+      "sawQueued": true,
+      "proofAt": "2026-10-28T06:06:17.937Z"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # FIX-STOP-01 Stop 后释放会话执行权
 
-状态：`in-progress`（**2026-10-28 复审后前提更正**：`c53bea1` 上"revocation 消失即释放"的实现作废——DELETE 200 只证明 abort 请求被接收，不证明执行退出或 session 已 detach。修正方案见"修正后的方案 B"，需按 `runtimeStartedAt` 分叉并接入 RT-26 `inspectAndDetach` 证明；三个确定性分支中第 2 支要先证红。既有本地绿（持久层、护栏、`test:postgres`、真模型手测）对应的是被作废的实现，不能直接沿用到新实现）
+状态：`in-progress`（2026-10-28 按修正后的 proof-gated 规则完成实现与验证：PG 七分支 7/7、护栏 6 文件 65 测试、`pnpm test:postgres` 51 文件 456 测试、worker-chain 5/5（含确定性 proof gate）、agentscope-product 6/6、fake sandbox + 真模型 + 真 runtime 的受控验收通过（跟随消息排队 7.5s 直到 `clean` proof 被 ack 才执行）。**待办：最终 head 完整 CI 与 P1 回复**）
 
 - 类型：bug
 - 高风险：是（涉及 cancel、session admission 和 `recovering` 证明）

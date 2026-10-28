@@ -47,7 +47,7 @@ E2E `:402` 同样两个分支：Worker 停止时 revocation 在、重试排队�
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| 真模型手测（Stop 后发新消息正常收到回复 + 截图 + Run/admission 两表查询） | **已完成**（组合：`SANDBOX_PROVIDER=fake` + 真 DashScope `qwen3.8-flash` + 真 Java runtime） | 一次连续会话：生成中 Stop → Run `cancelled` → 新 Run 4 秒内取得执行并由真模型 `completed`，admission 无 `recovering` 残留，`run_abort` 行数归零，episode 内 `could not be proven` 0 次。**不是**生产 Docker sandbox 链路的验证；`computer home` 故障另记。完整事实、时间线与 7 张截图见 [real-model/README.md](./real-model/README.md) |
+| 真模型手测 | **已完成（见 [real-model-v2/](./real-model-v2/README.md)，本行与旧目录属 v1 实现，已作废）** | 一次连续会话：生成中 Stop → Run `cancelled` → 新 Run 4 秒内取得执行并由真模型 `completed`，admission 无 `recovering` 残留，`run_abort` 行数归零，episode 内 `could not be proven` 0 次。**不是**生产 Docker sandbox 链路的验证；`computer home` 故障另记。完整事实、时间线与 7 张截图见 [real-model/README.md](./real-model/README.md) |
 | 顶栏不再显示 Running / Queued | **未完成** | 已定位到状态来源：`apps/web/src/pages/Shell.tsx` 的 `transcriptRunning`/`composerRunning` 传给 `Composer` 与转录组件；但这两处目前没有稳定的 `data-testid`，需要先确认可断言的渲染点（或补一个 testid，属前端改动需评审），再加进 `worker-chain.spec.ts:402` 的已确认分支 |
 | 日志里没有 `could not be proven` | **未完成** | 该行只在 `packages/adapters/src/executor.ts:1409` 的 `proveRecoveredSession` 里发出。断言窗口要确定：在 abort 未确认的过渡期它可能合法出现，所以不能断言"整段日志都没有"；计划在 `worker-chain.spec.ts:402` 里取"释放已发生"之后的日志偏移再断言，避免 flaky |
 | 回写 RT-25、RT-26 与 CANCEL-01 / #139 的 AC | **已完成** | RT-25 追加 "FIX-STOP-01 writeback" 一节；RT-26 在实现计划里补回写段；CANCEL-01 验收新增第 8 条。三处都注明未覆盖项，不把未验证的结论写成已保障 |
