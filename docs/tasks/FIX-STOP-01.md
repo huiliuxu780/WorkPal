@@ -3,10 +3,11 @@
 状态：`ready-to-merge`（待审核者核对证据后合入；未合入，未部署）
 
 - 实现：按修正后的 proof-gated 规则（`docs/evidence/FIX-STOP-01/proof-gated-rule.md`）。`runtimeStartedAt` 为空→cancelled 即释放；非空→仅在 RT-26 `clean`/`detached` 证明被 ack 后释放，reconciler 只分类并把 owner Run 重投 `runContinueJob`。
-- 本地检查：PG 七分支 7/7（branch 3 对旧实现红）、护栏 6 文件 62 测试、`pnpm test:postgres` 51 文件 456 测试、`pnpm lint`/`test:inventory`/`test:ci-select`/`test:docs`、`worker-chain` 5/5（三栅 proof gate）、`agentscope-product` 6/6。
+- 本地检查：PG 七个 proof 分支 7/7（branch 3 对旧实现红）+ 候选轮转 1/1（复审前红）、护栏 6 文件 63 测试、`pnpm test:postgres` 51 文件 457 测试、`pnpm lint`/`test:inventory`/`test:ci-select`/`test:docs`、`worker-chain` 5/5（三栅 proof gate）、`agentscope-product` 6/6。
 - 真实模型受控验收：`SANDBOX_PROVIDER=fake` + 真 `qwen3.8-flash` + 真 runtime；跟随消息 06:06:10.242 起排队，`clean` proof 于 06:06:17.772 ack，06:06:17.801 才开始、06:06:18.631 完成。证据 `docs/evidence/FIX-STOP-01/real-model-v2/`。
 - 代码/证据 head `4ca6f08ffb5df26ecac8d4cc5fa92ffe08abbce7`：run 40642473242 **attempt 3 单 attempt 全绿**（`CI result`、agentscope、worker-chain、runtime-jar、harness、web、backend、db-postgres、docs、agent-runtime-image 全 success；`Daily web screenshots` 按 PR 事件正确 skipped）。attempt 1/2 的 `runtime-jar` 失败是已登记的 `AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession:253` 非确定性用例（同日 #148/#149 多次出现、同 SHA 重跑转绿；本 PR diff 无 Java 文件）。最终 PR head 以 PR 的同一 attempt CI 链接为准。
 - 已知限制：runtime 不可达 / 旧 binding 无法重新认领 / manifest 缺失 / proof 冲突时会停在 `recovering`，需单独的人工或运维出口；本卡不提供时间兜底。Docker sandbox 的 `computer home` 故障另记，不在本卡修复。
+- 复审 P2：`listCancelledSessionsToRecover` 每次选中后推进 admission 的 `updatedAt` recovery-attempt cursor，避免同一批无 proof owner 永久占住 `LIMIT`；轮转不释放 admission，也不削弱 RT-26 proof。
 
 - 类型：bug
 - 高风险：是（涉及 cancel、session admission 和 `recovering` 证明）

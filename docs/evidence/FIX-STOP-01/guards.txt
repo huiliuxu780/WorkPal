@@ -1,6 +1,6 @@
 FIX-STOP-01 v2 current guard evidence
 Date: 2026-10-28
-Validation source head: cee31ca97ce0c7b30fa700103d07f051d3f840e2
+Validation source head: e686b562689374d5710d12e575ceeb5121dc9ae2
 Database: dedicated local PostgreSQL container; DSN and credentials omitted.
 Command:
   DATABASE_URL=<dedicated-local-postgresql-dsn> VERIFY_DATABASE=1 pnpm exec vitest run \
@@ -13,12 +13,13 @@ Command:
 
 Result:
   Test Files  6 passed (6)
-  Tests       62 passed (62)
-  Duration    7.14s
+  Tests       63 passed (63)
+  Duration    2.69s
   Exit        0
 
 Coverage note:
 - stop-session-release contains all seven proof-gated branches.
+- stop-session-release also contains the limited-batch recovery rotation regression.
 - session-checkpoint-recovery contains branch 4's real terminal-owner
   continue/recover/inspect/checkpoint/ack/release integration path.
 - No proof row is inserted by the FIX-STOP regression test.

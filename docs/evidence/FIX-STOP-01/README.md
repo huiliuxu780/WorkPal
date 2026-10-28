@@ -9,8 +9,9 @@
 | 证据 | 覆盖范围 | 当前结果 |
 | --- | --- | --- |
 | [v2-red.log](./v2-red.log) / [v2-green.log](./v2-green.log) | 同一 PostgreSQL 回归用例在撤回实现与 v2 上的红绿 | `c53bea1` 两个源文件 + 当前测试：6 红；v2：7/7 绿 |
-| [guards.txt](./guards.txt) | PG 七分支与邻接护栏：stop release、session admission、checkpoint recovery、cancel terminal、effect fence、wait timeout | 6 文件 / 62 测试，exit 0 |
-| [postgres-group.txt](./postgres-group.txt) | 当前 v2 的完整 PostgreSQL 组 | 51 文件 / 456 测试，exit 0 |
+| [rotation-red-green.txt](./rotation-red-green.txt) | 复审 P2：受限批次中的无 proof owner 不得饿死后续 session | 修复前 1 红/7 绿；修复后 8/8 绿 |
+| [guards.txt](./guards.txt) | PG 七个 proof 分支、候选轮转与邻接护栏：stop release、session admission、checkpoint recovery、cancel terminal、effect fence、wait timeout | 6 文件 / 63 测试，exit 0 |
+| [postgres-group.txt](./postgres-group.txt) | 当前 v2 的完整 PostgreSQL 组 | 51 文件 / 457 测试，exit 0 |
 | [chain.log](./chain.log) | 确定性三栅 worker-chain + AgentScope 产品 E2E | worker-chain 5/5；agentscope-product 6/6，均 exit 0 |
 | [checks.txt](./checks.txt) | DB/Worker 类型检查、lint、inventory、CI selector、docs 与链接 | 全部 exit 0 |
 | [real-model-v2/README.md](./real-model-v2/README.md) | `SANDBOX_PROVIDER=fake` + 真模型 + 真 Java runtime 的 Stop→proof→后继执行 | proof ack 先于后继 started；4 张截图与脱敏 facts 齐全 |
@@ -24,6 +25,7 @@
 3. 通过生产 `deliverRunAborts` 送达 abort：revocation 消失，但 admission 仍 `recovering`、后继仍 queued。
 4. 启动 Worker：reconciler 只做分类与重投，现有 `continueRun → recoverSessionOwner → inspectAndDetach → recordCheckpointProof → acknowledgeSessionCheckpoint → releaseRecoveredSessionAdmission` 链产出并 ack proof。
 5. proof ack 后后继才执行并进入转录，终态 owner 不再持有 admission；没有手工插入 proof，也没有复制 checkpoint id、watermark、intervention 或 ack 逻辑。
+6. 每次选中的 proof recovery owner 会推进 `updatedAt` attempt cursor；拿不到 proof 的最老批次会轮到队尾，不会永久占住 `LIMIT` 并饿死后续可恢复 session。轮转只决定尝试顺序，不降低 proof 门槛。
 
 ## 历史资料（不得作为 v2 验收）
 
