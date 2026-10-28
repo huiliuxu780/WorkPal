@@ -1,5 +1,5 @@
-$ pnpm test:unit (final after choice label fix)
-Test Files  1 failed | 459 passed (460)
-Tests  4 failed | 5543 passed | 2 skipped (5549)
+$ pnpm test:unit (final head 54d90ad)
+Test Files  1 failed | 460 passed (461)
+Tests  4 failed | 5550 passed | 2 skipped (5556)
 FAIL: infra/sandboxes/supervisor/src/computer-loopback.test.ts (4 × 401 status)
 Baseline: the same four cases fail on base 8054cac (logs/supervisor-baseline-red.txt).

@@ -1,11 +1,11 @@
 # CARD-01E delivery record
 
-状态：`ready-to-merge`（本地门禁全绿；PR 未创建，生产 gate 仍关闭）
+状态：`in-progress`（复审发现的 Attention total 资格问题已修复；本地门禁在 head `54d90ad` 全绿，等待负责人复审；PR 未创建，生产 gate 仍关闭）
 
 - 任务书：`docs/tasks/second-batch-20261028/CARD-01E.md`（第二批；该目录在主工作区未跟踪，本分支不新增）+ [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
 - 分支：`codex/card-system-completion`
 - 基线：`a29c71123d50929faa05d2df588f487169eaad79`（最新本地 `origin/main`，PR #149 后；分支已 rebase 到该点。原始红基线 A/B 使用 `8054cac`）
-- 实现 head：以分支顶端提交为准
+- 门禁 head：`54d90ad`（本文件与截图/日志在随后的 docs/evidence 提交中定稿；代码自该 head 后未变）
 
 ## 用户现在能完成的流程
 
@@ -75,15 +75,15 @@
 | `pnpm db:generate` | exit 0 |
 | `pnpm lint` | 0 error（76 warning / 5 info，均为既有） |
 | `pnpm check` | 18/18 tasks successful |
-| `pnpm test:unit` | 458/459 files；**5543 passed / 2 skipped / 4 failed**（最终树）。4 条失败全部是 `infra/sandboxes/supervisor/src/computer-loopback.test.ts` 的 401；在 base `8054cac` 上同红（`logs/supervisor-baseline-red.txt`），与本 diff 无关 |
-| `pnpm test:postgres` | 最终树无并发完整重跑：以实际 head 结果为准（`logs/postgres-full.txt`）。`attention.postgres.test.ts` **17/17**，含 total/严格投影资格回归（旧实现红、新实现绿） |
+| `pnpm test:unit` | 460/461 files；**5550 passed / 2 skipped / 4 failed**（最终 head `54d90ad`）。4 条失败全部是 `infra/sandboxes/supervisor/src/computer-loopback.test.ts` 的 401；在 base `8054cac` 上同红（`logs/supervisor-baseline-red.txt`），与本 diff 无关 |
+| `pnpm test:postgres` | 最终 head `54d90ad` 无并发完整重跑：**52/52 files, 474/474 passed**（`logs/postgres-full.txt`）。`attention.postgres.test.ts` **17/17**，含 total/严格投影资格回归（旧实现红、新实现绿） |
 | `pnpm test:inventory` | 0 errors |
 | `pnpm test:ci-select` | pass |
 | `pnpm test:docs` | pass |
-| `pnpm --filter @rakazo/web build` | 首次 `✓ built in 16.33s`（3765 modules）；最终树增量 `✓ built in 3.12s` |
-| gate-on E2E（任务书指定 5 个 spec） | **13/13 passed**（3.2m）；`logs/e2e-gate-on.txt` |
-| 真模型 E2E（AgentScope Java Runtime + DashScope） | `qwen3.8-flash` 修复后 **1/1 passed**（36.3s）；`qwen3.8-max` 修复前 **1/1 passed**（30.8s）、choice label 修复后 **1/1 passed**（29.8s）：真实模型调用 `ask_user` → 统一 Input 卡 → Attention 行 → 选择答案 → Run 恢复并终态；`logs/real-model-e2e*.txt`、`logs/executor-resume-answer.txt` |
-| gate-off legacy E2E（intervention-region / plan-review / mcp-approval-card / approval-resume） | 首轮 8 passed + `approval-resume` 过期断言红；该断言在 base `8054cac` 同样红，按 FIX-127 契约更新后 **1/1 passed**；其余 8 条保持绿 |
+| `pnpm --filter @rakazo/web build` | 最终 head `✓ built in 4.74s`（首次 16.33s） |
+| gate-on E2E（任务书指定 5 个 spec） | 最终 head **13/13 passed**（2.8m）；`logs/e2e-gate-on.txt` |
+| 真模型 E2E（AgentScope Java Runtime + DashScope） | `qwen3.8-flash` 修复后 **1/1 passed**（36.3s）；`qwen3.8-max` 修复前 **1/1 passed**（30.8s）、choice label 修复后 **1/1 passed**（29.8s）；最终 head 复跑 **1/1 passed**（25.0s）：真实模型调用 `ask_user` → 统一 Input 卡 → Attention 行 → 选择答案 → Run 恢复并终态；`logs/real-model-e2e*.txt`、`logs/executor-resume-answer.txt` |
+| gate-off legacy E2E（intervention-region / plan-review / mcp-approval-card / approval-resume） | 最终 head **9/9 passed**（47.2s）；`approval-resume` 的过期断言曾按 FIX-127 契约修正，红基线见 `logs/approval-resume-base-red.txt` |
 
 Attention 变异验证（`logs/attention-mutation-*.txt`）：
 

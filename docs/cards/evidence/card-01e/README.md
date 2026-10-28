@@ -58,14 +58,16 @@ Branch: `codex/card-system-completion`
 - `attention-mutation-archived-bot.txt`：删掉 `source_bot."archivedAt"` 过滤后，群内发卡 Bot 归档用例转红。
 - `approval-resume-branch-red.txt` / `approval-resume-base-red.txt`：同一过期断言在分支和干净 base `8054cac` 上都红（Expected 2 / Received 0）。
 - `approval-resume-green.txt`：按 FIX-127 契约更新断言后 **1 passed**。
-- `e2e-gate-on.txt`：任务书指定五个 gate-on spec **13 passed**。
-- `unit-full.txt`：`pnpm test:unit` → 458/459 files，5543 passed；唯一失败为 `infra/sandboxes/supervisor/computer-loopback.test.ts` 的 4 条 401，`supervisor-baseline-red.txt` 在 base `8054cac` 上同样红。
-- `postgres-full.txt`：最终无并发完整重跑 `pnpm test:postgres` → **51/51 files, 465/465 passed**；一次并发运行中出现过 `wakeup.postgres.test.ts` 的 3 条 500/600ms 窗口失败，单独重跑即绿。
-- `checks.txt`：`pnpm lint` 0 error / 76 warning / 5 info；`pnpm check` 18/18；`pnpm --filter @rakazo/web build` 首次 16.33s、最终增量 3.12s；`check-docs` 169 个 markdown 链接正常。
+- `e2e-gate-on.txt`：最终 head 任务书指定五个 gate-on spec **13 passed (2.8m)**。
+- `e2e-gateoff.txt`：最终 head legacy 四 spec **9 passed (47.2s)**。
+- `unit-full.txt`：最终 head `pnpm test:unit` → 460/461 files，5550 passed；唯一失败为 `infra/sandboxes/supervisor/computer-loopback.test.ts` 的 4 条 401，`supervisor-baseline-red.txt` 在 base `8054cac` 上同样红。
+- `postgres-full.txt`：最终 head 无并发完整重跑 `pnpm test:postgres` → **52/52 files, 474/474 passed**；一次并发运行中出现过 `wakeup.postgres.test.ts` 的 3 条 500/600ms 窗口失败，单独重跑即绿。
+- `checks.txt`：`pnpm lint` 0 error / 76 warning / 5 info；`pnpm check` 18/18；`pnpm --filter @rakazo/web build` 最终 4.74s；`check-docs` 176 个 markdown 链接正常。
 - `real-model-e2e.txt`：`card-real-model.spec.ts` 在 AgentScope Java Runtime + DashScope `qwen3.8-flash` 下 **1 passed (36.3s)**；key 只来自 `REAL_MODEL_API_KEY`，未进入仓库、日志或截图。
 - `real-model-e2e-max.txt`：同一 spec 用 `REAL_MODEL_ID=qwen3.8-max` 修复前 **1 passed (30.8s)**（截图显示模型误读为 Seoul）。
 - `real-model-e2e-max-after-fix.txt`：`resumeAnswerFromAsk` 修复后同 spec **1 passed (29.8s)**，截图回复 Berlin。
 - `real-model-e2e-flash-after-fix.txt`：同一修复后用默认 `qwen3.8-flash` **1 passed (36.3s)**。
+- `real-model-e2e-max-final.txt`：最终 rebased head 上 `qwen3.8-max` **1 passed (25.0s)**。
 - `executor-resume-answer.txt`：`executor-resume-answer.test.ts` **4/4**（choice→label、free-text 不变、approval/plan id 不变、pending 返回 undefined）。
 
 ## 尚未覆盖
