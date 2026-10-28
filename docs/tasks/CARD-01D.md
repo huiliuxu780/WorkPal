@@ -1,6 +1,6 @@
 # CARD-01D：Attention queue 与 Web 通知
 
-状态：`not-started`
+状态：`ready-to-merge`（PR #147 未合入；合入后才为 `done`）
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
@@ -70,3 +70,11 @@
 ## 交付
 
 查询/RPC、Web queue、通知、测试和 390/375 截图。总 gate 保持默认关闭。
+
+## 交付记录（2026-10-28 复审轮）
+
+- 分支/PR：`codex/card-attention` / [#147](https://github.com/huiliuxu780/WorkPal/pull/147)，复审后 head `ad7f8d9`。
+- 证据：[docs/cards/evidence/card-attention](../cards/evidence/card-attention/README.md)（N1/N2/N3/N4 实拍、红绿、E2E 运行日志）。
+- 复审轮修复：通知正文改为按类型的固定文案（不再拼接 Bot 生成的 `presentation.text`，与更新后的 N4 原型一致，红绿见 `red-green/RED-p2-5-*`/`GREEN-p2-5-*`）；gate 开启时停用旧的按 Bot 通知（`shouldNotifyLegacyBrowser`），普通消息与终态不再提醒；N3 增加未读圆点与数字计数分离的断言和截图；修正 E2E 中失效的敏感扫描正则。
+- 最终 head CI：[run 40661217374](https://github.com/huiliuxu780/WorkPal/actions/runs/40661217374) 全部通过，`web` job 实跑 `card-attention.spec.ts` 2 passed。
+- 遗留（不阻塞本卡，已在证据 README 记录）：`@我` 在仓库中没有产品概念，未实现也未断言；`expiresAt` 已过但仍 pending 的行由超时任务结算，读取模型保留；`SOURCE_LIMIT=500` 截断、群来源不复查 bot 归档未覆盖。
