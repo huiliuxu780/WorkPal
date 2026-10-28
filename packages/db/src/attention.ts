@@ -156,9 +156,16 @@ export async function loadAttentionPage(
  * Exact count and keyset page over the persisted pending-Intervention
  * projection. The projection carries only the frozen sort tuple; the page then
  * loads those Intervention rows, their effect statuses, and the RT-12 facts for
- * the rows it will actually render. Rows that no longer project (for example a
- * membership whose target group lost manage permission) are skipped without
- * widening the read to every pending Intervention.
+ * the rows it will actually render.
+ *
+ * `total` uses the same eligibility rule as the page query. The SQL predicate
+ * covers the structural cases (pending kind, choice actions, approval source,
+ * current thread/bot/group, expiry, membership permission); the two complex
+ * projections (plan reviews and RT-12 membership approvals) carry nested
+ * payloads that only the strict TypeScript projector can validate, so those
+ * rows are validated in batches and subtracted from the SQL count. A
+ * historical row that cannot render therefore disappears from both the page and
+ * the badge instead of inflating the count.
  */
 async function loadDurableAttention(
   tx: Prisma.TransactionClient,
@@ -170,22 +177,14 @@ async function loadDurableAttention(
     now: Date;
   },
 ): Promise<{ items: AttentionItem[]; total: number }> {
-  const countFilters = durableFilters({ ...input, cursor: null });
   const countRows = await tx.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
     SELECT COUNT(*)::bigint AS count
-    FROM "attention_interventions" AS ai
-    JOIN "threads" AS thread
-      ON thread."id" = ai."threadId"
-     AND thread."userId" = ${input.userId}
-     AND thread."spaceId" = ${input.spaceId}
-    LEFT JOIN "bots" AS thread_bot ON thread_bot."id" = thread."botId"
-    LEFT JOIN "chat_groups" AS thread_group ON thread_group."id" = thread."groupId"
-    JOIN "bots" AS source_bot
-      ON source_bot."id" = ai."botId"
-     AND source_bot."spaceId" = ai."spaceId"
-    WHERE ${countFilters}
+    ${durableFrom(input)}
+    WHERE ${durableFilters({ ...input, cursor: null })}
   `);
-  const total = Number(countRows[0]?.count ?? 0);
+  const eligibleCount = Number(countRows[0]?.count ?? 0);
+  const unrenderable = eligibleCount > 0 ? await countUnrenderableComplex(tx, input) : 0;
+  const total = Math.max(eligibleCount - unrenderable, 0);
   if (total === 0) return { items: [], total: 0 };
 
   const wanted = input.limit + 1;
@@ -195,16 +194,7 @@ async function loadDurableAttention(
     const remaining = wanted - items.length;
     const rows = await tx.$queryRaw<DurableProjectionRow[]>(Prisma.sql`
       SELECT ai."interactionId", ai."expiresAt", ai."attentionAt"
-      FROM "attention_interventions" AS ai
-      JOIN "threads" AS thread
-        ON thread."id" = ai."threadId"
-       AND thread."userId" = ${input.userId}
-       AND thread."spaceId" = ${input.spaceId}
-      LEFT JOIN "bots" AS thread_bot ON thread_bot."id" = thread."botId"
-      LEFT JOIN "chat_groups" AS thread_group ON thread_group."id" = thread."groupId"
-      JOIN "bots" AS source_bot
-        ON source_bot."id" = ai."botId"
-       AND source_bot."spaceId" = ai."spaceId"
+      ${durableFrom(input)}
       WHERE ${durableFilters({ ...input, cursor: after })}
       ORDER BY ai."expiresAt" ASC NULLS LAST, ai."attentionAt" ASC, ai."interactionId" ASC
       LIMIT ${remaining}
@@ -220,6 +210,56 @@ async function loadDurableAttention(
     if (rows.length < remaining) break;
   }
   return { items: items.slice(0, wanted), total };
+}
+
+function durableFrom(input: { spaceId: string; userId: string }): Prisma.Sql {
+  return Prisma.sql`
+    FROM "attention_interventions" AS ai
+    JOIN "threads" AS thread
+      ON thread."id" = ai."threadId"
+     AND thread."userId" = ${input.userId}
+     AND thread."spaceId" = ${input.spaceId}
+    LEFT JOIN "bots" AS thread_bot ON thread_bot."id" = thread."botId"
+    LEFT JOIN "chat_groups" AS thread_group ON thread_group."id" = thread."groupId"
+    JOIN "bots" AS source_bot
+      ON source_bot."id" = ai."botId"
+     AND source_bot."spaceId" = ai."spaceId"
+    JOIN "interventions" AS intervention ON intervention."id" = ai."interactionId"
+    LEFT JOIN "external_effects" AS effect ON effect."id" = intervention."effectId"
+  `;
+}
+
+/**
+ * Plan reviews and membership approvals are the only pending rows whose strict
+ * projection depends on nested JSON. Validate every such row in the user's
+ * eligible set (not just the page) so `total` cannot include a card the page
+ * will drop. Other kinds are fully decided by the SQL eligibility predicate.
+ */
+async function countUnrenderableComplex(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    userId: string;
+    now: Date;
+  },
+): Promise<number> {
+  const rows = await tx.$queryRaw<DurableProjectionRow[]>(Prisma.sql`
+    SELECT ai."interactionId", ai."expiresAt", ai."attentionAt"
+    ${durableFrom(input)}
+    WHERE ${durableFilters({ ...input, cursor: null })}
+      AND (
+        intervention."kind" = 'plan_review'
+        OR (intervention."kind" = 'approval' AND intervention."effectId" IS NULL)
+      )
+  `);
+  let unrenderable = 0;
+  const batchSize = 200;
+  for (let index = 0; index < rows.length; index += batchSize) {
+    const batch = rows.slice(index, index + batchSize);
+    const items = await projectDurableRows(tx, batch, input.spaceId);
+    unrenderable += batch.length - items.length;
+  }
+  return unrenderable;
 }
 
 function durableFilters(input: {
@@ -238,10 +278,10 @@ function durableFilters(input: {
   )`;
   const pastExpiry = Prisma.sql`(ai."expiresAt" IS NULL OR ai."expiresAt" > ${input.now})`;
   const manageableMembership = Prisma.sql`NOT (
-    ai."kind" = 'approval'
+    intervention."kind" = 'approval'
     AND EXISTS (
       SELECT 1 FROM "group_membership_requests" AS request
-      WHERE request."interventionId" = ai."interactionId"
+      WHERE request."interventionId" = intervention."id"
         AND NOT EXISTS (
           SELECT 1 FROM "chat_groups" AS target
           WHERE target."id" = request."groupId"
@@ -252,8 +292,61 @@ function durableFilters(input: {
         )
     )
   )`;
+  // The one eligibility rule shared by count, complex validation and paging.
+  // Anything the strict projector can reject without reading nested JSON is
+  // excluded here; plan reviews and membership payloads are validated in
+  // countUnrenderableComplex.
+  const eligible = Prisma.sql`(
+    intervention."status" = 'pending'
+    AND intervention."kind" IN ('input', 'approval', 'plan_review')
+    AND length(intervention."id") > 0
+    AND length(intervention."spaceId") > 0
+    AND length(intervention."threadId") > 0
+    AND length(intervention."runId") > 0
+    AND length(intervention."messageId") > 0
+    AND length(intervention."botId") > 0
+    AND length(ai."interactionId") > 0
+    AND length(ai."threadId") > 0
+    AND length(ai."botId") > 0
+    AND intervention."revision" > 0
+    AND (
+      intervention."kind" = 'plan_review'
+      OR (
+        intervention."kind" = 'input'
+        AND (
+          intervention."inputMode" IS DISTINCT FROM 'choice'
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+              CASE
+                WHEN jsonb_typeof(intervention."inputActions") = 'array'
+                  THEN intervention."inputActions"
+                ELSE '[]'::jsonb
+              END
+            ) AS action
+            WHERE jsonb_typeof(action) = 'object'
+              AND jsonb_typeof(action -> 'id') = 'string'
+              AND length(action ->> 'id') > 0
+          )
+        )
+      )
+      OR (
+        intervention."kind" = 'approval'
+        AND (
+          (
+            intervention."effectId" IS NOT NULL
+            AND (effect."id" IS NULL OR effect."status" <> '')
+          )
+          OR EXISTS (
+            SELECT 1 FROM "group_membership_requests" AS request
+            WHERE request."interventionId" = intervention."id"
+          )
+        )
+      )
+    )
+  )`;
   if (!input.cursor) {
-    return Prisma.sql`${visibleThread} AND source_bot."archivedAt" IS NULL AND ${pastExpiry} AND ${manageableMembership}`;
+    return Prisma.sql`${visibleThread} AND source_bot."archivedAt" IS NULL AND ${pastExpiry} AND ${eligible} AND ${manageableMembership}`;
   }
   const afterCursor =
     input.cursor.expiresAt === null
@@ -278,7 +371,7 @@ function durableFilters(input: {
           )
           OR ai."expiresAt" IS NULL
         )`;
-  return Prisma.sql`${visibleThread} AND source_bot."archivedAt" IS NULL AND ${pastExpiry} AND ${manageableMembership} AND ${afterCursor}`;
+  return Prisma.sql`${visibleThread} AND source_bot."archivedAt" IS NULL AND ${pastExpiry} AND ${eligible} AND ${manageableMembership} AND ${afterCursor}`;
 }
 
 async function projectDurableRows(

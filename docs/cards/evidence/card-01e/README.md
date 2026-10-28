@@ -52,7 +52,8 @@ Branch: `codex/card-system-completion`
 
 `logs/` 中：
 
-- `attention-postgres.txt`：`VERIFY_DATABASE=1 pnpm exec vitest run packages/db/src/attention.postgres.test.ts` → **16/16**。
+- `attention-postgres.txt`：`VERIFY_DATABASE=1 pnpm exec vitest run packages/db/src/attention.postgres.test.ts` → **17/17**。
+- `attention-total-red-green.txt`：不可投影 pending 行（无 plan、坏 plan content、无 action 的 choice、无 effect/无 membership 的 approval）在旧实现红（total 多 4），新资格规则绿。
 - `attention-mutation-expiry.txt`：删掉 `expiresAt` 过滤后，过期即时退出用例转红。
 - `attention-mutation-archived-bot.txt`：删掉 `source_bot."archivedAt"` 过滤后，群内发卡 Bot 归档用例转红。
 - `approval-resume-branch-red.txt` / `approval-resume-base-red.txt`：同一过期断言在分支和干净 base `8054cac` 上都红（Expected 2 / Received 0）。

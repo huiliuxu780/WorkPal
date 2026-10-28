@@ -121,6 +121,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     createdAt?: Date;
     revision?: number;
     botId?: string;
+    planReview?: unknown;
   }) {
     return prisma.intervention.create({
       data: {
@@ -139,6 +140,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
         inputMode: input.inputMode ?? null,
         ...(input.actions ? { inputActions: input.actions } : {}),
         presentation: input.presentation ?? { text: "Decision needed" },
+        ...(input.planReview !== undefined ? { planReview: input.planReview as object } : {}),
         createdAt: input.createdAt ?? new Date(),
       },
     });
@@ -871,6 +873,62 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
       where: { id: pending.id },
       data: { status: "cancelled", pendingRunKey: null, resolvedAt: new Date() },
     });
+  });
+
+  it("does not count pending rows the strict projection cannot render", async () => {
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const unrenderable: string[] = [];
+    async function drop(
+      kind: "input" | "approval" | "plan_review",
+      extra: Record<string, unknown>,
+    ) {
+      const run = await taskRun(dmThreadId, `Unrenderable ${kind}`);
+      const message = await botMessage(dmThreadId, [
+        { kind: "ask", text: "Unrenderable request", status: "pending" },
+      ]);
+      const row = await pendingIntervention({
+        threadId: dmThreadId,
+        runId: run.id,
+        messageId: message.id,
+        kind,
+        presentation: { text: "Unrenderable request" },
+        ...extra,
+      });
+      unrenderable.push(row.id);
+      return row;
+    }
+
+    // Plan review without its embedded content: the strict projector returns
+    // null, so it must not inflate the badge.
+    await drop("plan_review", {});
+    // Plan review with a content object that fails the strict plan schema.
+    await drop("plan_review", { planReview: { content: {} } });
+    // Choice input whose action list has no usable id.
+    await drop("input", { inputMode: "choice" });
+    // Approval without an ExternalEffect or a RT-12 membership request.
+    await drop("approval", {});
+
+    const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(after.total).toBe(before.total);
+    for (const id of unrenderable) {
+      expect(after.items.some((item) => item.interactionId === id)).toBe(false);
+    }
+    // The same rule must hold across every page, not only the first one.
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await loadAttentionPage(prisma, {
+        spaceId,
+        userId: ownerId,
+        limit: 2,
+        cursor,
+      });
+      ids.push(...page.items.map((item) => item.interactionId));
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(ids.filter((id) => unrenderable.includes(id))).toEqual([]);
+
+    await prisma.intervention.deleteMany({ where: { id: { in: unrenderable } } });
   });
 
   it("orders by expiresAt ASC NULLS LAST, then attentionAt, then stableId", async () => {

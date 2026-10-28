@@ -1,0 +1,7 @@
+Red baseline: old attention.ts (HEAD ba4bed4) with the new regression
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mdoes not count pending rows the strict projection cannot render
+[31m[1mAssertionError[22m: expected 4 to be +0 // Object.is equality[39m
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+
+Green: new eligibility rule
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m

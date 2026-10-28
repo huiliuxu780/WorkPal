@@ -60,9 +60,17 @@ CARD-01E 按方案 B 落地持久化读模型，并把查询边界写进测试�
 - 其余三类来源保持「当前事实」有界读取：可见线程上的活跃 Run（takeover/return）、活跃委托 Run 的 origin 链（深度上限 8）、以及经 `messages_blocks_gin` 命中的 pending 业务审批。它们不读取普通 Run 历史，也不把已完成消息当候选。
 - 证据：`packages/db/src/attention.postgres.test.ts` 的 520 行分页/精确 total、分页锚点结算后继续、过期即时移除、归档 Bot（含群内 post bot）、失去群管理权限、5,001 条历史消息下 `EXPLAIN (ANALYZE, BUFFERS)` 走 `messages_blocks_gin` 且扫描 <500 行，以及 520 行 pending 投影的第一页 `EXPLAIN` 走 `attention_interventions_user_order` 且扫描 <100 行。整套 15/15。
 
+### 资格统一（2026-10-28 复审修复）
+
+`total`、分页和严格投影现在使用同一套资格规则，不再先统计后丢弃：
+
+- `durableFilters` 在 SQL 里排除结构性不可渲染行：非 pending、未知 kind、空 ID/非法 revision、过期、不可见线程/Bot/群、失去管理权限的成员审批、没有 ExternalEffect 且没有 RT-12 请求的 approval、没有可用 action id 的 choice input。分页查询直接使用该条件，这些行不会进入页。
+- plan review 与 RT-12 成员审批带有嵌套 JSON，只有 strict TypeScript 投影能判定合法性。`countUnrenderableComplex` 在同一个 `RepeatableRead` 快照内取出这两类复杂行（不只是当前页），批量跑 `projectDurableRows`，把投影失败数从 SQL 计数扣除。历史/回填的坏行因此既不出现在页里，也不抬高角标。
+- 回归：`attention.postgres.test.ts` 新增“不可投影 pending 行不增加 total”用例（无 plan 内容、坏 plan content、无 action 的 choice、无 effect/无 membership 的 approval）；旧实现红（total 比基线多 4），新实现绿。全套 17/17。
+
 本方案仍有明确残余，不写成 O(1)：
 
 - `total` 的 `COUNT(*)` 是窄表索引扫描，成本 ∝ 当前 pending 投影行数（仍是用户待处理队列本身），不是与队列规模无关的常数；要 O(1) 需要写侧维持计数器，本卡不承担。
+- plan review / 成员审批的严格校验会物化这两类 pending 行（通常远少于全部 pending）；text/secret input 与 effect approval 不进入该校验。
 - 消息内业务审批的候选仍来自 GIN 命中集合；命中量 ∝ pending 审批块数（不是历史消息数）。它们没有持久化投影。
 - 投影触发器要求所属 Run 行存在（缺失会抛错，而不是静默漏行）；这是数据完整性前提，不是兼容分支。
-- 投影内容合法性由生产写入保证；若历史行违反 strict 契约，读取会跳过该行，`total` 可能比可见条目多 1。此时应修数据，不应放宽契约。
