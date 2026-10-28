@@ -1,0 +1,19 @@
+Listing tests:
+  [chromium] › execution-card-visuals.spec.ts:76:1 › capture execution card states across widths and themes
+  [chromium] › execution-card.spec.ts:145:1 › a completed Run restores its card across a refresh without doubling the result
+  [chromium] › execution-card.spec.ts:213:1 › pending approval stays discoverable, focuses and submits without a duplicate AskCard
+  [chromium] › execution-card.spec.ts:307:1 › a pending input ask submits from the card region without a duplicate bubble card
+  [chromium] › execution-card.spec.ts:368:1 › a failed Run shows the safe failure summary and Retry beside View reason
+  [chromium] › execution-card.spec.ts:411:1 › a failed Run with a failed Step lands View reason on that Step's detail
+  [chromium] › execution-card.spec.ts:452:1 › multiple Runs in one Thread keep exactly one detail expanded
+  [chromium] › execution-card.spec.ts:487:1 › an active Run and a failed Run never open two details at once
+  [chromium] › execution-card.spec.ts:536:1 › a paged-out historical Run expands from its card after loading earlier messages
+  [chromium] › execution-card.spec.ts:608:1 › a cleared Run's card never revives through artifact maintenance
+  [chromium] › execution-card.spec.ts:658:1 › cards never render invented percentages or processed/total counters
+  [chromium] › execution-card.spec.ts:684:1 › a long title wraps without horizontal overflow at 390px
+  [chromium] › execution-card.spec.ts:710:1 › reduced motion disables the working glyph animation
+  [chromium] › execution-card.spec.ts:743:1 › a paced Plan revision moves the single a/b and flashes the update hint
+  [chromium] › execution-card.spec.ts:809:1 › a plain request keeps no execution surface before or after its reply
+  [chromium] › execution-card.spec.ts:842:1 › clicking a waiting Bot in the sidebar focuses its approval control
+  [chromium] › execution-card.spec.ts:906:1 › a plain active Run shows only the lightweight status until it stops (scenario A)
+Total: 17 tests in 2 files
