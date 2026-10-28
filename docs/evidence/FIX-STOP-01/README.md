@@ -1,62 +1,56 @@
 # FIX-STOP-01 证据索引
 
 单元：FIX-STOP-01（Stop 后释放会话执行权）。分支 `codex/verify-lifecycle-concurrency`，与 VERIFY-01 同分支、分开 commit。
-日期：2026-10-28。主机：macOS arm64，Node v24.18.0，pnpm 9.15.0，JDK 21.0.12.1（Homebrew，`JAVA_HOME` 指向 `/opt/homebrew/opt/openjdk@21/...`，未改动系统 Java 配置）。
+日期：2026-10-28。环境：macOS arm64，Node v24.18.0，pnpm 9.15.0，JDK 21.0.12.1（Homebrew，只设 `JAVA_HOME`，未改系统配置）。
 
 | 项 | 值 |
 | --- | --- |
-| baseline SHA（红） | `e72108f`（S1–S4 测试已在，修复未做） |
-| fix SHA（绿） | `6ce9376cfbe4412fba926622529fda5797f97a41` |
-| 回归用例 | `packages/db/src/stop-session-release.postgres.test.ts` 的 S1、S1b、S2、S3、S4 |
-| 数据库 | 一次性 `postgres:16` 容器，OS 分配端口，库名 `workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1`（取自本 worktree 的 `pnpm agent:doctor` 计划，conflicts: none）；每个套件用 `createIsolatedPostgresDatabase()` 从迁移模板克隆独立库并在 `afterAll` 删除 |
-| 真实 SDK / 模型夹具 / scripted | 都不涉及。红绿两轮都是持久层验证，驱动的是生产取消策略（`applyCancelTerminalPolicy` + `cancelPolicyFor("user_stopped")`，即 `apps/api` `stopThreadRuns` 的事务体）和 executor 实际调用的 admission 函数 |
+| 最终修法 | 收窄方案 B：**仅 Stop/取消路径**；放行需同时满足「owner 是 `cancelled`」与「该 Run 的 `run_abort` revocation 已不存在」 |
+| fix SHA | `55bb228`（收窄实现）；E2E 两分支改写 `22da16f` |
+| baseline（红） | `main a409140` 的两个源文件（`git show a409140:<path>` 还原）+ 当前测试文件 |
+| 回归用例 | `packages/db/src/stop-session-release.postgres.test.ts` 六个用例；`apps/web/e2e/worker-chain.spec.ts:402` 两个分支 |
+| 真实模型 / 模型夹具 / scripted | 红绿两轮都不用真模型（持久层）。E2E 用本地模型夹具 + 真实 Java runtime。真模型复测见"未完成项" |
 
 ## 文件
 
 | 文件 | 内容 | 结果 |
 | --- | --- | --- |
-| [red.log](./red.log) | 修复前同一命令、同一用例 | exit 1，`Tests 4 failed \| 1 passed (5)` |
-| [green.log](./green.log) | 修复后同一命令、同一用例、同样断言 | exit 0，`Tests 5 passed (5)` |
-| [guards.txt](./guards.txt) | 修复后跑 RT-25/RT-26 邻接护栏（session-admission、session-checkpoint、cancel-terminal、effect-execution-fence、wait-timeouts） | exit 0，6 文件 65 测试全绿 |
-| [postgres-group.txt](./postgres-group.txt) | 修复后 `pnpm test:postgres` 全组 | exit 0，51 文件 454 测试全绿 |
+| [red.log](./red.log) | 当前测试 + `a409140` 的两个源文件 | exit 1，**4 failed / 2 passed**——红的就是目标缺陷：abort 确认后会话仍不释放。S3 与 failed-owner 边界用例在基线上本来就绿，它们防的是"修过头" |
+| [green.log](./green.log) | 同一条命令、同一组用例，`55bb228` | exit 0，**6 passed** |
+| [guards.txt](./guards.txt) | RT-25/RT-26 邻接护栏（session-admission、session-checkpoint、cancel-terminal、effect-execution-fence、wait-timeouts） | exit 0，6 文件 66 测试全绿 |
+| [postgres-group.txt](./postgres-group.txt) | `pnpm test:postgres` 全组 | exit 0，**51 文件 455 测试全绿** |
+| [chain.log](./chain.log) | `pnpm test:worker-chain` | 见文件 |
+| [chain-conflict.txt](./chain-conflict.txt) | 历史记录：被否决的"任意终态即释放"修法如何打破三个已交付契约，以及据此收窄的经过 | 保留作决策依据 |
 
-命令（红绿完全一致，只有被测代码不同）：
+## 放行条件与为什么它不是超时
 
-```bash
-pnpm --filter @rakazo/db generate
-pnpm --filter @rakazo/db exec prisma migrate deploy
-VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 \
-  pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts --no-file-parallelism
-```
+- `run_abort` revocation 由 `cancelRunsInTransaction` 在**取消的同一事务**里写入（`recordRunAbortRevocations`）。
+- `deliverRunAborts`（`packages/adapters/src/revoke-cancelled-work.ts:75-100`）**只在 `runtime.abort()` 成功返回后**删除该行；抛错则保留并累加 `attempts`、记 `lastError`。
+- 因此「owner 已 `cancelled` 且该行不存在」= 原生 abort 已返回，也就是 RT-26 等的那个"落定"；用删除当证明，不用时间。
+- 查询顺序：**先读 owner 终态、再读 revocation**，都在调用方事务内。READ COMMITTED 下两次读之间被删的行只可能因 abort 返回而删；先读 revocation 则会把"尚未写入"误判为"已完成"。
+- 行仍在 → 保持 `recovering` 并排队。**S4 显式把时钟推到 `expiresAt + 5min` 跑 reconciler，abort 未确认时断言仍 `recovering`**，证明时间不是放行信号。
 
-凭据已脱敏，且本来就是一次性容器的测试账号。文件名沿用任务卡要求的 `red.log`/`green.log`；`.gitignore` 排除 `*.log`，因此这两个文件用 `git add -f` 提交。
+## 两个分支都有覆盖
 
-## 红为什么是目标缺陷而不是环境问题
+每个取消场景（S1/S1b/S2/S4）都断言两段：
 
-- 红的断言消息直接给出数据库事实：admission `state='recovering'`（S1/S2/S4）或 `state='owned'`（S1b），`ownerRunId` 指向 `runStatus='cancelled'` 的 Run；下一条消息的 `acquireSessionAdmission` 返回 `kind:'recovering'`、`nextRunId=null`。
-- 同一环境、同一命令下，任务卡指定的四个既有回归（`cancel-terminal`、`effect-execution-fence`、`session-admission`、`session-checkpoint`）在修复前就是 4 文件 54 测试全绿，见 VERIFY-01 的 [existing-regressions-green.txt](../../verification/evidence/VERIFY-01/runs/S1-S4-stop-session-release/existing-regressions-green.txt)。数据库与 harness 可用，因此红不是环境失败。
-- 没有 skip、没有 `it.fails`、没有放宽断言、没有加 retry。红绿之间只有 `session-admission.ts`、`session-admission-reconciler.ts` 与其单测的改动。
-- 归因判别（P0-2 工具桥接 401 vs P0-3 Stop 卡死）：本轮红的路径完全不涉及工具桥接，日志里没有也不需要 `Tool bridge returned HTTP 401`，owner 是 `cancelled`，按任务卡规则归 P0-3。
+1. abort 未送达：后继拿不到会话（`recovering`；runtime 未启动时是 `owned`，后继表现为 `queued`），且 holder 仍是那个 `cancelled` Run；
+2. abort 确认后：同一 tick 取得执行权，且没有终态 owner 残留。
 
-## 一次环境缺口的记录（不计入证红）
+E2E `:402` 同样两个分支：Worker 停止时 revocation 在、重试排队且模型不被调用；Worker 启动后 sweep 清掉该行，重试取得会话、离开 `queued`、回复进入转录。
 
-第一次跑 `pnpm test:postgres` 时报 12 文件 / 24 测试失败，原因是 `The table public.organization does not exist in the current database`：裸命令不会自动迁移，CI 的 `db-postgres` job 在 `pnpm test:postgres` 之前先跑 `prisma migrate deploy`。补上该步骤后同一命令 51 文件 454 测试全绿（[postgres-group.txt](./postgres-group.txt)）。这属于环境前提缺失，按规则不算目标缺陷的红，也没被当作绿灯证据使用。
+## 边界：failed / completed owner 不在规则内
+
+这两条路径根本不写 `run_abort` 行，所以"没有 revocation"对它们恒真。照此放行会在会话状态尚未落定时移交，正是 `worker-chain.spec.ts:546`/`:785` 禁止的。新增 PG 用例 **"a failed owner stays parked"** 把这条边界钉成断言；两个 E2E 用例未改动且通过。
 
 ## 未完成项
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| `chain.log`：`pnpm test:worker-chain` | **已执行，红，阻塞** | 3 failed / 2 passed（5.7m）。三个失败用例是**已交付的进程级契约**，故意要求"取消/失败后 admission 必须停在 `recovering`、后继必须继续排队"，与本卡的释放前提直接矛盾。证据与四个可选方向见 [chain-conflict.txt](./chain-conflict.txt) 和 [任务卡的"阻塞"一节](../../tasks/FIX-STOP-01.md)。**没有**通过改写这三个用例来让修复变绿 |
-| `chain.log`：`pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | 未执行 | 在 worker-chain 的契约冲突裁决前执行没有意义；裁决后一并补 |
-| 真模型手测截图（Stop 后发新消息正常收到回复） | **未执行** | 需要 `pnpm dev:app` + DashScope 真模型 + 浏览器操作。不用持久层测试或 scripted 夹具冒充真模型验证 |
-| 回写 RT-25、RT-26 与 CANCEL-01 / #139 的 AC | 未执行 | 契约冲突未裁决前回写会把未定案的结论写进别的卡片 |
-| 顶栏不再显示 Running / Queued | **未验证** | 属 API/Web 层，持久层测试观察不到；需要手测或 E2E |
-| 日志里没有 `could not be proven` | **未验证** | worker-chain 的日志已捕获（见 chain-conflict.txt），但该项要在契约裁决与修复定案后再核对 |
+| 真模型手测（Stop 后发新消息正常收到回复 + 截图 + Run/admission 两表查询） | **未执行** | 需要真模型凭据与浏览器操作。不用夹具或 scripted 冒充 |
+| 顶栏不再显示 Running / Queued | **未验证** | 属 API/Web 层；E2E 覆盖了"重试离开 queued"与"回复出现"，但没有断言顶栏文案 |
+| 日志里没有 `could not be proven` | **未验证** | 需要 worker/executor 日志断言；本轮未加 |
+| 回写 RT-25、RT-26 与 CANCEL-01 / #139 的 AC | 未执行 | 等真模型手测齐了再写，避免把未验证的结论写进别的卡 |
+| 失败场景（`:546`/`:785`）的三个未决问题 | 另案 | 按负责人裁决不塞进本单元，见任务卡"后续调查" |
 
-本机环境事实（都已解决，不是缺陷）：系统没有安装 Java（`/usr/libexec/java_home` 找不到运行时），改用 Homebrew 的 openjdk@21 并只设置 `JAVA_HOME`，未改动系统配置；Docker 走 colima，testcontainers 需要显式 `DOCKER_HOST`，且必须 `TESTCONTAINERS_RYUK_DISABLED=true`，否则 Ryuk 挂载 socket 路径会以 HTTP 500 失败。
-
-按 [AGENTS.md](../../../AGENTS.md) 第 6 条，上述缺项在本分支补齐，不另拆"补验收"任务；在补齐之前本卡不判定完成，也不建议合并。
-
-## 修复内容摘要
-
-详见 [任务卡的"已实施修复"](../../tasks/FIX-STOP-01.md)。一句话：owner Run 处于终态（`completed`/`failed`/`cancelled`）时，把这当作可释放的**持久事实**证明，在 `acquireSessionAdmission` 锁行后立即释放，并由 worker reconciler 在过期 sweep 之前批量释放并唤醒后继；**没有**把过期 sweep 扩大到 `recovering`，因此"仅凭过期不移交"的 RT-25 护栏保持不变。
+按 [AGENTS.md](../../../AGENTS.md) 第 6 条，缺项在本分支补齐，不另拆"补验收"任务；补齐前本卡不判定完成、不建议合并。

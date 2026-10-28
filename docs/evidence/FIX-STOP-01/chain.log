@@ -1,0 +1,45 @@
+# FIX-STOP-01 chain.log — real TS -> Java chain
+
+fix SHA: 55bb228 (narrowed scheme B). E2E spec rewrite: 22da16f. Date 2026-10-28.
+JAVA_HOME: Homebrew openjdk 21.0.12.1 (no system Java installed, no system config changed).
+Runtime jar: built from this branch with mvn package -DskipTests; AGENT_RUNTIME_SKIP_BUILD=1 afterwards.
+Docker: colima. DOCKER_HOST=unix://<home>/.colima/default/docker.sock and
+TESTCONTAINERS_RYUK_DISABLED=true are required, otherwise testcontainers fails with
+"Could not find a working container runtime strategy" and then HTTP 500 mounting the socket for Ryuk.
+PostgreSQL: testcontainers, started by the harness. Host paths replaced with <worktree>.
+
+## 1. worker-chain before the spec rewrite — 4 passed / 1 failed
+
+Run against the narrowed fix with the ORIGINAL :402 assertions, which still encoded
+"a cancelled Run never hands the session over". That is the measurement that proved the
+spec, not the fix, carried the old contract for the cancellation path: :546, :785 and :965
+already passed, so the failure-scoped narrowing was working.
+
+$ pnpm test:worker-chain
+exit=1
+
+  ✓  1 [chromium] › e2e/worker-chain.spec.ts:281:1 › a user Run stays queued while the Worker is down and is claimed and executed by the Worker process (14.3s)
+  ✘  2 [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission (15.4s)
+  ✓  3 [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission (1.4m)
+  ✓  4 [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission (1.3m)
+  ✓  5 [chromium] › e2e/worker-chain.spec.ts:965:1 › a Worker killed mid-Run parks chat admission in recovering without retrying (23.1s)
+::notice title=🎭 Playwright Run Summary::  1 failed%0A    [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission %0A  4 passed (3.7m)
+  4 passed (3.7m)
+
+## 2. worker-chain after the two-branch rewrite — 5 passed, exit 0
+
+$ pnpm test:worker-chain
+exit=0
+
+  ✓  1 [chromium] › e2e/worker-chain.spec.ts:281:1 › a user Run stays queued while the Worker is down and is claimed and executed by the Worker process (18.1s)
+  ✓  2 [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued until the abort is confirmed (17.4s)
+  ✓  3 [chromium] › e2e/worker-chain.spec.ts:568:1 › a Routine failure queues one delivery behind recovering chat admission (1.4m)
+  ✓  4 [chromium] › e2e/worker-chain.spec.ts:807:1 › an outbox restart creates one queued delivery behind recovering admission (1.3m)
+  ✓  5 [chromium] › e2e/worker-chain.spec.ts:987:1 › a Worker killed mid-Run parks chat admission in recovering without retrying (23.1s)
+::notice title=🎭 Playwright Run Summary::  5 passed (3.8m)
+  5 passed (3.8m)
+
+:402 now asserts both branches: with the Worker stopped the `run_abort` revocation is still
+present and the retry stays queued with the model never called; once the Worker sweeps the abort
+and deletes the row, the retry takes the session, leaves queued, and its reply reaches the
+transcript. :546 (Routine failure) and :785 (outbox restart) are untouched and still pass.
