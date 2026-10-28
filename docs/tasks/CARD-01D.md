@@ -27,7 +27,7 @@
 - 排序固定为 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC`；按 `interactionId + revision` 去重并分页。
 - Web 增加轻量 attention queue：条目显示来源 Bot、Task 或 reply target，点击跳回来源 Interaction 并聚焦。
 - 结算后条目立即消失，计数同步；关闭队列不等于处理请求。
-- 未读角标、待处理角标和 @我使用文字、形状与颜色共同区分。
+- 未读角标与待处理角标使用文字、形状与颜色共同区分；`@我` 不在本卡范围，见 [CARD-01F](./CARD-01F.md)。
 - 群聊成员等待标记只标等待中的 Bot，决定后移除；点击只回来源。
 - 浏览器通知只使用 Web Notification 或仓库已有 Web Push，覆盖需要本人处理的 Interaction；普通展示、后台进度、终态、`collaboration_receipt` 和 private pair receipt 不再提醒。
 - 通知内容脱敏，不包含收件人、正文、金额、卡号、地址、验证码、密码、参数或文件名；通知内不能直接批准。
@@ -61,7 +61,7 @@
 - 服务端按 `expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC` 排序，按 `interactionId + revision` 去重并分页；无权限或失去资格后立即排除。
 - 来源跳转准确，处理后条目和计数同步消失；空队列有明确空态。
 - 群聊来源可按 Bot 和 Task/reply target 寻址，不依赖孤立的“可以”或“A”。
-- 未读、待处理、@我语义在测试中互不混用。
+- 未读与待处理语义在测试中互不混用；`@我` 由 [CARD-01F](./CARD-01F.md) 承担。
 - 通知覆盖 Interaction 创建/需要处理，终态停止；`collaboration_receipt` 的创建/更新和 private pair receipt 不触发通知；内容扫描无敏感字段；不提供通知内批准。
 - `expiresAt` 缺失时不生成固定提前量承诺。
 - 现有 `ActivityList`、未读和通知行为在 gate 关闭时保持不变；开启后 15s 轮询或新查询不造成重复条目。
@@ -83,7 +83,7 @@
 
 | 项 | 现状 | 需要的决定 |
 | --- | --- | --- |
-| `@我` 角标 | 仓库里没有"提及我"的数据模型、RPC 字段或 UI；未实现、未断言。验收原文仍要求"未读、待处理、`@我` 使用文字、形状与颜色共同区分"、"语义在测试中互不混用" | 负责人二选一：补齐 `@我` 能力（需要新范围与原型）；或正式修改任务书与已确认原型，把 `@我` 拆到后续任务 |
+| `@我` 角标 | 仓库里没有"提及我"的数据模型、RPC 字段或 UI。**已裁决（2026-10-28）：拆到 [CARD-01F](./CARD-01F.md) 后续任务**，本卡验收表已同步改为只要求未读与待处理，不再声称 `@我` 已完成 | 已在 CARD-01F 中列出必须先定的产品语义与原型要求 |
 | `SOURCE_LIMIT = 500` | 单来源超过 500 条时静默截断，`total` 少算——这是读取模型的真实缺陷，不是缺测试 | 修查询（提高上限/分页统计真实总数）或明确产品上限并写进验收 |
 
 其他已记录、暂未处理：`expiresAt` 已过但仍 `pending` 的行按设计保留（与验收"expired 排除"的字面要求冲突）；群来源不复查 `bot.archivedAt`。
