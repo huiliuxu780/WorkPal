@@ -829,6 +829,66 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     );
   });
 
+  it("reads pending approvals without scanning message history", async () => {
+    const historyBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "History", color: "test" },
+    });
+    const historyThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, botId: historyBot.id },
+    });
+    const base = Date.now() - 20_000_000;
+    // 5,000 unrelated bot messages: the containment read must not visit them.
+    await prisma.message.createMany({
+      data: Array.from({ length: 5_000 }, (_unused, index) => ({
+        id: `hist-${index}`,
+        threadId: historyThread.id,
+        seq: index + 1,
+        role: "bot",
+        originKind: "system",
+        blocks: [{ kind: "text", text: `history ${index}` }],
+        createdAt: new Date(base + index * 100),
+      })),
+    });
+    const approvalMessage = await prisma.message.create({
+      data: {
+        id: "hist-approval",
+        threadId: historyThread.id,
+        seq: 5_001,
+        role: "bot",
+        originKind: "system",
+        blocks: [
+          {
+            kind: "mcp_approval",
+            name: "Search server",
+            serverId: "server-history",
+            transport: "streamable_http",
+            endpoint: "https://mcp.example.test",
+            needsOAuth: false,
+            status: "pending",
+          },
+        ],
+        createdAt: new Date(base + 5_001 * 100),
+      },
+    });
+    await prisma.$executeRawUnsafe('ANALYZE "messages"');
+    const plan = await prisma.$queryRaw<Array<{ "QUERY PLAN": string }>>`
+      EXPLAIN (ANALYZE, BUFFERS)
+      SELECT id FROM "messages"
+      WHERE "threadId" = ${historyThread.id}
+        AND role = 'bot'
+        AND blocks @> '[{"kind":"mcp_approval","status":"pending"}]'::jsonb`;
+    const planText = plan.map((row) => row["QUERY PLAN"]).join("\n");
+    expect(planText).toContain("messages_blocks_gin");
+    // The scan touches the matching rows, not the whole history.
+    const scanned = /rows=(\d+) width/.exec(planText)?.[1];
+    expect(Number(scanned ?? Number.NaN)).toBeLessThan(500);
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(page.items.some((item) => item.source.messageId === approvalMessage.id)).toBe(true);
+    // Later cases assume a small queue.
+    await prisma.message.deleteMany({ where: { threadId: historyThread.id } });
+    expect(page.total).toBeGreaterThan(0);
+  });
+
   it("keeps a nested delegated takeover whose first hop already completed", async () => {
     const nestedBot = await prisma.bot.create({
       data: { spaceId, userId: ownerId, name: "Nested", color: "test" },

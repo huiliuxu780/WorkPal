@@ -19,7 +19,7 @@
 
 ## 范围
 
-- 消费 CARD-01A 定义的 attention DTO，增加服务端查询/RPC（只读取 pending 状态集合，不扫描 Run 历史；不设每源行数硬上限，靠 pending 谓词与事务超时兜底），只返回当前 actor 有权访问线程中仍需本人处理的 Interaction 投影：
+- 消费 CARD-01A 定义的 attention DTO，增加服务端查询/RPC（只读取 pending 状态集合，不扫描 Run 历史；消息内审批走 `messages.blocks` GIN 索引，单请求成本随 pending 候选数增长、不随历史消息量增长），只返回当前 actor 有权访问线程中仍需本人处理的 Interaction 投影：
   - 持久 pending Intervention
   - 当前有效的派生 `SessionControlView`
   - 完成严格映射后的 pending 业务审批，包括 `ActionApprovalView(group_membership)`
@@ -84,6 +84,6 @@
 | 项 | 现状 | 需要的决定 |
 | --- | --- | --- |
 | `@我` 角标 | 仓库里没有"提及我"的数据模型、RPC 字段或 UI。**已裁决（2026-10-28）：拆到 [CARD-01F](./CARD-01F.md) 后续任务**，本卡验收表已同步改为只要求未读与待处理，不再声称 `@我` 已完成 | 已在 CARD-01F 中列出必须先定的产品语义与原型要求 |
-| `SOURCE_LIMIT = 500` | **已按裁决修复**：删除每源 500 行上限，`total` 由完整 pending 集合得出；`attention.postgres.test.ts` 新增 520 行用例（total 精确 + 全量分页无重复）。只读取 pending 状态集合、不扫描 Run 历史，事务超时仍是硬停 | 无需再决定；若将来 pending 规模成为性能问题，另立性能卡并在契约里显式定义截断语义 |
+| `SOURCE_LIMIT = 500` | **已修复**：删除每源 500 行上限（`total` 不再少算）；新增 `messages.blocks` GIN 索引（迁移 `20261028150000_messages_blocks_gin`），消息审批源从「扫描历史消息」变为索引检索。PG 用例：520 行分页无重复、5,001 条历史消息下 EXPLAIN 走 `messages_blocks_gin` 且扫描行数 < 500 | 残余：`total` 精确要求投射全部 pending 候选，单请求成本 ∝ pending 数（不随历史增长）。若要把成本降到 O(page)，需要持久化 attention 投影（见 [attention-query-bounds.md](../cards/attention-query-bounds.md) 方案 B），另立单元 |
 
 其他已记录、暂未处理：`expiresAt` 已过但仍 `pending` 的行按设计保留（与验收"expired 排除"的字面要求冲突）；群来源不复查 `bot.archivedAt`。
