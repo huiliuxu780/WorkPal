@@ -1,6 +1,6 @@
 # FIX-STOP-01 Stop 后释放会话执行权
 
-状态：`in-progress`（2026-10-28 在 `codex/verify-lifecycle-concurrency` / PR [#149](https://github.com/huiliuxu780/WorkPal/pull/149) 上按收窄方案 B 完成实现与验证：持久层红 4/绿 6、护栏 66/66、`pnpm test:postgres` 455/455、`worker-chain` 5/5、`agentscope-product` E2E 6/6；RT-25/RT-26/CANCEL-01 的 AC 已回写。**仍缺真模型手测（本机无模型凭据，阻塞）、顶栏状态断言、`could not be proven` 日志断言**，因此不是 `ready-to-merge`）
+状态：`in-progress`（**2026-10-28 复审后前提更正**：`c53bea1` 上"revocation 消失即释放"的实现作废——DELETE 200 只证明 abort 请求被接收，不证明执行退出或 session 已 detach。修正方案见"修正后的方案 B"，需按 `runtimeStartedAt` 分叉并接入 RT-26 `inspectAndDetach` 证明；三个确定性分支中第 2 支要先证红。既有本地绿（持久层、护栏、`test:postgres`、真模型手测）对应的是被作废的实现，不能直接沿用到新实现）
 
 - 类型：bug
 - 高风险：是（涉及 cancel、session admission 和 `recovering` 证明）
@@ -69,6 +69,32 @@
 - **没有**用时间阈值：S4 显式把时钟推到 `expiresAt + 5min` 并跑 reconciler，abort 未确认时断言仍然 `recovering`。
 - **没有**缩短 lease、加重试或加 sleep；S1–S4 的时钟全部显式传入。
 - **没有**改 cancel 的业务语义（steering disposition、notice、continuation 都不动）；`cancel-terminal` 12 项、`effect-execution-fence` 18 项仍然绿。
+
+## 前提更正（2026-10-28，负责人复审后）
+
+**之前「revocation 不存在就等于 abort 已落定」的假设是错的。** 代码事实（2026-10-28 逐处核对）：
+
+1. `AgentScopeAgentRuntime.abort()` 只要 DELETE 返回成功就结束调用。
+2. Java 的 DELETE 处理只调 `engine.cancel(runId)`、中断线程，然后立即返回 200。
+3. `activeRuns` / `activeSessions` 要等原执行线程进入 `finally` 才被移除。
+4. DELETE **不**调用 `inspectAndDetach`，也不清理已持久化的 pending tool/ask 状态。
+5. Worker 随后删除 revocation 行。
+
+因此「revocation 不存在」只证明 **abort 请求被 runtime 接收**，既不证明执行已退出，也不证明共享 session 已 clean/detached。据此放行会让后继进入可能仍被旧执行占用的会话——正是复审指出的状态继承风险，在 `c53bea1` 上仍然存在。**`c53bea1` 的实现作废，本卡保持 `in-progress`。**
+
+## 修正后的方案 B（按负责人裁决）
+
+- **`runtimeStartedAt` 为空**：runtime 从未进入共享 session，cancelled 终态即可释放。
+- **`runtimeStartedAt` 非空**：revocation 消失**只是前置条件**；随后必须取得现有 RT-26 `inspectAndDetach` 的 `clean` 或 `detached` 证明（走 `releaseRecoveredSessionAdmission` 那条证明路径）才能释放 admission。
+- 未取得证明时继续 `recovering`；**不得**用时间、租约过期或 DELETE 200 放行。
+
+回归改成三个确定性分支：
+
+1. revocation 存在 → 继续排队（现状已是）。
+2. revocation 已删除但**没有** clean/detached proof → 仍然继续排队。**这一支要在当前实现上证红**（当前实现会错误放行）。
+3. clean/detached proof 持久化之后 → 释放，后继消息被执行。
+
+测试时序修正：`worker-chain.spec.ts` 目前是 Stop 完成后才停 Worker，Worker 有机会抢先消费 revocation（`c53bea1` 的 attempt 3 就红在 `:519`：期望行存在、实际已被消费）。改为**触发 Stop 前停 Worker**，或加明确的 sweep gate；不靠查询时机，也不手工伪造 revocation 行。
 
 ## 失败场景（`:546`/`:785`）的三个未决问题：另记为后续调查
 
