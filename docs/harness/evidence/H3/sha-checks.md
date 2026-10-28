@@ -66,6 +66,19 @@ H3 交付 head `23f42b24521fd738b26f80cf5320cabd805deac1`，run [40547603862](ht
 
 注意这一段是**判定口径的案例**，不是"本 PR 最终 head 的 CI 已绿"的声明。把该记录提交进分支本身就会移动 head，所以 `23f42b2` 只是案例里的那个 head。审核时必须按上面四条口径，核对**实际最终 head** 自己的 run：所有相关 job 在同一 attempt 内完成、conclusion 逐项确认、被 skipped 的 job 能用选择器输出解释。
 
+## 追加数据点：`7b9d821` 上 agentscope 一次红、同 SHA 局部重跑转绿
+
+run [40601388297](https://github.com/huiliuxu780/WorkPal/actions/runs/40601388297)，head `7b9d821310c7909a9852bf872e4c03a950c50275`。
+
+| attempt | 方式 | `agentscope` | `CI result` |
+| --- | --- | --- | --- |
+| 1 | 首次 PR run | **fail**，51s | fail |
+| 2 | `gh run rerun --failed`（只重跑失败 job） | **pass**，6m50s | **pass** |
+
+attempt 1 的失败形态（由负责人核对原始日志后更正）：不是"0 个测试失败的启动故障"，而是**实际跑了 61 个测试、60 绿 1 红**，失败在 approval pause 场景，报 `Session already has an active run`。这个 head 的 diff 里 `services/`、`packages/`、`apps/` 一个文件都没有，所以不是本 head 的产品代码引起。
+
+**结论口径（按负责人裁决）**：同 SHA 重跑转绿**只记为非确定性证据，不等于问题解决**；若同形态再次出现，按真实缺陷处理。同时注意 attempt 2 是 `--failed` 局部重跑，按本文前面的规则它混合了 attempt（`agentscope` 下载的 jar 来自 attempt 1），所以这次绿色**不能**单独当作最终 head 的判定依据——要看该 head 是否有一次所有相关 job 在同一 attempt 内完成的 run。GitHub 侧这个 head 的必需检查现在是绿的，审核时仍要按这四条口径读。
+
 ## 本项未做
 
 - 没有制造"旧 head 绿、新 head 红"的受控样例。原因：需要一个真实 PR 的两次推送，而本批不授权创建新 PR；上表两个真实 head 已能证明每个 head 各自一套 check run，机制部分由 `concurrency` 配置和 GitHub 的按 commit 评估语义覆盖。
