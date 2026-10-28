@@ -670,7 +670,11 @@ test("routine budget breach fails the Run and queues one delivery behind recover
     // dispatch above bound this exact row; the settle update blocks on the lock
     // until the assertions below have observed the intermediate state.
     const barrier = await holdClaimedDeliveryRecord(db, runId);
-    const timeline: Array<{ at: string; stage: string } & Awaited<ReturnType<typeof deliveryFacts>>> = [
+    const timeline: Array<
+      { at: string; stage: string; replayCalls?: number } & Awaited<
+        ReturnType<typeof deliveryFacts>
+      >
+    > = [
       {
         at: new Date().toISOString(),
         stage: "barrier-held",
@@ -728,35 +732,68 @@ test("routine budget breach fails the Run and queues one delivery behind recover
         ...(await deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id })),
       });
 
-      // Baseline assertion (pre-fix): a single read right after the transcript
-      // appears must already see the settled record.
-      const delivered = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
-      expect(delivered.status).toBe("sent");
-      expect(delivered.deliveredAt).not.toBeNull();
-      expect(delivered.deliveryRunId).toBe(deliveryRun.id);
+      // The window this test exists for: the delivery Run is completed and its
+      // message is on screen, yet the record is still claimed because the
+      // Worker's settle UPDATE is blocked on the lock held above.
+      const held = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
+      expect(held.status).toBe("claimed");
+      expect(held.deliveredAt).toBeNull();
+      expect(held.deliveryRunId).toBe(deliveryRun.id);
       expect(
         await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-      ).toBe(1);
+      ).toBe(0);
       expect(
         await db.prisma.message.count({
           where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
         }),
       ).toBe(1);
-      expect(
-        await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } }),
-      ).toBe(1);
-      timeline.push({
-        at: new Date().toISOString(),
-        stage: "after-single-read",
-        ...(await deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id })),
-      });
     } finally {
       await barrier.release();
+      // Keep the observed states on failure too: the red run's whole point is
+      // the claimed snapshot under a completed Run.
+      test.info().attach("settle-timeline", {
+        body: JSON.stringify(timeline, null, 2),
+        contentType: "application/json",
+      });
     }
-    test.info().attach("settle-timeline", {
-      body: JSON.stringify(timeline, null, 2),
-      contentType: "application/json",
+
+    // The authority tuple settleDeliveryRun must produce exactly once. Poll
+    // instead of racing the commit that the barrier held back.
+    const facts = () =>
+      deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id });
+    await expect
+      .poll(facts, { timeout: 120_000, intervals: [100, 250, 500, 1_000] })
+      .toEqual({
+        recordStatus: "sent",
+        deliveredAt: expect.any(String),
+        recordDeliveryRunId: deliveryRun.id,
+        deliverySentEvents: 1,
+        deliveryBotMessages: 1,
+        deliveryRuns: 1,
+      });
+    const settled = await facts();
+    timeline.push({ at: new Date().toISOString(), stage: "settled", ...settled });
+
+    // Exactly once: replaying settle for the same delivery Run must not add a
+    // second event, message or record transition.
+    const settleDeps = {
+      prisma: db.prisma,
+      jobs: { enqueue: async () => undefined, cancel: async () => undefined },
+      events: createThreadEvents(db.prisma),
+      workerId: "e2e-settle-replay",
+    } as unknown as Parameters<typeof settleDeliveryRun>[0];
+    await settleDeliveryRun(settleDeps, deliveryRun.id);
+    await settleDeliveryRun(settleDeps, deliveryRun.id);
+    expect(await facts()).toEqual(settled);
+    timeline.push({
+      at: new Date().toISOString(),
+      stage: "after-settle-replay",
+      replayCalls: 2,
+      ...(await facts()),
     });
+    // The run log is the durable copy of this timeline; the attachment alone is
+    // cleaned up for passing tests.
+    console.log("H2-99 settle timeline", JSON.stringify(timeline));
     expect(
       await db.prisma.run.findUniqueOrThrow({
         where: { id: runId },
