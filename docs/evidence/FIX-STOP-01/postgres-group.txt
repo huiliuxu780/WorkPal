@@ -1,18 +1,13 @@
-# Whole PostgreSQL group at the fix SHA
+FIX-STOP-01 v2 current PostgreSQL group evidence
+Date: 2026-10-28
+Validation source head: cee31ca97ce0c7b30fa700103d07f051d3f840e2
+Database: dedicated local PostgreSQL container; DSN and credentials omitted.
+Command:
+  DATABASE_URL=<dedicated-local-postgresql-dsn> VERIFY_DATABASE=1 pnpm test:postgres
 
-Date 2026-10-28. Host macOS arm64, Node v24.18.0, pnpm 9.15.0.
-Fix SHA: 55bb228 (narrowed scheme B: cancelled owner AND confirmed native abort).
-Test: packages/db/src/stop-session-release.postgres.test.ts (six cases).
-Database: throwaway postgres:16 container on an OS-assigned port, database
-workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's agent:doctor plan
-(conflicts: none). Each suite clones an isolated database from the migration template and drops it
-in afterAll. Prerequisite: pnpm --filter @rakazo/db generate and prisma migrate deploy.
-No real model, no scripted runtime, no capture proxy: persistence layer only, driving the production
-cancel policy (applyCancelTerminalPolicy + cancelPolicyFor("user_stopped"), the transaction body of
-apps/api stopThreadRuns) and the admission functions executor.ts calls.
-Host paths below are replaced with <worktree>. No credential appears in these files.
-
-$ pnpm test:postgres
-
-[2m Test Files [22m [1m[32m51 passed[39m[22m[90m (51)[39m
-[2m      Tests [22m [1m[32m455 passed[39m[22m[90m (455)[39m
+Output:
+  > node scripts/testing/run-test-group.mjs postgres
+  Test Files  51 passed (51)
+  Tests       456 passed (456)
+  Duration    62.68s
+  Exit        0

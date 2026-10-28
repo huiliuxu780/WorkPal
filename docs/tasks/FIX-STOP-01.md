@@ -3,9 +3,9 @@
 状态：`ready-to-merge`（待审核者核对证据后合入；未合入，未部署）
 
 - 实现：按修正后的 proof-gated 规则（`docs/evidence/FIX-STOP-01/proof-gated-rule.md`）。`runtimeStartedAt` 为空→cancelled 即释放；非空→仅在 RT-26 `clean`/`detached` 证明被 ack 后释放，reconciler 只分类并把 owner Run 重投 `runContinueJob`。
-- 本地检查：PG 七分支 7/7（branch 3 对旧实现红）、护栏 6 文件 65 测试、`pnpm test:postgres` 51 文件 456 测试、`pnpm lint`/`test:inventory`/`test:ci-select`/`test:docs`、`worker-chain` 5/5（三栅 proof gate）、`agentscope-product` 6/6。
+- 本地检查：PG 七分支 7/7（branch 3 对旧实现红）、护栏 6 文件 62 测试、`pnpm test:postgres` 51 文件 456 测试、`pnpm lint`/`test:inventory`/`test:ci-select`/`test:docs`、`worker-chain` 5/5（三栅 proof gate）、`agentscope-product` 6/6。
 - 真实模型受控验收：`SANDBOX_PROVIDER=fake` + 真 `qwen3.8-flash` + 真 runtime；跟随消息 06:06:10.242 起排队，`clean` proof 于 06:06:17.772 ack，06:06:17.801 才开始、06:06:18.631 完成。证据 `docs/evidence/FIX-STOP-01/real-model-v2/`。
-- 最终 head `4ca6f08ffb5df26ecac8d4cc5fa92ffe08abbce7`：run 40642473242 **attempt 3 单 attempt 全绿**（`CI result`、agentscope、worker-chain、runtime-jar、harness、web、backend、db-postgres、docs、agent-runtime-image 全 success；`Daily web screenshots` 按 PR 事件正确 skipped）。attempt 1/2 的 `runtime-jar` 失败是已登记的 `AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession:253` 非确定性用例（同日 #148/#149 多次出现、同 SHA 重跑转绿；本 PR diff 无 Java 文件）。
+- 代码/证据 head `4ca6f08ffb5df26ecac8d4cc5fa92ffe08abbce7`：run 40642473242 **attempt 3 单 attempt 全绿**（`CI result`、agentscope、worker-chain、runtime-jar、harness、web、backend、db-postgres、docs、agent-runtime-image 全 success；`Daily web screenshots` 按 PR 事件正确 skipped）。attempt 1/2 的 `runtime-jar` 失败是已登记的 `AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession:253` 非确定性用例（同日 #148/#149 多次出现、同 SHA 重跑转绿；本 PR diff 无 Java 文件）。最终 PR head 以 PR 的同一 attempt CI 链接为准。
 - 已知限制：runtime 不可达 / 旧 binding 无法重新认领 / manifest 缺失 / proof 冲突时会停在 `recovering`，需单独的人工或运维出口；本卡不提供时间兜底。Docker sandbox 的 `computer home` 故障另记，不在本卡修复。
 
 - 类型：bug
@@ -88,7 +88,7 @@
 4. DELETE **不**调用 `inspectAndDetach`，也不清理已持久化的 pending tool/ask 状态。
 5. Worker 随后删除 revocation 行。
 
-因此「revocation 不存在」只证明 **abort 请求被 runtime 接收**，既不证明执行已退出，也不证明共享 session 已 clean/detached。据此放行会让后继进入可能仍被旧执行占用的会话——正是复审指出的状态继承风险，在 `c53bea1` 上仍然存在。**`c53bea1` 的实现作废，本卡保持 `in-progress`。**
+因此「revocation 不存在」只证明 **abort 请求被 runtime 接收**，既不证明执行已退出，也不证明共享 session 已 clean/detached。据此放行会让后继进入可能仍被旧执行占用的会话——正是复审指出的状态继承风险，在 `c53bea1` 上仍然存在。**在该历史阶段，`c53bea1` 的实现作废，本卡当时保持 `in-progress`；现行状态见文档顶部。**
 
 ## 修正后的方案 B（按负责人裁决）
 
@@ -150,7 +150,7 @@
 
 执行前置：先查证哪些**可查询的持久事实**能证明 abort 链已落定（候选：该 Run 的 ExternalEffect 全部终态、DeliveryRecord 全部终态、execution revocation 已记录、Attempt 已 `interrupted` 且无 `running` 残留），把结论与最小改动方案写回本卡后再改代码。当前 `6ce9376` 的实现在此之前不算交付完成。
 
-在裁决之前：本卡不判定完成，`chain.log` 的"通过"要求未满足，PR #149 不是 `ready-to-merge`。
+在当时的裁决之前：本卡不判定完成，旧 `chain.log` 的“通过”要求未满足，PR #149 当时不是 `ready-to-merge`。这是历史状态；现行状态见文档顶部和 v2 证据索引。
 
 ## 方案 B 前置查证（2026-10-28，在 `a409140` 上逐处核对）
 
@@ -197,7 +197,7 @@ otherwise keep `recovering`   -- RT-26 的证明语义不变
 - `:402`（取消后重试）：改成两个分支——abort 尚未送达时断言仍 `recovering`、后继仍排队；abort 成功（`run_abort` 行消失）后断言后继可执行。不是简单删掉排队断言。
 - `:546` / `:785`（失败后投递排队）：等第 2 点核对完再定断言。
 
-**当前进度**：查证第 1 点已完成并可直接落码；第 2、3 点的失败场景规则与三个用例改写尚未完成，因此本卡仍未交付完成，`6ce9376` 的实现仍然不能作为最终交付。
+**当时进度**：查证第 1 点已完成并可直接落码；第 2、3 点的失败场景规则与三个用例改写在该历史阶段尚未完成，因此本卡当时仍未交付完成，`6ce9376` 的实现不能作为最终交付。现行 proof-gated 实现与完成状态见文档顶部。
 
 ## 完成标准
 

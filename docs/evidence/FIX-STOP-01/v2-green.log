@@ -17,3 +17,14 @@ is a no-op; the failed-owner boundary stays parked.
 
 [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[32m7 passed[39m[22m[90m (7)[39m
+
+Current-head revalidation (2026-10-28)
+Validation source head: cee31ca97ce0c7b30fa700103d07f051d3f840e2
+Command:
+  DATABASE_URL=<dedicated-local-postgresql-dsn> VERIFY_DATABASE=1 \
+    pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts
+Output:
+  Test Files  1 passed (1)
+  Tests       7 passed (7)
+  Duration    1.13s
+  Exit        0

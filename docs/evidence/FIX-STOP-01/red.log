@@ -125,4 +125,3 @@ Received: [31m"recovering"[39m
 [2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (6)[39m
 [2m   Start at [22m 09:44:02
 [2m   Duration [22m 1.50s[2m (transform 672ms, setup 23ms, import 904ms, tests 488ms, environment 0ms)[22m
-

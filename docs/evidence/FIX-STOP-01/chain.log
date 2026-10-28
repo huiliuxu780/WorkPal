@@ -1,75 +1,33 @@
-# FIX-STOP-01 chain.log — real TS -> Java chain
+FIX-STOP-01 v2 current process-chain evidence
+Date: 2026-10-28
+Validation source head: cee31ca97ce0c7b30fa700103d07f051d3f840e2
+Environment:
+  JAVA_HOME=<Homebrew JDK 21>
+  DOCKER_HOST=<local Colima socket>
+  TESTCONTAINERS_RYUK_DISABLED=true
 
-fix SHA: 55bb228 (narrowed scheme B). E2E spec rewrite: 22da16f. Date 2026-10-28.
-JAVA_HOME: Homebrew openjdk 21.0.12.1 (no system Java installed, no system config changed).
-Runtime jar: built from this branch with mvn package -DskipTests; AGENT_RUNTIME_SKIP_BUILD=1 afterwards.
-Docker: colima. DOCKER_HOST=unix://<home>/.colima/default/docker.sock and
-TESTCONTAINERS_RYUK_DISABLED=true are required, otherwise testcontainers fails with
-"Could not find a working container runtime strategy" and then HTTP 500 mounting the socket for Ryuk.
-PostgreSQL: testcontainers, started by the harness. Host paths replaced with <worktree>.
+Command 1:
+  pnpm test:worker-chain
 
-## 1. worker-chain before the spec rewrite — 4 passed / 1 failed
+Output:
+  worker-chain timings (ms): {"claimToRunningMs":2384,"budgetEnforcementMs":7895,"crashRestartToQueuedMs":2323}
+  Playwright Run Summary: 5 passed (3.6m)
+  Exit: 0
 
-Run against the narrowed fix with the ORIGINAL :402 assertions, which still encoded
-"a cancelled Run never hands the session over". That is the measurement that proved the
-spec, not the fix, carried the old contract for the cancellation path: :546, :785 and :965
-already passed, so the failure-scoped narrowing was working.
+The cancellation scenario uses three deterministic gates:
+1. runtimeStartedAt is non-null before the Worker stops.
+2. Stop writes run_abort; successor remains queued and the model is not called.
+3. Production deliverRunAborts removes run_abort, but the successor remains
+   queued until the restarted Worker obtains and acknowledges an RT-26 proof.
 
-$ pnpm test:worker-chain
-exit=1
+After proof acknowledgement the test records a worker-log offset and asserts
+that the remaining log contains no "could not be proven" message. It also
+asserts the successor leaves queued, reaches the transcript, and the cancelled
+owner no longer holds the admission.
 
-  ✓  1 [chromium] › e2e/worker-chain.spec.ts:281:1 › a user Run stays queued while the Worker is down and is claimed and executed by the Worker process (14.3s)
-  ✘  2 [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission (15.4s)
-  ✓  3 [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission (1.4m)
-  ✓  4 [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission (1.3m)
-  ✓  5 [chromium] › e2e/worker-chain.spec.ts:965:1 › a Worker killed mid-Run parks chat admission in recovering without retrying (23.1s)
-::notice title=🎭 Playwright Run Summary::  1 failed%0A    [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission %0A  4 passed (3.7m)
-  4 passed (3.7m)
+Command 2:
+  pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
 
-## 2. worker-chain after the two-branch rewrite — 5 passed, exit 0
-
-$ pnpm test:worker-chain
-exit=0
-
-  ✓  1 [chromium] › e2e/worker-chain.spec.ts:281:1 › a user Run stays queued while the Worker is down and is claimed and executed by the Worker process (18.1s)
-  ✓  2 [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued until the abort is confirmed (17.4s)
-  ✓  3 [chromium] › e2e/worker-chain.spec.ts:568:1 › a Routine failure queues one delivery behind recovering chat admission (1.4m)
-  ✓  4 [chromium] › e2e/worker-chain.spec.ts:807:1 › an outbox restart creates one queued delivery behind recovering admission (1.3m)
-  ✓  5 [chromium] › e2e/worker-chain.spec.ts:987:1 › a Worker killed mid-Run parks chat admission in recovering without retrying (23.1s)
-::notice title=🎭 Playwright Run Summary::  5 passed (3.8m)
-  5 passed (3.8m)
-
-:402 now asserts both branches: with the Worker stopped the `run_abort` revocation is still
-present and the retry stays queued with the model never called; once the Worker sweeps the abort
-and deletes the row, the retry takes the session, leaves queued, and its reply reaches the
-transcript. :546 (Routine failure) and :785 (outbox restart) are untouched and still pass.
-
-
-## 3. pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts — 6 passed, exit 0
-
-Run because the change is in session admission, which the AgentScope product journey traverses.
-
-$ pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
-exit=0
-
-  ✓  1 [chromium] › e2e/agentscope-product.spec.ts:6:1 › Web chat completes a Java Harness tool round trip (5.2s)
-  ✓  2 [chromium] › e2e/agentscope-product.spec.ts:116:1 › Java Run reaches a duration budget and Web cancels its waiting card (34.1s)
-  ✓  3 [chromium] › e2e/agentscope-product.spec.ts:236:1 › Web chat resumes a native Harness plan after approval (4.0s)
-  ✓  4 [chromium] › e2e/agentscope-product.spec.ts:358:1 › Web chat never offers native subagent delegation while suspended (3.7s)
-  ✓  5 [chromium] › e2e/agentscope-product.spec.ts:433:1 › Java publishes a structured Plan and Step into one Web execution (4.3s)
-  ✓  6 [chromium] › e2e/agentscope-product.spec.ts:630:1 › Web chat refuses background helper spawns while delegation is suspended (3.8s)
-::notice title=🎭 Playwright Run Summary::  6 passed (56.8s)
-  6 passed (56.8s)
-
-## Summary
-
-| Command | Result |
-| --- | --- |
-| `pnpm test:worker-chain` (two-branch :402) | exit 0, 5 passed (3.8m) |
-| `pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | exit 0, 6 passed (56.8s) |
-| `pnpm test:postgres` | exit 0, 51 files / 455 tests (see postgres-group.txt) |
-
-Still outstanding for this card and not covered by anything above: the real-model manual run
-(dev:app at the repository root, Stop, then a new message, with a screenshot and the Run/admission
-rows), the conversation header assertion, the absence of "could not be proven" in the worker log,
-and the RT-25/RT-26/CANCEL-01 acceptance writebacks.
+Output:
+  Playwright Run Summary: 6 passed (55.4s)
+  Exit: 0

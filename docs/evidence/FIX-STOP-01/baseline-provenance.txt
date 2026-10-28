@@ -57,4 +57,3 @@ e8c83d586cb0b1ca9bb6370125ba7a0ec72b85935a67e8d075560e9cd76158fd  packages/db/sr
 22c3b22d83d5fe2b17e61715f4bc93724975ea74032fb3747b443b3d502d825b  packages/db/src/stop-session-release.postgres.test.ts
 $ git status --short   # empty = tree clean again
 ?? docs/evidence/FIX-STOP-01/baseline-provenance.txt
-

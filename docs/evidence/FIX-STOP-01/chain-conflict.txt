@@ -699,9 +699,9 @@ Agent runtime failure: java.lang.IllegalStateException
 ::notice title=🎭 Playwright Run Summary::  3 failed%0A    [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission %0A    [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission %0A    [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission %0A  2 passed (5.7m)
 
 
-  1) [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission 
+  1) [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission
 
-    PrismaClientKnownRequestError: 
+    PrismaClientKnownRequestError:
     Invalid `prisma.agentSessionAdmission.findFirstOrThrow()` invocation:
 
 
@@ -739,7 +739,7 @@ Agent runtime failure: java.lang.IllegalStateException
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  2) [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission 
+  2) [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission
 
     Error: expect(received).resolves.toMatchObject()
 
@@ -775,7 +775,7 @@ Agent runtime failure: java.lang.IllegalStateException
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  3) [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission 
+  3) [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission
 
     Error: expect(received).toBe(expected) // Object.is equality
 
@@ -813,9 +813,9 @@ Agent runtime failure: java.lang.IllegalStateException
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
   3 failed
-    [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission 
-    [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission 
-    [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission 
+    [chromium] › e2e/worker-chain.spec.ts:402:1 › a retry after an in-flight cancellation stays queued behind recovering admission
+    [chromium] › e2e/worker-chain.spec.ts:546:1 › a Routine failure queues one delivery behind recovering chat admission
+    [chromium] › e2e/worker-chain.spec.ts:785:1 › an outbox restart creates one queued delivery behind recovering admission
   2 passed (5.7m)
 undefined
 <worktree>/apps/web:

@@ -48,4 +48,4 @@
 - `apps/web/e2e/worker-chain.spec.ts` 已改为确定性三栅：runtime 已启动断言 → 停 Worker 后 Stop（revocation 存在、阻塞）→ 用生产 `deliverRunAborts` 送 abort（revocation 消失、仍阻塞）→ 启动 Worker，由真实 RT-26 链产出并 ack proof 后放行。worker-chain **5/5 通过**。
 - 分类器补上"转成 recovering"：Worker 先停会让 admission 停在 `owned`，而 RT-26 hook 只认 `recovering`，因此 `listCancelledSessionsToRecover` 先用 `parkRunForRecovery` 把 `owned` 转成 `recovering`（该 Run 已终态，不会被重新入队）。
 - 受控真模型验收已按新规则重做：[real-model-v2/README.md](./real-model-v2/README.md)。
-- branch 4 的释放半边由既有 `session-checkpoint-recovery.postgres.test.ts` 覆盖，本次护栏运行包含它（6 文件 65 测试全绿）。
+- branch 4 的释放半边由既有 `session-checkpoint-recovery.postgres.test.ts` 覆盖，本次护栏运行包含它（6 文件 62 测试全绿）；当前完整 PostgreSQL 组为 51 文件 456 测试全绿。

@@ -1,24 +1,24 @@
-# Guard suites at the fix SHA — the RT-25/RT-26 neighbours must not weaken
+FIX-STOP-01 v2 current guard evidence
+Date: 2026-10-28
+Validation source head: cee31ca97ce0c7b30fa700103d07f051d3f840e2
+Database: dedicated local PostgreSQL container; DSN and credentials omitted.
+Command:
+  DATABASE_URL=<dedicated-local-postgresql-dsn> VERIFY_DATABASE=1 pnpm exec vitest run \
+    packages/db/src/stop-session-release.postgres.test.ts \
+    packages/db/src/session-admission.postgres.test.ts \
+    packages/adapters/src/session-checkpoint-recovery.postgres.test.ts \
+    packages/db/src/cancel-terminal.postgres.test.ts \
+    packages/db/src/effect-execution-fence.postgres.test.ts \
+    packages/db/src/wait-timeouts.postgres.test.ts
 
-Date 2026-10-28. Host macOS arm64, Node v24.18.0, pnpm 9.15.0.
-Fix SHA: 55bb228 (narrowed scheme B: cancelled owner AND confirmed native abort).
-Test: packages/db/src/stop-session-release.postgres.test.ts (six cases).
-Database: throwaway postgres:16 container on an OS-assigned port, database
-workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's agent:doctor plan
-(conflicts: none). Each suite clones an isolated database from the migration template and drops it
-in afterAll. Prerequisite: pnpm --filter @rakazo/db generate and prisma migrate deploy.
-No real model, no scripted runtime, no capture proxy: persistence layer only, driving the production
-cancel policy (applyCancelTerminalPolicy + cancelPolicyFor("user_stopped"), the transaction body of
-apps/api stopThreadRuns) and the admission functions executor.ts calls.
-Host paths below are replaced with <worktree>. No credential appears in these files.
+Result:
+  Test Files  6 passed (6)
+  Tests       62 passed (62)
+  Duration    7.14s
+  Exit        0
 
-Includes the two assertions a lazy fix would break:
-  session-admission: "moves every crash point to recovering after expiry and never hands off"
-  session-checkpoint: "keeps an RT-25 recovering owner until a fresh proof is acknowledged"
-                      "releases a suspended admission only after the proof is acknowledged"
-Plus cancel-terminal (12), effect-execution-fence (18) and wait-timeouts.
-
-$ pnpm exec vitest run <six files> --no-file-parallelism
-
-[2m Test Files [22m [1m[32m6 passed[39m[22m[90m (6)[39m
-[2m      Tests [22m [1m[32m66 passed[39m[22m[90m (66)[39m
+Coverage note:
+- stop-session-release contains all seven proof-gated branches.
+- session-checkpoint-recovery contains branch 4's real terminal-owner
+  continue/recover/inspect/checkpoint/ack/release integration path.
+- No proof row is inserted by the FIX-STOP regression test.
