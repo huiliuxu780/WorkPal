@@ -147,11 +147,7 @@
       "at": "2026-10-28T06:06:18.698Z",
       "event": "followup_final",
       "status": "completed",
-      "sequence": [
-        "queued",
-        "running",
-        "completed"
-      ],
+      "sequence": ["queued", "running", "completed"],
       "sawQueued": true,
       "proofAt": "2026-10-28T06:06:17.937Z"
     }
