@@ -50,7 +50,9 @@
 4. 时间兜底扫不到：`recoverExpiredSessionAdmissions`（`:552`）只选 `state='owned'`；`listAvailableSessionAdmissionHeads`（`:849`）只认 `state='available'`。
 5. 唯一出口 `releaseRecoveredSessionAdmission`（`:759`）需要 runtime checkpoint 证明，而 Stop 已经中止了那个 runtime 会话，证明函数在 `executor.ts:1407-1413` 记 `recovering session admission could not be proven` 并返回 false。
 
-## 已实施修复（收窄方案 B：仅 Stop/取消路径）
+## 已实施修复（v1，收窄方案 B：仅 Stop/取消路径）— 已被 `2e624e0` 取代，保留作历史
+
+> **本节描述的是 v1 实现（revocation 消失即释放），已按"前提更正"撤回。现行实现与证据见 [proof-gated-rule.md](../evidence/FIX-STOP-01/proof-gated-rule.md)。**
 
 - `packages/db/src/session-admission.ts`：新增内部 `releaseCancelledOwnerAdmission(tx, row, now)`。放行必须**同时**满足两条，缺一不可：
   1. owner Run 是 `cancelled`（不是"任意终态"）；
