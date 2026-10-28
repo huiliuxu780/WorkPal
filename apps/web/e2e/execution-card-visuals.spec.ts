@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { activeBotId, completeOnboarding, createBotFromPicker, rpc, signup } from "./helpers";
 
@@ -21,9 +22,10 @@ import { activeBotId, completeOnboarding, createBotFromPicker, rpc, signup } fro
  */
 
 const enabled = process.env.WORKPAL_CARD_SHOTS === "1";
+const here = dirname(fileURLToPath(import.meta.url));
 const outDir =
   process.env.WORKPAL_CARD_SHOTS_DIR ??
-  join(__dirname, "..", "..", "..", ".zcode", "tmp", "execution-card-shots");
+  join(here, "..", "..", "..", ".zcode", "tmp", "execution-card-shots");
 
 test.skip(!enabled, "set WORKPAL_CARD_SHOTS=1 to capture Execution Card visuals");
 test.describe.configure({ mode: "serial" });
