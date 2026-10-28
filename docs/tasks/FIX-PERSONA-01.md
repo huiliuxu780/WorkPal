@@ -2,7 +2,7 @@
 
 状态：`ready-to-merge`（PR [#150](https://github.com/huiliuxu780/WorkPal/pull/150) 未合入；合入后才为 `done`）
 
-- 2026-10-28 收尾：真模型复测（DashScope `qwen3.8-flash`）与生产镜像核对已完成，证据在 [docs/evidence/FIX-PERSONA-01](../../evidence/FIX-PERSONA-01/README.md)。真模型两次请求均为空 `<agents_context>`、project 指向 pin 的空目录、bot instructions 在、仓库 AGENTS.md 六类 canary 全 absent。
+- 2026-10-28 收尾：真模型复测（DashScope `qwen3.8-flash`）与生产镜像核对已完成，证据在 [docs/evidence/FIX-PERSONA-01](../evidence/FIX-PERSONA-01/README.md)。真模型两次请求均为空 `<agents_context>`、project 指向 pin 的空目录、bot instructions 在、仓库 AGENTS.md 六类 canary 全 absent。
 - 代码 head `f3fdcab`（本卡此后的提交只有状态/证据文档）的 CI（[run 40666104070](https://github.com/huiliuxu780/WorkPal/actions/runs/40666104070)）为该 SHA 第 4 次完整重跑后全绿（runtime-jar、agentscope 7m20s、worker-chain 5m46s、CI result）；前三次红的是既有 Java flake `AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession:253`，与本次 docs-only 改动无关，**绿色来自重跑而非代码修复**。
 - 独立缺陷（不在本卡范围）：生产镜像 `COPY . .` 使 `/app` 含 `AGENTS.md`、`CLAUDE.md`、`docs/`、`prompts/` 等已跟踪文件；`MEMORY.md`/`knowledge/` 当前不存在。修复已使这些文件不再进入 system prompt。
 
