@@ -104,6 +104,53 @@
 
 在裁决之前：本卡不判定完成，`chain.log` 的"通过"要求未满足，PR #149 不是 `ready-to-merge`。
 
+## 方案 B 前置查证（2026-10-28，在 `a409140` 上逐处核对）
+
+要回答的问题是：**有没有可查询的持久事实能证明"abort 链已落定"？** 结论：取消场景有现成事实且语义正好对应；失败场景还缺一条，需要确认边界后再定规则。
+
+### 1. 取消场景：有现成事实
+
+`executionRevocations` 的 `run_abort` 行本身就是一个生命周期标记：
+
+- 写入：`packages/db/src/cancel-runs.ts` 在**取消的同一事务**里调用 `recordRunAbortRevocations(tx, cancelledIds)`，`kind='run_abort'`、`subjectId=<runId>`。此时只代表"取消意图已持久化"。
+- 删除：`packages/adapters/src/revoke-cancelled-work.ts:75-100 deliverRunAborts()`——`await abort(runId)` 成功后才 `deleteMany({ kind:'run_abort', subjectId: runId })`；抛错则保留该行并 `attempts+1`、记录 `lastError`。
+- 重试：`:102-122 retryPendingRunAborts()` 由 worker sweep 重试未成功的行。
+
+因此 **`run_abort` 行不存在 ⇒ 该 Run 的原生 AgentScope abort 已成功返回**，这正是 RT-26 担心的"Worker 侧 abort 链可能还没落定"的持久化表示；行存在 ⇒ 未落定 ⇒ 继续 park。这是"删除即证明"，不是超时，符合 RT-26 的 "elapsed time is never a proof"。
+
+注意区分：取消事务里同时把 Attempt 置成 `cancelled`（`cancel-runs.ts:74-85`），那是**取消意图**的一部分，早于 worker abort，不能当作落定证据。
+
+### 2. 失败场景（`:546` Routine failure、`:785` outbox restart）：还没有对应事实
+
+`recordRunAbortRevocations` 只在 `cancelRunsInTransaction` 里调用；一个自身失败的 Run 没有 `run_abort` 行，所以"行不存在"对失败场景恒真——直接套用会让这两个用例重新变成放行，等于拆掉它们的护栏。
+
+候选事实是**该 Run 的 Attempt 是否已到"只有持有者本人在收尾时才写"的终态**：`packages/adapters/src/executor.ts:7772-7777` 在 `finally` 里执行 `attempt.updateMany({ where: { id, status: 'running' }, data: { status: 'interrupted' } })`，位置在 stream/abort 收尾之后；worker 进程被杀则根本不会写。
+
+但这一点**还没验证充分，不能直接落码**，原因具体：
+
+1. 取消场景的 Attempt 是被取消事务直接置成 `cancelled` 的，所以 Attempt 状态在取消场景**不是**"持有者收尾"的证据，只在失败场景有指示意义。
+2. 需要确认失败 Run 的 Attempt 由谁、在什么之后写终态，以及 worker 中途死亡时它会停在什么状态（必须停在 `running` 才符合"未落定"）。
+3. 需要确认 `:546`/`:785` 两个用例里失败 Run 的 Attempt 实际处于什么状态，否则改写断言等于猜。
+
+### 3. 方案 B 的最小可行规则（待第 2 点确认后实施）
+
+```
+release(session) when owner Run is terminal AND
+  ( owner was cancelled AND no executionRevocations row (kind='run_abort', subjectId=owner) )
+  OR
+  ( owner failed/completed AND <持有者收尾事实，待定> )
+otherwise keep `recovering`   -- RT-26 的证明语义不变
+```
+
+`run_abort` 分支可以立即实现并用 S1/S1b/S2/S4 与 `:402` 验证；失败分支必须先把第 2 点核完。
+
+### 4. 对三个用例的改法（等规则定稿后再改）
+
+- `:402`（取消后重试）：改成两个分支——abort 尚未送达时断言仍 `recovering`、后继仍排队；abort 成功（`run_abort` 行消失）后断言后继可执行。不是简单删掉排队断言。
+- `:546` / `:785`（失败后投递排队）：等第 2 点核对完再定断言。
+
+**当前进度**：查证第 1 点已完成并可直接落码；第 2、3 点的失败场景规则与三个用例改写尚未完成，因此本卡仍未交付完成，`6ce9376` 的实现仍然不能作为最终交付。
+
 ## 完成标准
 
 证据放在 `docs/evidence/FIX-STOP-01/`：
