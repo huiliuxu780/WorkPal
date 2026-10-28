@@ -116,8 +116,16 @@ final class PlanBridgeTool extends ToolBase {
             // the harness PlanModeManager was built with), so enter/exit and
             // PLAN.md land on the identical paths.
             AgentState state = RuntimeContext.resolveAgentState(context, agent);
+            // RUNTIME-RELIABILITY-01: plain local manager (no filesystem
+            // indirection, no namespace, no index). The single-argument
+            // WorkspaceManager constructor opens a SQLite WorkspaceIndex
+            // connection per construction and this projection runs on every
+            // plan tool call — the connection was never closed. The plain
+            // manager keeps the identical physical paths (PLAN.md and the plan
+            // dir are workspace-relative local files either way).
             PlanModeManager manager = new PlanModeManager(
-                    new WorkspaceManager(workspace), PlanModeManager.DEFAULT_PLAN_DIR);
+                    new WorkspaceManager(workspace, null, null, null),
+                    PlanModeManager.DEFAULT_PLAN_DIR);
             if (state != null) {
                 if ("plan_enter".equals(name) && "entered".equals(status)
                         && !manager.isPlanActive(state)) {
