@@ -108,6 +108,14 @@ This is the cross-program critical path. Each item still obeys its own task-card
 
 RT-30 全绿不自动授权 DEP-01；DEP-01 仍需新的产品负责人明确授权。`cards_unified_v2`、Roundtable 各 gate 和生产配置保持关闭。
 
+**Completed batch (2026-10-28; merged to `main`, retained as history):**
+
+1. [CARD-01D](./tasks/CARD-01D.md) — attention queue, source jump and web notifications. PR #147 merged as `db59035`: fixed notification copy, gate-on legacy-notifier suppression, N3 evidence, the full-E2E selector P2, and a GIN index so the queue never scans message history. `@我` is split to [CARD-01F](./tasks/CARD-01F.md); the residual O(pending) cost of an exact `total` is recorded in [attention-query-bounds](./cards/attention-query-bounds.md).
+2. [FIX-PERSONA-01](./tasks/FIX-PERSONA-01.md) — the launch directory's AGENTS.md no longer reaches the model. PR #150 merged as `600ae61`, verified with a real model (empty `<agents_context>`, pinned project, Bot instructions intact, no repository canaries). The production image still ships `AGENTS.md` via `COPY . .`; that packaging defect is recorded, not fixed here.
+3. H2-101 — the Execution Card visual spec collects under ESM. PR #151 merged as `5409867`.
+4. H2-99 — the delivery-settle race is pinned with a record-lock barrier and an exactly-once authority tuple. PR #152 merged as `c485d45`; issue #99 updated.
+5. Gates stay closed: `cards_unified_v2` and the roundtable gates remain off by default; no deployment.
+
 **Immediate next batches (2026-10-20, completed; retained as history, not current start instructions):**
 
 1. MR-01 #73 and AG-05/AG-08 #78 are merged; no need to reopen their implementation slices.
