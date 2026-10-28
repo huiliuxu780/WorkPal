@@ -774,6 +774,8 @@ ROADMAP-CARD-CONVERGE（2026-10-25）固定以下跨程序所有权，避免 CAR
 
 依赖：RT-25。
 
+FIX-STOP-01 回写（2026-10-28）：本卡那条「Runtime 暂时不可达时 owner 保持 recovering」仍然成立。新增的释放路径只覆盖**用户 Stop 取消**的 owner，并且要求该 Run 的原生 abort 已确认（`run_abort` revocation 已删除）；它不适用于失败或正常完成的 owner，也不把 Runtime 可达性当作证明。checkpoint 与证明用例未改动且仍然绿，见 `docs/evidence/FIX-STOP-01/guards.txt`。
+
 覆盖：AC10。场景 C06、P05、F04。
 
 ### RT-27 实施确定性 steering 和 session 排队接入

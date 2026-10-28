@@ -1,6 +1,6 @@
 # FIX-STOP-01 Stop 后释放会话执行权
 
-状态：`in-progress`（2026-10-28 在 `codex/verify-lifecycle-concurrency` / PR [#149](https://github.com/huiliuxu780/WorkPal/pull/149) 上按收窄方案 B 完成实现与验证：持久层红 4/绿 6、护栏 66/66、`pnpm test:postgres` 455/455、`worker-chain` 5/5（`:402` 已改为两分支，`:546`/`:785` 未改动仍绿）。**仍缺真模型手测、顶栏状态断言、`could not be proven` 日志断言与 RT 回写**，因此不是 `ready-to-merge`）
+状态：`in-progress`（2026-10-28 在 `codex/verify-lifecycle-concurrency` / PR [#149](https://github.com/huiliuxu780/WorkPal/pull/149) 上按收窄方案 B 完成实现与验证：持久层红 4/绿 6、护栏 66/66、`pnpm test:postgres` 455/455、`worker-chain` 5/5、`agentscope-product` E2E 6/6；RT-25/RT-26/CANCEL-01 的 AC 已回写。**仍缺真模型手测（本机无模型凭据，阻塞）、顶栏状态断言、`could not be proven` 日志断言**，因此不是 `ready-to-merge`）
 
 - 类型：bug
 - 高风险：是（涉及 cancel、session admission 和 `recovering` 证明）

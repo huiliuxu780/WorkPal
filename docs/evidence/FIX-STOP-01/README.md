@@ -47,10 +47,10 @@ E2E `:402` 同样两个分支：Worker 停止时 revocation 在、重试排队�
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| 真模型手测（Stop 后发新消息正常收到回复 + 截图 + Run/admission 两表查询） | **未执行** | 需要真模型凭据与浏览器操作。不用夹具或 scripted 冒充 |
-| 顶栏不再显示 Running / Queued | **未验证** | 属 API/Web 层；E2E 覆盖了"重试离开 queued"与"回复出现"，但没有断言顶栏文案 |
-| 日志里没有 `could not be proven` | **未验证** | 需要 worker/executor 日志断言；本轮未加 |
-| 回写 RT-25、RT-26 与 CANCEL-01 / #139 的 AC | 未执行 | 等真模型手测齐了再写，避免把未验证的结论写进别的卡 |
+| 真模型手测（Stop 后发新消息正常收到回复 + 截图 + Run/admission 两表查询） | **阻塞，未执行** | 2026-10-28 核对：本机环境没有 WorkPal 可用的模型凭据（`env` 中无 DashScope/Qwen/OpenRouter key，主工作区 `.env` 同样没有），也没有可用的浏览器会话。需要负责人提供真模型凭据与抓包代理（可选）后执行。不用夹具或 scripted 冒充 |
+| 顶栏不再显示 Running / Queued | **未完成** | 已定位到状态来源：`apps/web/src/pages/Shell.tsx` 的 `transcriptRunning`/`composerRunning` 传给 `Composer` 与转录组件；但这两处目前没有稳定的 `data-testid`，需要先确认可断言的渲染点（或补一个 testid，属前端改动需评审），再加进 `worker-chain.spec.ts:402` 的已确认分支 |
+| 日志里没有 `could not be proven` | **未完成** | 该行只在 `packages/adapters/src/executor.ts:1409` 的 `proveRecoveredSession` 里发出。断言窗口要确定：在 abort 未确认的过渡期它可能合法出现，所以不能断言"整段日志都没有"；计划在 `worker-chain.spec.ts:402` 里取"释放已发生"之后的日志偏移再断言，避免 flaky |
+| 回写 RT-25、RT-26 与 CANCEL-01 / #139 的 AC | **已完成** | RT-25 追加 "FIX-STOP-01 writeback" 一节；RT-26 在实现计划里补回写段；CANCEL-01 验收新增第 8 条。三处都注明未覆盖项，不把未验证的结论写成已保障 |
 | 失败场景（`:546`/`:785`）的三个未决问题 | 另案 | 按负责人裁决不塞进本单元，见任务卡"后续调查" |
 
 按 [AGENTS.md](../../../AGENTS.md) 第 6 条，缺项在本分支补齐，不另拆"补验收"任务；补齐前本卡不判定完成、不建议合并。

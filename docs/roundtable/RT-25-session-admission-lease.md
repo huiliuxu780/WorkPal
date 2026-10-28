@@ -156,3 +156,23 @@ A queued successor can briefly hold only the independent Run claim while persist
 request, then returns to `queued` with no Runtime call. The final assertions wait for the durable
 boundary (`queued`, no Run owner, one queued admission request) instead of mistaking either
 transient claim state for chat admission.
+
+## FIX-STOP-01 writeback (2026-10-28)
+
+A session whose owner Run the user stopped no longer stays parked in `recovering` forever. One
+release path was added and it fires only when two durable facts hold together:
+
+- the owner Run is `status='cancelled'`, and
+- that Run's `run_abort` execution revocation is gone — `deliverRunAborts` deletes it only after
+  `runtime.abort()` returns.
+
+No escape hatch on this card changed: an expired `owned` row is still only parked into `recovering`,
+`recovering` still refuses hand-over on expiry alone, and `recoverExpiredSessionAdmissions` still
+selects `state='owned'` only. `failed` and `completed` owners are outside the new rule.
+
+Evidence: `docs/evidence/FIX-STOP-01/` — red 4 / green 6 on the same cases, guards 6 files / 66
+tests, `pnpm test:postgres` 51 files / 455 tests, `worker-chain` 5/5, `agentscope-product` E2E 6/6.
+
+Not covered by that evidence: the real-model manual run, the conversation-header assertion, and the
+absence of "could not be proven" in the worker log. RT-26's pending-state boundaries were not
+re-verified by this unit and are unchanged.
