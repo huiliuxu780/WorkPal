@@ -1,5 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { compareInteractionViewsForDisplay, type InteractionView } from "@rakazo/contracts";
+import type { ReactNode } from "react";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { ActionApprovalCard } from "./ActionApprovalCard";
 import { InputRequestCard } from "./InputRequestCard";
@@ -61,23 +62,24 @@ export function InteractionRegion({
           conversationName,
           onRefresh,
         };
+        let card: ReactNode = null;
         if (view.kind === "plan_review") {
-          return <PlanReviewInteractionCard key={view.interactionId} view={view} {...shared} />;
+          card = <PlanReviewInteractionCard view={view} {...shared} />;
+        } else if (view.kind === "input_request") {
+          card = <InputRequestCard view={view} {...shared} />;
+        } else if (view.kind === "action_approval") {
+          card = <ActionApprovalCard view={view} {...shared} groupNameOf={groupNameOf} />;
         }
-        if (view.kind === "input_request") {
-          return <InputRequestCard key={view.interactionId} view={view} {...shared} />;
-        }
-        if (view.kind === "action_approval") {
-          return (
-            <ActionApprovalCard
-              key={view.interactionId}
-              view={view}
-              {...shared}
-              groupNameOf={groupNameOf}
-            />
-          );
-        }
-        return null;
+        return (
+          <div
+            key={view.interactionId}
+            data-interaction-id={view.interactionId}
+            tabIndex={-1}
+            className="focus:outline-none"
+          >
+            {card}
+          </div>
+        );
       })}
       {sessionControls.length > 0 ? (
         <div
@@ -85,14 +87,20 @@ export function InteractionRegion({
           className="flex flex-col gap-2 border-t border-border/60 pt-2"
         >
           {sessionControls.map((view) => (
-            <SessionControlCard
+            <div
               key={view.interactionId}
-              view={view}
-              botName={botNameOf?.(view.botId)}
-              conversationName={conversationName}
-              onOpenComputer={onOpenComputer}
-              onRefresh={onRefresh}
-            />
+              data-interaction-id={view.interactionId}
+              tabIndex={-1}
+              className="focus:outline-none"
+            >
+              <SessionControlCard
+                view={view}
+                botName={botNameOf?.(view.botId)}
+                conversationName={conversationName}
+                onOpenComputer={onOpenComputer}
+                onRefresh={onRefresh}
+              />
+            </div>
           ))}
         </div>
       ) : null}

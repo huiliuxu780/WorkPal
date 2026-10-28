@@ -540,6 +540,50 @@ export function projectAttentionItems(
   return items.sort(compareAttentionItems);
 }
 
+/**
+ * CARD-01D read model: one queue row. The frozen AttentionItem stays the
+ * addressable fact; display names are joined server-side so the client never
+ * reads another Thread's title or a raw Task prompt on its own.
+ */
+export const AttentionQueueItemSchema = z.strictObject({
+  ...AttentionItemSchema.shape,
+  botName: z.string().nullable(),
+  conversationKind: z.enum(["direct", "group"]),
+  conversationId: Id,
+  conversationName: z.string(),
+  /** Truncated safe display line of the bound Task; never the full prompt body. */
+  taskTitle: z.string().max(200).nullable(),
+});
+export type AttentionQueueItem = z.infer<typeof AttentionQueueItemSchema>;
+
+export const AttentionQueuePageSchema = z.strictObject({
+  items: z.array(AttentionQueueItemSchema),
+  /** Total matching rows under the same filters, never the page length. */
+  total: z.number().int().nonnegative(),
+  nextCursor: z.string().nullable(),
+});
+export type AttentionQueuePage = z.infer<typeof AttentionQueuePageSchema>;
+
+/**
+ * Opaque keyset cursor over the frozen sort tuple. ISO timestamps and IDs never
+ * contain the separator, so the string stays stable across processes.
+ */
+export function encodeAttentionCursor(
+  item: Pick<AttentionItem, "expiresAt" | "attentionAt" | "stableId">,
+): string {
+  return [item.expiresAt ?? "", item.attentionAt, item.stableId].join("|");
+}
+
+export function decodeAttentionCursor(
+  cursor: string,
+): { expiresAt: string | null; attentionAt: string; stableId: string } | null {
+  const parts = cursor.split("|");
+  if (parts.length !== 3) return null;
+  const [expiresAt, attentionAt, stableId] = parts as [string, string, string];
+  if (!attentionAt || !stableId) return null;
+  return { expiresAt: expiresAt === "" ? null : expiresAt, attentionAt, stableId };
+}
+
 function approvalDecision(view: InterventionView): "approved" | "denied" | null {
   return view.approval?.decision ?? null;
 }

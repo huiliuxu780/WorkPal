@@ -1,5 +1,6 @@
 export * from "./agent-pairs.js";
 export * from "./artifact-versions.js";
+export * from "./attention.js";
 export * from "./avatar-activity.js";
 export * from "./avatar-changes.js";
 export * from "./background-task-registration.js";

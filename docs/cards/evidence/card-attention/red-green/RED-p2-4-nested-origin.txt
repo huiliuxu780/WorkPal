@@ -1,0 +1,87 @@
+CARD-01D P2 red-first evidence — nested delegated origin (PostgreSQL)
+=====================================================================
+Finding: PR #147 review comment 4391155487 on packages/db/src/attention.ts:234 —
+         the delegated-control discovery required the Run delegated *from the
+         visible Thread* to still be active, so a nested takeover whose first hop
+         had completed never reached the queue or the group waiting markers,
+         even though loadOriginControlFacts traverses terminal intermediate runs
+         (covered for the thread snapshot by "walks nested pair origins for
+         delegated takeover controls" in card-interactions.postgres.test.ts).
+Regression case (packages/db/src/attention.postgres.test.ts):
+  - "keeps a nested delegated takeover whose first hop already completed"
+    visible DM -> pair Thread run (completed) -> inner pair Thread run
+    (waiting_takeover, computer bound to the nested Bot). The control must be
+    rebased onto the visible Thread, and neither pair Thread may appear as a
+    source.
+
+BASELINE (red) version
+----------------------
+git HEAD          : d15cc7efb8db420c2a9509e307c41ec0c5f1e93c (codex/card-attention),
+                    the head the finding was reported against
+source under test : packages/db/src/attention.ts exactly as committed at d15cc7e
+                    (no working-tree change to it: `git stash push --
+                    packages/db/src/attention.ts` reported "No local changes to
+                    save", so the red run used the committed source)
+test file         : the final version of attention.postgres.test.ts, byte-identical
+                    to the green run below
+node / pnpm       : v22.23.3 / 9.15.0
+vitest            : 4.1.11
+database          : isolated clone of the migrated template
+captured at       : 2026-10-27T16:35:11Z (local run, 928ms)
+
+Command
+-------
+export $(grep -E '^DATABASE_URL=' /Users/rivers/Documents/WorkPal/.env | xargs)
+export VERIFY_DATABASE=1
+pnpm exec vitest run packages/db/src/attention.postgres.test.ts -t "nested delegated takeover"
+
+Output
+------
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/card-attention[39m
+
+ [31m❯[39m packages/db/src/attention.postgres.test.ts [2m([22m[2m10 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m9 skipped[39m[2m)[22m[32m 283[2mms[22m[39m
+     [2m[90m↓[39m[22m returns only pending Interventions, session controls and strict business approvals
+     [2m[90m↓[39m[22m queues RT-12 membership approvals and drops them once settled
+     [2m[90m↓[39m[22m rebases a delegated desktop handoff onto the visible origin and hides pair threads
+     [2m[90m↓[39m[22m pages with the frozen sort without duplicating rows
+     [2m[90m↓[39m[22m keeps a pending MCP approval whose sibling in the same message settled
+     [2m[90m↓[39m[22m drops requests whose group was archived
+     [2m[90m↓[39m[22m drops requests whose direct chat bot was archived
+     [2m[90m↓[39m[22m continues after a cursor whose anchor row settled
+     [2m[90m↓[39m[22m excludes expired pending rows and keeps revision dedupe
+[31m     [31m×[31m keeps a nested delegated takeover whose first hop already completed[39m[32m 42[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mkeeps a nested delegated takeover whose first hop already completed
+[31m[1mAssertionError[22m: expected undefined to match object { status: 'pending', source: { …(2) } }[39m
+
+[32m- Expected:[39m
+{
+  "source": {
+    "runId": "cmvqwpbbp000jiix091jfuwc0",
+    "threadId": "cmvqwpbbb0009iix099rgaebu",
+  },
+  "status": "pending",
+}
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m packages/db/src/attention.postgres.test.ts:[2m867:21[22m[39m
+    [90m865|[39m       (item) => item.kind === "session_control" && item.source.runId =…
+    [90m866|[39m     )[33m;[39m
+    [90m867|[39m     [34mexpect[39m(control)[33m.[39m[34mtoMatchObject[39m({
+    [90m   |[39m                     [31m^[39m
+    [90m868|[39m       status[33m:[39m [32m"pending"[39m[33m,[39m
+    [90m869|[39m       source[33m:[39m { threadId[33m:[39m visibleThread[33m.[39mid[33m,[39m runId[33m:[39m nestedRun[33m.[39mid }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m9 skipped[39m[90m (10)[39m
+[2m   Start at [22m 00:35:11
+[2m   Duration [22m 928ms[2m (transform 382ms, setup 10ms, import 557ms, tests 283ms, environment 0ms)[22m
+

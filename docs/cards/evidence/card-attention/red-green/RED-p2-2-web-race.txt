@@ -1,0 +1,71 @@
+CARD-01D P2 red-first evidence — attention queue response race (web)
+===================================================================
+Finding: PR #147 review comment 4390254763 — out-of-order responses could
+         resurrect an already settled request: a slow response started before a
+         newer one overwrote the queue state and re-notified the settled item.
+Regression case (added in apps/web/src/pages/AttentionQueue.test.tsx):
+  - "drops a superseded response so a settled request cannot resurrect"
+    Two loads race: the poll started at refreshToken=0 is still in flight when
+    Shell bumps refreshToken=1 after the local decision. The newer request
+    resolves first with an empty page; the superseded response then resolves
+    with the old pending item.
+
+BASELINE (red) version
+----------------------
+git HEAD          : 7e463570f5f86ee9e792a65b509ee41fe4a8c13e (codex/card-attention)
+source under test : apps/web/src/pages/AttentionQueue.tsx exactly as committed at
+                    7e46357 (temporarily restored with
+                    `git stash push -- apps/web/src/pages/AttentionQueue.tsx`)
+test file         : the final (fixed) version of AttentionQueue.test.tsx, unmodified
+node              : v22.23.3
+pnpm              : 9.15.0
+vitest            : 4.1.11
+environment       : jsdom (per-file directive), react 19 act environment
+captured at       : 2026-10-27T15:28:24Z (local run)
+
+Command
+-------
+pnpm exec vitest run apps/web/src/pages/AttentionQueue.test.tsx -t "superseded"
+
+Output
+------
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/card-attention[39m
+
+ [31m❯[39m apps/web/src/pages/AttentionQueue.test.tsx [2m([22m[2m8 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m7 skipped[39m[2m)[22m[32m 56[2mms[22m[39m
+     [2m[90m↓[39m[22m renders nothing and does not query while the card gate is off
+     [2m[90m↓[39m[22m loads the queue, establishes a baseline, and notifies only new revisions
+     [2m[90m↓[39m[22m suppresses a notification for the source thread in the foreground
+     [2m[90m↓[39m[22m loads the next page and keeps rows unique
+     [2m[90m↓[39m[22m does not replay older pages as new notifications
+     [2m[90m↓[39m[22m opens a row without submitting any decision
+     [2m[90m↓[39m[22m shows the empty and error states
+[31m     [31m×[31m drops a superseded response so a settled request cannot resurrect[39m[32m 54[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m apps/web/src/pages/AttentionQueue.test.tsx[2m > [22mAttentionQueue[2m > [22mdrops a superseded response so a settled request cannot resurrect
+[31m[1mAssertionError[22m: expected [ FakeNotification{ …(4) } ] to have a length of +0 but got 1[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0[39m
+[31m+ 1[39m
+
+[36m [2m❯[22m apps/web/src/pages/AttentionQueue.test.tsx:[2m395:40[22m[39m
+    [90m393|[39m     [35mawait[39m [34mflush[39m()[33m;[39m
+    [90m394|[39m
+    [90m395|[39m     [34mexpect[39m([33mFakeNotification[39m[33m.[39minstances)[33m.[39m[34mtoHaveLength[39m([34m0[39m)[33m;[39m
+    [90m   |[39m                                        [31m^[39m
+    [90m396|[39m     [34mexpect[39m(onItems)[33m.[39m[34mtoHaveBeenLastCalledWith[39m([])[33m;[39m
+    [90m397|[39m     expect(host.querySelector('[data-testid="attention-count"]')).toBe…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m7 skipped[39m[90m (8)[39m
+[2m   Start at [22m 23:28:24
+[2m   Duration [22m 2.67s[2m (transform 993ms, setup 25ms, import 1.75s, tests 56ms, environment 707ms)[22m
+

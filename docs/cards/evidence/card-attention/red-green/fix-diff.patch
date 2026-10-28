@@ -1,0 +1,82 @@
+diff --git a/apps/web/src/pages/AttentionQueue.tsx b/apps/web/src/pages/AttentionQueue.tsx
+index bcef569..974d034 100644
+--- a/apps/web/src/pages/AttentionQueue.tsx
++++ b/apps/web/src/pages/AttentionQueue.tsx
+@@ -38,6 +38,7 @@ export function AttentionQueue({
+   const [retryToken, setRetryToken] = useState(0);
+   const baseline = useRef<Set<string> | null>(null);
+   const notified = useRef(new Set<string>());
++  const requestSeq = useRef(0);
+   const permissionRequested = useRef(false);
+   const activeTargetRef = useRef(activeTarget);
+   activeTargetRef.current = activeTarget;
+@@ -104,11 +105,17 @@ export function AttentionQueue({
+ 
+   const load = useCallback(
+     async (options?: { cursor?: string | null; append?: boolean }) => {
++      // Poll, focus, refresh and load-more can overlap. Only the most recently
++      // started request may write state: a slow response landing after a newer
++      // one would resurrect requests the user already settled and notify them
++      // again as new work.
++      const seq = ++requestSeq.current;
+       try {
+         const page = await rpc.attention.list({
+           limit: 50,
+           ...(options?.cursor ? { cursor: options.cursor } : {}),
+         });
++        if (seq !== requestSeq.current) return;
+         const base = options?.append ? itemsRef.current : [];
+         const seen = new Set(base.map(attentionKey));
+         const merged = [...base, ...page.items.filter((item) => !seen.has(attentionKey(item)))];
+@@ -123,6 +130,7 @@ export function AttentionQueue({
+           silent: Boolean(options?.append),
+         });
+       } catch {
++        if (seq !== requestSeq.current) return;
+         setError(true);
+       } finally {
+         setLoading(false);
+diff --git a/packages/db/src/attention.ts b/packages/db/src/attention.ts
+index 41c3a5a..a53f86e 100644
+--- a/packages/db/src/attention.ts
++++ b/packages/db/src/attention.ts
+@@ -57,10 +57,12 @@ export async function loadAttentionPage(
+         // Human-visible conversations only: a direct chat or a standard group.
+         // Hidden agent_pair threads share the same userId and must never be
+         // addressed directly; their delegated controls are rebased below.
++        // Archived conversations are not navigable, so their requests stay out
++        // of the queue instead of pointing at a source the user cannot open.
+         where: {
+           spaceId: input.spaceId,
+           userId: input.userId,
+-          OR: [{ botId: { not: null } }, { group: { kind: "standard" } }],
++          OR: [{ bot: { archivedAt: null } }, { group: { kind: "standard", archivedAt: null } }],
+         },
+         select: { id: true, botId: true, groupId: true },
+       });
+@@ -252,17 +254,21 @@ async function loadPendingViews(
+   }
+ 
+   // 3. Strictly mapped pending business approvals that live in message blocks.
+-  // The JSONB filter targets the block itself, never "the recent messages".
++  // The JSONB filter only decides which messages are worth reading; whether a
++  // block is pending is answered per block by the projection below, so one
++  // settled card can never hide its pending sibling in the same message.
+   const approvalMessages = await tx.message.findMany({
+     where: {
+       threadId: { in: input.threadIds },
+       role: "bot",
+       OR: [
+         { blocks: { array_contains: [{ kind: "app_connect", status: "pending" }] } },
++        { blocks: { array_contains: [{ kind: "mcp_approval", status: "pending" }] } },
+         {
+-          // MCP approvals may be legacy rows without a status; exclude the
+-          // settled ones in SQL so they cannot crowd out older pending rows
+-          // before the source limit.
++          // A pre-upgrade MCP block can omit the schema-defaulted status, which
++          // the projection treats as open. Those cannot be matched positively,
++          // so admit messages whose MCP blocks are all unsettled and keep the
++          // settled ones out of the source limit.
+           AND: [
+             { blocks: { array_contains: [{ kind: "mcp_approval" }] } },
+             {

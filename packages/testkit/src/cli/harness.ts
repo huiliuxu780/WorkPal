@@ -15,7 +15,12 @@ import {
   requirePort,
 } from "../resources/leases.js";
 import { assertWorkpalE2eDatabaseUrl, taskSlugFrom } from "../resources/plan.js";
-import { FULL_E2E_GATE_OFF_SPEC, FULL_E2E_GATED_SPEC, specSelects } from "./e2e-spec-selection.js";
+import {
+  FULL_E2E_GATE_OFF_SPEC,
+  FULL_E2E_GATED_SPEC,
+  specSelects,
+  splitGateBatches,
+} from "./e2e-spec-selection.js";
 import { startJavaRuntime } from "./java-runtime.js";
 import { runProcess } from "./process.js";
 
@@ -71,6 +76,21 @@ async function main() {
     console.log("Full E2E: gate-on batch");
     await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${FULL_E2E_GATED_SPEC}`], process.env);
     return;
+  }
+  if (!integration) {
+    const batches = splitGateBatches(e2eSpec);
+    if (batches) {
+      // Gate-on and gate-off specs cannot share one process: the gates change
+      // legacy card surfaces. Keep each batch's behavior intact.
+      const baseArgs = process.argv
+        .slice(2)
+        .filter((arg) => arg !== "--e2e" && !arg.startsWith("--spec="));
+      console.log("E2E: gate-off batch");
+      await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${batches.plain.join("|")}`], process.env);
+      console.log("E2E: gate-on batch");
+      await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${batches.gated.join("|")}`], process.env);
+      return;
+    }
   }
   const mode = integration ? "integration" : "e2e";
   const reportDir = path.resolve("test-report", mode);
@@ -131,7 +151,8 @@ async function main() {
       !integration &&
       (process.env.WORKPAL_E2E_FULL_BATCH === "gate-off" ||
         specSelects(e2eSpec, "message-group.spec.ts") ||
-        specSelects(e2eSpec, "group-membership.spec.ts"))
+        specSelects(e2eSpec, "group-membership.spec.ts") ||
+        specSelects(e2eSpec, "card-attention.spec.ts"))
     ) {
       process.env.ROUNDTABLE_MESSAGE_GROUP_ENABLED = "true";
     }
@@ -149,7 +170,8 @@ async function main() {
       !integration &&
       (specSelects(e2eSpec, "card-ui-interactions.spec.ts") ||
         specSelects(e2eSpec, "card-display-content.spec.ts") ||
-        specSelects(e2eSpec, "group-membership.spec.ts"))
+        specSelects(e2eSpec, "group-membership.spec.ts") ||
+        specSelects(e2eSpec, "card-attention.spec.ts"))
     ) {
       process.env.CARDS_UNIFIED_V2_ENABLED = "true";
     }

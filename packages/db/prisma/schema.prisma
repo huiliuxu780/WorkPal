@@ -583,6 +583,10 @@ model Message {
   @@index([threadId, seq])
   @@index([replyToMessageId])
   @@index([runId, seq])
+  // CARD-01D: the attention queue matches pending approval blocks with JSONB
+  // containment; without this the read scans every bot message of the user's
+  // threads on each poll.
+  @@index([blocks(ops: JsonbPathOps)], type: Gin, map: "messages_blocks_gin")
   @@map("messages")
 }
 

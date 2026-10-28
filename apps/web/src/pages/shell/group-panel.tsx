@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { GroupMembers, GroupRoutineSummary } from "@rakazo/contracts";
+import type { AttentionQueueItem, GroupMembers, GroupRoutineSummary } from "@rakazo/contracts";
 import { formatCron } from "@rakazo/core";
 import { AgentAvatar, cn } from "@rakazo/ui-web";
 import { Repeat2 } from "lucide-react";
@@ -157,6 +157,8 @@ export function GroupPanel({
   onClose,
   onRename,
   onManageMembers,
+  waitingMembers,
+  onOpenAttentionItem,
   routines,
   routinesError,
   artifacts,
@@ -175,6 +177,9 @@ export function GroupPanel({
   onClose: () => void;
   onRename: (next: string) => Promise<void>;
   onManageMembers: () => void;
+  /** CARD-01D: this group's real pending requests, keyed by the waiting Bot. */
+  waitingMembers?: ReadonlyMap<string, AttentionQueueItem>;
+  onOpenAttentionItem?: (item: AttentionQueueItem) => void;
   routines: readonly GroupRoutineSummary[] | null;
   routinesError: string | null;
   artifacts: readonly GroupArtifactItem[];
@@ -462,38 +467,67 @@ export function GroupPanel({
             )
           ) : (
             <div className="grid gap-1">
-              {members.agents.map((agent) => (
-                <div
-                  key={agent.botId}
-                  data-testid="group-member-row"
-                  className="flex min-h-[54px] items-center gap-[11px] rounded-[10px] border-0 px-0.5 hover:bg-accent"
-                >
-                  <AgentAvatar
-                    botId={agent.botId}
-                    character={agent.avatarCharacter}
-                    bodyColor={agent.avatarBodyColor}
-                    name={agent.name}
-                    size={32}
-                    activity={agentActivity(agent.status)}
-                    ariaHidden
-                    focusable={false}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-foreground" dir="auto">
-                      {agent.name}
+              {members.agents.map((agent) => {
+                const waiting = waitingMembers?.get(agent.botId);
+                const content = (
+                  <>
+                    <AgentAvatar
+                      botId={agent.botId}
+                      character={agent.avatarCharacter}
+                      bodyColor={agent.avatarBodyColor}
+                      name={agent.name}
+                      size={32}
+                      activity={agentActivity(agent.status)}
+                      ariaHidden
+                      focusable={false}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-foreground" dir="auto">
+                        {agent.name}
+                      </span>
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {waiting
+                          ? t`Waiting for your decision`
+                          : agent.status === "running" ||
+                              agent.status === "queued" ||
+                              agent.status === "interrupted"
+                            ? t`Working in background`
+                            : agent.status === "failed"
+                              ? t`Last run failed`
+                              : t`Online`}
+                      </span>
                     </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {agent.status === "running" ||
-                      agent.status === "queued" ||
-                      agent.status === "interrupted"
-                        ? t`Working in background`
-                        : agent.status === "failed"
-                          ? t`Last run failed`
-                          : t`Online`}
-                    </span>
-                  </span>
-                </div>
-              ))}
+                    {waiting ? (
+                      <span
+                        data-testid="group-member-waiting"
+                        className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[10.5px] leading-none text-foreground"
+                      >
+                        ● {t`Pending`}
+                      </span>
+                    ) : null}
+                  </>
+                );
+                return waiting && onOpenAttentionItem ? (
+                  <button
+                    key={agent.botId}
+                    type="button"
+                    data-testid="group-member-row"
+                    data-waiting="true"
+                    onClick={() => onOpenAttentionItem(waiting)}
+                    className="flex min-h-[54px] items-center gap-[11px] rounded-[10px] border-0 px-0.5 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                  >
+                    {content}
+                  </button>
+                ) : (
+                  <div
+                    key={agent.botId}
+                    data-testid="group-member-row"
+                    className="flex min-h-[54px] items-center gap-[11px] rounded-[10px] border-0 px-0.5 hover:bg-accent"
+                  >
+                    {content}
+                  </div>
+                );
+              })}
             </div>
           )}
           <BorderlessAddEntry testId="group-add-agent" onClick={onManageMembers}>

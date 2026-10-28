@@ -144,7 +144,7 @@ export async function loadBotComputerFacts(
   return (await queryBotComputerFacts(tx, input)).computers;
 }
 
-const ORIGIN_CONTROL_MAX_DEPTH = 8;
+export const ORIGIN_CONTROL_MAX_DEPTH = 8;
 
 const ORIGIN_CONTROL_RUN_SELECT = {
   id: true,

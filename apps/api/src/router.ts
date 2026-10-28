@@ -183,6 +183,7 @@ import {
   issueMessagingLinkCode,
   listBotAvatarChanges,
   listDescendantRunIds,
+  loadAttentionPage,
   loadBotAvatarStates,
   loadExecutionSnapshot,
   loadRunActivityPage,
@@ -2126,6 +2127,16 @@ export function createRouter(deps: RouterDeps) {
           }
         }),
       },
+    },
+    attention: {
+      list: authed.attention.list.handler(async ({ context, input }) =>
+        loadAttentionPage(deps.prisma, {
+          spaceId: context.actor.spaceId,
+          userId: context.actor.userId,
+          cursor: input.cursor ?? null,
+          limit: input.limit,
+        }),
+      ),
     },
     botSections: {
       list: authed.botSections.list.handler(async ({ context }) =>
