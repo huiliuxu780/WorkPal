@@ -773,6 +773,62 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(position(laterExpiry.id)).toBeLessThan(position(noExpiry.id));
   });
 
+  it("counts and pages a source beyond the old 500-row read cap", async () => {
+    const bulkBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Bulk", color: "test" },
+    });
+    const bulkThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, botId: bulkBot.id },
+    });
+    const bulkRun = await taskRun(bulkThread.id, "Bulk pending requests");
+    const bulkMessage = await botMessage(bulkThread.id, [{ kind: "text", text: "bulk requests" }]);
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const base = Date.now() - 10_000_000;
+    await prisma.intervention.createMany({
+      data: Array.from({ length: 520 }, (_unused, index) => ({
+        id: `bulk-${index}`,
+        revision: 1,
+        kind: "input",
+        status: "pending",
+        spaceId,
+        threadId: bulkThread.id,
+        runId: bulkRun.id,
+        attemptId: "legacy",
+        botId: bulkBot.id,
+        messageId: bulkMessage.id,
+        expiresAt: null,
+        inputMode: "text",
+        presentation: { text: `Bulk request ${index}` },
+        createdAt: new Date(base + index * 1_000),
+      })),
+    });
+    const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    // The badge must count every pending row, not the first page of one source.
+    expect(after.total - before.total).toBe(520);
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await loadAttentionPage(prisma, {
+        spaceId,
+        userId: ownerId,
+        limit: 50,
+        cursor,
+      });
+      ids.push(...page.items.map((item) => item.interactionId));
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(ids.length).toBe(after.total);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (let index = 0; index < 520; index += 1) {
+      expect(ids).toContain(`bulk-${index}`);
+    }
+    // Later cases in this file assume a small queue; drop the bulk rows again.
+    await prisma.intervention.deleteMany({ where: { threadId: bulkThread.id } });
+    expect((await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 })).total).toBe(
+      before.total,
+    );
+  });
+
   it("keeps a nested delegated takeover whose first hop already completed", async () => {
     const nestedBot = await prisma.bot.create({
       data: { spaceId, userId: ownerId, name: "Nested", color: "test" },

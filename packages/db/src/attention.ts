@@ -37,15 +37,20 @@ export type AttentionQueryInput = {
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
-/** Safety bound on the per-source fact reads; pending work is small by nature. */
-const SOURCE_LIMIT = 500;
 
 /**
- * CARD-01D bounded attention read. It never scans Run history or imports the
- * thread's message window: the three sources are the durable pending
- * Interventions, current SessionControls derived from active Runs, and the
- * strictly mapped pending business approvals (message-bag approvals plus the
- * RT-12 membership requests). Everything is scoped to Threads this user owns.
+ * CARD-01D attention read. It never scans Run history or imports the thread's
+ * message window: the three sources are the durable pending Interventions,
+ * current SessionControls derived from active Runs, and the strictly mapped
+ * pending business approvals (message-bag approvals plus the RT-12 membership
+ * requests). Everything is scoped to Threads this user owns.
+ *
+ * No per-source row cap: the queue used to read at most 500 rows per source and
+ * derive `total` from that page, so a larger source silently undercounted the
+ * badge and could push its later rows off page one. The pending-only predicates
+ * (status=pending / active runs / messages carrying a pending approval block)
+ * keep the read on indexed, small sets, and the enclosing transaction's timeout
+ * remains the hard stop.
  */
 export async function loadAttentionPage(
   prisma: PrismaClient,
@@ -110,7 +115,6 @@ async function loadPendingViews(
   const pendingRows = await tx.intervention.findMany({
     where: { threadId: { in: input.threadIds }, status: "pending" },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: SOURCE_LIMIT,
   });
   const effectIds = pendingRows
     .map((row) => row.effectId)
@@ -184,7 +188,6 @@ async function loadPendingViews(
       status: { in: [...ACTIVE_RUN_STATUSES] },
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: SOURCE_LIMIT,
     select: {
       id: true,
       spaceId: true,
@@ -240,7 +243,6 @@ async function loadPendingViews(
       trigger: { not: "message_group" },
     },
     select: { originThreadId: true },
-    take: SOURCE_LIMIT,
   });
   const candidateOrigins = new Set<string>();
   let hiddenFrontier = new Set<string>();
@@ -315,7 +317,6 @@ async function loadPendingViews(
       ],
     },
     orderBy: [{ seq: "desc" }],
-    take: SOURCE_LIMIT,
     select: {
       id: true,
       threadId: true,

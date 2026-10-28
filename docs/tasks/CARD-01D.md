@@ -19,7 +19,7 @@
 
 ## 范围
 
-- 消费 CARD-01A 定义的 attention DTO，增加服务端有界查询/RPC，只返回当前 actor 有权访问线程中仍需本人处理的 Interaction 投影：
+- 消费 CARD-01A 定义的 attention DTO，增加服务端查询/RPC（只读取 pending 状态集合，不扫描 Run 历史；不设每源行数硬上限，靠 pending 谓词与事务超时兜底），只返回当前 actor 有权访问线程中仍需本人处理的 Interaction 投影：
   - 持久 pending Intervention
   - 当前有效的派生 `SessionControlView`
   - 完成严格映射后的 pending 业务审批，包括 `ActionApprovalView(group_membership)`
@@ -75,7 +75,7 @@
 
 - 分支/PR：`codex/card-attention` / [#147](https://github.com/huiliuxu780/WorkPal/pull/147)，复审后代码 head `ad7f8d9`（此后只有证据与状态类文档提交）。
 - 证据：[docs/cards/evidence/card-attention](../cards/evidence/card-attention/README.md)（N1/N2/N3/N4 实拍、红绿、E2E 运行日志）。
-- 复审轮修复：通知正文改为按类型的固定文案（不再拼接 Bot 生成的 `presentation.text`，与更新后的 N4 原型一致，红绿见 `red-green/RED-p2-5-*`/`GREEN-p2-5-*`）；gate 开启时停用旧的按 Bot 通知（`shouldNotifyLegacyBrowser`），普通消息与终态不再提醒；N3 增加未读圆点与数字计数分离的断言和截图；修正 E2E 中失效的敏感扫描正则。
+- 复审轮修复：删除 attention 读取的每源 500 行上限（`total` 不再静默少算，见下）；通知正文改为按类型的固定文案（不再拼接 Bot 生成的 `presentation.text`，与更新后的 N4 原型一致，红绿见 `red-green/RED-p2-5-*`/`GREEN-p2-5-*`）；gate 开启时停用旧的按 Bot 通知（`shouldNotifyLegacyBrowser`），普通消息与终态不再提醒；N3 增加未读圆点与数字计数分离的断言和截图；修正 E2E 中失效的敏感扫描正则。
 - P2 修复（复审意见 `4391533935`）：`FULL_E2E_GATED_SPEC` / `FULL_E2E_GATE_OFF_SPEC` 现在由 `E2E_GATE_SPECS` 推导，`card-attention.spec.ts`、`group-membership.spec.ts`、`message-group.spec.ts` 不再落进 gate-off 批次被自身 gate 跳过；`e2e-spec-selection.test.ts` 增加回归，断言每个 gate spec 都在完整 gate-on 批次且不被 gate-off 正则匹配。
 - 代码 head `ad7f8d9` 的 CI：[run 40661217374](https://github.com/huiliuxu780/WorkPal/actions/runs/40661217374)。该 run 经确认：`run_attempt=2` 单次 attempt 覆盖全部相关 job，`web` job 实跑 `card-attention.spec.ts` 2 passed（不是 skipped、不是只收集）。P2 修复提交之后的 head 需要重新跑最终 CI，判定以新的 head 为准。
 
@@ -84,6 +84,6 @@
 | 项 | 现状 | 需要的决定 |
 | --- | --- | --- |
 | `@我` 角标 | 仓库里没有"提及我"的数据模型、RPC 字段或 UI。**已裁决（2026-10-28）：拆到 [CARD-01F](./CARD-01F.md) 后续任务**，本卡验收表已同步改为只要求未读与待处理，不再声称 `@我` 已完成 | 已在 CARD-01F 中列出必须先定的产品语义与原型要求 |
-| `SOURCE_LIMIT = 500` | 单来源超过 500 条时静默截断，`total` 少算——这是读取模型的真实缺陷，不是缺测试 | 修查询（提高上限/分页统计真实总数）或明确产品上限并写进验收 |
+| `SOURCE_LIMIT = 500` | **已按裁决修复**：删除每源 500 行上限，`total` 由完整 pending 集合得出；`attention.postgres.test.ts` 新增 520 行用例（total 精确 + 全量分页无重复）。只读取 pending 状态集合、不扫描 Run 历史，事务超时仍是硬停 | 无需再决定；若将来 pending 规模成为性能问题，另立性能卡并在契约里显式定义截断语义 |
 
 其他已记录、暂未处理：`expiresAt` 已过但仍 `pending` 的行按设计保留（与验收"expired 排除"的字面要求冲突）；群来源不复查 `bot.archivedAt`。

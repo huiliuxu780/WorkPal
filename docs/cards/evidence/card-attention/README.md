@@ -74,7 +74,10 @@ that is a product decision, not a test fix.
 
 ## Other review findings left untouched
 
-- `SOURCE_LIMIT = 500` per source silently truncates and undercounts `total`
-  beyond that; not exercised.
+- (resolved in this review round) The per-source 500-row read cap silently
+  truncated and undercounted `total`. The cap is gone: the read is still scoped
+  to pending sources, and `attention.postgres.test.ts` now seeds 520 pending rows
+  and asserts the exact `total` delta plus duplicate-free paging across the whole
+  queue.
 - Group-origin rows do not re-check `bot.archivedAt` (direct rows do); archive
   cancels active runs, so the window is narrow, but it is unverified.
