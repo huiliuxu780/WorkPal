@@ -39,6 +39,7 @@ import io.agentscope.core.state.JsonFileAgentStateStore;
 import io.agentscope.core.state.State;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.memory.compaction.ConversationCompactor;
 import io.agentscope.harness.agent.subagent.SubagentDeclaration;
@@ -412,6 +413,18 @@ public final class RuntimeEngine {
                 + (request.isChat() ? "" : "\u0000" + request.scope() + "\u0000" + request.runId()));
         Path workspace = workspaceRoot.resolve(tenant).resolve(hash(request.botId())).resolve(session);
         Files.createDirectories(workspace);
+        // FIX-PERSONA-01: agentscope-harness defaults its project to
+        // System.getProperty("user.dir"), and the workspace-context middleware
+        // falls back to that project whenever the session workspace has no
+        // AGENTS.md / knowledge / MEMORY.md of its own. Both dev entry points
+        // start this JVM at the repository root, so every bot was handed the
+        // repository's developer rules as its persona and told that the
+        // repository is the user's source tree. Pin the project to a dedicated
+        // empty read-only directory: the launch directory can never become a
+        // prompt source or an injection vector, and the rest of the workspace
+        // context the model already received is left alone.
+        Path harnessProject = stateRoot.resolve("harness-project");
+        Files.createDirectories(harnessProject);
         // UX-02 closure: serialize same-slot state persistence. The library
         // store's fixed tmp-file rename races when the ReAct loop and the
         // per-model-call permission replacement (or a slot-sharing background
@@ -581,6 +594,10 @@ public final class RuntimeEngine {
                 // configured through AgentScope's public API) never evict either.
                 .disableToolResultEviction()
                 .disableDefaultWorkspaceSkills()
+                // FIX-PERSONA-01: see harnessProject above. `project(...)` is what
+                // stops the AGENTS.md fallback; `projectWritable(false)` keeps the
+                // pinned directory read-only so it stays empty.
+                .filesystem(new LocalFilesystemSpec().project(harnessProject).projectWritable(false))
                 .middleware(new ToolSurfaceRefresh(bridge, json, sessionSlot, pausedToolCalls,
                         nativeVisible, userSlot, sessionSlot, workspace));
         // UX-02: native plan mode (the read-only PLAN middleware, PLAN.md
