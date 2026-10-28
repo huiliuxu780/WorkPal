@@ -201,9 +201,26 @@ message 可能带凭据 URL）；工具只记调用数量，不记参数；不�
 | `packages/logging` + `packages/adapters` 定向 vitest | 通过（logging 37；adapters 116） |
 | `docker build -f infra/compose/Dockerfile .` | 通过一次（内容审计见上）；加入 corepack 修复后的重建见"已知限制" |
 | `docker build -f services/agent-runtime/Dockerfile .` | 见"已知限制" |
+| `pnpm test:postgres` | 通过：**52 文件 / 470 tests 全绿**，exit 0。**注意**：这些测试的门卫是 `process.env.VERIFY_DATABASE && process.env.DATABASE_URL`，而 `test:postgres` 这个 group runner 两个都不设——直接跑会得到 `2 passed / 463 skipped` 且 **exit 0**，那是假绿。本次用一次性 PG16 容器（宿主端口 5499，`prisma migrate deploy` exit 0）加 `VERIFY_DATABASE=1` 真跑 |
+| `pnpm test:integration` | **1 failed / 40 passed（41）**，失败项 `journeys.test.ts:2063` journey 54。已证明是**既有基线红**，见 `integration-baseline-comparison.txt` |
 | 真容器启动：api / worker / web 三条生产命令 | 三个容器全部 `running`：api `/health` → 200 `{"ok":true}`、worker 持续 `job.completed`、web `GET /` → 200（2578 字节） |
 
-未跑：`pnpm test:postgres`、`pnpm test:integration`。
+**journey 54 的基线对照**（`integration-baseline-comparison.txt`）：把本 diff 中唯一可能影响该 TS 旅程的
+四个文件（`agentscope-runtime.ts`、`executor.ts`、`redaction.ts`、`redaction.test.ts`）
+`git checkout a29c711 --` 回退后重跑 `pnpm test:integration`，结果**逐字相同**：
+同一条 journey 54、同一断言行、`1 failed | 40 passed (41)`。之后 `git checkout HEAD --` 还原，
+工作树干净，HEAD 仍是 `b3c235a`。
+根因是过期预期：该断言期待双 mention 后两个 Bot 都产生 Run，而
+`packages/core/src/product-harness/response-owner.ts` 的 `resolveExplicitTurnOwner` 规定
+多个显式 mention 且无 separate-answers 标记时**只由第一个 mention 作为唯一 owner**，
+所以 botB 永远不会有 Run。此规则自 RT-22（#111）起即如此，同一条规则也已让
+`apps/web/e2e/group-chats.spec.ts` 的等价断言失效。**本任务未修它** —— 它属于群聊产品语义，
+不在本交付单元范围内，且任务书禁止顺手扩大范围。
+
+另需注意：`pnpm exec vitest run packages/testkit/src/journeys.test.ts` 单独跑会报
+`41 skipped` 且 exit 0（harness 才会设测试所依赖的 env），**不能当成通过**。
+
+未跑：无。任务书列出的本地入口已全部执行，结果如上。
 
 ## 已知限制
 
@@ -242,7 +259,11 @@ message 可能带凭据 URL）；工具只记调用数量，不记参数；不�
    是 Worker 那一跳 —— 它由两份独立证据拼合（worker-chain 的 api+java 同 trace，
    加真容器的 worker job 事件），不是一次运行里的四行连续日志。
 5. **`409 Session already has an active run` 未修**，理由见第 1 节"撤销的一处改动"。建议单独立卡。
-6. 未部署，未推远程，未提 PR，未合并。未改 GitHub 设置。
+6. **`pnpm test:integration` 有一条红**：journey 54（双 mention 期待两个 Bot 都回复）。
+   已用基线对照证明与本 diff 无关（见上），根因是过期预期与 `resolveExplicitTurnOwner`
+   的单一 owner 规则冲突。**未修**：属群聊产品语义，不在本交付单元范围。建议单独立卡，
+   否则每个后续 PR 的 integration 门禁都会带着这条红。
+7. 未部署，未推远程，未提 PR，未合并。未改 GitHub 设置。
 
 ## 边界确认
 
