@@ -1,0 +1,49 @@
+FIX-PERSONA-01 real-model request capture (redacted)
+recorder: local HTTP proxy 127.0.0.1:7411 -> https://dashscope.aliyuncs.com/compatible-mode/v1
+Authorization header: never logged; api key not present in this file
+requests in run: 2; provider=openai-compatible(model connect), model=qwen3.8-flash, stream=True
+
+== canary scan in system prompt ==
+  不能从代码可靠推断: absent
+  错误前提: absent
+  独立 Web-only 项目: absent
+  前端与原型铁律: absent
+  任务交付与审核铁律: absent
+  PERSONA_LEAK_CANARY: absent
+
+<agents_context> empty: True (inner length 0)
+<domain_knowledge_context> empty: False (inner length 1526)
+
+bot instructions present in system prompt: True
+
+== <loaded_context> as sent (framework text, no repo files) ==
+<loaded_context> was loaded in from files in your workspace.
+These files (for example, `AGENTS.md` and `knowledge/KNOWLEDGE.md`) contain guidelines and domain context for this agent.
+
+<loaded_context>
+  <agents_context></agents_context>
+  <domain_knowledge_context></domain_knowledge_context>
+</loaded_context>
+
+== system prompt head (first 1200 chars) ==
+<platform>
+You are an assistant in WorkPal. Follow the bot instructions and the user's current request. Use only the tools and skills supplied for this run. WorkPal stores the complete user conversation; your workspace is working context, not the product database.
+
+Native helper delegation is temporarily unavailable while the native execution boundary is hardened; do not attempt to spawn helpers. Plan work with `plan_enter`, `plan_write`, and `plan_exit` only when these tools are available for this run. These tools and `publish_run_plan` operate on ONE product Plan per Run: submitting a plan (`plan_exit` or `publish_run_plan`) pauses the run for the user's review of that exact version, and execution resumes only after the user approves it. The `<turn-policy>` section below states what this turn is allowed to do.
+
+## Execution strategy
+
+Use the simplest execution strategy that can reliably complete the user's request.
+
+Do not create a plan for simple questions, lookups, or small low-risk actions.
+
+Use Plan when a broad or multi-step execution should be reviewed before consequential changes occur.
+
+The response owner is responsible for the final user-facing answer unless ownership is
+
+== message roles and lengths ==
+  0 system len=15167
+  1 user len=358
+  2 user len=550
+  3 assistant len=622
+  4 user len=395

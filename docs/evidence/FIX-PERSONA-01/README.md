@@ -10,7 +10,7 @@
 | fix SHA（绿） | `ff8666de1d1960b47fb70bd014ecbfd79efecfdd` |
 | 回归用例 | `RuntimeProjectIsolationTest.startupDirectoryAgentsMdNeverReachesTheModel` |
 | 环境 | macOS arm64；JDK 用 Homebrew openjdk 21.0.12.1，只设 `JAVA_HOME`，未装系统 Java、未改系统配置；Maven 3.10.0 |
-| 真实模型 / 夹具 / scripted | 红绿两轮都不用真模型：测试用记录型 fixture model（127.0.0.1 随机端口）驱动 `RuntimeEngine.execute`，断言实际发出的请求体。真模型复测另列在"未完成项" |
+| 真实模型 / 夹具 / scripted | 红绿两轮都不用真模型：测试用记录型 fixture model（127.0.0.1 随机端口）驱动 `RuntimeEngine.execute`，断言实际发出的请求体。真模型复测见下文"真模型复测" |
 
 ## 文件
 
@@ -51,8 +51,8 @@
 | --- | --- | --- |
 | `chain.log`：`pnpm test:worker-chain` | **已完成，通过** | exit 0，5 passed（4.1m）。本机前提：`JAVA_HOME` 指 Homebrew JDK21、`DOCKER_HOST` 指 colima socket、`TESTCONTAINERS_RYUK_DISABLED=true`（colima 挂不了 socket 路径给 Ryuk），jar 由本分支 `mvn package -DskipTests` 构建后配 `AGENT_RUNTIME_SKIP_BUILD=1` |
 | `chain.log`：`pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | **已完成，通过** | exit 0，6 passed（1.1m），同一 jar、真实 Java runtime |
-| 真模型复测（仓库根 `pnpm dev:app`，问"你是谁"，截图 + 抓包里 `<agents_context>` 为空的片段） | **未执行** | 需要真模型凭据、抓包代理与浏览器操作。**不用** fixture model 的绿冒充真模型复测；负责人的 `persona-capture/` 抓包不在本仓库，也不当作已核对证据引用 |
-| 生产镜像影响核对（`WORKDIR /app` 下是否已有 AGENTS.md / `knowledge/` / MEMORY.md） | 未执行 | 修复后无论镜像里放什么都不会被注入，但"当前镜像里有没有"这一事实未核对 |
+| 真模型复测（仓库根 `pnpm dev:app`，问"你是谁"，截图 + 抓包） | **已完成，通过** | 见下方"真模型复测"；DashScope `qwen3.8-flash`，两次请求均 200 |
+| 生产镜像影响核对（`WORKDIR /app` 下是否已有 AGENTS.md / `knowledge/` / MEMORY.md） | **已完成** | 见下方"生产镜像核对"；AGENTS.md **存在**（独立打包缺陷），MEMORY.md / knowledge 不存在 |
 
 按 [AGENTS.md](../../../AGENTS.md) 第 6 条，缺项在本分支补齐，不另拆"补验收"任务；补齐前本卡不判定完成、不建议合并。
 
@@ -63,3 +63,30 @@
 - 没有改 `PromptComposer` 的段落，没有改 bot 人设来源。
 - 没有 fork harness，没有升级 harness 版本。
 - 没有重生成 AG-04 golden 基线（不需要）。
+
+## 真模型复测（2026-10-28）
+
+- 版本：分支 `codex/fix-persona-agents-context` @ `2126838`。Runtime 由本分支 `mvn package -DskipTests` 构建的 `services/agent-runtime/target/agent-runtime-0.1.0.jar` 启动（`AGENT_RUNTIME_HOST=127.0.0.1`、端口 7311、`AGENT_RUNTIME_DATA_DIR=/tmp/workpal-persona/runtime`），Web/API/Worker 用仓库根 `pnpm dev:app` 启动，DB 用一次性 PostgreSQL 16 容器（`127.0.0.1:55432`，本 worktree 独占），`SANDBOX_PROVIDER=fake`。
+- 模型：DashScope `qwen3.8-flash`（真模型，不是 fixture）。因为内置 `dashscope` provider 不接受自定义 base URL，模型连接用仓库自带的 `openai-compatible` provider 指向本机记录代理 `127.0.0.1:7411`，代理把 `/v1/*` 原样转发到 `https://dashscope.aliyuncs.com/compatible-mode/v1/*`。代理只落请求体与响应状态，`Authorization` 头从不记录，本目录所有文件不含 key。
+- 问句：`你是谁？你的工作原则是什么？`，通过真实 RPC `threads/send` 作为该 Bot 的第一条 Run 发出，Run 正常 `completed`。
+
+结果（[real-model-request.txt](./real-model-request.txt)、[real-model-answer.txt](./real-model-answer.txt)、[real-model-screenshot.png](./real-model-screenshot.png)）：
+
+| 断言 | 结果 |
+| --- | --- |
+| 请求里没有仓库 AGENTS.md 内容 | 通过：`不能从代码可靠推断`、`错误前提`、`独立 Web-only 项目`、`前端与原型铁律`、`任务交付与审核铁律`、`PERSONA_LEAK_CANARY` 全部 absent |
+| `<agents_context>` 消失或为空 | 两次请求均为空块（inner length 0）；`<domain_knowledge_context>` 只有 harness 的静态说明，无仓库文件内容 |
+| project 已钉到空目录 | 系统提示里 `Project (the user's source tree you're assisting with): /tmp/workpal-persona/runtime/state/harness-project`——正是修复 pin 的 `stateRoot/harness-project` |
+| backend 传入的 bot/persona 指令仍存在 | 通过：该 Bot 的 `instructions`（"先说明你是谁，再列出你的工作原则"）原样出现在系统提示中 |
+| 回答不再自称遵循开发仓库 AGENTS.md | 通过：回答以"我是人设探针（Persona Probe）"开头，列出的 9 条原则来自产品侧指令，不含仓库条款 |
+
+说明：系统提示里仍会出现 `AGENTS.md` 这个词，但只出现在 harness 对 workspace-context 机制的**静态说明**（"AGENTS.md defines persona and local conventions…"）里，不是仓库文件内容；同一段说明把 project 指向空目录。Bot 的 title/description 本来就不进系统提示（与修复前一致），`instructions` 才是人设来源，这也是 Java 回归断言的同一个属性。
+
+## 生产镜像核对（2026-10-28）
+
+`docker build -f infra/compose/Dockerfile -t workpal-persona-verify:2126838 .`（本分支 worktree），随后 `docker run --rm … ls /app`（[image-app-listing.txt](./image-app-listing.txt)、[image-build.txt](./image-build.txt)）。
+
+- `/app` 里 **有** `AGENTS.md`（还有 `CLAUDE.md`、`docs/`、`prompts/`、`scripts/`、`skills-lock.json` 等已跟踪文件）；`MEMORY.md`、`knowledge/` 当前不存在。
+- 原因：`infra/compose/Dockerfile` 用 `COPY --chmod=755 . .` 把整个构建上下文放进 `/app`，`.dockerignore` 只排除了 `.git`、`.env*`、`node_modules`、`dist` 等。**这是独立的打包缺陷（生产镜像携带仓库文档与开发规则），按任务书不在本卡修 Docker 范围**，只记录事实。
+- 该缺陷的影响面正是本卡修复要消除的：镜像里有没有这些文件都不再影响 system prompt——真模型请求已证明 project 被钉到空目录。
+- 注：本次构建上下文来自本 worktree，因此清单里还有本地未跟踪产物（如 `test-report/`，不在 `.dockerignore` 中）；CI 构建不会带这些，但上面列出的已跟踪文件在 CI 镜像里同样存在。
