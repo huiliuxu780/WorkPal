@@ -1,0 +1,37 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/card-attention[39m
+
+ [31m❯[39m apps/web/src/pages/AttentionQueue.test.tsx [2m([22m[2m8 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 231[2mms[22m[39m
+     [32m✓[39m renders nothing and does not query while the card gate is off[32m 6[2mms[22m[39m
+[31m     [31m×[31m loads the queue, establishes a baseline, and notifies only new revisions[39m[32m 20[2mms[22m[39m
+     [32m✓[39m suppresses a notification for the source thread in the foreground[32m 4[2mms[22m[39m
+     [32m✓[39m loads the next page and keeps rows unique[32m 77[2mms[22m[39m
+     [32m✓[39m does not replay older pages as new notifications[32m 81[2mms[22m[39m
+     [32m✓[39m opens a row without submitting any decision[32m 16[2mms[22m[39m
+     [32m✓[39m shows the empty and error states[32m 24[2mms[22m[39m
+     [32m✓[39m drops a superseded response so a settled request cannot resurrect[32m 2[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m apps/web/src/pages/AttentionQueue.test.tsx[2m > [22mAttentionQueue[2m > [22mloads the queue, establishes a baseline, and notifies only new revisions
+[31m[1mAssertionError[22m: expected 'Ship the release? Open WorkPal to rev…' to be 'A question is waiting for your answer…' // Object.is equality[39m
+
+Expected: [32m"[7mA question is waiting for your answer.[27m Open WorkPal to review."[39m
+Received: [31m"[7mShip the release?[27m Open WorkPal to review."[39m
+
+[36m [2m❯[22m apps/web/src/pages/AttentionQueue.test.tsx:[2m180:58[22m[39m
+    [90m178|[39m     [34mexpect[39m([33mFakeNotification[39m[33m.[39minstances[[34m0[39m][33m?.[39mtitle)[33m.[39m[34mtoContain[39m([32m"Scout"[39m)[33m;[39m
+    [90m179|[39m     // Fixed per-kind copy: nothing the Bot wrote may reach the OS not…
+    [90m180|[39m     [34mexpect[39m([33mFakeNotification[39m[33m.[39minstances[[34m0[39m][33m?.[39moptions[33m?.[39mbody)[33m.[39m[34mtoBe[39m(
+    [90m   |[39m                                                          [31m^[39m
+    [90m181|[39m       [32m"A question is waiting for your answer. Open WorkPal to review."[39m[33m,[39m
+    [90m182|[39m     )[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m7 passed[39m[22m[90m (8)[39m
+[2m   Start at [22m 17:01:51
+[2m   Duration [22m 1.50s[2m (transform 487ms, setup 12ms, import 831ms, tests 231ms, environment 365ms)[22m
+
