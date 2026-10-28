@@ -13,6 +13,7 @@ import type {
   ConnectorTool,
 } from "@rakazo/adapter-kit";
 import { type AutomaticRetryReason, PRODUCT_BRAND } from "@rakazo/core";
+import { getLogger, outgoingCorrelationHeaders } from "@rakazo/logging";
 
 export class AgentScopeTransientError extends Error {
   constructor(
@@ -52,7 +53,7 @@ function transientWireError(message: string): AgentScopeTransientError | null {
 type AgentScopeWireEvent =
   | AgentRuntimeEvent
   | { type: "paused"; reason: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; category?: string };
 
 export interface AgentScopeAgentRuntimeOptions {
   baseUrl?: string;
@@ -853,7 +854,7 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
   ): Promise<AgentSessionCheckpointProof> {
     const response = await fetch(endpoint(this.baseUrl, "/v1/sessions/inspect-and-detach"), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...outgoingCorrelationHeaders() },
       body: JSON.stringify(request),
       signal: AbortSignal.timeout(10_000),
     });
@@ -886,6 +887,9 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
     controller?.abort();
     const response = await fetch(endpoint(this.baseUrl, `/v1/runs/${encodeURIComponent(runId)}`), {
       method: "DELETE",
+      // The cancel must arrive on the same trace as the Run it cancels, or the
+      // Java-side cancel event cannot be tied back to this attempt.
+      headers: outgoingCorrelationHeaders(),
       signal: AbortSignal.timeout(1_500),
     });
     if (response.status === 404) return;
@@ -943,7 +947,14 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       try {
         response = await fetch(endpoint(this.baseUrl, "/v1/runs"), {
           method: "POST",
-          headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+          headers: {
+            "content-type": "application/json",
+            accept: "application/x-ndjson",
+            // RUNTIME-RELIABILITY-01: carry this Run's trace across the process
+            // boundary. Without it a Java-side failure cannot be attributed to
+            // the Run that caused it, and the trace stops at this adapter.
+            ...outgoingCorrelationHeaders(),
+          },
           body: JSON.stringify(
             serializableRequest(
               request,
@@ -965,6 +976,13 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       }
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 1_000);
+        // This layer's own fact: the runtime rejected the Run. The status is a
+        // fixed code, so nothing provider-supplied is carried into this log —
+        // the Java side already recorded why, on the same trace.
+        getLogger().warn("agentscope.run.rejected", {
+          "run.id": request.runId,
+          "runtime.http_status": response.status,
+        });
         if (response.status === 409) {
           throw new AgentScopeSessionConflictError(
             `AgentScope session conflict: ${detail || "active runtime session"}`,
@@ -995,8 +1013,18 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       let terminal: "done" | "paused" | undefined;
       let completion: Extract<AgentRuntimeEvent, { type: "done" }> | undefined;
       const accept = (event: AgentScopeWireEvent): AgentRuntimeEvent | undefined => {
-        if (event.type === "error")
+        if (event.type === "error") {
+          // RUNTIME-RELIABILITY-01: the runtime reports a stable, user-invisible
+          // failure category. Recording it on this side attributes the failure
+          // to a layer within the same trace, without the runtime ever sending
+          // provider text. Retry behaviour is deliberately unchanged: the
+          // category is attribution, not a new control signal.
+          getLogger().error("agentscope.run.failed", {
+            "run.id": request.runId,
+            "runtime.failure_category": event.category,
+          });
           throw transientWireError(event.message) ?? new Error(event.message);
+        }
         if (terminal) throw new Error("AgentScope returned an event after its terminal event");
         if (event.type === "paused") {
           if (typeof event.reason !== "string" || !event.reason.trim()) {
