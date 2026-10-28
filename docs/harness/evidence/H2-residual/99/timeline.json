@@ -1,43 +1,43 @@
 [
-    {
-        "at": "2026-10-28T08:45:34.965Z",
-        "stage": "barrier-held",
-        "recordStatus": "claimed",
-        "deliveredAt": null,
-        "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
-        "deliverySentEvents": 0,
-        "deliveryBotMessages": 0,
-        "deliveryRuns": 1
-    },
-    {
-        "at": "2026-10-28T08:45:55.010Z",
-        "stage": "run-completed-transcript-visible",
-        "recordStatus": "claimed",
-        "deliveredAt": null,
-        "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
-        "deliverySentEvents": 0,
-        "deliveryBotMessages": 1,
-        "deliveryRuns": 1
-    },
-    {
-        "at": "2026-10-28T08:45:55.134Z",
-        "stage": "settled",
-        "recordStatus": "sent",
-        "deliveredAt": "2026-10-28T08:45:54.948Z",
-        "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
-        "deliverySentEvents": 1,
-        "deliveryBotMessages": 1,
-        "deliveryRuns": 1
-    },
-    {
-        "at": "2026-10-28T08:45:55.140Z",
-        "stage": "after-settle-replay",
-        "replayCalls": 2,
-        "recordStatus": "sent",
-        "deliveredAt": "2026-10-28T08:45:54.948Z",
-        "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
-        "deliverySentEvents": 1,
-        "deliveryBotMessages": 1,
-        "deliveryRuns": 1
-    }
+  {
+    "at": "2026-10-28T08:45:34.965Z",
+    "stage": "barrier-held",
+    "recordStatus": "claimed",
+    "deliveredAt": null,
+    "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
+    "deliverySentEvents": 0,
+    "deliveryBotMessages": 0,
+    "deliveryRuns": 1
+  },
+  {
+    "at": "2026-10-28T08:45:55.010Z",
+    "stage": "run-completed-transcript-visible",
+    "recordStatus": "claimed",
+    "deliveredAt": null,
+    "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
+    "deliverySentEvents": 0,
+    "deliveryBotMessages": 1,
+    "deliveryRuns": 1
+  },
+  {
+    "at": "2026-10-28T08:45:55.134Z",
+    "stage": "settled",
+    "recordStatus": "sent",
+    "deliveredAt": "2026-10-28T08:45:54.948Z",
+    "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
+    "deliverySentEvents": 1,
+    "deliveryBotMessages": 1,
+    "deliveryRuns": 1
+  },
+  {
+    "at": "2026-10-28T08:45:55.140Z",
+    "stage": "after-settle-replay",
+    "replayCalls": 2,
+    "recordStatus": "sent",
+    "deliveredAt": "2026-10-28T08:45:54.948Z",
+    "recordDeliveryRunId": "cmvrvd8cu000s84x02efubzem",
+    "deliverySentEvents": 1,
+    "deliveryBotMessages": 1,
+    "deliveryRuns": 1
+  }
 ]
