@@ -683,23 +683,39 @@ export async function releaseCancelledSessionsThatNeverStarted(
  */
 export async function listCancelledSessionsToRecover(
   prisma: PrismaClient,
+  now = new Date(),
   limit = 100,
 ): Promise<Array<{ sessionKey: string; runId: string }>> {
-  return prisma.$queryRaw<Array<{ sessionKey: string; runId: string }>>`
-    SELECT admission."sessionKey", admission."ownerRunId" AS "runId"
-    FROM "agent_session_admissions" admission
-    JOIN "runs" run ON run."id" = admission."ownerRunId"
-    WHERE admission."state" IN ('owned', 'recovering')
-      AND admission."runtimeStartedAt" IS NOT NULL
-      AND run."status" = 'cancelled'
-      AND NOT EXISTS (
-        SELECT 1 FROM "execution_revocations" revocation
-        WHERE revocation."kind" = 'run_abort'
-          AND revocation."subjectId" = admission."ownerRunId"
-      )
-    ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
-    LIMIT ${limit}
-  `;
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<AdmissionRow[]>`
+      SELECT admission.* FROM "agent_session_admissions" admission
+      JOIN "runs" run ON run."id" = admission."ownerRunId"
+      WHERE admission."state" IN ('owned', 'recovering')
+        AND admission."runtimeStartedAt" IS NOT NULL
+        AND run."status" = 'cancelled'
+        AND NOT EXISTS (
+          SELECT 1 FROM "execution_revocations" revocation
+          WHERE revocation."kind" = 'run_abort'
+            AND revocation."subjectId" = admission."ownerRunId"
+        )
+      ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
+      LIMIT ${limit}
+      FOR UPDATE OF admission SKIP LOCKED
+    `;
+    const owners: Array<{ sessionKey: string; runId: string }> = [];
+    for (const row of rows) {
+      // A Worker killed between Stop and its finally leaves the admission
+      // `owned`. The RT-26 terminal-owner hook only looks for a `recovering`
+      // owner, so hand it over in that shape first; the owner Run is terminal, so
+      // parkRunForRecovery's leased/running guard matches nothing and the Run is
+      // not re-queued.
+      if (row.state === "owned") {
+        await parkRunForRecovery(tx, row, "cancelled_after_runtime_start", now);
+      }
+      if (row.ownerRunId) owners.push({ sessionKey: row.sessionKey, runId: row.ownerRunId });
+    }
+    return owners;
+  });
 }
 
 export async function requeueExpiredSessionAdmissionWaiter(
