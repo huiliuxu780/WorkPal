@@ -1,0 +1,13 @@
+FIX-STOP-01 v2 current PostgreSQL group evidence
+Date: 2026-10-28
+Validation source head: e686b562689374d5710d12e575ceeb5121dc9ae2
+Database: dedicated local PostgreSQL container; DSN and credentials omitted.
+Command:
+  DATABASE_URL=<dedicated-local-postgresql-dsn> VERIFY_DATABASE=1 pnpm test:postgres
+
+Output:
+  > node scripts/testing/run-test-group.mjs postgres
+  Test Files  51 passed (51)
+  Tests       457 passed (457)
+  Duration    62.14s
+  Exit        0

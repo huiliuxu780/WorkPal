@@ -59,6 +59,7 @@ type AdmissionRow = {
   heartbeatAt: Date | null;
   executionPreparedAt: Date | null;
   runtimeStartedAt: Date | null;
+  updatedAt: Date;
 };
 
 type RequestRow = {
@@ -242,6 +243,68 @@ async function parkRunForRecovery(
   });
 }
 
+/**
+ * FIX-STOP-01 (scheme B, scoped to Stop). Two cases, deliberately different:
+ *
+ *   - the runtime never started (`runtimeStartedAt` is null): the cancelled
+ *     status is enough, because there is no shared session state to inherit.
+ *   - the runtime started: this layer NEVER releases. The `run_abort` revocation
+ *     disappearing only proves the runtime accepted the abort request —
+ *     `AgentScopeAgentRuntime.abort()` returns as soon as the DELETE does, the
+ *     Java handler cancels and interrupts the thread and replies 200, and
+ *     `activeRuns`/`activeSessions` are only dropped when the original execution
+ *     reaches its finally. DELETE does not call `inspectAndDetach` and does not
+ *     clear persisted pending tool/ask state. Releasing on it would let a
+ *     successor enter a session the old execution may still hold.
+ *
+ * For the started case the reconciler only classifies and re-dispatches the
+ * owner's `runContinueJob`; the existing RT-26 terminal-owner hook obtains and
+ * persists the clean/detached proof and calls `releaseRecoveredSessionAdmission`.
+ * Until that proof exists the admission stays `recovering` — never released on
+ * time, lease expiry, or a 200 from DELETE.
+ *
+ * `failed` and `completed` owners are outside this rule entirely; their sessions
+ * keep the RT-26 park, which worker-chain.spec.ts:546/:785 guard.
+ */
+async function releaseCancelledOwnerAdmission(
+  tx: Prisma.TransactionClient,
+  row: AdmissionRow,
+  now: Date,
+): Promise<boolean> {
+  if (!row.ownerRunId) return false;
+  if (row.state !== "owned" && row.state !== "recovering") return false;
+  // Only a session the runtime never entered can be handed back on the cancelled
+  // status alone: there is no shared session state for a successor to inherit.
+  // Once the runtime started, release requires the RT-26 clean/detached proof,
+  // which this layer cannot obtain — see listCancelledSessionsToRecover.
+  if (row.runtimeStartedAt !== null) return false;
+  const cancelledOwner = await tx.run.findFirst({
+    where: { id: row.ownerRunId, status: "cancelled" },
+    select: { id: true },
+  });
+  if (!cancelledOwner) return false;
+  const updated = await tx.$executeRaw`
+    UPDATE "agent_session_admissions"
+    SET "state" = 'available',
+        "expiresAt" = NULL,
+        "lastReleaseReason" = 'cancelled_before_runtime_started',
+        "updatedAt" = ${now}
+    WHERE "sessionKey" = ${row.sessionKey}
+      AND "state" IN ('owned', 'recovering')
+      AND "ownerRunId" = ${row.ownerRunId}
+      AND "fence" = ${row.fence}
+  `;
+  if (updated !== 1) return false;
+  await tx.$executeRaw`
+    UPDATE "agent_session_admission_requests"
+    SET "state" = 'released', "updatedAt" = ${now}
+    WHERE "sessionKey" = ${row.sessionKey}
+      AND "state" IN ('owned', 'recovering')
+      AND "runId" = ${row.ownerRunId}
+  `;
+  return true;
+}
+
 export async function acquireSessionAdmission(
   prisma: PrismaClient,
   input: SessionAdmissionIdentity,
@@ -270,6 +333,9 @@ export async function acquireSessionAdmission(
     `;
     let row = await lockAdmission(tx, sessionKey);
     assertMatchingIdentity(row, input);
+    if (await releaseCancelledOwnerAdmission(tx, row, now)) {
+      row = await lockAdmission(tx, sessionKey);
+    }
     const request = await insertAndReadRequest(tx, input, sessionKey);
 
     if (
@@ -568,6 +634,103 @@ export async function recoverExpiredSessionAdmissions(
       if (row.ownerRunId) recovered.push({ sessionKey: row.sessionKey, runId: row.ownerRunId });
     }
     return recovered;
+  });
+}
+
+/**
+ * FIX-STOP-01: frees sessions a cancelled Run holds but the runtime never
+ * entered. `recoverExpiredSessionAdmissions` cannot do this — it reads `owned`
+ * rows only, so a Stop that parked the session as `recovering` was never swept.
+ * Sessions whose runtime did start are deliberately excluded: they need the
+ * RT-26 proof, not a status check.
+ */
+export async function releaseCancelledSessionsThatNeverStarted(
+  prisma: PrismaClient,
+  now = new Date(),
+  limit = 100,
+): Promise<Array<{ sessionKey: string; nextRunId: string | null }>> {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<AdmissionRow[]>`
+      SELECT admission.* FROM "agent_session_admissions" admission
+      JOIN "runs" run ON run."id" = admission."ownerRunId"
+      WHERE admission."state" IN ('owned', 'recovering')
+        AND admission."runtimeStartedAt" IS NULL
+        AND run."status" = 'cancelled'
+      ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
+      LIMIT ${limit}
+      FOR UPDATE OF admission SKIP LOCKED
+    `;
+    const released: Array<{ sessionKey: string; nextRunId: string | null }> = [];
+    for (const row of rows) {
+      if (!(await releaseCancelledOwnerAdmission(tx, row, now))) continue;
+      const next = await firstQueuedRequest(tx, row.sessionKey);
+      released.push({ sessionKey: row.sessionKey, nextRunId: next?.runId ?? null });
+    }
+    return released;
+  });
+}
+
+/**
+ * FIX-STOP-01 classification for sessions a cancelled Run holds after the runtime
+ * started. An absent `run_abort` revocation only means the runtime accepted the
+ * abort request, so this returns the owners whose proof should be attempted — it
+ * does not release anything. The caller re-dispatches `runContinueJob(ownerRunId)`
+ * and the existing RT-26 terminal-owner hook does the rest: inspectAndDetach,
+ * checkpoint proof, acknowledgement, `releaseRecoveredSessionAdmission`, wake the
+ * successor.
+ *
+ * Keep the revocation in the predicate so a session is not probed while the abort
+ * is still outstanding; pending owners stay parked either way.
+ */
+export async function listCancelledSessionsToRecover(
+  prisma: PrismaClient,
+  now = new Date(),
+  limit = 100,
+): Promise<Array<{ sessionKey: string; runId: string }>> {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<AdmissionRow[]>`
+      SELECT admission.* FROM "agent_session_admissions" admission
+      JOIN "runs" run ON run."id" = admission."ownerRunId"
+      WHERE admission."state" IN ('owned', 'recovering')
+        AND admission."runtimeStartedAt" IS NOT NULL
+        AND run."status" = 'cancelled'
+        AND NOT EXISTS (
+          SELECT 1 FROM "execution_revocations" revocation
+          WHERE revocation."kind" = 'run_abort'
+            AND revocation."subjectId" = admission."ownerRunId"
+        )
+      ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
+      LIMIT ${limit}
+      FOR UPDATE OF admission SKIP LOCKED
+    `;
+    const owners: Array<{ sessionKey: string; runId: string }> = [];
+    for (const row of rows) {
+      if (!row.ownerRunId) continue;
+      // A Worker killed between Stop and its finally leaves the admission
+      // `owned`. The RT-26 terminal-owner hook only looks for a `recovering`
+      // owner, so hand it over in that shape first; the owner Run is terminal, so
+      // parkRunForRecovery's leased/running guard matches nothing and the Run is
+      // not re-queued.
+      if (row.state === "owned") {
+        await parkRunForRecovery(tx, row, "cancelled_after_runtime_start", now);
+      }
+      // `updatedAt` is also the recovery-attempt cursor. Rotate every selected
+      // owner to the back before dispatching it; otherwise an unprovable oldest
+      // LIMIT-sized batch is selected forever and starves later sessions that
+      // could produce a valid RT-26 proof. Advancing by at least 1 ms keeps the
+      // cursor moving even in deterministic tests or under a stalled clock.
+      const attemptedAt = new Date(Math.max(now.getTime(), row.updatedAt.getTime() + 1));
+      await tx.agentSessionAdmission.updateMany({
+        where: {
+          sessionKey: row.sessionKey,
+          ownerRunId: row.ownerRunId,
+          state: "recovering",
+        },
+        data: { updatedAt: attemptedAt },
+      });
+      owners.push({ sessionKey: row.sessionKey, runId: row.ownerRunId });
+    }
+    return owners;
   });
 }
 

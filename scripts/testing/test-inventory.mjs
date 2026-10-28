@@ -229,6 +229,7 @@ const POSTGRES_ONLY = [
   "packages/db/src/session-admission.postgres.test.ts",
   "packages/db/src/session-checkpoint.postgres.test.ts",
   "packages/db/src/space-membership.postgres.test.ts",
+  "packages/db/src/stop-session-release.postgres.test.ts",
   "packages/db/src/task-instructions.postgres.test.ts",
   "packages/db/src/usage-stats.test.ts",
   "packages/db/src/wait-timeouts.postgres.test.ts",

@@ -1,0 +1,24 @@
+# FIX-STOP-01 v2 red — the four-branch regression against the retracted implementation
+
+Baseline: the two source files restored from commit c53bea1 with git show
+(packages/db/src/session-admission.ts, apps/worker/src/session-admission-reconciler.ts),
+which is the "revocation gone means settled" implementation. The test file is the new one.
+
+Date 2026-10-28. Host macOS arm64, Node v24.18.0, pnpm 9.15.0.
+Database: throwaway postgres:16 container on an OS-assigned port, database
+workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's agent:doctor plan;
+each suite clones an isolated database from the migration template and drops it in afterAll.
+Prerequisite: pnpm --filter @rakazo/db generate and prisma migrate deploy.
+Command (identical for red and green):
+  VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 \
+    pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts --no-file-parallelism
+No real model, no scripted runtime: persistence layer only. Host paths replaced with <worktree>.
+
+6 of 7 failed. The decisive one is branch 3, which fails with
+  AssertionError: expected 'acquired' to be 'recovering'
+i.e. the retracted implementation hands the session to a successor although nothing proved the
+old execution exited or the session detached. That is the defect this branch exists to catch.
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 6 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m[1mAssertionError[22m: expected 'acquired' to be 'recovering' // Object.is equality[39m
+[2m      Tests [22m [1m[31m6 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (7)[39m

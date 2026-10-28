@@ -1,0 +1,28 @@
+FIX-STOP-01 review P2 — recovery candidate rotation red/green
+
+Date: 2026-10-28
+Baseline head: 52fbf825332587d3214ee4b7c721bdd4c28b1826
+Fix head: e686b562689374d5710d12e575ceeb5121dc9ae2
+Database: dedicated local PostgreSQL container; DSN and credentials omitted.
+Command (same test and assertions):
+  DATABASE_URL=<dedicated-local-postgresql-dsn> VERIFY_DATABASE=1 \
+    pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts
+
+Red — test added before implementation, baseline production source unchanged:
+  Test Files  1 failed (1)
+  Tests       1 failed | 7 passed (8)
+  Assertion:
+    the next eligible session must be attempted even when the first batch
+    cannot prove recovery
+  Actual: the second limited query selected the same first two blocked owners
+  and omitted the third eligible owner.
+  Exit: 1
+
+Green — selected recovery owners advance the admission updatedAt attempt cursor
+before dispatch. The cursor advances by at least 1 ms, so a fixed clock cannot
+select the same limited batch forever. This changes retry order only; release
+still requires the existing RT-26 clean/detached proof.
+  Test Files  1 passed (1)
+  Tests       8 passed (8)
+  Duration    1.10s
+  Exit: 0

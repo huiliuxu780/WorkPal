@@ -48,3 +48,4 @@
 5. 重复 sweep、Worker 重启和 executor/reconciler 并发不会重复发 outcome 或重复创建 continuation。
 6. 单聊、群聊、messaging channel 分批 steering 各有 PostgreSQL 测试；同一 Bot 不出现两个 active conversational Run。
 7. [RT-24](../roundtable/roundtable-implementation-plan.md#rt-24-补齐群路由冲突和收尾行为) 和 [RT-27](../roundtable/roundtable-implementation-plan.md#rt-27-实施确定性-steering-和-session-排队接入) 的相关场景继续通过。
+8. （FIX-STOP-01 回写，2026-10-28）用户 Stop 取消一个正在执行的 Run 后，该会话在原生 abort 确认之后必须能继续：同一 Thread 的下一条消息取得执行权，不再依赖 5 分钟 lease 回收或一个永远拿不到的 Runtime 证明。abort 尚未送达时必须继续排队。证据与未覆盖项见 [FIX-STOP-01 证据](../evidence/FIX-STOP-01/README.md)。

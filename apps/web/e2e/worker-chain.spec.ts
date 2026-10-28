@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { deliverRunAborts } from "../../../packages/adapters/src/revoke-cancelled-work.js";
 import { createDb } from "../../../packages/db/src/index.js";
 import { startModelEmulator } from "../../../packages/testkit/src/model-emulator.js";
 import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
@@ -399,7 +400,7 @@ test("a user Run stays queued while the Worker is down and is claimed and execut
   }
 });
 
-test("a retry after an in-flight cancellation stays queued behind recovering admission", async ({
+test("a retry after an in-flight cancellation waits for the RT-26 detach proof, not for the abort 200", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -441,6 +442,12 @@ test("a retry after an in-flight cancellation stays queued behind recovering adm
             },
           },
         },
+        // FIX-STOP-01: the retry now actually runs once the abort is confirmed,
+        // so it needs its own answer. Consumed only in the released branch.
+        {
+          ...expectRetryFixture,
+          response: { type: "text", text: retryReply },
+        },
       ],
     });
     await switchToTaskModel(page, botId, apiKey, task);
@@ -452,6 +459,18 @@ test("a retry after an in-flight cancellation stays queued behind recovering adm
     // that call leaves the hold step unused, and the successor then hangs on it.
     await expect.poll(async () => task?.requests.length ?? 0, { timeout: 30_000 }).toBe(1);
     await expect.poll(() => release !== undefined, { timeout: 10_000 }).toBe(true);
+    // FIX-STOP-01 proof gate. Everything below is deterministic: the Worker is
+    // stopped before Stop, so nothing can consume the abort behind our back and
+    // the states are observed rather than raced.
+    const admissionBefore = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+      where: { ownerRunId: original.id, state: { in: ["owned", "recovering"] } },
+    });
+    expect(
+      admissionBefore.runtimeStartedAt,
+      "the Runtime must have started, otherwise this Run takes the never-started fast path",
+    ).not.toBeNull();
+
+    await stopWorker();
     await rpc(page, "threads/stop", { botId });
     await pollRunStatus(db, original.id, "cancelled", 60_000);
     try {
@@ -459,49 +478,20 @@ test("a retry after an in-flight cancellation stays queued behind recovering adm
     } catch {
       // Stream already closed by stop.
     }
+    // Let the Java thread unwind so the later inspectAndDetach has a live session
+    // to detach. This is the production abort seam and it does not touch the
+    // run_abort revocation row.
     await releaseNativeRun(original.id);
     await expect
       .poll(
         async () => db.prisma.attempt.count({ where: { runId: original.id, status: "running" } }),
-        { timeout: 30_000 },
+        { timeout: 60_000 },
       )
       .toBe(0);
-
-    await stopWorker();
-    const orphanedAdmission = await db.prisma.agentSessionAdmission.findFirstOrThrow({
-      where: { ownerRunId: original.id, state: { in: ["owned", "recovering"] } },
-    });
-    // Stopping can race the Worker's post-Runtime release. Make the pre-release
-    // crash branch deterministic without waiting for the five-minute TTL. Expiry
-    // is deliberately only a signal to park the owner in recovering; it is not
-    // clean/detached proof and cannot admit the retry.
-    await db.prisma.agentSessionAdmission.update({
-      where: { sessionKey: orphanedAdmission.sessionKey },
-      data: { expiresAt: new Date(Date.now() - 1_000) },
-    });
-    const requestsBeforeRetry = task.requests.length;
-    const retried = await rpc<{ runId: string; taskId: string; replayed: boolean }>(
-      page,
-      "runs/retry",
-      { runId: original.id, clientNonce: `worker-chain-retry-${Date.now()}` },
-    );
-    expect(retried.replayed).toBe(false);
-    expect(retried.taskId).toBe(original.taskId);
-    for (let index = 0; index < 16; index += 1) {
-      const run = await db.prisma.run.findUniqueOrThrow({
-        where: { id: retried.runId },
-        select: { status: true, leaseOwner: true, retryOfRunId: true },
-      });
-      expect(run.status).toBe("queued");
-      expect(run.leaseOwner).toBeNull();
-      expect(run.retryOfRunId).toBe(original.id);
-      expect(task.requests.length, "model fixture called without a Worker").toBe(
-        requestsBeforeRetry,
-      );
-      await page.waitForTimeout(500);
-    }
-
-    await startWorker();
+    // The Worker is stopped before Stop, so its finally block never runs and the
+    // admission stays `owned`. Either state means the cancelled owner still holds
+    // the session; the reconciler parks an `owned` owner into `recovering` before
+    // handing it to the RT-26 hook.
     await expect
       .poll(
         async () =>
@@ -510,23 +500,141 @@ test("a retry after an in-flight cancellation stays queued behind recovering adm
               where: { ownerRunId: original.id },
             })
           ).state,
-        { timeout: 30_000 },
+        { timeout: 60_000 },
       )
-      .toBe("recovering");
-    await page.waitForTimeout(12_000);
-    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
-    expect(final).toMatchObject({ status: "queued", leaseOwner: null, error: null });
+      .toMatch(/^(owned|recovering)$/);
+
+    const requestsBeforeRetry = task.requests.length;
+    const retried = await rpc<{ runId: string; taskId: string; replayed: boolean }>(
+      page,
+      "runs/retry",
+      { runId: original.id, clientNonce: `worker-chain-retry-${Date.now()}` },
+    );
+    expect(retried.replayed).toBe(false);
+    expect(retried.taskId).toBe(original.taskId);
+
+    const expectStillBlocked = async (phase: string) => {
+      const run = await db.prisma.run.findUniqueOrThrow({
+        where: { id: retried.runId },
+        select: { status: true, leaseOwner: true, retryOfRunId: true },
+      });
+      const holder = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+        where: { ownerRunId: original.id },
+      });
+      expect(
+        {
+          phase,
+          retryStatus: run.status,
+          retryLeaseOwner: run.leaseOwner,
+          retryOfRunId: run.retryOfRunId,
+          modelCalls: task.requests.length,
+        },
+        `${phase}: the retry must not run before the RT-26 proof is acknowledged`,
+      ).toEqual({
+        phase,
+        retryStatus: "queued",
+        retryLeaseOwner: null,
+        retryOfRunId: original.id,
+        modelCalls: requestsBeforeRetry,
+      });
+      expect(
+        ["owned", "recovering"],
+        `${phase}: the cancelled owner must still hold the session`,
+      ).toContain(holder.state);
+    };
+
+    // Gate 1 — the abort has not been delivered at all.
+    await expect(
+      db.prisma.executionRevocation.findFirst({
+        where: { kind: "run_abort", subjectId: original.id },
+      }),
+      "Stop must leave a run_abort revocation for the Worker sweep",
+    ).resolves.not.toBeNull();
+    await page.waitForTimeout(1_000);
+    await expectStillBlocked("abort-pending");
+
+    // Gate 2 — deliver the abort through the production function, so the
+    // revocation row is deleted exactly as the Worker would. This is not a detach
+    // proof: abort() returns when the DELETE does, the Java handler only cancels
+    // and interrupts, and activeRuns/activeSessions drop when the thread reaches
+    // its finally. The session must therefore stay held.
+    const delivered = await deliverRunAborts(
+      db.prisma,
+      async (runId) => {
+        const status = await releaseNativeRun(runId);
+        if (status < 0) throw new Error(`native abort never landed for ${runId}`);
+      },
+      [original.id],
+    );
+    expect(delivered.revoked).toEqual([original.id]);
+    await expect(
+      db.prisma.executionRevocation.findFirst({
+        where: { kind: "run_abort", subjectId: original.id },
+      }),
+      "delivering the abort deletes the revocation",
+    ).resolves.toBeNull();
+    await page.waitForTimeout(1_000);
+    await expectStillBlocked("abort-delivered-without-proof");
+
+    // Gate 3 — open the gate. The Worker's reconciler classifies the session and
+    // re-dispatches the owner; the existing RT-26 chain does the rest:
+    // continueRun -> recoverSessionOwner -> inspectAndDetach -> recordCheckpointProof
+    // -> acknowledgeSessionCheckpoint -> releaseRecoveredSessionAdmission. Nothing
+    // is inserted by hand here.
+    const restarted = await startWorker();
+    const workerLog = restarted.generation
+      ? path.join(reportDir, `worker-${restarted.generation}.log`)
+      : "";
+    await expect
+      .poll(
+        async () => {
+          const proof = await db.prisma.agentSessionCheckpoint.findFirst({
+            where: { runId: original.id },
+            orderBy: { createdAt: "desc" },
+            select: { proofKind: true, ackedAt: true, status: true },
+          });
+          return proof
+            ? `${proof.proofKind}/${proof.status}/${proof.ackedAt ? "acked" : "unacked"}`
+            : "none";
+        },
+        { timeout: 180_000 },
+      )
+      .toMatch(/^(clean|detached)\/(recorded|consumed)\/acked$/);
+    const releaseLogOffset = workerLog
+      ? (await readFile(workerLog, "utf8").catch(() => "")).length
+      : 0;
+    await expect
+      .poll(
+        async () =>
+          (await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } })).status,
+        { timeout: 120_000 },
+      )
+      .not.toBe("queued");
+    await expect(page.getByTestId("transcript").getByText(retryReply)).toBeVisible({
+      timeout: 120_000,
+    });
+    if (workerLog) {
+      const afterRelease = (await readFile(workerLog, "utf8").catch(() => "")).slice(
+        releaseLogOffset,
+      );
+      expect(
+        afterRelease,
+        "after the acknowledged proof the Worker must not log a failed recovery proof",
+      ).not.toContain("could not be proven");
+    }
+    const releasedHolder = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+      where: { sessionKey: admissionBefore.sessionKey },
+    });
+    expect(releasedHolder.state, "the session ends up free, not parked").not.toBe("recovering");
+    expect(
+      releasedHolder.ownerRunId,
+      "the retry owns the session after the proof, not the cancelled Run",
+    ).not.toBe(original.id);
     const source = await db.prisma.run.findUniqueOrThrow({ where: { id: original.id } });
     expect(source.status).toBe("cancelled");
+    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
     expect(final.taskId).toBe(original.taskId);
     expect(final.threadId).toBe(original.threadId);
-    expect(task.requests.length).toBe(requestsBeforeRetry);
-    await expect(page.getByTestId("transcript").getByText(retryReply)).toHaveCount(0);
-    await expect(
-      db.prisma.agentSessionAdmissionRequest.findFirstOrThrow({
-        where: { runId: retried.runId, state: "queued" },
-      }),
-    ).resolves.toMatchObject({ runId: retried.runId, state: "queued" });
     task.assertComplete();
     await recordTimings();
   } finally {
