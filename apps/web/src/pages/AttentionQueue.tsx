@@ -356,6 +356,17 @@ function notificationTitle(item: AttentionQueueItem): string {
 }
 
 function notificationBody(item: AttentionQueueItem): string {
-  const summary = summaryText(item);
-  return t`${summary} Open WorkPal to review.`;
+  // System notifications carry a fixed sentence per kind: Bot-authored text
+  // (presentation, tool arguments, file names, recipients) must never leave the
+  // app through the OS notification surface.
+  if (item.kind === "action_approval") {
+    return t`An approval needs your decision. Open WorkPal to review.`;
+  }
+  if (item.kind === "plan_review") {
+    return t`A plan needs your decision. Open WorkPal to review.`;
+  }
+  if (item.kind === "session_control") {
+    return t`A desktop handoff needs you. Open WorkPal to review.`;
+  }
+  return t`A question is waiting for your answer. Open WorkPal to review.`;
 }

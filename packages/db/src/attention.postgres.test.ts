@@ -725,7 +725,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(next.total).toBeGreaterThan(0);
   });
 
-  it("excludes expired pending rows and keeps revision dedupe", async () => {
+  it("keeps a still-pending row past its expiresAt until the timeout job expires it", async () => {
     const run = await taskRun(dmThreadId, "Expired request");
     const message = await botMessage(dmThreadId, [
       { kind: "ask", text: "Too late?", status: "pending" },
@@ -745,6 +745,32 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(page.items.some((item) => item.interactionId === expired.id)).toBe(true);
     const duplicated = page.items.filter((item) => item.interactionId === expired.id);
     expect(duplicated).toHaveLength(1);
+  });
+
+  it("orders by expiresAt ASC NULLS LAST, then attentionAt, then stableId", async () => {
+    const run = await taskRun(dmThreadId, "Ordered requests");
+    const older = new Date(Date.now() - 60_000);
+    async function ask(text: string, expiresAt: Date | null, createdAt: Date) {
+      const message = await botMessage(dmThreadId, [{ kind: "ask", text, status: "pending" }]);
+      return pendingIntervention({
+        threadId: dmThreadId,
+        runId: run.id,
+        messageId: message.id,
+        kind: "input",
+        inputMode: "text",
+        presentation: { text },
+        expiresAt,
+        createdAt,
+      });
+    }
+    const laterExpiry = await ask("Later expiry", new Date(Date.now() + 120_000), older);
+    const soonExpiry = await ask("Sooner expiry", new Date(Date.now() + 60_000), older);
+    const noExpiry = await ask("No expiry", null, older);
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const position = (id: string) => page.items.findIndex((item) => item.interactionId === id);
+    expect(position(soonExpiry.id)).toBeGreaterThanOrEqual(0);
+    expect(position(soonExpiry.id)).toBeLessThan(position(laterExpiry.id));
+    expect(position(laterExpiry.id)).toBeLessThan(position(noExpiry.id));
   });
 
   it("keeps a nested delegated takeover whose first hop already completed", async () => {

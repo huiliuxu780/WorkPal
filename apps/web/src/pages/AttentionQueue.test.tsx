@@ -176,7 +176,11 @@ describe("AttentionQueue", () => {
     await flush();
     expect(FakeNotification.instances).toHaveLength(1);
     expect(FakeNotification.instances[0]?.title).toContain("Scout");
-    expect(FakeNotification.instances[0]?.options?.body).toContain("Ship the release?");
+    // Fixed per-kind copy: nothing the Bot wrote may reach the OS notification.
+    expect(FakeNotification.instances[0]?.options?.body).toBe(
+      "A question is waiting for your answer. Open WorkPal to review.",
+    );
+    expect(FakeNotification.instances[0]?.options?.body).not.toContain("Ship the release?");
     expect(FakeNotification.instances[0]?.options?.body).not.toContain("Which city");
 
     // Same revision again: no duplicate notification.

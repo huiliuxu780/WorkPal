@@ -157,8 +157,15 @@ test.describe("attention queue (N1-N4)", () => {
       ).__attentionNotifications.at(0),
     );
     expect(notification?.title).toContain("Scout");
-    expect(notification?.body).toContain("Which city should I use?");
-    expect(notification?.body).not.toMatch(/@|\\$|\\d{4}-\\d{4}/);
+    // Fixed per-kind copy: the Bot-authored question must not leak into the OS
+    // notification, and no recipient/number/address-shaped text may appear.
+    expect(notification?.body).toBe(
+      "A question is waiting for your answer. Open WorkPal to review.",
+    );
+    expect(notification?.body).not.toContain("Which city");
+    expect(notification?.body).not.toMatch(/@/);
+    expect(notification?.body).not.toMatch(/\d/);
+    expect(notification?.body).not.toMatch(/[\\/]/);
     await captureScreenshot(page, testInfo, "N4-notification-1440");
 
     await page.evaluate(() =>
@@ -261,10 +268,28 @@ test.describe("attention queue (N1-N4)", () => {
     await waiting.click();
     await page.waitForURL(/\/app\/g\/[^/]+\?.*i=/, { timeout: 15_000 });
 
-    // N3: attention and unread are separate facts on separate elements.
+    // N3: unread and pending stay separate facts on separate elements. The
+    // roster marks unread with a shape-only dot (aria-hidden, detail in the
+    // row's "(unread)" text); the attention entry carries the numeric pending
+    // pill. `@我` has no product concept in this build, so it is not asserted —
+    // see the evidence README for that gap.
+    await rpc(page, "threads/send", { botId: blue.id, text: ASK_PROMPT });
+    await page.goto(`/app/${joy.id}`);
+    await page.waitForURL(new RegExp(`/app/${joy.id}$`));
+    await expect
+      .poll(() => page.getByTestId("bot-unread-dot").count(), {
+        timeout: 60_000,
+        intervals: [500, 1_000, 2_000],
+      })
+      .toBeGreaterThan(0);
+    const unreadDot = page.getByTestId("bot-unread-dot").first();
+    await expect(unreadDot).toBeVisible();
+    await expect(unreadDot).toHaveAttribute("aria-hidden", "true");
     const attentionBadge = page.getByTestId("attention-count");
     await expect(attentionBadge).toBeVisible();
     expect(await attentionBadge.evaluate((element) => element.textContent)).toMatch(/^\d+$/);
+    await expect(attentionBadge).not.toHaveAttribute("aria-hidden");
+    await captureScreenshot(page, testInfo, "N3-badges-1440");
   });
 
   test("keeps the list usable when browser notifications are denied", async ({

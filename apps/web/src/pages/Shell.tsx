@@ -204,7 +204,7 @@ import {
 import {
   deliverBrowserNotification as deliverNativeBrowserNotification,
   requestBrowserNotificationPermission,
-  shouldNotifyBrowser,
+  shouldNotifyLegacyBrowser,
 } from "../lib/browser-notifications";
 import { startCall, useCallSession } from "../lib/call-session";
 import { newClientId } from "../lib/client-id";
@@ -922,33 +922,20 @@ export function ShellPage() {
     ) => {
       const botId = event.botId;
       if (typeof botId !== "string") return;
-      const eligible = shouldNotifyBrowser(event, {
-        subscribedThreadId: subscribedThreadId ?? "",
-        initialCursor,
-        streamReady,
-        pageVisible: document.visibilityState === "visible",
-        windowFocused: document.hasFocus(),
-        permission: "granted",
-        notifiedEventIds: notifiedBrowserEvents.current,
-      });
+      const eligible = shouldNotifyLegacyBrowser(
+        event,
+        {
+          subscribedThreadId: subscribedThreadId ?? "",
+          initialCursor,
+          streamReady,
+          pageVisible: document.visibilityState === "visible",
+          windowFocused: document.hasFocus(),
+          permission: "granted",
+          notifiedEventIds: notifiedBrowserEvents.current,
+        },
+        cardsUnifiedV2Ref.current,
+      );
       if (!eligible || !enabled) return;
-      // With the unified card surface on, an interaction-producing message is
-      // announced by the attention queue (one notification per request); the
-      // legacy bot-message notification would duplicate it with another tag.
-      if (cardsUnifiedV2Ref.current && event.type === "thread.message.created") {
-        const blocks = Array.isArray(event.payload.blocks) ? event.payload.blocks : [];
-        const interactionBacked = blocks.some((block) => {
-          if (!block || typeof block !== "object") return false;
-          const kind = (block as { kind?: unknown }).kind;
-          return (
-            kind === "ask" ||
-            kind === "app_connect" ||
-            kind === "mcp_approval" ||
-            kind === "skill_draft"
-          );
-        });
-        if (interactionBacked) return;
-      }
       const pending = {
         event,
         botId,
@@ -3493,6 +3480,7 @@ export function ShellPage() {
                                         </span>
                                         {item.chat.unread ? (
                                           <span
+                                            data-testid="bot-unread-dot"
                                             aria-hidden="true"
                                             className="inline-block h-2 w-2 rounded-full bg-foreground"
                                           />

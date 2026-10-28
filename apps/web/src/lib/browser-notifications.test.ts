@@ -6,6 +6,7 @@ import {
   deliverBrowserNotification,
   requestBrowserNotificationPermission,
   shouldNotifyBrowser,
+  shouldNotifyLegacyBrowser,
 } from "./browser-notifications.js";
 import { i18n } from "./i18n.js";
 
@@ -82,6 +83,11 @@ describe("browser notifications", () => {
     expect(shouldNotifyBrowser(event(), context({ pageVisible: true, windowFocused: true }))).toBe(
       false,
     );
+    // CARD-01D: the unified card surface silences the legacy notifier entirely
+    // (ordinary messages and terminal events are not attention requests).
+    expect(shouldNotifyLegacyBrowser(event(), context(), true)).toBe(false);
+    expect(shouldNotifyLegacyBrowser(event({ type: "run.failed" }), context(), true)).toBe(false);
+    expect(shouldNotifyLegacyBrowser(event(), context(), false)).toBe(true);
     expect(shouldNotifyBrowser(event(), context({ permission: "default" }))).toBe(false);
     expect(shouldNotifyBrowser(event(), context({ notifiedEventIds: new Set(["event-1"]) }))).toBe(
       false,
