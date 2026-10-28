@@ -1,0 +1,19 @@
+# FIX-STOP-01 v2 green — same seven cases, same command, after the corrected rule
+
+Date 2026-10-28. Host macOS arm64, Node v24.18.0, pnpm 9.15.0.
+Database: throwaway postgres:16 container on an OS-assigned port, database
+workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's agent:doctor plan;
+each suite clones an isolated database from the migration template and drops it in afterAll.
+Prerequisite: pnpm --filter @rakazo/db generate and prisma migrate deploy.
+Command (identical for red and green):
+  VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 \
+    pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts --no-file-parallelism
+No real model, no scripted runtime: persistence layer only. Host paths replaced with <worktree>.
+
+7 passed. Branches: 1 never-started releases on the cancelled status; 2 outstanding abort keeps
+the session; 3 revocation gone without a detach proof keeps it; 3b the lease horizon is not a
+proof; S2 steering is discarded and the session stays parked; S3 a raced Stop on a completed Run
+is a no-op; the failed-owner boundary stays parked.
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m7 passed[39m[22m[90m (7)[39m

@@ -3,17 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   recoverExpiredSessionAdmissions,
   listAvailableSessionAdmissionHeads,
-  releaseSettledCancelledSessionAdmissions,
+  releaseCancelledSessionsThatNeverStarted,
+  listCancelledSessionsToRecover,
 } = vi.hoisted(() => ({
   recoverExpiredSessionAdmissions: vi.fn(),
   listAvailableSessionAdmissionHeads: vi.fn(),
-  releaseSettledCancelledSessionAdmissions: vi.fn(),
+  releaseCancelledSessionsThatNeverStarted: vi.fn(),
+  listCancelledSessionsToRecover: vi.fn(),
 }));
 
 vi.mock("@rakazo/db", () => ({
   recoverExpiredSessionAdmissions,
   listAvailableSessionAdmissionHeads,
-  releaseSettledCancelledSessionAdmissions,
+  releaseCancelledSessionsThatNeverStarted,
+  listCancelledSessionsToRecover,
 }));
 
 import { reconcileSessionAdmissions } from "./session-admission-reconciler.js";
@@ -21,7 +24,8 @@ import { reconcileSessionAdmissions } from "./session-admission-reconciler.js";
 describe("session admission reconciler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    releaseSettledCancelledSessionAdmissions.mockResolvedValue([]);
+    releaseCancelledSessionsThatNeverStarted.mockResolvedValue([]);
+    listCancelledSessionsToRecover.mockResolvedValue([]);
     recoverExpiredSessionAdmissions.mockResolvedValue([]);
     listAvailableSessionAdmissionHeads.mockResolvedValue([]);
   });
@@ -39,6 +43,7 @@ describe("session admission reconciler", () => {
     await expect(reconcileSessionAdmissions({} as never, { enqueue } as never)).resolves.toEqual({
       recovered: 1,
       released: 0,
+      recoveryDispatched: 0,
       scheduled: 2,
     });
     expect(enqueue.mock.calls.map(([job]) => job.payload.runId)).toEqual(["run-a", "run-b"]);
@@ -47,19 +52,20 @@ describe("session admission reconciler", () => {
     );
   });
 
-  it("wakes the successor of a session freed from a terminal owner", async () => {
-    releaseSettledCancelledSessionAdmissions.mockResolvedValue([
-      { sessionKey: "stopped-session", nextRunId: "queued-after-stop" },
-      { sessionKey: "finished-session", nextRunId: null },
+  it("frees a session the runtime never entered and wakes its successor", async () => {
+    releaseCancelledSessionsThatNeverStarted.mockResolvedValue([
+      { sessionKey: "never-started", nextRunId: "queued-after-stop" },
+      { sessionKey: "never-started-idle", nextRunId: null },
     ]);
     listAvailableSessionAdmissionHeads.mockResolvedValue([
-      { sessionKey: "stopped-session", runId: "queued-after-stop" },
+      { sessionKey: "never-started", runId: "queued-after-stop" },
     ]);
     const enqueue = vi.fn().mockResolvedValue(undefined);
 
     await expect(reconcileSessionAdmissions({} as never, { enqueue } as never)).resolves.toEqual({
       recovered: 0,
       released: 2,
+      recoveryDispatched: 0,
       scheduled: 1,
     });
     // The same successor is reachable from both the release and the head scan;
@@ -67,12 +73,30 @@ describe("session admission reconciler", () => {
     expect(enqueue.mock.calls.map(([job]) => job.payload.runId)).toEqual(["queued-after-stop"]);
   });
 
-  it("releases terminal owners before parking anything on expiry", async () => {
+  it("re-dispatches a cancelled owner whose runtime started instead of releasing it", async () => {
+    listCancelledSessionsToRecover.mockResolvedValue([
+      { sessionKey: "started-and-aborted", runId: "cancelled-owner" },
+    ]);
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+
+    await expect(reconcileSessionAdmissions({} as never, { enqueue } as never)).resolves.toEqual({
+      recovered: 0,
+      released: 0,
+      recoveryDispatched: 1,
+      scheduled: 0,
+    });
+    // The owner Run is re-driven so the RT-26 hook can obtain the proof; the
+    // reconciler itself must not release the session.
+    expect(enqueue.mock.calls.map(([job]) => job.payload.runId)).toEqual(["cancelled-owner"]);
+  });
+
+  it("classifies before parking and scanning heads", async () => {
     const enqueue = vi.fn().mockResolvedValue(undefined);
     await reconcileSessionAdmissions({} as never, { enqueue } as never);
-    expect(releaseSettledCancelledSessionAdmissions).toHaveBeenCalledBefore(
+    expect(releaseCancelledSessionsThatNeverStarted).toHaveBeenCalledBefore(
       recoverExpiredSessionAdmissions,
     );
+    expect(listCancelledSessionsToRecover).toHaveBeenCalledBefore(recoverExpiredSessionAdmissions);
     expect(recoverExpiredSessionAdmissions).toHaveBeenCalledBefore(
       listAvailableSessionAdmissionHeads,
     );

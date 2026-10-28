@@ -243,31 +243,27 @@ async function parkRunForRecovery(
 }
 
 /**
- * FIX-STOP-01 (scheme B, scoped to Stop): a session held by a Run the user
- * cancelled stays parked until the native AgentScope abort is confirmed. Two
- * facts must hold together, and neither is a timeout:
+ * FIX-STOP-01 (scheme B, scoped to Stop). Two cases, deliberately different:
  *
- *   1. the owner Run is `cancelled`, and
- *   2. the `run_abort` execution revocation written in that same cancel
- *      transaction is gone.
+ *   - the runtime never started (`runtimeStartedAt` is null): the cancelled
+ *     status is enough, because there is no shared session state to inherit.
+ *   - the runtime started: this layer NEVER releases. The `run_abort` revocation
+ *     disappearing only proves the runtime accepted the abort request —
+ *     `AgentScopeAgentRuntime.abort()` returns as soon as the DELETE does, the
+ *     Java handler cancels and interrupts the thread and replies 200, and
+ *     `activeRuns`/`activeSessions` are only dropped when the original execution
+ *     reaches its finally. DELETE does not call `inspectAndDetach` and does not
+ *     clear persisted pending tool/ask state. Releasing on it would let a
+ *     successor enter a session the old execution may still hold.
  *
- * `recordRunAbortRevocations` inserts that row inside `cancelRunsInTransaction`,
- * so a cancelled Run always starts with it; `deliverRunAborts` deletes it only
- * after `runtime.abort()` returns successfully, and keeps it (bumping attempts,
- * recording lastError) when the abort throws. "Owner cancelled and row absent"
- * therefore means the abort returned — the settling RT-26 waited for, expressed
- * as a deletion rather than as elapsed time.
+ * For the started case the reconciler only classifies and re-dispatches the
+ * owner's `runContinueJob`; the existing RT-26 terminal-owner hook obtains and
+ * persists the clean/detached proof and calls `releaseRecoveredSessionAdmission`.
+ * Until that proof exists the admission stays `recovering` — never released on
+ * time, lease expiry, or a 200 from DELETE.
  *
- * The owner status is read before the revocation on purpose. Under READ
- * COMMITTED each statement takes a fresh snapshot, so a row that disappears
- * between the two reads disappeared because the abort returned, which is the
- * fact we want; reading the revocation first could mistake "not inserted yet"
- * for "already aborted".
- *
- * `failed` and `completed` owners are deliberately NOT released. Those paths
- * write no `run_abort` row at all, so the same predicate would be vacuously
- * true, and worker-chain.spec.ts:546/:785 require them to stay parked until the
- * RT-26 proof lands. Widening that is a separate decision, not this unit.
+ * `failed` and `completed` owners are outside this rule entirely; their sessions
+ * keep the RT-26 park, which worker-chain.spec.ts:546/:785 guard.
  */
 async function releaseCancelledOwnerAdmission(
   tx: Prisma.TransactionClient,
@@ -276,21 +272,21 @@ async function releaseCancelledOwnerAdmission(
 ): Promise<boolean> {
   if (!row.ownerRunId) return false;
   if (row.state !== "owned" && row.state !== "recovering") return false;
+  // Only a session the runtime never entered can be handed back on the cancelled
+  // status alone: there is no shared session state for a successor to inherit.
+  // Once the runtime started, release requires the RT-26 clean/detached proof,
+  // which this layer cannot obtain — see listCancelledSessionsToRecover.
+  if (row.runtimeStartedAt !== null) return false;
   const cancelledOwner = await tx.run.findFirst({
     where: { id: row.ownerRunId, status: "cancelled" },
     select: { id: true },
   });
   if (!cancelledOwner) return false;
-  const pendingAbort = await tx.executionRevocation.findFirst({
-    where: { kind: "run_abort", subjectId: row.ownerRunId },
-    select: { id: true },
-  });
-  if (pendingAbort) return false;
   const updated = await tx.$executeRaw`
     UPDATE "agent_session_admissions"
     SET "state" = 'available',
         "expiresAt" = NULL,
-        "lastReleaseReason" = 'cancelled_owner_abort_confirmed',
+        "lastReleaseReason" = 'cancelled_before_runtime_started',
         "updatedAt" = ${now}
     WHERE "sessionKey" = ${row.sessionKey}
       AND "state" IN ('owned', 'recovering')
@@ -641,18 +637,13 @@ export async function recoverExpiredSessionAdmissions(
 }
 
 /**
- * FIX-STOP-01: frees sessions still held by a cancelled Run whose native abort
- * has been confirmed, whatever the admission state or expiry.
- * `recoverExpiredSessionAdmissions` cannot do this: it reads `owned` rows only,
- * so a Stop that parked the session as `recovering` was never swept and the
- * conversation stayed unusable past the lease horizon.
- *
- * The candidate filter is the same two-fact predicate as
- * `releaseCancelledOwnerAdmission`: owner cancelled AND no outstanding
- * `run_abort` revocation. Rows whose abort is still undelivered are excluded
- * here, so they stay parked exactly as RT-26 requires.
+ * FIX-STOP-01: frees sessions a cancelled Run holds but the runtime never
+ * entered. `recoverExpiredSessionAdmissions` cannot do this — it reads `owned`
+ * rows only, so a Stop that parked the session as `recovering` was never swept.
+ * Sessions whose runtime did start are deliberately excluded: they need the
+ * RT-26 proof, not a status check.
  */
-export async function releaseSettledCancelledSessionAdmissions(
+export async function releaseCancelledSessionsThatNeverStarted(
   prisma: PrismaClient,
   now = new Date(),
   limit = 100,
@@ -662,12 +653,8 @@ export async function releaseSettledCancelledSessionAdmissions(
       SELECT admission.* FROM "agent_session_admissions" admission
       JOIN "runs" run ON run."id" = admission."ownerRunId"
       WHERE admission."state" IN ('owned', 'recovering')
+        AND admission."runtimeStartedAt" IS NULL
         AND run."status" = 'cancelled'
-        AND NOT EXISTS (
-          SELECT 1 FROM "execution_revocations" revocation
-          WHERE revocation."kind" = 'run_abort'
-            AND revocation."subjectId" = admission."ownerRunId"
-        )
       ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
       LIMIT ${limit}
       FOR UPDATE OF admission SKIP LOCKED
@@ -680,6 +667,39 @@ export async function releaseSettledCancelledSessionAdmissions(
     }
     return released;
   });
+}
+
+/**
+ * FIX-STOP-01 classification for sessions a cancelled Run holds after the runtime
+ * started. An absent `run_abort` revocation only means the runtime accepted the
+ * abort request, so this returns the owners whose proof should be attempted — it
+ * does not release anything. The caller re-dispatches `runContinueJob(ownerRunId)`
+ * and the existing RT-26 terminal-owner hook does the rest: inspectAndDetach,
+ * checkpoint proof, acknowledgement, `releaseRecoveredSessionAdmission`, wake the
+ * successor.
+ *
+ * Keep the revocation in the predicate so a session is not probed while the abort
+ * is still outstanding; pending owners stay parked either way.
+ */
+export async function listCancelledSessionsToRecover(
+  prisma: PrismaClient,
+  limit = 100,
+): Promise<Array<{ sessionKey: string; runId: string }>> {
+  return prisma.$queryRaw<Array<{ sessionKey: string; runId: string }>>`
+    SELECT admission."sessionKey", admission."ownerRunId" AS "runId"
+    FROM "agent_session_admissions" admission
+    JOIN "runs" run ON run."id" = admission."ownerRunId"
+    WHERE admission."state" IN ('owned', 'recovering')
+      AND admission."runtimeStartedAt" IS NOT NULL
+      AND run."status" = 'cancelled'
+      AND NOT EXISTS (
+        SELECT 1 FROM "execution_revocations" revocation
+        WHERE revocation."kind" = 'run_abort'
+          AND revocation."subjectId" = admission."ownerRunId"
+      )
+    ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
+    LIMIT ${limit}
+  `;
 }
 
 export async function requeueExpiredSessionAdmissionWaiter(
