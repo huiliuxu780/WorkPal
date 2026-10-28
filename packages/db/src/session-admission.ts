@@ -59,6 +59,7 @@ type AdmissionRow = {
   heartbeatAt: Date | null;
   executionPreparedAt: Date | null;
   runtimeStartedAt: Date | null;
+  updatedAt: Date;
 };
 
 type RequestRow = {
@@ -704,6 +705,7 @@ export async function listCancelledSessionsToRecover(
     `;
     const owners: Array<{ sessionKey: string; runId: string }> = [];
     for (const row of rows) {
+      if (!row.ownerRunId) continue;
       // A Worker killed between Stop and its finally leaves the admission
       // `owned`. The RT-26 terminal-owner hook only looks for a `recovering`
       // owner, so hand it over in that shape first; the owner Run is terminal, so
@@ -712,7 +714,21 @@ export async function listCancelledSessionsToRecover(
       if (row.state === "owned") {
         await parkRunForRecovery(tx, row, "cancelled_after_runtime_start", now);
       }
-      if (row.ownerRunId) owners.push({ sessionKey: row.sessionKey, runId: row.ownerRunId });
+      // `updatedAt` is also the recovery-attempt cursor. Rotate every selected
+      // owner to the back before dispatching it; otherwise an unprovable oldest
+      // LIMIT-sized batch is selected forever and starves later sessions that
+      // could produce a valid RT-26 proof. Advancing by at least 1 ms keeps the
+      // cursor moving even in deterministic tests or under a stalled clock.
+      const attemptedAt = new Date(Math.max(now.getTime(), row.updatedAt.getTime() + 1));
+      await tx.agentSessionAdmission.updateMany({
+        where: {
+          sessionKey: row.sessionKey,
+          ownerRunId: row.ownerRunId,
+          state: "recovering",
+        },
+        data: { updatedAt: attemptedAt },
+      });
+      owners.push({ sessionKey: row.sessionKey, runId: row.ownerRunId });
     }
     return owners;
   });

@@ -381,6 +381,48 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     expect(await terminalHolders(sessionKey)).toHaveLength(1);
   });
 
+  it("rotates proof recovery candidates so one blocked batch cannot starve later sessions", async () => {
+    const candidates: Array<{ sessionKey: string; runId: string }> = [];
+    const oldest = Date.parse("2020-01-01T00:00:00.000Z");
+    for (let index = 0; index < 3; index += 1) {
+      const { bot, thread, sessionKey } = await newDirectSession();
+      const stopped = await newRun(bot.id, thread.id);
+      const admission = await ownAdmission(stopped, await claimRun(stopped), {
+        runtimeStarted: true,
+      });
+      await pressStop([{ id: stopped.id, taskId: stopped.taskId }], {
+        threadId: thread.id,
+        botId: bot.id,
+      });
+      await parkAsExecutorDoes(admission);
+      await deliverAbort(stopped.id);
+      await prisma.agentSessionAdmission.update({
+        where: { sessionKey },
+        data: { updatedAt: new Date(oldest + index) },
+      });
+      candidates.push({ sessionKey, runId: stopped.id });
+    }
+
+    const firstBatch = await listCancelledSessionsToRecover(
+      prisma,
+      new Date("2030-01-01T00:00:00.000Z"),
+      2,
+    );
+    expect(firstBatch.map((row) => row.runId)).toEqual(
+      candidates.slice(0, 2).map((row) => row.runId),
+    );
+
+    const secondBatch = await listCancelledSessionsToRecover(
+      prisma,
+      new Date("2030-01-01T00:00:01.000Z"),
+      2,
+    );
+    expect(
+      secondBatch.map((row) => row.runId),
+      "the next eligible session must be attempted even when the first batch cannot prove recovery",
+    ).toContain(candidates[2]?.runId);
+  });
+
   it("S2: appended steering is explicitly discarded and the session stays parked without a proof", async () => {
     const { bot, thread, sessionKey } = await newDirectSession();
     const stopped = await newRun(bot.id, thread.id);
