@@ -1,6 +1,6 @@
 # CARD-01D：Attention queue 与 Web 通知
 
-状态：`ready-to-merge`（PR #147 未合入；合入后才为 `done`）
+状态：`in-progress`（PR #147 未合入。复审轮的 P2 已在分支上修复；原验收项中有两项未闭合，等负责人裁决后才能重新进入验收，见下方"未闭合的原验收项"）
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 
@@ -76,5 +76,14 @@
 - 分支/PR：`codex/card-attention` / [#147](https://github.com/huiliuxu780/WorkPal/pull/147)，复审后代码 head `ad7f8d9`（此后只有证据与状态类文档提交）。
 - 证据：[docs/cards/evidence/card-attention](../cards/evidence/card-attention/README.md)（N1/N2/N3/N4 实拍、红绿、E2E 运行日志）。
 - 复审轮修复：通知正文改为按类型的固定文案（不再拼接 Bot 生成的 `presentation.text`，与更新后的 N4 原型一致，红绿见 `red-green/RED-p2-5-*`/`GREEN-p2-5-*`）；gate 开启时停用旧的按 Bot 通知（`shouldNotifyLegacyBrowser`），普通消息与终态不再提醒；N3 增加未读圆点与数字计数分离的断言和截图；修正 E2E 中失效的敏感扫描正则。
-- 代码 head `ad7f8d9` 的 CI：[run 40661217374](https://github.com/huiliuxu780/WorkPal/actions/runs/40661217374) 全部通过，`web` job 实跑 `card-attention.spec.ts` 2 passed；PR 最终 head 的 checks 见 #147。
-- 遗留（不阻塞本卡，已在证据 README 记录）：`@我` 在仓库中没有产品概念，未实现也未断言；`expiresAt` 已过但仍 pending 的行由超时任务结算，读取模型保留；`SOURCE_LIMIT=500` 截断、群来源不复查 bot 归档未覆盖。
+- P2 修复（复审意见 `4391533935`）：`FULL_E2E_GATED_SPEC` / `FULL_E2E_GATE_OFF_SPEC` 现在由 `E2E_GATE_SPECS` 推导，`card-attention.spec.ts`、`group-membership.spec.ts`、`message-group.spec.ts` 不再落进 gate-off 批次被自身 gate 跳过；`e2e-spec-selection.test.ts` 增加回归，断言每个 gate spec 都在完整 gate-on 批次且不被 gate-off 正则匹配。
+- 代码 head `ad7f8d9` 的 CI：[run 40661217374](https://github.com/huiliuxu780/WorkPal/actions/runs/40661217374)。该 run 经确认：`run_attempt=2` 单次 attempt 覆盖全部相关 job，`web` job 实跑 `card-attention.spec.ts` 2 passed（不是 skipped、不是只收集）。P2 修复提交之后的 head 需要重新跑最终 CI，判定以新的 head 为准。
+
+## 未闭合的原验收项（不是开发可以自行关闭的）
+
+| 项 | 现状 | 需要的决定 |
+| --- | --- | --- |
+| `@我` 角标 | 仓库里没有"提及我"的数据模型、RPC 字段或 UI；未实现、未断言。验收原文仍要求"未读、待处理、`@我` 使用文字、形状与颜色共同区分"、"语义在测试中互不混用" | 负责人二选一：补齐 `@我` 能力（需要新范围与原型）；或正式修改任务书与已确认原型，把 `@我` 拆到后续任务 |
+| `SOURCE_LIMIT = 500` | 单来源超过 500 条时静默截断，`total` 少算——这是读取模型的真实缺陷，不是缺测试 | 修查询（提高上限/分页统计真实总数）或明确产品上限并写进验收 |
+
+其他已记录、暂未处理：`expiresAt` 已过但仍 `pending` 的行按设计保留（与验收"expired 排除"的字面要求冲突）；群来源不复查 `bot.archivedAt`。

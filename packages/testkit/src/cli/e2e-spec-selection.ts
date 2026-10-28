@@ -1,14 +1,4 @@
 /**
- * Full E2E runs need two gate-compatible batches: the unified-card and
- * private-pair specs require feature gates that make the legacy card specs
- * fail, so they cannot share one harness process with the rest of the suite.
- */
-export const FULL_E2E_GATE_OFF_SPEC =
-  "^(?!.*(?:card-ui-interactions\\.spec\\.ts|card-display-content\\.spec\\.ts|peer-messages\\.spec\\.ts)).*\\.spec\\.ts$";
-export const FULL_E2E_GATED_SPEC =
-  "card-ui-interactions.spec.ts|card-display-content.spec.ts|peer-messages.spec.ts";
-
-/**
  * Specs that need a feature gate which changes legacy surfaces (unified
  * cards or private pairs). They must run in their own harness process.
  */
@@ -20,6 +10,14 @@ export const E2E_GATE_SPECS = [
   "group-membership.spec.ts",
   "message-group.spec.ts",
 ] as const;
+
+// Full runs select by these two constants only, so both are derived from the
+// list above: a gate-dependent spec left in the gate-off batch would be skipped
+// by its own gate check and silently lose its coverage.
+const GATE_SPEC_PATTERN = E2E_GATE_SPECS.map((name) => name.replace(/[.]/g, "\\.")).join("|");
+
+export const FULL_E2E_GATE_OFF_SPEC = `^(?!.*(?:${GATE_SPEC_PATTERN})).*\\.spec\\.ts$`;
+export const FULL_E2E_GATED_SPEC = E2E_GATE_SPECS.join("|");
 
 /**
  * A selective CI run can union gate-on and gate-off specs from different
