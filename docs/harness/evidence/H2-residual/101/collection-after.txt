@@ -1,0 +1,3 @@
+Listing tests:
+  [chromium] › execution-card-visuals.spec.ts:76:1 › capture execution card states across widths and themes
+Total: 1 test in 1 file

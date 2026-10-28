@@ -1,0 +1,22 @@
+
+ReferenceError: __dirname is not defined in ES module scope
+
+   at execution-card-visuals.spec.ts:26
+
+  24 | const outDir =
+  25 |   process.env.WORKPAL_CARD_SHOTS_DIR ??
+> 26 |   join(__dirname, "..", "..", "..", ".zcode", "tmp", "execution-card-shots");
+     |        ^
+  27 |
+  28 | test.skip(!enabled, "set WORKPAL_CARD_SHOTS=1 to capture Execution Card visuals");
+  29 | test.describe.configure({ mode: "serial" });
+    at /Users/rivers/Documents/WorkPal-worktrees/h2-101/apps/web/e2e/execution-card-visuals.spec.ts:26:8
+
+Error: No tests found.
+Make sure that arguments are regular expressions matching test files.
+You may need to escape symbols like "$" or "*" and quote the arguments.
+Listing tests:
+Total: 0 tests in 0 files
+undefined
+/Users/rivers/Documents/WorkPal-worktrees/h2-101/apps/web:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: playwright test execution-card-visuals.spec.ts --list
