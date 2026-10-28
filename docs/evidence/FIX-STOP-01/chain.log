@@ -43,3 +43,33 @@ exit=0
 present and the retry stays queued with the model never called; once the Worker sweeps the abort
 and deletes the row, the retry takes the session, leaves queued, and its reply reaches the
 transcript. :546 (Routine failure) and :785 (outbox restart) are untouched and still pass.
+
+
+## 3. pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts — 6 passed, exit 0
+
+Run because the change is in session admission, which the AgentScope product journey traverses.
+
+$ pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
+exit=0
+
+  ✓  1 [chromium] › e2e/agentscope-product.spec.ts:6:1 › Web chat completes a Java Harness tool round trip (5.2s)
+  ✓  2 [chromium] › e2e/agentscope-product.spec.ts:116:1 › Java Run reaches a duration budget and Web cancels its waiting card (34.1s)
+  ✓  3 [chromium] › e2e/agentscope-product.spec.ts:236:1 › Web chat resumes a native Harness plan after approval (4.0s)
+  ✓  4 [chromium] › e2e/agentscope-product.spec.ts:358:1 › Web chat never offers native subagent delegation while suspended (3.7s)
+  ✓  5 [chromium] › e2e/agentscope-product.spec.ts:433:1 › Java publishes a structured Plan and Step into one Web execution (4.3s)
+  ✓  6 [chromium] › e2e/agentscope-product.spec.ts:630:1 › Web chat refuses background helper spawns while delegation is suspended (3.8s)
+::notice title=🎭 Playwright Run Summary::  6 passed (56.8s)
+  6 passed (56.8s)
+
+## Summary
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:worker-chain` (two-branch :402) | exit 0, 5 passed (3.8m) |
+| `pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts` | exit 0, 6 passed (56.8s) |
+| `pnpm test:postgres` | exit 0, 51 files / 455 tests (see postgres-group.txt) |
+
+Still outstanding for this card and not covered by anything above: the real-model manual run
+(dev:app at the repository root, Stop, then a new message, with a screenshot and the Run/admission
+rows), the conversation header assertion, the absence of "could not be proven" in the worker log,
+and the RT-25/RT-26/CANCEL-01 acceptance writebacks.
