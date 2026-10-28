@@ -1,0 +1,34 @@
+# RUNTIME-RELIABILITY-01 — cross-process correlation journeys
+# Source: a real 'pnpm test:worker-chain' run — 5 passed (4.2m), exit 0.
+# worker-chain starts the real Java runtime (never scripted), the API in-process,
+# and the Worker as a detached child process, plus a local model-protocol fixture.
+#
+# NOTE on the missing rakazo-worker lines: worker-chain spawns the Worker with
+# stdio ['ignore','pipe','pipe'] and keeps the output in a diagnostic buffer
+# instead of forwarding it, so Worker log lines never reach this file. That is a
+# harness limitation, not a gap in the correlation wiring: the Worker's job
+# correlation is what puts trace.id into the payload the adapter then forwards,
+# which is why the Java lines below carry the API's trace.id and a parent span.
+
+## SUCCESS journey — one trace.id across the API and the Java Runtime
+## trace.id=277ce8f910d007bf426145d7e2a9f253
+16:33:27.685 INFO  http.request.completed service.name=rakazo-api request.id=47098f81-5b85-4606-939e-42f3e65d7809 trace.id=277ce8f910d007bf426145d7e2a9f253 span.id=cab5986d0a160445 user.id=TUvgdwIybBo5HNYwg6ujrAh0KS8NAHSU space.id=4dbedfe75904e38b6a267b548b9f5010 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=100
+{"timestamp":"2026-10-28T16:33:28.276620Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","trace.id":"277ce8f910d007bf426145d7e2a9f253","parent.span.id":"f5b50148c83f05bc","request.id":"53fae856-66a2-4b17-8733-eb0978114866","span.id":"96d64f55f54da30a","run.id":"cmvsc2xkf0009ynx0bd5kwavu","thread.id":"cmvsc2xjk0005ynx00ek4en27","bot.id":"ea6f9b14-319f-4ec8-8539-47eb37c204c3","attempt.id":"cmvsc2xnw0001ebx0pvzviv60","s
+{"timestamp":"2026-10-28T16:33:29.006647Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","trace.id":"277ce8f910d007bf426145d7e2a9f253","parent.span.id":"f5b50148c83f05bc","request.id":"53fae856-66a2-4b17-8733-eb0978114866","span.id":"96d64f55f54da30a","run.id":"cmvsc2xkf0009ynx0bd5kwavu","thread.id":"cmvsc2xjk0005ynx00ek4en27","bot.id":"ea6f9b14-319f-4ec8-8539-47eb37c204c3","attempt.id":"cmvsc2xnw0001ebx0pvzviv60",
+{"timestamp":"2026-10-28T16:33:29.373742Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","trace.id":"277ce8f910d007bf426145d7e2a9f253","parent.span.id":"f5b50148c83f05bc","request.id":"53fae856-66a2-4b17-8733-eb0978114866","span.id":"96d64f55f54da30a","run.id":"cmvsc2xkf0009ynx0bd5kwavu","thread.id":"cmvsc2xjk0005ynx00ek4en27","bot.id":"ea6f9b14-319f-4ec8-8539-47eb37c204c3","attempt.id":"cmvsc2xnw0001ebx0pvzviv60","
+
+## CONTROLLED FAILURE journey — Worker killed mid-Run
+## trace.id=729b66e893a7d035a3fcb30ab97b9658
+16:36:55.393 INFO  http.request.completed service.name=rakazo-api request.id=8325d862-fead-481c-9457-7b84178ed59c trace.id=729b66e893a7d035a3fcb30ab97b9658 span.id=00e76e24f86aa73e user.id=q8mp9wktfcodTbtPBNdajv6aPpjGJilA space.id=c0af608de229c144b8ed28fddbae82d9 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=52
+{"timestamp":"2026-10-28T16:36:55.717552Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","trace.id":"729b66e893a7d035a3fcb30ab97b9658","parent.span.id":"773015150d93c93c","request.id":"84407e6e-ce83-49e7-b42e-d4a5cf5b310d","span.id":"e2454915369e08db","run.id":"cmvsc7du6002rynx0iz9obiqa","thread.id":"cmvsc7cv3002hynx0vkk66v3y","bot.id":"177a7c1f-7caf-4c35-9e3f-42a45694cadc","attempt.id":"cmvsc7dwj000ablx0ha66clf7","session.key":"agentscope:chat:v1:ed73c7cb986d51b9963687ff473d
+{"timestamp":"2026-10-28T16:36:55.755301Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","trace.id":"729b66e893a7d035a3fcb30ab97b9658","parent.span.id":"773015150d93c93c","request.id":"84407e6e-ce83-49e7-b42e-d4a5cf5b310d","span.id":"e2454915369e08db","run.id":"cmvsc7du6002rynx0iz9obiqa","thread.id":"cmvsc7cv3002hynx0vkk66v3y","bot.id":"177a7c1f-7caf-4c35-9e3f-42a45694cadc","attempt.id":"cmvsc7dwj000ablx0ha66clf7","session.key":"agentscope:chat:v1:ed73c7cb986d51b9963687ff47
+{"timestamp":"2026-10-28T16:37:24.503542Z","level":"error","message":"runtime.run.failed","service.name":"rakazo-agent-runtime","trace.id":"729b66e893a7d035a3fcb30ab97b9658","parent.span.id":"773015150d93c93c","request.id":"84407e6e-ce83-49e7-b42e-d4a5cf5b310d","span.id":"e2454915369e08db","run.id":"cmvsc7du6002rynx0iz9obiqa","thread.id":"cmvsc7cv3002hynx0vkk66v3y","bot.id":"177a7c1f-7caf-4c35-9e3f-42a45694cadc","attempt.id":"cmvsc7dwj000ablx0ha66clf7","session.key":"agentscope:chat:v1:ed73c7cb986d51b9963687ff473de
+
+## Java event census for this run
+  12 "message":"runtime.stream.started"
+  12 "message":"runtime.run.accepted"
+   8 "message":"runtime.run.completed"
+   3 "message":"runtime.run.cancelled"
+   1 "message":"runtime.run.failed"
+
+## proof the tool-bridge boundary is reached (absent from the Java unit suite)

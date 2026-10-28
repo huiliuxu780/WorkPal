@@ -1,0 +1,17 @@
+# RUNTIME-RELIABILITY-01 — Java flake GREEN + stability
+# fix restored (md5 of RuntimeEngine.java verified identical to the pre-revert copy)
+
+## targeted regression test, fix applied
+AgentScopeBackgroundProbeTest#deliveryMarkLandsInTheOwningSessionsSingleNativeTaskRecord
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+
+## full Java suite, 5 consecutive runs (no same-SHA rerun-to-green)
+run 1: Tests run: 128, Failures: 0, Errors: 0, Skipped: 0 BUILD SUCCESS
+run 2: Tests run: 128, Failures: 0, Errors: 0, Skipped: 0 BUILD SUCCESS
+run 3: Tests run: 128, Failures: 0, Errors: 0, Skipped: 0 BUILD SUCCESS
+run 4: Tests run: 128, Failures: 0, Errors: 0, Skipped: 0 BUILD SUCCESS
+run 5: Tests run: 128, Failures: 0, Errors: 0, Skipped: 0 BUILD SUCCESS
+
+## full Java suite after the correlation logging change
+run: Tests run: 128, Failures: 0, Errors: 0, Skipped: 0 BUILD SUCCESS
