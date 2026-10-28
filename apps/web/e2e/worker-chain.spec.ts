@@ -399,7 +399,7 @@ test("a user Run stays queued while the Worker is down and is claimed and execut
   }
 });
 
-test("a retry after an in-flight cancellation stays queued behind recovering admission", async ({
+test("a retry after an in-flight cancellation stays queued until the abort is confirmed", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -440,6 +440,12 @@ test("a retry after an in-flight cancellation stays queued behind recovering adm
               release = end;
             },
           },
+        },
+        // FIX-STOP-01: the retry now actually runs once the abort is confirmed,
+        // so it needs its own answer. Consumed only in the released branch.
+        {
+          ...expectRetryFixture,
+          response: { type: "text", text: retryReply },
         },
       ],
     });
@@ -501,32 +507,48 @@ test("a retry after an in-flight cancellation stays queued behind recovering adm
       await page.waitForTimeout(500);
     }
 
+    // Branch A premise (the assertions above): the Worker is stopped, so its
+    // abort sweep has not run and the `run_abort` revocation Stop wrote is still
+    // there. Cancelling a Run is therefore not by itself permission to enter its
+    // session — the retry stays queued and the model is never called.
+    await expect(
+      db.prisma.executionRevocation.findFirst({
+        where: { kind: "run_abort", subjectId: original.id },
+      }),
+      "Stop must leave a run_abort revocation for the Worker sweep",
+    ).resolves.not.toBeNull();
+
+    // Branch B: the Worker starts, its sweep delivers the abort and deletes the
+    // revocation, so the cancelled owner's hold is settled. The retry must then
+    // take the session instead of waiting for the five-minute TTL or a Runtime
+    // checkpoint proof that can never arrive for an aborted execution.
     await startWorker();
     await expect
       .poll(
-        async () =>
-          (
-            await db.prisma.agentSessionAdmission.findFirstOrThrow({
-              where: { ownerRunId: original.id },
-            })
-          ).state,
-        { timeout: 30_000 },
+        async () => {
+          const holder = await db.prisma.agentSessionAdmission.findFirst({
+            where: { ownerRunId: original.id },
+          });
+          return holder === null ? "released" : holder.state;
+        },
+        { timeout: 90_000 },
       )
-      .toBe("recovering");
-    await page.waitForTimeout(12_000);
-    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
-    expect(final).toMatchObject({ status: "queued", leaseOwner: null, error: null });
+      .toBe("released");
+    await expect
+      .poll(
+        async () =>
+          (await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } })).status,
+        { timeout: 90_000 },
+      )
+      .not.toBe("queued");
+    await expect(page.getByTestId("transcript").getByText(retryReply)).toBeVisible({
+      timeout: 90_000,
+    });
     const source = await db.prisma.run.findUniqueOrThrow({ where: { id: original.id } });
     expect(source.status).toBe("cancelled");
+    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
     expect(final.taskId).toBe(original.taskId);
     expect(final.threadId).toBe(original.threadId);
-    expect(task.requests.length).toBe(requestsBeforeRetry);
-    await expect(page.getByTestId("transcript").getByText(retryReply)).toHaveCount(0);
-    await expect(
-      db.prisma.agentSessionAdmissionRequest.findFirstOrThrow({
-        where: { runId: retried.runId, state: "queued" },
-      }),
-    ).resolves.toMatchObject({ runId: retried.runId, state: "queued" });
     task.assertComplete();
     await recordTimings();
   } finally {

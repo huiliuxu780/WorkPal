@@ -1,30 +1,24 @@
-# FIX-STOP-01 guard run — the RT-25/RT-26 neighbours must not weaken
+# Guard suites at the fix SHA — the RT-25/RT-26 neighbours must not weaken
 
-fix SHA: 6ce9376cfbe4412fba926622529fda5797f97a41. Date 2026-10-28. Same isolated PostgreSQL.
+Date 2026-10-28. Host macOS arm64, Node v24.18.0, pnpm 9.15.0.
+Fix SHA: 55bb228 (narrowed scheme B: cancelled owner AND confirmed native abort).
+Test: packages/db/src/stop-session-release.postgres.test.ts (six cases).
+Database: throwaway postgres:16 container on an OS-assigned port, database
+workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's agent:doctor plan
+(conflicts: none). Each suite clones an isolated database from the migration template and drops it
+in afterAll. Prerequisite: pnpm --filter @rakazo/db generate and prisma migrate deploy.
+No real model, no scripted runtime, no capture proxy: persistence layer only, driving the production
+cancel policy (applyCancelTerminalPolicy + cancelPolicyFor("user_stopped"), the transaction body of
+apps/api stopThreadRuns) and the admission functions executor.ts calls.
+Host paths below are replaced with <worktree>. No credential appears in these files.
 
-Includes the two assertions that a lazy fix would break:
-  - session-admission: 'moves every crash point to recovering after expiry and never hands off'
-  - session-checkpoint: 'keeps an RT-25 recovering owner until a fresh proof is acknowledged'
-                            'releases a suspended admission only after the proof is acknowledged'
+Includes the two assertions a lazy fix would break:
+  session-admission: "moves every crash point to recovering after expiry and never hands off"
+  session-checkpoint: "keeps an RT-25 recovering owner until a fresh proof is acknowledged"
+                      "releases a suspended admission only after the proof is acknowledged"
+Plus cancel-terminal (12), effect-execution-fence (18) and wait-timeouts.
 
-$ pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts \
-    packages/db/src/session-admission.postgres.test.ts packages/db/src/session-checkpoint.postgres.test.ts \
-    packages/db/src/cancel-terminal.postgres.test.ts packages/db/src/effect-execution-fence.postgres.test.ts \
-    packages/db/src/wait-timeouts.postgres.test.ts --no-file-parallelism
-
-
-[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m<worktree>[39m
-
- [32m✓[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 628[2mms[22m[39m
- [32m✓[39m packages/db/src/cancel-terminal.postgres.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1284[2mms[22m[39m
- [32m✓[39m packages/db/src/effect-execution-fence.postgres.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 2624[2mms[22m[39m
-       [33m[2m✓[22m[39m rejects a claim whose lease expires while it waits for the effect lock [33m 2024[2mms[22m[39m
- [32m✓[39m packages/db/src/session-admission.postgres.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 967[2mms[22m[39m
- [32m✓[39m packages/db/src/session-checkpoint.postgres.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 777[2mms[22m[39m
- [32m✓[39m packages/db/src/wait-timeouts.postgres.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 790[2mms[22m[39m
+$ pnpm exec vitest run <six files> --no-file-parallelism
 
 [2m Test Files [22m [1m[32m6 passed[39m[22m[90m (6)[39m
-[2m      Tests [22m [1m[32m65 passed[39m[22m[90m (65)[39m
-[2m   Start at [22m 01:36:35
-[2m   Duration [22m 9.81s[2m (transform 810ms, setup 29ms, import 2.12s, tests 7.07s, environment 0ms)[22m
-
+[2m      Tests [22m [1m[32m66 passed[39m[22m[90m (66)[39m

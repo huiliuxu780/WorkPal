@@ -1,179 +1,128 @@
-# FIX-STOP-01 red — S1-S4 before the fix
+# FIX-STOP-01 red — the current test file against the unfixed implementation
 
-baseline SHA:  e72108f (test present, no fix; tree = main a409140 + the S1-S4 test)
-fix SHA:       6ce9376
-test file:     packages/db/src/stop-session-release.postgres.test.ts
-date:          2026-10-28
-host:          macOS arm64, Node v24.18.0, pnpm 9.15.0
+Baseline: the two source files restored from main a409140 with `git show a409140:<path>`
+  packages/db/src/session-admission.ts
+  apps/worker/src/session-admission-reconciler.ts
+The test file is the current one, so red and green run the identical cases.
 
-Database: throwaway postgres:16 container, OS-assigned host port, database
-workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's 'pnpm agent:doctor'
-plan (conflicts: none). Each suite clones an isolated database from the migration template and
-drops it in afterAll. No production or shared database was used. Credentials redacted; they were
-test-only. Prerequisite: 'pnpm --filter @rakazo/db generate' and 'prisma migrate deploy'.
+Date 2026-10-28. Host macOS arm64, Node v24.18.0, pnpm 9.15.0.
+Fix SHA: 55bb228 (narrowed scheme B: cancelled owner AND confirmed native abort).
+Test: packages/db/src/stop-session-release.postgres.test.ts (six cases).
+Database: throwaway postgres:16 container on an OS-assigned port, database
+workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's agent:doctor plan
+(conflicts: none). Each suite clones an isolated database from the migration template and drops it
+in afterAll. Prerequisite: pnpm --filter @rakazo/db generate and prisma migrate deploy.
+No real model, no scripted runtime, no capture proxy: persistence layer only, driving the production
+cancel policy (applyCancelTerminalPolicy + cancelPolicyFor("user_stopped"), the transaction body of
+apps/api stopThreadRuns) and the admission functions executor.ts calls.
+Host paths below are replaced with <worktree>. No credential appears in these files.
 
-Real model / deterministic fixture / scripted: none. Persistence layer only, driving the
-production cancel policy (applyCancelTerminalPolicy + cancelPolicyFor('user_stopped'), the
-transaction body of apps/api stopThreadRuns) and the admission functions executor.ts calls.
-
-Note on the filename: .gitignore excludes *.log, so red.log and green.log are committed with
-'git add -f' to keep the names the task card requires.
-
-$ VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 \
+Command (identical for red and green):
+  VERIFY_DATABASE=1 DATABASE_URL=postgresql://***:***@127.0.0.1:<port>/workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 \
     pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts --no-file-parallelism
+
+4 failed / 2 passed. The four reds are the target defect: even after the Worker's abort sweep
+confirms the native abort, the session is never released. S3 (Stop racing a completed Run) and the
+failed-owner boundary guard already pass at baseline, which is correct — they exist to catch a fix
+that over-reaches, not to catch this defect.
 
 
 [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m<worktree>[39m
 
- [31m❯[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[33m 768[2mms[22m[39m
-[31m     [31m×[31m S1: cancelling an in-flight generation lets the next message run[39m[32m 152[2mms[22m[39m
-[31m     [31m×[31m S1b: cancelling before the runtime started must not wait out the admission TTL[39m[32m 74[2mms[22m[39m
-[31m     [31m×[31m S2: appended steering is explicitly discarded and the conversation keeps working[39m[32m 90[2mms[22m[39m
-     [32m✓[39m S3: Stop that lands on an already terminal Run changes nothing and leaves the session usable[32m 75[2mms[22m[39m
-[31m     [31m×[31m S4: a worker restart or expired lease must still free a session whose owner was cancelled[39m[32m 87[2mms[22m[39m
+ [31m❯[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[33m 488[2mms[22m[39m
+[31m     [31m×[31m S1: cancelling an in-flight generation hands the session over only after the abort is confirmed[39m[32m 78[2mms[22m[39m
+[31m     [31m×[31m S1b: cancelling before the runtime started follows the same two facts, not the TTL[39m[32m 34[2mms[22m[39m
+[31m     [31m×[31m S2: appended steering is explicitly discarded and the session follows the same abort fact[39m[32m 38[2mms[22m[39m
+     [32m✓[39m S3: Stop that lands on an already terminal Run changes nothing and leaves the session usable[32m 39[2mms[22m[39m
+[31m     [31m×[31m S4: a worker restart or expired lease frees a cancelled session only after the abort is confirmed[39m[32m 41[2mms[22m[39m
+     [32m✓[39m a failed owner stays parked: the boundary worker-chain.spec.ts:546 and :785 guard[32m 23[2mms[22m[39m
 
 [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
-[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS1: cancelling an in-flight generation lets the next message run
-[31m[1mAssertionError[22m: S1: Stop must hand the session to the next Run in the same event-check tick: expected { scenario: 'S1', …(4) } to deeply equal { scenario: 'S1', …(4) }[39m
+[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS1: cancelling an in-flight generation hands the session over only after the abort is confirmed
+[31m[1mAssertionError[22m: once the abort is confirmed the next Run must own the session in the same tick: expected { phase: 'abort-confirmed', …(4) } to deeply equal { phase: 'abort-confirmed', …(4) }[39m
 
 [32m- Expected[39m
 [31m+ Received[39m
 
 [2m  {[22m
-[32m-   "admissionHeldByTerminalRun": [],[39m
-[31m+   "admissionHeldByTerminalRun": [[39m
+[32m-   "admission": "acquired",[39m
+[31m+   "admission": "recovering",[39m
+[2m    "expected": "cmvrgb5mc0006ghx01sroocnq",[22m
+[2m    "phase": "abort-confirmed",[22m
+[32m-   "runId": "cmvrgb5mc0006ghx01sroocnq",[39m
+[32m-   "terminalHolders": [],[39m
+[31m+   "runId": null,[39m
+[31m+   "terminalHolders": [[39m
 [31m+     {[39m
-[31m+       "ownerRunId": "cmvqyi4690003c3x0j9aa7ytt",[39m
+[31m+       "ownerRunId": "cmvrgb5kw0003ghx0qiw7yr9y",[39m
 [31m+       "runStatus": "cancelled",[39m
 [31m+       "state": "recovering",[39m
 [31m+     },[39m
 [31m+   ],[39m
-[2m    "expectedNextRunId": "cmvqyi4930006c3x09xvkxpj9",[22m
-[32m-   "nextRunAdmission": "acquired",[39m
-[32m-   "nextRunId": "cmvqyi4930006c3x09xvkxpj9",[39m
-[31m+   "nextRunAdmission": "recovering",[39m
-[31m+   "nextRunId": null,[39m
-[2m    "scenario": "S1",[22m
 [2m  }[22m
 
-[36m [2m❯[22m expectSessionHandedOver packages/db/src/stop-session-release.postgres.test.ts:[2m277:7[22m[39m
-    [90m275|[39m       }[33m,[39m
-    [90m276|[39m       `${label}: Stop must hand the session to the next Run in the sam…
-    [90m277|[39m     )[33m.[39m[34mtoEqual[39m({
+[36m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m335:7[22m[39m
+    [90m333|[39m       }[33m,[39m
+    [90m334|[39m       "once the abort is confirmed the next Run must own the session i…
+    [90m335|[39m     )[33m.[39m[34mtoEqual[39m({
     [90m   |[39m       [31m^[39m
-    [90m278|[39m       scenario[33m:[39m label[33m,[39m
-    [90m279|[39m       nextRunAdmission[33m:[39m [32m"acquired"[39m[33m,[39m
-[90m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m303:5[22m[39m
+    [90m336|[39m       phase[33m:[39m [32m"abort-confirmed"[39m[33m,[39m
+    [90m337|[39m       admission[33m:[39m [32m"acquired"[39m[33m,[39m
 
 [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
 
-[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS1b: cancelling before the runtime started must not wait out the admission TTL
-[31m[1mAssertionError[22m: S1b: Stop must hand the session to the next Run in the same event-check tick: expected { scenario: 'S1b', …(4) } to deeply equal { scenario: 'S1b', …(4) }[39m
+[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS1b: cancelling before the runtime started follows the same two facts, not the TTL
+[31m[1mAssertionError[22m: expected 'queued' to be 'acquired' // Object.is equality[39m
 
-[32m- Expected[39m
-[31m+ Received[39m
+Expected: [32m"[7macquir[27med"[39m
+Received: [31m"[7mqueu[27med"[39m
 
-[2m  {[22m
-[32m-   "admissionHeldByTerminalRun": [],[39m
-[31m+   "admissionHeldByTerminalRun": [[39m
-[31m+     {[39m
-[31m+       "ownerRunId": "cmvqyi4a7000ac3x0m81ge9pp",[39m
-[31m+       "runStatus": "cancelled",[39m
-[31m+       "state": "owned",[39m
-[31m+     },[39m
-[31m+   ],[39m
-[2m    "expectedNextRunId": "cmvqyi4bd000dc3x0ctbwqu73",[22m
-[32m-   "nextRunAdmission": "acquired",[39m
-[32m-   "nextRunId": "cmvqyi4bd000dc3x0ctbwqu73",[39m
-[31m+   "nextRunAdmission": "queued",[39m
-[31m+   "nextRunId": null,[39m
-[2m    "scenario": "S1b",[22m
-[2m  }[22m
-
-[36m [2m❯[22m expectSessionHandedOver packages/db/src/stop-session-release.postgres.test.ts:[2m277:7[22m[39m
-    [90m275|[39m       }[33m,[39m
-    [90m276|[39m       `${label}: Stop must hand the session to the next Run in the sam…
-    [90m277|[39m     )[33m.[39m[34mtoEqual[39m({
-    [90m   |[39m       [31m^[39m
-    [90m278|[39m       scenario[33m:[39m label[33m,[39m
-    [90m279|[39m       nextRunAdmission[33m:[39m [32m"acquired"[39m[33m,[39m
-[90m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m322:5[22m[39m
+[36m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m375:27[22m[39m
+    [90m373|[39m     [34mexpect[39m(([35mawait[39m [34mconfirmNativeAbort[39m(stopped[33m.[39mid))[33m.[39mcount)[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+    [90m374|[39m     [35mconst[39m released [33m=[39m [35mawait[39m [34mattempt[39m(successor[33m,[39m now)[33m;[39m
+    [90m375|[39m     [34mexpect[39m(released[33m.[39mkind)[33m.[39m[34mtoBe[39m([32m"acquired"[39m)[33m;[39m
+    [90m   |[39m                           [31m^[39m
+    [90m376|[39m     [34mexpect[39m([35mawait[39m [34mterminalHolders[39m(sessionKey))[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m377|[39m   })[33m;[39m
 
 [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯[22m[39m
 
-[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS2: appended steering is explicitly discarded and the conversation keeps working
-[31m[1mAssertionError[22m: S2: Stop must hand the session to the next Run in the same event-check tick: expected { scenario: 'S2', …(4) } to deeply equal { scenario: 'S2', …(4) }[39m
+[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS2: appended steering is explicitly discarded and the session follows the same abort fact
+[31m[1mAssertionError[22m: expected 'recovering' to be 'acquired' // Object.is equality[39m
 
-[32m- Expected[39m
-[31m+ Received[39m
+Expected: [32m"acquired"[39m
+Received: [31m"recovering"[39m
 
-[2m  {[22m
-[32m-   "admissionHeldByTerminalRun": [],[39m
-[31m+   "admissionHeldByTerminalRun": [[39m
-[31m+     {[39m
-[31m+       "ownerRunId": "cmvqyi4c8000hc3x09dz28tmk",[39m
-[31m+       "runStatus": "cancelled",[39m
-[31m+       "state": "recovering",[39m
-[31m+     },[39m
-[31m+   ],[39m
-[2m    "expectedNextRunId": "cmvqyi4dz000oc3x0203ku20l",[22m
-[32m-   "nextRunAdmission": "acquired",[39m
-[32m-   "nextRunId": "cmvqyi4dz000oc3x0203ku20l",[39m
-[31m+   "nextRunAdmission": "recovering",[39m
-[31m+   "nextRunId": null,[39m
-[2m    "scenario": "S2",[22m
-[2m  }[22m
-
-[36m [2m❯[22m expectSessionHandedOver packages/db/src/stop-session-release.postgres.test.ts:[2m277:7[22m[39m
-    [90m275|[39m       }[33m,[39m
-    [90m276|[39m       `${label}: Stop must hand the session to the next Run in the sam…
-    [90m277|[39m     )[33m.[39m[34mtoEqual[39m({
-    [90m   |[39m       [31m^[39m
-    [90m278|[39m       scenario[33m:[39m label[33m,[39m
-    [90m279|[39m       nextRunAdmission[33m:[39m [32m"acquired"[39m[33m,[39m
-[90m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m351:5[22m[39m
+[36m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m409:27[22m[39m
+    [90m407|[39m     [34mexpect[39m(([35mawait[39m [34mconfirmNativeAbort[39m(stopped[33m.[39mid))[33m.[39mcount)[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+    [90m408|[39m     [35mconst[39m released [33m=[39m [35mawait[39m [34mattempt[39m(successor[33m,[39m now)[33m;[39m
+    [90m409|[39m     [34mexpect[39m(released[33m.[39mkind)[33m.[39m[34mtoBe[39m([32m"acquired"[39m)[33m;[39m
+    [90m   |[39m                           [31m^[39m
+    [90m410|[39m     [34mexpect[39m([35mawait[39m [34mterminalHolders[39m(sessionKey))[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m411|[39m   })[33m;[39m
 
 [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯[22m[39m
 
-[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS4: a worker restart or expired lease must still free a session whose owner was cancelled
-[31m[1mAssertionError[22m: S4: Stop must hand the session to the next Run in the same event-check tick: expected { scenario: 'S4', …(4) } to deeply equal { scenario: 'S4', …(4) }[39m
+[41m[1m FAIL [22m[49m packages/db/src/stop-session-release.postgres.test.ts[2m > [22mStop must hand the session execution right back (PostgreSQL)[2m > [22mS4: a worker restart or expired lease frees a cancelled session only after the abort is confirmed
+[31m[1mAssertionError[22m: expected 'recovering' to be 'acquired' // Object.is equality[39m
 
-[32m- Expected[39m
-[31m+ Received[39m
+Expected: [32m"acquired"[39m
+Received: [31m"recovering"[39m
 
-[2m  {[22m
-[32m-   "admissionHeldByTerminalRun": [],[39m
-[31m+   "admissionHeldByTerminalRun": [[39m
-[31m+     {[39m
-[31m+       "ownerRunId": "cmvqyi4gu000yc3x08x1vp1w3",[39m
-[31m+       "runStatus": "cancelled",[39m
-[31m+       "state": "recovering",[39m
-[31m+     },[39m
-[31m+   ],[39m
-[2m    "expectedNextRunId": "cmvqyi4i60011c3x05jkbrpok",[22m
-[32m-   "nextRunAdmission": "acquired",[39m
-[32m-   "nextRunId": "cmvqyi4i60011c3x05jkbrpok",[39m
-[31m+   "nextRunAdmission": "recovering",[39m
-[31m+   "nextRunId": null,[39m
-[2m    "scenario": "S4",[22m
-[2m  }[22m
-
-[36m [2m❯[22m expectSessionHandedOver packages/db/src/stop-session-release.postgres.test.ts:[2m277:7[22m[39m
-    [90m275|[39m       }[33m,[39m
-    [90m276|[39m       `${label}: Stop must hand the session to the next Run in the sam…
-    [90m277|[39m     )[33m.[39m[34mtoEqual[39m({
-    [90m   |[39m       [31m^[39m
-    [90m278|[39m       scenario[33m:[39m label[33m,[39m
-    [90m279|[39m       nextRunAdmission[33m:[39m [32m"acquired"[39m[33m,[39m
-[90m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m415:5[22m[39m
+[36m [2m❯[22m packages/db/src/stop-session-release.postgres.test.ts:[2m487:27[22m[39m
+    [90m485|[39m     [34mexpect[39m(([35mawait[39m [34mconfirmNativeAbort[39m(stopped[33m.[39mid))[33m.[39mcount)[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+    [90m486|[39m     [35mconst[39m released [33m=[39m [35mawait[39m [34mattempt[39m(successor[33m,[39m afterHorizon)[33m;[39m
+    [90m487|[39m     [34mexpect[39m(released[33m.[39mkind)[33m.[39m[34mtoBe[39m([32m"acquired"[39m)[33m;[39m
+    [90m   |[39m                           [31m^[39m
+    [90m488|[39m     [34mexpect[39m([35mawait[39m [34mterminalHolders[39m(sessionKey))[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m489|[39m   })[33m;[39m
 
 [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯[22m[39m
 
 
 [2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
-[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (5)[39m
-[2m   Start at [22m 01:25:33
-[2m   Duration [22m 2.16s[2m (transform 896ms, setup 19ms, import 1.25s, tests 768ms, environment 0ms)[22m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 09:44:02
+[2m   Duration [22m 1.50s[2m (transform 672ms, setup 23ms, import 904ms, tests 488ms, environment 0ms)[22m
 
-exit=1
