@@ -1,0 +1,15 @@
+H2-99 exactly-once facts (extracted from timeline.json, same run)
+
+settled state:
+  DeliveryRecord.status        = sent
+  DeliveryRecord.deliveredAt   = 2026-10-28T08:45:54.948Z
+  DeliveryRecord.deliveryRunId = cmvrvd8cu000s84x02efubzem
+  delivery.sent events         = 1
+  user-visible bot messages    = 1 (bound to that delivery Run)
+  delivery Runs                = 1
+
+after calling settleDeliveryRun() 2 more times:
+  status=sent deliveredAt=2026-10-28T08:45:54.948Z events=1 messages=1 runs=1
+
+Assertion: the replay tuple must equal the settled tuple exactly
+(same deliveredAt, one event, one message, one delivery Run).

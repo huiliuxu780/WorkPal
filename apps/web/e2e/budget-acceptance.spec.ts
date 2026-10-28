@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { AgentScopeAgentRuntime } from "../../../packages/adapters/src/agentscope-runtime.js";
 import { createRunExecutor } from "../../../packages/adapters/src/executor.js";
+import { settleDeliveryRun } from "../../../packages/adapters/src/result-delivery.js";
 import { deliverRunAborts } from "../../../packages/adapters/src/revoke-cancelled-work.js";
 import { enforceRunBudgets } from "../../../packages/adapters/src/run-budget-enforcement.js";
 import { createDb, createThreadEvents } from "../../../packages/db/src/index.js";
@@ -111,6 +112,56 @@ async function waitRunRunning(page: Page, db: Db, botId: string) {
     )
     .not.toBeNull();
   return runId;
+}
+
+/**
+ * H2-99 / #99: the Worker job returns from `continueRun` and only then calls
+ * `settleDeliveryRun`, so the delivery Run can be completed with its message
+ * visible while the DeliveryRecord is still `claimed`. Single-read assertions
+ * hit that window at random. Hold the exact row the settle updates so the
+ * settle transaction blocks on the lock instead of racing the assertion.
+ */
+async function holdClaimedDeliveryRecord(db: Db, runId: string) {
+  const client = await db.pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query<{ status: string; deliveryRunId: string | null }>(
+      'SELECT "status", "deliveryRunId" FROM "delivery_records" WHERE "runId" = $1 FOR UPDATE',
+      [runId],
+    );
+    expect(locked.rows).toHaveLength(1);
+    expect(locked.rows[0]).toMatchObject({ status: "claimed" });
+    return {
+      async release() {
+        await client.query("ROLLBACK");
+        client.release();
+      },
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    client.release();
+    throw error;
+  }
+}
+
+/** The authority tuple settleDeliveryRun must produce exactly once. */
+async function deliveryFacts(db: Db, input: { runId: string; threadId: string; deliveryRunId: string }) {
+  const record = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId: input.runId } });
+  const [deliverySentEvents, deliveryBotMessages, deliveryRuns] = await Promise.all([
+    db.prisma.event.count({ where: { threadId: input.threadId, type: "delivery.sent" } }),
+    db.prisma.message.count({
+      where: { threadId: input.threadId, role: "bot", runId: input.deliveryRunId },
+    }),
+    db.prisma.run.count({ where: { threadId: input.threadId, trigger: "delivery" } }),
+  ]);
+  return {
+    recordStatus: record.status,
+    deliveredAt: record.deliveredAt?.toISOString() ?? null,
+    recordDeliveryRunId: record.deliveryRunId,
+    deliverySentEvents,
+    deliveryBotMessages,
+    deliveryRuns,
+  };
 }
 
 test("token budget breach lets the owner raise the budget and the same Run finishes", async ({
@@ -615,65 +666,134 @@ test("routine budget breach fails the Run and queues one delivery behind recover
       where: { threadId: thread.id, trigger: "delivery" },
     });
 
-    // Production RT-26 hook: continue the terminal owner. A fresh Runtime
-    // proof releases admission and the in-process delivery sweep continues
-    // the queued Run. The enqueue from this process is not the API queue.
-    const runtime = new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL ?? "" });
-    const executor = createRunExecutor({
-      prisma: db.prisma,
-      runtime,
-      jobs: {
-        enqueue: async () => undefined,
-        cancel: async () => undefined,
+    // H2-99 / #99: pin the claimed record before the Worker can settle it. The
+    // dispatch above bound this exact row; the settle update blocks on the lock
+    // until the assertions below have observed the intermediate state.
+    const barrier = await holdClaimedDeliveryRecord(db, runId);
+    const timeline: Array<
+      { at: string; stage: string; replayCalls?: number } & Awaited<
+        ReturnType<typeof deliveryFacts>
+      >
+    > = [
+      {
+        at: new Date().toISOString(),
+        stage: "barrier-held",
+        ...(await deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id })),
       },
-      events: createThreadEvents(db.prisma),
-    } as unknown as Parameters<typeof createRunExecutor>[0]);
-    expect(await executor.continueRun(runId, "e2e-budget-recovery")).toBeUndefined();
-    await expect
-      .poll(
-        async () =>
-          (
-            await db.prisma.agentSessionAdmission.findFirst({
-              where: { ownerRunId: runId },
-              select: { state: true },
-            })
-          )?.state ?? "missing",
-        { timeout: 30_000 },
-      )
-      .not.toBe("recovering");
+    ];
+    try {
+      // Production RT-26 hook: continue the terminal owner. A fresh Runtime
+      // proof releases admission and the in-process delivery sweep continues
+      // the queued Run. The enqueue from this process is not the API queue.
+      const runtime = new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL ?? "" });
+      const executor = createRunExecutor({
+        prisma: db.prisma,
+        runtime,
+        jobs: {
+          enqueue: async () => undefined,
+          cancel: async () => undefined,
+        },
+        events: createThreadEvents(db.prisma),
+      } as unknown as Parameters<typeof createRunExecutor>[0]);
+      expect(await executor.continueRun(runId, "e2e-budget-recovery")).toBeUndefined();
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.prisma.agentSessionAdmission.findFirst({
+                where: { ownerRunId: runId },
+                select: { state: true },
+              })
+            )?.state ?? "missing",
+          { timeout: 30_000 },
+        )
+        .not.toBe("recovering");
 
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.prisma.run.findFirst({
+                where: { id: deliveryRun.id },
+                select: { status: true },
+              })
+            )?.status ?? "missing",
+          { timeout: 120_000 },
+        )
+        .toBe("completed");
+      await expect(
+        page
+          .getByTestId("transcript")
+          .getByText("The scheduled fixture run failed on its duration budget."),
+      ).toBeVisible({ timeout: 60_000 });
+      timeline.push({
+        at: new Date().toISOString(),
+        stage: "run-completed-transcript-visible",
+        ...(await deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id })),
+      });
+
+      // The window this test exists for: the delivery Run is completed and its
+      // message is on screen, yet the record is still claimed because the
+      // Worker's settle UPDATE is blocked on the lock held above.
+      const held = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
+      expect(held.status).toBe("claimed");
+      expect(held.deliveredAt).toBeNull();
+      expect(held.deliveryRunId).toBe(deliveryRun.id);
+      expect(
+        await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
+      ).toBe(0);
+      expect(
+        await db.prisma.message.count({
+          where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
+        }),
+      ).toBe(1);
+    } finally {
+      await barrier.release();
+      // Keep the observed states on failure too: the red run's whole point is
+      // the claimed snapshot under a completed Run.
+      test.info().attach("settle-timeline", {
+        body: JSON.stringify(timeline, null, 2),
+        contentType: "application/json",
+      });
+    }
+
+    // The authority tuple settleDeliveryRun must produce exactly once. Poll
+    // instead of racing the commit that the barrier held back.
+    const facts = () =>
+      deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id });
     await expect
-      .poll(
-        async () =>
-          (
-            await db.prisma.run.findFirst({
-              where: { id: deliveryRun.id },
-              select: { status: true },
-            })
-          )?.status ?? "missing",
-        { timeout: 120_000 },
-      )
-      .toBe("completed");
-    await expect(
-      page
-        .getByTestId("transcript")
-        .getByText("The scheduled fixture run failed on its duration budget."),
-    ).toBeVisible({ timeout: 60_000 });
-    const delivered = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
-    expect(delivered.status).toBe("sent");
-    expect(delivered.deliveredAt).not.toBeNull();
-    expect(delivered.deliveryRunId).toBe(deliveryRun.id);
-    expect(
-      await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
-    expect(
-      await db.prisma.message.count({
-        where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
-      }),
-    ).toBe(1);
-    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
-      1,
-    );
+      .poll(facts, { timeout: 120_000, intervals: [100, 250, 500, 1_000] })
+      .toEqual({
+        recordStatus: "sent",
+        deliveredAt: expect.any(String),
+        recordDeliveryRunId: deliveryRun.id,
+        deliverySentEvents: 1,
+        deliveryBotMessages: 1,
+        deliveryRuns: 1,
+      });
+    const settled = await facts();
+    timeline.push({ at: new Date().toISOString(), stage: "settled", ...settled });
+
+    // Exactly once: replaying settle for the same delivery Run must not add a
+    // second event, message or record transition.
+    const settleDeps = {
+      prisma: db.prisma,
+      jobs: { enqueue: async () => undefined, cancel: async () => undefined },
+      events: createThreadEvents(db.prisma),
+      workerId: "e2e-settle-replay",
+    } as unknown as Parameters<typeof settleDeliveryRun>[0];
+    await settleDeliveryRun(settleDeps, deliveryRun.id);
+    await settleDeliveryRun(settleDeps, deliveryRun.id);
+    expect(await facts()).toEqual(settled);
+    timeline.push({
+      at: new Date().toISOString(),
+      stage: "after-settle-replay",
+      replayCalls: 2,
+      ...(await facts()),
+    });
+    // The run log is the durable copy of this timeline; the attachment alone is
+    // cleaned up for passing tests.
+    console.log("H2-99 settle timeline", JSON.stringify(timeline));
     expect(
       await db.prisma.run.findUniqueOrThrow({
         where: { id: runId },
