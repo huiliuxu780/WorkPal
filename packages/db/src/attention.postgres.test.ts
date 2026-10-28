@@ -725,11 +725,12 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(next.total).toBeGreaterThan(0);
   });
 
-  it("keeps a still-pending row past its expiresAt until the timeout job expires it", async () => {
+  it("drops a pending row as soon as expiresAt passes while the timeout job owns settlement", async () => {
     const run = await taskRun(dmThreadId, "Expired request");
     const message = await botMessage(dmThreadId, [
       { kind: "ask", text: "Too late?", status: "pending" },
     ]);
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
     const expired = await pendingIntervention({
       threadId: dmThreadId,
       runId: run.id,
@@ -740,11 +741,136 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
       expiresAt: new Date(Date.now() - 1_000),
     });
     const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
-    // Expiry is settled by the wait-timeout job, not hidden by the read model;
-    // a still-pending row remains until its owner expires it.
-    expect(page.items.some((item) => item.interactionId === expired.id)).toBe(true);
-    const duplicated = page.items.filter((item) => item.interactionId === expired.id);
-    expect(duplicated).toHaveLength(1);
+    // An overdue card is no longer actionable even before the wait-timeout job
+    // writes the terminal state; the queue must not keep pointing at it.
+    expect(page.items.some((item) => item.interactionId === expired.id)).toBe(false);
+    expect(page.total).toBe(before.total);
+    expect(
+      await prisma.attentionIntervention.findUnique({ where: { interactionId: expired.id } }),
+    ).not.toBeNull();
+    await prisma.intervention.update({
+      where: { id: expired.id },
+      data: { status: "expired", pendingRunKey: null, resolvedAt: new Date() },
+    });
+    // The trigger removes the projection row with the settlement, so the queue
+    // cannot resurrect an expired request after a timeout job run.
+    expect(
+      await prisma.attentionIntervention.findUnique({ where: { interactionId: expired.id } }),
+    ).toBeNull();
+  });
+
+  it("excludes a pending approval whose posting bot was archived inside an active group", async () => {
+    const retiredGroupBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Retired group bot", color: "test" },
+    });
+    const groupRun = await taskRun(group.threadId, "Retired group work");
+    const retiredMessage = await prisma.$transaction((tx) =>
+      createThreadMessageInTransaction(tx, {
+        threadId: group.threadId,
+        role: "bot",
+        originKind: "system",
+        blocks: [
+          {
+            kind: "app_connect",
+            provider: "github",
+            name: "Retired GitHub",
+            description: "Read repositories",
+            logo: null,
+            status: "pending",
+          },
+        ],
+        botId: retiredGroupBot.id,
+        runId: groupRun.id,
+      }),
+    );
+    const retiredInput = await pendingIntervention({
+      threadId: group.threadId,
+      runId: groupRun.id,
+      messageId: retiredMessage.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Retired group input" },
+      botId: retiredGroupBot.id,
+    });
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    await prisma.bot.update({
+      where: { id: retiredGroupBot.id },
+      data: { archivedAt: new Date() },
+    });
+    const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(after.items.some((item) => item.interactionId === retiredInput.id)).toBe(false);
+    expect(after.items.some((item) => item.source.messageId === retiredMessage.id)).toBe(false);
+    expect(after.total).toBe(before.total - 2);
+  });
+
+  it("excludes a membership request whose target group is no longer manageable", async () => {
+    const foreignGroup = await prisma.chatGroup.create({
+      data: { spaceId, userId: otherUserId, kind: "standard", name: "Foreign room" },
+    });
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const run = await taskRun(dmThreadId, "Join a foreign room");
+    const message = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Add Scout to Foreign room?", status: "pending" },
+    ]);
+    const interventionId = randomUUID();
+    await pendingIntervention({
+      id: interventionId,
+      threadId: dmThreadId,
+      runId: run.id,
+      messageId: message.id,
+      kind: "approval",
+      presentation: { text: "Add Scout to “Foreign room”?" },
+    });
+    await prisma.groupMembershipRequest.create({
+      data: {
+        id: randomUUID(),
+        spaceId,
+        userId: ownerId,
+        botId: bot.id,
+        groupId: foreignGroup.id,
+        groupName: foreignGroup.name,
+        sourceThreadId: dmThreadId,
+        sourceRunId: run.id,
+        cardMessageId: message.id,
+        interventionId,
+        deliveryKey: randomUUID(),
+        requestRevision: 1,
+        message: "Check the build.",
+        presentation: { text: "Add Scout to “Foreign room”?" },
+      },
+    });
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    // Permission is re-read on every request; the total must not count a card
+    // the user can no longer act on.
+    expect(page.items.some((item) => item.interactionId === interventionId)).toBe(false);
+    expect(page.total).toBe(before.total);
+  });
+
+  it("keeps a pending Interaction after its Run reaches a terminal status", async () => {
+    const run = await taskRun(dmThreadId, "Terminal run keeps its ask");
+    const message = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Still open?", status: "pending" },
+    ]);
+    const pending = await pendingIntervention({
+      threadId: dmThreadId,
+      runId: run.id,
+      messageId: message.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Still open?" },
+    });
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    // Run lifecycle and request lifecycle have separate owners: finishing the
+    // Run must not make an unanswered request disappear.
+    expect(page.items.some((item) => item.interactionId === pending.id)).toBe(true);
+    await prisma.intervention.update({
+      where: { id: pending.id },
+      data: { status: "cancelled", pendingRunKey: null, resolvedAt: new Date() },
+    });
   });
 
   it("orders by expiresAt ASC NULLS LAST, then attentionAt, then stableId", async () => {
@@ -805,6 +931,21 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
     // The badge must count every pending row, not the first page of one source.
     expect(after.total - before.total).toBe(520);
+    await prisma.$executeRawUnsafe('ANALYZE "attention_interventions"');
+    const plan = await prisma.$queryRaw<Array<{ "QUERY PLAN": string }>>`
+      EXPLAIN (ANALYZE, BUFFERS)
+      SELECT "interactionId" FROM "attention_interventions"
+      WHERE "userId" = ${ownerId}
+        AND "spaceId" = ${spaceId}
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${new Date()})
+      ORDER BY "expiresAt" ASC NULLS LAST, "attentionAt" ASC, "interactionId" ASC
+      LIMIT 21`;
+    const planText = plan.map((row) => row["QUERY PLAN"]).join("\n");
+    // The first page is a keyset slice of the compact projection; it must not
+    // materialize or sort the whole pending set.
+    expect(planText).toContain("attention_interventions_user_order");
+    const scanned = /rows=(\d+) width/.exec(planText)?.[1];
+    expect(Number(scanned ?? Number.NaN)).toBeLessThan(100);
     const ids: string[] = [];
     let cursor: string | null = null;
     do {

@@ -1,0 +1,7 @@
+Base 8054cac: infra/sandboxes/supervisor/src/computer-loopback.test.ts
+[31m+ 401[39m
+[31m[1mAssertionError[22m: expected 401 to be 200 // Object.is equality[39m
+[31m+ 401[39m
+[31m[1mAssertionError[22m: expected 401 to be 200 // Object.is equality[39m
+[31m+ 401[39m
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m

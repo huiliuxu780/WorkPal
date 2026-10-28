@@ -87,6 +87,11 @@ test("renders all nine DisplayBlock kinds from the server projection", async ({
   await expect(page.locator('[data-testid="display-block"][data-kind="collection"]')).toContainText(
     "Owner",
   );
+  const legacyConnect = page.locator('[data-testid="legacy-connect-card"]');
+  await expect(legacyConnect).toContainText("Linear");
+  await expect(legacyConnect).toContainText("Connected");
+  // Legacy `connect` records replay as history, not as an authorization entry.
+  await expect(legacyConnect.locator("button, a")).toHaveCount(0);
   await expect(page.locator('[data-testid="display-block"][data-kind="media"]')).toHaveCount(2);
   await expect(page.locator('[data-testid="display-block"][data-kind="html"]')).toContainText(
     "report.html",

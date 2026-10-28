@@ -1,0 +1,4 @@
+Mutation: remove the expiresAt filter from durableFilters; run -t "expiresAt passes"
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mdrops a pending row as soon as expiresAt passes while the timeout job owns settlement
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m

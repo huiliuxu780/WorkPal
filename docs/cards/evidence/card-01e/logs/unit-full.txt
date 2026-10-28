@@ -1,0 +1,6 @@
+$ pnpm test:unit
+[41m[1m FAIL [22m[49m infra/sandboxes/supervisor/src/computer-loopback.test.ts[2m > [22mscreen release status[2m > [22mreturns 404 only when the computer is already missing
+[41m[1m FAIL [22m[49m infra/sandboxes/supervisor/src/computer-loopback.test.ts[2m > [22mscreen release status[2m > [22mrejects another computer identity without releasing its screen
+[41m[1m FAIL [22m[49m infra/sandboxes/supervisor/src/computer-loopback.test.ts[2m > [22mscreen release status[2m > [22mreturns 500 when tearing down a screen leaves the browser running
+[41m[1m FAIL [22m[49m infra/sandboxes/supervisor/src/computer-loopback.test.ts[2m > [22mscreen release status[2m > [22mreturns 500 when exec.start 404s after the container was found
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m458 passed[39m[22m[90m (459)[39m

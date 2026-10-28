@@ -1,6 +1,6 @@
 # CARD-01E：无障碍、旧消息回放、视觉回归与总 Gate
 
-状态：`not-started`
+状态：`ready-to-merge`（本地门禁全绿；PR 未创建、未合入 `main`，生产 gate 仍为 `false`；第二批扩展范围与交付记录见 [CARD-01E delivery](../cards/CARD-01E-delivery.md)）
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 

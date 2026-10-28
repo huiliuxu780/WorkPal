@@ -50,3 +50,19 @@
 已落地：删除每源 500 行上限（`total` 精确）+ `messages.blocks` GIN 索引（`jsonb_path_ops`，迁移 `20261028150000_messages_blocks_gin`）。消息审批源不再顺序扫描历史消息：`attention.postgres.test.ts` 在 5,001 条历史消息下用 `EXPLAIN (ANALYZE, BUFFERS)` 断言走 `messages_blocks_gin` 且扫描行数 < 500；另有 520 行分页用例。
 
 残余（不宣称已解决）：`total` 要求精确，就必须投射全部 pending 候选，单请求成本因此 ∝ pending 候选数（已不随历史消息量增长，但 pending 本身没有写入侧硬上限）。按来源的游标分页只能约束「物化规模」，不能降低精确 `total` 的工作量；要把单请求降到 O(page)，只有方案 B（持久化 projection）能同时满足精确计数与有界读取。本卡保持 `in-progress`，方案 B 是否另立单元由负责人决定。
+
+## 6. CARD-01E 落地（2026-10-28）
+
+CARD-01E 按方案 B 落地持久化读模型，并把查询边界写进测试：
+
+- 新表 `attention_interventions`（迁移 `20261028210000_attention_intervention_projection`）只保存 pending 持久 Intervention 的 frozen 排序元组：`interactionId / spaceId / userId / threadId / botId / kind / attentionAt / expiresAt`。由 `interventions_attention_projection` 行级触发器维护，`userId` 从所属 Run 派生；触发器同时覆盖当前和后续写入路径、`createMany/deleteMany` 以及迁移时的回填，不依赖某一条 TypeScript 结算路径。Intervention 离开 `pending` 的同一事务会删除投影行。
+- 读路径 `packages/db/src/attention.ts:loadDurableAttention`：分页是投影表上的 keyset 切片（`expiresAt ASC NULLS LAST → attentionAt ASC → interactionId ASC`），`total` 是对同一过滤条件的精确 `COUNT(*)`；只有当前页的 Interaction 行、effect 状态和 RT-12 membership facts 会被加载。整个读取在同一 `RepeatableRead` 事务快照内完成，避免计数与分页在结算并发下答出不同快照。用户线程可见性、Bot 归档、目标群成员管理权限和 `expiresAt` 都在 SQL 内过滤，过期条目在 timeout job 结算前就不再出现在队列。
+- 其余三类来源保持「当前事实」有界读取：可见线程上的活跃 Run（takeover/return）、活跃委托 Run 的 origin 链（深度上限 8）、以及经 `messages_blocks_gin` 命中的 pending 业务审批。它们不读取普通 Run 历史，也不把已完成消息当候选。
+- 证据：`packages/db/src/attention.postgres.test.ts` 的 520 行分页/精确 total、分页锚点结算后继续、过期即时移除、归档 Bot（含群内 post bot）、失去群管理权限、5,001 条历史消息下 `EXPLAIN (ANALYZE, BUFFERS)` 走 `messages_blocks_gin` 且扫描 <500 行，以及 520 行 pending 投影的第一页 `EXPLAIN` 走 `attention_interventions_user_order` 且扫描 <100 行。整套 15/15。
+
+本方案仍有明确残余，不写成 O(1)：
+
+- `total` 的 `COUNT(*)` 是窄表索引扫描，成本 ∝ 当前 pending 投影行数（仍是用户待处理队列本身），不是与队列规模无关的常数；要 O(1) 需要写侧维持计数器，本卡不承担。
+- 消息内业务审批的候选仍来自 GIN 命中集合；命中量 ∝ pending 审批块数（不是历史消息数）。它们没有持久化投影。
+- 投影触发器要求所属 Run 行存在（缺失会抛错，而不是静默漏行）；这是数据完整性前提，不是兼容分支。
+- 投影内容合法性由生产写入保证；若历史行违反 strict 契约，读取会跳过该行，`total` 可能比可见条目多 1。此时应修数据，不应放宽契约。

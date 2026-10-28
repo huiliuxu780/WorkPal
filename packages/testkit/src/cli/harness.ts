@@ -392,6 +392,15 @@ async function main() {
                   ],
                 },
                 {
+                  // A legacy connection record from before CARD-01: replay is
+                  // read-only and must not grow an Authorize action.
+                  kind: "connect",
+                  name: "Linear",
+                  initial: "L",
+                  color: "#5E6AD2",
+                  status: "connected",
+                },
+                {
                   kind: "image",
                   artifactId: input.imageId,
                   mimeType: "image/png",

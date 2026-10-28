@@ -2129,14 +2129,22 @@ export function createRouter(deps: RouterDeps) {
       },
     },
     attention: {
-      list: authed.attention.list.handler(async ({ context, input }) =>
-        loadAttentionPage(deps.prisma, {
+      list: authed.attention.list.handler(async ({ context, input }) => {
+        // The queue is a CARD-01 read model. Gate-off keeps the legacy UI and
+        // has no queue entry point, so fail explicitly instead of returning an
+        // empty page that would look like "nothing needs you".
+        if (!deps.cardsUnifiedV2) {
+          throw new ORPCError("FORBIDDEN", {
+            message: "The attention queue requires unified cards.",
+          });
+        }
+        return loadAttentionPage(deps.prisma, {
           spaceId: context.actor.spaceId,
           userId: context.actor.userId,
           cursor: input.cursor ?? null,
           limit: input.limit,
-        }),
-      ),
+        });
+      }),
     },
     botSections: {
       list: authed.botSections.list.handler(async ({ context }) =>

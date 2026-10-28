@@ -1,0 +1,5 @@
+$ VERIFY_DATABASE=1 pnpm exec vitest run packages/db/src/attention.postgres.test.ts
+ [32m✓[39m packages/db/src/attention.postgres.test.ts [2m([22m[2m16 tests[22m[2m)[22m[33m 2830[2mms[22m[39m
+     [33m[2m✓[22m[39m counts and pages a source beyond the old 500-row read cap [33m 620[2mms[22m[39m
+     [33m[2m✓[22m[39m reads pending approvals without scanning message history [33m 796[2mms[22m[39m
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
