@@ -522,7 +522,7 @@ test("a retry after an in-flight cancellation stays queued until the abort is co
     // revocation, so the cancelled owner's hold is settled. The retry must then
     // take the session instead of waiting for the five-minute TTL or a Runtime
     // checkpoint proof that can never arrive for an aborted execution.
-    await startWorker();
+    const restarted = await startWorker();
     await expect
       .poll(
         async () => {
@@ -534,6 +534,18 @@ test("a retry after an in-flight cancellation stays queued until the abort is co
         { timeout: 90_000 },
       )
       .toBe("released");
+    // FIX-STOP-01 negative branch. The release above is a durable fact: from here
+    // the executor must never reach the failed-recovery path for this session, so
+    // "could not be proven" must not appear in the Worker log written after this
+    // offset. Measuring from an offset rather than the whole log matters: while
+    // the abort is still undelivered a recovery attempt is legitimate, and
+    // asserting on the whole file would be flaky rather than meaningful.
+    const workerLog = restarted.generation
+      ? path.join(reportDir, `worker-${restarted.generation}.log`)
+      : "";
+    const releaseLogOffset = workerLog
+      ? (await readFile(workerLog, "utf8").catch(() => "")).length
+      : 0;
     await expect
       .poll(
         async () =>
@@ -544,6 +556,15 @@ test("a retry after an in-flight cancellation stays queued until the abort is co
     await expect(page.getByTestId("transcript").getByText(retryReply)).toBeVisible({
       timeout: 90_000,
     });
+    if (workerLog) {
+      const afterRelease = (await readFile(workerLog, "utf8").catch(() => "")).slice(
+        releaseLogOffset,
+      );
+      expect(
+        afterRelease,
+        "after the confirmed abort the Worker must not log a failed recovery proof",
+      ).not.toContain("could not be proven");
+    }
     const source = await db.prisma.run.findUniqueOrThrow({ where: { id: original.id } });
     expect(source.status).toBe("cancelled");
     const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
