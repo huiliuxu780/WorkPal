@@ -33,6 +33,7 @@
 - **旧 `connect` 只读回放**：`apps/web/src/pages/Shell.tsx` 渲染存量的连接状态卡（名称、首字母、Connected/Not connected），没有按钮或链接；E2E fixture 与 `card-display-content.spec.ts` 断言零可操作元素。
 - **过期/归档/失权即时退出**：`attention.postgres.test.ts` 新增过期即时移除、群内发卡 Bot 归档、目标群失去管理权限三个用例；总数在三种情况下都精确回落。
 - **FIX-127 后的过期 E2E 断言**：`apps/web/e2e/approval-resume.spec.ts` 仍期待“回答后再次提问”的旧脚本行为，自 `b08c6e1`（FIX-127）起与持久化 Runtime 契约相反。已在 base `8054cac` 上复现同一红，再按“回答后同一 Run 完成、不再产生第二张 pending 卡”更新断言；更新后通过。
+- **choice 答案 label**：真模型验证暴露 selected choice 恢复时把 `choice-N` wire id 交给模型（用户选 Berlin，`qwen3.8-max` 回复 Seoul）。`resumeAnswerFromAsk` 现在只把 choice 的 id 解析成 label；free-text、approval/plan/budget action id 保持原样。单测 4/4，max 复跑回复 Berlin。
 
 ### 3. Gate 与兼容
 
@@ -73,14 +74,14 @@
 | `pnpm db:generate` | exit 0 |
 | `pnpm lint` | 0 error（76 warning / 5 info，均为既有） |
 | `pnpm check` | 18/18 tasks successful |
-| `pnpm test:unit` | 458/459 files；**5541 passed / 2 skipped / 4 failed**。4 条失败全部是 `infra/sandboxes/supervisor/src/computer-loopback.test.ts` 的 401；在 base `8054cac` 上同红（`logs/supervisor-baseline-red.txt`），与本 diff 无关 |
-| `pnpm test:postgres` | 最终在无并发负载下完整重跑：**465/465 passed**（51/51 files）。一次与 unit/check/build 并行时曾出现 `wakeup.postgres.test.ts` 的 3 条 500/600ms 窗口失败，单独重跑即绿（`logs/postgres-full.txt`）。`attention.postgres.test.ts` **16/16** |
+| `pnpm test:unit` | 458/459 files；**5543 passed / 2 skipped / 4 failed**（最终树）。4 条失败全部是 `infra/sandboxes/supervisor/src/computer-loopback.test.ts` 的 401；在 base `8054cac` 上同红（`logs/supervisor-baseline-red.txt`），与本 diff 无关 |
+| `pnpm test:postgres` | 最终树（choice label 修复后）无并发完整重跑：**465/465 passed**（51/51 files）。早前一次与 unit/check/build 并行时曾出现 `wakeup.postgres.test.ts` 的 3 条 500/600ms 窗口失败，单独重跑即绿（`logs/postgres-full.txt`）。`attention.postgres.test.ts` **16/16** |
 | `pnpm test:inventory` | 0 errors |
 | `pnpm test:ci-select` | pass |
 | `pnpm test:docs` | pass |
 | `pnpm --filter @rakazo/web build` | 首次 `✓ built in 16.33s`（3765 modules）；最终树增量 `✓ built in 3.12s` |
 | gate-on E2E（任务书指定 5 个 spec） | **13/13 passed**（3.2m）；`logs/e2e-gate-on.txt` |
-| 真模型 E2E（AgentScope Java Runtime + DashScope `qwen3.8-flash`） | **1/1 passed**（36.3s）：真实模型调用 `ask_user` → 统一 Input 卡 → Attention 行 → 选择答案 → Run 恢复并终态；`logs/real-model-e2e.txt` |
+| 真模型 E2E（AgentScope Java Runtime + DashScope） | `qwen3.8-flash` 修复后 **1/1 passed**（36.3s）；`qwen3.8-max` 修复前 **1/1 passed**（30.8s）、choice label 修复后 **1/1 passed**（29.8s）：真实模型调用 `ask_user` → 统一 Input 卡 → Attention 行 → 选择答案 → Run 恢复并终态；`logs/real-model-e2e*.txt`、`logs/executor-resume-answer.txt` |
 | gate-off legacy E2E（intervention-region / plan-review / mcp-approval-card / approval-resume） | 首轮 8 passed + `approval-resume` 过期断言红；该断言在 base `8054cac` 同样红，按 FIX-127 契约更新后 **1/1 passed**；其余 8 条保持绿 |
 
 Attention 变异验证（`logs/attention-mutation-*.txt`）：
@@ -96,7 +97,7 @@ Attention 变异验证（`logs/attention-mutation-*.txt`）：
 - 展示卡：`display-blocks-desktop-1440.png`、`display-blocks-390.png`、`display-blocks-375.png`、`display-blocks-390-dark.png`、`display-chart-detail-desktop.png`、`display-html-detail-desktop.png`。
 - 交互卡：`card-ui-tool-approval.png`、`card-ui-mcp-desktop-1440.png`、`card-ui-mcp-390.png`、`card-ui-mcp-375.png`、`card-ui-mcp-terminal-dark.png`、A10 `card-ui-outbound-*` 系列。
 - 群成员：`X-GROUP-APPROVE-1440.png`、`X-GROUP-APPROVE-terminal-1440.png`、`X-GROUP-FAIL-1440.png`、`X-GROUP-source-390.png`、`X-GROUP-target-1440.png`、`X-RETURN-source-390.png`。
-- 真模型：`real-model-ask-card-1440.png`、`real-model-attention-1440.png`、`real-model-answered-1440.png`。
+- 真模型：`real-model-ask-card-1440.png`、`real-model-attention-1440.png`、`real-model-answered-1440.png`（flash）；`real-model-max-ask-card-1440.png`、`real-model-max-attention-1440.png`、`real-model-max-answered-1440.png`（max，修复后）；`real-model-max-answered-before-label-fix.png`（max，修复前误答 Seoul 的对照）。
 - gate-off：`legacy-approval-input-request.png`、`legacy-approval-resumed.png`、`legacy-approval-stopped-run.png`。
 
 以上截图均来自真实页面与服务端投影；已与 `docs/cards/source/card-unification-v2/mockup/cards-hifi-v4/` 的 A1/N1 及 Roundtable X-GROUP 原型并排检查，结构与视觉语言一致（文字因 E2E 语言为英文）。
@@ -110,7 +111,7 @@ Attention 变异验证（`logs/attention-mutation-*.txt`）：
 ## 已知限制
 
 - Attention 的精确 `total` 是投影窄表的索引 `COUNT`，成本 ∝ 当前 pending 投影行数（即用户待处理队列本身），不是 O(1)；消息内审批仍按 pending 块集合读取（GIN 命中，不随历史消息量增长）。详见 [attention query bounds](./attention-query-bounds.md#6-card-01e-落地2026-10-28)。
-- 本机真模型补充验证：AgentScope Java Runtime + DashScope `qwen3.8-flash`，`card-real-model.spec.ts` 1/1 通过；该 spec 需要 `REAL_MODEL_API_KEY` 才执行，CI/无 key 环境跳过。其余 E2E 使用仓库 deterministic scripted runtime，API/Worker/PostgreSQL/Web 都是真实进程。
+- 本机真模型补充验证：AgentScope Java Runtime + DashScope `qwen3.8-flash` 与 `qwen3.8-max`，`card-real-model.spec.ts` 1/1 通过；该 spec 需要 `REAL_MODEL_API_KEY` 才执行，CI/无 key 环境跳过。其余 E2E 使用仓库 deterministic scripted runtime，API/Worker/PostgreSQL/Web 都是真实进程。
 - 视觉证据是实际页面截图与批准原型的人工并排检查，仓库当前没有 `toHaveScreenshot` 像素基线，因此不是像素级 diff。
 - 生产 gate 是否开启由产品负责人决定；本分支保持 `false`。
 

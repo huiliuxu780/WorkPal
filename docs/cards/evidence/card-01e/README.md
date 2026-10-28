@@ -44,7 +44,9 @@ Branch: `codex/card-system-completion`
 
 ### 真模型（AgentScope Java Runtime + DashScope qwen3.8-flash）
 
-`real-model-ask-card-1440.png`、`real-model-attention-1440.png`、`real-model-answered-1440.png`：真实模型通过 `ask_user` 产生统一 Input 卡、同一请求出现在 Attention、选择答案后真实 Run 恢复并终态。截图中的另外 3 条 pending app 连接审批来自 onboarding，是同一读模型的真实业务行，用于验证队列不只显示测试 ask。
+`real-model-ask-card-1440.png`、`real-model-attention-1440.png`、`real-model-answered-1440.png`（qwen3.8-flash）与 `real-model-max-*.png`（qwen3.8-max）：真实模型通过 `ask_user` 产生统一 Input 卡、同一请求出现在 Attention、选择答案后真实 Run 恢复并终态。截图中的另外 3 条 pending app 连接审批来自 onboarding，是同一读模型的真实业务行，用于验证队列不只显示测试 ask。
+
+真模型还暴露并验证了一个 choice 缺陷：修复前用户选 Berlin，恢复请求给模型的是 wire id `choice-1`，`qwen3.8-max` 因此回复 "Seoul it is"（`real-model-max-answered-before-label-fix.png`）；`resumeAnswerFromAsk` 把 `choice-N` 解析成 label 后，同一流程回复 "Great choice! Berlin is a fantastic destination…"（`real-model-max-answered-1440.png`）。
 
 ## 测试摘要与红绿证据
 
@@ -60,9 +62,13 @@ Branch: `codex/card-system-completion`
 - `postgres-full.txt`：最终无并发完整重跑 `pnpm test:postgres` → **51/51 files, 465/465 passed**；一次并发运行中出现过 `wakeup.postgres.test.ts` 的 3 条 500/600ms 窗口失败，单独重跑即绿。
 - `checks.txt`：`pnpm lint` 0 error / 76 warning / 5 info；`pnpm check` 18/18；`pnpm --filter @rakazo/web build` 首次 16.33s、最终增量 3.12s；`check-docs` 169 个 markdown 链接正常。
 - `real-model-e2e.txt`：`card-real-model.spec.ts` 在 AgentScope Java Runtime + DashScope `qwen3.8-flash` 下 **1 passed (36.3s)**；key 只来自 `REAL_MODEL_API_KEY`，未进入仓库、日志或截图。
+- `real-model-e2e-max.txt`：同一 spec 用 `REAL_MODEL_ID=qwen3.8-max` 修复前 **1 passed (30.8s)**（截图显示模型误读为 Seoul）。
+- `real-model-e2e-max-after-fix.txt`：`resumeAnswerFromAsk` 修复后同 spec **1 passed (29.8s)**，截图回复 Berlin。
+- `real-model-e2e-flash-after-fix.txt`：同一修复后用默认 `qwen3.8-flash` **1 passed (36.3s)**。
+- `executor-resume-answer.txt`：`executor-resume-answer.test.ts` **4/4**（choice→label、free-text 不变、approval/plan id 不变、pending 返回 undefined）。
 
 ## 尚未覆盖
 
-- AgentScope 真模型链路已用 DashScope `qwen3.8-flash` 跑通；该 spec 需要 `REAL_MODEL_API_KEY` 才执行，CI/无 key 环境会跳过。其余 deterministic spec 仍使用 scripted runtime，API/Worker/PostgreSQL/Web 为真实进程。
+- AgentScope 真模型链路已用 DashScope `qwen3.8-flash` 与 `qwen3.8-max` 跑通；该 spec 需要 `REAL_MODEL_API_KEY` 才执行，CI/无 key 环境会跳过。其余 deterministic spec 仍使用 scripted runtime，API/Worker/PostgreSQL/Web 为真实进程。
 - 像素级视觉 diff；当前为实际截图与批准原型的人工并排检查。
 - gate-on 的 takeover 卡片单独 E2E；takeover 生产入口由既有 gate-off `computer-needs-you-card.spec.ts` 与统一卡组件/单测覆盖，未在本轮重跑。

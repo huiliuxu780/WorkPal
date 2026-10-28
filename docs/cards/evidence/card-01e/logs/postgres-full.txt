@@ -1,5 +1,4 @@
-$ pnpm test:postgres (final, run alone)
-[2m Test Files [22m [1m[32m51 passed[39m[22m[90m (51)[39m
-      Tests  465 passed (465)
-
-Earlier concurrent run with unit/check/build: 3 wakeup timing-window failures; that file passed alone before the final clean run.
+$ pnpm test:postgres (final after choice label fix, run alone)
+Test Files  51 passed (51)
+Tests  465 passed (465)
+attention.postgres.test.ts  16/16

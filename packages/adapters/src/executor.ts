@@ -777,6 +777,25 @@ export function isProtectedComputerLifecycleCommand(command: string): boolean {
   return false;
 }
 
+export type AnsweredAskForResume = {
+  status?: string;
+  answer?: string;
+  actions?: ReadonlyArray<{ id: string; label: string }>;
+};
+
+/**
+ * A choice ask stores the opaque action id (`choice-N`). The resumed Runtime
+ * hands this string to the model as the ask_user tool result, so the model must
+ * receive the human label the user actually chose, not the wire id.
+ */
+export function resumeAnswerFromAsk(block: AnsweredAskForResume): string | undefined {
+  if (block.status !== "answered" || typeof block.answer !== "string") return undefined;
+  const choice = block.actions?.find(
+    (action) => action.id === block.answer && /^choice-\d+$/.test(action.id),
+  );
+  return choice?.label ?? block.answer;
+}
+
 /** Cap the roster so a large Space cannot flood the prompt. */
 const BOT_DIRECTORY_LIMIT = 40;
 
@@ -5867,13 +5886,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               block.kind === "ask"
             ) {
               foundAsk = true;
-              if (
-                "status" in block &&
-                block.status === "answered" &&
-                "answer" in block &&
-                typeof block.answer === "string"
-              )
-                resumeAnswer = block.answer;
+              resumeAnswer = resumeAnswerFromAsk(block);
               break;
             }
           }

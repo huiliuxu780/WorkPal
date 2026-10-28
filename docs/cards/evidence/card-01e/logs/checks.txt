@@ -1,14 +1,11 @@
-$ pnpm --filter @rakazo/web build (final)
-✓ built in 3.12s
-
 $ pnpm lint
-Diagnostics not shown: 61.
-Checked 1983 files in 4s. No fixes applied.
-Found 76 warnings.
-Found 5 infos.
+exit 0; 0 error, 76 warnings, 5 infos (1985 files)
 
 $ pnpm check
- Tasks:    18 successful, 18 total
+Tasks: 18 successful, 18 total
+
+$ pnpm --filter @rakazo/web build
+✓ built in 16.33s (clean); final incremental 3.12s
 
 $ node scripts/ci/check-docs.mjs
 Checked 169 markdown file(s); relative links ok.
