@@ -42,6 +42,10 @@ Branch: `codex/card-system-completion`
 
 `legacy-approval-input-request.png`、`legacy-approval-resumed.png`、`legacy-approval-resumed-after-reload.png`、`legacy-approval-stopped-run.png`：gate 关闭时 legacy InterventionRegion/AskCard 的真实运行；回答后同一 Run 完成，不再产生第二张 pending 卡。
 
+### 真模型（AgentScope Java Runtime + DashScope qwen3.8-flash）
+
+`real-model-ask-card-1440.png`、`real-model-attention-1440.png`、`real-model-answered-1440.png`：真实模型通过 `ask_user` 产生统一 Input 卡、同一请求出现在 Attention、选择答案后真实 Run 恢复并终态。截图中的另外 3 条 pending app 连接审批来自 onboarding，是同一读模型的真实业务行，用于验证队列不只显示测试 ask。
+
 ## 测试摘要与红绿证据
 
 `logs/` 中：
@@ -55,9 +59,10 @@ Branch: `codex/card-system-completion`
 - `unit-full.txt`：`pnpm test:unit` → 458/459 files，5541 passed；唯一失败为 `infra/sandboxes/supervisor/computer-loopback.test.ts` 的 4 条 401，`supervisor-baseline-red.txt` 在 base `8054cac` 上同样红。
 - `postgres-full.txt`：最终无并发完整重跑 `pnpm test:postgres` → **51/51 files, 465/465 passed**；一次并发运行中出现过 `wakeup.postgres.test.ts` 的 3 条 500/600ms 窗口失败，单独重跑即绿。
 - `checks.txt`：`pnpm lint` 0 error / 76 warning / 5 info；`pnpm check` 18/18；`pnpm --filter @rakazo/web build` 首次 16.33s、最终增量 3.12s；`check-docs` 169 个 markdown 链接正常。
+- `real-model-e2e.txt`：`card-real-model.spec.ts` 在 AgentScope Java Runtime + DashScope `qwen3.8-flash` 下 **1 passed (36.3s)**；key 只来自 `REAL_MODEL_API_KEY`，未进入仓库、日志或截图。
 
 ## 尚未覆盖
 
-- AgentScope 真模型链路（本机无模型 key）；E2E 使用仓库 deterministic scripted runtime，API/Worker/PostgreSQL/Web 为真实进程。
+- AgentScope 真模型链路已用 DashScope `qwen3.8-flash` 跑通；该 spec 需要 `REAL_MODEL_API_KEY` 才执行，CI/无 key 环境会跳过。其余 deterministic spec 仍使用 scripted runtime，API/Worker/PostgreSQL/Web 为真实进程。
 - 像素级视觉 diff；当前为实际截图与批准原型的人工并排检查。
 - gate-on 的 takeover 卡片单独 E2E；takeover 生产入口由既有 gate-off `computer-needs-you-card.spec.ts` 与统一卡组件/单测覆盖，未在本轮重跑。

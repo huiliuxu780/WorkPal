@@ -80,6 +80,7 @@
 | `pnpm test:docs` | pass |
 | `pnpm --filter @rakazo/web build` | 首次 `✓ built in 16.33s`（3765 modules）；最终树增量 `✓ built in 3.12s` |
 | gate-on E2E（任务书指定 5 个 spec） | **13/13 passed**（3.2m）；`logs/e2e-gate-on.txt` |
+| 真模型 E2E（AgentScope Java Runtime + DashScope `qwen3.8-flash`） | **1/1 passed**（36.3s）：真实模型调用 `ask_user` → 统一 Input 卡 → Attention 行 → 选择答案 → Run 恢复并终态；`logs/real-model-e2e.txt` |
 | gate-off legacy E2E（intervention-region / plan-review / mcp-approval-card / approval-resume） | 首轮 8 passed + `approval-resume` 过期断言红；该断言在 base `8054cac` 同样红，按 FIX-127 契约更新后 **1/1 passed**；其余 8 条保持绿 |
 
 Attention 变异验证（`logs/attention-mutation-*.txt`）：
@@ -95,6 +96,7 @@ Attention 变异验证（`logs/attention-mutation-*.txt`）：
 - 展示卡：`display-blocks-desktop-1440.png`、`display-blocks-390.png`、`display-blocks-375.png`、`display-blocks-390-dark.png`、`display-chart-detail-desktop.png`、`display-html-detail-desktop.png`。
 - 交互卡：`card-ui-tool-approval.png`、`card-ui-mcp-desktop-1440.png`、`card-ui-mcp-390.png`、`card-ui-mcp-375.png`、`card-ui-mcp-terminal-dark.png`、A10 `card-ui-outbound-*` 系列。
 - 群成员：`X-GROUP-APPROVE-1440.png`、`X-GROUP-APPROVE-terminal-1440.png`、`X-GROUP-FAIL-1440.png`、`X-GROUP-source-390.png`、`X-GROUP-target-1440.png`、`X-RETURN-source-390.png`。
+- 真模型：`real-model-ask-card-1440.png`、`real-model-attention-1440.png`、`real-model-answered-1440.png`。
 - gate-off：`legacy-approval-input-request.png`、`legacy-approval-resumed.png`、`legacy-approval-stopped-run.png`。
 
 以上截图均来自真实页面与服务端投影；已与 `docs/cards/source/card-unification-v2/mockup/cards-hifi-v4/` 的 A1/N1 及 Roundtable X-GROUP 原型并排检查，结构与视觉语言一致（文字因 E2E 语言为英文）。
@@ -108,10 +110,10 @@ Attention 变异验证（`logs/attention-mutation-*.txt`）：
 ## 已知限制
 
 - Attention 的精确 `total` 是投影窄表的索引 `COUNT`，成本 ∝ 当前 pending 投影行数（即用户待处理队列本身），不是 O(1)；消息内审批仍按 pending 块集合读取（GIN 命中，不随历史消息量增长）。详见 [attention query bounds](./attention-query-bounds.md#6-card-01e-落地2026-10-28)。
-- 本机未配置模型 key，AgentScope 真模型链路未在本次运行；E2E 使用仓库 deterministic scripted runtime，API/Worker/PostgreSQL/Web 都是真实进程。需要真实模型的 producer 验收仍建议在有权环境补跑。
+- 本机真模型补充验证：AgentScope Java Runtime + DashScope `qwen3.8-flash`，`card-real-model.spec.ts` 1/1 通过；该 spec 需要 `REAL_MODEL_API_KEY` 才执行，CI/无 key 环境跳过。其余 E2E 使用仓库 deterministic scripted runtime，API/Worker/PostgreSQL/Web 都是真实进程。
 - 视觉证据是实际页面截图与批准原型的人工并排检查，仓库当前没有 `toHaveScreenshot` 像素基线，因此不是像素级 diff。
 - 生产 gate 是否开启由产品负责人决定；本分支保持 `false`。
 
 ## 敏感信息
 
-提交前检查 `git status`、`git diff` 与新增截图：没有 `.env`、密钥、真实用户数据、私有 URL 或本机身份信息；E2E 账号和 `.test` 域名均为测试数据。
+提交前检查 `git status`、`git diff` 与新增截图：没有 `.env`、密钥、真实用户数据、私有 URL 或本机身份信息；E2E 账号和 `.test` 域名均为测试数据。真模型 key 只从 `REAL_MODEL_API_KEY` 环境变量传入并写入一次性测试库，未进入仓库、日志、截图或文档。
