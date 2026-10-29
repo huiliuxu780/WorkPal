@@ -1,0 +1,39 @@
+# RUNTIME-RELIABILITY-01 — the one red integration journey is pre-existing, not ours
+
+## the failure on our head (b3c235a)
+     × 54: group chats share one transcript with mentions and handoffs 282ms
+ FAIL  packages/testkit/src/journeys.test.ts > required product journeys > 54: group chats share one transcript with mentions and handoffs
+ ❯ packages/testkit/src/journeys.test.ts:2063:67
+      Tests  1 failed | 40 passed (41)
+
+## the same command on baseline TS sources
+# method: git checkout a29c711 -- packages/adapters/src/agentscope-runtime.ts \
+#           packages/adapters/src/executor.ts packages/logging/src/redaction.ts \
+#           packages/logging/src/redaction.test.ts
+#         pnpm test:integration
+#         git checkout HEAD -- <same four paths>   (tree restored clean, HEAD still b3c235a)
+# The Java and Dockerfile changes cannot reach this TS journey, so reverting the
+# four TypeScript files is the whole of our diff that could.
+     × 54: group chats share one transcript with mentions and handoffs 275ms
+ FAIL  packages/testkit/src/journeys.test.ts > required product journeys > 54: group chats share one transcript with mentions and handoffs
+      Tests  1 failed | 40 passed (41)
+
+## verdict
+Identical: one failure, journey 54, 1 failed | 40 passed (41), same assertion line.
+
+## why it is red (stale expectation, not a defect introduced here)
+journeys.test.ts:2063-2064 expects BOTH mentioned bots to produce a Run:
+  expect(runsAfterMention.some((run) => run.botId === botA.id)).toBe(true)
+  expect(runsAfterMention.some((run) => run.botId === botB.id)).toBe(true)
+The shipped product rule in packages/core/src/product-harness/response-owner.ts
+(resolveExplicitTurnOwner) is that with several explicit mentions and no
+separate-answers marker, only the FIRST mention owns the turn. So botB never
+gets a Run and the second assertion cannot hold. Recorded as a stale expectation
+since RT-22 (#111); the same rule already invalidated the equivalent assertion in
+apps/web/e2e/group-chats.spec.ts.
+
+## note on running these tests
+pnpm exec vitest run packages/testkit/src/journeys.test.ts on its own reports
+'41 skipped' and exit 0 — the harness sets the env the tests gate on. Only
+'pnpm test:integration' actually runs them, so a direct vitest invocation must
+never be read as a pass.

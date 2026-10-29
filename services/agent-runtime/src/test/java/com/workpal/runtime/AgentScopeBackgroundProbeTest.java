@@ -263,6 +263,75 @@ class AgentScopeBackgroundProbeTest {
     }
 
     // -------------------------------------------------------------------------------
+    // 3b. RUNTIME-RELIABILITY-01 regression: the native delivery mark must land in
+    //     the same single physical record file the owning child's spawn wrote.
+    //     The delegation repository (constructed before the agent exists) and the
+    //     temporary delivery repository of a later non-delegation run used to
+    //     address the workspace through different views — the agent's manager
+    //     applies AgentScope's default USER isolation namespace to filesystem
+    //     writes while reads fall back to the un-namespaced path — so
+    //     markDelivered created a second, namespaced copy of the record while the
+    //     spawn-side file stayed undelivered. Anything walking the session
+    //     workspace then saw two divergent records and which one "won" depended on
+    //     directory iteration order: the nondeterministic CI failure
+    //     "deliveredAt expected not null" at the owning-session probe above.
+    // -------------------------------------------------------------------------------
+
+    @Test void deliveryMarkLandsInTheOwningSessionsSingleNativeTaskRecord() throws Exception {
+        CountDownLatch parentEnded = new CountDownLatch(1);
+        List<JsonNode> requests = new CopyOnWriteArrayList<>();
+        List<JsonNode> registrations = new CopyOnWriteArrayList<>();
+        List<JsonNode> terminals = new CopyOnWriteArrayList<>();
+        HttpServer model = modelServer(requests, body -> {
+            String childTask = childTask(body);
+            if (childTask != null) {
+                awaitQuietly(parentEnded, 10);
+                return ModelReply.text("DELIVERED_CHILD_RESULT");
+            }
+            String all = body.path("messages").toString();
+            if (all.contains("DELIVERY_FOLLOW_UP")) return ModelReply.text("DELIVERY_ACK");
+            if (all.contains("DELIVERED_CHILD_RESULT")) return ModelReply.text("DELIVERY_ACK");
+            return all.contains("task_id:") ? ModelReply.text("PARENT_DONE") : ModelReply.spawn(CHILD_DELIVER);
+        });
+        HttpServer bridge = bridge(registrations, terminals, new CopyOnWriteArrayList<>());
+        try {
+            RuntimeEngine engine = delegationEngine(temp.resolve("state"), temp.resolve("workspace"));
+            RunRequest parent = chat(model.getAddress().getPort(), bridge.getAddress().getPort(),
+                    "single-record-parent", "thread-1", List.of(spawnTool()), 0);
+            engine.execute(parent, event -> {});
+            parentEnded.countDown();
+            assertTrue(awaitTerminalCount(terminals, 1), "child terminal event must arrive");
+            assertEquals("completed", terminals.getFirst().path("status").asText());
+            String taskId = terminals.getFirst().path("taskId").asText();
+            assertEquals(taskId, registrations.getFirst().path("taskId").asText());
+
+            // The owning session's follow-up run consumes the delivery through the
+            // temporary delivery repository (this run offers no delegation).
+            RunRequest followUp = chat(model.getAddress().getPort(), bridge.getAddress().getPort(),
+                    "single-record-follow-up", "thread-1", List.of(), 0, "DELIVERY_FOLLOW_UP same thread");
+            engine.execute(followUp, event -> {});
+            assertTrue(requests.getLast().path("messages").toString().contains("DELIVERED_CHILD_RESULT"),
+                    "the owning session must receive the child result: " + requests.getLast());
+
+            // The delivery mark must land in the same single physical record the
+            // owning child's spawn wrote: one native store per owning session, no
+            // divergent second copy left behind by a different addressing view.
+            List<Path> recordFiles = taskRecordFilesFor(temp.resolve("workspace"), taskId);
+            assertEquals(1, recordFiles.size(),
+                    "the owning session's native task record must exist exactly once: " + recordFiles);
+            JsonNode record = JSON.readTree(Files.readString(recordFiles.getFirst())).path(taskId);
+            assertEquals(TaskStatusView.COMPLETED, TaskStatusView.of(record.path("status").asText()),
+                    record.toString());
+            assertFalse(record.path("deliveredAt").asText("").isBlank(),
+                    "the delivered task must be marked delivered in the native repository: " + record);
+            String childSession = registrations.getFirst().path("sessionId").asText();
+            assertFalse(record.path("parentSessionId").asText().isBlank(), record.toString());
+            assertNotEquals(childSession, record.path("parentSessionId").asText(),
+                    "the record stays bound to the owning parent session, never the child session");
+        } finally { parentEnded.countDown(); bridge.stop(0); model.stop(0); }
+    }
+
+    // -------------------------------------------------------------------------------
     // 4. Cancellation: owner-only, really stops the child, and is attributed by task id.
     // -------------------------------------------------------------------------------
 
@@ -610,6 +679,20 @@ class AgentScopeBackgroundProbeTest {
             }
         }
         return records;
+    }
+
+    /** Every physical native task-record file in the workspace that carries this task. */
+    private static List<Path> taskRecordFilesFor(Path workspace, String taskId) throws Exception {
+        List<Path> files = new ArrayList<>();
+        if (!Files.exists(workspace)) return files;
+        try (var walk = Files.walk(workspace)) {
+            for (Path path : walk.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().contains("/tasks/")
+                            && path.toString().endsWith(".json")).toList()) {
+                if (JSON.readTree(Files.readString(path)).has(taskId)) files.add(path);
+            }
+        }
+        return files;
     }
 
     private static List<Path> filesMatching(Path root, java.util.function.Predicate<Path> match) {
