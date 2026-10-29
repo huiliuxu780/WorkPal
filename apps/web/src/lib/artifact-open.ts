@@ -19,6 +19,31 @@ export async function fetchArtifactBytes(
   return decodeArtifactBase64(artifact.contentBase64);
 }
 
+export type LatestArtifact = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  version: number;
+  bytes: Uint8Array;
+};
+
+/** Resolves the latest published version of the artifact's family. */
+export async function fetchLatestArtifact(
+  target: ArtifactTarget,
+  artifactId: string,
+): Promise<LatestArtifact> {
+  const artifact = await rpc.artifacts.getLatest({ ...target, artifactId });
+  return {
+    id: artifact.id,
+    name: artifact.name,
+    mimeType: artifact.mimeType,
+    size: artifact.size,
+    version: artifact.version,
+    bytes: decodeArtifactBase64(artifact.contentBase64),
+  };
+}
+
 export function downloadArtifactBytes(name: string, mimeType: string, bytes: Uint8Array): void {
   const blob = new Blob([new Uint8Array(bytes)], { type: mimeType });
   const url = URL.createObjectURL(blob);
