@@ -145,7 +145,13 @@ final class PlanBridgeTool extends ToolBase {
                 writePlanProjectionFile(value);
             }
         } catch (Exception error) {
-            System.err.println("Plan projection failed (backend plan stays authoritative): " + error);
+            // The projection is best-effort and the backend plan stays
+            // authoritative, so the run continues. Only the type is recorded:
+            // the message can carry a workspace path.
+            RuntimeLog.warn("runtime.plan.projection_failed", RuntimeLog.bindings(
+                    "session.key", parentSession,
+                    "projection.site", "plan_state",
+                    "error.type", error.getClass().getName()));
         }
     }
 
@@ -187,7 +193,10 @@ final class PlanBridgeTool extends ToolBase {
             Files.createDirectories(dir);
             Files.writeString(dir.resolve("PLAN.md"), renderPlanMarkdown(plan), StandardCharsets.UTF_8);
         } catch (Exception error) {
-            System.err.println("PLAN.md projection write failed: " + error);
+            RuntimeLog.warn("runtime.plan.projection_failed", RuntimeLog.bindings(
+                    "session.key", parentSession,
+                    "projection.site", "plan_file",
+                    "error.type", error.getClass().getName()));
         }
     }
 }

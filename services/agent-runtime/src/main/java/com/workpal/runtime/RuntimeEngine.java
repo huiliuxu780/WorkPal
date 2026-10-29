@@ -167,8 +167,7 @@ public final class RuntimeEngine {
 
     private record RunningAgent(HarnessAgent agent, RuntimeContext context, Disposable.Swap stream) {}
     private record BackgroundHandle(RunRequest request, HarnessAgent agent, RuntimeContext context,
-            ToolBridgeClient bridge, String taskId, String childSession,
-            TaskRepositoryLifecycle lifecycle) {}
+            ToolBridgeClient bridge, String taskId, String childSession) {}
 
     /**
      * RUNTIME-RELIABILITY-01: WorkPal-owned task records are session-scoped files
@@ -218,46 +217,6 @@ public final class RuntimeEngine {
         return bindings;
     }
 
-    /**
-     * RUNTIME-RELIABILITY-01: bounded lifecycle for the agent-owned delegation
-     * repository. Background helpers legitimately outlive their run, so the
-     * repository (its maintenance scheduler and worker threads) must stay alive
-     * until BOTH the owning run has ended AND every registered background child
-     * has reached its terminal event. Without this, each delegating run leaked
-     * daemon threads that kept heartbeating over the session workspace long
-     * after the run — a shared-lifecycle hazard for production and the source of
-     * stray background writes racing test cleanup.
-     */
-    private static final class TaskRepositoryLifecycle {
-        private final WorkspaceTaskRepository repository;
-        private int activeTasks;
-        private boolean runFinished;
-        private boolean shutdown;
-
-        TaskRepositoryLifecycle(WorkspaceTaskRepository repository) {
-            this.repository = repository;
-        }
-
-        synchronized void taskStarted() {
-            activeTasks++;
-        }
-
-        synchronized void taskFinished() {
-            activeTasks--;
-            shutdownIfIdle();
-        }
-
-        synchronized void runFinished() {
-            runFinished = true;
-            shutdownIfIdle();
-        }
-
-        private void shutdownIfIdle() {
-            if (shutdown || !runFinished || activeTasks > 0) return;
-            shutdown = true;
-            repository.shutdown();
-        }
-    }
 
     public RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot) {
         // Null compaction = derive explicit token budgets per request from the
@@ -549,7 +508,6 @@ public final class RuntimeEngine {
         boolean pausedForResume = false;
         boolean temporaryDeliveryRepository = false;
         TaskRepository deliveryRepository = null;
-        TaskRepositoryLifecycle repoLifecycle = null;
         RunningAgent active = null;
         try {
         if (request.resumeCheckpoint() != null) {
@@ -703,11 +661,9 @@ public final class RuntimeEngine {
             builder.enablePlanMode();
         }
         if (allowSubagents) {
-            InterruptibleTaskRepository taskRepository = new InterruptibleTaskRepository(
+            builder.taskRepository(new InterruptibleTaskRepository(
                     taskRecordManager(workspace), hash(request.botId()),
-                    request.backgroundAllowed(), request.maxChildren(), spawnBudget);
-            repoLifecycle = new TaskRepositoryLifecycle(taskRepository);
-            builder.taskRepository(taskRepository);
+                    request.backgroundAllowed(), request.maxChildren(), spawnBudget));
             // P11 fixed texts: prompts/helper/*.md — reachable ONLY through this
             // seam-gated branch; the production entrypoint suspends delegation
             // (AG-02), so these segments never enter a production request.
@@ -829,8 +785,7 @@ public final class RuntimeEngine {
         StringBuilder finalText = new StringBuilder();
         for (int resume = 0; resume < 40; resume++) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Run cancelled");
-            EventMapper mapper = new EventMapper(request, sink, finalText, agent, context, bridge,
-                    repoLifecycle);
+            EventMapper mapper = new EventMapper(request, sink, finalText, agent, context, bridge);
             CountDownLatch streamFinished = new CountDownLatch(1);
             AtomicReference<Throwable> streamError = new AtomicReference<>();
             List<Msg> modelInput = input;
@@ -906,13 +861,6 @@ public final class RuntimeEngine {
             if (temporaryDeliveryRepository && deliveryRepository != null) {
                 deliveryRepository.shutdown();
             }
-            // RUNTIME-RELIABILITY-01: the agent-owned delegation repository keeps
-            // a maintenance scheduler and worker threads alive. It must outlive
-            // this run only while background children of the run are still
-            // in flight; once the run has ended and every registered child has
-            // reached its terminal event, shut it down instead of leaking the
-            // threads (and their workspace writes) past the run's lifecycle.
-            if (repoLifecycle != null) repoLifecycle.runFinished();
             // Terminal attempts release the shared helper budget; a paused run
             // keeps it so the resume cannot spawn a fresh maxChildren batch.
             if (!pausedForResume && spawnBudget != null) {
@@ -1363,7 +1311,6 @@ public final class RuntimeEngine {
         private final HarnessAgent agent;
         private final RuntimeContext context;
         private final ToolBridgeClient bridge;
-        private final TaskRepositoryLifecycle lifecycle;
         private final Map<String, String> toolNames = new HashMap<>();
         private final Map<String, StringBuilder> toolArgs = new HashMap<>();
         private final Map<String, StringBuilder> toolOutputs = new HashMap<>();
@@ -1376,15 +1323,13 @@ public final class RuntimeEngine {
         private boolean reasoningShown;
 
         EventMapper(RunRequest request, EventSink sink, StringBuilder finalText,
-                HarnessAgent agent, RuntimeContext context, ToolBridgeClient bridge,
-                TaskRepositoryLifecycle lifecycle) {
+                HarnessAgent agent, RuntimeContext context, ToolBridgeClient bridge) {
             this.request = request;
             this.sink = sink;
             this.finalText = finalText;
             this.agent = agent;
             this.context = context;
             this.bridge = bridge;
-            this.lifecycle = lifecycle;
         }
 
         void accept(AgentEvent event) {
@@ -1441,7 +1386,7 @@ public final class RuntimeEngine {
                                 throw new IOException("Background subagent identity is missing");
                             }
                             registerBackground(request, agent, context, bridge, taskId, agentId,
-                                    childSession, lifecycle);
+                                    childSession);
                             bridge.finishBackgroundSpawn();
                         }
                         if (!output.contains("task_id:") && !output.contains("status: async")) {
@@ -1483,8 +1428,7 @@ public final class RuntimeEngine {
     }
 
     private void registerBackground(RunRequest request, HarnessAgent agent, RuntimeContext context,
-            ToolBridgeClient bridge, String taskId, String agentId, String childSession,
-            TaskRepositoryLifecycle lifecycle)
+            ToolBridgeClient bridge, String taskId, String agentId, String childSession)
             throws IOException, InterruptedException {
         BackgroundTask task = agent.getTaskRepository().getTask(context, context.getSessionId(), taskId);
         if (task == null) throw new IOException("AgentScope background task is missing");
@@ -1495,11 +1439,8 @@ public final class RuntimeEngine {
             throw error;
         }
         BackgroundHandle handle = new BackgroundHandle(request, agent, context, bridge, taskId,
-                childSession, lifecycle);
+                childSession);
         background.put(taskId, handle);
-        // Counted BEFORE the watcher starts so taskFinished can never observe a
-        // negative balance for this child.
-        if (lifecycle != null) lifecycle.taskStarted();
         Thread.ofVirtual().name("workpal-background-" + taskId).start(() -> {
             try {
                 long nextHeartbeat = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
@@ -1518,7 +1459,10 @@ public final class RuntimeEngine {
                 for (int attempt = 0; attempt < 3; attempt++) {
                     try { bridge.publishTerminal(taskId, childSession, state, result); break; }
                     catch (IOException error) {
-                        if (attempt == 2) System.err.println("Background task event delivery failed: " + taskId);
+                        // Bounded retry; recorded once, on the final attempt, so a
+                        // transient bridge outage does not produce three lines.
+                        if (attempt == 2) RuntimeLog.error("runtime.background.terminal_delivery_failed",
+                                bindingsWith(request, "task.id", taskId), error);
                         else Thread.sleep(1_000);
                     }
                 }
@@ -1526,7 +1470,6 @@ public final class RuntimeEngine {
                 Thread.currentThread().interrupt();
             } finally {
                 background.remove(taskId, handle);
-                if (handle.lifecycle() != null) handle.lifecycle().taskFinished();
             }
         });
     }

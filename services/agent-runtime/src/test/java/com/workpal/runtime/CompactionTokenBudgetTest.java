@@ -123,6 +123,7 @@ class CompactionTokenBudgetTest {
         List<String> kinds = new CopyOnWriteArrayList<>();
         HttpServer model = fixtureModel(requests, kinds);
         PrintStream originalErr = System.err;
+        PrintStream originalOut = System.out;
         ByteArrayOutputStream signals = new ByteArrayOutputStream();
         Path state = temp.resolve("state");
         Path workspace = temp.resolve("workspace");
@@ -131,7 +132,12 @@ class CompactionTokenBudgetTest {
 
             // Seed past the 30-message backstop so the first compaction fires,
             // then push a huge turn over the 8192-window token trigger (4096).
-            System.setErr(new PrintStream(signals, true, StandardCharsets.UTF_8));
+            // Both streams are captured: structured events go to stdout at info
+            // and to stderr at warn/error, and the "never copies content"
+            // guarantee has to hold for everything the process emits.
+            PrintStream captured = new PrintStream(signals, true, StandardCharsets.UTF_8);
+            System.setErr(captured);
+            System.setOut(captured);
             engine.execute(chat(model.getAddress().getPort(), "budget-1",
                     "Follow up", largeHistory(40)), e -> {});
             assertTrue(kinds.contains("SUMMARY"), "first compaction must fire");
@@ -143,16 +149,19 @@ class CompactionTokenBudgetTest {
                     "the token trigger derived from the 8192 window must fire on the huge turn: " + kinds);
         } finally {
             System.setErr(originalErr);
+            System.setOut(originalOut);
             model.stop(0);
         }
 
         String stderr = signals.toString(StandardCharsets.UTF_8);
         // Bounded lifecycle metadata with run/thread identity…
-        assertTrue(stderr.contains("agentscope.signal event=POST_CALL"),
+        assertTrue(stderr.contains("\"message\":\"agentscope.signal\""),
+                "hook must emit a structured lifecycle signal");
+        assertTrue(stderr.contains("\"signal.event\":\"POST_CALL\""),
                 "hook must emit POST_CALL lifecycle metadata");
-        assertTrue(stderr.contains("run=budget-2"));
-        assertTrue(stderr.contains("thread=thread-1"));
-        assertTrue(stderr.contains("generation="));
+        assertTrue(stderr.contains("\"run.id\":\"budget-2\""));
+        assertTrue(stderr.contains("\"thread.id\":\"thread-1\""));
+        assertTrue(stderr.contains("\"memory.generation\":"));
         // …and never a copy of message content or tool results.
         assertFalse(stderr.contains(SECRET_NEEDLE),
                 "hook output must not copy message content");

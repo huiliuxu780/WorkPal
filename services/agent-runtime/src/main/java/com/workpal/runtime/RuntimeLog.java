@@ -65,6 +65,21 @@ final class RuntimeLog {
 
     static void clear() { BOUND.remove(); }
 
+    /**
+     * Build event bindings from alternating key/value pairs. {@link Map#of}
+     * rejects nulls and an identifier can legitimately be absent (a run without
+     * session admission has no attempt), so dropping the pair is the behaviour
+     * every call site wants.
+     */
+    static Map<String, Object> bindings(Object... keyValues) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int index = 0; index + 1 < keyValues.length; index += 2) {
+            Object value = keyValues[index + 1];
+            if (value != null) map.put(String.valueOf(keyValues[index]), value);
+        }
+        return map;
+    }
+
     static void info(String event, Map<String, ?> bindings) { emit("info", event, bindings, null); }
 
     static void warn(String event, Map<String, ?> bindings) { emit("warn", event, bindings, null); }

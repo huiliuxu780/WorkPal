@@ -227,7 +227,11 @@ public final class ToolBridgeClient {
                 .build();
         HttpResponse<String> response = client.send(call, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() / 100 != 2) {
-            System.err.println("Tool bridge returned HTTP " + response.statusCode());
+            // The tool-bridge boundary records its own outcome. The status is a
+            // fixed code; the response body can carry tool output, so it is never
+            // logged. The thrown message is unchanged — it is already only a code.
+            RuntimeLog.warn("runtime.tool_bridge.rejected", RuntimeEngine.bindingsWith(
+                    request, "bridge.http_status", response.statusCode()));
             throw new IOException("Tool bridge returned HTTP " + response.statusCode());
         }
         return json.readTree(response.body());
