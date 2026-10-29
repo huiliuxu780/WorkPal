@@ -4,8 +4,9 @@
 
 - 任务书：[第二批 CARD-01E](../tasks/second-batch-20261028/CARD-01E.md) + [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
 - 分支：`codex/card-system-completion`
-- 基线：`a29c71123d50929faa05d2df588f487169eaad79`（最新本地 `origin/main`，PR #149 后；分支已 rebase 到该点。原始红基线 A/B 使用 `8054cac`）
-- 门禁 head：本次 UTF-16 资格修复提交（持久化 renderable + UTF-16 长度语义 + 迁移回填用例；代码、测试、文档与证据在同一提交）
+- 原始开发基线：`a29c71123d50929faa05d2df588f487169eaad79`（PR #149 后；原始红基线 A/B 使用 `8054cac`）
+- 最终集成基线：`1eac68196e839ad988d4f21a41c1234c50f7862a`（RUNTIME-RELIABILITY-01 / PR #155 合入后的 `main`；以 merge commit `d9d3b6d` 纳入本分支）
+- 门禁 head：等待本次最终集成提交（卡片实现、Attention input mode 修复、Runtime flake 根因修复与批次状态在同一 head）
 
 ## 用户现在能完成的流程
 
