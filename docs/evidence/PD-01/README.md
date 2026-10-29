@@ -67,5 +67,5 @@
 
 - P1（`apps/api/src/thread-target.ts:884`）：初始快照改由 main 的集中投影覆盖，并新增窗口回归用例；已回复，未 Resolve。
 - P2（`apps/web/src/pages/shell/use-execution-transcript.tsx`）：已修复并带红绿；已回复，未 Resolve。
-- P2（`apps/web/src/pages/Shell.tsx:6855`）：多 Bot 重试入口现在同时以 `aria-label` 和原型约定的原生 tooltip 显示 Bot 名；Web 单测 798/798、`manual-retry.spec.ts` 4/4；待回复，未 Resolve。
+- P2（`apps/web/src/pages/Shell.tsx:6855`）：多 Bot 重试入口现在同时以 `aria-label` 和原型约定的原生 tooltip 显示 Bot 名；Web 单测 798/798、`manual-retry.spec.ts` 4/4；已回复，未 Resolve。
 - review summary：已回复。
