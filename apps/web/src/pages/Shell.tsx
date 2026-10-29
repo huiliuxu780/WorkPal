@@ -6843,18 +6843,18 @@ function MessageHoverActions({
         </button>
         {retryEntries?.map((entry) => {
           const retrying = retryingRunId === entry.runId;
+          const retryLabel = retrying
+            ? t`Retrying…`
+            : retryEntries.length > 1
+              ? t`Retry ${botNameOf?.(entry.botId) ?? entry.botId}`
+              : t`Retry`;
           return (
             <button
               key={entry.runId}
               type="button"
               data-testid="message-retry"
-              aria-label={
-                retrying
-                  ? t`Retrying…`
-                  : retryEntries.length > 1
-                    ? t`Retry ${botNameOf?.(entry.botId) ?? entry.botId}`
-                    : t`Retry`
-              }
+              aria-label={retryLabel}
+              title={retryLabel}
               disabled={retryingRunId !== null}
               onClick={() => onRetryRun(entry.runId)}
               className={cn(

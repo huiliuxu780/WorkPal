@@ -349,14 +349,20 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
   await userRow.hover();
   const retries = userRow.getByTestId("message-retry");
   await expect(retries).toHaveCount(2, { timeout: 15_000 });
-  // Distinguishable accessible names: each entry names its own Bot, so a
-  // screen-reader user can tell the two retry actions apart (acceptance 4).
-  const retryNames = await retries.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("aria-label")),
+  // Each entry names its Bot in both the accessible name and the visible
+  // native tooltip, so keyboard, screen-reader and pointer users can select
+  // the intended Run (acceptance 4).
+  const retryLabels = await retries.evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      ariaLabel: node.getAttribute("aria-label"),
+      title: node.getAttribute("title"),
+    })),
   );
+  const retryNames = retryLabels.map(({ ariaLabel }) => ariaLabel);
   expect(retryNames).toHaveLength(2);
   for (const name of retryNames) expect(name).toMatch(/^Retry .+/);
   expect(new Set(retryNames).size).toBe(2);
+  expect(retryLabels.map(({ title }) => title)).toEqual(retryNames);
   await capture(page, "group-desktop-two-entries");
 
   const triggerMessageId = await (async () => {
