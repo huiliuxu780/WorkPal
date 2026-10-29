@@ -7,7 +7,7 @@
 - 真实模型受控验收：`SANDBOX_PROVIDER=fake` + 真 `qwen3.8-flash` + 真 runtime；跟随消息 06:06:10.242 起排队，`clean` proof 于 06:06:17.772 ack，06:06:17.801 才开始、06:06:18.631 完成。证据 `docs/evidence/FIX-STOP-01/real-model-v2/`。
 - 代码/证据 head `4ca6f08ffb5df26ecac8d4cc5fa92ffe08abbce7`：run 40642473242 **attempt 3 单 attempt 全绿**（`CI result`、agentscope、worker-chain、runtime-jar、harness、web、backend、db-postgres、docs、agent-runtime-image 全 success；`Daily web screenshots` 按 PR 事件正确 skipped）。attempt 1/2 的 `runtime-jar` 失败是已登记的 `AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession:253` 非确定性用例（同日 #148/#149 多次出现、同 SHA 重跑转绿；本 PR diff 无 Java 文件）。最终 PR head 以 PR 的同一 attempt CI 链接为准。
 - 已知限制：runtime 不可达 / 旧 binding 无法重新认领 / manifest 缺失 / proof 冲突时会停在 `recovering`，需单独的人工或运维出口；本卡不提供时间兜底。Docker sandbox 的 `computer home` 故障另记，不在本卡修复。
-- 复审 P2：`listCancelledSessionsToRecover` 每次选中后推进 admission 的 `updatedAt` recovery-attempt cursor，避免同一批无 proof owner 永久占住 `LIMIT`；轮转不释放 admission，也不削弱 RT-26 proof。
+- 复审 P2：该查询现名为 `listTerminalSessionsToRecover`，每次选中后推进 admission 的 `updatedAt` recovery-attempt cursor，避免同一批无 proof owner 永久占住 `LIMIT`；轮转不释放 admission，也不削弱 RT-26 proof。RUN-FAILURE-01 在同一分类器中加入 failed terminal owner，取消分支仍须先送达 `run_abort`。
 
 - 类型：bug
 - 高风险：是（涉及 cancel、session admission 和 `recovering` 证明）

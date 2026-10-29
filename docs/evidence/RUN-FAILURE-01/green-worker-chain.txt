@@ -1,0 +1,71 @@
+RUN-FAILURE-01 — green record and acceptance scenarios
+======================================================
+
+Same harness as the red (`apps/web/e2e/worker-chain.spec.ts`, run through
+`pnpm test:worker-chain`): real API + standalone Worker + real Java AgentScope
+runtime + PostgreSQL 16 + loopback model HTTP fixture.
+
+Final full suite on the delivery head (after the fix):
+
+  ✓   1 a user Run stays queued while the Worker is down and is claimed and executed by the Worker process (15.2s)
+  ✓   2 a retry after an in-flight cancellation waits for the RT-26 detach proof, not for the abort 200 (9.6s)
+  ✓   3 a Routine failure queues one delivery behind recovering chat admission (1.4m)
+  ✓   4 an outbox restart creates one queued delivery behind recovering admission (1.3m)
+  ✓   5 a Worker killed mid-Run parks chat admission in recovering without retrying (23.0s)
+  ✓   6 a provider failure is recorded without its own text and the Run is stopped, not left running (21.8s)
+  ✓   7 a persistent provider failure ends the Run after the automatic retry budget (1.1m)
+  ✓   8 a provider failure inside the retry budget completes the original Run (14.9s)
+  ✓   9 a non-retryable provider rejection fails the Run without an automatic retry (13.3s)
+  ✓  10 Stopping during the retry backoff cancels the Run without another model call (22.1s)
+  ✓  11 a Run with a tool call is not retried when the model then fails (10.0s)
+
+  11 passed (6.1m), exit 0.
+
+The regression scenario (red -> green), test 7:
+
+  * The poll fails on the defect itself (`attempts: 5` / Run not `failed` on
+    the unfixed tree); with the fix it observes `failed`.
+  * Run.status=failed, Task.status=failed, Run.error="Agent execution failed"
+    (synthetic provider key/host asserted absent from every Run/Attempt error).
+  * Exactly 3 Attempts (retry_scheduled, retry_scheduled, failed), each with
+    finishedAt; exactly 2 `run.retried` events; exactly 1 `run.failed`.
+  * Exactly 3 product-level model calls (`agentscope.run.requested`, one per
+    Attempt). A terminal-owner `run.continue` may still settle the session, so
+    the post-terminal assertion is "no model call and no new Attempt", which
+    is the product fact; the job reconciler cannot re-enter the runtime.
+  * 10s after the terminal transaction: no new model requests, no new
+    Attempts, no additional `run.retried`, Run still `failed`.
+  * Session occupancy: the failed Run stops owning the session (RT-26 clean
+    proof recorded + acked), and a follow-up user turn on the same Thread
+    completes with exactly one reply. The follow-up is a new user turn, not a
+    replacement Run for the failed one.
+
+Acceptance 2 (inside the budget): first Attempt spends the SDK's three bounded
+HTTP tries, the automatic retry after 5s reaches a healthy response. The
+original Run completes; 2 Attempts (retry_scheduled, completed); 1
+`run.retried`; 1 `run.completed`; 0 `run.failed`; exactly one bot message; one
+user Run.
+
+Acceptance 3 (non-retryable 4xx): HTTP 400 is classified `provider_rejected`,
+the Run fails on the first Attempt with no `run.retried`, no retry, sanitized
+error, and no further model request in the following 10s.
+
+Acceptance 4 (Stop during backoff): after the first Attempt fails and
+`run.retried` is durably written (5s backoff), the product `threads/stop`
+cancels the Run. The already-scheduled retry job does not call the model
+(product-level model calls stay at 1), the Attempt keeps its
+`retry_scheduled` record, and the Run stays `cancelled`.
+
+Acceptance 5 (tool call): the model calls `runtime_current_time`, the next
+inference fails with provider 500. Because a tool has been called, no
+automatic retry is allowed: 1 Attempt, 0 `run.retried`, 1
+`agent.tool.called`, Run failed. The ExternalEffect/execution-fence half of
+this rule is covered by the PostgreSQL execution-contract tests
+(`pnpm test:postgres`), which stay green.
+
+Note on SDK-internal retries: the AgentScope OpenAI model defaults to
+`ExecutionConfig.MODEL_DEFAULTS` (`maxAttempts=3`), so one Attempt may spend up
+to three provider HTTP requests before it fails. The product retry budget is
+Attempt-level (`RUN_RETRY_DELAYS_MS`), unchanged by this delivery; the tests
+therefore assert Attempts and `agentscope.run.requested` lines, not raw HTTP
+request counts, and keep enough fixture steps for the SDK's own retries.

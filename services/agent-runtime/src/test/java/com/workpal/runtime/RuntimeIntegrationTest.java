@@ -832,8 +832,11 @@ class RuntimeIntegrationTest {
                     endpoint, base.model(), base.allowSilentEmpty(), base.emptyResponseText(), base.sessionGeneration());
             RuntimeEngine engine = delegationEngine(temp.resolve("reject-state"), temp.resolve("reject-workspace"));
             Exception failure = assertThrows(Exception.class, () -> engine.execute(input, event -> {}));
-            assertTrue(failure.getMessage() != null && failure.getMessage().contains("Cannot stream AgentScope event"),
-                    failure.toString());
+            // RUN-FAILURE-01: the stream boundary wraps the original throwable in
+            // ModelStreamFailure with a fixed message; the underlying cause is
+            // preserved for attribution.
+            assertEquals("Agent execution failed", failure.getMessage(), failure.toString());
+            assertTrue(causeChainContains(failure, "Cannot stream AgentScope event"), failure.toString());
             Path nativeTaskPath;
             try (var files = java.nio.file.Files.walk(temp.resolve("reject-workspace"))) {
                 nativeTaskPath = files.filter(path -> path.toString().contains("/tasks/")
@@ -856,6 +859,14 @@ class RuntimeIntegrationTest {
                     nativeRecord);
             nativeRepo.shutdown();
         } finally { bridge.stop(0); model.stop(0); }
+    }
+
+    private static boolean causeChainContains(Throwable error, String expected) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current.getMessage() != null && current.getMessage().contains(expected)) return true;
+            if (current.getCause() == current) break;
+        }
+        return false;
     }
 
     private static byte[] bridgeBody(String value) { return value.getBytes(StandardCharsets.UTF_8); }

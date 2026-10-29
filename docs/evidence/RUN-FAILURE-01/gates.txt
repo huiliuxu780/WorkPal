@@ -1,0 +1,48 @@
+RUN-FAILURE-01 — local delivery gates (final head)
+==================================================
+
+Environment: macOS arm64, Node 24, pnpm 9.15.0, JDK 21 (HOME
+`/opt/homebrew/opt/openjdk@21/...`, `pom.xml` requires release 21; Homebrew's
+default JDK 27 does not count), PostgreSQL 16 (Colima container
+`workpal-postgres-1`, disposable DBs `workpal_e2e_rf01` / `workpal_e2e_pg01`),
+Docker via Colima.
+
+Targeted first (retry policy / wait timeout / session admission / checkpoint /
+effect fence), then the full list:
+
+| command | result |
+| --- | --- |
+| `pnpm exec vitest run --config vitest.unit.config.ts packages/adapters/src/agentscope-runtime.test.ts` | exit 0, 32 tests |
+| `JAVA_HOME=<21> mvn -f services/agent-runtime/pom.xml test -Dtest=ModelStreamFailureTest` | exit 0, Tests run: 8, Failures: 0 |
+| `pnpm lint` | exit 0 (76 warnings / 7 infos are baseline, in untouched files) |
+| `pnpm check` | exit 0, 18/18 tasks successful |
+| `pnpm test:unit` | exit 0, 461 files / 5558 passed / 2 skipped |
+| `pnpm test:postgres` (real PG16, migrations deployed, VERIFY_DATABASE=1) | exit 0, 53 files / 476 passed |
+| `pnpm test:agentscope` | exit 0, 137 tests / 0 failures |
+| `pnpm test:worker-chain` | exit 0, **11 passed (6.1m)** |
+| `pnpm test:integration` | **1 failed / 40 passed (41)** — journey 54, proven baseline red (baseline-journey-54.txt) |
+| `pnpm test:inventory` | exit 0 |
+| `pnpm test:ci-select` | exit 0 |
+| `pnpm test:docs` | exit 0 |
+
+Postgres command actually used (the runner does not set these itself — running
+`pnpm test:postgres` alone would skip every test and still exit 0):
+
+  DATABASE_URL=postgresql://.../workpal_e2e_pg01 \
+  VERIFY_DATABASE=1 pnpm test:postgres
+
+Worker-chain / integration commands actually used:
+
+  JAVA_HOME=<temurin-21> \
+  WORKPAL_E2E_DATABASE_URL=postgresql://.../workpal_e2e_rf01 \
+  pnpm test:worker-chain
+
+  JAVA_HOME=<temurin-21> \
+  DOCKER_HOST=unix:///Users/rivers/.colima/default/docker.sock \
+  TESTCONTAINERS_RYUK_DISABLED=true \
+  pnpm test:integration
+
+The only red is journey 54. It reproduces identically with this diff's two
+adapter files reverted to `origin/main` (see baseline-journey-54.txt), so it
+is unrelated to this delivery; fixing group-chat mention ownership is out of
+scope.

@@ -1,0 +1,55 @@
+RUN-FAILURE-01 — red record on unfixed code (same regression scenario)
+======================================================================
+
+The regression test is acceptance 1 itself, added to the existing
+`apps/web/e2e/worker-chain.spec.ts` harness (no second harness):
+`a persistent provider failure ends the Run after the automatic retry budget`.
+It fails on the defect itself — a fourth Attempt — before any timeout, and
+also never observes the Run in `failed`.
+
+Command (pre-fix head; external PG16, real Worker, real Java Runtime, model
+fixture answering every request with HTTP 500):
+
+  JAVA_HOME=<temurin-21> \
+  WORKPAL_E2E_DATABASE_URL=postgresql://.../workpal_e2e_rf01 \
+  pnpm exec tsx packages/testkit/src/cli/worker-chain.ts \
+    "--grep=a persistent provider failure"
+
+Result:
+
+  ✘  1 [chromium] › e2e/worker-chain.spec.ts ›
+       a persistent provider failure ends the Run after the automatic retry budget (2.1m)
+
+       Error: the Run must reach failed within the retry budget
+       Expected: "failed"
+       Received: "attempts: 5"
+       - Timeout 120000ms exceeded while waiting on the predicate
+
+The same Run was executed five times. `runtime.stream.failed` fired with a
+different attempt.id each time, all on run.id=cmvt7ci3a000fl4x09wpbljaq:
+
+  07:08:48.990  attempt.id=cmvt7ci4h0008p2x0xmvar449  (Attempt 1)
+  07:09:12.126  attempt.id=cmvt7d0ta000ap2x003br3jvo  (Attempt 2, re-driven by the job reconciler)
+  07:09:43.447  attempt.id=cmvt7dnyh000cp2x0nc39oer2  (Attempt 3, re-driven)
+  ... and two more (cmvt7eb3j..., cmvt7ey8u...) inside the 120s window.
+
+The first red reproduction (same test, then with a successful 4th fixture step)
+was queried live right after the re-drive:
+
+  attempts: 1 row status=interrupted error=agentscope_runtime_outcome_unconfirmed,
+            then a NEW Attempt (different id, different fence) consumed the next
+            provider request and completed the Run
+  events:   zero `run.retried` rows for the Run
+
+Root cause confirmed by these facts: the provider 500 arrived as the fixed
+wire message plus `category=internal`; the adapter's text regex could not
+classify it, so the executor took the "Runtime outcome unconfirmed" branch,
+returned without finalizing, and `markSessionAdmissionRecovering` parked the
+Run back to `queued` with no retry bookkeeping. The job reconciler re-woke the
+queued Run every cycle, the RT-26 hook released the session with a proof, and
+the executor executed the model call again — outside RUN_RETRY_DELAYS_MS.
+`RUNTIME-RELIABILITY-01` observed the same shape (7 provider requests in ~3
+minutes, Run still `queued` after 180s).
+
+The red is not a sleep/assertion artifact: the Attempt count itself exceeded
+the budget (`attempts: 5`) while the Run never reached `failed`.

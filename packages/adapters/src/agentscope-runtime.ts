@@ -40,14 +40,21 @@ export class AgentScopeRunRejectedError extends Error {
   }
 }
 
-function transientWireError(message: string): AgentScopeTransientError | null {
-  if (/\b(?:timeout|timed out)\b/i.test(message)) {
-    return new AgentScopeTransientError("llm_timeout", message);
+/**
+ * RUN-FAILURE-01: the runtime reported a definitive failure of this Run. The
+ * outcome is known (the Run failed), so the executor finalizes it instead of
+ * treating it as an unconfirmed execution that recovery may re-drive. The
+ * category is the runtime's stable classification; the message is its fixed,
+ * sanitized text.
+ */
+export class AgentScopeRunFailedError extends Error {
+  constructor(
+    message: string,
+    public readonly failureCategory?: string,
+  ) {
+    super(message);
+    this.name = "AgentScopeRunFailedError";
   }
-  if (/\b(?:500|502|503|504)\b/.test(message)) {
-    return new AgentScopeTransientError("provider_5xx", message);
-  }
-  return null;
 }
 
 type AgentScopeWireEvent =
@@ -1019,16 +1026,22 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       let completion: Extract<AgentRuntimeEvent, { type: "done" }> | undefined;
       const accept = (event: AgentScopeWireEvent): AgentRuntimeEvent | undefined => {
         if (event.type === "error") {
-          // RUNTIME-RELIABILITY-01: the runtime reports a stable, user-invisible
-          // failure category. Recording it on this side attributes the failure
-          // to a layer within the same trace, without the runtime ever sending
-          // provider text. Retry behaviour is deliberately unchanged: the
-          // category is attribution, not a new control signal.
+          // RUN-FAILURE-01: the runtime names the failure from throwable types
+          // and the provider's HTTP status; this side never guesses a retryable
+          // class from operator-visible text. A retryable provider class is
+          // bounded by the backend's single automatic Retry budget; everything
+          // else is a definitive Run failure and must be finalized as such.
           getLogger().error("agentscope.run.failed", {
             "run.id": request.runId,
             "runtime.failure_category": event.category,
           });
-          throw transientWireError(event.message) ?? new Error(event.message);
+          if (event.category === "provider_unavailable") {
+            throw new AgentScopeTransientError("provider_5xx", event.message);
+          }
+          if (event.category === "provider_timeout") {
+            throw new AgentScopeTransientError("llm_timeout", event.message);
+          }
+          throw new AgentScopeRunFailedError(event.message, event.category);
         }
         if (terminal) throw new Error("AgentScope returned an event after its terminal event");
         if (event.type === "paused") {

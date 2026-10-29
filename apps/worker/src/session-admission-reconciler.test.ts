@@ -4,19 +4,19 @@ const {
   recoverExpiredSessionAdmissions,
   listAvailableSessionAdmissionHeads,
   releaseCancelledSessionsThatNeverStarted,
-  listCancelledSessionsToRecover,
+  listTerminalSessionsToRecover,
 } = vi.hoisted(() => ({
   recoverExpiredSessionAdmissions: vi.fn(),
   listAvailableSessionAdmissionHeads: vi.fn(),
   releaseCancelledSessionsThatNeverStarted: vi.fn(),
-  listCancelledSessionsToRecover: vi.fn(),
+  listTerminalSessionsToRecover: vi.fn(),
 }));
 
 vi.mock("@rakazo/db", () => ({
   recoverExpiredSessionAdmissions,
   listAvailableSessionAdmissionHeads,
   releaseCancelledSessionsThatNeverStarted,
-  listCancelledSessionsToRecover,
+  listTerminalSessionsToRecover,
 }));
 
 import { reconcileSessionAdmissions } from "./session-admission-reconciler.js";
@@ -25,7 +25,7 @@ describe("session admission reconciler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     releaseCancelledSessionsThatNeverStarted.mockResolvedValue([]);
-    listCancelledSessionsToRecover.mockResolvedValue([]);
+    listTerminalSessionsToRecover.mockResolvedValue([]);
     recoverExpiredSessionAdmissions.mockResolvedValue([]);
     listAvailableSessionAdmissionHeads.mockResolvedValue([]);
   });
@@ -73,21 +73,25 @@ describe("session admission reconciler", () => {
     expect(enqueue.mock.calls.map(([job]) => job.payload.runId)).toEqual(["queued-after-stop"]);
   });
 
-  it("re-dispatches a cancelled owner whose runtime started instead of releasing it", async () => {
-    listCancelledSessionsToRecover.mockResolvedValue([
+  it("re-dispatches terminal owners whose runtime session still needs proof", async () => {
+    listTerminalSessionsToRecover.mockResolvedValue([
       { sessionKey: "started-and-aborted", runId: "cancelled-owner" },
+      { sessionKey: "failed-unproven", runId: "failed-owner" },
     ]);
     const enqueue = vi.fn().mockResolvedValue(undefined);
 
     await expect(reconcileSessionAdmissions({} as never, { enqueue } as never)).resolves.toEqual({
       recovered: 0,
       released: 0,
-      recoveryDispatched: 1,
+      recoveryDispatched: 2,
       scheduled: 0,
     });
     // The owner Run is re-driven so the RT-26 hook can obtain the proof; the
     // reconciler itself must not release the session.
-    expect(enqueue.mock.calls.map(([job]) => job.payload.runId)).toEqual(["cancelled-owner"]);
+    expect(enqueue.mock.calls.map(([job]) => job.payload.runId)).toEqual([
+      "cancelled-owner",
+      "failed-owner",
+    ]);
   });
 
   it("classifies before parking and scanning heads", async () => {
@@ -96,7 +100,7 @@ describe("session admission reconciler", () => {
     expect(releaseCancelledSessionsThatNeverStarted).toHaveBeenCalledBefore(
       recoverExpiredSessionAdmissions,
     );
-    expect(listCancelledSessionsToRecover).toHaveBeenCalledBefore(recoverExpiredSessionAdmissions);
+    expect(listTerminalSessionsToRecover).toHaveBeenCalledBefore(recoverExpiredSessionAdmissions);
     expect(recoverExpiredSessionAdmissions).toHaveBeenCalledBefore(
       listAvailableSessionAdmissionHeads,
     );

@@ -2,7 +2,7 @@ import type { JobPublisher } from "@rakazo/adapter-kit";
 import { runContinueJob } from "@rakazo/adapter-kit";
 import {
   listAvailableSessionAdmissionHeads,
-  listCancelledSessionsToRecover,
+  listTerminalSessionsToRecover,
   type PrismaClient,
   recoverExpiredSessionAdmissions,
   releaseCancelledSessionsThatNeverStarted,
@@ -13,23 +13,23 @@ import {
  * missed wakeups for sessions that are already available. It never turns expiry
  * into permission for a successor to enter AgentScope.
  *
- * FIX-STOP-01 adds two earlier passes, both scoped to Stop:
+ * Terminal owners are handled by two earlier passes:
  *
  *   - sessions the runtime never entered are released on the cancelled status;
  *   - sessions the runtime did enter are re-dispatched as `runContinueJob` for the
- *     owner Run, so the existing RT-26 terminal-owner hook can attempt the
- *     clean/detached proof. This layer only classifies: an absent `run_abort`
- *     revocation means the runtime accepted the abort, not that the execution
- *     exited or the session detached, so releasing here would be wrong. No
- *     checkpoint id, watermark, intervention, or acknowledgement logic is
- *     duplicated in this file.
+ *     terminal owner Run, so the existing RT-26 hook can attempt the
+ *     clean/detached proof. Cancelled owners wait for abort delivery; failed
+ *     owners are retried after any unproven one-shot settlement. This layer only
+ *     classifies and never treats status, abort acceptance, expiry, or time as a
+ *     detach proof. No checkpoint id, watermark, intervention, or
+ *     acknowledgement logic is duplicated here.
  */
 export async function reconcileSessionAdmissions(
   prisma: PrismaClient,
   jobs: JobPublisher,
 ): Promise<{ recovered: number; released: number; recoveryDispatched: number; scheduled: number }> {
   const released = await releaseCancelledSessionsThatNeverStarted(prisma);
-  const toRecover = await listCancelledSessionsToRecover(prisma);
+  const toRecover = await listTerminalSessionsToRecover(prisma);
   const recovered = await recoverExpiredSessionAdmissions(prisma);
   const heads = await listAvailableSessionAdmissionHeads(prisma);
 
