@@ -1,0 +1,361 @@
+
+> workpal@0.1.0 test:postgres /Users/rivers/Documents/WorkPal-pd01impl
+> node scripts/testing/run-test-group.mjs postgres
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+[90mstderr[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mwaits for an active handler during graceful shutdown
+[22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mwaits for an active handler during graceful shutdown
+[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-pd01impl/crontab'; cron is disabled
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mwaits for an active handler during graceful shutdown
+[22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mwaits for an active handler during graceful shutdown
+[22m[39m[worker(worker-88b8b5920d7e5ececd)] INFO: Completed task 96971 (run.continue, 102.66ms) with success
+
+[90mstderr[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mreplaces a keyed delayed job without running the old payload or schedule
+[22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mreplaces a keyed delayed job without running the old payload or schedule
+[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-pd01impl/crontab'; cron is disabled
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mreplaces a keyed delayed job without running the old payload or schedule
+[22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mreplaces a keyed delayed job without running the old payload or schedule
+[22m[39m[worker(worker-c35e76420e0645d31f)] INFO: Completed task 96972 (computer.sleep, 0.57ms) with success
+
+[90mstderr[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mremoves a keyed delayed job before a worker can run it
+[22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mremoves a keyed delayed job before a worker can run it
+[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-pd01impl/crontab'; cron is disabled
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mremoves a keyed delayed job before a worker can run it
+[22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
+
+[90mstderr[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
+[22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
+[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-pd01impl/crontab'; cron is disabled
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
+[22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
+
+[90mstderr[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
+[22m[39m[worker(worker-2dafc05645132b2914)] ERROR: Failed task 96975 (run.continue, 0.38ms, attempt 1 of 25) with error 'intentional contract-test failure':
+  Error: intentional contract-test failure
+      at run.continue (/Users/rivers/Documents/WorkPal-pd01impl/packages/adapters/src/wakeup.postgres.test.ts:154:35)
+      at dispatchBackgroundJob (/Users/rivers/Documents/WorkPal-pd01impl/packages/adapter-kit/src/background-jobs.ts:54:9)
+      at Object.run (/Users/rivers/Documents/WorkPal-pd01impl/packages/adapters/src/wakeup.ts:112:24)
+      at /Users/rivers/Documents/WorkPal-pd01impl/packages/logging/src/jobs.ts:100:36
+      at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+      at runWithLogContext (/Users/rivers/Documents/WorkPal-pd01impl/packages/logging/src/context.ts:11:18)
+      at runCorrelatedJob (/Users/rivers/Documents/WorkPal-pd01impl/packages/logging/src/jobs.ts:98:10)
+      at /Users/rivers/Documents/WorkPal-pd01impl/packages/adapters/src/wakeup.ts:108:17
+      at doNext (/Users/rivers/Documents/WorkPal-pd01impl/node_modules/.pnpm/graphile-worker@0.17.3_typescript@7.0.2/node_modules/graphile-worker/dist/worker.js:196:32)
+      at processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+[90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
+[22m[39m[worker(worker-2dafc05645132b2914)] INFO: Completed task 96975 (run.continue, 0.09ms, attempt 2 of 25) with success
+
+ [32m✓[39m packages/adapters/src/wakeup.postgres.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 4476[2mms[22m[39m
+     [33m[2m✓[22m[39m replaces a keyed delayed job without running the old payload or schedule [33m 862[2mms[22m[39m
+     [33m[2m✓[22m[39m removes a keyed delayed job before a worker can run it [33m 624[2mms[22m[39m
+     [33m[2m✓[22m[39m persists a handler failure and retries the job successfully [33m 2866[2mms[22m[39m
+ [32m✓[39m apps/api/src/group-thread-lock.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 2702[2mms[22m[39m
+     [33m[2m✓[22m[39m completes group send and public dispatch once each without deadlock [33m 2428[2mms[22m[39m
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys
+[22m[39m[chat-sdk] Initializing chat instance...
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys
+[22m[39m[chat-sdk:sendblue] Sendblue adapter initialized
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys
+[22m[39m[chat-sdk] Chat instance initialized { adapters: [ [32m'sendblue'[39m ] }
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mprovisions on first text, runs the bot, and mirrors the reply back out
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mreplays the same handle without a duplicate message or send
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mruns the channel loop: discovery, invite, intro, YES, fan-out, attributed post
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mruns the channel loop: discovery, invite, intro, YES, fan-out, attributed post
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mruns the channel loop: discovery, invite, intro, YES, fan-out, attributed post
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstderr[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mrejects a bad signing secret
+[22m[39m[chat-sdk:sendblue] Sendblue webhook secret mismatch { header: [32m'sb-signing-secret'[39m }
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mdeclines a channel invite on NO without waking the bot
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mdeclines a channel invite on NO without waking the bot
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mdeclines a channel invite on NO without waking the bot
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mdeclines a channel invite on NO without waking the bot
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mleaves an approved channel on LEAVE and can rejoin via a later invite
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mleaves an approved channel on LEAVE and can rejoin via a later invite
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mleaves an approved channel on LEAVE and can rejoin via a later invite
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mleaves an approved channel on LEAVE and can rejoin via a later invite
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mleaves an approved channel on LEAVE and can rejoin via a later invite
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mmarks a mirrored reply failed when the outbound status webhook reports ERROR
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mmarks a mirrored reply failed when the outbound status webhook reports ERROR
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mtrue[39m,
+  status: [32m'ERROR'[39m,
+  hasContent: [33mfalse[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mstill accepts sendblue inbound on the legacy phone webhook path
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mlinks a new address to an existing account via a web-issued code
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys[2m > [22m[2mlinks a new address to an existing account via a web-issued code
+[22m[39m[chat-sdk:sendblue] Sendblue webhook message received {
+  is_outbound: [33mfalse[39m,
+  status: [32m'RECEIVED'[39m,
+  hasContent: [33mtrue[39m,
+  hasMediaUrl: [33mfalse[39m,
+  mediaUrlPrefix: [32m''[39m,
+  service: [32m'iMessage'[39m
+}
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys
+[22m[39m[chat-sdk] Shutting down chat instance...
+[chat-sdk:sendblue] Sendblue adapter disconnected
+
+[90mstdout[2m | packages/testkit/src/messaging.test.ts[2m > [22m[2mmessaging surface journeys
+[22m[39m[chat-sdk] Chat instance shut down
+
+ [32m✓[39m packages/testkit/src/messaging.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 3425[2mms[22m[39m
+     [33m[2m✓[22m[39m provisions on first text, runs the bot, and mirrors the reply back out [33m 466[2mms[22m[39m
+     [33m[2m✓[22m[39m replays the same handle without a duplicate message or send [33m 508[2mms[22m[39m
+     [33m[2m✓[22m[39m declines a channel invite on NO without waking the bot [33m 487[2mms[22m[39m
+     [33m[2m✓[22m[39m ignores a nested vendor envelope that is not a flat inbound message [33m 304[2mms[22m[39m
+ [32m✓[39m packages/db/src/effect-execution-fence.postgres.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 2325[2mms[22m[39m
+       [33m[2m✓[22m[39m rejects a claim whose lease expires while it waits for the effect lock [33m 1995[2mms[22m[39m
+ [32m✓[39m packages/db/src/intervention.postgres.test.ts [2m([22m[2m26 tests[22m[2m)[22m[33m 2599[2mms[22m[39m
+     [33m[2m✓[22m[39m deadlock-free: resolveIntervention vs cross-thread bot-delete-style cancel [33m 422[2mms[22m[39m
+     [33m[2m✓[22m[39m deadlock-free: wait timeout vs approval answer, intervention settles before the effect [33m 338[2mms[22m[39m
+ [32m✓[39m packages/db/src/execution-fenced-events.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 2218[2mms[22m[39m
+       [33m[2m✓[22m[39m rejects a live writer whose lease expires while it waits for the Run lock [33m 2009[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/result-delivery.postgres.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 2372[2mms[22m[39m
+     [33m[2m✓[22m[39m merges 101 same-window records into exactly one delivery Run and one message [33m 681[2mms[22m[39m
+     [33m[2m✓[22m[39m merges 205 mixed records into one Run with a bounded prompt and exact hidden counts [33m 1376[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/bot-messages-pair.postgres.test.ts [2m([22m[2m27 tests[22m[2m)[22m[33m 1518[2mms[22m[39m
+ [32m✓[39m packages/db/src/attention.postgres.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 1468[2mms[22m[39m
+     [33m[2m✓[22m[39m counts and pages a source beyond the old 500-row read cap [33m 375[2mms[22m[39m
+     [33m[2m✓[22m[39m reads pending approvals without scanning message history [33m 373[2mms[22m[39m
+ [32m✓[39m packages/db/src/origin-intervention.postgres.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 1387[2mms[22m[39m
+ [32m✓[39m packages/db/src/group-membership.postgres.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 1377[2mms[22m[39m
+     [33m[2m✓[22m[39m loads membership facts for an older page beyond the newest rows [33m 901[2mms[22m[39m
+ [32m✓[39m packages/testkit/src/mention-targets.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1201[2mms[22m[39m
+(node:4831) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m packages/db/src/agent-pairs.postgres.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 1322[2mms[22m[39m
+(node:4842) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m packages/adapters/src/execution-contract.postgres.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 947[2mms[22m[39m
+ [32m✓[39m packages/db/src/execution-history.postgres.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 903[2mms[22m[39m
+(node:4847) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m packages/db/src/execution-contract.postgres.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 715[2mms[22m[39m
+ [32m✓[39m packages/testkit/src/runs-list.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 850[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/cloud-agent.postgres.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 886[2mms[22m[39m
+ [32m✓[39m packages/db/src/task-instructions.postgres.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 1017[2mms[22m[39m
+ [32m✓[39m packages/db/src/cancel-terminal.postgres.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 2430[2mms[22m[39m
+     [33m[2m✓[22m[39m releases steering on wait timeout and creates one continuation [33m 374[2mms[22m[39m
+ [32m✓[39m packages/db/src/manual-retry.postgres.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 1502[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a nonce already used by another user in the same space [33m 307[2mms[22m[39m
+ [32m✓[39m packages/db/src/avatar-changes.postgres.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1377[2mms[22m[39m
+     [33m[2m✓[22m[39m retains at most 50 visible records while keeping Bot dedup tombstones [33m 381[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/message-group.postgres.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 750[2mms[22m[39m
+ [32m✓[39m packages/db/src/session-admission.postgres.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 598[2mms[22m[39m
+ [32m✓[39m packages/db/src/attention-renderable-migration.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 633[2mms[22m[39m
+ [32m✓[39m packages/db/src/outbound-drafts.postgres.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 704[2mms[22m[39m
+ [32m✓[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 661[2mms[22m[39m
+ [32m✓[39m packages/db/src/memory-facts.postgres.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 449[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/run-budget-enforcement.postgres.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 426[2mms[22m[39m
+ [32m✓[39m apps/api/src/thread-target.postgres.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 390[2mms[22m[39m
+ [32m✓[39m packages/db/src/session-checkpoint.postgres.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 401[2mms[22m[39m
+ [32m✓[39m packages/db/src/avatar-activity.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 323[2mms[22m[39m
+ [32m✓[39m packages/db/src/run-plans.postgres.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 378[2mms[22m[39m
+ [32m✓[39m packages/db/src/wait-timeouts.postgres.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 366[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/session-checkpoint-lost-input.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 351[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/session-checkpoint-recovery.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 324[2mms[22m[39m
+ [32m✓[39m apps/api/src/thread-execution-snapshot-window.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 281[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/session-checkpoint-watermark.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 336[2mms[22m[39m
+ [32m✓[39m packages/db/src/repos-avatar.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 359[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/lease-loss-recovery.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 238[2mms[22m[39m
+ [32m✓[39m packages/db/src/card-interactions.postgres.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 290[2mms[22m[39m
+ [32m✓[39m apps/api/src/thread-execution-projection.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 257[2mms[22m[39m
+ [32m✓[39m apps/api/src/group-queries.postgres.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 255[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/realtime.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 225[2mms[22m[39m
+ [32m✓[39m packages/db/src/messaging.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 210[2mms[22m[39m
+ [32m✓[39m packages/db/src/run-steps.postgres.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 178[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/executor-bot-directory.postgres.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 211[2mms[22m[39m
+ [32m✓[39m packages/memory/src/commit.postgres.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 184[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/manual-retry-effects.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 175[2mms[22m[39m
+ [32m✓[39m packages/db/src/avatar-migration.postgres.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 166[2mms[22m[39m
+ [32m✓[39m packages/db/src/delivery-records.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 145[2mms[22m[39m
+ [32m✓[39m packages/db/src/usage-stats.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 107[2mms[22m[39m
+ [32m✓[39m packages/db/src/space-membership.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 89[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/job-reconciler.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 14[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m54 passed[39m[22m[90m (54)[39m
+[2m      Tests [22m [1m[32m477 passed[39m[22m[90m (477)[39m
+[2m   Start at [22m 15:37:30
+[2m   Duration [22m 71.65s[2m (transform 1.81s, setup 97ms, import 18.86s, tests 49.49s, environment 2ms)[22m
+

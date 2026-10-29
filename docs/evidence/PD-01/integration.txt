@@ -1,0 +1,944 @@
+# Integration gate: all 41 journeys green at the PD-01 head (executor-lifecycle 4 failures are the origin/main baseline recorded next to this file)
+
+
+> workpal@0.1.0 test:integration /Users/rivers/Documents/WorkPal-pd01impl
+> tsx packages/testkit/src/cli/harness.ts --integration
+
+◇ injected env (0) from .env // tip: ⌘ suppress logs { quiet: true }
+
+> @rakazo/db@0.1.0 generate /Users/rivers/Documents/WorkPal-pd01impl/packages/db
+> prisma generate
+
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+
+✔ Generated Prisma Client (7.10.0) to ./src/generated/prisma in 300ms
+
+◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+Datasource "db": PostgreSQL database "test", schema "public" at "localhost:32797"
+
+133 migrations found in prisma/migrations
+
+Applying migration `0001_init`
+Applying migration `0002_bot_parent`
+Applying migration `0003_computer_host`
+Applying migration `0004_thread_sequences`
+Applying migration `0005_bot_pinned`
+Applying migration `0005_reconciliation_cursor_index`
+Applying migration `0006_computer_control_lease_expiry`
+Applying migration `0006_thread_unread`
+Applying migration `0007_computer_control_lease_expiry_index`
+Applying migration `0008_bot_deletions`
+Applying migration `0008_bot_spawn_key`
+Applying migration `0008_team_computers`
+Applying migration `0009_computer_execution_leases`
+Applying migration `0010_add_history_compacted_up_to_seq`
+Applying migration `0010_taught_skills`
+Applying migration `0010_voice`
+Applying migration `0011_action_approval_rules`
+Applying migration `0011_taught_skills_one_recording`
+Applying migration `0011_voice_credential_provider_unique`
+Applying migration `0012_bot_sections`
+Applying migration `0013_group_chats`
+Applying migration `0013_mcp_registry`
+Applying migration `20260819054109_add_workspace_memory_config`
+Applying migration `20260821091013_add_history_compaction_summary`
+Applying migration `20260823030000_harden_group_chat_sends`
+Applying migration `20260823120000_multiple_connectors`
+Applying migration `20260823133000_add_message_reply_index`
+Applying migration `20260823151500_bind_control_leases_to_runs`
+Applying migration `20260823180000_validate_bot_memory_scope`
+Applying migration `20260823200000_generalize_workspace_memory_provider`
+Applying migration `20260824120000_persist_mcp_oauth_sessions`
+Applying migration `20260825080000_bot_model_override`
+Applying migration `20260825100000_agent_skills`
+Applying migration `20260825103000_agent_skills_name_ci`
+Applying migration `20260825120000_scratchpad_items`
+Applying migration `20260825140000_routine_multi_schedule_and_run_routine_id`
+Applying migration `20260825140001_runs_routineid_idx_concurrent`
+Applying migration `20260825140002_runs_routineid_fkey_not_valid`
+Applying migration `20260825140003_runs_routineid_fkey_validate`
+Applying migration `20260827140000_add_avatar_style`
+Applying migration `20260827170000_bot_webhook_secret`
+Applying migration `20260828010000_initialize_signup_policy`
+Applying migration `20260828013000_routine_webhook_enabled`
+Applying migration `20260828090000_group_organization`
+Applying migration `20260828090001_group_organization_list_idx_concurrent`
+Applying migration `20260828090002_group_organization_section_idx_concurrent`
+Applying migration `20260828090002a_group_organization_repair_invalid_idx`
+Applying migration `20260828090003_group_organization_section_fkey_not_valid`
+Applying migration `20260828090004_group_organization_section_fkey_validate`
+Applying migration `20260828090005_group_organization_old_idx_drop_concurrent`
+Applying migration `20260828120000_phone_surface`
+Applying migration `20260828130000_agent_connections`
+Applying migration `20260828130000_auto_review`
+Applying migration `20260828214500_bot_outcome_return`
+Applying migration `20260828214501_bot_outcome_return_idx_concurrent`
+Applying migration `20260829120000_phone_outbound_attempts`
+Applying migration `20260829210000_phone_outbound_next_attempt`
+Applying migration `20260829210001_phone_outbound_next_attempt_idx_concurrent`
+Applying migration `20260829210002_phone_outbound_status_idx_drop_concurrent`
+Applying migration `20260830010000_bot_position`
+Applying migration `20260830010000_routine_thread_target_fkey_not_valid`
+Applying migration `20260830010001_routine_thread_target_fkey_validate`
+Applying migration `20260830150000_organization_spaces`
+Applying migration `20260830200000_space_scope_names_and_user_credentials`
+Applying migration `20260831090000_message_thumbs_up`
+Applying migration `20260831235900_steering_messages`
+Applying migration `20260901040000_messaging_mirror_recovery`
+Applying migration `20260901040001_messaging_mirror_recovery_idx_concurrent`
+Applying migration `20260901120000_messaging_surface`
+Applying migration `20260906010000_cloud_agents`
+Applying migration `20260906020000_bot_secrets`
+Applying migration `20260906120000_messaging_team_chat`
+Applying migration `20260906120100_agent_secrets`
+Applying migration `20260907010000_routine_github_enabled`
+Applying migration `20260907020000_user_model_vision`
+Applying migration `20260907120000_routine_message_provider`
+Applying migration `20260907130000_usage_records_keep_bot_attribution`
+Applying migration `20260907200000_invitation_created_at`
+Applying migration `20260908000000_integration_provider_configs`
+Applying migration `20260908010000_computer_updates`
+Applying migration `20260908090000_message_reaction`
+Applying migration `20260908120000_space_lifecycle_state`
+Applying migration `20260909000000_screen_generation`
+Applying migration `20260914150000_ai_data_consent`
+Applying migration `20260915000000_message_reply_quote`
+Applying migration `20260925120000_artifact_versions`
+Applying migration `20260925130000_usage_record_cache_tokens`
+Applying migration `20260925223000_steering_origin_trigger`
+Applying migration `20260927170000_voice_speech_model`
+Applying migration `20261008000000_background_agent_tasks`
+Applying migration `20261008100000_product_harness_phase1`
+Applying migration `20261012000000_avatar_style_bloub_default`
+Applying migration `20261013000000_task18_event_envelope`
+Applying migration `20261013010000_task18_delivery_outbox`
+Applying migration `20261013015000_task18_run_retry`
+Applying migration `20261013016000_task18_run_budget`
+Applying migration `20261013020000_task18_capability_rules`
+Applying migration `20261013030000_structured_run_plans`
+Applying migration `20261013040000_semantic_run_steps`
+Applying migration `20261013050000_run_todos`
+Applying migration `20261013060000_run_wait_started_at`
+Applying migration `20261013070000_attempt_fence_uniqueness`
+Applying migration `20261013080000_execution_revocation_outbox`
+Applying migration `20261013090000_background_task_lookup_indexes`
+Applying migration `20261013100000_interventions`
+Applying migration `20261013110000_intervention_presentation`
+Applying migration `20261013120000_execution_history_indexes`
+Applying migration `20261013130000_run_snapshot_rev`
+Applying migration `20261016100000_message_provenance`
+Applying migration `20261017000000_bot_avatar_identity`
+Applying migration `20261017010000_avatar_failure_receipts`
+Applying migration `20261017020000_convert_legacy_bot_avatars`
+Applying migration `20261017030000_bot_avatar_changes`
+Applying migration `20261017040000_bot_avatar_changes_write_order`
+Applying migration `20261019090000_manual_retry_lineage`
+Applying migration `20261019120000_avatar_body_color`
+Applying migration `20261019150000_manual_retry_operation_identity`
+Applying migration `20261020090000_unified_plan_review`
+Applying migration `20261020100000_memory_facts_three_layer`
+Applying migration `20261022000000_agent_pair_chat_groups`
+Applying migration `20261023120000_task_instruction_envelope`
+Applying migration `20261023130000_agent_pair_message_origins`
+Applying migration `20261023150000_session_admission_lease`
+Applying migration `20261023150000_task_amendment_followup`
+Applying migration `20261024090000_session_checkpoint`
+Applying migration `20261024100000_run_private_pair_origin`
+Applying migration `20261025120000_cancel_terminal_policy`
+Applying migration `20261025130000_cancel_outcome_retry_rotation`
+Applying migration `20261026090000_outbound_draft_revisions`
+Applying migration `20261027120000_group_membership_requests`
+Applying migration `20261028150000_messages_blocks_gin`
+Applying migration `20261028210000_attention_intervention_projection`
+Applying migration `20261028230000_attention_renderable_projection`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 0001_init/
+    └─ migration.sql
+  └─ 0002_bot_parent/
+    └─ migration.sql
+  └─ 0003_computer_host/
+    └─ migration.sql
+  └─ 0004_thread_sequences/
+    └─ migration.sql
+  └─ 0005_bot_pinned/
+    └─ migration.sql
+  └─ 0005_reconciliation_cursor_index/
+    └─ migration.sql
+  └─ 0006_computer_control_lease_expiry/
+    └─ migration.sql
+  └─ 0006_thread_unread/
+    └─ migration.sql
+  └─ 0007_computer_control_lease_expiry_index/
+    └─ migration.sql
+  └─ 0008_bot_deletions/
+    └─ migration.sql
+  └─ 0008_bot_spawn_key/
+    └─ migration.sql
+  └─ 0008_team_computers/
+    └─ migration.sql
+  └─ 0009_computer_execution_leases/
+    └─ migration.sql
+  └─ 0010_add_history_compacted_up_to_seq/
+    └─ migration.sql
+  └─ 0010_taught_skills/
+    └─ migration.sql
+  └─ 0010_voice/
+    └─ migration.sql
+  └─ 0011_action_approval_rules/
+    └─ migration.sql
+  └─ 0011_taught_skills_one_recording/
+    └─ migration.sql
+  └─ 0011_voice_credential_provider_unique/
+    └─ migration.sql
+  └─ 0012_bot_sections/
+    └─ migration.sql
+  └─ 0013_group_chats/
+    └─ migration.sql
+  └─ 0013_mcp_registry/
+    └─ migration.sql
+  └─ 20260819054109_add_workspace_memory_config/
+    └─ migration.sql
+  └─ 20260821091013_add_history_compaction_summary/
+    └─ migration.sql
+  └─ 20260823030000_harden_group_chat_sends/
+    └─ migration.sql
+  └─ 20260823120000_multiple_connectors/
+    └─ migration.sql
+  └─ 20260823133000_add_message_reply_index/
+    └─ migration.sql
+  └─ 20260823151500_bind_control_leases_to_runs/
+    └─ migration.sql
+  └─ 20260823180000_validate_bot_memory_scope/
+    └─ migration.sql
+  └─ 20260823200000_generalize_workspace_memory_provider/
+    └─ migration.sql
+  └─ 20260824120000_persist_mcp_oauth_sessions/
+    └─ migration.sql
+  └─ 20260825080000_bot_model_override/
+    └─ migration.sql
+  └─ 20260825100000_agent_skills/
+    └─ migration.sql
+  └─ 20260825103000_agent_skills_name_ci/
+    └─ migration.sql
+  └─ 20260825120000_scratchpad_items/
+    └─ migration.sql
+  └─ 20260825140000_routine_multi_schedule_and_run_routine_id/
+    └─ migration.sql
+  └─ 20260825140001_runs_routineid_idx_concurrent/
+    └─ migration.sql
+  └─ 20260825140002_runs_routineid_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260825140003_runs_routineid_fkey_validate/
+    └─ migration.sql
+  └─ 20260827140000_add_avatar_style/
+    └─ migration.sql
+  └─ 20260827170000_bot_webhook_secret/
+    └─ migration.sql
+  └─ 20260828010000_initialize_signup_policy/
+    └─ migration.sql
+  └─ 20260828013000_routine_webhook_enabled/
+    └─ migration.sql
+  └─ 20260828090000_group_organization/
+    └─ migration.sql
+  └─ 20260828090001_group_organization_list_idx_concurrent/
+    └─ migration.sql
+  └─ 20260828090002_group_organization_section_idx_concurrent/
+    └─ migration.sql
+  └─ 20260828090002a_group_organization_repair_invalid_idx/
+    └─ migration.sql
+  └─ 20260828090003_group_organization_section_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260828090004_group_organization_section_fkey_validate/
+    └─ migration.sql
+  └─ 20260828090005_group_organization_old_idx_drop_concurrent/
+    └─ migration.sql
+  └─ 20260828120000_phone_surface/
+    └─ migration.sql
+  └─ 20260828130000_agent_connections/
+    └─ migration.sql
+  └─ 20260828130000_auto_review/
+    └─ migration.sql
+  └─ 20260828214500_bot_outcome_return/
+    └─ migration.sql
+  └─ 20260828214501_bot_outcome_return_idx_concurrent/
+    └─ migration.sql
+  └─ 20260829120000_phone_outbound_attempts/
+    └─ migration.sql
+  └─ 20260829210000_phone_outbound_next_attempt/
+    └─ migration.sql
+  └─ 20260829210001_phone_outbound_next_attempt_idx_concurrent/
+    └─ migration.sql
+  └─ 20260829210002_phone_outbound_status_idx_drop_concurrent/
+    └─ migration.sql
+  └─ 20260830010000_bot_position/
+    └─ migration.sql
+  └─ 20260830010000_routine_thread_target_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260830010001_routine_thread_target_fkey_validate/
+    └─ migration.sql
+  └─ 20260830150000_organization_spaces/
+    └─ migration.sql
+  └─ 20260830200000_space_scope_names_and_user_credentials/
+    └─ migration.sql
+  └─ 20260831090000_message_thumbs_up/
+    └─ migration.sql
+  └─ 20260831235900_steering_messages/
+    └─ migration.sql
+  └─ 20260901040000_messaging_mirror_recovery/
+    └─ migration.sql
+  └─ 20260901040001_messaging_mirror_recovery_idx_concurrent/
+    └─ migration.sql
+  └─ 20260901120000_messaging_surface/
+    └─ migration.sql
+  └─ 20260906010000_cloud_agents/
+    └─ migration.sql
+  └─ 20260906020000_bot_secrets/
+    └─ migration.sql
+  └─ 20260906120000_messaging_team_chat/
+    └─ migration.sql
+  └─ 20260906120100_agent_secrets/
+    └─ migration.sql
+  └─ 20260907010000_routine_github_enabled/
+    └─ migration.sql
+  └─ 20260907020000_user_model_vision/
+    └─ migration.sql
+  └─ 20260907120000_routine_message_provider/
+    └─ migration.sql
+  └─ 20260907130000_usage_records_keep_bot_attribution/
+    └─ migration.sql
+  └─ 20260907200000_invitation_created_at/
+    └─ migration.sql
+  └─ 20260908000000_integration_provider_configs/
+    └─ migration.sql
+  └─ 20260908010000_computer_updates/
+    └─ migration.sql
+  └─ 20260908090000_message_reaction/
+    └─ migration.sql
+  └─ 20260908120000_space_lifecycle_state/
+    └─ migration.sql
+  └─ 20260909000000_screen_generation/
+    └─ migration.sql
+  └─ 20260914150000_ai_data_consent/
+    └─ migration.sql
+  └─ 20260915000000_message_reply_quote/
+    └─ migration.sql
+  └─ 20260925120000_artifact_versions/
+    └─ migration.sql
+  └─ 20260925130000_usage_record_cache_tokens/
+    └─ migration.sql
+  └─ 20260925223000_steering_origin_trigger/
+    └─ migration.sql
+  └─ 20260927170000_voice_speech_model/
+    └─ migration.sql
+  └─ 20261008000000_background_agent_tasks/
+    └─ migration.sql
+  └─ 20261008100000_product_harness_phase1/
+    └─ migration.sql
+  └─ 20261012000000_avatar_style_bloub_default/
+    └─ migration.sql
+  └─ 20261013000000_task18_event_envelope/
+    └─ migration.sql
+  └─ 20261013010000_task18_delivery_outbox/
+    └─ migration.sql
+  └─ 20261013015000_task18_run_retry/
+    └─ migration.sql
+  └─ 20261013016000_task18_run_budget/
+    └─ migration.sql
+  └─ 20261013020000_task18_capability_rules/
+    └─ migration.sql
+  └─ 20261013030000_structured_run_plans/
+    └─ migration.sql
+  └─ 20261013040000_semantic_run_steps/
+    └─ migration.sql
+  └─ 20261013050000_run_todos/
+    └─ migration.sql
+  └─ 20261013060000_run_wait_started_at/
+    └─ migration.sql
+  └─ 20261013070000_attempt_fence_uniqueness/
+    └─ migration.sql
+  └─ 20261013080000_execution_revocation_outbox/
+    └─ migration.sql
+  └─ 20261013090000_background_task_lookup_indexes/
+    └─ migration.sql
+  └─ 20261013100000_interventions/
+    └─ migration.sql
+  └─ 20261013110000_intervention_presentation/
+    └─ migration.sql
+  └─ 20261013120000_execution_history_indexes/
+    └─ migration.sql
+  └─ 20261013130000_run_snapshot_rev/
+    └─ migration.sql
+  └─ 20261016100000_message_provenance/
+    └─ migration.sql
+  └─ 20261017000000_bot_avatar_identity/
+    └─ migration.sql
+  └─ 20261017010000_avatar_failure_receipts/
+    └─ migration.sql
+  └─ 20261017020000_convert_legacy_bot_avatars/
+    └─ migration.sql
+  └─ 20261017030000_bot_avatar_changes/
+    └─ migration.sql
+  └─ 20261017040000_bot_avatar_changes_write_order/
+    └─ migration.sql
+  └─ 20261019090000_manual_retry_lineage/
+    └─ migration.sql
+  └─ 20261019120000_avatar_body_color/
+    └─ migration.sql
+  └─ 20261019150000_manual_retry_operation_identity/
+    └─ migration.sql
+  └─ 20261020090000_unified_plan_review/
+    └─ migration.sql
+  └─ 20261020100000_memory_facts_three_layer/
+    └─ migration.sql
+  └─ 20261022000000_agent_pair_chat_groups/
+    └─ migration.sql
+  └─ 20261023120000_task_instruction_envelope/
+    └─ migration.sql
+  └─ 20261023130000_agent_pair_message_origins/
+    └─ migration.sql
+  └─ 20261023150000_session_admission_lease/
+    └─ migration.sql
+  └─ 20261023150000_task_amendment_followup/
+    └─ migration.sql
+  └─ 20261024090000_session_checkpoint/
+    └─ migration.sql
+  └─ 20261024100000_run_private_pair_origin/
+    └─ migration.sql
+  └─ 20261025120000_cancel_terminal_policy/
+    └─ migration.sql
+  └─ 20261025130000_cancel_outcome_retry_rotation/
+    └─ migration.sql
+  └─ 20261026090000_outbound_draft_revisions/
+    └─ migration.sql
+  └─ 20261027120000_group_membership_requests/
+    └─ migration.sql
+  └─ 20261028150000_messages_blocks_gin/
+    └─ migration.sql
+  └─ 20261028210000_attention_intervention_projection/
+    └─ migration.sql
+  └─ 20261028230000_attention_renderable_projection/
+    └─ migration.sql
+
+All migrations have been successfully applied.
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+{"timestamp":"2026-10-29T07:46:10.089926Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"ea2712a26f2519e3","trace.id":"0727d8701fa264c2b8cc1d24dc6dfdf7","parent.span.id":"d59e9d5b3c350a67","request.id":"86ec2872-01b3-40fe-84dd-2a5a8883507a","run.id":"cmvt8ooeq000frnx0taa0dikg","thread.id":"cmvt8ooa50005rnx0ehn323fe","bot.id":"ff0740fd-932a-41e8-b1b2-567f07d30157","attempt.id":"cmvt8oofb000hrnx05wvcx4vz","session.key":"agentscope:chat:v1:6ba0a64f763c48353ef9cd1de58f11eea981597da07afaa943ffccf72fcf7875:037a0c93350bfa9540ee220a7e251f382779adc8489fe4fb852a77720a355f3c"}
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+{"timestamp":"2026-10-29T07:46:10.273191Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"ea2712a26f2519e3","trace.id":"0727d8701fa264c2b8cc1d24dc6dfdf7","parent.span.id":"d59e9d5b3c350a67","request.id":"86ec2872-01b3-40fe-84dd-2a5a8883507a","run.id":"cmvt8ooeq000frnx0taa0dikg","thread.id":"cmvt8ooa50005rnx0ehn323fe","bot.id":"ff0740fd-932a-41e8-b1b2-567f07d30157","attempt.id":"cmvt8oofb000hrnx05wvcx4vz","session.key":"agentscope:chat:v1:6ba0a64f763c48353ef9cd1de58f11eea981597da07afaa943ffccf72fcf7875:037a0c93350bfa9540ee220a7e251f382779adc8489fe4fb852a77720a355f3c","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:10.328539Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ooeq000frnx0taa0dikg","thread.id":"cmvt8ooa50005rnx0ehn323fe","bot.id":"ff0740fd-932a-41e8-b1b2-567f07d30157","attempt.id":"cmvt8oofb000hrnx05wvcx4vz","session.key":"agentscope:chat:v1:6ba0a64f763c48353ef9cd1de58f11eea981597da07afaa943ffccf72fcf7875:037a0c93350bfa9540ee220a7e251f382779adc8489fe4fb852a77720a355f3c","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":143}
+{"timestamp":"2026-10-29T07:46:10.468688Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ooeq000frnx0taa0dikg","thread.id":"cmvt8ooa50005rnx0ehn323fe","bot.id":"ff0740fd-932a-41e8-b1b2-567f07d30157","attempt.id":"cmvt8oofb000hrnx05wvcx4vz","session.key":"agentscope:chat:v1:6ba0a64f763c48353ef9cd1de58f11eea981597da07afaa943ffccf72fcf7875:037a0c93350bfa9540ee220a7e251f382779adc8489fe4fb852a77720a355f3c","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":283,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:10.476119Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"ea2712a26f2519e3","trace.id":"0727d8701fa264c2b8cc1d24dc6dfdf7","parent.span.id":"d59e9d5b3c350a67","request.id":"86ec2872-01b3-40fe-84dd-2a5a8883507a","run.id":"cmvt8ooeq000frnx0taa0dikg","thread.id":"cmvt8ooa50005rnx0ehn323fe","bot.id":"ff0740fd-932a-41e8-b1b2-567f07d30157","attempt.id":"cmvt8oofb000hrnx05wvcx4vz","session.key":"agentscope:chat:v1:6ba0a64f763c48353ef9cd1de58f11eea981597da07afaa943ffccf72fcf7875:037a0c93350bfa9540ee220a7e251f382779adc8489fe4fb852a77720a355f3c"}
+{"timestamp":"2026-10-29T07:46:11.166567Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"42261dfa4a9a2339","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"96a88d8a8803b283","request.id":"9faadada-0e70-4d2e-a474-fae4f0899676","run.id":"cmvt8opaj001trnx07wl24lbn","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opb6001vrnx0loj7rdhf","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9"}
+{"timestamp":"2026-10-29T07:46:11.179331Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"42261dfa4a9a2339","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"96a88d8a8803b283","request.id":"9faadada-0e70-4d2e-a474-fae4f0899676","run.id":"cmvt8opaj001trnx07wl24lbn","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opb6001vrnx0loj7rdhf","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:11.181599Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opaj001trnx07wl24lbn","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opb6001vrnx0loj7rdhf","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":12}
+{"timestamp":"2026-10-29T07:46:11.303530Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opaj001trnx07wl24lbn","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opb6001vrnx0loj7rdhf","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":134,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:11.305391Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"42261dfa4a9a2339","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"96a88d8a8803b283","request.id":"9faadada-0e70-4d2e-a474-fae4f0899676","run.id":"cmvt8opaj001trnx07wl24lbn","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opb6001vrnx0loj7rdhf","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9"}
+{"timestamp":"2026-10-29T07:46:11.363381Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"e25fd3df04a1c4df","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"97a6f23d4c85ee1e","request.id":"d136acc8-2cab-4a71-9bcb-aee315da9337","run.id":"cmvt8opg3002grnx0eerjw272","thread.id":"cmvt8op4t001drnx0hjnt9ezp","bot.id":"12ed562c-bf00-48a5-9aa8-e2c1fc2e1f2f","attempt.id":"cmvt8opgs002ornx012mydfqu","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:7e7475da0d148f1652ec83bac1c60c04d312bec424897add1eaad3e2fc3fc2f2"}
+{"timestamp":"2026-10-29T07:46:11.377328Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"e25fd3df04a1c4df","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"97a6f23d4c85ee1e","request.id":"d136acc8-2cab-4a71-9bcb-aee315da9337","run.id":"cmvt8opg3002grnx0eerjw272","thread.id":"cmvt8op4t001drnx0hjnt9ezp","bot.id":"12ed562c-bf00-48a5-9aa8-e2c1fc2e1f2f","attempt.id":"cmvt8opgs002ornx012mydfqu","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:7e7475da0d148f1652ec83bac1c60c04d312bec424897add1eaad3e2fc3fc2f2","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:11.379532Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opg3002grnx0eerjw272","thread.id":"cmvt8op4t001drnx0hjnt9ezp","bot.id":"12ed562c-bf00-48a5-9aa8-e2c1fc2e1f2f","attempt.id":"cmvt8opgs002ornx012mydfqu","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:7e7475da0d148f1652ec83bac1c60c04d312bec424897add1eaad3e2fc3fc2f2","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":13}
+{"timestamp":"2026-10-29T07:46:11.387791Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opg3002grnx0eerjw272","thread.id":"cmvt8op4t001drnx0hjnt9ezp","bot.id":"12ed562c-bf00-48a5-9aa8-e2c1fc2e1f2f","attempt.id":"cmvt8opgs002ornx012mydfqu","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:7e7475da0d148f1652ec83bac1c60c04d312bec424897add1eaad3e2fc3fc2f2","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":21,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:11.389092Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"e25fd3df04a1c4df","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"97a6f23d4c85ee1e","request.id":"d136acc8-2cab-4a71-9bcb-aee315da9337","run.id":"cmvt8opg3002grnx0eerjw272","thread.id":"cmvt8op4t001drnx0hjnt9ezp","bot.id":"12ed562c-bf00-48a5-9aa8-e2c1fc2e1f2f","attempt.id":"cmvt8opgs002ornx012mydfqu","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:7e7475da0d148f1652ec83bac1c60c04d312bec424897add1eaad3e2fc3fc2f2"}
+{"timestamp":"2026-10-29T07:46:11.487339Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"42df43518c08dd76","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"f2191251fb0c819b","request.id":"e2bf827f-6082-48be-a495-481446b59ea8","run.id":"cmvt8opju0030rnx08bihkciy","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opkg0034rnx0kf4iscrs","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9"}
+{"timestamp":"2026-10-29T07:46:11.504675Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"42df43518c08dd76","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"f2191251fb0c819b","request.id":"e2bf827f-6082-48be-a495-481446b59ea8","run.id":"cmvt8opju0030rnx08bihkciy","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opkg0034rnx0kf4iscrs","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:11.506132Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opju0030rnx08bihkciy","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opkg0034rnx0kf4iscrs","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":10}
+{"timestamp":"2026-10-29T07:46:11.515179Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opju0030rnx08bihkciy","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opkg0034rnx0kf4iscrs","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":19,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:11.521750Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"42df43518c08dd76","trace.id":"6aa9ad2fb39024713dff1799c012f3d2","parent.span.id":"f2191251fb0c819b","request.id":"e2bf827f-6082-48be-a495-481446b59ea8","run.id":"cmvt8opju0030rnx08bihkciy","thread.id":"cmvt8op1a0015rnx0rbp90ezu","bot.id":"8af0a336-9f1b-4cc1-99ca-152afe61fa63","attempt.id":"cmvt8opkg0034rnx0kf4iscrs","session.key":"agentscope:chat:v1:af4c5e03dcc15679f4b12c7b8bda57b1dbeaef38ee906d4e3ee2b00e430d3c52:346a73be794c577a1d27e7e88b83d2a2a1164e78b58a1cf900be7224ef2193e9"}
+{"timestamp":"2026-10-29T07:46:11.975103Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"673cb249d25a4b08","trace.id":"7573782f6c67bbf5e9bbecdd42bac9dc","parent.span.id":"7fd54c8636cd052f","request.id":"f038138a-1624-4564-822b-b78d212781c7","run.id":"cmvt8opx8003rrnx0gknff4gq","thread.id":"cmvt8opte003grnx0wz28b0mn","bot.id":"c98526c7-5f74-4527-903e-83a4ae74bdfc","attempt.id":"cmvt8opxr003trnx0weidjygc","session.key":"agentscope:chat:v1:df5f945ecf1b08c039b64da436b37b4bb6883df111fa5df9bff4a4b9989f9328:453e4a66faf555d1405b5634677a60622a2024a469037bf0e50da288e04d1af5"}
+{"timestamp":"2026-10-29T07:46:11.986145Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"673cb249d25a4b08","trace.id":"7573782f6c67bbf5e9bbecdd42bac9dc","parent.span.id":"7fd54c8636cd052f","request.id":"f038138a-1624-4564-822b-b78d212781c7","run.id":"cmvt8opx8003rrnx0gknff4gq","thread.id":"cmvt8opte003grnx0wz28b0mn","bot.id":"c98526c7-5f74-4527-903e-83a4ae74bdfc","attempt.id":"cmvt8opxr003trnx0weidjygc","session.key":"agentscope:chat:v1:df5f945ecf1b08c039b64da436b37b4bb6883df111fa5df9bff4a4b9989f9328:453e4a66faf555d1405b5634677a60622a2024a469037bf0e50da288e04d1af5","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:11.987598Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opx8003rrnx0gknff4gq","thread.id":"cmvt8opte003grnx0wz28b0mn","bot.id":"c98526c7-5f74-4527-903e-83a4ae74bdfc","attempt.id":"cmvt8opxr003trnx0weidjygc","session.key":"agentscope:chat:v1:df5f945ecf1b08c039b64da436b37b4bb6883df111fa5df9bff4a4b9989f9328:453e4a66faf555d1405b5634677a60622a2024a469037bf0e50da288e04d1af5","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":10}
+{"timestamp":"2026-10-29T07:46:11.995822Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8opx8003rrnx0gknff4gq","thread.id":"cmvt8opte003grnx0wz28b0mn","bot.id":"c98526c7-5f74-4527-903e-83a4ae74bdfc","attempt.id":"cmvt8opxr003trnx0weidjygc","session.key":"agentscope:chat:v1:df5f945ecf1b08c039b64da436b37b4bb6883df111fa5df9bff4a4b9989f9328:453e4a66faf555d1405b5634677a60622a2024a469037bf0e50da288e04d1af5","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":18,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:11.997179Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"673cb249d25a4b08","trace.id":"7573782f6c67bbf5e9bbecdd42bac9dc","parent.span.id":"7fd54c8636cd052f","request.id":"f038138a-1624-4564-822b-b78d212781c7","run.id":"cmvt8opx8003rrnx0gknff4gq","thread.id":"cmvt8opte003grnx0wz28b0mn","bot.id":"c98526c7-5f74-4527-903e-83a4ae74bdfc","attempt.id":"cmvt8opxr003trnx0weidjygc","session.key":"agentscope:chat:v1:df5f945ecf1b08c039b64da436b37b4bb6883df111fa5df9bff4a4b9989f9328:453e4a66faf555d1405b5634677a60622a2024a469037bf0e50da288e04d1af5"}
+ [32m✓[39m packages/testkit/src/agentscope-offline.postgres.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 3001[2mms[22m[39m
+     [33m[2m✓[22m[39m uses a saved model connection and the real executor to persist a file and completed run [33m 1476[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a payload-induced unauthorized message_bot at the real executor while authorized collaboration completes [33m 1019[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps durable memory in a history data position where the model can still use it [33m 505[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 15:46:07
+[2m   Duration [22m 4.86s[2m (transform 1.02s, setup 9ms, import 1.79s, tests 3.00s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+{"timestamp":"2026-10-29T07:46:15.228538Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"32937f14bfa2bc03","trace.id":"5c95489537d765ca47a05ef47b5d4296","parent.span.id":"1a25e77df3a3a04b","request.id":"ebe5de46-8044-47c8-991e-f6acd2747f42","run.id":"cmvt8osf0000fsnx01919min3","thread.id":"cmvt8os9l0005snx0kmop67et","bot.id":"030599ce-50ec-4d6b-a3c3-5f4442cd8727","attempt.id":"cmvt8osfr000hsnx0d4s5oj31","session.key":"agentscope:chat:v1:3d655039922c6a9e795b4e61d729204425278dbdfd90d13c98f273482440104e:5eecd606d35f8ff019378a9c4ec72763d57dae1c15d8686858ea43c25b05eaeb"}
+{"timestamp":"2026-10-29T07:46:15.241822Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"32937f14bfa2bc03","trace.id":"5c95489537d765ca47a05ef47b5d4296","parent.span.id":"1a25e77df3a3a04b","request.id":"ebe5de46-8044-47c8-991e-f6acd2747f42","run.id":"cmvt8osf0000fsnx01919min3","thread.id":"cmvt8os9l0005snx0kmop67et","bot.id":"030599ce-50ec-4d6b-a3c3-5f4442cd8727","attempt.id":"cmvt8osfr000hsnx0d4s5oj31","session.key":"agentscope:chat:v1:3d655039922c6a9e795b4e61d729204425278dbdfd90d13c98f273482440104e:5eecd606d35f8ff019378a9c4ec72763d57dae1c15d8686858ea43c25b05eaeb","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:15.243585Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8osf0000fsnx01919min3","thread.id":"cmvt8os9l0005snx0kmop67et","bot.id":"030599ce-50ec-4d6b-a3c3-5f4442cd8727","attempt.id":"cmvt8osfr000hsnx0d4s5oj31","session.key":"agentscope:chat:v1:3d655039922c6a9e795b4e61d729204425278dbdfd90d13c98f273482440104e:5eecd606d35f8ff019378a9c4ec72763d57dae1c15d8686858ea43c25b05eaeb","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":12}
+{"timestamp":"2026-10-29T07:46:15.315270Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8osf0000fsnx01919min3","thread.id":"cmvt8os9l0005snx0kmop67et","bot.id":"030599ce-50ec-4d6b-a3c3-5f4442cd8727","attempt.id":"cmvt8osfr000hsnx0d4s5oj31","session.key":"agentscope:chat:v1:3d655039922c6a9e795b4e61d729204425278dbdfd90d13c98f273482440104e:5eecd606d35f8ff019378a9c4ec72763d57dae1c15d8686858ea43c25b05eaeb","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":84,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:15.317082Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"32937f14bfa2bc03","trace.id":"5c95489537d765ca47a05ef47b5d4296","parent.span.id":"1a25e77df3a3a04b","request.id":"ebe5de46-8044-47c8-991e-f6acd2747f42","run.id":"cmvt8osf0000fsnx01919min3","thread.id":"cmvt8os9l0005snx0kmop67et","bot.id":"030599ce-50ec-4d6b-a3c3-5f4442cd8727","attempt.id":"cmvt8osfr000hsnx0d4s5oj31","session.key":"agentscope:chat:v1:3d655039922c6a9e795b4e61d729204425278dbdfd90d13c98f273482440104e:5eecd606d35f8ff019378a9c4ec72763d57dae1c15d8686858ea43c25b05eaeb"}
+{"timestamp":"2026-10-29T07:46:15.770226Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"d48a6178362d4a7e","trace.id":"38b3621fbf32a87a77839718e70ea301","parent.span.id":"ecb91d46b0ce9249","request.id":"541c61c4-dd27-424b-91f7-fbdcf05eeade","run.id":"cmvt8osuk001gsnx08j1auzhz","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8osv2001isnx0dc3ph9nl","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51"}
+{"timestamp":"2026-10-29T07:46:15.779592Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"d48a6178362d4a7e","trace.id":"38b3621fbf32a87a77839718e70ea301","parent.span.id":"ecb91d46b0ce9249","request.id":"541c61c4-dd27-424b-91f7-fbdcf05eeade","run.id":"cmvt8osuk001gsnx08j1auzhz","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8osv2001isnx0dc3ph9nl","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:15.781098Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8osuk001gsnx08j1auzhz","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8osv2001isnx0dc3ph9nl","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":9}
+{"timestamp":"2026-10-29T07:46:15.809370Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8osuk001gsnx08j1auzhz","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8osv2001isnx0dc3ph9nl","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":37,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:15.810640Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"d48a6178362d4a7e","trace.id":"38b3621fbf32a87a77839718e70ea301","parent.span.id":"ecb91d46b0ce9249","request.id":"541c61c4-dd27-424b-91f7-fbdcf05eeade","run.id":"cmvt8osuk001gsnx08j1auzhz","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8osv2001isnx0dc3ph9nl","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51"}
+{"timestamp":"2026-10-29T07:46:16.190932Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"b4a6a955bc8bb113","trace.id":"38b3621fbf32a87a77839718e70ea301","parent.span.id":"42eedb7c26461e67","request.id":"4af60b9b-2eae-4bf4-a264-6a6d6a2e8997","run.id":"cmvt8osyb001tsnx0buxhy19g","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8ot6f001vsnx0s3c93svv","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51"}
+{"timestamp":"2026-10-29T07:46:16.207853Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"b4a6a955bc8bb113","trace.id":"38b3621fbf32a87a77839718e70ea301","parent.span.id":"42eedb7c26461e67","request.id":"4af60b9b-2eae-4bf4-a264-6a6d6a2e8997","run.id":"cmvt8osyb001tsnx0buxhy19g","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8ot6f001vsnx0s3c93svv","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:16.209406Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8osyb001tsnx0buxhy19g","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8ot6f001vsnx0s3c93svv","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":16}
+{"timestamp":"2026-10-29T07:46:16.223331Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8osyb001tsnx0buxhy19g","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8ot6f001vsnx0s3c93svv","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":30,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:16.225901Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"b4a6a955bc8bb113","trace.id":"38b3621fbf32a87a77839718e70ea301","parent.span.id":"42eedb7c26461e67","request.id":"4af60b9b-2eae-4bf4-a264-6a6d6a2e8997","run.id":"cmvt8osyb001tsnx0buxhy19g","thread.id":"cmvt8osqm0016snx0uw9cwvtb","bot.id":"dcab8bb8-af9c-49f1-8698-a0e57f2aae83","attempt.id":"cmvt8ot6f001vsnx0s3c93svv","session.key":"agentscope:chat:v1:ca5b6d5b27bb577492f89157bc5139658062e097bd1d21f8d5e53baf8f61f4f6:2deec51ceab5e3d74f3cf9aadf3cf4e7e5422d1dda18f399ef8f390ed0d7bb51"}
+{"timestamp":"2026-10-29T07:46:16.623753Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"0440efbd0bf2b075","trace.id":"3c68a8bc3324e512add8da229e995e34","parent.span.id":"de7def2384dcdbb5","request.id":"0bb9b437-442b-4b4d-bdfb-bd4a1cf4dcb8","run.id":"cmvt8otio002hsnx0ywbg1zqs","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8otj5002jsnx0wtseegnx","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914"}
+{"timestamp":"2026-10-29T07:46:16.632876Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"0440efbd0bf2b075","trace.id":"3c68a8bc3324e512add8da229e995e34","parent.span.id":"de7def2384dcdbb5","request.id":"0bb9b437-442b-4b4d-bdfb-bd4a1cf4dcb8","run.id":"cmvt8otio002hsnx0ywbg1zqs","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8otj5002jsnx0wtseegnx","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:16.634257Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8otio002hsnx0ywbg1zqs","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8otj5002jsnx0wtseegnx","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":8}
+{"timestamp":"2026-10-29T07:46:16.663745Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8otio002hsnx0ywbg1zqs","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8otj5002jsnx0wtseegnx","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":38,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:16.665276Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"0440efbd0bf2b075","trace.id":"3c68a8bc3324e512add8da229e995e34","parent.span.id":"de7def2384dcdbb5","request.id":"0bb9b437-442b-4b4d-bdfb-bd4a1cf4dcb8","run.id":"cmvt8otio002hsnx0ywbg1zqs","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8otj5002jsnx0wtseegnx","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914"}
+{"timestamp":"2026-10-29T07:46:17.000652Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"6a7a92d39512a148","trace.id":"adb75c8820a5c59ee10497c2d546798e","parent.span.id":"6f1525c28f504429","request.id":"f97f7825-3fcc-4152-bb45-9cfb79f40420","run.id":"cmvt8otlb002qsnx0v18wgiw8","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8ott8002xsnx0j6j5jw1t","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914"}
+{"timestamp":"2026-10-29T07:46:17.012038Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"6a7a92d39512a148","trace.id":"adb75c8820a5c59ee10497c2d546798e","parent.span.id":"6f1525c28f504429","request.id":"f97f7825-3fcc-4152-bb45-9cfb79f40420","run.id":"cmvt8otlb002qsnx0v18wgiw8","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8ott8002xsnx0j6j5jw1t","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:17.013510Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8otlb002qsnx0v18wgiw8","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8ott8002xsnx0j6j5jw1t","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":10}
+{"timestamp":"2026-10-29T07:46:17.022062Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8otlb002qsnx0v18wgiw8","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8ott8002xsnx0j6j5jw1t","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":19,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:17.023879Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"6a7a92d39512a148","trace.id":"adb75c8820a5c59ee10497c2d546798e","parent.span.id":"6f1525c28f504429","request.id":"f97f7825-3fcc-4152-bb45-9cfb79f40420","run.id":"cmvt8otlb002qsnx0v18wgiw8","thread.id":"cmvt8otex0027snx0wh62umes","bot.id":"3a96f3a4-96f2-47fb-8120-8093b62091a7","attempt.id":"cmvt8ott8002xsnx0j6j5jw1t","session.key":"agentscope:chat:v1:c957da7ce233ba532eedaf1e39c1b85768962ae056edd2f089adfb52628aa1bd:58ddc51bda9b9d589054b044d0617636cb3e896be8ea417aed9497de84aac914"}
+{"timestamp":"2026-10-29T07:46:17.248799Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"b2edf554abfb74da","trace.id":"a2aa9ebdf01452e94c1c01f8f1144895","parent.span.id":"70d69c3e4c917d65","request.id":"cda5e9b3-8c97-4d02-aa3c-2e22e10909bc","run.id":"cmvt8ou05003dsnx09r7mkz11","thread.id":"cmvt8otzz0039snx0nees3g8q","bot.id":"45be668f-903b-4a43-a954-765984c3eeab","attempt.id":"cmvt8ou0m003fsnx0v2iwulrq","session.key":"agentscope:chat:v1:96aa3f6c493c138d7af7ee6501610a8495dae79f9f443e63c967b285e93fa2ad:8563b89b2a7e461568186d1e8a34a367c260eb14d04c985c038d622d1e40e2fb"}
+{"timestamp":"2026-10-29T07:46:17.256212Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"b2edf554abfb74da","trace.id":"a2aa9ebdf01452e94c1c01f8f1144895","parent.span.id":"70d69c3e4c917d65","request.id":"cda5e9b3-8c97-4d02-aa3c-2e22e10909bc","run.id":"cmvt8ou05003dsnx09r7mkz11","thread.id":"cmvt8otzz0039snx0nees3g8q","bot.id":"45be668f-903b-4a43-a954-765984c3eeab","attempt.id":"cmvt8ou0m003fsnx0v2iwulrq","session.key":"agentscope:chat:v1:96aa3f6c493c138d7af7ee6501610a8495dae79f9f443e63c967b285e93fa2ad:8563b89b2a7e461568186d1e8a34a367c260eb14d04c985c038d622d1e40e2fb","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:17.257420Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ou05003dsnx09r7mkz11","thread.id":"cmvt8otzz0039snx0nees3g8q","bot.id":"45be668f-903b-4a43-a954-765984c3eeab","attempt.id":"cmvt8ou0m003fsnx0v2iwulrq","session.key":"agentscope:chat:v1:96aa3f6c493c138d7af7ee6501610a8495dae79f9f443e63c967b285e93fa2ad:8563b89b2a7e461568186d1e8a34a367c260eb14d04c985c038d622d1e40e2fb","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:17.261214Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ou05003dsnx09r7mkz11","thread.id":"cmvt8otzz0039snx0nees3g8q","bot.id":"45be668f-903b-4a43-a954-765984c3eeab","attempt.id":"cmvt8ou0m003fsnx0v2iwulrq","session.key":"agentscope:chat:v1:96aa3f6c493c138d7af7ee6501610a8495dae79f9f443e63c967b285e93fa2ad:8563b89b2a7e461568186d1e8a34a367c260eb14d04c985c038d622d1e40e2fb","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":10,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:17.262503Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"b2edf554abfb74da","trace.id":"a2aa9ebdf01452e94c1c01f8f1144895","parent.span.id":"70d69c3e4c917d65","request.id":"cda5e9b3-8c97-4d02-aa3c-2e22e10909bc","run.id":"cmvt8ou05003dsnx09r7mkz11","thread.id":"cmvt8otzz0039snx0nees3g8q","bot.id":"45be668f-903b-4a43-a954-765984c3eeab","attempt.id":"cmvt8ou0m003fsnx0v2iwulrq","session.key":"agentscope:chat:v1:96aa3f6c493c138d7af7ee6501610a8495dae79f9f443e63c967b285e93fa2ad:8563b89b2a7e461568186d1e8a34a367c260eb14d04c985c038d622d1e40e2fb"}
+{"timestamp":"2026-10-29T07:46:17.586916Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"e22fc92bc41b83de","trace.id":"4165c9862cc974c1e2e868b6af6c6f03","parent.span.id":"2411effcf1e0534c","request.id":"8452c2db-26a4-46cd-82a5-0888da21a7f5","run.id":"cmvt8ou9h0042snx0flmepblv","thread.id":"cmvt8ou5l003rsnx0jmwcbhpw","bot.id":"c8f439b0-7a1c-4829-a73c-e11dea3c465a","attempt.id":"cmvt8ou9w0043snx0qhaxzbwt","session.key":"agentscope:chat:v1:4cb43883c067517b0ba61df2ec84b1cc033e65a5347b5058afb6efee67ce9376:4ece2ba1bd32ed390bb40309341af0f6fda071b0603027c7ab904c5cfbb1ec87"}
+{"timestamp":"2026-10-29T07:46:17.595953Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"e22fc92bc41b83de","trace.id":"4165c9862cc974c1e2e868b6af6c6f03","parent.span.id":"2411effcf1e0534c","request.id":"8452c2db-26a4-46cd-82a5-0888da21a7f5","run.id":"cmvt8ou9h0042snx0flmepblv","thread.id":"cmvt8ou5l003rsnx0jmwcbhpw","bot.id":"c8f439b0-7a1c-4829-a73c-e11dea3c465a","attempt.id":"cmvt8ou9w0043snx0qhaxzbwt","session.key":"agentscope:chat:v1:4cb43883c067517b0ba61df2ec84b1cc033e65a5347b5058afb6efee67ce9376:4ece2ba1bd32ed390bb40309341af0f6fda071b0603027c7ab904c5cfbb1ec87","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:17.597347Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ou9h0042snx0flmepblv","thread.id":"cmvt8ou5l003rsnx0jmwcbhpw","bot.id":"c8f439b0-7a1c-4829-a73c-e11dea3c465a","attempt.id":"cmvt8ou9w0043snx0qhaxzbwt","session.key":"agentscope:chat:v1:4cb43883c067517b0ba61df2ec84b1cc033e65a5347b5058afb6efee67ce9376:4ece2ba1bd32ed390bb40309341af0f6fda071b0603027c7ab904c5cfbb1ec87","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":8}
+{"timestamp":"2026-10-29T07:46:17.605245Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ou9h0042snx0flmepblv","thread.id":"cmvt8ou5l003rsnx0jmwcbhpw","bot.id":"c8f439b0-7a1c-4829-a73c-e11dea3c465a","attempt.id":"cmvt8ou9w0043snx0qhaxzbwt","session.key":"agentscope:chat:v1:4cb43883c067517b0ba61df2ec84b1cc033e65a5347b5058afb6efee67ce9376:4ece2ba1bd32ed390bb40309341af0f6fda071b0603027c7ab904c5cfbb1ec87","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":16,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:17.606275Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"e22fc92bc41b83de","trace.id":"4165c9862cc974c1e2e868b6af6c6f03","parent.span.id":"2411effcf1e0534c","request.id":"8452c2db-26a4-46cd-82a5-0888da21a7f5","run.id":"cmvt8ou9h0042snx0flmepblv","thread.id":"cmvt8ou5l003rsnx0jmwcbhpw","bot.id":"c8f439b0-7a1c-4829-a73c-e11dea3c465a","attempt.id":"cmvt8ou9w0043snx0qhaxzbwt","session.key":"agentscope:chat:v1:4cb43883c067517b0ba61df2ec84b1cc033e65a5347b5058afb6efee67ce9376:4ece2ba1bd32ed390bb40309341af0f6fda071b0603027c7ab904c5cfbb1ec87"}
+{"timestamp":"2026-10-29T07:46:17.921231Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"faafe16faf68c193","trace.id":"6bc96b17a2c9572491d3cd879381f7dc","parent.span.id":"ae8f80e202dec415","request.id":"62a010b6-53d1-4d32-9e96-62adbf3ac6af","run.id":"cmvt8ouiv004psnx0tinbll8j","thread.id":"cmvt8ouey004esnx0dfmgvubj","bot.id":"c872c201-4b5a-4525-9b7d-858d0ca6c8fc","attempt.id":"cmvt8ouj8004qsnx0sqneids4","session.key":"agentscope:chat:v1:5744be69027216e69887a0c66d37fa043e8932b8c1c364c2f42d2d1964cd21ac:6a0f59569bbcaa390a1d051d3b2b7f1f16fd017e90dd067cbceea65830136362"}
+{"timestamp":"2026-10-29T07:46:17.929002Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"faafe16faf68c193","trace.id":"6bc96b17a2c9572491d3cd879381f7dc","parent.span.id":"ae8f80e202dec415","request.id":"62a010b6-53d1-4d32-9e96-62adbf3ac6af","run.id":"cmvt8ouiv004psnx0tinbll8j","thread.id":"cmvt8ouey004esnx0dfmgvubj","bot.id":"c872c201-4b5a-4525-9b7d-858d0ca6c8fc","attempt.id":"cmvt8ouj8004qsnx0sqneids4","session.key":"agentscope:chat:v1:5744be69027216e69887a0c66d37fa043e8932b8c1c364c2f42d2d1964cd21ac:6a0f59569bbcaa390a1d051d3b2b7f1f16fd017e90dd067cbceea65830136362","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:17.930253Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ouiv004psnx0tinbll8j","thread.id":"cmvt8ouey004esnx0dfmgvubj","bot.id":"c872c201-4b5a-4525-9b7d-858d0ca6c8fc","attempt.id":"cmvt8ouj8004qsnx0sqneids4","session.key":"agentscope:chat:v1:5744be69027216e69887a0c66d37fa043e8932b8c1c364c2f42d2d1964cd21ac:6a0f59569bbcaa390a1d051d3b2b7f1f16fd017e90dd067cbceea65830136362","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:17.937475Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ouiv004psnx0tinbll8j","thread.id":"cmvt8ouey004esnx0dfmgvubj","bot.id":"c872c201-4b5a-4525-9b7d-858d0ca6c8fc","attempt.id":"cmvt8ouj8004qsnx0sqneids4","session.key":"agentscope:chat:v1:5744be69027216e69887a0c66d37fa043e8932b8c1c364c2f42d2d1964cd21ac:6a0f59569bbcaa390a1d051d3b2b7f1f16fd017e90dd067cbceea65830136362","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":14,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:17.938683Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"faafe16faf68c193","trace.id":"6bc96b17a2c9572491d3cd879381f7dc","parent.span.id":"ae8f80e202dec415","request.id":"62a010b6-53d1-4d32-9e96-62adbf3ac6af","run.id":"cmvt8ouiv004psnx0tinbll8j","thread.id":"cmvt8ouey004esnx0dfmgvubj","bot.id":"c872c201-4b5a-4525-9b7d-858d0ca6c8fc","attempt.id":"cmvt8ouj8004qsnx0sqneids4","session.key":"agentscope:chat:v1:5744be69027216e69887a0c66d37fa043e8932b8c1c364c2f42d2d1964cd21ac:6a0f59569bbcaa390a1d051d3b2b7f1f16fd017e90dd067cbceea65830136362"}
+{"timestamp":"2026-10-29T07:46:18.251206Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"da1bb6c52d5e877e","trace.id":"104be5e950dc8d38783e5fe82b04b5a8","parent.span.id":"67405a42974d0448","request.id":"3851146d-67c7-41f1-8072-f948b335013f","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouse005csnx0yre2xd4u","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b"}
+{"timestamp":"2026-10-29T07:46:18.259589Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"da1bb6c52d5e877e","trace.id":"104be5e950dc8d38783e5fe82b04b5a8","parent.span.id":"67405a42974d0448","request.id":"3851146d-67c7-41f1-8072-f948b335013f","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouse005csnx0yre2xd4u","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:18.260786Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouse005csnx0yre2xd4u","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:18.296920Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouse005csnx0yre2xd4u","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":44,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:18.298201Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","span.id":"da1bb6c52d5e877e","trace.id":"104be5e950dc8d38783e5fe82b04b5a8","parent.span.id":"67405a42974d0448","request.id":"3851146d-67c7-41f1-8072-f948b335013f","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouse005csnx0yre2xd4u","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-29T07:46:18.298521Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"da1bb6c52d5e877e","trace.id":"104be5e950dc8d38783e5fe82b04b5a8","parent.span.id":"67405a42974d0448","request.id":"3851146d-67c7-41f1-8072-f948b335013f","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouse005csnx0yre2xd4u","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b"}
+{"timestamp":"2026-10-29T07:46:18.388517Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"783cf409d580c23a","trace.id":"0edc98146feb0af48ba2160f3e344cdd","parent.span.id":"413d0db561ae23a6","request.id":"161a241e-0d81-4d1e-a35a-e93b7772c967","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouw0005psnx0b9r1t7hv","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b"}
+{"timestamp":"2026-10-29T07:46:18.414400Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"783cf409d580c23a","trace.id":"0edc98146feb0af48ba2160f3e344cdd","parent.span.id":"413d0db561ae23a6","request.id":"161a241e-0d81-4d1e-a35a-e93b7772c967","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouw0005psnx0b9r1t7hv","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:18.415623Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouw0005psnx0b9r1t7hv","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":24}
+{"timestamp":"2026-10-29T07:46:18.425630Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouw0005psnx0b9r1t7hv","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":34,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:18.427036Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"783cf409d580c23a","trace.id":"0edc98146feb0af48ba2160f3e344cdd","parent.span.id":"413d0db561ae23a6","request.id":"161a241e-0d81-4d1e-a35a-e93b7772c967","run.id":"cmvt8oury005asnx0kt2rri2h","thread.id":"cmvt8ouo8004zsnx0vor7fk59","bot.id":"bc2bcf78-4849-491e-ad14-b2ecb724b389","attempt.id":"cmvt8ouw0005psnx0b9r1t7hv","session.key":"agentscope:chat:v1:174bed8d38a28da17ab18bcbb994b1d4a7425aa3e70e21ac823c783801285aa7:3a3958b2b00dfed7673d50974455a3c074af326c18deda5ac3baab41a1ffda9b"}
+{"timestamp":"2026-10-29T07:46:18.820411Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"335aba2b37acf8f8","trace.id":"34c8c0594d14be066a6c6f993b67d206","parent.span.id":"cd1e829b5d9c5b8d","request.id":"754136be-7647-4129-9b90-c3da5815a515","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ov87006gsnx01fkf7h3k","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59"}
+{"timestamp":"2026-10-29T07:46:18.828364Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"335aba2b37acf8f8","trace.id":"34c8c0594d14be066a6c6f993b67d206","parent.span.id":"cd1e829b5d9c5b8d","request.id":"754136be-7647-4129-9b90-c3da5815a515","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ov87006gsnx01fkf7h3k","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:18.829586Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ov87006gsnx01fkf7h3k","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:18.859026Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ov87006gsnx01fkf7h3k","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":36,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:18.861088Z","level":"error","message":"runtime.run.failed","service.name":"rakazo-agent-runtime","span.id":"335aba2b37acf8f8","trace.id":"34c8c0594d14be066a6c6f993b67d206","parent.span.id":"cd1e829b5d9c5b8d","request.id":"754136be-7647-4129-9b90-c3da5815a515","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ov87006gsnx01fkf7h3k","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59","error":{"category":"internal","type":"java.io.IOException"}}
+{"timestamp":"2026-10-29T07:46:18.947539Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"d40a9fdeca61f4c5","trace.id":"50467a1e50f4609286e2c48f536f124c","parent.span.id":"4de0c29ddd047d4b","request.id":"a7eb4c19-2db4-488f-8ef7-98a91dc3d3a1","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ovbn006tsnx0thgukb8x","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59"}
+{"timestamp":"2026-10-29T07:46:18.965199Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"d40a9fdeca61f4c5","trace.id":"50467a1e50f4609286e2c48f536f124c","parent.span.id":"4de0c29ddd047d4b","request.id":"a7eb4c19-2db4-488f-8ef7-98a91dc3d3a1","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ovbn006tsnx0thgukb8x","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:18.966401Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ovbn006tsnx0thgukb8x","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":16}
+{"timestamp":"2026-10-29T07:46:18.973842Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ovbn006tsnx0thgukb8x","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":23,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:18.975237Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"d40a9fdeca61f4c5","trace.id":"50467a1e50f4609286e2c48f536f124c","parent.span.id":"4de0c29ddd047d4b","request.id":"a7eb4c19-2db4-488f-8ef7-98a91dc3d3a1","run.id":"cmvt8ov7q006esnx0p2ybopny","thread.id":"cmvt8ov410063snx0mchpuclk","bot.id":"66dccbbd-5706-42e0-b20d-c962cdccc352","attempt.id":"cmvt8ovbn006tsnx0thgukb8x","session.key":"agentscope:chat:v1:a1f09b7d1d50538ad8686647db1b42bcae884d782319415b14ebf3ef39956f0b:c202d339c3b26760e523652a64f030ad1b188e2b89bef9fe24f50a44af97ed59"}
+{"timestamp":"2026-10-29T07:46:19.397095Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"1f05a3164168f416","trace.id":"9a8d7bb08695a6419f799003370d8d19","parent.span.id":"7057712f25cbd85e","request.id":"9fe7637a-0bef-48ca-a381-2233641aeeeb","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovo7007lsnx046az6you","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.405665Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"1f05a3164168f416","trace.id":"9a8d7bb08695a6419f799003370d8d19","parent.span.id":"7057712f25cbd85e","request.id":"9fe7637a-0bef-48ca-a381-2233641aeeeb","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovo7007lsnx046az6you","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:19.407193Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovo7007lsnx046az6you","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":8}
+{"timestamp":"2026-10-29T07:46:19.440852Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovo7007lsnx046az6you","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":42,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:19.442107Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","span.id":"1f05a3164168f416","trace.id":"9a8d7bb08695a6419f799003370d8d19","parent.span.id":"7057712f25cbd85e","request.id":"9fe7637a-0bef-48ca-a381-2233641aeeeb","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovo7007lsnx046az6you","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-29T07:46:19.442463Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"1f05a3164168f416","trace.id":"9a8d7bb08695a6419f799003370d8d19","parent.span.id":"7057712f25cbd85e","request.id":"9fe7637a-0bef-48ca-a381-2233641aeeeb","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovo7007lsnx046az6you","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.528849Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"717b2e91357660a3","trace.id":"ebd7445127bee30989b8be902f61cf27","parent.span.id":"c274aad54b768ee2","request.id":"db13d4d4-28c8-4700-9d92-00172e217411","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovrt007ysnx0zti1me7u","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.543053Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"717b2e91357660a3","trace.id":"ebd7445127bee30989b8be902f61cf27","parent.span.id":"c274aad54b768ee2","request.id":"db13d4d4-28c8-4700-9d92-00172e217411","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovrt007ysnx0zti1me7u","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:19.544197Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovrt007ysnx0zti1me7u","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":13}
+{"timestamp":"2026-10-29T07:46:19.550999Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovrt007ysnx0zti1me7u","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":19,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:19.552352Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"717b2e91357660a3","trace.id":"ebd7445127bee30989b8be902f61cf27","parent.span.id":"c274aad54b768ee2","request.id":"db13d4d4-28c8-4700-9d92-00172e217411","run.id":"cmvt8ovns007jsnx0a7wv33e1","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovrt007ysnx0zti1me7u","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.745366Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"6aaf213dc09e5ef2","trace.id":"ce8aa60d11a0afba24b678c190548155","parent.span.id":"870bb6543db44bf0","request.id":"bf0607ce-5fe9-49f3-b175-c27434b52820","run.id":"cmvt8ovxg0089snx03g8gmcye","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovxx008bsnx0z2n6szr3","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.754626Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"6aaf213dc09e5ef2","trace.id":"ce8aa60d11a0afba24b678c190548155","parent.span.id":"870bb6543db44bf0","request.id":"bf0607ce-5fe9-49f3-b175-c27434b52820","run.id":"cmvt8ovxg0089snx03g8gmcye","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovxx008bsnx0z2n6szr3","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:19.755794Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ovxg0089snx03g8gmcye","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovxx008bsnx0z2n6szr3","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":8}
+{"timestamp":"2026-10-29T07:46:19.762072Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ovxg0089snx03g8gmcye","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovxx008bsnx0z2n6szr3","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":15,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:19.763571Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"6aaf213dc09e5ef2","trace.id":"ce8aa60d11a0afba24b678c190548155","parent.span.id":"870bb6543db44bf0","request.id":"bf0607ce-5fe9-49f3-b175-c27434b52820","run.id":"cmvt8ovxg0089snx03g8gmcye","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ovxx008bsnx0z2n6szr3","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.859025Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"6be63cae5e3cd39e","trace.id":"bbf949f4b91e3700370922c2fa77d00a","parent.span.id":"1841cf1cee44fafe","request.id":"02e5cfd3-e95f-45b7-91ae-4c14f8c4d3eb","run.id":"cmvt8ow0o008ksnx0hd5glifk","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow13008msnx0ct9sg4f8","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.867011Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"6be63cae5e3cd39e","trace.id":"bbf949f4b91e3700370922c2fa77d00a","parent.span.id":"1841cf1cee44fafe","request.id":"02e5cfd3-e95f-45b7-91ae-4c14f8c4d3eb","run.id":"cmvt8ow0o008ksnx0hd5glifk","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow13008msnx0ct9sg4f8","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:19.868049Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ow0o008ksnx0hd5glifk","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow13008msnx0ct9sg4f8","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:19.875143Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ow0o008ksnx0hd5glifk","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow13008msnx0ct9sg4f8","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":14,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:19.876578Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"6be63cae5e3cd39e","trace.id":"bbf949f4b91e3700370922c2fa77d00a","parent.span.id":"1841cf1cee44fafe","request.id":"02e5cfd3-e95f-45b7-91ae-4c14f8c4d3eb","run.id":"cmvt8ow0o008ksnx0hd5glifk","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow13008msnx0ct9sg4f8","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.984586Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"0fb1c249a40c364c","trace.id":"34cba0ce69ff2f548383a7fd9b02e2f0","parent.span.id":"ef939b28f0991b27","request.id":"cb8e9999-22fc-4d8e-a9d3-3920f6a47ab7","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow4j008wsnx02k9gpc1d","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:19.993165Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"0fb1c249a40c364c","trace.id":"34cba0ce69ff2f548383a7fd9b02e2f0","parent.span.id":"ef939b28f0991b27","request.id":"cb8e9999-22fc-4d8e-a9d3-3920f6a47ab7","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow4j008wsnx02k9gpc1d","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:19.994320Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow4j008wsnx02k9gpc1d","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":8}
+{"timestamp":"2026-10-29T07:46:20.021847Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow4j008wsnx02k9gpc1d","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":35,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:20.025912Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","span.id":"0fb1c249a40c364c","trace.id":"34cba0ce69ff2f548383a7fd9b02e2f0","parent.span.id":"ef939b28f0991b27","request.id":"cb8e9999-22fc-4d8e-a9d3-3920f6a47ab7","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow4j008wsnx02k9gpc1d","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-29T07:46:20.026026Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"0fb1c249a40c364c","trace.id":"34cba0ce69ff2f548383a7fd9b02e2f0","parent.span.id":"ef939b28f0991b27","request.id":"cb8e9999-22fc-4d8e-a9d3-3920f6a47ab7","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow4j008wsnx02k9gpc1d","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:20.116229Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"6913e4c8ecd2972b","trace.id":"3b88713eacbfb633628faf0ee048d777","parent.span.id":"63eb669121221537","request.id":"c908fa16-e6cb-460b-af93-1ea8df56f63a","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow850099snx0cwd8tatq","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:20.137104Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"6913e4c8ecd2972b","trace.id":"3b88713eacbfb633628faf0ee048d777","parent.span.id":"63eb669121221537","request.id":"c908fa16-e6cb-460b-af93-1ea8df56f63a","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow850099snx0cwd8tatq","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:20.138136Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow850099snx0cwd8tatq","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":19}
+{"timestamp":"2026-10-29T07:46:20.145299Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow850099snx0cwd8tatq","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":26,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:20.147217Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"6913e4c8ecd2972b","trace.id":"3b88713eacbfb633628faf0ee048d777","parent.span.id":"63eb669121221537","request.id":"c908fa16-e6cb-460b-af93-1ea8df56f63a","run.id":"cmvt8ow44008usnx0it5l1kbd","thread.id":"cmvt8ovjq0077snx0d10e2asy","bot.id":"26a9d4fc-eb91-4d8c-84bd-0c63b1bd638c","attempt.id":"cmvt8ow850099snx0cwd8tatq","session.key":"agentscope:chat:v1:525e47e83ed73b61567c2054b0e7f51aca76d3ce3193b7614a424cc43973ca8c:0e41ca5b191d8956d9f384c289de3f00805c3c193400d4fc8f13131822fadf03"}
+{"timestamp":"2026-10-29T07:46:20.537663Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"fff95c593007c36e","trace.id":"8aad9ac3be82fb04bcce2bda0e0f9900","parent.span.id":"f8e0bc05abbe1067","request.id":"3130a157-1e90-4d18-b81d-c240c3624c88","run.id":"cmvt8owji009ysnx0skvsmjce","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owjy00a0snx0fcv8oixx","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476"}
+{"timestamp":"2026-10-29T07:46:20.545877Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"fff95c593007c36e","trace.id":"8aad9ac3be82fb04bcce2bda0e0f9900","parent.span.id":"f8e0bc05abbe1067","request.id":"3130a157-1e90-4d18-b81d-c240c3624c88","run.id":"cmvt8owji009ysnx0skvsmjce","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owjy00a0snx0fcv8oixx","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:20.547028Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8owji009ysnx0skvsmjce","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owjy00a0snx0fcv8oixx","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:20.553379Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8owji009ysnx0skvsmjce","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owjy00a0snx0fcv8oixx","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":13,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:20.554378Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"fff95c593007c36e","trace.id":"8aad9ac3be82fb04bcce2bda0e0f9900","parent.span.id":"f8e0bc05abbe1067","request.id":"3130a157-1e90-4d18-b81d-c240c3624c88","run.id":"cmvt8owji009ysnx0skvsmjce","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owjy00a0snx0fcv8oixx","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476"}
+{"timestamp":"2026-10-29T07:46:20.656894Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"0566d2278d06aa2d","trace.id":"cfeb0e724f97a3840d6b21af92bb1d98","parent.span.id":"198886d781638916","request.id":"2733724c-3bb6-4862-9da3-f2670205ca76","run.id":"cmvt8owmv00a8snx0u0115ybk","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owna00aasnx0f7wnm55o","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476"}
+{"timestamp":"2026-10-29T07:46:20.664282Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"0566d2278d06aa2d","trace.id":"cfeb0e724f97a3840d6b21af92bb1d98","parent.span.id":"198886d781638916","request.id":"2733724c-3bb6-4862-9da3-f2670205ca76","run.id":"cmvt8owmv00a8snx0u0115ybk","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owna00aasnx0f7wnm55o","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:20.665202Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8owmv00a8snx0u0115ybk","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owna00aasnx0f7wnm55o","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":6}
+{"timestamp":"2026-10-29T07:46:20.671727Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8owmv00a8snx0u0115ybk","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owna00aasnx0f7wnm55o","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":13,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:20.673464Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"0566d2278d06aa2d","trace.id":"cfeb0e724f97a3840d6b21af92bb1d98","parent.span.id":"198886d781638916","request.id":"2733724c-3bb6-4862-9da3-f2670205ca76","run.id":"cmvt8owmv00a8snx0u0115ybk","thread.id":"cmvt8owfl009nsnx0w7j9sud1","bot.id":"d1f86190-cfcd-42da-9a20-6a514bd04544","attempt.id":"cmvt8owna00aasnx0f7wnm55o","session.key":"agentscope:chat:v1:b2356dffd149f9cc3ff79c561277c3f8fc4d1633147a09f6ca7030a32c24b12d:b93825dc8bf1760591a8e69ef3ad0106288f49d2505e2044ba9115135485b476"}
+{"timestamp":"2026-10-29T07:46:20.992803Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"0e48f29f9d88a82d","trace.id":"e77034730ecc7d2618487817a3572a47","parent.span.id":"377861cdedd8fc77","request.id":"0dc3d53f-dda3-4176-b0ec-d5b561dbf27b","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f"}
+{"timestamp":"2026-10-29T07:46:21.001583Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"0e48f29f9d88a82d","trace.id":"e77034730ecc7d2618487817a3572a47","parent.span.id":"377861cdedd8fc77","request.id":"0dc3d53f-dda3-4176-b0ec-d5b561dbf27b","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:21.003091Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":8}
+{"timestamp":"2026-10-29T07:46:21.029313Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":34,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:21.030290Z","level":"info","message":"runtime.tools.resumed","service.name":"rakazo-agent-runtime","span.id":"0e48f29f9d88a82d","trace.id":"e77034730ecc7d2618487817a3572a47","parent.span.id":"377861cdedd8fc77","request.id":"0dc3d53f-dda3-4176-b0ec-d5b561dbf27b","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","tool.calls":1}
+{"timestamp":"2026-10-29T07:46:21.034769Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"0e48f29f9d88a82d","trace.id":"e77034730ecc7d2618487817a3572a47","parent.span.id":"377861cdedd8fc77","request.id":"0dc3d53f-dda3-4176-b0ec-d5b561dbf27b","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","stream.resume_index":1}
+{"timestamp":"2026-10-29T07:46:21.036198Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":41}
+{"timestamp":"2026-10-29T07:46:21.052527Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":57,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:21.053864Z","level":"info","message":"runtime.tools.resumed","service.name":"rakazo-agent-runtime","span.id":"0e48f29f9d88a82d","trace.id":"e77034730ecc7d2618487817a3572a47","parent.span.id":"377861cdedd8fc77","request.id":"0dc3d53f-dda3-4176-b0ec-d5b561dbf27b","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","tool.calls":1}
+{"timestamp":"2026-10-29T07:46:21.057757Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"0e48f29f9d88a82d","trace.id":"e77034730ecc7d2618487817a3572a47","parent.span.id":"377861cdedd8fc77","request.id":"0dc3d53f-dda3-4176-b0ec-d5b561dbf27b","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","stream.resume_index":2}
+{"timestamp":"2026-10-29T07:46:21.058825Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":64}
+{"timestamp":"2026-10-29T07:46:21.064607Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":70,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:21.065767Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"0e48f29f9d88a82d","trace.id":"e77034730ecc7d2618487817a3572a47","parent.span.id":"377861cdedd8fc77","request.id":"0dc3d53f-dda3-4176-b0ec-d5b561dbf27b","run.id":"cmvt8oww400axsnx03h1uvw25","thread.id":"cmvt8owsa00amsnx00wm2nxjy","bot.id":"a84bfe71-0ee0-41f6-8c44-6e5c93dcdb9a","attempt.id":"cmvt8owwl00azsnx03bf9e9h7","session.key":"agentscope:chat:v1:de93b86184ecfaad7cc76c8bdc323c41d9400e0b8050aa12326da45915532ff2:e8ef3edc378780b2eea240fe773a8138e5c00359c0cd57036131281562cd5c0f"}
+{"timestamp":"2026-10-29T07:46:21.412076Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"fd6bb10d450362b7","trace.id":"01c27b82180d54bf25b2830c9c6af660","parent.span.id":"3ec2d5adfc937890","request.id":"2ba40a58-e28e-4085-b4c9-1214423ebdfd","run.id":"cmvt8ox7t00bpsnx0f6d9xs8k","thread.id":"cmvt8ox4d00bfsnx0kv3c14a5","bot.id":"cf483d99-2811-4d78-b46a-978d65307ec0","attempt.id":"cmvt8ox8800brsnx0etgnyj8a","session.key":"agentscope:chat:v1:e45151b40fb1902b9c8753815662fd6a41df4d5bb63008b558f2761d7ce5ad5b:f302d82c131b056505e8741d0ff4ef7c7161a0cd9bf636973ea2d7ed498ed9c5"}
+{"timestamp":"2026-10-29T07:46:21.420057Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"fd6bb10d450362b7","trace.id":"01c27b82180d54bf25b2830c9c6af660","parent.span.id":"3ec2d5adfc937890","request.id":"2ba40a58-e28e-4085-b4c9-1214423ebdfd","run.id":"cmvt8ox7t00bpsnx0f6d9xs8k","thread.id":"cmvt8ox4d00bfsnx0kv3c14a5","bot.id":"cf483d99-2811-4d78-b46a-978d65307ec0","attempt.id":"cmvt8ox8800brsnx0etgnyj8a","session.key":"agentscope:chat:v1:e45151b40fb1902b9c8753815662fd6a41df4d5bb63008b558f2761d7ce5ad5b:f302d82c131b056505e8741d0ff4ef7c7161a0cd9bf636973ea2d7ed498ed9c5","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:21.421194Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ox7t00bpsnx0f6d9xs8k","thread.id":"cmvt8ox4d00bfsnx0kv3c14a5","bot.id":"cf483d99-2811-4d78-b46a-978d65307ec0","attempt.id":"cmvt8ox8800brsnx0etgnyj8a","session.key":"agentscope:chat:v1:e45151b40fb1902b9c8753815662fd6a41df4d5bb63008b558f2761d7ce5ad5b:f302d82c131b056505e8741d0ff4ef7c7161a0cd9bf636973ea2d7ed498ed9c5","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:21.427849Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8ox7t00bpsnx0f6d9xs8k","thread.id":"cmvt8ox4d00bfsnx0kv3c14a5","bot.id":"cf483d99-2811-4d78-b46a-978d65307ec0","attempt.id":"cmvt8ox8800brsnx0etgnyj8a","session.key":"agentscope:chat:v1:e45151b40fb1902b9c8753815662fd6a41df4d5bb63008b558f2761d7ce5ad5b:f302d82c131b056505e8741d0ff4ef7c7161a0cd9bf636973ea2d7ed498ed9c5","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":14,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:21.428844Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"fd6bb10d450362b7","trace.id":"01c27b82180d54bf25b2830c9c6af660","parent.span.id":"3ec2d5adfc937890","request.id":"2ba40a58-e28e-4085-b4c9-1214423ebdfd","run.id":"cmvt8ox7t00bpsnx0f6d9xs8k","thread.id":"cmvt8ox4d00bfsnx0kv3c14a5","bot.id":"cf483d99-2811-4d78-b46a-978d65307ec0","attempt.id":"cmvt8ox8800brsnx0etgnyj8a","session.key":"agentscope:chat:v1:e45151b40fb1902b9c8753815662fd6a41df4d5bb63008b558f2761d7ce5ad5b:f302d82c131b056505e8741d0ff4ef7c7161a0cd9bf636973ea2d7ed498ed9c5"}
+ [32m✓[39m packages/testkit/src/scenario-contract.postgres.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 6960[2mms[22m[39m
+     [33m[2m✓[22m[39m S01-C6 production tool execution [33m 671[2mms[22m[39m
+     [33m[2m✓[22m[39m RT-27 steers the only active run and answers it once [33m 873[2mms[22m[39m
+     [33m[2m✓[22m[39m RT-27 queues an independent run behind the busy AgentScope session [33m 761[2mms[22m[39m
+     [33m[2m✓[22m[39m S04-C2 routine result branch [33m 336[2mms[22m[39m
+     [33m[2m✓[22m[39m S04-C3 routine silent branch [33m 337[2mms[22m[39m
+     [33m[2m✓[22m[39m S09-C1/C2 approval allow resumes the same run with the persisted effect [33m 562[2mms[22m[39m
+     [33m[2m✓[22m[39m S09-C1/C2 approval deny resumes the same run with the persisted effect [33m 559[2mms[22m[39m
+     [33m[2m✓[22m[39m S09-C3 permission change before resume [33m 1160[2mms[22m[39m
+     [33m[2m✓[22m[39m S13-C2 revoked connector tool disappears from the next clean run [33m 455[2mms[22m[39m
+     [33m[2m✓[22m[39m AG-05 same-run connector revoke and restore refresh every model call [33m 436[2mms[22m[39m
+     [33m[2m✓[22m[39m S01-C5 reaction creates a message and no Run [33m 334[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m12 passed[39m[22m[90m (12)[39m
+[2m   Start at [22m 15:46:12
+[2m   Duration [22m 8.95s[2m (transform 1.04s, setup 8ms, import 1.92s, tests 6.96s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+{"timestamp":"2026-10-29T07:46:23.667016Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"e2637180c5f81c8f","trace.id":"5e50105a7e0a42d83a7ecff91ce0f8c7","parent.span.id":"3cd1493e432da22e","request.id":"453b2c51-8df6-4fa9-bda9-88bb79863b09","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot"}
+{"timestamp":"2026-10-29T07:46:23.669831Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"e2637180c5f81c8f","trace.id":"5e50105a7e0a42d83a7ecff91ce0f8c7","parent.span.id":"3cd1493e432da22e","request.id":"453b2c51-8df6-4fa9-bda9-88bb79863b09","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:23.670637Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":2}
+{"timestamp":"2026-10-29T07:46:23.674642Z","level":"error","message":"runtime.run.failed","service.name":"rakazo-agent-runtime","span.id":"e2637180c5f81c8f","trace.id":"5e50105a7e0a42d83a7ecff91ce0f8c7","parent.span.id":"3cd1493e432da22e","request.id":"453b2c51-8df6-4fa9-bda9-88bb79863b09","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot","error":{"category":"internal","type":"java.lang.IllegalStateException"}}
+{"timestamp":"2026-10-29T07:46:23.677314Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"417c9890a18d869b","trace.id":"9c0ef6403331928c482df95bf78af0b7","parent.span.id":"8fbd24a3fd4c3cab","request.id":"cd799094-dce9-4358-9c23-f2313633a7d2","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot"}
+{"timestamp":"2026-10-29T07:46:23.679808Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"417c9890a18d869b","trace.id":"9c0ef6403331928c482df95bf78af0b7","parent.span.id":"8fbd24a3fd4c3cab","request.id":"cd799094-dce9-4358-9c23-f2313633a7d2","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:23.680249Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":2}
+{"timestamp":"2026-10-29T07:46:23.682945Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":4,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:23.683893Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"417c9890a18d869b","trace.id":"9c0ef6403331928c482df95bf78af0b7","parent.span.id":"8fbd24a3fd4c3cab","request.id":"cd799094-dce9-4358-9c23-f2313633a7d2","run.id":"compact:fixture-thread-0-0:49","thread.id":"fixture-thread-0-0","bot.id":"fixture-bot"}
+ [32m✓[39m packages/testkit/src/history-compaction-agentscope.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 31[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 15:46:21
+[2m   Duration [22m 1.85s[2m (transform 862ms, setup 8ms, import 1.75s, tests 31ms, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+{"timestamp":"2026-10-29T07:46:26.712992Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"e5001a126c9bb423","trace.id":"73d2b2b17762e19adf5b3b8c4c9dae31","parent.span.id":"ae4882d4d3877536","request.id":"db6b1088-402e-4e44-9c33-a4a5e6e2aaf5","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1as000iugx04jlf6byb","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea"}
+{"timestamp":"2026-10-29T07:46:26.723015Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"e5001a126c9bb423","trace.id":"73d2b2b17762e19adf5b3b8c4c9dae31","parent.span.id":"ae4882d4d3877536","request.id":"db6b1088-402e-4e44-9c33-a4a5e6e2aaf5","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1as000iugx04jlf6byb","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:26.724241Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1as000iugx04jlf6byb","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":9}
+{"timestamp":"2026-10-29T07:46:26.772352Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1as000iugx04jlf6byb","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":57,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:26.773360Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","span.id":"e5001a126c9bb423","trace.id":"73d2b2b17762e19adf5b3b8c4c9dae31","parent.span.id":"ae4882d4d3877536","request.id":"db6b1088-402e-4e44-9c33-a4a5e6e2aaf5","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1as000iugx04jlf6byb","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-29T07:46:26.773510Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"e5001a126c9bb423","trace.id":"73d2b2b17762e19adf5b3b8c4c9dae31","parent.span.id":"ae4882d4d3877536","request.id":"db6b1088-402e-4e44-9c33-a4a5e6e2aaf5","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1as000iugx04jlf6byb","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea"}
+{"timestamp":"2026-10-29T07:46:26.932058Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"46ef33133cb7516a","trace.id":"4a32af31a67cf44698509b5da1d9b2eb","parent.span.id":"b93eaa97735eb9b2","request.id":"eb68c58b-db58-455c-9a40-c09db7403279","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1h8000vugx00dpr5nnt","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea"}
+{"timestamp":"2026-10-29T07:46:26.957036Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"46ef33133cb7516a","trace.id":"4a32af31a67cf44698509b5da1d9b2eb","parent.span.id":"b93eaa97735eb9b2","request.id":"eb68c58b-db58-455c-9a40-c09db7403279","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1h8000vugx00dpr5nnt","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:26.958197Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1h8000vugx00dpr5nnt","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":24}
+{"timestamp":"2026-10-29T07:46:26.965978Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1h8000vugx00dpr5nnt","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":31,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:26.967213Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"46ef33133cb7516a","trace.id":"4a32af31a67cf44698509b5da1d9b2eb","parent.span.id":"b93eaa97735eb9b2","request.id":"eb68c58b-db58-455c-9a40-c09db7403279","run.id":"cmvt8p1a7000gugx0kebhladh","thread.id":"cmvt8p14x0005ugx0s05kqbpy","bot.id":"944dacec-f5f0-4077-b911-b5a0753c5213","attempt.id":"cmvt8p1h8000vugx00dpr5nnt","session.key":"agentscope:chat:v1:4cd15d8fedcb3929745b306a2e10ce7209d4e45be38aa21bece6f7e3219da090:e94a21700eff626eb9f5a4d28b393665b061c48723590f30761053f27daeafea"}
+{"timestamp":"2026-10-29T07:46:27.441396Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"8d0979482775d59e","trace.id":"5b3220bfe6e83486bd9f750c46f48dea","parent.span.id":"4979ac3d1b082c04","request.id":"db230796-18ab-455b-b491-9227a8780f7f","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p1vd001nugx0syg2qnlw","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49"}
+{"timestamp":"2026-10-29T07:46:27.450858Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"8d0979482775d59e","trace.id":"5b3220bfe6e83486bd9f750c46f48dea","parent.span.id":"4979ac3d1b082c04","request.id":"db230796-18ab-455b-b491-9227a8780f7f","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p1vd001nugx0syg2qnlw","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:27.451942Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p1vd001nugx0syg2qnlw","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":9}
+{"timestamp":"2026-10-29T07:46:27.491251Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p1vd001nugx0syg2qnlw","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":48,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:27.492379Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","span.id":"8d0979482775d59e","trace.id":"5b3220bfe6e83486bd9f750c46f48dea","parent.span.id":"4979ac3d1b082c04","request.id":"db230796-18ab-455b-b491-9227a8780f7f","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p1vd001nugx0syg2qnlw","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-29T07:46:27.492584Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"8d0979482775d59e","trace.id":"5b3220bfe6e83486bd9f750c46f48dea","parent.span.id":"4979ac3d1b082c04","request.id":"db230796-18ab-455b-b491-9227a8780f7f","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p1vd001nugx0syg2qnlw","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49"}
+{"timestamp":"2026-10-29T07:46:27.671807Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"295996f894998fb6","trace.id":"3055a141e5f2a7910066b33cc8fb8455","parent.span.id":"e4ae5bb6dbfb007f","request.id":"e0ca9824-bc00-4785-8b6c-d8d6150a9fa6","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p21t0020ugx0n4ah8vzi","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49"}
+{"timestamp":"2026-10-29T07:46:27.689810Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"295996f894998fb6","trace.id":"3055a141e5f2a7910066b33cc8fb8455","parent.span.id":"e4ae5bb6dbfb007f","request.id":"e0ca9824-bc00-4785-8b6c-d8d6150a9fa6","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p21t0020ugx0n4ah8vzi","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:27.690923Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p21t0020ugx0n4ah8vzi","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":16}
+{"timestamp":"2026-10-29T07:46:27.697834Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p21t0020ugx0n4ah8vzi","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":23,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:27.698935Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"295996f894998fb6","trace.id":"3055a141e5f2a7910066b33cc8fb8455","parent.span.id":"e4ae5bb6dbfb007f","request.id":"e0ca9824-bc00-4785-8b6c-d8d6150a9fa6","run.id":"cmvt8p1uv001lugx0psu2gh67","thread.id":"cmvt8p1qd001augx0h35u0tps","bot.id":"c93f5abe-6f41-43f6-9ab0-fe4bb6ae8b3d","attempt.id":"cmvt8p21t0020ugx0n4ah8vzi","session.key":"agentscope:chat:v1:4eddb21b1449d803939a76499cbf95bc02408e2b71db1b10b9dea9e58867b803:8876ba748a5356323cdc377ab02ba21a9aaa4b2bc34dfe3ef816242130d8ca49"}
+ [32m✓[39m packages/testkit/src/computer-approval.postgres.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1914[2mms[22m[39m
+     [33m[2m✓[22m[39m allow enforces the persisted computer action before any sandbox effect [33m 1176[2mms[22m[39m
+     [33m[2m✓[22m[39m deny enforces the persisted computer action before any sandbox effect [33m 737[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 15:46:24
+[2m   Duration [22m 3.75s[2m (transform 1.01s, setup 8ms, import 1.77s, tests 1.91s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+{"timestamp":"2026-10-29T07:46:30.824218Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"618eb52b4307a018","trace.id":"cbab03ca53570e4477c10f9c178d5f95","parent.span.id":"2371170fd90783d9","request.id":"1aae84b1-6c1f-4ac7-b696-e9e729716e4b","run.id":"cmvt8p4gg000iv5x0rbiyjx9m","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4h1000kv5x0iq054ilq","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:089fafcedd7040039c4f515cafd730f2f6e6989611753270f81f4159b0a53847"}
+{"timestamp":"2026-10-29T07:46:30.835386Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"618eb52b4307a018","trace.id":"cbab03ca53570e4477c10f9c178d5f95","parent.span.id":"2371170fd90783d9","request.id":"1aae84b1-6c1f-4ac7-b696-e9e729716e4b","run.id":"cmvt8p4gg000iv5x0rbiyjx9m","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4h1000kv5x0iq054ilq","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:089fafcedd7040039c4f515cafd730f2f6e6989611753270f81f4159b0a53847","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:30.836568Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p4gg000iv5x0rbiyjx9m","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4h1000kv5x0iq054ilq","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:089fafcedd7040039c4f515cafd730f2f6e6989611753270f81f4159b0a53847","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":10}
+{"timestamp":"2026-10-29T07:46:30.876832Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p4gg000iv5x0rbiyjx9m","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4h1000kv5x0iq054ilq","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:089fafcedd7040039c4f515cafd730f2f6e6989611753270f81f4159b0a53847","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":51,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:30.877825Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"618eb52b4307a018","trace.id":"cbab03ca53570e4477c10f9c178d5f95","parent.span.id":"2371170fd90783d9","request.id":"1aae84b1-6c1f-4ac7-b696-e9e729716e4b","run.id":"cmvt8p4gg000iv5x0rbiyjx9m","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4h1000kv5x0iq054ilq","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:089fafcedd7040039c4f515cafd730f2f6e6989611753270f81f4159b0a53847"}
+{"timestamp":"2026-10-29T07:46:31.079143Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"9b60cec5400abde5","trace.id":"74524726a4bc1051f37d8b7846755f05","parent.span.id":"af798fdab5654935","request.id":"25d2c88e-e9d1-47d7-b4ea-3bd0b57c8c09","run.id":"cmvt8p4o2000zv5x0szrfg9ud","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4om0011v5x0ehggr5sp","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:81ec4ca48fa7cb0b72ff0176cc531dd486a8273e81a24f9ddbf758e71ccd935e"}
+{"timestamp":"2026-10-29T07:46:31.091120Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"9b60cec5400abde5","trace.id":"74524726a4bc1051f37d8b7846755f05","parent.span.id":"af798fdab5654935","request.id":"25d2c88e-e9d1-47d7-b4ea-3bd0b57c8c09","run.id":"cmvt8p4o2000zv5x0szrfg9ud","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4om0011v5x0ehggr5sp","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:81ec4ca48fa7cb0b72ff0176cc531dd486a8273e81a24f9ddbf758e71ccd935e","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:31.095006Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p4o2000zv5x0szrfg9ud","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4om0011v5x0ehggr5sp","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:81ec4ca48fa7cb0b72ff0176cc531dd486a8273e81a24f9ddbf758e71ccd935e","memory.generation":1,"signal.event":"PRE_CALL","signal.elapsed_ms":14}
+{"timestamp":"2026-10-29T07:46:31.125439Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p4o2000zv5x0szrfg9ud","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4om0011v5x0ehggr5sp","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:81ec4ca48fa7cb0b72ff0176cc531dd486a8273e81a24f9ddbf758e71ccd935e","memory.generation":1,"signal.event":"POST_CALL","signal.elapsed_ms":45,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:31.126598Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"9b60cec5400abde5","trace.id":"74524726a4bc1051f37d8b7846755f05","parent.span.id":"af798fdab5654935","request.id":"25d2c88e-e9d1-47d7-b4ea-3bd0b57c8c09","run.id":"cmvt8p4o2000zv5x0szrfg9ud","thread.id":"cmvt8p4bw0008v5x0azl50v7g","bot.id":"744cd75e-19d0-42f1-bb32-26e52d8ea3d3","attempt.id":"cmvt8p4om0011v5x0ehggr5sp","session.key":"agentscope:chat:v1:63db2f1a36e32512a487d4f305d624b84dc11df6bdf245302b03e8c25c30a981:81ec4ca48fa7cb0b72ff0176cc531dd486a8273e81a24f9ddbf758e71ccd935e"}
+{"timestamp":"2026-10-29T07:46:31.663598Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"1bf517e1809baf96","trace.id":"6aec769dec2c9d193cfe9b9b9249d802","parent.span.id":"775b76c316ea9859","request.id":"6a52a7e0-2216-4eec-ba34-e48f459212fd","run.id":"cmvt8p53r001vv5x09xdblbfl","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p54m001xv5x0eqijhjzu","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:b634c1f4596468e8a2a78b988c9399b9835d9066a37906a9401447e06debbd42"}
+{"timestamp":"2026-10-29T07:46:31.672497Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"1bf517e1809baf96","trace.id":"6aec769dec2c9d193cfe9b9b9249d802","parent.span.id":"775b76c316ea9859","request.id":"6a52a7e0-2216-4eec-ba34-e48f459212fd","run.id":"cmvt8p53r001vv5x09xdblbfl","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p54m001xv5x0eqijhjzu","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:b634c1f4596468e8a2a78b988c9399b9835d9066a37906a9401447e06debbd42","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:31.673639Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p53r001vv5x09xdblbfl","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p54m001xv5x0eqijhjzu","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:b634c1f4596468e8a2a78b988c9399b9835d9066a37906a9401447e06debbd42","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":8}
+{"timestamp":"2026-10-29T07:46:31.709802Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p53r001vv5x09xdblbfl","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p54m001xv5x0eqijhjzu","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:b634c1f4596468e8a2a78b988c9399b9835d9066a37906a9401447e06debbd42","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":44,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:31.710848Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"1bf517e1809baf96","trace.id":"6aec769dec2c9d193cfe9b9b9249d802","parent.span.id":"775b76c316ea9859","request.id":"6a52a7e0-2216-4eec-ba34-e48f459212fd","run.id":"cmvt8p53r001vv5x09xdblbfl","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p54m001xv5x0eqijhjzu","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:b634c1f4596468e8a2a78b988c9399b9835d9066a37906a9401447e06debbd42"}
+{"timestamp":"2026-10-29T07:46:31.902739Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"32fc739c06cf6bda","trace.id":"98b78227d753264128519f717dc3515e","parent.span.id":"475ec20b3decb211","request.id":"186f2cfb-b63f-4d15-af0e-1e254fe093ca","run.id":"cmvt8p5b2002cv5x0tgor5vgn","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p5bk002ev5x04n0hsze4","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:31380afdb74dda44d32df95033addbda5679687017d59a6ae69db542a1ec97fc"}
+{"timestamp":"2026-10-29T07:46:31.909971Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"32fc739c06cf6bda","trace.id":"98b78227d753264128519f717dc3515e","parent.span.id":"475ec20b3decb211","request.id":"186f2cfb-b63f-4d15-af0e-1e254fe093ca","run.id":"cmvt8p5b2002cv5x0tgor5vgn","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p5bk002ev5x04n0hsze4","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:31380afdb74dda44d32df95033addbda5679687017d59a6ae69db542a1ec97fc","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:31.911180Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p5b2002cv5x0tgor5vgn","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p5bk002ev5x04n0hsze4","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:31380afdb74dda44d32df95033addbda5679687017d59a6ae69db542a1ec97fc","memory.generation":1,"signal.event":"PRE_CALL","signal.elapsed_ms":7}
+{"timestamp":"2026-10-29T07:46:31.938838Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p5b2002cv5x0tgor5vgn","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p5bk002ev5x04n0hsze4","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:31380afdb74dda44d32df95033addbda5679687017d59a6ae69db542a1ec97fc","memory.generation":1,"signal.event":"POST_CALL","signal.elapsed_ms":34,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:31.939826Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"32fc739c06cf6bda","trace.id":"98b78227d753264128519f717dc3515e","parent.span.id":"475ec20b3decb211","request.id":"186f2cfb-b63f-4d15-af0e-1e254fe093ca","run.id":"cmvt8p5b2002cv5x0tgor5vgn","thread.id":"cmvt8p502001lv5x0eo1tc6hf","bot.id":"697e85e4-3ef0-4746-9ae1-5435e8b5b5ad","attempt.id":"cmvt8p5bk002ev5x04n0hsze4","session.key":"agentscope:chat:v1:5fe0c8c16112ab6db83976e3ab312d709daf5f556450bb9c234d49cfc1aafc73:31380afdb74dda44d32df95033addbda5679687017d59a6ae69db542a1ec97fc"}
+ [32m✓[39m packages/testkit/src/eval-history.postgres.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 2064[2mms[22m[39m
+     [33m[2m✓[22m[39m retains cleared-run tool calls with a budget of 2 [33m 1281[2mms[22m[39m
+     [33m[2m✓[22m[39m retains cleared-run tool calls with a budget of 1 [33m 783[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 15:46:28
+[2m   Duration [22m 3.90s[2m (transform 1.02s, setup 9ms, import 1.77s, tests 2.06s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+{"timestamp":"2026-10-29T07:46:35.390773Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"8c35d503eab620ac","trace.id":"e77f49565b9e8015bf7088db280cb52e","parent.span.id":"2ee1db5f109d7c78","request.id":"2a65e81e-69ee-4303-abdc-907c4563921b","run.id":"cmvt8p7yz000kw2x01g1hh5a0","thread.id":"cmvt8p7nx0007w2x0onnrismm","bot.id":"be15ae18-6547-4282-abe7-6fc38b97d22a","attempt.id":"cmvt8p7zk000mw2x076apl5f1","session.key":"agentscope:chat:v1:fb9ef4bad3a190f20e24a5cc2d2ba7d01d193a034c6b048b56fa69a53df743b3:20d12360fcf5a429ee3ea218cff3a252cb5430696f50e1428c62debd117ea65f"}
+{"timestamp":"2026-10-29T07:46:35.403247Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"8c35d503eab620ac","trace.id":"e77f49565b9e8015bf7088db280cb52e","parent.span.id":"2ee1db5f109d7c78","request.id":"2a65e81e-69ee-4303-abdc-907c4563921b","run.id":"cmvt8p7yz000kw2x01g1hh5a0","thread.id":"cmvt8p7nx0007w2x0onnrismm","bot.id":"be15ae18-6547-4282-abe7-6fc38b97d22a","attempt.id":"cmvt8p7zk000mw2x076apl5f1","session.key":"agentscope:chat:v1:fb9ef4bad3a190f20e24a5cc2d2ba7d01d193a034c6b048b56fa69a53df743b3:20d12360fcf5a429ee3ea218cff3a252cb5430696f50e1428c62debd117ea65f","stream.resume_index":0}
+{"timestamp":"2026-10-29T07:46:35.404451Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p7yz000kw2x01g1hh5a0","thread.id":"cmvt8p7nx0007w2x0onnrismm","bot.id":"be15ae18-6547-4282-abe7-6fc38b97d22a","attempt.id":"cmvt8p7zk000mw2x076apl5f1","session.key":"agentscope:chat:v1:fb9ef4bad3a190f20e24a5cc2d2ba7d01d193a034c6b048b56fa69a53df743b3:20d12360fcf5a429ee3ea218cff3a252cb5430696f50e1428c62debd117ea65f","memory.generation":0,"signal.event":"PRE_CALL","signal.elapsed_ms":12}
+{"timestamp":"2026-10-29T07:46:35.514479Z","level":"info","message":"agentscope.signal","service.name":"rakazo-agent-runtime","run.id":"cmvt8p7yz000kw2x01g1hh5a0","thread.id":"cmvt8p7nx0007w2x0onnrismm","bot.id":"be15ae18-6547-4282-abe7-6fc38b97d22a","attempt.id":"cmvt8p7zk000mw2x076apl5f1","session.key":"agentscope:chat:v1:fb9ef4bad3a190f20e24a5cc2d2ba7d01d193a034c6b048b56fa69a53df743b3:20d12360fcf5a429ee3ea218cff3a252cb5430696f50e1428c62debd117ea65f","memory.generation":0,"signal.event":"POST_CALL","signal.elapsed_ms":121,"memory.messages":0}
+{"timestamp":"2026-10-29T07:46:35.516226Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"8c35d503eab620ac","trace.id":"e77f49565b9e8015bf7088db280cb52e","parent.span.id":"2ee1db5f109d7c78","request.id":"2a65e81e-69ee-4303-abdc-907c4563921b","run.id":"cmvt8p7yz000kw2x01g1hh5a0","thread.id":"cmvt8p7nx0007w2x0onnrismm","bot.id":"be15ae18-6547-4282-abe7-6fc38b97d22a","attempt.id":"cmvt8p7zk000mw2x076apl5f1","session.key":"agentscope:chat:v1:fb9ef4bad3a190f20e24a5cc2d2ba7d01d193a034c6b048b56fa69a53df743b3:20d12360fcf5a429ee3ea218cff3a252cb5430696f50e1428c62debd117ea65f"}
+ [32m✓[39m packages/testkit/src/eval-customer-support.postgres.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 1488[2mms[22m[39m
+     [33m[2m✓[22m[39m runs the messaging, Salesforce, Zendesk, and reply path through the product [33m 1488[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 15:46:32
+[2m   Duration [22m 3.33s[2m (transform 1.03s, setup 11ms, import 1.77s, tests 1.49s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+(node:8956) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m packages/testkit/src/journeys.test.ts [2m([22m[2m41 tests[22m[2m)[22m[33m 17897[2mms[22m[39m
+     [33m[2m✓[22m[39m computer updates preserve the workspace and reserve the shared computer until completion [33m 366[2mms[22m[39m
+     [33m[2m✓[22m[39m maintenance leaves a run waiting on control [33m 316[2mms[22m[39m
+     [33m[2m✓[22m[39m 1+2: users are isolated and workspace bots share the Team Computer [33m 674[2mms[22m[39m
+     [33m[2m✓[22m[39m clears a conversation without removing the bot, computer, memory, or routines [33m 406[2mms[22m[39m
+     [33m[2m✓[22m[39m 2b: two Team bots send at once on distinct screens [33m 527[2mms[22m[39m
+     [33m[2m✓[22m[39m 4: takeover login then resume without exposing credentials [33m 423[2mms[22m[39m
+     [33m[2m✓[22m[39m 4d: skipping takeover resumes without treating login as done [33m 396[2mms[22m[39m
+     [33m[2m✓[22m[39m 4b: an expired takeover denies input and reconciles API and database state [33m 1321[2mms[22m[39m
+     [33m[2m✓[22m[39m 4d: a stale Team release cannot clear a newer bot takeover [33m 444[2mms[22m[39m
+     [33m[2m✓[22m[39m 10: bots can be archived safely and deleted with or without their memories [33m 391[2mms[22m[39m
+     [33m[2m✓[22m[39m 12: a bot can spawn a regular bot and must confirm the name to delete it [33m 786[2mms[22m[39m
+     [33m[2m✓[22m[39m 12b: a bot can silence and resume its own finish notifications [33m 320[2mms[22m[39m
+     [33m[2m✓[22m[39m 15: ask, answer, stop, follow-up, and clientNonce stay consistent [33m 832[2mms[22m[39m
+     [33m[2m✓[22m[39m 15b: a free-text chat message answers a waiting ask [33m 311[2mms[22m[39m
+     [33m[2m✓[22m[39m 16: routine test-run and plugin connect/revoke [33m 311[2mms[22m[39m
+     [33m[2m✓[22m[39m 54: group chats share one transcript with mentions and handoffs [33m 1869[2mms[22m[39m
+     [33m[2m✓[22m[39m 17: teach a task end to end [33m 564[2mms[22m[39m
+     [33m[2m✓[22m[39m 18: teaching expiry auto-stops recording [33m 1625[2mms[22m[39m
+     [33m[2m✓[22m[39m 19: destination writes pause for approval before side effects [33m 731[2mms[22m[39m
+     [33m[2m✓[22m[39m 20: actions run by default and specific exceptions override broad review rules [33m 936[2mms[22m[39m
+     [33m[2m✓[22m[39m 21: routine destination writes pause on the same approval card [33m 389[2mms[22m[39m
+     [33m[2m✓[22m[39m 24: chat creates a space only after explicit approval [33m 729[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m41 passed[39m[22m[90m (41)[39m
+[2m   Start at [22m 15:46:36
+[2m   Duration [22m 19.91s[2m (transform 1.13s, setup 9ms, import 1.94s, tests 17.90s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+ [32m✓[39m packages/testkit/src/authorization.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 3611[2mms[22m[39m
+     [33m[2m✓[22m[39m prevents one user from reading or mutating another user's resources [33m 506[2mms[22m[39m
+     [33m[2m✓[22m[39m shares model credentials while keeping defaults private to each space [33m 460[2mms[22m[39m
+     [33m[2m✓[22m[39m deletes only empty, non-default spaces [33m 402[2mms[22m[39m
+     [33m[2m✓[22m[39m validates custom thinking against the saved connection capability [33m 346[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m17 passed[39m[22m[90m (17)[39m
+[2m   Start at [22m 15:46:56
+[2m   Duration [22m 5.49s[2m (transform 1.06s, setup 8ms, import 1.81s, tests 3.61s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+ [32m✓[39m packages/testkit/src/attachments.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1935[2mms[22m[39m
+     [33m[2m✓[22m[39m uploads, sends with image/file, and rejects invalid attachments [33m 782[2mms[22m[39m
+     [33m[2m✓[22m[39m attaches a workspace file into the thread [33m 586[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 15:47:02
+[2m   Duration [22m 3.87s[2m (transform 1.12s, setup 8ms, import 1.86s, tests 1.93s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+ [32m✓[39m packages/testkit/src/voice.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 921[2mms[22m[39m
+     [33m[2m✓[22m[39m connects a scripted key, speaks, and transcribes without leaking the secret [33m 341[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 15:47:06
+[2m   Duration [22m 2.93s[2m (transform 1.12s, setup 9ms, import 1.94s, tests 921ms, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+ [32m✓[39m packages/testkit/src/search.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 1872[2mms[22m[39m
+     [33m[2m✓[22m[39m finds bots, messages, files, links, and routines within the workspace [33m 877[2mms[22m[39m
+     [33m[2m✓[22m[39m returns no hits for another workspace [33m 329[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 15:47:09
+[2m   Duration [22m 3.79s[2m (transform 1.06s, setup 9ms, import 1.84s, tests 1.87s, environment 0ms)[22m
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+ [31m❯[39m packages/testkit/src/executor-lifecycle.test.ts [2m([22m[2m21 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[33m 24893[2mms[22m[39m
+     [32m✓[39m allows only one worker to claim a queued run[32m 297[2mms[22m[39m
+[31m     [31m×[31m reclaims an expired running lease with a higher fence[39m[32m 112[2mms[22m[39m
+     [32m✓[39m does not rerun a completed run[32m 96[2mms[22m[39m
+     [32m✓[39m does not rerun a cancelled run[32m 87[2mms[22m[39m
+[31m     [31m×[31m records an uncertain result without replaying an interrupted external effect[39m[32m 172[2mms[22m[39m
+[31m     [31m×[31m recreates the approval pause when an intended effect was interrupted before the card[39m[32m 162[2mms[22m[39m
+     [32m✓[39m fences concurrent terminal commits so only one final message is durable[32m 111[2mms[22m[39m
+     [32m✓[39m rolls back every terminal write when the atomic commit fails[32m 91[2mms[22m[39m
+     [32m✓[39m coalesces steering that races finalization into one durable continuation[32m 115[2mms[22m[39m
+     [32m✓[39m bounds steering recovery (false, false, 'failed')[32m 128[2mms[22m[39m
+     [32m✓[39m bounds steering recovery (true, false, 'failed')[32m 123[2mms[22m[39m
+     [32m✓[39m bounds steering recovery (false, true, 'failed')[32m 140[2mms[22m[39m
+     [32m✓[39m bounds steering recovery (true, true, 'failed')[32m 139[2mms[22m[39m
+     [32m✓[39m bounds steering recovery (true, false, 'completed')[32m 130[2mms[22m[39m
+     [32m✓[39m discards pending steering when the user stops active work[32m 126[2mms[22m[39m
+     [32m✓[39m turns a regular bot-thread send during active work into steering[32m 112[2mms[22m[39m
+     [32m✓[39m turns a send during waiting takeover into steering[32m 106[2mms[22m[39m
+[31m     [31m×[31m applies the same no-parallel-run rule to the targeted group member[39m[32m 188[2mms[22m[39m
+     [32m✓[39m leaves private steering for a private continuation and excludes it from group recovery[32m 134[2mms[22m[39m
+     [33m[2m✓[22m[39m recovers a computer a crashed worker left booting [33m 10292[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves a booting computer alone while its worker still holds the lease [33m 10262[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m packages/testkit/src/executor-lifecycle.test.ts[2m > [22mrun executor lifecycle[2m > [22mreclaims an expired running lease with a higher fence
+[31m[1mAssertionError[22m: expected 'failed' to be 'completed' // Object.is equality[39m
+
+Expected: [32m"[7mcomplet[27med"[39m
+Received: [31m"[7mfail[27med"[39m
+
+[36m [2m❯[22m packages/testkit/src/executor-lifecycle.test.ts:[2m72:24[22m[39m
+    [90m 70|[39m       handles.prisma.attempt.findMany({ where: { runId: seeded.run.id …
+    [90m 71|[39m     ])[33m;[39m
+    [90m 72|[39m     [34mexpect[39m(run[33m.[39mstatus)[33m.[39m[34mtoBe[39m([32m"completed"[39m)[33m;[39m
+    [90m   |[39m                        [31m^[39m
+    [90m 73|[39m     [34mexpect[39m(run[33m.[39mleaseFence)[33m.[39m[34mtoBe[39m([34m8[39m)[33m;[39m
+    [90m 74|[39m     [34mexpect[39m(attempts)[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/testkit/src/executor-lifecycle.test.ts[2m > [22mrun executor lifecycle[2m > [22mrecords an uncertain result without replaying an interrupted external effect
+[31m[1mAssertionError[22m: expected { …(14) } to match object { status: 'uncertain', …(1) }
+(15 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "result": ObjectContaining {[39m
+[32m-     "uncertain": true,[39m
+[32m-   },[39m
+[32m-   "status": "uncertain",[39m
+[31m+   "result": null,[39m
+[31m+   "status": "executing",[39m
+[2m  }[22m
+
+[36m [2m❯[22m packages/testkit/src/executor-lifecycle.test.ts:[2m120:20[22m[39m
+    [90m118|[39m     [34mexpect[39m(run)[33m.[39m[34mtoMatchObject[39m({ status[33m:[39m [32m"completed"[39m[33m,[39m error[33m:[39m [35mnull[39m })[33m;[39m
+    [90m119|[39m     expect(attempt).toMatchObject({ status: "completed", error: null }…
+    [90m120|[39m     [34mexpect[39m(effect)[33m.[39m[34mtoMatchObject[39m({
+    [90m   |[39m                    [31m^[39m
+    [90m121|[39m       status[33m:[39m [32m"uncertain"[39m[33m,[39m
+    [90m122|[39m       result[33m:[39m expect[33m.[39m[34mobjectContaining[39m({ uncertain[33m:[39m [35mtrue[39m })[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/testkit/src/executor-lifecycle.test.ts[2m > [22mrun executor lifecycle[2m > [22mrecreates the approval pause when an intended effect was interrupted before the card
+[31m[1mAssertionError[22m: expected [ { kind: 'ask', …(6) } ] to deeply equal ArrayContaining{…}[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- ArrayContaining [[39m
+[32m-   ObjectContaining {[39m
+[32m-     "approvalEffectId": "cmvt8q4i600244qx0xk82not3",[39m
+[31m+ [[39m
+[31m+   {[39m
+[31m+     "actions": [[39m
+[31m+       {[39m
+[31m+         "id": "allow",[39m
+[31m+         "label": "Allow once",[39m
+[31m+       },[39m
+[31m+       {[39m
+[31m+         "id": "always",[39m
+[31m+         "label": "Always allow this tool",[39m
+[31m+       },[39m
+[31m+       {[39m
+[31m+         "id": "deny",[39m
+[31m+         "label": "Deny",[39m
+[31m+       },[39m
+[31m+     ],[39m
+[31m+     "approvalEffectId": "cmvt8q4jf002e4qx063rtju0k",[39m
+[31m+     "detail": "collection: notes[39m
+[31m+ title: MyPal result[39m
+[31m+ body: write this to the destination crm as a note",[39m
+[31m+     "interventionId": "d2110417-ac02-472d-9dd9-fe0292e262f0",[39m
+[2m      "kind": "ask",[22m
+[2m      "status": "pending",[22m
+[31m+     "text": "Review before writing \"MyPal result\" to notes",[39m
+[2m    },[22m
+[2m  ][22m
+
+[36m [2m❯[22m packages/testkit/src/executor-lifecycle.test.ts:[2m170:28[22m[39m
+    [90m168|[39m     [34mexpect[39m(run[33m.[39mstatus)[33m.[39m[34mtoBe[39m([32m"waiting_input"[39m)[33m;[39m
+    [90m169|[39m     [34mexpect[39m(attempt[33m.[39mstatus)[33m.[39m[34mtoBe[39m([32m"waiting_input"[39m)[33m;[39m
+    [90m170|[39m     [34mexpect[39m(message[33m.[39mblocks)[33m.[39m[34mtoEqual[39m(
+    [90m   |[39m                            [31m^[39m
+    [90m171|[39m       expect[33m.[39m[34marrayContaining[39m([
+    [90m172|[39m         expect.objectContaining({ kind: "ask", approvalEffectId: effec…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/testkit/src/executor-lifecycle.test.ts[2m > [22mrun executor lifecycle[2m > [22mapplies the same no-parallel-run rule to the targeted group member
+[31m[1mAssertionError[22m: expected [ 'cmvt8q5oi00804qx0ujmx713q' ] to have a length of 2 but got 1[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 2[39m
+[31m+ 1[39m
+
+[36m [2m❯[22m packages/testkit/src/executor-lifecycle.test.ts:[2m654:26[22m[39m
+    [90m652|[39m     const first = await rpc<{ runIds: string[] }>(cookie, "threads/sen…
+    [90m653|[39m     const replay = await rpc<{ runIds: string[] }>(cookie, "threads/se…
+    [90m654|[39m     [34mexpect[39m(first[33m.[39mrunIds)[33m.[39m[34mtoHaveLength[39m([34m2[39m)[33m;[39m
+    [90m   |[39m                          [31m^[39m
+    [90m655|[39m     [34mexpect[39m(replay[33m.[39mrunIds)[33m.[39m[34mtoEqual[39m(first[33m.[39mrunIds)[33m;[39m
+    [90m656|[39m     expect(await handles.prisma.run.count({ where: { threadId: thread.…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m17 passed[39m[22m[90m (21)[39m
+[2m   Start at [22m 15:47:14
+[2m   Duration [22m 25.67s[2m (transform 1.15s, setup 9ms, import 712ms, tests 24.89s, environment 0ms)[22m
+
+Error: pnpm exec vitest run packages/testkit/src/executor-lifecycle.test.ts exited 1
+    at ChildProcess.<anonymous> (/Users/rivers/Documents/WorkPal-pd01impl/packages/testkit/src/cli/process.ts:9:19)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess._handle.onexit (node:internal/child_process:293:12)
+ ELIFECYCLE  Command failed with exit code 1.

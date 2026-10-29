@@ -1,0 +1,39 @@
+# P1 red: same regression test on the pre-fix PD-01 head 37a7927 (before merging main's projection)
+# command: VERIFY_DATABASE=1 DATABASE_URL=<pg16> pnpm exec vitest run apps/api/src/thread-execution-snapshot-window.postgres.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/private/tmp/workpal-pd01-red[39m
+
+ [31m❯[39m apps/api/src/thread-execution-snapshot-window.postgres.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 295[2mms[22m[39m
+[31m     [31m×[31m keeps both Runs of the triggering message on the initial snapshot[39m[32m 31[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m apps/api/src/thread-execution-snapshot-window.postgres.test.ts[2m > [22mthread snapshot keeps message-linked Runs outside the terminal window[2m > [22mkeeps both Runs of the triggering message on the initial snapshot
+[31m[1mAssertionError[22m: expected [] to deeply equal [ 'cmvt7wi2100088kx0q3avn6rh', …(1) ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   "cmvt7wi2100088kx0q3avn6rh",[39m
+[32m-   "cmvt7wi2a000b8kx0swuxtckw",[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m apps/api/src/thread-execution-snapshot-window.postgres.test.ts:[2m199:52[22m[39m
+    [90m197|[39m       (summary) [33m=>[39m summary[33m.[39msourceMessageId [33m===[39m messageId[33m,[39m
+    [90m198|[39m     )[33m;[39m
+    [90m199|[39m     expect(linked.map((summary) => summary.runId)).toEqual([firstRunId…
+    [90m   |[39m                                                    [31m^[39m
+    [90m200|[39m     expect(linked.every((summary) => summary.status === "cancelled")).…
+    [90m201|[39m     expect(linked.every((summary) => summary.manualRetry?.allowed === …
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 15:24:13
+[2m   Duration [22m 2.39s[2m (transform 947ms, setup 10ms, import 1.97s, tests 295ms, environment 0ms)[22m
+

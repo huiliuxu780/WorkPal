@@ -1,0 +1,67 @@
+# P2 red: same regression test against the pre-fix hook (message entry with a stale paged summary)
+# command: pnpm exec vitest run apps/web/src/pages/shell-execution-transcript.test.tsx -t 'PD-01 P2'
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-pd01impl[39m
+
+ [31m❯[39m apps/web/src/pages/shell-execution-transcript.test.tsx [2m([22m[2m32 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m31 skipped[39m[2m)[22m[32m 47[2mms[22m[39m
+     [2m[90m↓[39m[22m merges Plan, semantic Steps and Activity into one shell at the anchor, without Todos
+     [2m[90m↓[39m[22m gives eligible server summaries exactly one shell and tails a message-less failed Run
+     [2m[90m↓[39m[22m offers message-level retry only for cardless cancelled Runs the projection allows (PD-01)
+[31m     [31m×[31m drops a stale paged retry entry after success and restores it only when the successor fails (PD-01 P2)[39m[32m 45[2mms[22m[39m
+     [2m[90m↓[39m[22m creates no execution surface for Todo-only, Activity-only or plain active Runs
+     [2m[90m↓[39m[22m creates a surface for a single semantic Step without any progress numbers
+     [2m[90m↓[39m[22m returns a settled ask bubble when its plain Run has no surface
+     [2m[90m↓[39m[22m keeps a settled ask suppressed while its Run keeps a surface
+     [2m[90m↓[39m[22m keeps a pending Intervention outside the collapsed detail and suppresses the covered bubble Ask
+     [2m[90m↓[39m[22m consumes the execution-nav attention intent once: opens the Run and focuses its Intervention control
+     [2m[90m↓[39m[22m force-opens a closed card and focuses the status line for a non-attention execution-nav return
+     [2m[90m↓[39m[22m leaves a plain active Run with only the lightweight progress bubble (acceptance 2)
+     [2m[90m↓[39m[22m keeps a live card open when its own detail load lands on a fresher rev
+     [2m[90m↓[39m[22m re-checks a sidebar-set intent on the ping event without a remount (acceptance 12)
+     [2m[90m↓[39m[22m shows a safe retry when the detail load fails and recovers on retry (UX-01C acceptance 14)
+     [2m[90m↓[39m[22m keeps a failed detail request from clearing an already-cached detail
+     [2m[90m↓[39m[22m renders the legacy 事项清单 fallback only inside an expanded legal surface (UX-01C acceptance 16)
+     [2m[90m↓[39m[22m hides Todos behind Steps/Plan in the fixed degradation order (UX-01C acceptance 16)
+     [2m[90m↓[39m[22m never synthesizes a Plan from Activity, Markdown or message steps blocks (acceptance 19)
+     [2m[90m↓[39m[22m invalidates a stale detail error when the summary revision advances (review round P3)
+     [2m[90m↓[39m[22m a stale success never clears the newer revision's error or retry (review round 2)
+     [2m[90m↓[39m[22m a late failure from a superseded request never surfaces at the newer revision (review round P3)
+     [2m[90m↓[39m[22m renders the natural group message and never opens the private pair view
+     [2m[90m↓[39m[22m shows a target confirmation only after its real Run message arrives
+     [2m[90m↓[39m[22m renders the strict interaction cards and suppresses every legacy block on the same message
+     [2m[90m↓[39m[22m keeps a settled message-backed card and its shell after the Run completes
+     [2m[90m↓[39m[22m restores a message-backed card from the execution detail when its message is paged out
+     [2m[90m↓[39m[22m keeps the legacy blocks and ignores the projection when the gate is off
+     [2m[90m↓[39m[22m renders a standalone interaction at the transcript tail, outside any execution shell
+     [2m[90m↓[39m[22m keeps a discarded run-less skill card at the tail after a refresh
+     [2m[90m↓[39m[22m opens the bound pair from the bot collaboration receipt without reading a generic thread
+     [2m[90m↓[39m[22m keeps a legacy nonempty sent receipt as a non-openable row without its body
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m apps/web/src/pages/shell-execution-transcript.test.tsx[2m > [22mShell execution region smoke (UX-01A baseline)[2m > [22mdrops a stale paged retry entry after success and restores it only when the successor fails (PD-01 P2)
+[31m[1mAssertionError[22m: expected <button type="button" …(3)>…(1)</button> to have a length of +0 but got 1[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 0[39m
+[31m+ 1[39m
+
+[36m [2m❯[22m apps/web/src/pages/shell-execution-transcript.test.tsx:[2m748:7[22m[39m
+    [90m746|[39m     [34mexpect[39m(
+    [90m747|[39m       host.querySelectorAll('[data-message-id="m1"] [data-testid="mess…
+    [90m748|[39m     )[33m.[39m[34mtoHaveLength[39m([34m0[39m)[33m;[39m
+    [90m   |[39m       [31m^[39m
+    [90m749|[39m
+    [90m750|[39m     // Server parity: a failed successor makes the predecessor retryab…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m31 skipped[39m[90m (32)[39m
+[2m   Start at [22m 15:26:56
+[2m   Duration [22m 1.48s[2m (transform 787ms, setup 10ms, import 1.14s, tests 47ms, environment 227ms)[22m
+

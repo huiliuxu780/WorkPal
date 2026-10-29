@@ -228,7 +228,13 @@ test("a cancelled cardless Run retries from its triggering message (PD-01)", asy
   await expect(userRow).toBeVisible({ timeout: 20_000 });
   // Keep the stills focused on the message rail.
   const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
-  if (await dismiss.first().isVisible().catch(() => false)) await dismiss.first().click();
+  if (
+    await dismiss
+      .first()
+      .isVisible()
+      .catch(() => false)
+  )
+    await dismiss.first().click();
   await userRow.hover();
   const retry = userRow.getByTestId("message-retry");
   await expect(retry).toBeVisible({ timeout: 15_000 });
@@ -312,10 +318,10 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
     return snapshot.executions ?? [];
   };
   await expect
-    .poll(
-      async () => (await groupExecutions()).filter((row) => row.status === "running").length,
-      { timeout: 60_000, intervals: [250, 500, 1_000] },
-    )
+    .poll(async () => (await groupExecutions()).filter((row) => row.status === "running").length, {
+      timeout: 60_000,
+      intervals: [250, 500, 1_000],
+    })
     .toBe(2);
   await rpc(page, "threads/stop", { groupId: group.id });
   await expect
@@ -366,8 +372,9 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
     return trigger.id;
   })();
 
-  // Evict the trigger from the first history page: each filler echoes, so 60
-  // sends put ~120 messages behind it (page window is 100).
+  // Evict the trigger from the first history page: a group turn writes the
+  // user message, its echoes, and status messages, so 60 fillers leave several
+  // hundred messages behind the trigger (page window is 100).
   for (let i = 0; i < 60; i++) {
     await rpc(page, "threads/send", {
       groupId: group.id,
@@ -396,7 +403,9 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
   // racing deep DOM paging on slow runners.
   let cursor: number | undefined;
   let pagedExecutions: Summary[] | null = null;
-  for (let attempt = 0; attempt < 6 && pagedExecutions === null; attempt++) {
+  // Walk every page: a group turn writes several messages per filler, so the
+  // trigger can sit many 100-message pages deep. Stop only at the oldest page.
+  for (let attempt = 0; attempt < 50 && pagedExecutions === null; attempt++) {
     const nextPage = await rpc<{
       messages: Array<{ id: string }>;
       olderCursor: number | null;
