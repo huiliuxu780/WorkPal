@@ -105,4 +105,27 @@ describe("redaction", () => {
     expect(redacted).toContain('"token":"[Redacted]"');
     expect(redacted).toContain('"authorization":"[Redacted]"');
   });
+
+  it("redacts DSN credentials, private hosts, and host paths", () => {
+    // Synthetic values only: the rule is what is under test, never a real
+    // credential, host or account.
+    const redacted = redactSensitiveText(
+      [
+        "connect postgres://synthetic-user:synthetic-password@10.0.0.9:5432/synthetic",
+        "runtime at http://127.0.0.1:8090/v1/runs and https://192.168.1.20:3100/health",
+        "detached from https://agent-runtime.internal/v1/sessions",
+        "workspace /Users/synthetic-account/repo and /var/folders/synthetic/tmp",
+        "windows C:\\Users\\synthetic\\repo",
+      ].join(" | "),
+    );
+    expect(redacted).not.toMatch(
+      /synthetic-password|synthetic-user|synthetic-account|synthetic\\repo|127\.0\.0\.1|10\.0\.0\.9|192\.168\.1\.20|agent-runtime\.internal|\/var\/folders/,
+    );
+    // The scheme and path survive, so a failure stays attributable to the right
+    // integration and endpoint without naming the private network.
+    expect(redacted).toContain("postgres://[Redacted]/synthetic");
+    expect(redacted).toContain("http://[Redacted]/v1/runs");
+    expect(redacted).toContain("https://[Redacted]/health");
+    expect(redacted).toContain("https://[Redacted]/v1/sessions");
+  });
 });

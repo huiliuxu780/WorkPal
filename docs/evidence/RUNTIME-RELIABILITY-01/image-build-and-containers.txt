@@ -1,0 +1,84 @@
+# RUNTIME-RELIABILITY-01 — final image builds and real container startup
+# Both images built from the delivered Dockerfiles on this branch, then started.
+
+## builds
+app  : docker build -f infra/compose/Dockerfile -t workpal-rr01:app3 .   -> exit 0 (11:45:28-11:53:24)
+java : docker build -f services/agent-runtime/Dockerfile -t workpal-rr01:java . -> exit 0 (11:38:15-11:48:44)
+workpal-rr01:app3	3.53GB
+workpal-rr01:java	594MB
+
+## the corepack defect, and the proof the fix is baked into the final image
+# 'corepack enable' installs only a shim, and 'corepack prepare' caches under the
+# invoking user's home. The build stage runs as root and /root is 0700, so a
+# prepare without COREPACK_HOME is invisible to USER node and pnpm is downloaded
+# at container start. The fix pins COREPACK_HOME=/opt/corepack and chmods it a+rX.
+# Proof: no network, no prepare step, pnpm resolves from the image alone.
+$ docker run --rm --network=none --entrypoint pnpm workpal-rr01:app3 --version
+9.15.0
+user=node COREPACK_HOME=/opt/corepack contents=lastKnownGood.json v1
+
+## app image /app content (final image, not an intermediate)
+$ docker run --rm --entrypoint ls workpal-rr01:app3 -1 /app
+apps
+infra
+node_modules
+package.json
+packages
+pnpm-lock.yaml
+pnpm-workspace.yaml
+prompts
+tsconfig.base.json
+forbidden paths present:
+test/spec files under /app (node_modules pruned): 0
+e2e/__fixtures__/__tests__ dirs: 0
+packages/testkit (manifest only): package.json tsconfig.json
+required resources:
+  OK  packages/db/prisma/schema.prisma
+  OK  packages/db/prisma/migrations
+  OK  apps/api/src/index.ts
+  OK  apps/worker/src/index.ts
+  OK  apps/web/dist
+  OK  prompts
+  OK  node_modules/.pnpm
+  OK  infra/sandboxes/supervisor/package.json
+
+## java image /app content (jar only)
+total 59728
+drwxr-xr-x 1 root root     4096 Oct 29 03:48 .
+drwxr-xr-x 1 root root     4096 Oct 29 04:04 ..
+-rw-r--r-- 1 root root 61150262 Oct 29 03:48 runtime.jar
+files under /app: 1
+openjdk version "21.0.12.1" 2026-08-18 LTS
+
+## four containers started from the two final images
+# api    : pnpm --filter @rakazo/db exec prisma migrate deploy && pnpm --filter @rakazo/api start
+# worker : pnpm --filter @rakazo/worker start
+# web    : pnpm --filter @rakazo/web preview --host 0.0.0.0 --port 5173
+# java   : java -jar /app/runtime.jar   (network alias: agentscope)
+# No corepack prefix on any of them — that is the point of the fix.
+  rr01-api: running exit=0
+  rr01-wkr: running exit=0
+  rr01-web: running exit=0
+  rr01-java: running exit=0
+  api /health -> 200 {"ok":true}
+  web GET / -> 200 bytes 2578
+  api node/tsx processes -> 8
+  prisma migrations applied -> 131
+  worker structured lines -> 32
+
+## the two images interoperate over the compose service name
+  api -> http://agentscope:8090/health -> 200 {"instanceId":"01b67b7d-8a11-4ea1-8558-6549e95c92bd","activeRuns":0,"agentscope":"2.0.3","ok":true,"service":"workpal-agent-runtime","versio
+  worker -> http://agentscope:8090/health -> 200
+
+## Worker structured log from inside the container (job correlation intact)
+{"timestamp":"2026-10-29T04:00:59.375Z","level":"info","message":"job.completed","service.name":"rakazo-worker","job.id":"c9d9651c-d5f4-41ab-8b62-692b4582204b","job.type":"delivery.dispatch","trace.id":"655fe3a889be223f3baafbd8c11cf0dd","span.id":"6898000e6fe266b4","job.duration_ms":4,"job.outcome":"ok"}
+{"timestamp":"2026-10-29T04:00:59.375Z","level":"info","message":"job.completed","service.name":"rakazo-worker","job.id":"16817e05-be7c-4f00-a136-fa76bb6b614f","job.type":"memory.outbox","trace.id":"74488bf994031c0ccd5dc6f7298b1377","span.id":"f7a6e87039da9667","job.duration_ms":1,"job.outcome":"ok"}
+
+## base image provenance (see README limitation 1)
+# node:22-bookworm was resolved from the local BuildKit content store (digest-pinned).
+# Docker Hub was unreachable for the whole session, so the two Java base images
+# were pulled from the docker.m.daocloud.io pull-through cache and retagged to the
+# names the Dockerfile uses. This was for LOCAL VERIFICATION only: the image was
+# not pushed and not deployed, and CI still builds from Docker Hub.
+[maven@sha256:6fdc855a6ed81d288ca7ca37ac6ff5e9308b612485c0801d70b25a858c83d237 docker.m.daocloud.io/library/maven@sha256:6fdc855a6ed81d288ca7ca37ac6ff5e9308b612485c0801d70b25a858c83d237]
+[eclipse-temurin@sha256:f37956012e0cb88400e5b3689aeae2d2d735364c1922ae2225536163b5a99f56 docker.m.daocloud.io/library/eclipse-temurin@sha256:f37956012e0cb88400e5b3689aeae2d2d735364c1922ae2225536163b5a99f56]

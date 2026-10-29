@@ -186,7 +186,7 @@ import {
   TaskInstructionIntegrityError,
   type ThreadEvents,
 } from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+import { enrichLogContext, getLogger } from "@rakazo/logging";
 import {
   deleteFactAsActor,
   FactNotFoundError,
@@ -6393,6 +6393,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
               }
             };
           }
+          // RUNTIME-RELIABILITY-01: bind the attempt identity at the seam that
+          // hands the Run to the runtime. The adapter, the tool-bridge callbacks
+          // and the terminal persistence all log inside this async context, so
+          // one binding covers the rest of the attempt instead of restating the
+          // identifiers at every call site.
+          enrichLogContext({
+            "run.id": runId,
+            "attempt.id": attempt.id,
+            ...(admission ? { "session.key": admission.sessionKey } : {}),
+          });
           const runtimeEvents = deps.runtime.run(
             {
               botId: bot.id,

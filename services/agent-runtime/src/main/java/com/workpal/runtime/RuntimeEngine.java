@@ -162,9 +162,61 @@ public final class RuntimeEngine {
     private record SessionOwner(String sessionKey, RunRequest.Identity identity, String executionId,
             String attemptId, long fence, String suspensionKey, String tenant, String sessionSlot) {}
 
+    /** Shared with {@link FailureCategory} so the resume-limit category never depends on a literal. */
+    static final String RESUME_LIMIT_EXCEEDED = "AgentScope exceeded the external tool resume limit";
+
     private record RunningAgent(HarnessAgent agent, RuntimeContext context, Disposable.Swap stream) {}
     private record BackgroundHandle(RunRequest request, HarnessAgent agent, RuntimeContext context,
             ToolBridgeClient bridge, String taskId, String childSession) {}
+
+    /**
+     * RUNTIME-RELIABILITY-01: WorkPal-owned task records are session-scoped files
+     * under the session workspace, and the session directory is already the
+     * isolation boundary. The agent's own WorkspaceManager additionally applies
+     * AgentScope's default USER isolation namespace to filesystem WRITES while
+     * its reads fall back to the un-namespaced path — so a repository built on
+     * the agent manager and one built on a plain manager write the same logical
+     * record to two different physical files. That split-brain left the native
+     * deliveredAt mark in a second, namespaced copy while the spawn-side file
+     * stayed undelivered; anything walking the workspace then saw two divergent
+     * records and which one won depended on directory iteration order — the
+     * nondeterministic "deliveredAt expected not null" probe failure. Every
+     * WorkPal-side task repository therefore pins its records to one plain
+     * manager: no filesystem indirection (atomic local tmp+rename writes instead
+     * of in-place uploads), no namespace split, and — unlike the single-argument
+     * WorkspaceManager constructor — no SQLite WorkspaceIndex connection opened
+     * (and never closed) per run.
+     */
+    private static WorkspaceManager taskRecordManager(Path workspace) {
+        return new WorkspaceManager(workspace, null, null, null);
+    }
+
+    /**
+     * RUNTIME-RELIABILITY-01: the identifiers this process already holds for the
+     * run, bound to every event it emits. The trace itself arrives from the HTTP
+     * boundary through {@link RuntimeLog}, so nothing here is invented for the
+     * sake of a log line: a run without session admission simply reports no
+     * attempt and no session key.
+     */
+    static Map<String, String> runBindings(RunRequest request) {
+        Map<String, String> bindings = new LinkedHashMap<>();
+        bindings.put("run.id", request.runId());
+        bindings.put("thread.id", request.threadId());
+        bindings.put("bot.id", request.botId());
+        RunRequest.SessionAdmission admission = request.sessionAdmission();
+        if (admission != null) {
+            if (!RunRequest.blank(admission.attemptId())) bindings.put("attempt.id", admission.attemptId());
+            if (!RunRequest.blank(admission.sessionKey())) bindings.put("session.key", admission.sessionKey());
+        }
+        return bindings;
+    }
+
+    static Map<String, Object> bindingsWith(RunRequest request, String key, Object value) {
+        Map<String, Object> bindings = new LinkedHashMap<>(runBindings(request));
+        bindings.put(key, value);
+        return bindings;
+    }
+
 
     public RuntimeEngine(ObjectMapper json, Path stateRoot, Path workspaceRoot) {
         // Null compaction = derive explicit token budgets per request from the
@@ -610,7 +662,7 @@ public final class RuntimeEngine {
         }
         if (allowSubagents) {
             builder.taskRepository(new InterruptibleTaskRepository(
-                    new WorkspaceManager(workspace), hash(request.botId()),
+                    taskRecordManager(workspace), hash(request.botId()),
                     request.backgroundAllowed(), request.maxChildren(), spawnBudget));
             // P11 fixed texts: prompts/helper/*.md — reachable ONLY through this
             // seam-gated branch; the production entrypoint suspends delegation
@@ -631,7 +683,8 @@ public final class RuntimeEngine {
         deliveryRepository = agent.getTaskRepository();
         temporaryDeliveryRepository = deliveryRepository == null;
         if (temporaryDeliveryRepository) {
-            deliveryRepository = new WorkspaceTaskRepository(agent.getWorkspaceManager(), hash(request.botId()));
+            deliveryRepository = new WorkspaceTaskRepository(taskRecordManager(workspace),
+                    hash(request.botId()));
         }
         // A fresh HarnessAgent is built for each WorkPal Run. Its middleware renders the
         // persisted task summary, but 2.0.3 does not inject the terminal delivery into this
@@ -740,6 +793,8 @@ public final class RuntimeEngine {
                 modelInput = new ArrayList<>(input);
                 modelInput.add(taskReminder(pendingDeliveries));
             }
+            RuntimeLog.info("runtime.stream.started", bindingsWith(request,
+                    "stream.resume_index", resume));
             Disposable subscription = agent.streamEvents(modelInput, context).subscribe(mapper::accept,
                     error -> { streamError.set(error); streamFinished.countDown(); },
                     streamFinished::countDown);
@@ -749,12 +804,23 @@ public final class RuntimeEngine {
             } finally {
                 subscription.dispose();
             }
-            if (streamError.get() instanceof Exception error) throw error;
-            if (streamError.get() != null) throw new RuntimeException(streamError.get());
+            Throwable streamFailure = streamError.get();
+            if (streamFailure != null) {
+                // The agent stream is this process's model-call boundary, so this
+                // is the layer that can say a failure arrived from the model
+                // rather than from the tool bridge or the run envelope. Only the
+                // type is recorded here; classification belongs to the HTTP
+                // boundary, and a provider message can carry a credential URL.
+                RuntimeLog.error("runtime.stream.failed", runBindings(request), streamFailure);
+                if (streamFailure instanceof Exception error) throw error;
+                throw new RuntimeException(streamFailure);
+            }
             if (!pausedToolCalls.isEmpty()) {
                 String name = mapper.toolNames.getOrDefault(pausedToolCalls.iterator().next(), "Tool");
                 sink.emit(Map.of("type", "progress", "text", name + " waiting for approval", "activity", true));
                 sink.emit(Map.of("type", "paused", "reason", "approval-or-secret"));
+                RuntimeLog.info("runtime.run.paused", bindingsWith(request,
+                        "pause.reason", "approval-or-secret"));
                 pausedForResume = true;
                 return;
             }
@@ -765,6 +831,8 @@ public final class RuntimeEngine {
                         "actions", List.of(Map.of("id", "approve", "label", "Approve"),
                                 Map.of("id", "reject", "label", "Reject"))));
                 sink.emit(Map.of("type", "paused", "reason", "approval"));
+                RuntimeLog.info("runtime.run.paused", bindingsWith(request,
+                        "pause.reason", "approval"));
                 pausedForResume = true;
                 return;
             }
@@ -776,13 +844,16 @@ public final class RuntimeEngine {
                 sink.emit(Map.of("type", "done", "text", finalText.toString()));
                 return;
             }
+            // The count, never the arguments: tool arguments carry user content.
+            RuntimeLog.info("runtime.tools.resumed", bindingsWith(request,
+                    "tool.calls", mapper.external.getToolCalls().size()));
             input = resumeTools(mapper.external.getToolCalls(), request, bridge, sink, seenSteering, false);
             if (input == null) {
                 pausedForResume = true;
                 return;
             }
         }
-        throw new IllegalStateException("AgentScope exceeded the external tool resume limit");
+        throw new IllegalStateException(RESUME_LIMIT_EXCEEDED);
         } finally {
             if (bridge != null) bridge.closeForeground();
             if (active != null) running.remove(request.runId(), active);
@@ -1314,7 +1385,8 @@ public final class RuntimeEngine {
                             if (childSession == null || agentId == null) {
                                 throw new IOException("Background subagent identity is missing");
                             }
-                            registerBackground(request, agent, context, bridge, taskId, agentId, childSession);
+                            registerBackground(request, agent, context, bridge, taskId, agentId,
+                                    childSession);
                             bridge.finishBackgroundSpawn();
                         }
                         if (!output.contains("task_id:") && !output.contains("status: async")) {
@@ -1366,9 +1438,15 @@ public final class RuntimeEngine {
             agent.getTaskRepository().cancelTask(context, context.getSessionId(), taskId);
             throw error;
         }
-        BackgroundHandle handle = new BackgroundHandle(request, agent, context, bridge, taskId, childSession);
+        BackgroundHandle handle = new BackgroundHandle(request, agent, context, bridge, taskId,
+                childSession);
         background.put(taskId, handle);
-        Thread.ofVirtual().name("workpal-background-" + taskId).start(() -> {
+        // RuntimeLog correlation is a plain ThreadLocal bound at the HTTP
+        // boundary. Capture it before starting the virtual watcher so terminal
+        // delivery and tool-bridge failures stay on the originating Run trace.
+        Map<String, String> correlation = RuntimeLog.current();
+        Thread.ofVirtual().name("workpal-background-" + taskId).start(() ->
+                RuntimeLog.withBindings(correlation, () -> {
             try {
                 long nextHeartbeat = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
                 while (!task.waitForCompletion(1_000)) {
@@ -1386,7 +1464,10 @@ public final class RuntimeEngine {
                 for (int attempt = 0; attempt < 3; attempt++) {
                     try { bridge.publishTerminal(taskId, childSession, state, result); break; }
                     catch (IOException error) {
-                        if (attempt == 2) System.err.println("Background task event delivery failed: " + taskId);
+                        // Bounded retry; recorded once, on the final attempt, so a
+                        // transient bridge outage does not produce three lines.
+                        if (attempt == 2) RuntimeLog.error("runtime.background.terminal_delivery_failed",
+                                bindingsWith(request, "task.id", taskId), error);
                         else Thread.sleep(1_000);
                     }
                 }
@@ -1395,6 +1476,6 @@ public final class RuntimeEngine {
             } finally {
                 background.remove(taskId, handle);
             }
-        });
+        }));
     }
 }

@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -136,10 +137,23 @@ public final class RuntimeServer {
             request = json.readValue(body, RunRequest.class);
             request.validate();
         } catch (Exception e) {
+            // Bound before the run identity exists: a rejected request still has
+            // to be attributable to the trace the caller arrived on.
+            RuntimeLog.bind(header(exchange, "traceparent"), header(exchange, "x-request-id"));
+            try {
+                RuntimeLog.warn("runtime.run.rejected", Map.of("reject.reason",
+                        e instanceof IllegalArgumentException ? "invalid_argument" : "unparseable_request"));
+            } finally {
+                RuntimeLog.clear();
+            }
             reply(exchange, 422, Map.of("error", e instanceof IllegalArgumentException ? e.getMessage() : "Invalid run request"));
             return;
         }
+        RuntimeLog.bind(header(exchange, "traceparent"), header(exchange, "x-request-id"));
+        try {
+        Map<String, String> run = RuntimeEngine.runBindings(request);
         if (request.isChat() && !validSessionAdmission(request)) {
+            RuntimeLog.warn("runtime.run.rejected", rejected(run, "missing_session_admission"));
             reply(exchange, 422, Map.of("error", "Valid session admission proof is required"));
             return;
         }
@@ -149,22 +163,28 @@ public final class RuntimeServer {
                     + request.generation() + "\u0000" + request.scope() + "\u0000" + request.runId();
         synchronized (stateLifecycle) {
             if (purgedBots.contains(botSlot(request.identity().userId(), request.identity().spaceId(), request.botId()))) {
+                RuntimeLog.warn("runtime.run.rejected", rejected(run, "bot_state_purged"));
                 reply(exchange, 410, Map.of("error", "Bot runtime state was purged")); return;
             }
             if (activeRuns.putIfAbsent(request.runId(), Thread.currentThread()) != null) {
+                RuntimeLog.warn("runtime.run.rejected", rejected(run, "run_already_active"));
                 reply(exchange, 409, Map.of("error", "Run is already active")); return;
             }
             activeIdentities.put(request.runId(), request.identity());
             if (activeSessions.putIfAbsent(slot, request.runId()) != null) {
                 activeRuns.remove(request.runId());
                 activeIdentities.remove(request.runId());
+                RuntimeLog.warn("runtime.run.rejected", rejected(run, "session_already_active"));
                 reply(exchange, 409, Map.of("error", "Session already has an active run")); return;
             }
         }
+        RuntimeLog.info("runtime.run.accepted", run);
         exchange.getResponseHeaders().set("content-type", "application/x-ndjson");
         exchange.getResponseHeaders().set("cache-control", "no-store");
         exchange.getResponseHeaders().set("x-agent-runtime-instance", instanceId);
         exchange.sendResponseHeaders(200, 0);
+        boolean cancelled = false;
+        String failure = null;
         try (var output = exchange.getResponseBody()) {
             RuntimeEngine.EventSink sink = event -> {
                 if (Thread.currentThread().isInterrupted()) throw new IOException("Run cancelled");
@@ -174,15 +194,17 @@ public final class RuntimeServer {
             };
             try {
                 engine.execute(request, sink);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException cancellation) {
+                cancelled = true;
                 Thread.currentThread().interrupt();
             } catch (Exception error) {
-                if (!Thread.currentThread().isInterrupted()) {
-                    System.err.println("Agent runtime failure: " + error.getClass().getName());
-                    for (int index = 0; index < Math.min(4, error.getStackTrace().length); index++) {
-                        System.err.println("  at " + error.getStackTrace()[index]);
-                    }
-                    sink.emit(Map.of("type", "error", "message", safeError(error)));
+                if (Thread.currentThread().isInterrupted()) {
+                    cancelled = true;
+                } else {
+                    failure = FailureCategory.of(error, false);
+                    RuntimeLog.error("runtime.run.failed", run, failure, error);
+                    sink.emit(Map.of("type", "error", "message", safeError(error),
+                            "category", failure));
                 }
             }
         } finally {
@@ -191,6 +213,21 @@ public final class RuntimeServer {
             activeSessions.remove(slot, request.runId());
             exchange.close();
         }
+        if (cancelled) RuntimeLog.info("runtime.run.cancelled", run);
+        else if (failure == null) RuntimeLog.info("runtime.run.completed", run);
+        } finally {
+            RuntimeLog.clear();
+        }
+    }
+
+    private static String header(HttpExchange exchange, String name) {
+        return exchange.getRequestHeaders().getFirst(name);
+    }
+
+    private static Map<String, Object> rejected(Map<String, String> run, String reason) {
+        Map<String, Object> bindings = new LinkedHashMap<>(run);
+        bindings.put("reject.reason", reason);
+        return bindings;
     }
 
     private static String safeError(Exception error) {

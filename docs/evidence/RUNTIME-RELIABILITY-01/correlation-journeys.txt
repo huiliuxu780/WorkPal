@@ -1,0 +1,69 @@
+# RUNTIME-RELIABILITY-01 — one Run, four layers, one trace.id
+# Source: a single real 'pnpm test:worker-chain' run (6 passed).
+# worker-chain starts the real Java runtime (never scripted), the API in-process,
+# and the Worker as a detached child process whose output goes to
+# test-report/worker-chain/worker-<generation>.log. The adapter is not a separate
+# process: it runs inside the Worker, so its layer is its own event names
+# (agentscope.run.*) on the same trace.
+
+## MODEL FAILURE journey — trace.id=e600a479e096378d30c45d2b0d7da5f1
+## layer line counts: api=1 worker=4 adapter=2 java=4
+
+### API process (rakazo-api)
+05:05:31.408 INFO  http.request.completed service.name=rakazo-api request.id=4fbe3ff9-9dca-459c-8ed8-619182df258c trace.id=e600a479e096378d30c45d2b0d7da5f1 span.id=8eb56a91ed7e8314 user.id=Fh7zz8TJKZi3at9ptZAlY946KDtiDSby space.id=b23b09b006d4e769394bf261431aa85b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+
+### Worker process (rakazo-worker): job correlation, executor and adapter events
+05:05:31.496 INFO  memory.injection assembled service.name=rakazo-worker job.id=90e71c89-cb7c-4d32-9b4f-77d2f264069c job.type=run.continue trace.id=e600a479e096378d30c45d2b0d7da5f1 span.id=1313d2cd88c4f99e run.id=cmvt2y39m003829x0f3fwabpa parent.span.id=8eb56a91ed7e8314 memory.injection.estimated_tokens=[Redacted] memory.injection.total_budget=4000 memory.injection.summary_included=false memory.injection.summary_stale_blocked=
+05:05:31.503 INFO  agentscope.run.requested service.name=rakazo-worker job.id=90e71c89-cb7c-4d32-9b4f-77d2f264069c job.type=run.continue trace.id=e600a479e096378d30c45d2b0d7da5f1 span.id=1313d2cd88c4f99e run.id=cmvt2y39m003829x0f3fwabpa parent.span.id=8eb56a91ed7e8314 attempt.id=cmvt2y3a90008n2x0gell6090 session.key=agentscope:chat:v1:74c16145dad7e659465d14f529a61e0bfd30b83f34414796aefeca53ae51863a:56c4304ad77372f1a51e0d5150cc
+05:05:35.793 ERROR agentscope.run.failed service.name=rakazo-worker job.id=90e71c89-cb7c-4d32-9b4f-77d2f264069c job.type=run.continue trace.id=e600a479e096378d30c45d2b0d7da5f1 span.id=1313d2cd88c4f99e run.id=cmvt2y39m003829x0f3fwabpa parent.span.id=8eb56a91ed7e8314 attempt.id=cmvt2y3a90008n2x0gell6090 session.key=agentscope:chat:v1:74c16145dad7e659465d14f529a61e0bfd30b83f34414796aefeca53ae51863a:56c4304ad77372f1a51e0d5150cc202
+05:05:35.804 INFO  job.completed service.name=rakazo-worker job.id=90e71c89-cb7c-4d32-9b4f-77d2f264069c job.type=run.continue trace.id=e600a479e096378d30c45d2b0d7da5f1 span.id=1313d2cd88c4f99e run.id=cmvt2y39m003829x0f3fwabpa parent.span.id=8eb56a91ed7e8314 attempt.id=cmvt2y3a90008n2x0gell6090 session.key=agentscope:chat:v1:74c16145dad7e659465d14f529a61e0bfd30b83f34414796aefeca53ae51863a:56c4304ad77372f1a51e0d5150cc20238a4935a
+
+### Java Runtime process (rakazo-agent-runtime)
+{"timestamp":"2026-10-29T05:05:31.504791Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"3ee79ba79fc04fe8","trace.id":"e600a479e096378d30c45d2b0d7da5f1","parent.span.id":"2e1b2d75c0646210","request.id":"b066ae7f-cbdb-4c68-8998-21ade7a9ee56","run.id":"cmvt2y39m003829x0f3fwabpa","thread.id":"cmvt2y2m4002y29x0q2jzkogr","bot.id":"dc21741f-9419-4d4d-834b-5f32e41ff44d","attempt.id":"cmvt2y3a90008n2x0gell6090","session.key":"agentscope:chat:v1:74c16145dad7e659465d14f529a6
+{"timestamp":"2026-10-29T05:05:31.518151Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"3ee79ba79fc04fe8","trace.id":"e600a479e096378d30c45d2b0d7da5f1","parent.span.id":"2e1b2d75c0646210","request.id":"b066ae7f-cbdb-4c68-8998-21ade7a9ee56","run.id":"cmvt2y39m003829x0f3fwabpa","thread.id":"cmvt2y2m4002y29x0q2jzkogr","bot.id":"dc21741f-9419-4d4d-834b-5f32e41ff44d","attempt.id":"cmvt2y3a90008n2x0gell6090","session.key":"agentscope:chat:v1:74c16145dad7e659465d14f529
+{"timestamp":"2026-10-29T05:05:35.792827Z","level":"error","message":"runtime.stream.failed","service.name":"rakazo-agent-runtime","span.id":"3ee79ba79fc04fe8","trace.id":"e600a479e096378d30c45d2b0d7da5f1","parent.span.id":"2e1b2d75c0646210","request.id":"b066ae7f-cbdb-4c68-8998-21ade7a9ee56","run.id":"cmvt2y39m003829x0f3fwabpa","thread.id":"cmvt2y2m4002y29x0q2jzkogr","bot.id":"dc21741f-9419-4d4d-834b-5f32e41ff44d","attempt.id":"cmvt2y3a90008n2x0gell6090","session.key":"agentscope:chat:v1:74c16145dad7e659465d14f529
+{"timestamp":"2026-10-29T05:05:35.793066Z","level":"error","message":"runtime.run.failed","service.name":"rakazo-agent-runtime","span.id":"3ee79ba79fc04fe8","trace.id":"e600a479e096378d30c45d2b0d7da5f1","parent.span.id":"2e1b2d75c0646210","request.id":"b066ae7f-cbdb-4c68-8998-21ade7a9ee56","run.id":"cmvt2y39m003829x0f3fwabpa","thread.id":"cmvt2y2m4002y29x0q2jzkogr","bot.id":"dc21741f-9419-4d4d-834b-5f32e41ff44d","attempt.id":"cmvt2y3a90008n2x0gell6090","session.key":"agentscope:chat:v1:74c16145dad7e659465d14f529a61
+
+## SUCCESS journey — trace.id=33f1c3eb48c2da2e096c286103bc30f5
+## layer line counts: api=1 worker=4 adapter=1 java=3
+
+### API process (rakazo-api)
+05:02:23.836 INFO  http.request.completed service.name=rakazo-api request.id=1476c1e5-aa6a-4e34-b8c3-492e12797e15 trace.id=33f1c3eb48c2da2e096c286103bc30f5 span.id=0c4676f1f39be83a user.id=z4Q9K5u4bv7MMuF3goWIuznzPudZ66sJ space.id=1b7d49f932aa89d78c050754854d2d95 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+
+### Worker process (rakazo-worker): job correlation, executor and adapter events
+05:02:23.905 INFO  memory.injection assembled service.name=rakazo-worker job.id=2ce9df9a-e764-4b69-81f7-236952545727 job.type=run.continue trace.id=33f1c3eb48c2da2e096c286103bc30f5 span.id=da6e0c3a0b6decb6 run.id=cmvt2u2je001b29x0gxm9unw5 parent.span.id=0c4676f1f39be83a memory.injection.estimated_tokens=[Redacted] memory.injection.total_budget=4000 memory.injection.summary_included=false memory.injection.summary_stale_blocked=
+05:02:23.909 INFO  agentscope.run.requested service.name=rakazo-worker job.id=2ce9df9a-e764-4b69-81f7-236952545727 job.type=run.continue trace.id=33f1c3eb48c2da2e096c286103bc30f5 span.id=da6e0c3a0b6decb6 run.id=cmvt2u2je001b29x0gxm9unw5 parent.span.id=0c4676f1f39be83a attempt.id=cmvt2u2jw0008bex098i1svgr session.key=agentscope:chat:v1:951325948c5a6babe447bd64411af6c04845018111661421ec4f15d4116e69c5:b55abc32538673d99038ff749540
+05:02:24.064 INFO  job.completed service.name=rakazo-worker job.id=a3506f47-3e8b-4bcb-8a04-a8d8c4b7e8b8 job.type=memory.extract trace.id=33f1c3eb48c2da2e096c286103bc30f5 span.id=a6ba5b5553e5648e thread.id=cmvt2u2j9001729x0f6un5c7t parent.span.id=da6e0c3a0b6decb6 job.duration_ms=2 job.outcome=ok
+05:02:24.067 INFO  job.completed service.name=rakazo-worker job.id=2ce9df9a-e764-4b69-81f7-236952545727 job.type=run.continue trace.id=33f1c3eb48c2da2e096c286103bc30f5 span.id=da6e0c3a0b6decb6 run.id=cmvt2u2je001b29x0gxm9unw5 parent.span.id=0c4676f1f39be83a attempt.id=cmvt2u2jw0008bex098i1svgr session.key=agentscope:chat:v1:951325948c5a6babe447bd64411af6c04845018111661421ec4f15d4116e69c5:b55abc32538673d99038ff749540b6f3fd44473
+
+### Java Runtime process (rakazo-agent-runtime)
+{"timestamp":"2026-10-29T05:02:23.911499Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","span.id":"4ac6a9f70069c921","trace.id":"33f1c3eb48c2da2e096c286103bc30f5","parent.span.id":"ad869ea9a936fc22","request.id":"a9ab3dbb-84ae-4c09-a719-0e7e47a9e555","run.id":"cmvt2u2je001b29x0gxm9unw5","thread.id":"cmvt2u2j9001729x0f6un5c7t","bot.id":"0257981d-e733-43ea-8ec2-5f2ace81a0ca","attempt.id":"cmvt2u2jw0008bex098i1svgr","session.key":"agentscope:chat:v1:951325948c5a6babe447bd64411a
+{"timestamp":"2026-10-29T05:02:23.972975Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","span.id":"4ac6a9f70069c921","trace.id":"33f1c3eb48c2da2e096c286103bc30f5","parent.span.id":"ad869ea9a936fc22","request.id":"a9ab3dbb-84ae-4c09-a719-0e7e47a9e555","run.id":"cmvt2u2je001b29x0gxm9unw5","thread.id":"cmvt2u2j9001729x0f6un5c7t","bot.id":"0257981d-e733-43ea-8ec2-5f2ace81a0ca","attempt.id":"cmvt2u2jw0008bex098i1svgr","session.key":"agentscope:chat:v1:951325948c5a6babe447bd6441
+{"timestamp":"2026-10-29T05:02:23.984779Z","level":"info","message":"runtime.run.completed","service.name":"rakazo-agent-runtime","span.id":"4ac6a9f70069c921","trace.id":"33f1c3eb48c2da2e096c286103bc30f5","parent.span.id":"ad869ea9a936fc22","request.id":"a9ab3dbb-84ae-4c09-a719-0e7e47a9e555","run.id":"cmvt2u2je001b29x0gxm9unw5","thread.id":"cmvt2u2j9001729x0f6un5c7t","bot.id":"0257981d-e733-43ea-8ec2-5f2ace81a0ca","attempt.id":"cmvt2u2jw0008bex098i1svgr","session.key":"agentscope:chat:v1:951325948c5a6babe447bd64411
+
+## Java event census for this run
+  14 "message":"runtime.stream.started"
+  14 "message":"runtime.run.accepted"
+   9 "message":"runtime.run.completed"
+   3 "message":"runtime.run.cancelled"
+   2 "message":"runtime.run.failed"
+   1 "message":"runtime.stream.failed"
+
+## Java failure categories and types (the type is what localizes the layer;
+## there is deliberately no invented model_failure category)
+   1 "error":{"category":"internal","type":"java.lang.IllegalStateException"}
+   1 "error":{"category":"internal","type":"reactor.core.Exceptions$RetryExhaustedException"}
+   1 "error":{"type":"reactor.core.Exceptions$RetryExhaustedException"}
+
+## adapter-layer events recorded by the Worker process
+   1 agentscope.run.failed
+  14 agentscope.run.requested
+
+## provider text must not survive anywhere
+# the model fixture answered with HTTP 500 and this body:
+#   upstream returned 500 for key ZZSYNTHETICPROVIDERSECRETZZ at https://zzsynthetic-provider-host.invalid/v1
+occurrences of the synthetic credential across harness+worker logs: 0
+occurrences of the synthetic host across harness+worker logs:      0
+
+## no unstructured output remains on the Java side
+lines matching the old raw formats: 0
