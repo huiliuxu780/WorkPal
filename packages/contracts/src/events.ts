@@ -522,6 +522,16 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     mimeType: z.string(),
     name: z.string(),
     size: z.number().int().nonnegative(),
+    /**
+     * Stable deliverable family id (the first version's own artifact id).
+     * Missing on rows written before CHAT-CHROME-01; the API backfills it on
+     * the read boundary from the artifact row.
+     */
+    rootArtifactId: Id.optional(),
+    /** The concrete published version this message carries. */
+    version: z.number().int().positive().optional(),
+    /** Latest version already published with a message in the same family. */
+    latestVersion: z.number().int().positive().optional(),
   }),
   z.object({
     kind: z.literal("handoff"),

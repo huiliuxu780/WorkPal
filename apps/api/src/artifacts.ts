@@ -21,6 +21,7 @@ import {
   Prisma,
   withResolvedArtifactVersion,
 } from "@rakazo/db";
+import { findLatestPublishedArtifactRow } from "./artifact-families.js";
 
 function adapterContext(actor: Actor, botId: string, operationId: string) {
   return {
@@ -139,6 +140,57 @@ export async function getSpaceArtifact(
   });
   if (!row) throw new IsolationError();
   return readArtifact(deps.artifacts, actor, row, input.contextBotId);
+}
+
+export async function getLatestOwnedArtifact(
+  deps: {
+    prisma: PrismaClient;
+    artifacts: ArtifactStore;
+  },
+  actor: Actor,
+  input: { botId: string; artifactId: string },
+) {
+  const row = await deps.prisma.artifact.findFirst({
+    where: {
+      id: input.artifactId,
+      botId: input.botId,
+      groupId: null,
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+    },
+  });
+  if (!row) throw new IsolationError();
+  const latest = await findLatestPublishedArtifactRow(
+    deps.prisma,
+    { spaceId: actor.spaceId, userId: actor.userId, botId: input.botId },
+    row.rootArtifactId ?? row.id,
+  );
+  return readArtifact(deps.artifacts, actor, latest ?? row, input.botId);
+}
+
+export async function getLatestSpaceArtifact(
+  deps: {
+    prisma: PrismaClient;
+    artifacts: ArtifactStore;
+  },
+  actor: Actor,
+  input: { artifactId: string; groupId: string; contextBotId: string },
+) {
+  const row = await deps.prisma.artifact.findFirst({
+    where: {
+      id: input.artifactId,
+      groupId: input.groupId,
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+    },
+  });
+  if (!row) throw new IsolationError();
+  const latest = await findLatestPublishedArtifactRow(
+    deps.prisma,
+    { spaceId: actor.spaceId, userId: actor.userId, groupId: input.groupId },
+    row.rootArtifactId ?? row.id,
+  );
+  return readArtifact(deps.artifacts, actor, latest ?? row, input.contextBotId);
 }
 
 // Trace with the row's own bot; space and user authorize the read.

@@ -221,6 +221,8 @@ import {
   ArtifactListCursorError,
   createOwnedArtifact,
   deleteArtifactFamily,
+  getLatestOwnedArtifact,
+  getLatestSpaceArtifact,
   getOwnedArtifact,
   getSpaceArtifact,
   getSpaceArtifactById,
@@ -5970,6 +5972,23 @@ export function createRouter(deps: RouterDeps) {
           if (error instanceof IsolationError) throw error;
           throw error;
         }
+      }),
+      getLatest: authed.artifacts.getLatest.handler(async ({ context, input }) => {
+        if (input.groupId) {
+          const group = await groupRepos.getGroupTarget(context.actor, input.groupId);
+          const contextBotId = group.members[0]?.bot.id;
+          if (!contextBotId) throw new IsolationError();
+          return getLatestSpaceArtifact(deps, context.actor, {
+            artifactId: input.artifactId,
+            groupId: input.groupId,
+            contextBotId,
+          });
+        }
+        await repos.getBot(context.actor, input.botId!);
+        return getLatestOwnedArtifact(deps, context.actor, {
+          botId: input.botId!,
+          artifactId: input.artifactId,
+        });
       }),
       getById: authed.artifacts.getById.handler(async ({ context, input }) => {
         return getSpaceArtifactById(deps, context.actor, input);

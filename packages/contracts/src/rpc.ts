@@ -1111,6 +1111,9 @@ export const appContract = {
       )
       .output(ArtifactSchema),
     get: oc.input(threadTarget.and(z.object({ artifactId: Id }))).output(ArtifactWithContentSchema),
+    getLatest: oc
+      .input(threadTarget.and(z.object({ artifactId: Id })))
+      .output(ArtifactWithContentSchema),
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
   },

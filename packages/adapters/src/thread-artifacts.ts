@@ -119,6 +119,9 @@ export async function attachWorkspaceFileToThread(
       name: row.name,
       mimeType: row.mimeType,
       size: row.size,
+      rootArtifactId: row.rootArtifactId ?? row.id,
+      version: row.version,
+      latestVersion: row.version,
     }),
   };
 }
