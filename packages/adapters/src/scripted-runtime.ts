@@ -202,6 +202,17 @@ export function inferScript(
   resumeFromCheckpoint?: string,
 ): NonNullable<AgentRunRequest["script"]> {
   const lower = prompt.toLowerCase();
+  if (prompt === "chat chrome grouping fixture") {
+    return [
+      {
+        toolCalls: [{ name: "message_user", args: { message: "first grouped bubble" } }],
+      },
+      {
+        toolCalls: [{ name: "message_user", args: { message: "second grouped bubble" } }],
+      },
+      { assistant: "third grouped bubble", complete: true },
+    ];
+  }
   if (resumeFromCheckpoint === "takeover-skipped") {
     return [
       {

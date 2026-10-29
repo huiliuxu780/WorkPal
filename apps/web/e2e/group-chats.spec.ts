@@ -171,10 +171,8 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
     timeout: 60_000,
   });
   const ownerSpeak = transcript
-    .locator("div")
-    .filter({ has: page.getByText("Research Writer", { exact: true }) })
-    .filter({ has: page.getByRole("button", { name: "Speak this reply" }) })
-    .first()
+    .getByTestId("message-bot-bubble")
+    .filter({ hasText: "turn the sources into a draft" })
     .getByRole("button", { name: "Speak this reply" });
   const [speechRequest] = await Promise.all([
     page.waitForRequest(
