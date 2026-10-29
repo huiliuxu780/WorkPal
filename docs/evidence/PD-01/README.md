@@ -1,9 +1,10 @@
 # PD-01 交付证据：消息级重试入口收口
 
-- 分支：`codex/pd01-message-retry-entry`（原 PR [#100](https://github.com/huiliuxu780/WorkPal/pull/100)，未新建 PR）
+- 状态：`done`（PR [#100](https://github.com/huiliuxu780/WorkPal/pull/100) 已于 2026-10-29 合入 `main`，merge commit `9c17da7c81d8a34aaf6478adedce15f9a4d77873`）
+- 分支：`codex/pd01-message-retry-entry`
 - 开工基线：`37a7927`（PR #100 原 head，工作树干净）
 - 合流：`git merge origin/main`（`origin/main @ dceae323`），未 rebase、未 force-push
-- 代码 head：`ae665b0`（其后只有本目录证据与任务卡文档提交）
+- 最终交付 head：`7d27958`（最终复审补齐群聊 Retry 的可见原生 tooltip）
 - 产品确认：`docs/ux/prototypes/pd-01-message-retry/`（可运行原型，产品负责人 2026-10-29 确认）
 
 ## 行为收口
