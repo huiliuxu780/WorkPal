@@ -4,7 +4,10 @@ import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { deliverRunAborts } from "../../../packages/adapters/src/revoke-cancelled-work.js";
 import { createDb } from "../../../packages/db/src/index.js";
-import { startModelEmulator } from "../../../packages/testkit/src/model-emulator.js";
+import {
+  type ModelEmulatorStep,
+  startModelEmulator,
+} from "../../../packages/testkit/src/model-emulator.js";
 import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
 
 type Emulator = Awaited<ReturnType<typeof startModelEmulator>>;
@@ -53,6 +56,14 @@ const DIRECT_REPLY = "WORKER_CHAIN_DIRECT_REPLY completed by the standalone work
 const ROUTINE_MARKER = "WORKER_CHAIN_ROUTINE_FIXTURE";
 const ROUTINE_PROMPT = `${ROUTINE_MARKER}: report the nightly fixture status.`;
 const RECOVERY_MARKER = "WORKER_CHAIN_RECOVERY_FIXTURE hold this stream open for the crash test.";
+const MODEL_FAILURE_MARKER = "WORKER_CHAIN_MODEL_FAILURE_FIXTURE";
+// Synthetic provider text: a fake credential and a fake host, deliberately not
+// shaped like something the redactor would rewrite, so the assertions below
+// prove the provider's own words never reach the user, the persisted Run error,
+// or any process log.
+const MODEL_FAILURE_SECRET = "ZZSYNTHETICPROVIDERSECRETZZ";
+const MODEL_FAILURE_HOST = "zzsynthetic-provider-host.invalid";
+const MODEL_FAILURE_DETAIL = `upstream returned 500 for key ${MODEL_FAILURE_SECRET} at https://${MODEL_FAILURE_HOST}/v1`;
 const DELIVERY_INSTRUCTION = "Write one concise user-facing update";
 const DELIVERY_TEXT =
   "WORKER_CHAIN_DELIVERY: the scheduled fixture run failed on its duration budget.";
@@ -1204,6 +1215,80 @@ test("a Worker killed mid-Run parks chat admission in recovering without retryin
     } catch {
       // Stream already closed.
     }
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
+test("a model failure stays attributable per attempt and never surfaces provider text", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  const apiKey = "worker-chain-model-failure-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the model failure test.",
+      "Worker Chain Model Failure",
+    );
+    intro = setup.intro;
+    const { botId } = setup;
+    task = await startModelEmulator({
+      apiKey,
+      // One error step per possible model call. A provider 5xx is re-driven by
+      // the product's recovery paths more often than the two-entry automatic
+      // retry budget (RUN_RETRY_DELAYS_MS) alone would suggest, so the count is
+      // generous rather than exact; no assertion below depends on it.
+      steps: Array.from(
+        { length: 12 },
+        (): ModelEmulatorStep => ({
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(MODEL_FAILURE_MARKER);
+          },
+          // A real provider 5xx over the real AgentScope HTTP/SSE transport: the
+          // fixture answers with an error status and its own message, which is
+          // exactly the text that must not survive the journey.
+          response: { type: "error", status: 500, message: MODEL_FAILURE_DETAIL },
+        }),
+      ),
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+
+    await sendMessage(page, MODEL_FAILURE_MARKER);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const created = await waitUserRun(db, thread.id);
+
+    // This deliberately does not wait for a terminal Run status. A persistently
+    // failing model is re-driven well past the automatic retry budget, so when
+    // the Run settles belongs to the recovery paths, not to this test's claim,
+    // and settling is not what makes the failure attributable. What is asserted
+    // is that the failure is recorded per attempt and that the provider's own
+    // words never reach persisted, user-visible state.
+    await expect
+      .poll(async () => db.prisma.attempt.count({ where: { runId: created.id } }), {
+        timeout: 120_000,
+        message: "the failing Run must be attempted more than once",
+      })
+      .toBeGreaterThan(1);
+
+    const attempts = await db.prisma.attempt.findMany({ where: { runId: created.id } });
+    const run = await db.prisma.run.findUniqueOrThrow({ where: { id: created.id } });
+    expect(task.requests.length, "the model fixture answered the failing Run").toBeGreaterThan(0);
+    for (const attempt of attempts) {
+      expect(attempt.error ?? "").not.toContain(MODEL_FAILURE_SECRET);
+      expect(attempt.error ?? "").not.toContain(MODEL_FAILURE_HOST);
+    }
+    expect(run.error ?? "").not.toContain(MODEL_FAILURE_SECRET);
+    expect(run.error ?? "").not.toContain(MODEL_FAILURE_HOST);
+  } finally {
     await task?.close();
     await intro?.close();
     await db.prisma.$disconnect();
