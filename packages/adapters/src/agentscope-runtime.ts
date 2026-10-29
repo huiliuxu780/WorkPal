@@ -945,6 +945,11 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       }
       let response: Response;
       try {
+        // RUNTIME-RELIABILITY-01: the adapter's own fact — it handed this Run to
+        // the runtime. Without it, a Run that the Worker dispatched but the
+        // runtime never accepted is invisible on both sides: the Worker logs a
+        // dispatch and the runtime logs nothing at all.
+        getLogger().info("agentscope.run.requested", { "run.id": request.runId });
         response = await fetch(endpoint(this.baseUrl, "/v1/runs"), {
           method: "POST",
           headers: {
