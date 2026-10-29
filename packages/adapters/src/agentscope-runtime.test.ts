@@ -5,6 +5,7 @@ import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentScopeAgentRuntime,
+  type AgentScopeRunFailedError,
   type AgentScopeRunRejectedError,
   type AgentScopeSessionConflictError,
   type AgentScopeTransientError,
@@ -315,7 +316,70 @@ describe("AgentScopeAgentRuntime", () => {
     },
   );
 
-  it("classifies model timeout events without retrying unrelated model errors", async () => {
+  it("maps the runtime's retryable provider categories to the bounded retry", async () => {
+    for (const [category, retryReason] of [
+      ["provider_unavailable", "provider_5xx"],
+      ["provider_timeout", "llm_timeout"],
+    ] as const) {
+      const fixture = await listen((_request, response) => {
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(
+          `${JSON.stringify({ type: "error", message: "Agent execution failed", category })}\n`,
+        );
+      });
+      const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+      const drain = async () => {
+        for await (const _event of runtime.run(runRequest(), runContext())) {
+          // drain
+        }
+      };
+      await expect(drain()).rejects.toMatchObject({
+        name: "AgentScopeTransientError",
+        retryReason,
+      } satisfies Partial<AgentScopeTransientError>);
+    }
+  });
+
+  it("treats a rejected provider request as a definitive Run failure", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(
+        `${JSON.stringify({ type: "error", message: "Agent execution failed", category: "provider_rejected" })}\n`,
+      );
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const drain = async () => {
+      for await (const _event of runtime.run(runRequest(), runContext())) {
+        // drain
+      }
+    };
+    await expect(drain()).rejects.toMatchObject({
+      name: "AgentScopeRunFailedError",
+      failureCategory: "provider_rejected",
+      message: "Agent execution failed",
+    } satisfies Partial<AgentScopeRunFailedError>);
+  });
+
+  it("never classifies a failure from provider text", async () => {
+    for (const message of ["upstream returned 500", "Model timed out", "504 gateway"]) {
+      const fixture = await listen((_request, response) => {
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({ type: "error", message, category: "internal" })}\n`);
+      });
+      const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+      const drain = async () => {
+        for await (const _event of runtime.run(runRequest(), runContext())) {
+          // drain
+        }
+      };
+      await expect(drain()).rejects.toMatchObject({
+        name: "AgentScopeRunFailedError",
+        failureCategory: "internal",
+      } satisfies Partial<AgentScopeRunFailedError>);
+    }
+  });
+
+  it("treats a category-less wire error as a definitive Run failure", async () => {
     const fixture = await listen((_request, response) => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });
       response.end(`${JSON.stringify({ type: "error", message: "Model timed out" })}\n`);
@@ -326,7 +390,10 @@ describe("AgentScopeAgentRuntime", () => {
         // drain
       }
     };
-    await expect(drain()).rejects.toMatchObject({ retryReason: "llm_timeout" });
+    await expect(drain()).rejects.toMatchObject({
+      name: "AgentScopeRunFailedError",
+      failureCategory: undefined,
+    } satisfies Partial<AgentScopeRunFailedError>);
   });
 
   it("translates the loopback NDJSON stream into runtime events", async () => {

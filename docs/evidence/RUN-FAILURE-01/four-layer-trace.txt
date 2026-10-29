@@ -1,0 +1,55 @@
+RUN-FAILURE-01 — four-layer correlation for one failed Run
+===========================================================
+
+Source: one real `pnpm test:worker-chain` run (11 passed, 6.1m), acceptance 1
+(`a persistent provider failure ends the Run after the automatic retry budget`).
+run.id = cmvt8qv09003rmwx0ssqelje2, thread.id = cmvt8quoh003hmwx067oklh2x.
+trace.id = c3437a1a1607c70b0ef396d05b9982a5 — one trace across API, Worker,
+adapter and Java Runtime for all three Attempts: the retry jobs inherit the
+correlation of the job that created the Run, so the whole failure journey is
+one trace.
+
+API (harness API process stdout; the threads/send RPC that created the Run):
+07:47:51.806 INFO  http.request.completed service.name=rakazo-api request.id=e51a1ec5-7264-4768-b3f7-70ee5127bc09 trace.id=c3437a1a1607c70b0ef396d05b9982a5 span.id=d49befbe57a04157 http.method=POST http.route=/rpc/* http.status=200
+
+Worker (`test-report/worker-chain/worker-6.log`, generation that executed it):
+07:47:51.889 INFO  memory.injection assembled ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5
+07:47:51.895 INFO  agentscope.run.requested ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 attempt.id=cmvt8qv0w000n44x00h7ggnbb
+07:47:57.284 ERROR agentscope.run.failed ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 attempt.id=cmvt8qv0w000n44x00h7ggnbb runtime.failure_category=provider_unavailable
+07:47:57.305 INFO  job.completed ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 job.outcome=ok
+07:48:02.429 INFO  memory.injection assembled ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5
+07:48:02.434 INFO  agentscope.run.requested ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 attempt.id=cmvt8r35z000s44x01yyensp4
+07:48:09.374 ERROR agentscope.run.failed ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 attempt.id=cmvt8r35z000s44x01yyensp4 runtime.failure_category=provider_unavailable
+07:48:09.395 INFO  job.completed ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 job.outcome=ok
+07:48:39.516 INFO  memory.injection assembled ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5
+07:48:39.522 INFO  agentscope.run.requested ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 attempt.id=cmvt8rvs8001044x0n7u8yx60
+07:48:46.415 ERROR agentscope.run.failed ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 attempt.id=cmvt8rvs8001044x0n7u8yx60 runtime.failure_category=provider_unavailable
+07:48:46.473 INFO  job.completed ... job.type=run.continue trace.id=c3437a1a1607c70b0ef396d05b9982a5 job.outcome=ok
+
+The gap pattern is the automatic Retry budget: 5s after Attempt 1, 30s after
+Attempt 2 (RUN_RETRY_DELAYS_MS). Attempt 3 is the last one: its failure is
+finalized and no fourth run.continue reaches the runtime.
+
+adapter → Java Runtime (`java -jar runtime.jar` stdout, structured NDJSON):
+2026-10-29T07:47:51.897853Z runtime.run.accepted   attempt=cmvt8qv0w000n44x00h7ggnbb trace.id=c3437a1a1607c70b0ef396d05b9982a5
+2026-10-29T07:47:51.909419Z runtime.stream.started attempt=cmvt8qv0w000n44x00h7ggnbb trace.id=c3437a1a1607c70b0ef396d05b9982a5
+2026-10-29T07:47:57.283973Z runtime.stream.failed  attempt=cmvt8qv0w000n44x00h7ggnbb trace.id=c3437a1a1607c70b0ef396d05b9982a5 error.type=reactor.core.Exceptions$RetryExhaustedException
+2026-10-29T07:47:57.284122Z runtime.run.failed     attempt=cmvt8qv0w000n44x00h7ggnbb trace.id=c3437a1a1607c70b0ef396d05b9982a5 error.category=provider_unavailable error.type=com.workpal.runtime.ModelStreamFailure
+2026-10-29T07:48:02.435873Z runtime.run.accepted   attempt=cmvt8r35z000s44x01yyensp4 trace.id=c3437a1a1607c70b0ef396d05b9982a5
+2026-10-29T07:48:02.446653Z runtime.stream.started attempt=cmvt8r35z000s44x01yyensp4 trace.id=c3437a1a1607c70b0ef396d05b9982a5
+2026-10-29T07:48:09.373517Z runtime.stream.failed  attempt=cmvt8r35z000s44x01yyensp4 trace.id=c3437a1a1607c70b0ef396d05b9982a5 error.type=reactor.core.Exceptions$RetryExhaustedException
+2026-10-29T07:48:09.373650Z runtime.run.failed     attempt=cmvt8r35z000s44x01yyensp4 trace.id=c3437a1a1607c70b0ef396d05b9982a5 error.category=provider_unavailable error.type=com.workpal.runtime.ModelStreamFailure
+2026-10-29T07:48:39.524058Z runtime.run.accepted   attempt=cmvt8rvs8001044x0n7u8yx60 trace.id=c3437a1a1607c70b0ef396d05b9982a5
+2026-10-29T07:48:39.533477Z runtime.stream.started attempt=cmvt8rvs8001044x0n7u8yx60 trace.id=c3437a1a1607c70b0ef396d05b9982a5
+2026-10-29T07:48:46.414994Z runtime.stream.failed  attempt=cmvt8rvs8001044x0n7u8yx60 trace.id=c3437a1a1607c70b0ef396d05b9982a5 error.type=reactor.core.Exceptions$RetryExhaustedException
+2026-10-29T07:48:46.415257Z runtime.run.failed     attempt=cmvt8rvs8001044x0n7u8yx60 trace.id=c3437a1a1607c70b0ef396d05b9982a5 error.category=provider_unavailable error.type=com.workpal.runtime.ModelStreamFailure
+
+The Java Runtime is the agent stream boundary: each Attempt's provider 500 is
+the SDK's own retry exhaustion (`RetryExhaustedException` over `OpenAIException`
+with HTTP 500). The category is derived from the provider's stable HTTP status
+via `ModelHttpException.isRetryableHttpStatus()`, never from text; the wire and
+log messages stay the fixed "Agent execution failed" (provider body, synthetic
+key and host never appear — asserted by the spec on Run.error and Attempt.error).
+
+Retry-budget bookkeeping from the Worker log (same trace): exactly three
+`agentscope.run.requested` lines, exactly two `run.retried` events (next file).

@@ -64,6 +64,14 @@ const MODEL_FAILURE_MARKER = "WORKER_CHAIN_MODEL_FAILURE_FIXTURE";
 const MODEL_FAILURE_SECRET = "ZZSYNTHETICPROVIDERSECRETZZ";
 const MODEL_FAILURE_HOST = "zzsynthetic-provider-host.invalid";
 const MODEL_FAILURE_DETAIL = `upstream returned 500 for key ${MODEL_FAILURE_SECRET} at https://${MODEL_FAILURE_HOST}/v1`;
+const MODEL_REJECTION_DETAIL = `upstream rejected the key ${MODEL_FAILURE_SECRET} at https://${MODEL_FAILURE_HOST}/v1`;
+const TERMINALITY_MARKER = "WORKER_CHAIN_TERMINALITY_FIXTURE";
+const RETRY_RECOVERY_MARKER = "WORKER_CHAIN_RETRY_RECOVERY_FIXTURE";
+const PROVIDER_REJECTED_MARKER = "WORKER_CHAIN_PROVIDER_REJECTED_FIXTURE";
+const STOP_BACKOFF_MARKER = "WORKER_CHAIN_STOP_BACKOFF_FIXTURE";
+const TOOL_FAILURE_MARKER = "WORKER_CHAIN_TOOL_FAILURE_FIXTURE";
+/** One automatic retry per RUN_RETRY_DELAYS_MS entry. */
+const AUTOMATIC_RETRY_BUDGET = 2;
 const DELIVERY_INSTRUCTION = "Write one concise user-facing update";
 const DELIVERY_TEXT =
   "WORKER_CHAIN_DELIVERY: the scheduled fixture run failed on its duration budget.";
@@ -147,6 +155,30 @@ async function workerLogReadyPids(generation: number): Promise<Set<string>> {
     }
   }
   return pids;
+}
+
+/** Durable job execution facts from the current Worker generation's own log. */
+function workerLogPath(generation: number): string {
+  return reportDir ? path.join(reportDir, `worker-${generation}.log`) : "";
+}
+
+async function workerLogOffset(file: string): Promise<number> {
+  return file ? (await readFile(file, "utf8").catch(() => "")).length : 0;
+}
+
+/**
+ * One `agentscope.run.requested` line is emitted per Attempt when the Worker
+ * hands the Run to the runtime, so this counts product-level model calls (the
+ * SDK's own HTTP retries inside one Attempt are not new Run executions). A
+ * terminal-owner `run.continue` may still settle the session, but it must not
+ * produce one of these lines.
+ */
+async function runModelCallCount(file: string, offset: number, runId: string): Promise<number> {
+  if (!file) return 0;
+  const content = (await readFile(file, "utf8").catch(() => "")).slice(offset);
+  return content
+    .split("\n")
+    .filter((line) => line.includes("agentscope.run.requested") && line.includes(runId)).length;
 }
 
 /** WK-01 acceptance 1: the API names the production runtime and durable jobs. */
@@ -1313,6 +1345,479 @@ test("a provider failure is recorded without its own text and the Run is stopped
     await page.waitForTimeout(10_000);
     expect(task.requests.length, "no model call may follow the stop").toBe(requestsAtStop);
     expect(created.id).toBeTruthy();
+  } finally {
+    if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
+test("a persistent provider failure ends the Run after the automatic retry budget", async ({
+  page,
+}) => {
+  // RUN-FAILURE-01 acceptance 1: the same Run may execute the initial call and
+  // exactly two automatic retries. A fourth Attempt or a Run that is still
+  // queued is the defect this test exists to catch.
+  test.setTimeout(300_000);
+  const apiKey = "worker-chain-terminality-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  let botId = "";
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the terminality test.",
+      "Worker Chain Terminality",
+    );
+    intro = setup.intro;
+    botId = setup.botId;
+    // Every HTTP request fails the same way. One Attempt may spend the SDK's
+    // own bounded internal retries; what this test bounds is Attempts.
+    task = await startModelEmulator({
+      apiKey,
+      steps: Array.from(
+        { length: 40 },
+        (): ModelEmulatorStep => ({
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(TERMINALITY_MARKER);
+          },
+          response: { type: "error", status: 500, message: MODEL_FAILURE_DETAIL },
+        }),
+      ),
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+
+    await sendMessage(page, TERMINALITY_MARKER);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const run = await waitUserRun(db, thread.id);
+    const generation = (await workerStatus()).generation;
+    const workerLog = workerLogPath(generation);
+
+    await expect
+      .poll(
+        async () => {
+          const [current, attemptCount] = await Promise.all([
+            db.prisma.run.findUniqueOrThrow({
+              where: { id: run.id },
+              select: { status: true },
+            }),
+            db.prisma.attempt.count({ where: { runId: run.id } }),
+          ]);
+          // Fail on the defect itself, not on a timeout: a fourth Attempt
+          // proves the Run was re-executed past its retry policy.
+          if (attemptCount > AUTOMATIC_RETRY_BUDGET + 1) return `attempts: ${attemptCount}`;
+          return current.status;
+        },
+        { timeout: 120_000, message: "the Run must reach failed within the retry budget" },
+      )
+      .toBe("failed");
+
+    const failed = await db.prisma.run.findUniqueOrThrow({
+      where: { id: run.id },
+      include: { task: true },
+    });
+    expect(failed.status).toBe("failed");
+    expect(failed.task.status).toBe("failed");
+    expect(failed.error).toBeTruthy();
+    expect(failed.error).not.toContain(MODEL_FAILURE_SECRET);
+    expect(failed.error).not.toContain(MODEL_FAILURE_HOST);
+    expect(failed.leaseOwner, "the terminal failure releases the execution lease").toBeNull();
+    expect(failed.leaseExpiresAt).toBeNull();
+
+    const attempts = await db.prisma.attempt.findMany({
+      where: { runId: run.id },
+      orderBy: { fence: "asc" },
+    });
+    expect(attempts).toHaveLength(AUTOMATIC_RETRY_BUDGET + 1);
+    for (const attempt of attempts) {
+      expect(
+        attempt.finishedAt,
+        `Attempt ${attempt.fence} must have a terminal record`,
+      ).not.toBeNull();
+      expect(attempt.error ?? "").not.toContain(MODEL_FAILURE_SECRET);
+      expect(attempt.error ?? "").not.toContain(MODEL_FAILURE_HOST);
+    }
+    expect(attempts.filter((attempt) => attempt.status === "failed")).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === "retry_scheduled")).toHaveLength(
+      AUTOMATIC_RETRY_BUDGET,
+    );
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(
+      AUTOMATIC_RETRY_BUDGET,
+    );
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.failed" } })).toBe(1);
+    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "user" } })).toBe(1);
+
+    const requestsAtTerminal = task.requests.length;
+    const logOffset = await workerLogOffset(workerLog);
+    await page.waitForTimeout(10_000);
+    expect(task.requests.length, "no model call after the terminal failure").toBe(
+      requestsAtTerminal,
+    );
+    expect(await db.prisma.attempt.count({ where: { runId: run.id } })).toBe(attempts.length);
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(
+      AUTOMATIC_RETRY_BUDGET,
+    );
+    expect((await db.prisma.run.findUniqueOrThrow({ where: { id: run.id } })).status).toBe(
+      "failed",
+    );
+    // A terminal-owner `run.continue` may still settle the session through the
+    // RT-26 proof; it must not hand the Run to the runtime again.
+    expect(
+      await runModelCallCount(workerLog, logOffset, run.id),
+      "no model call may follow the terminal failure",
+    ).toBe(0);
+    expect(
+      await runModelCallCount(workerLog, 0, run.id),
+      "one product-level model call per Attempt: the initial call and two retries",
+    ).toBe(AUTOMATIC_RETRY_BUDGET + 1);
+
+    // Session occupancy is released through the RT-26 proof, not by timeout:
+    // the next turn on the same Thread executes normally against a healthy
+    // model, so this also proves the failed Run is not re-executed.
+    await expect
+      .poll(
+        async () => {
+          const admission = await db.prisma.agentSessionAdmission.findFirst({
+            where: { ownerRunId: run.id },
+            select: { state: true },
+          });
+          return admission?.state ?? "none";
+        },
+        { timeout: 60_000, message: "the failed Run must not keep owning the session" },
+      )
+      .not.toBe("owned");
+    const followUpReply = "WORKER_CHAIN_TERMINALITY_RECOVERED";
+    const followUp = await startModelEmulator({
+      apiKey,
+      steps: [{ expect() {}, response: { type: "text", text: followUpReply } }],
+    });
+    try {
+      await switchToTaskModel(page, botId, apiKey, followUp);
+      await sendMessage(page, `${TERMINALITY_MARKER} follow-up`);
+      let followUpRunId = "";
+      await expect
+        .poll(
+          async () => {
+            const next = await db.prisma.run.findFirst({
+              where: { threadId: thread.id, trigger: "user", id: { not: run.id } },
+              orderBy: { createdAt: "desc" },
+            });
+            followUpRunId = next?.id ?? "";
+            return next?.status ?? "missing";
+          },
+          { timeout: 90_000 },
+        )
+        .toBe("completed");
+      const followUpReplies = await db.prisma.message.findMany({
+        where: { threadId: thread.id, role: "bot", runId: followUpRunId },
+      });
+      expect(followUpReplies).toHaveLength(1);
+      expect(JSON.stringify(followUpReplies[0]?.blocks)).toContain(followUpReply);
+      followUp.assertComplete();
+    } finally {
+      await followUp.close();
+    }
+    await recordTimings();
+  } finally {
+    if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
+test("a provider failure inside the retry budget completes the original Run", async ({ page }) => {
+  // RUN-FAILURE-01 acceptance 2: recovery inside the budget must not create a
+  // replacement Run and must reply exactly once.
+  test.setTimeout(240_000);
+  const apiKey = "worker-chain-retry-recovery-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  let botId = "";
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the retry recovery test.",
+      "Worker Chain Retry Recovery",
+    );
+    intro = setup.intro;
+    botId = setup.botId;
+    const reply = "WORKER_CHAIN_RETRY_RECOVERY_OK";
+    // The first Attempt spends the SDK's three bounded HTTP tries, then the
+    // product-level retry reaches the healthy response.
+    task = await startModelEmulator({
+      apiKey,
+      steps: [
+        ...Array.from(
+          { length: 3 },
+          (): ModelEmulatorStep => ({
+            expect(request) {
+              expect(JSON.stringify(request.messages)).toContain(RETRY_RECOVERY_MARKER);
+            },
+            response: { type: "error", status: 500, message: MODEL_FAILURE_DETAIL },
+          }),
+        ),
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(RETRY_RECOVERY_MARKER);
+          },
+          response: { type: "text", text: reply },
+        },
+      ],
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+
+    await sendMessage(page, RETRY_RECOVERY_MARKER);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const run = await waitUserRun(db, thread.id);
+    await pollRunStatus(db, run.id, "completed", 120_000);
+
+    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "user" } })).toBe(1);
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(1);
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.completed" } })).toBe(
+      1,
+    );
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.failed" } })).toBe(0);
+    const attempts = await db.prisma.attempt.findMany({ where: { runId: run.id } });
+    expect(attempts).toHaveLength(2);
+    expect(attempts.filter((attempt) => attempt.status === "retry_scheduled")).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === "completed")).toHaveLength(1);
+    const replies = await db.prisma.message.findMany({
+      where: { threadId: thread.id, role: "bot", runId: run.id },
+    });
+    expect(replies).toHaveLength(1);
+    expect(JSON.stringify(replies[0]?.blocks)).toContain(reply);
+    task.assertComplete();
+    await recordTimings();
+  } finally {
+    if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
+test("a non-retryable provider rejection fails the Run without an automatic retry", async ({
+  page,
+}) => {
+  // RUN-FAILURE-01 acceptance 3.
+  test.setTimeout(180_000);
+  const apiKey = "worker-chain-provider-rejected-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  let botId = "";
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the provider rejection test.",
+      "Worker Chain Provider Rejected",
+    );
+    intro = setup.intro;
+    botId = setup.botId;
+    task = await startModelEmulator({
+      apiKey,
+      steps: [
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(PROVIDER_REJECTED_MARKER);
+          },
+          response: { type: "error", status: 400, message: MODEL_REJECTION_DETAIL },
+        },
+      ],
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+
+    await sendMessage(page, PROVIDER_REJECTED_MARKER);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const run = await waitUserRun(db, thread.id);
+    await pollRunStatus(db, run.id, "failed", 90_000);
+
+    expect(task.requests.length, "a rejected request is not retried").toBe(1);
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(0);
+    const attempts = await db.prisma.attempt.findMany({ where: { runId: run.id } });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.status).toBe("failed");
+    expect(attempts[0]?.finishedAt).not.toBeNull();
+    const failed = await db.prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(failed.error ?? "").not.toContain(MODEL_FAILURE_SECRET);
+    expect(failed.error ?? "").not.toContain(MODEL_FAILURE_HOST);
+    await page.waitForTimeout(10_000);
+    expect(task.requests.length, "no retry after the Run is terminal").toBe(1);
+    task.assertComplete();
+    await recordTimings();
+  } finally {
+    if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
+test("Stopping during the retry backoff cancels the Run without another model call", async ({
+  page,
+}) => {
+  // RUN-FAILURE-01 acceptance 4.
+  test.setTimeout(180_000);
+  const apiKey = "worker-chain-stop-backoff-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  let botId = "";
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the stop backoff test.",
+      "Worker Chain Stop Backoff",
+    );
+    intro = setup.intro;
+    botId = setup.botId;
+    task = await startModelEmulator({
+      apiKey,
+      // Two identical failures: if the Stop loses the race the retry consumes
+      // the second step instead of tripping "Unexpected model request".
+      steps: Array.from(
+        { length: AUTOMATIC_RETRY_BUDGET + 1 },
+        (): ModelEmulatorStep => ({
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(STOP_BACKOFF_MARKER);
+          },
+          response: { type: "error", status: 500, message: MODEL_FAILURE_DETAIL },
+        }),
+      ),
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+
+    await sendMessage(page, STOP_BACKOFF_MARKER);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const run = await waitUserRun(db, thread.id);
+    await expect
+      .poll(async () => db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } }), {
+        timeout: 60_000,
+        message: "the first failure schedules the automatic retry",
+      })
+      .toBe(1);
+
+    // The retry job is durably scheduled 5s out; Stop must win that race and
+    // make the remaining job a no-op instead of a model call.
+    const generation = (await workerStatus()).generation;
+    const workerLog = workerLogPath(generation);
+    await rpc(page, "threads/stop", { botId });
+    await pollRunStatus(db, run.id, "cancelled", 60_000);
+    const requestsAtStop = task.requests.length;
+    const callsAtStop = await runModelCallCount(workerLog, 0, run.id);
+    await page.waitForTimeout(10_000);
+    expect(task.requests.length, "the scheduled retry must not call the model").toBe(
+      requestsAtStop,
+    );
+    expect(await runModelCallCount(workerLog, 0, run.id)).toBe(callsAtStop);
+    expect(callsAtStop).toBe(1);
+    expect((await db.prisma.run.findUniqueOrThrow({ where: { id: run.id } })).status).toBe(
+      "cancelled",
+    );
+    const attempts = await db.prisma.attempt.findMany({ where: { runId: run.id } });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.status).toBe("retry_scheduled");
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(1);
+  } finally {
+    if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
+test("a Run with a tool call is not retried when the model then fails", async ({ page }) => {
+  // RUN-FAILURE-01 acceptance 5 (the effect-fence half is covered by the
+  // PostgreSQL execution-contract tests; this proves the production chain).
+  test.setTimeout(180_000);
+  const apiKey = "worker-chain-tool-failure-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  let botId = "";
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the tool failure test.",
+      "Worker Chain Tool Failure",
+    );
+    intro = setup.intro;
+    botId = setup.botId;
+    task = await startModelEmulator({
+      apiKey,
+      steps: [
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(TOOL_FAILURE_MARKER);
+          },
+          response: {
+            type: "tool",
+            id: "call_clock_1",
+            name: "runtime_current_time",
+            arguments: { timezone: "UTC" },
+          },
+        },
+        // The failing inference may spend the SDK's own bounded internal
+        // retries, so keep enough identical replies; the Attempt count is what
+        // proves the product did not retry.
+        ...Array.from(
+          { length: 5 },
+          (): ModelEmulatorStep => ({
+            expect(request) {
+              expect(JSON.stringify(request.messages)).toContain(TOOL_FAILURE_MARKER);
+              expect(JSON.stringify(request.messages)).toContain("runtime_current_time");
+            },
+            response: { type: "error", status: 500, message: MODEL_FAILURE_DETAIL },
+          }),
+        ),
+      ],
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+
+    await sendMessage(page, TOOL_FAILURE_MARKER);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const run = await waitUserRun(db, thread.id);
+    await pollRunStatus(db, run.id, "failed", 90_000);
+
+    expect(
+      task.requests.length,
+      "the tool cycle ran and the model was called again",
+    ).toBeGreaterThan(1);
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(0);
+    await expect
+      .poll(
+        async () => db.prisma.event.count({ where: { runId: run.id, type: "agent.tool.called" } }),
+        { timeout: 30_000 },
+      )
+      .toBe(1);
+    const attempts = await db.prisma.attempt.findMany({ where: { runId: run.id } });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.status).toBe("failed");
+    await recordTimings();
   } finally {
     if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
     await task?.close();

@@ -208,6 +208,7 @@ import {
 import type { AgentlyMailService } from "./agently-mail.js";
 import {
   AgentScopeAgentRuntime,
+  AgentScopeRunFailedError,
   AgentScopeRunRejectedError,
   AgentScopeTransientError,
 } from "./agentscope-runtime.js";
@@ -1953,11 +1954,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
         return;
       }
       let admission: SessionAdmissionLease | null = null;
+      let sessionThreadGeneration: number | null = null;
       if (usesSessionAdmission) {
         const admissionThread = await deps.prisma.thread.findFirstOrThrow({
           where: { id: run.threadId, spaceId: run.spaceId },
           select: { historyCompactionGeneration: true },
         });
+        sessionThreadGeneration = admissionThread.historyCompactionGeneration;
         const acquired = await acquireSessionAdmission(deps.prisma, {
           userId: run.userId,
           spaceId: run.spaceId,
@@ -2052,6 +2055,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let detachShutdown: (() => void) | undefined;
       let sessionMayRelease = true;
       let sessionSettled = false;
+      // RUN-FAILURE-01: this Attempt finalized the Run as failed on a
+      // Runtime-reported outcome, so the session may be settled with a fresh
+      // RT-26 proof after the finally parks it. Recovery settles ownership
+      // only; a terminal Run is never executed again.
+      let releaseAdmissionAfterTerminalFailure = false;
       // RT-26F (PR #126 review P2 ④): the highest Thread message ACTUALLY
       // ingested into this Attempt's native state — the history window loaded
       // at claim plus, on a resume, the merged suspension context. A paused
@@ -7568,23 +7576,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (!terminalCheckpointComplete) {
             await workspaceCheckpoint.flush().catch(() => undefined);
           }
-          if (admission && !sessionMayRelease) {
-            if (error instanceof AgentScopeRunRejectedError) {
-              // The runtime refused before touching this session, so RT-25's
-              // pre-runtime release is still valid.
-              sessionMayRelease = true;
-            } else {
-              await retainPausedSessionAdmission().catch(() => undefined);
-            }
-            if (approvalPausePending) return;
-            // Any other uncertain outcome is settled only by the Runtime proof
-            // in the finally block; it marks the owner recovering on failure.
-            if (!sessionMayRelease) return;
-          }
           const message = redactSecrets(
             error instanceof Error ? error.message : String(error),
             runSecrets,
           );
+          // RUN-FAILURE-01: the automatic Retry budget is consulted before the
+          // uncertain-outcome guard. Previously a transient failure after the
+          // runtime started returned through that guard and never scheduled its
+          // retry, so recovery re-drove the Run outside the budget.
+          let retryDenied = false;
           if (error instanceof AgentScopeTransientError) {
             const retry = await scheduleAutomaticRunRetry(deps.prisma, {
               runId,
@@ -7613,6 +7613,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 );
               return;
             }
+            retryDenied = true;
+          }
+          const definitiveFailure = error instanceof AgentScopeRunFailedError || retryDenied;
+          if (admission && !sessionMayRelease) {
+            if (error instanceof AgentScopeRunRejectedError) {
+              // The runtime refused before touching this session, so RT-25's
+              // pre-runtime release is still valid.
+              sessionMayRelease = true;
+            } else if (!definitiveFailure) {
+              // Only an error without a Runtime-reported outcome and without an
+              // exhausted retry budget is unconfirmed; it is parked and settled
+              // by the Runtime proof in the finally block.
+              await retainPausedSessionAdmission().catch(() => undefined);
+            }
+            if (approvalPausePending) return;
+            if (!sessionMayRelease && !definitiveFailure) return;
           }
           const failed = await deps.events.finalizeRun({
             spaceId: run.spaceId,
@@ -7627,6 +7643,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
             error: message,
           });
           if (!failed) return;
+          // The Run is terminal in the authoritative transaction. What remains
+          // for the finally is the RT-26 proof that may free the session; it
+          // must never re-enter the runtime for this Run.
+          releaseAdmissionAfterTerminalFailure = true;
           if (failed.continuationRunId) {
             await deps.jobs
               .enqueue(runContinueJob(failed.continuationRunId))
@@ -7774,8 +7794,38 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 ? settleSuspendedSession
                   ? "checkpoint_detach_unconfirmed"
                   : "checkpoint_detach_unavailable"
-                : "agentscope_runtime_outcome_unconfirmed",
+                : releaseAdmissionAfterTerminalFailure
+                  ? "agentscope_runtime_failed"
+                  : "agentscope_runtime_outcome_unconfirmed",
             ).catch(() => undefined);
+            if (
+              releaseAdmissionAfterTerminalFailure &&
+              executionBinding &&
+              sessionThreadGeneration !== null
+            ) {
+              // RUN-FAILURE-01: the Run already reached its authoritative
+              // terminal transaction. A fresh Runtime proof may now release
+              // the session; this settles ownership only and never re-executes
+              // the failed call. Without a proof the RT-25 park stands, exactly
+              // as before — elapsed time is still not evidence.
+              const proven = await settleRecoveringSessionOwner({
+                run: {
+                  id: runId,
+                  userId: run.userId,
+                  spaceId: run.spaceId,
+                  botId: run.botId,
+                  threadId: run.threadId,
+                },
+                sessionKey: admission.sessionKey,
+                executionId: admission.executionId,
+                attemptId: attempt.id,
+                admissionFence: admission.admissionFence,
+                suspensionKey: executionBinding.suspensionKey,
+                expiresAt: admission.expiresAt,
+                threadGeneration: sessionThreadGeneration,
+              }).catch(() => false);
+              if (proven) sessionSettled = true;
+            }
           }
         }
         if (admission && sessionMayRelease && !sessionSettled) {

@@ -1,0 +1,77 @@
+RUN-FAILURE-01 — final database facts (acceptance 1)
+====================================================
+
+Source: the same real `pnpm test:worker-chain` run as four-layer-trace.txt
+(11 passed, 6.1m). Disposable PostgreSQL 16 (`workpal_e2e_rf01`), real Worker
+process, real Java Runtime, loopback model HTTP fixture answering every request
+with HTTP 500 (body contains the synthetic key `ZZSYNTHETICPROVIDERSECRETZZ`
+and host `zzsynthetic-provider-host.invalid`).
+
+Run and Task are terminal after the initial call and two automatic retries:
+
+  runs
+  id                        | status | error                  | leaseOwner | leaseExpiresAt | retryAt
+  --------------------------+--------+------------------------+------------+----------------+--------
+  cmvt8qv09003rmwx0ssqelje2 | failed | Agent execution failed | (null)     | (null)         | (null)
+
+  tasks
+  id                        | status
+  --------------------------+--------
+  cmvt8qv08003qmwx0n6dqcpe1 | failed
+
+All three Attempts have a terminal record; the two retried ones are
+`retry_scheduled`, the last one is `failed`. No fourth Attempt exists:
+
+  attempts
+  id                        | fence | status          | error                  | startedAt               | finishedAt
+  --------------------------+-------+-----------------+------------------------+-------------------------+------------------------
+  cmvt8qv0w000n44x00h7ggnbb |     1 | retry_scheduled | Agent execution failed | 2026-10-29 07:47:51.824 | 2026-10-29 07:47:57.285
+  cmvt8r35z000s44x01yyensp4 |     2 | retry_scheduled | Agent execution failed | 2026-10-29 07:48:02.375 | 2026-10-29 07:48:09.374
+  cmvt8rvs8001044x0n7u8yx60 |     3 | failed          | Agent execution failed | 2026-10-29 07:48:39.464 | 2026-10-29 07:48:46.431
+
+Provider text never reaches persisted state: neither `runs.error` nor any
+`attempts.error` contains the synthetic key or host (the spec asserts this).
+
+Exactly two `run.retried` events, both `provider_5xx`, then one `run.failed`
+written by `finalizeRun({ outcome: "failed" })`:
+
+  events
+  seq | type        | payload
+  ----+-------------+----------------------------------------
+    8 | run.retried | {"reason": "provider_5xx", "attempt": 2}
+   10 | run.retried | {"reason": "provider_5xx", "attempt": 3}
+   12 | run.failed  | {"error": "Agent execution failed"}
+
+Jobs: three `run.continue` jobs (initial + two retries) were executed by the
+real Worker, all under trace.id=c3437a1a1607c70b0ef396d05b9982a5
+(job.completed, job.outcome=ok). After the terminal transaction no further
+run.continue reaches the runtime — the spec asserts the model-call count for
+the Run stays exactly three for the following 10s (`agentscope.run.requested`
+lines in the Worker log).
+
+Session occupancy is released by the RT-26 proof, not by time. The failed
+Run's last Attempt recorded an acknowledged clean proof; the follow-up turn on
+the same Thread then took the session and completed:
+
+  agent_session_checkpoints (for the failed Run)
+  runId                     | attemptId                 | proofKind | status     | acked
+  --------------------------+---------------------------+-----------+------------+------
+  cmvt8qv09003rmwx0ssqelje2 | cmvt8rvs8001044x0n7u8yx60 | clean     | recorded   | t
+  cmvt8qv09003rmwx0ssqelje2 | cmvt8qv0w000n44x00h7ggnbb | clean     | superseded | t
+  cmvt8qv09003rmwx0ssqelje2 | cmvt8r35z000s44x01yyensp4 | clean     | superseded | t
+
+  agent_session_admissions (same Thread, after the follow-up turn completed)
+  state     | ownerRunId                | runtimeStartedAt | lastReleaseReason
+  ----------+---------------------------+------------------+-------------------
+  available | cmvt8s9di003wmwx0sd16b1wy | yes              | completed
+
+  runs on the same Thread
+  id                        | status    | taskId
+  --------------------------+-----------+---------------------------
+  cmvt8quon003lmwx0sbulsvs1 | completed | (creation intro)
+  cmvt8qv09003rmwx0ssqelje2 | failed    | cmvt8qv08003qmwx0n6dqcpe1   <- acceptance 1
+  cmvt8s9di003wmwx0sd16b1wy | completed | cmvt8s9dh003vmwx0lt80lt02   <- follow-up turn
+
+The follow-up Run is a new user turn, not a replacement Run for the failed one
+(no new Run with the failed Run's taskId exists), and it replies exactly once
+(asserted in the spec).

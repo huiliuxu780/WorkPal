@@ -809,11 +809,13 @@ public final class RuntimeEngine {
                 // The agent stream is this process's model-call boundary, so this
                 // is the layer that can say a failure arrived from the model
                 // rather than from the tool bridge or the run envelope. Only the
-                // type is recorded here; classification belongs to the HTTP
-                // boundary, and a provider message can carry a credential URL.
+                // type is recorded here, and the category is selected from
+                // throwable types and HTTP status — a provider message can carry
+                // a credential URL and never contributes.
                 RuntimeLog.error("runtime.stream.failed", runBindings(request), streamFailure);
-                if (streamFailure instanceof Exception error) throw error;
-                throw new RuntimeException(streamFailure);
+                if (streamFailure instanceof InterruptedException cancelled) throw cancelled;
+                throw new ModelStreamFailure(
+                        FailureCategory.forModelStream(streamFailure), streamFailure);
             }
             if (!pausedToolCalls.isEmpty()) {
                 String name = mapper.toolNames.getOrDefault(pausedToolCalls.iterator().next(), "Tool");

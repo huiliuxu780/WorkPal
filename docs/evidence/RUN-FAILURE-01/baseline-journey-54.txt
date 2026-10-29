@@ -1,0 +1,38 @@
+RUN-FAILURE-01 — journey 54 baseline comparison
+================================================
+
+`pnpm test:integration` reports one red: journey 54
+(`group chats share one transcript with mentions and handoffs`), the same
+baseline red documented in `docs/evidence/RUNTIME-RELIABILITY-01/README.md`.
+
+Control experiment: revert only the two files in this diff that could affect a
+TS product journey — `packages/adapters/src/executor.ts` and
+`packages/adapters/src/agentscope-runtime.ts` — to `origin/main`
+(dceae3234c84b110407f893e7e4e158c2e299536), keep everything else, and run the
+same command:
+
+  git checkout origin/main -- packages/adapters/src/executor.ts \
+                              packages/adapters/src/agentscope-runtime.ts
+  DOCKER_HOST=unix:///Users/rivers/.colima/default/docker.sock \
+  TESTCONTAINERS_RYUK_DISABLED=true \
+  JAVA_HOME=<temurin-21> pnpm test:integration
+
+Result — identical with and without this diff:
+
+  FAIL packages/testkit/src/journeys.test.ts > required product journeys >
+       54: group chats share one transcript with mentions and handoffs
+  AssertionError: expected false to be true // Object.is equality
+   ❯ packages/testkit/src/journeys.test.ts:2063:67
+     2063| expect(runsAfterMention.some((run) => run.botId === botA.id)).toBe…
+
+  Test Files  1 failed (1)
+       Tests  1 failed | 40 passed (41)
+
+Root cause (unchanged by this delivery): the journey expects both mentioned
+bots to produce a Run, while `packages/core/src/product-harness/response-owner.ts`
+(`resolveExplicitTurnOwner`, RT-22 #111) resolves multiple explicit mentions
+without a separate-answers marker to a single owner. Group-chat product
+semantics are out of this task's scope.
+
+After the comparison the two files were restored byte-for-byte from copies
+taken before the revert; `git status` shows only this delivery's files.
