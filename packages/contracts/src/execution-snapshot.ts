@@ -104,14 +104,6 @@ export const ExecutionSummarySchema = z.strictObject({
   entry: ExecutionEntrySchema,
   /** Server-chosen transcript anchor; the Web no longer scans messages for it. */
   anchorMessageId: Id.optional(),
-  /**
-   * The message whose send created this Run (PD-01 D9). A group message links
-   * only its FIRST Run through `message.runId`; this field lets every Run a
-   * message triggered — including a secondary bot's cancelled Run — be
-   * associated with it again after history pagination. Omitted for Runs no
-   * message triggered.
-   */
-  sourceMessageId: Id.optional(),
   /** Sections the server knows are incomplete for this view (truncated/missing). */
   incompleteSections: z.array(ExecutionSectionSchema).optional(),
   /** Predecessor in the manual-retry chain; omitted when this Run is not a retry. */

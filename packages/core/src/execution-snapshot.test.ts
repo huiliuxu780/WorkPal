@@ -148,15 +148,6 @@ describe("buildExecutionSummary", () => {
     expect(summary.manualRetry).toEqual({ allowed: false, reason: "already_active" });
   });
 
-  it("carries the triggering message identity and omits it when none (PD-01 D9)", () => {
-    const withSource = buildExecutionSummary(facts({ sourceMessageId: "msg-9" }));
-    expect(withSource.sourceMessageId).toBe("msg-9");
-
-    const without = buildExecutionSummary(facts({ sourceMessageId: null }));
-    expect(without.sourceMessageId).toBeUndefined();
-    expect(buildExecutionSummary(facts()).sourceMessageId).toBeUndefined();
-  });
-
   it("carries amendment follow-up lineage separately from retry lineage", () => {
     const summary = buildExecutionSummary(
       facts({

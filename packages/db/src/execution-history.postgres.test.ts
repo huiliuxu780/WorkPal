@@ -72,14 +72,7 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
     await isolated?.drop();
   }, 60_000);
 
-  async function makeRun(
-    opts: {
-      status?: string;
-      trigger?: string;
-      botId?: string;
-      sourceMessageId?: string;
-    } = {},
-  ) {
+  async function makeRun(opts: { status?: string; trigger?: string; botId?: string } = {}) {
     const task = await prisma.task.create({
       data: {
         spaceId: id,
@@ -99,7 +92,6 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
         taskId: task.id,
         status: opts.status ?? "running",
         trigger: opts.trigger ?? "user",
-        ...(opts.sourceMessageId ? { sourceMessageId: opts.sourceMessageId } : {}),
         leaseOwner: "worker",
         leaseFence: 1,
         leaseExpiresAt: new Date(Date.now() + 60_000),
@@ -533,24 +525,6 @@ describePostgres("execution history snapshot (PostgreSQL)", () => {
     await expect(
       loadRunActivityPage(prisma, { threadId, spaceId: id, runId: run.id }),
     ).rejects.toMatchObject({ reason: "stale_cursor" });
-  });
-
-  it("exposes the triggering message identity on summaries (PD-01 D9)", async () => {
-    const trigger = await createThreadMessage(prisma, {
-      threadId,
-      role: "user",
-      blocks: [{ kind: "text", text: "triggering ask" }],
-    });
-    const { run } = await makeRun({ status: "cancelled", sourceMessageId: trigger.id });
-    await terminalize(run.id, false);
-
-    const [summary] = await loadExecutionSummaries(prisma, {
-      threadId,
-      spaceId: id,
-      runIds: [run.id],
-    });
-    expect(summary!.sourceMessageId).toBe(trigger.id);
-    expect(summary!.manualRetry?.allowed).toBe(true);
   });
 
   it("moves rev on every visible change and never on an unrelated Run change", async () => {

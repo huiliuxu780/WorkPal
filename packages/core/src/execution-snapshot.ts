@@ -87,8 +87,6 @@ export type ExecutionSummaryFacts = {
   artifacts?: Array<{ id: string; name: string; mimeType?: string }>;
   artifactsTotal?: number;
   anchorMessageId?: string | null;
-  /** The message whose send created the Run (PD-01 D9); null when none. */
-  sourceMessageId?: string | null;
   /** True when the timeline scan was clipped by its window. */
   activityTruncated?: boolean;
   retryOfRunId?: string | null;
@@ -186,7 +184,6 @@ export function buildExecutionSummary(facts: ExecutionSummaryFacts): ExecutionSu
     artifacts,
     entry: executionEntryFor({ trigger: run.trigger, orchestration: run.orchestration }),
     ...(facts.anchorMessageId ? { anchorMessageId: facts.anchorMessageId } : {}),
-    ...(facts.sourceMessageId ? { sourceMessageId: facts.sourceMessageId } : {}),
     ...(incomplete.length > 0 ? { incompleteSections: incomplete } : {}),
     ...(facts.retryOfRunId ? { retryOfRunId: facts.retryOfRunId } : {}),
     ...(facts.retrySuccessorRunId ? { retrySuccessorRunId: facts.retrySuccessorRunId } : {}),
