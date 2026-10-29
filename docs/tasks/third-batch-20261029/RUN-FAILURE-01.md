@@ -1,6 +1,6 @@
 # RUN-FAILURE-01：模型失败后的确定终态
 
-状态：`ready-to-merge`
+状态：`done`（PR [#157](https://github.com/huiliuxu780/WorkPal/pull/157) 已于 2026-10-29 合入 `main`，merge commit `fdcaefe8ada620899c959a88f3fdd670f05bc965`）
 
 建议分支：`codex/run-failure-terminality`
 
@@ -85,3 +85,5 @@
 - 修复：Runtime 在 stream 边界按 `ModelHttpException` 的稳定 HTTP 状态和异常类型给出 `provider_unavailable` / `provider_timeout` / `provider_rejected`；adapter 不再解析文案；executor 先读唯一重试预算再判断结果是否未确认；预算耗尽和确定性失败都走 `finalizeRun({ outcome: "failed" })`，随后仅在拿到 RT-26 proof 时释放会话，终态 Run 不再执行。
 - 最终复审修复：failed terminal owner 的一次即时 proof 若因 Runtime 短暂不可达失败，durable reconciler 会重投该 owner 继续走既有 RT-26 proof 链；cancelled owner 仍须先送达 `run_abort`。分类器不释放 admission，也没有时间兜底。PostgreSQL 同一回归旧实现 8/9、新实现 9/9；真实 worker-chain 常规与 Worker restart 两条链路均在 proof 后只投递一次。
 - 门禁：见证据 README 的“本地门禁”表。
+- 最终交付 head：`58f9d3cfc96d2dd2064bf8680daecfba7a2ab07c`；PR #157 最终 head 的相关检查在同一 CI attempt 内全部通过。
+- 合入记录：merge commit `fdcaefe8ada620899c959a88f3fdd670f05bc965`；未部署、未改 GitHub 设置。
