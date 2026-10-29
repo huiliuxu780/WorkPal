@@ -1,6 +1,6 @@
 # CARD-01E：卡片系统产品闭环
 
-状态：`ready-to-merge`（PR #154 最终代码 head `dc1a632` 已完成单 attempt 全量 CI 与复审）
+状态：`done`（PR #154 已以 `b6a7b2496da8fd0c1eac1080853ba1cfc68aba37` 合入 `main`）
 
 建议分支：`codex/card-system-completion`
 

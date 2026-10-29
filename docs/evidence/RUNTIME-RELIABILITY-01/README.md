@@ -2,12 +2,10 @@
 
 基线：`a29c711`（`origin/main`，含 FIX-STOP-01 的 #149 与第一批收尾 #153）。
 分支：`codex/runtime-reliability`。
-任务书：`docs/tasks/second-batch-20261028/RUNTIME-RELIABILITY-01.md`，**已随本分支提交**
-（连同批次说明 `docs/tasks/second-batch-20261028/README.md`）。两份正文与整合者工作树中的
-约定文本逐字一致，**唯一差别是去掉了文件末尾的一个空行**，因为 `git diff --check` 会把
-"new blank line at EOF" 判为不干净；末尾空行不属于约定内容。同批的 `CARD-01E.md` 属另一交付单元、其 PR 已开，**故意未纳入**以免与其冲突。
-任务卡状态仍为 `planned`：按项目规则要等 PR 的最终 head 跑完完整 CI 且相关检查确实执行后才转
-`ready-to-merge`，本分支不自行改状态。
+任务书：`docs/tasks/second-batch-20261028/RUNTIME-RELIABILITY-01.md`，已随本交付单元提交。
+同批的 `CARD-01E.md` 与批次说明由 CARD-01E 分支整合，避免两个并行分支新增同一文件。
+最终状态：`done`。PR #155 已以 `1eac68196e839ad988d4f21a41c1234c50f7862a` 合入 `main`；
+随后 CARD-01E 合并该修复并在最终 head 完成完整 CI。
 
 本机前提：Maven 默认走 Homebrew openjdk **27**，所有 `mvn` 命令前都设了
 `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`（`pom.xml` 要求 release 21，CI 用 temurin 21）。

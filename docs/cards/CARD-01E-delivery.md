@@ -1,6 +1,6 @@
 # CARD-01E delivery record
 
-状态：`ready-to-merge`（PR #154 最终代码 head `dc1a632` 单 attempt 全量 CI 通过，复审无待回复问题；生产 gate 仍关闭）
+状态：`done`（PR #154 最终 head `458262a` 单 attempt 全量 CI 通过、复审无待回复问题，并以 `b6a7b2496da8fd0c1eac1080853ba1cfc68aba37` 合入 `main`；生产 gate 仍关闭）
 
 - 任务书：[第二批 CARD-01E](../tasks/second-batch-20261028/CARD-01E.md) + [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
 - 分支：`codex/card-system-completion`
