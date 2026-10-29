@@ -2,10 +2,12 @@ import { t } from "@lingui/core/macro";
 import type {
   ExecutionResult,
   ExecutionSummary,
+  InteractionView,
   InterventionView,
   RunPlanRevision,
   RunStepSnapshot,
 } from "@rakazo/contracts";
+import { compareInteractionViewsForDisplay } from "@rakazo/contracts";
 import type { ExecutionDisplayStatus, ExecutionStatusView } from "./execution-status";
 import { formatRelativeTime } from "./relative-time";
 import { formatToolActivityDuration } from "./tool-activity-view";
@@ -100,6 +102,8 @@ export type ExecutionCardInput = {
   plan?: RunPlanRevision | null;
   /** Pending Intervention views for this Run (server projection, safe presentation only). */
   pendingInterventions?: readonly InterventionView[];
+  /** CARD-01B pending views; preferred over the legacy list when present. */
+  pendingInteractions?: readonly InteractionView[];
   /** Loaded semantic steps; only used for the failed-step line and the current-item elapsed. */
   steps?: readonly RunStepSnapshot[];
   /**
@@ -141,6 +145,16 @@ function sortedPending(pending: readonly InterventionView[]): InterventionView[]
     }
     return left.createdAt < right.createdAt ? -1 : left.createdAt > right.createdAt ? 1 : 0;
   });
+}
+
+function interactionAux(pending: readonly InteractionView[] | undefined): ExecutionCardAux | null {
+  if (!pending) return null;
+  for (const view of [...pending].sort(compareInteractionViewsForDisplay)) {
+    if (view.status !== "pending") continue;
+    const text = view.presentation?.text?.trim();
+    if (text) return { kind: "intervention", text };
+  }
+  return null;
 }
 
 /**
@@ -306,7 +320,9 @@ export function buildExecutionCardModel(input: ExecutionCardInput): ExecutionCar
   // (Plan current item | current safe activity) > terminal outcome > omitted.
   let aux: ExecutionCardAux | null = null;
   if (status.needsAttention || status.status === "approval" || status.status === "need_input") {
-    aux = interventionAux(input.pendingInterventions ?? []);
+    aux =
+      interactionAux(input.pendingInteractions) ??
+      interventionAux(input.pendingInterventions ?? []);
   }
   if (!aux && status.status === "failed") {
     const step = failedStepLabel(input.steps ?? []);

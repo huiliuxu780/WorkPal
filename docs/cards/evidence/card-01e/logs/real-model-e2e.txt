@@ -1,0 +1,4 @@
+$ CARDS_UNIFIED_V2_ENABLED=true AGENT_RUNTIME=agentscope REAL_MODEL_API_KEY=<redacted> AGENT_RUNTIME_SKIP_BUILD=1 pnpm test:e2e --runtime=agentscope --spec="card-real-model.spec.ts"
+  ✓  1 [chromium] › e2e/card-real-model.spec.ts:25:1 › real DashScope model creates an ask card that reaches attention and resumes (36.3s)
+::notice title=🎭 Playwright Run Summary::  1 passed (39.0s)
+  1 passed (39.0s)

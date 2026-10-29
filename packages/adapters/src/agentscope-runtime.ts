@@ -7,10 +7,13 @@ import type {
   AgentRunRequest,
   AgentRuntime,
   AgentRuntimeEvent,
+  AgentSessionCheckpointDetachRequest,
+  AgentSessionCheckpointProof,
   AgentToolCompletion,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
 import { type AutomaticRetryReason, PRODUCT_BRAND } from "@rakazo/core";
+import { getLogger, outgoingCorrelationHeaders } from "@rakazo/logging";
 
 export class AgentScopeTransientError extends Error {
   constructor(
@@ -20,6 +23,20 @@ export class AgentScopeTransientError extends Error {
   ) {
     super(message, options);
     this.name = "AgentScopeTransientError";
+  }
+}
+
+export class AgentScopeSessionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentScopeSessionConflictError";
+  }
+}
+
+export class AgentScopeRunRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentScopeRunRejectedError";
   }
 }
 
@@ -36,7 +53,7 @@ function transientWireError(message: string): AgentScopeTransientError | null {
 type AgentScopeWireEvent =
   | AgentRuntimeEvent
   | { type: "paused"; reason: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; category?: string };
 
 export interface AgentScopeAgentRuntimeOptions {
   baseUrl?: string;
@@ -644,6 +661,9 @@ function serializableRequest(
     botId: request.botId,
     threadId: request.threadId,
     runId: request.runId,
+    sessionAdmission: request.sessionAdmission,
+    resumeCheckpoint: request.resumeCheckpoint,
+    threadContextAfterSuspension: request.threadContextAfterSuspension,
     executionScope: request.executionScope ?? "chat",
     // Product Harness Turn Policy: flattened to the runtime wire shape; the
     // runtime enforces it and never re-derives it.
@@ -829,12 +849,47 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
     return ((await response.json()) as { cancelled: boolean }).cancelled;
   }
 
+  async inspectAndDetach(
+    request: AgentSessionCheckpointDetachRequest,
+  ): Promise<AgentSessionCheckpointProof> {
+    const response = await fetch(endpoint(this.baseUrl, "/v1/sessions/inspect-and-detach"), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...outgoingCorrelationHeaders() },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 409) {
+      throw new AgentScopeSessionConflictError(
+        `AgentScope session conflict: ${(await response.text()).slice(0, 1_000)}`,
+      );
+    }
+    if (!response.ok) {
+      throw new Error(`AgentScope pending-state detach failed (${response.status})`);
+    }
+    const proof = (await response.json()) as AgentSessionCheckpointProof;
+    if (
+      !proof ||
+      (proof.kind !== "clean" && proof.kind !== "detached") ||
+      typeof proof.checkpointId !== "string" ||
+      proof.checkpointId !== request.checkpointId ||
+      typeof proof.digest !== "string" ||
+      !/^[0-9a-f]{64}$/.test(proof.digest) ||
+      !Array.isArray(proof.pendingCalls)
+    ) {
+      throw new Error("AgentScope returned a malformed pending-state proof");
+    }
+    return proof;
+  }
+
   async abort(runId: string): Promise<void> {
     const controller = this.active.get(runId);
     // The local stream stops even when the remote DELETE fails and is retried later.
     controller?.abort();
     const response = await fetch(endpoint(this.baseUrl, `/v1/runs/${encodeURIComponent(runId)}`), {
       method: "DELETE",
+      // The cancel must arrive on the same trace as the Run it cancels, or the
+      // Java-side cancel event cannot be tied back to this attempt.
+      headers: outgoingCorrelationHeaders(),
       signal: AbortSignal.timeout(1_500),
     });
     if (response.status === 404) return;
@@ -890,9 +945,21 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       }
       let response: Response;
       try {
+        // RUNTIME-RELIABILITY-01: the adapter's own fact — it handed this Run to
+        // the runtime. Without it, a Run that the Worker dispatched but the
+        // runtime never accepted is invisible on both sides: the Worker logs a
+        // dispatch and the runtime logs nothing at all.
+        getLogger().info("agentscope.run.requested", { "run.id": request.runId });
         response = await fetch(endpoint(this.baseUrl, "/v1/runs"), {
           method: "POST",
-          headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+          headers: {
+            "content-type": "application/json",
+            accept: "application/x-ndjson",
+            // RUNTIME-RELIABILITY-01: carry this Run's trace across the process
+            // boundary. Without it a Java-side failure cannot be attributed to
+            // the Run that caused it, and the trace stops at this adapter.
+            ...outgoingCorrelationHeaders(),
+          },
           body: JSON.stringify(
             serializableRequest(
               request,
@@ -914,13 +981,27 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       }
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 1_000);
+        // This layer's own fact: the runtime rejected the Run. The status is a
+        // fixed code, so nothing provider-supplied is carried into this log —
+        // the Java side already recorded why, on the same trace.
+        getLogger().warn("agentscope.run.rejected", {
+          "run.id": request.runId,
+          "runtime.http_status": response.status,
+        });
+        if (response.status === 409) {
+          throw new AgentScopeSessionConflictError(
+            `AgentScope session conflict: ${detail || "active runtime session"}`,
+          );
+        }
         if (response.status >= 500) {
           throw new AgentScopeTransientError(
             "provider_5xx",
             `AgentScope service returned ${response.status}: ${detail}`,
           );
         }
-        throw new Error(`AgentScope service returned ${response.status}: ${detail}`);
+        throw new AgentScopeRunRejectedError(
+          `AgentScope service returned ${response.status}: ${detail}`,
+        );
       }
       const instanceId = response.headers.get("x-agent-runtime-instance");
       if (this.serviceInstanceId && instanceId && instanceId !== this.serviceInstanceId) {
@@ -937,8 +1018,18 @@ export class AgentScopeAgentRuntime implements AgentRuntime {
       let terminal: "done" | "paused" | undefined;
       let completion: Extract<AgentRuntimeEvent, { type: "done" }> | undefined;
       const accept = (event: AgentScopeWireEvent): AgentRuntimeEvent | undefined => {
-        if (event.type === "error")
+        if (event.type === "error") {
+          // RUNTIME-RELIABILITY-01: the runtime reports a stable, user-invisible
+          // failure category. Recording it on this side attributes the failure
+          // to a layer within the same trace, without the runtime ever sending
+          // provider text. Retry behaviour is deliberately unchanged: the
+          // category is attribution, not a new control signal.
+          getLogger().error("agentscope.run.failed", {
+            "run.id": request.runId,
+            "runtime.failure_category": event.category,
+          });
           throw transientWireError(event.message) ?? new Error(event.message);
+        }
         if (terminal) throw new Error("AgentScope returned an event after its terminal event");
         if (event.type === "paused") {
           if (typeof event.reason !== "string" || !event.reason.trim()) {

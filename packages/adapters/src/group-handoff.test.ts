@@ -23,11 +23,19 @@ function harness(
     chatGroup: {
       findFirst: vi.fn(async () => ({
         id: "group-1",
+        name: "Group",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        kind: "standard",
+        archivedAt: null,
+        leadBotId: "bot-a",
+        thread: { id: "thread-1" },
         members: ["bot-a", "bot-b", "bot-c"].map((id) => ({
           bot: { id, name: id.toUpperCase() },
         })),
       })),
       update: vi.fn(async () => ({ id: "group-1" })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
     },
     run: {
       findFirst: vi.fn(async () => ({

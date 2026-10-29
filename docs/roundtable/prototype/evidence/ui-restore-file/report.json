@@ -1,0 +1,31 @@
+[
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 34,
+        "examples": [
+          "span「搜索」（3.00:1）",
+          "div.nav-label「最近」（2.50:1）",
+          "span#activeChatSub.chat-sub「Joy、小蓝、小橙、小紫」（2.78:1）"
+        ]
+      },
+      {
+        "rule": "longMeasure",
+        "label": "正文行太长",
+        "count": 2,
+        "examples": [
+          "div.bubble「我先把目标和依赖理清，再让最合适的人并行推进。发」（每行约 46 字）",
+          "div.bubble「我先拆成两路。 小蓝 核对性能基线和回归风险； 」（每行约 46 字）"
+        ]
+      }
+    ]
+  }
+]

@@ -1,5 +1,10 @@
 import * as z from "zod";
 import { ActivityItemSchema } from "./activity.js";
+import {
+  DisplayBlockSchema,
+  InteractionCapabilitiesSchema,
+  InteractionViewSchema,
+} from "./card-interaction.js";
 import { MessageBlock } from "./events.js";
 import { Id, RunStatus, RunTrigger, WaitKind } from "./ids.js";
 import { InterventionViewSchema } from "./intervention.js";
@@ -41,6 +46,17 @@ export const ExecutionSummarySchema = z.strictObject({
   runId: Id,
   threadId: Id,
   botId: Id,
+  /**
+   * Server fact (PD-01P): the message that triggered this Run — the durable
+   * `runs.sourceMessageId` link, not an inference from message order, Bot
+   * names, or timestamps. One message may own zero, one, or several Runs (a
+   * multi-Bot group turn creates one Run per dispatched Bot), so clients must
+   * read this field instead of treating `Message.runId` as exhaustive; that
+   * legacy column still names the first Run for old clients. Manual-retry
+   * successors inherit the predecessor's source message, so they stay linked
+   * to the same trigger. Omitted when the Run has no triggering message.
+   */
+  sourceMessageId: Id.optional(),
   /**
    * Stable monotonic version of the visible projection: the highest product
    * event seq attributed to this Run (0 when none survive, e.g. after a
@@ -102,6 +118,10 @@ export const ExecutionSummarySchema = z.strictObject({
   retryOfRunId: Id.optional(),
   /** Direct successor created by a later manual retry; omitted when none exists. */
   retrySuccessorRunId: Id.optional(),
+  /** Completed Run this amendment follow-up reviews; omitted for other Runs. */
+  followUpOfRunId: Id.optional(),
+  /** Follow-up created by a later amendment; omitted when none exists. */
+  followUpSuccessorRunId: Id.optional(),
   /** Whether the actor may request a manual retry of this Run. */
   manualRetry: z
     .strictObject({
@@ -178,6 +198,10 @@ export const ExecutionSnapshotSchema = z.strictObject({
   activityPage: ExecutionActivityPageSchema,
   /** All Interventions of this Run inside the snapshot windows. */
   interventions: z.array(InterventionViewSchema),
+  /** CARD-01A projection; present only when cards_unified_v2 is enabled. */
+  interactionCapabilities: InteractionCapabilitiesSchema.optional(),
+  interactions: z.array(InteractionViewSchema).optional(),
+  displayBlocks: z.array(DisplayBlockSchema).optional(),
   result: ExecutionResultSchema.optional(),
 });
 export type ExecutionSnapshot = z.infer<typeof ExecutionSnapshotSchema>;

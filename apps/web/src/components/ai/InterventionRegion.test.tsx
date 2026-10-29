@@ -91,7 +91,16 @@ function Harness({
   const [items, setItems] = useState(initial);
   return (
     <>
-      <button type="button" onClick={() => setItems((current) => current.map((item) => item.kind === "approval" ? { ...item, revision: item.revision + 1 } : item))}>
+      <button
+        type="button"
+        onClick={() =>
+          setItems((current) =>
+            current.map((item) =>
+              item.kind === "approval" ? { ...item, revision: item.revision + 1 } : item,
+            ),
+          )
+        }
+      >
         bump approval
       </button>
       <InterventionRegion
@@ -104,6 +113,87 @@ function Harness({
         }}
       />
     </>
+  );
+}
+
+/**
+ * A pending approval whose Run executes in another Thread: its ask message is
+ * never on this page, so the card can only come from the server projection.
+ */
+function pairApproval(): InterventionView {
+  return view({
+    id: "pair-approval",
+    runId: "run-in-pair-thread",
+    attemptId: "attempt-in-pair-thread",
+    messageId: "message-in-pair-thread",
+    presentation: {
+      text: "Send the summary from the pair?",
+      detail: "One email to the requester.",
+    },
+  });
+}
+
+function outboundApproval(): InterventionView {
+  return view({
+    id: "outbound-approval",
+    messageId: "message-approval",
+    approval: {
+      effectId: "effect-1",
+      effectStatus: "intended",
+      actions: [
+        { id: "allow", label: "Allow once" },
+        { id: "always", label: "Always allow" },
+        { id: "deny", label: "Deny" },
+      ],
+      outbound: {
+        channel: "email",
+        draft: {
+          revision: 2,
+          fingerprint: "fp-r2-12345678",
+          recipients: ["ada@example.test"],
+          subject: "Weekly digest r2",
+          body: "Edited body",
+        },
+        revisions: [
+          {
+            revision: 1,
+            fingerprint: "fp-r1-12345678",
+            subject: "Weekly digest",
+            createdAt: "2026-10-12T00:00:00.000Z",
+            status: "superseded",
+          },
+          {
+            revision: 2,
+            fingerprint: "fp-r2-12345678",
+            subject: "Weekly digest r2",
+            createdAt: "2026-10-12T00:00:00.000Z",
+            status: "pending",
+          },
+        ],
+      },
+    },
+  });
+}
+
+/** Feeds a settled view back into the prop, the way the shell does. */
+function ProjectionHarness({
+  initial,
+  onSubmitted,
+}: {
+  initial: InterventionView[];
+  onSubmitted?: (view: InterventionView) => void;
+}) {
+  const [items, setItems] = useState(initial);
+  return (
+    <InterventionRegion
+      interventions={items}
+      messages={[]}
+      target={{ botId: "bot-1" }}
+      onSettled={(next) => {
+        onSubmitted?.(next);
+        setItems((current) => current.map((item) => (item.id === next.id ? next : item)));
+      }}
+    />
   );
 }
 
@@ -130,17 +220,23 @@ describe("InterventionRegion", () => {
       await act(async () => {
         root.render(<Harness initial={[input, view({})]} />);
       });
-      const region = host.querySelector('[role="region"]');
+      const region = host.querySelector('[data-testid="intervention-region"]');
       expect(region?.getAttribute("aria-label")).toBe("需要你处理");
       const ids = [...host.querySelectorAll("[data-intervention-id]")].map((node) =>
         node.getAttribute("data-intervention-id"),
       );
       expect(ids).toEqual(["intervention-1", "input-1"]);
-      expect(host.querySelector("[data-testid=intervention-approvals]")?.compareDocumentPosition(
-        host.querySelector("[data-testid=intervention-inputs]")!,
-      )).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      const mount = host.querySelector('[data-intervention-id="input-1"]')?.getAttribute("data-mount");
-      const edit = [...host.querySelectorAll("button")].find((button) => button.textContent === "Edit first");
+      expect(
+        host
+          .querySelector("[data-testid=intervention-approvals]")
+          ?.compareDocumentPosition(host.querySelector("[data-testid=intervention-inputs]")!),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      const mount = host
+        .querySelector('[data-intervention-id="input-1"]')
+        ?.getAttribute("data-mount");
+      const edit = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Edit first",
+      );
       await act(async () => {
         edit?.click();
       });
@@ -153,11 +249,19 @@ describe("InterventionRegion", () => {
       });
       expect(field?.value).toBe("Paris");
       await act(async () => {
-        [...host.querySelectorAll("button")].find((button) => button.textContent === "bump approval")?.click();
+        [...host.querySelectorAll("button")]
+          .find((button) => button.textContent === "bump approval")
+          ?.click();
       });
-      expect(host.querySelector('[data-intervention-id="input-1"]')?.getAttribute("data-mount")).toBe(mount);
-      expect(host.querySelector<HTMLInputElement>('input[aria-label="Answer"]')?.value).toBe("Paris");
-      const deny = [...host.querySelectorAll("button")].find((button) => button.textContent === "Deny");
+      expect(
+        host.querySelector('[data-intervention-id="input-1"]')?.getAttribute("data-mount"),
+      ).toBe(mount);
+      expect(host.querySelector<HTMLInputElement>('input[aria-label="Answer"]')?.value).toBe(
+        "Paris",
+      );
+      const deny = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Deny",
+      );
       expect(deny?.tagName).toBe("BUTTON");
       deny?.focus();
       expect(document.activeElement).toBe(deny);
@@ -183,7 +287,9 @@ describe("InterventionRegion", () => {
       await act(async () => {
         root.render(<Harness initial={[view({})]} />);
       });
-      const deny = [...host.querySelectorAll("button")].find((button) => button.textContent === "Deny");
+      const deny = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Deny",
+      );
       await act(async () => {
         deny?.click();
       });
@@ -200,6 +306,45 @@ describe("InterventionRegion", () => {
       const submissionId = resolveIntervention.mock.calls[0]?.[0]?.clientSubmissionId as string;
       expect(submissionId.length).toBeGreaterThanOrEqual(8);
       expect(submissionId).not.toContain("deny");
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("binds an edited outbound approval in the legacy card", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const outbound = outboundApproval();
+    resolveIntervention.mockResolvedValue({
+      outcome: "accepted",
+      intervention: { ...outbound, status: "answered", revision: 2 },
+    });
+    try {
+      await act(async () => {
+        root.render(
+          <InterventionRegion
+            interventions={[outbound]}
+            messages={[approvalMessage]}
+            target={{ botId: "bot-1" }}
+            onSettled={() => undefined}
+          />,
+        );
+      });
+      const allow = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Allow once",
+      );
+      await act(async () => {
+        allow?.click();
+      });
+      expect(resolveIntervention).toHaveBeenCalledWith(
+        expect.objectContaining({
+          interventionId: "outbound-approval",
+          answer: "allow",
+          outbound: { revision: 2, fingerprint: "fp-r2-12345678" },
+        }),
+      );
     } finally {
       await act(async () => root.unmount());
       host.remove();
@@ -310,12 +455,108 @@ describe("InterventionRegion", () => {
           />,
         );
       });
-      const region = host.querySelector('[role="region"]');
+      const region = host.querySelector('[data-testid="intervention-region"]');
       expect(region?.getAttribute("aria-label")).toBe("需要你处理");
       expect(region?.querySelector('[data-intervention-id="secret-off-page"]')).not.toBeNull();
       expect(region?.textContent).toContain("Paste the API key for the import");
-      expect(region?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Saved");
+      expect(region?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Saved",
+      );
       expect(host.querySelector('input[type="password"]')).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("answers a pending card whose execution lives in another Thread", async () => {
+    // RT-04 / AC20: the Run executes in a Thread the user cannot write to, so its
+    // ask message is never on this page. The card has to be rebuilt from the
+    // projection, stay operable, and submit against the Thread the user is in.
+    resolveIntervention.mockResolvedValue({
+      outcome: "accepted",
+      intervention: view({
+        id: "pair-approval",
+        status: "answered",
+        revision: 2,
+        approval: { effectId: "effect-1", decision: "approved", effectStatus: "approved" },
+      }),
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const settled: InterventionView[] = [];
+    try {
+      await act(async () => {
+        root.render(
+          <ProjectionHarness
+            initial={[pairApproval()]}
+            onSubmitted={(next) => settled.push(next)}
+          />,
+        );
+      });
+      const region = host.querySelector('[data-testid="intervention-region"]');
+      expect(region?.textContent).toContain("Send the summary from the pair?");
+      expect(region?.textContent).toContain("One email to the requester.");
+      const allow = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Allow once",
+      );
+      expect(allow).toBeDefined();
+      await act(async () => {
+        allow?.click();
+      });
+      expect(resolveIntervention).toHaveBeenCalledTimes(1);
+      expect(resolveIntervention).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // The submission is addressed at the Thread the user is looking at,
+          // never at the Thread the Run executes in.
+          botId: "bot-1",
+          interventionId: "pair-approval",
+          answer: "allow",
+        }),
+      );
+      const submissionId = resolveIntervention.mock.calls[0]?.[0]?.clientSubmissionId as string;
+      expect(submissionId.length).toBeGreaterThanOrEqual(8);
+      expect(submissionId).not.toContain("allow");
+      expect(settled).toHaveLength(1);
+      expect(host.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Approved",
+      );
+      expect(host.querySelector('[data-testid="intervention-effect"]')?.textContent).toBe(
+        "Effect approved",
+      );
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("reports a decision made elsewhere instead of relying on a disabled button", async () => {
+    resolveIntervention.mockResolvedValue({
+      outcome: "already_handled",
+      intervention: view({
+        id: "pair-approval",
+        status: "answered",
+        revision: 2,
+        approval: { effectId: "effect-1", decision: "denied", effectStatus: "denied" },
+      }),
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => {
+        root.render(<ProjectionHarness initial={[pairApproval()]} />);
+      });
+      const deny = [...host.querySelectorAll("button")].find(
+        (button) => button.textContent === "Deny",
+      );
+      await act(async () => {
+        deny?.click();
+      });
+      const authority = host.querySelector<HTMLElement>('[data-testid="intervention-authority"]');
+      expect(authority?.textContent).toBe("Denied");
+      expect(document.activeElement).toBe(authority);
     } finally {
       await act(async () => root.unmount());
       host.remove();
@@ -347,8 +588,12 @@ describe("InterventionRegion", () => {
       });
       const card = host.querySelector('[data-intervention-id="approval-off-page"]');
       expect(card?.textContent).toContain("Send the email to the client?");
-      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Approved");
-      expect(card?.querySelector('[data-testid="intervention-effect"]')?.textContent).toBe("Effect running");
+      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Approved",
+      );
+      expect(card?.querySelector('[data-testid="intervention-effect"]')?.textContent).toBe(
+        "Effect running",
+      );
     } finally {
       await act(async () => root.unmount());
       host.remove();
@@ -381,7 +626,9 @@ describe("InterventionRegion", () => {
         );
       });
       const card = host.querySelector('[data-intervention-id="cancelled-1"]');
-      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe("Cancelled");
+      expect(card?.querySelector('[data-testid="intervention-authority"]')?.textContent).toBe(
+        "Cancelled",
+      );
       expect(host.querySelector('input[aria-label="Answer"]')).toBeNull();
     } finally {
       await act(async () => root.unmount());

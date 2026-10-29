@@ -12,11 +12,12 @@ import { type Actor, type Bot, type ComputerMode, GROUP_MEMBER_MIN } from "@raka
 import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import { browserProfilePathForScreen } from "@rakazo/core/node/desktop-runtime";
 import {
-  appendEventInTransaction,
   backgroundParentRunIdsExcept,
   backgroundTaskLockTransactionOptions,
+  CHAT_GROUP_KIND_STANDARD,
   cancelChildrenOfCancelledRuns,
-  cancelRunsInTransaction,
+  applyCancelTerminalPolicy,
+  cancelPolicyFor,
   computerScopeKey,
   createRepos,
   createThreadMessageInTransaction,
@@ -329,18 +330,12 @@ export async function archiveBot(
         })
       : activeRuns;
     const cancelled = runsToCancel.length
-      ? await cancelRunsInTransaction(tx, runsToCancel, now)
+      ? (
+          await applyCancelTerminalPolicy(tx, runsToCancel, now, {
+            policy: cancelPolicyFor("bot_archived"),
+          })
+        ).rows
       : [];
-    for (const run of cancelled) {
-      await appendEventInTransaction(tx, {
-        spaceId: run.spaceId,
-        threadId: run.threadId,
-        botId: run.botId,
-        runId: run.id,
-        type: "run.cancelled",
-        payload: { reason: "bot_archived" },
-      });
-    }
     await tx.routine.updateMany({
       where: { botId: bot.id },
       data: { active: false, nextRunAt: null },
@@ -432,9 +427,13 @@ export async function destroyBot(
   ]);
   const cancelledOwnRuns = activeRuns.length
     ? await deps.prisma.$transaction(async (tx) => {
-        const cancelled = await cancelRunsInTransaction(tx, activeRuns, new Date());
-        await expireComputerExecutionLeases(tx, { runId: { in: cancelled.map((run) => run.id) } });
-        return cancelled;
+        const settled = await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+          policy: cancelPolicyFor("bot_deleted"),
+        });
+        await expireComputerExecutionLeases(tx, {
+          runId: { in: settled.rows.map((run) => run.id) },
+        });
+        return settled.rows;
       })
     : [];
   await Promise.allSettled([
@@ -688,8 +687,11 @@ export async function destroyBot(
 }
 
 async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) {
+  // agent_pair groups are excluded from the whole sweep: losing one member is
+  // their normal deactivated state, and dissolving them would destroy pair
+  // history that must stay readable.
   const discovered = await tx.chatGroup.findMany({
-    where: { members: { some: { botId } } },
+    where: { members: { some: { botId } }, kind: CHAT_GROUP_KIND_STANDARD },
     include: {
       members: {
         select: { botId: true, bot: { select: { archivedAt: true } } },
@@ -708,11 +710,12 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
     FROM chat_groups AS groups
     INNER JOIN chat_group_members AS members ON members."groupId" = groups.id
     WHERE members."botId" = ${botId}
+      AND groups.kind = ${CHAT_GROUP_KIND_STANDARD}
     ORDER BY groups.id
     FOR UPDATE OF groups
   `;
   const affectedGroups = await tx.chatGroup.findMany({
-    where: { members: { some: { botId } } },
+    where: { members: { some: { botId } }, kind: CHAT_GROUP_KIND_STANDARD },
     include: {
       members: {
         select: { botId: true, bot: { select: { archivedAt: true } } },
@@ -759,7 +762,11 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
       })
     : [];
   const cancelledGroupRuns = activeRuns.length
-    ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+    ? (
+        await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+          policy: cancelPolicyFor("group_archived"),
+        })
+      ).rows
     : [];
   const backgroundTasks = dissolvedThreadIds.length
     ? await findLiveBackgroundTasks(tx, { threadId: { in: dissolvedThreadIds } })
@@ -787,9 +794,11 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
       },
     });
   }
-  if (affectedGroups.length) {
-    await tx.chatGroupMember.deleteMany({ where: { botId } });
-  }
+  // Every membership row must go before the bot row: chat_group_members.botId
+  // is ON DELETE NO ACTION. agent_pair groups are kept for their readable
+  // history, so detachBotFromGroups never reports them; clearing only the
+  // standard groups here would make hard-deleting a pair-only Bot fail.
+  await tx.chatGroupMember.deleteMany({ where: { botId } });
   const groupArtifacts = dissolvedGroupIds.length
     ? await tx.artifact.findMany({
         where: { groupId: { in: dissolvedGroupIds } },

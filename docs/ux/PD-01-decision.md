@@ -32,6 +32,15 @@
 | D9 | 实现范围包含**集中式后端投影/契约改动**：每条消息触发的全部 Run（含群聊第二个及以后 Bot 的 Run）必须能在历史分页后关联回触发消息；改动集中在后端投影/契约与前端 API 层，不在页面中散落协议分支（AGENTS.md 兼容规则） |
 | D10 | E2E 必须覆盖**群聊分页**：多 Bot 群消息 → 取消第二个 Bot 的无卡 Run → 翻页/reload 后入口仍能从投影恢复 |
 
+## 2.1 实施切片
+
+2026-10-25 的 ROADMAP-CARD-CONVERGE 将实现拆成两个独立、可审查的切片：
+
+- **PD-01P：集中投影。** 交付 D9 要求的后端投影/契约改动：每条触发消息能关联它的全部 Run（含群聊第二个及以后 Bot 的 Run），历史分页/reload 后仍可恢复。纯后端与契约，不改 Web 页面，不恢复 Task Center。
+- **PD-01F：消息入口。** 消费 PD-01P 冻结的投影，在触发消息的现有消息操作区域提供轻量 Retry；复用既有 `runs/retry`、`clientNonce`、`retryOfRunId` 和 `ExternalEffect.operationId` 语义。它不是 InteractionView、DisplayBlock 或 Card Shell 成员，不成为 ExecutionCard 的第五个信号，也不与有卡 Run 的 Retry 形成双入口。
+
+两个切片分别验收；PD-01F 依赖 PD-01P，并在 CARD-01B 之前与 RT-09 串行（roadmap 顺序：PD-01F → RT-09 → CARD-01B）。
+
 ## 3. 非目标
 
 - 不为 cancelled 生成任何执行卡（含"最小卡"）。

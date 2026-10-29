@@ -37,6 +37,7 @@ function recordingDeps(skill: ReturnType<typeof skillRow>) {
   let current = structuredClone(skill);
   const tx = {
     $executeRaw: vi.fn(),
+    steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
     taughtSkill: {
       findUniqueOrThrow: vi.fn(async () => current),
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {

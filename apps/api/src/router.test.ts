@@ -7,8 +7,10 @@ import {
 } from "@rakazo/adapters";
 import type { Actor, Bot } from "@rakazo/contracts";
 import { REPLY_QUOTE_MAX_LENGTH } from "@rakazo/contracts";
+import { RoundtableFeatureDisabledError } from "@rakazo/core";
 import { openScreenCapability } from "@rakazo/core/node/screen-capability";
 import type { PrismaClient } from "@rakazo/db";
+import { TaskAmendmentRejected, TaskInstructionIntegrityError } from "@rakazo/db";
 import { createLogger, createTestSink, installLogger } from "@rakazo/logging";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRouter, enqueueBotIntroRun, type RouterDeps } from "./router.js";
@@ -369,6 +371,359 @@ describe("thread answer delivery", () => {
     expect(enqueue).toHaveBeenCalledOnce();
     expect(sink.events.some((event) => event.message === "thread answer enqueue")).toBe(true);
     installLogger(createLogger({ service: "rakazo-api", level: "off", sinks: [] }));
+  });
+});
+
+describe("origin-aware intervention submission", () => {
+  function fixture(resolveIntervention: ReturnType<typeof vi.fn>) {
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      bot: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "bot-1",
+          spaceId: "workspace-1",
+          thread: { id: "thread-origin" },
+          computer: null,
+        }),
+      },
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { resolveIntervention },
+      jobs: { enqueue },
+      env: {
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@rakazo.test",
+      isDeploymentOwner: true,
+    } satisfies Actor;
+    return { handler: new RPCHandler(createRouter(deps)), actor, enqueue };
+  }
+
+  async function submit(handler: RPCHandler<never>, actor: Actor) {
+    return handler.handle(
+      new Request("http://127.0.0.1/rpc/threads/resolveIntervention", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          json: {
+            botId: "bot-1",
+            interventionId: "intervention-pair",
+            clientSubmissionId: "submission-0001",
+            answer: "allow",
+          },
+        }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+  }
+
+  it("addresses the submission at the visible Thread and resumes the bound Run", async () => {
+    const resolveIntervention = vi.fn().mockResolvedValue({
+      outcome: "accepted",
+      applied: true,
+      resume: true,
+      // The Run executes in a Thread the caller never addressed; only its id is
+      // authoritative for the wake.
+      intervention: {
+        id: "intervention-pair",
+        revision: 2,
+        kind: "approval",
+        status: "answered",
+        spaceId: "workspace-1",
+        threadId: "thread-origin",
+        runId: "run-in-pair-thread",
+        attemptId: "attempt-1",
+        botId: "bot-2",
+        messageId: "message-in-pair-thread",
+        createdAt: "2026-10-12T00:00:00.000Z",
+        requestingActor: { botId: "bot-2" },
+        approval: { effectId: "effect-1", decision: "approved", effectStatus: "approved" },
+      },
+    });
+    const { handler, actor, enqueue } = fixture(resolveIntervention);
+
+    const { response } = await submit(handler, actor);
+
+    expect(response.status).toBe(200);
+    expect(resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spaceId: "workspace-1",
+        threadId: "thread-origin",
+        interventionId: "intervention-pair",
+        answeredByUserId: "user-1",
+      }),
+    );
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "run.continue",
+        payload: { runId: "run-in-pair-thread" },
+      }),
+    );
+  });
+
+  it("reports a disabled roundtable capability instead of a stale-card conflict", async () => {
+    const resolveIntervention = vi
+      .fn()
+      .mockRejectedValue(new RoundtableFeatureDisabledError("private_pair"));
+    const { handler, actor, enqueue } = fixture(resolveIntervention);
+
+    const { response } = await submit(handler, actor);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      json: {
+        code: "FORBIDDEN",
+        message: "Roundtable feature is disabled: private_pair",
+        data: {
+          code: "ROUNDTABLE_FEATURE_DISABLED",
+          feature: "private_pair",
+          retryable: false,
+        },
+      },
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe("agent_pair server write boundary", () => {
+  function fixture() {
+    const sideEffects = {
+      messageCreate: vi.fn(),
+      groupUpdate: vi.fn(),
+      groupMemberDelete: vi.fn(),
+      resolveIntervention: vi.fn(),
+    };
+    const tx = {
+      $queryRaw: vi.fn(async () => []),
+      chatGroup: {
+        findUnique: vi.fn(async () => ({ thread: { id: "thread-pair" } })),
+        findFirst: vi.fn(async () => null),
+        update: sideEffects.groupUpdate,
+      },
+      chatGroupMember: { deleteMany: sideEffects.groupMemberDelete },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
+      chatGroup: {
+        findFirst: vi.fn(async () => null),
+        updateMany: sideEffects.groupUpdate,
+      },
+      bot: {
+        findMany: vi.fn(async () => [
+          { id: "bot-a", name: "A", color: "#111" },
+          { id: "bot-b", name: "B", color: "#222" },
+        ]),
+      },
+      message: { create: sideEffects.messageCreate },
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { resolveIntervention: sideEffects.resolveIntervention },
+      env: {
+        agentRuntime: "scripted",
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@example.test",
+      isDeploymentOwner: false,
+    } satisfies Actor;
+    return { handler: new RPCHandler(createRouter(deps)), actor, sideEffects };
+  }
+
+  async function call(
+    handler: RPCHandler<never>,
+    actor: Actor,
+    path: string,
+    body: Record<string, unknown>,
+  ) {
+    const { response } = await handler.handle(
+      new Request(`http://127.0.0.1/rpc/${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: body }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+    return { status: response.status, body: await response.json() };
+  }
+
+  it("rejects send, reaction and pair-local Intervention submission without side effects", async () => {
+    const { handler, actor, sideEffects } = fixture();
+    const attempts = await Promise.all([
+      call(handler, actor, "threads/send", { groupId: "group-pair", text: "human write" }),
+      call(handler, actor, "threads/react", {
+        groupId: "group-pair",
+        messageId: "pair-message",
+        reaction: "👍",
+        clientNonce: "pair-reaction-1",
+      }),
+      call(handler, actor, "threads/resolveIntervention", {
+        groupId: "group-pair",
+        interventionId: "pair-intervention",
+        clientSubmissionId: "pair-submission-1",
+        answer: "allow",
+      }),
+    ]);
+
+    expect(attempts.every((attempt) => attempt.status >= 400)).toBe(true);
+    expect(sideEffects.messageCreate).not.toHaveBeenCalled();
+    expect(sideEffects.resolveIntervention).not.toHaveBeenCalled();
+  });
+
+  it("rejects pair archive and member mutation without changing the group", async () => {
+    const { handler, actor, sideEffects } = fixture();
+    const attempts = await Promise.all([
+      call(handler, actor, "groups/archive", { groupId: "group-pair" }),
+      call(handler, actor, "groups/update", {
+        groupId: "group-pair",
+        botIds: ["bot-a", "bot-b"],
+      }),
+    ]);
+
+    expect(attempts.every((attempt) => attempt.status >= 400)).toBe(true);
+    expect(sideEffects.groupUpdate).not.toHaveBeenCalled();
+    expect(sideEffects.groupMemberDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not accept pairThreadId as a normal or receipt-less read target", async () => {
+    const { handler, actor } = fixture();
+    const directSend = await call(handler, actor, "threads/send", {
+      pairThreadId: "thread-pair",
+      text: "guess",
+    });
+    const directRead = await call(handler, actor, "threads/pairMessages", {
+      pairThreadId: "thread-pair",
+    });
+
+    expect(directSend.status).toBe(400);
+    expect(directRead.status).toBe(400);
+  });
+});
+
+describe("agent_pair receipt read RPC", () => {
+  function fixture(authorized: boolean) {
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce(authorized ? [{ targetSeq: 7, visibleIndex: 0 }] : [])
+      .mockResolvedValueOnce([{ seq: 7 }])
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([
+        {
+          id: "pair-message-1",
+          seq: 7,
+          role: "bot",
+          blocks: [{ kind: "text", text: "authorized pair history" }],
+          botId: "bot-b",
+          replyToMessageId: null,
+          replyQuote: null,
+          runId: "run-pair-1",
+          clientNonce: null,
+          createdAt: new Date("2026-10-23T01:00:00.000Z"),
+        },
+      ]);
+    const tx = { $queryRaw: queryRaw };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      env: {
+        agentRuntime: "scripted",
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@example.test",
+      isDeploymentOwner: false,
+    } satisfies Actor;
+    return { handler: new RPCHandler(createRouter(deps)), actor, queryRaw };
+  }
+
+  async function read(handler: RPCHandler<never>, actor: Actor) {
+    return handler.handle(
+      new Request("http://127.0.0.1/rpc/threads/pairMessages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          json: {
+            sourceReceiptMessageId: "source-receipt-1",
+            locator: {
+              kind: "pair_message",
+              pairThreadId: "pair-thread-1",
+              messageId: "pair-message-1",
+            },
+            limit: 20,
+          },
+        }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+  }
+
+  it("returns the receipt-authorized projection without physical sequence numbers", async () => {
+    const { handler, actor, queryRaw } = fixture(true);
+    const { response } = await read(handler, actor);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: {
+        pairThreadId: "pair-thread-1",
+        messages: [
+          {
+            id: "pair-message-1",
+            role: "bot",
+            blocks: [{ kind: "text", text: "authorized pair history" }],
+            botId: "bot-b",
+            runId: "run-pair-1",
+            createdAt: "2026-10-23T01:00:00.000Z",
+          },
+        ],
+        totalCount: 1,
+        hasMore: false,
+        olderCursor: null,
+        target: { messageId: "pair-message-1", visibleIndex: 0 },
+      },
+    });
+    expect(queryRaw).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns the same not-found boundary when the origin locator is unauthorized", async () => {
+    const { handler, actor, queryRaw } = fixture(false);
+    const { response } = await read(handler, actor);
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      json: { code: "NOT_FOUND", message: "Pair history was not found." },
+    });
+    expect(queryRaw).toHaveBeenCalledOnce();
   });
 });
 
@@ -3073,6 +3428,7 @@ describe("groups.archive", () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([{ id: "group-1" }]),
       chatGroup: {
+        findUnique: vi.fn().mockResolvedValue({ thread: { id: "thread-1" } }),
         findFirst: vi.fn().mockResolvedValue({
           archivedAt,
           thread: { id: "thread-1" },
@@ -3080,7 +3436,9 @@ describe("groups.archive", () => {
         update: groupUpdate,
       },
       run: {
-        findMany: vi.fn().mockResolvedValue([{ id: "run-1", taskId: "task-1" }]),
+        findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+          args?.where?.trigger ? [] : [{ id: "run-1", taskId: "task-1" }],
+        ),
         updateManyAndReturn: vi.fn().mockResolvedValue([
           {
             id: "run-1",
@@ -3094,6 +3452,7 @@ describe("groups.archive", () => {
       },
       attempt: { updateMany: vi.fn() },
       task: { updateMany: vi.fn() },
+      steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
       thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
       computerExecutionLease: {
         findMany: vi
@@ -3269,6 +3628,7 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue(groupRow),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const prisma = {
@@ -3389,6 +3749,7 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
       chatGroup: {
         findFirst: vi.fn().mockResolvedValue(groupRow),
         update: vi.fn().mockResolvedValue({ id: "group-1" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const prisma = {
@@ -3443,5 +3804,283 @@ describe("group follow-up turn ownership (Product Harness Phase 1)", () => {
     expect(routed).toEqual([
       expect.objectContaining({ ownerBotId: "bot-first", responseMode: "single" }),
     ]);
+  });
+});
+
+describe("task amendment route", () => {
+  function fixture(
+    applyTaskAmendment: ReturnType<typeof vi.fn>,
+    readTaskInstructionView: ReturnType<typeof vi.fn> = vi.fn(),
+  ) {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      bot: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "bot-1",
+          thread: { id: "thread-1" },
+          computer: null,
+        }),
+      },
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      events: { notify },
+      applyTaskAmendment: applyTaskAmendment as unknown as RouterDeps["applyTaskAmendment"],
+      readTaskInstructionView:
+        readTaskInstructionView as unknown as RouterDeps["readTaskInstructionView"],
+      jobs: { enqueue },
+      env: {
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@rakazo.test",
+      isDeploymentOwner: true,
+    } satisfies Actor;
+    const handler = new RPCHandler(createRouter(deps));
+    const submit = (input: Record<string, unknown>) =>
+      handler.handle(
+        new Request("http://127.0.0.1/rpc/threads/amendTask", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: { botId: "bot-1", ...input } }),
+        }),
+        { prefix: "/rpc", context: { actor } },
+      );
+    const read = (input: Record<string, unknown>) =>
+      handler.handle(
+        new Request("http://127.0.0.1/rpc/threads/taskInstructions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: { botId: "bot-1", ...input } }),
+        }),
+        { prefix: "/rpc", context: { actor } },
+      );
+    return { applyTaskAmendment, enqueue, notify, read, submit };
+  }
+
+  it("forwards an explicit targetTaskId and reports the new revision", async () => {
+    const applyTaskAmendment = vi.fn().mockResolvedValue({
+      envelope: {
+        taskId: "task-1",
+        revision: 2,
+        original: { content: "Original task" },
+        amendments: [{ messageId: "message-1", seq: 1, content: "Also add tests." }],
+      },
+      ref: { taskId: "task-1", consumedRevision: 2 },
+      messageId: "message-1",
+      seq: 1,
+      eventSeq: 7,
+      replayed: false,
+      application: { kind: "queued_update_only", targetRunId: "run-1" },
+    });
+    const { notify, submit } = fixture(applyTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "Also add tests.",
+      clientNonce: "amend-1",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: {
+        taskId: "task-1",
+        messageId: "message-1",
+        revision: 2,
+        seq: 1,
+        replayed: false,
+        application: { kind: "queued_update_only", targetRunId: "run-1" },
+      },
+    });
+    expect(applyTaskAmendment).toHaveBeenCalledWith(expect.anything(), {
+      spaceId: "workspace-1",
+      threadId: "thread-1",
+      actorUserId: "user-1",
+      targetTaskId: "task-1",
+      content: "Also add tests.",
+      clientNonce: "amend-1",
+    });
+    expect(notify).toHaveBeenCalledWith("thread-1", 7);
+  });
+
+  it("rejects a request without an explicit targetTaskId before writing", async () => {
+    const applyTaskAmendment = vi.fn();
+    const { submit } = fixture(applyTaskAmendment);
+    const { response } = await submit({ text: "Ambiguous amendment", clientNonce: "amend-2" });
+    expect(response.status).toBe(400);
+    expect(applyTaskAmendment).not.toHaveBeenCalled();
+  });
+
+  it("maps a foreign or missing Task to 404 without leaking it", async () => {
+    const applyTaskAmendment = vi.fn().mockRejectedValue(new TaskAmendmentRejected("not_found"));
+    const { submit } = fixture(applyTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-foreign",
+      text: "Foreign amendment",
+      clientNonce: "amend-3",
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("maps a Message already bound to another Task to 409", async () => {
+    const applyTaskAmendment = vi.fn().mockRejectedValue(new TaskAmendmentRejected("conflict"));
+    const { submit } = fixture(applyTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "Conflicting amendment",
+      clientNonce: "amend-4",
+    });
+    expect(response.status).toBe(409);
+  });
+
+  it("refuses to amend a Task whose instruction history was cleared", async () => {
+    const applyTaskAmendment = vi
+      .fn()
+      .mockRejectedValue(new TaskInstructionIntegrityError("task-1", 2, 0));
+    const { submit } = fixture(applyTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "After clear",
+      clientNonce: "amend-5",
+    });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({
+        message: "This task's instruction history is no longer available.",
+      }),
+    });
+  });
+
+  it("enqueues a completed amendment follow-up once and returns its lineage", async () => {
+    const applyTaskAmendment = vi.fn().mockResolvedValue({
+      envelope: {
+        taskId: "task-1",
+        revision: 2,
+        original: { content: "Original task" },
+        amendments: [{ messageId: "message-1", seq: 1, content: "Review it again." }],
+      },
+      ref: { taskId: "task-1", consumedRevision: 2 },
+      messageId: "message-1",
+      seq: 1,
+      eventSeq: 8,
+      replayed: false,
+      application: {
+        kind: "completed_follow_up",
+        targetRunId: "run-original",
+        followUpRunId: "run-follow-up",
+      },
+    });
+    const { enqueue, submit } = fixture(applyTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "Review it again.",
+      clientNonce: "amend-completed",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({
+        application: {
+          kind: "completed_follow_up",
+          targetRunId: "run-original",
+          followUpRunId: "run-follow-up",
+        },
+      }),
+    });
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: { runId: "run-follow-up" } }),
+    );
+  });
+
+  it("returns record-only terminal amendments without enqueueing a retry", async () => {
+    const applyTaskAmendment = vi.fn().mockResolvedValue({
+      envelope: {
+        taskId: "task-1",
+        revision: 2,
+        original: { content: "Original task" },
+        amendments: [{ messageId: "message-1", seq: 1, content: "Add evidence." }],
+      },
+      ref: { taskId: "task-1", consumedRevision: 2 },
+      messageId: "message-1",
+      seq: 1,
+      eventSeq: 9,
+      replayed: false,
+      application: {
+        kind: "failed_record_only",
+        targetRunId: "run-failed",
+        requiresExplicitRetry: true,
+      },
+    });
+    const { enqueue, submit } = fixture(applyTaskAmendment);
+    const { response } = await submit({
+      targetTaskId: "task-1",
+      text: "Add evidence.",
+      clientNonce: "amend-failed",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({
+        application: {
+          kind: "failed_record_only",
+          targetRunId: "run-failed",
+          requiresExplicitRetry: true,
+        },
+      }),
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("returns the product-safe instruction, result and lineage view", async () => {
+    const readTaskInstructionView = vi.fn().mockResolvedValue({
+      instructions: {
+        taskId: "task-1",
+        revision: 2,
+        original: { content: "Original task" },
+        amendments: [{ messageId: "message-1", seq: 1, content: "Review it again." }],
+      },
+      runs: [
+        {
+          runId: "run-original",
+          status: "completed",
+          trigger: "user",
+          consumedRevision: 1,
+          lineage: { kind: "original" },
+          result: {
+            messageId: "result-1",
+            blocks: [{ kind: "text", text: "Original result" }],
+            truncated: false,
+          },
+        },
+        {
+          runId: "run-follow-up",
+          status: "queued",
+          trigger: "follow_up",
+          consumedRevision: null,
+          lineage: { kind: "amendment_follow_up", predecessorRunId: "run-original" },
+        },
+      ],
+    });
+    const { read } = fixture(vi.fn(), readTaskInstructionView);
+    const { response } = await read({ targetTaskId: "task-1" });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({
+      json: expect.objectContaining({
+        instructions: expect.objectContaining({ revision: 2 }),
+        runs: expect.arrayContaining([
+          expect.objectContaining({
+            runId: "run-follow-up",
+            lineage: { kind: "amendment_follow_up", predecessorRunId: "run-original" },
+          }),
+        ]),
+      }),
+    });
+    expect(JSON.stringify(body)).not.toMatch(/lease|fence|attempt/i);
   });
 });

@@ -8,10 +8,18 @@ import {
   legacyInterventionId,
   type MessageBlock,
   MessageBlock as MessageBlockSchema,
+  type OutboundDraftState,
   presentationFromAskBlock,
 } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES, isApprovalAskBlock, isSecretAskBlock } from "@rakazo/core";
+import {
+  ACTIVE_RUN_STATUSES,
+  type InterventionThreads,
+  isApprovalAskBlock,
+  isSecretAskBlock,
+} from "@rakazo/core";
 import type { Prisma } from "./client.js";
+import { lockIntervention, lockInterventionThreads, lockRun, lockThreadGroups } from "./locks.js";
+import { loadOutboundDraftStates, readOutboundDraftBinding } from "./outbound-drafts.js";
 
 /** Same wait as input and approval runs. Kept here to avoid a cycle with wait-timeouts. */
 export const INTERVENTION_WAIT_MS = 24 * 60 * 60 * 1000;
@@ -129,7 +137,11 @@ async function readEffectStatus(
   return effect?.status ?? "unknown";
 }
 
-export function interventionView(row: InterventionRecord, effectStatus?: string): InterventionView {
+export function interventionView(
+  row: InterventionRecord,
+  effectStatus?: string,
+  outbound?: OutboundDraftState,
+): InterventionView {
   const parsedPresentation = InterventionPresentationSchema.safeParse(row.presentation);
   const presentation = parsedPresentation.success ? parsedPresentation.data : undefined;
   const parsedPlanReview = InterventionPlanReviewSchema.safeParse(row.planReview);
@@ -161,6 +173,7 @@ export function interventionView(row: InterventionRecord, effectStatus?: string)
       : undefined;
   if (approval && decision) approval.decision = decision;
   if (approval && actions) approval.actions = actions;
+  if (approval && outbound) approval.outbound = outbound;
   return {
     id: row.id,
     revision: row.revision,
@@ -184,6 +197,7 @@ export function interventionView(row: InterventionRecord, effectStatus?: string)
     ...(row.resolvedAt ? { resolvedAt: row.resolvedAt.toISOString() } : {}),
     ...(row.resolvedByUserId ? { resolvedByUserId: row.resolvedByUserId } : {}),
     ...(row.supersededById ? { supersededById: row.supersededById } : {}),
+    ...(decision ? { decision } : {}),
     requestingActor: {
       botId: row.botId,
       ...(row.agentId ? { agentId: row.agentId } : {}),
@@ -210,6 +224,7 @@ function eventPayload(view: InterventionView): Record<string, unknown> {
     ...(view.expiresAt ? { expiresAt: view.expiresAt } : {}),
     ...(view.resolvedAt ? { resolvedAt: view.resolvedAt } : {}),
     ...(view.resolvedByUserId ? { resolvedByUserId: view.resolvedByUserId } : {}),
+    ...(view.decision ? { decision: view.decision } : {}),
     actor: view.requestingActor,
     ...(view.input ? { input: view.input } : {}),
     ...(view.approval ? { approval: view.approval } : {}),
@@ -241,43 +256,77 @@ async function appendInterventionEvent(
   });
 }
 
-async function lockRun(tx: InterventionTx, runId: string) {
-  await tx.$queryRaw`SELECT id FROM runs WHERE id = ${runId} FOR UPDATE`;
-}
-
-async function lockIntervention(tx: InterventionTx, interventionId: string) {
-  await tx.$queryRaw`SELECT id FROM interventions WHERE id = ${interventionId} FOR UPDATE`;
-}
-
 /**
- * Lock every Thread of the given Runs (sorted by id) before any Run or
- * Intervention row is touched. Terminalizing an Intervention appends an event,
- * which writes the Thread row; without this pre-lock a cancel that starts from
- * the Run would take Run → Thread while every answer takes Thread → Run —
- * the deadlock PostgreSQL resolves by aborting one transaction with 40P01.
- * Every path that settles an Intervention funnels through these helpers, so
- * no caller has to remember the order.
+ * Lock the Threads of these Runs plus the presentation Threads of their pending
+ * Interventions. The execution group is taken first and on its own: a concurrent
+ * pause or answer needs one of those locks to create or settle a row, so once
+ * they are held the pending set read below cannot grow underneath us.
  */
-async function lockThreadsForRuns(tx: InterventionTx, runs: readonly { threadId: string }[]) {
-  const threadIds = [...new Set(runs.map((run) => run.threadId))].sort();
-  for (const threadId of threadIds) {
-    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${threadId} FOR UPDATE`;
-  }
+export async function lockThreadsForRunSettling(
+  tx: InterventionTx,
+  runs: readonly { id: string; threadId: string }[],
+): Promise<void> {
+  if (runs.length === 0) return;
+  await lockThreadGroups(
+    tx,
+    runs.map((run) => run.threadId),
+  );
+  if (!interventionStore(tx)) return;
+  const runIds = [...new Set(runs.map((run) => run.id))];
+  const pending = await tx.intervention.findMany({
+    where: { runId: { in: runIds }, status: "pending" },
+    select: { threadId: true },
+  });
+  await lockThreadGroups(
+    tx,
+    [],
+    pending.map((row) => row.threadId),
+  );
 }
 
 export async function insertPausedIntervention(
   tx: InterventionTx,
   input: {
     spaceId: string;
-    threadId: string;
+    /**
+     * Execution/presentation pair resolved by `resolveInterventionThreads`, so
+     * the row can only be anchored at a foreign Thread through the gated,
+     * origin-validated path. `threadId` stays the presentation Thread: it is
+     * what the snapshot projection and the submission authorization read.
+     */
+    threads: InterventionThreads;
     botId: string;
     runId: string;
     attemptId: string;
+    /** RT-26: chat admission fence this pending request was created under. */
+    executionFence?: number;
+    /** RT-26: the Attempt's random suspension key. */
+    suspensionKey?: string;
     messageId: string;
     blocks: MessageBlock[];
     waitStartedAt: Date;
+    /**
+     * RT-12: bind a group membership request to this wait. The row is written
+     * in the same transaction as the Intervention; approval status stays on the
+     * Intervention, the request only owns the original content and binding.
+     */
+    groupMembership?: {
+      id: string;
+      spaceId: string;
+      userId: string;
+      botId: string;
+      groupId: string;
+      groupName: string;
+      sourceThreadId: string;
+      sourceRunId: string;
+      requestMessageId: string | null;
+      deliveryKey: string;
+      requestRevision: number;
+      message: string;
+      topic: string | null;
+    };
   },
-): Promise<{ id: string; blocks: MessageBlock[] }> {
+): Promise<{ id: string; blocks: MessageBlock[]; groupMembershipRequestId?: string }> {
   const store = interventionStore(tx);
   if (!store) throw new Error("Intervention store is not available");
   const asks = asksIn(input.blocks);
@@ -297,9 +346,12 @@ export async function insertPausedIntervention(
     if (!effect) throw new Error("Approval intervention requires its external effect");
     effectId = effect.id;
   }
+  if (input.groupMembership && (effectId || ask.planReview)) {
+    throw new Error("A group membership request is a business approval, not a tool approval");
+  }
   const id = randomUUID();
-  const mode = inputModeOf(ask);
-  const actions = whitelistedActions(ask.actions);
+  const mode = input.groupMembership ? null : inputModeOf(ask);
+  const actions = input.groupMembership ? undefined : whitelistedActions(ask.actions);
   const presentation = presentationFromAskBlock(ask);
   const createdAt = input.waitStartedAt;
   // A plan review carries its version binding instead of an external effect:
@@ -312,13 +364,21 @@ export async function insertPausedIntervention(
     data: {
       id,
       revision: 1,
-      kind: planReview ? "plan_review" : effectId ? "approval" : "input",
+      kind: input.groupMembership
+        ? "approval"
+        : planReview
+          ? "plan_review"
+          : effectId
+            ? "approval"
+            : "input",
       status: "pending",
       spaceId: input.spaceId,
-      threadId: input.threadId,
+      threadId: input.threads.presentationThreadId,
       runId: input.runId,
       attemptId: input.attemptId,
       botId: input.botId,
+      executionFence: input.executionFence ?? null,
+      suspensionKey: input.suspensionKey ?? null,
       messageId: input.messageId,
       pendingRunKey: input.runId,
       expiresAt: new Date(input.waitStartedAt.getTime() + INTERVENTION_WAIT_MS),
@@ -331,27 +391,44 @@ export async function insertPausedIntervention(
       createdAt,
     },
   });
+  if (input.groupMembership) {
+    const { createGroupMembershipRequestInTransaction } = await import("./group-membership.js");
+    await createGroupMembershipRequestInTransaction(tx, {
+      ...input.groupMembership,
+      interventionId: id,
+      cardMessageId: input.messageId,
+      presentation,
+      expiresAt: new Date(input.waitStartedAt.getTime() + INTERVENTION_WAIT_MS),
+    });
+  }
   const blocks = input.blocks.map((block) =>
     block.kind === "ask" ? { ...block, interventionId: id } : block,
   );
-  return { id, blocks };
+  return {
+    id,
+    blocks,
+    ...(input.groupMembership ? { groupMembershipRequestId: input.groupMembership.id } : {}),
+  };
 }
 
+/**
+ * Append the `intervention.created` projection to the row's OWN Thread, which
+ * is the presentation Thread: an origin-aware Intervention is created inside the
+ * executing Run's transaction but has to surface where the user answers it.
+ * Mirrors `emitInterventionResolved`, so both projections always land together.
+ */
 export async function emitInterventionCreated(
   tx: InterventionTx,
-  input: {
-    spaceId: string;
-    threadId: string;
-    botId: string;
-    runId: string;
-    interventionId: string;
-  },
+  interventionId: string,
 ): Promise<{ threadId: string; seq: number }> {
-  const row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
+  const row = await tx.intervention.findUnique({ where: { id: interventionId } });
   if (!row) throw new Error("Intervention was not created");
   const effectStatus = await readEffectStatus(tx, row.effectId);
   const event = await appendInterventionEvent(tx, {
-    ...input,
+    spaceId: row.spaceId,
+    threadId: row.threadId,
+    botId: row.botId,
+    runId: row.runId,
     type: "intervention.created",
     view: interventionView(row, effectStatus),
   });
@@ -469,6 +546,8 @@ async function createTerminalLegacy(
       botId: string;
       waitStartedAt?: Date | null;
     };
+    /** Anchors the audit row where the user answered; defaults to the Run. */
+    presentationThreadId?: string;
     messageId: string;
     ask: Extract<MessageBlock, { kind: "ask" }>;
     status: "expired" | "cancelled" | "answered";
@@ -488,7 +567,7 @@ async function createTerminalLegacy(
       kind: input.ask.approvalEffectId ? "approval" : "input",
       status: input.status,
       spaceId: input.run.spaceId,
-      threadId: input.run.threadId,
+      threadId: input.presentationThreadId ?? input.run.threadId,
       runId: input.run.id,
       attemptId: await latestAttemptId(tx, input.run.id),
       botId: input.run.botId,
@@ -566,6 +645,8 @@ export async function settleAnsweredIntervention(
       botId: string;
       waitStartedAt?: Date | null;
     };
+    /** Thread the user answered from; the Run's own Thread when omitted. */
+    presentationThreadId?: string;
     messageId: string;
     ask: Extract<MessageBlock, { kind: "ask" }>;
     resolvedByUserId: string;
@@ -574,7 +655,7 @@ export async function settleAnsweredIntervention(
   },
 ): Promise<void> {
   if (!interventionStore(tx)) return;
-  await lockThreadsForRuns(tx, [input.run]);
+  await lockInterventionThreads(tx, input.run.threadId, input.presentationThreadId);
   const id = input.ask.interventionId ?? legacyInterventionId(input.messageId);
   const existing = await tx.intervention.findUnique({ where: { id } });
   if (existing && existing.status !== "pending") return;
@@ -591,6 +672,7 @@ export async function settleAnsweredIntervention(
     await createTerminalLegacy(tx, {
       id,
       run: input.run,
+      ...(input.presentationThreadId ? { presentationThreadId: input.presentationThreadId } : {}),
       messageId: input.messageId,
       ask: input.ask,
       status: "answered",
@@ -602,6 +684,38 @@ export async function settleAnsweredIntervention(
   await tx.interventionSubmission.create({
     data: { interventionId: id, clientSubmissionId: input.clientSubmissionId },
   });
+}
+
+/**
+ * RT-12: settle a membership Intervention from the business branch. The
+ * decision lifecycle stays here; membership, messages, Task/Run and receipts
+ * are committed by the caller in the same transaction.
+ */
+export async function settleMembershipIntervention(
+  tx: InterventionTx,
+  input: {
+    interventionId: string;
+    status: "answered" | "expired" | "cancelled";
+    decision?: "approved" | "denied";
+    resolvedByUserId?: string;
+    clientSubmissionId?: string;
+  },
+): Promise<InterventionRecord | null> {
+  if (!interventionStore(tx)) return null;
+  await lockIntervention(tx, input.interventionId);
+  const row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
+  if (!row || row.status !== "pending") return null;
+  const next = await transitionPending(tx, row, input.status, {
+    ...(input.resolvedByUserId ? { resolvedByUserId: input.resolvedByUserId } : {}),
+    ...(input.decision ? { decision: input.decision } : {}),
+  });
+  if (!next) return null;
+  if (input.clientSubmissionId) {
+    await tx.interventionSubmission.create({
+      data: { interventionId: next.id, clientSubmissionId: input.clientSubmissionId },
+    });
+  }
+  return next;
 }
 
 export async function cancelPendingInterventions(
@@ -620,7 +734,7 @@ export async function cancelPendingInterventions(
     },
     select: { id: true, spaceId: true, threadId: true, botId: true, waitStartedAt: true },
   });
-  await lockThreadsForRuns(tx, runs);
+  await lockThreadsForRunSettling(tx, runs);
   const ordered = [...runs].sort((left, right) =>
     left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
   );
@@ -651,7 +765,7 @@ export async function expirePendingIntervention(
   options?: { deferEvents?: boolean },
 ): Promise<InterventionRecord[]> {
   if (!interventionStore(tx)) return [];
-  await lockThreadsForRuns(tx, [run]);
+  await lockThreadsForRunSettling(tx, [run]);
   await lockRun(tx, run.id);
   const pending = await tx.intervention.findMany({ where: { runId: run.id, status: "pending" } });
   if (pending.length === 0) return terminalizeMissing(tx, run, "expired", options);
@@ -754,8 +868,16 @@ export async function loadInterventionViews(
         })
       : [];
   const effectStatus = new Map(effects.map((effect) => [effect.id, effect.status]));
+  const outboundDrafts = await loadOutboundDraftStates(
+    tx,
+    rows.map((row) => ({ id: row.id, effectId: row.effectId })),
+  );
   const views = rows.map((row) =>
-    interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined),
+    interventionView(
+      row,
+      row.effectId ? effectStatus.get(row.effectId) : undefined,
+      outboundDrafts.get(row.id),
+    ),
   );
   const covered = new Set(views.map((view) => view.messageId));
   for (const message of messages) {
@@ -864,7 +986,24 @@ export type ResolveInterventionOutcome =
       resume: boolean;
       cancelledRunId?: string;
       seq: number;
+      /** Thread the execution-side events were appended to. */
       threadId: string;
+      /**
+       * Present only when the decision was submitted away from the executing
+       * Thread. The projection event advanced this Thread too, so both have to
+       * be published or the answering user never sees their own card settle.
+       */
+      presentationThreadId?: string;
+      presentationSeq?: number;
+      /**
+       * RT-12: the target group Run created by an approving membership
+       * decision, so the API can wake it and publish its Thread.
+       */
+      membershipDelivery?: {
+        targetRunId: string;
+        targetThreadId: string;
+        targetEventSeq: number;
+      };
       applied: boolean;
     }
   | { outcome: "rejected"; reason: InterventionRejected["reason"] };
@@ -880,6 +1019,38 @@ async function viewFor(tx: InterventionTx, row: InterventionRecord): Promise<Int
   return interventionView(row, await readEffectStatus(tx, row.effectId));
 }
 
+async function threadHeadSeq(tx: InterventionTx, threadId: string): Promise<number> {
+  const head = await tx.event.findFirst({
+    where: { threadId },
+    orderBy: { seq: "desc" },
+    select: { seq: true },
+  });
+  return head?.seq ?? 0;
+}
+
+/**
+ * The bound Attempt must still be the Run's current waiting one. Resuming opens a
+ * newer Attempt and `promoteRun` fails every older active Attempt, so a decision
+ * arriving for a superseded Attempt describes an execution that no longer exists
+ * and must not resume anything — the parameters the user approved are gone.
+ */
+async function boundAttemptIsCurrent(
+  tx: InterventionTx,
+  row: InterventionRecord,
+): Promise<boolean> {
+  // Rows that predate the Attempt table carry no binding to compare against.
+  if (row.attemptId === "legacy") return true;
+  const bound = await tx.attempt.findFirst({
+    where: { id: row.attemptId, runId: row.runId },
+    select: { fence: true, status: true },
+  });
+  if (bound?.status !== "waiting_input") return false;
+  const newer = await tx.attempt.count({
+    where: { runId: row.runId, fence: { gt: bound.fence } },
+  });
+  return newer === 0;
+}
+
 export async function resolveInterventionInTransaction(
   tx: InterventionTx,
   input: {
@@ -889,14 +1060,30 @@ export async function resolveInterventionInTransaction(
     answer: string;
     username?: string;
     clientSubmissionId: string;
+    /**
+     * Thread the submission is addressed at. This is the Intervention row's own
+     * anchor, i.e. where the user sees the card — NOT necessarily where the Run
+     * executes.
+     */
     threadId: string;
+    /** Thread of the bound Run, derived server-side from it. Never a client value. */
+    executionThreadId: string;
     runId: string;
+    /** A10: the outbound draft revision and fingerprint the user confirmed. */
+    outbound?: { revision: number; fingerprint: string };
   },
-  commit: (
-    tx: InterventionTx,
-  ) => Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null>,
+  commit: (tx: InterventionTx) => Promise<{
+    threadId: string;
+    seq: number;
+    cancelledRunId?: string;
+    membershipDelivery?: {
+      targetRunId: string;
+      targetThreadId: string;
+      targetEventSeq: number;
+    };
+  } | null>,
 ): Promise<ResolveInterventionOutcome> {
-  await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+  await lockInterventionThreads(tx, input.executionThreadId, input.threadId);
   await lockRun(tx, input.runId);
   let row = await tx.intervention.findUnique({ where: { id: input.interventionId } });
   if (row) await lockIntervention(tx, row.id);
@@ -937,6 +1124,30 @@ export async function resolveInterventionInTransaction(
       applied: false,
     };
   }
+  if (row && !(await boundAttemptIsCurrent(tx, row))) {
+    return { outcome: "rejected", reason: "conflict" };
+  }
+  if (row && row.kind === "approval") {
+    // A10: an approving decision binds the draft revision and fingerprint it
+    // was shown. Once an edit exists, "allow" must name the latest revision;
+    // a denial does not approve content and stays unbound.
+    const approving = input.answer === "allow" || input.answer === "always";
+    if (approving) {
+      const binding = await readOutboundDraftBinding(tx, {
+        interventionId: row.id,
+        effectId: row.effectId,
+      });
+      if (binding === "invalid") return { outcome: "rejected", reason: "conflict" };
+      if (binding) {
+        const matches =
+          input.outbound?.revision === binding.revision &&
+          input.outbound?.fingerprint === binding.fingerprint;
+        if (binding.revision > 1 ? !matches : input.outbound !== undefined && !matches) {
+          return { outcome: "rejected", reason: "conflict" };
+        }
+      }
+    }
+  }
   const committed = await commit(tx);
   if (!committed) {
     const run = await tx.run.findUnique({
@@ -946,7 +1157,7 @@ export async function resolveInterventionInTransaction(
     const messageId = row?.messageId ?? legacyMessageId(input.interventionId);
     const message = messageId
       ? await tx.message.findFirst({
-          where: { id: messageId, threadId: input.threadId },
+          where: { id: messageId, threadId: input.executionThreadId },
           select: { blocks: true },
         })
       : null;
@@ -963,13 +1174,21 @@ export async function resolveInterventionInTransaction(
   const legacyId = row?.id ?? input.interventionId;
   const settled = fresh ?? (await tx.intervention.findUnique({ where: { id: legacyId } }));
   if (!settled) return { outcome: "rejected", reason: "conflict" };
+  const crossThread = input.threadId !== input.executionThreadId;
   return {
     outcome: "accepted",
     intervention: await viewFor(tx, settled),
     resume: !committed.cancelledRunId,
     ...(committed.cancelledRunId ? { cancelledRunId: committed.cancelledRunId } : {}),
+    ...(committed.membershipDelivery ? { membershipDelivery: committed.membershipDelivery } : {}),
     seq: committed.seq,
     threadId: committed.threadId,
+    ...(crossThread
+      ? {
+          presentationThreadId: settled.threadId,
+          presentationSeq: await threadHeadSeq(tx, settled.threadId),
+        }
+      : {}),
     applied: true,
   };
 }

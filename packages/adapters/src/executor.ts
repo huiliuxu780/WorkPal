@@ -71,12 +71,13 @@ import {
   collaborationFromOrchestration,
   connectorKindFromToolName,
   containsSecret,
-  estimatePromptTokens,
   createStreamingRedactor,
   endsSentence,
+  estimatePromptTokens,
   expandSkillReferencesInPrompt,
   formatSkillRunPrompt,
   formatSkillsCatalogInstruction,
+  formatTaskInstructionEnvelope,
   humanizeToolName,
   inferAttachmentMimeType,
   isCallClientNonce,
@@ -92,6 +93,8 @@ import {
   planActionGate,
   promptInvokesSkill,
   promptSegment,
+  RoundtableFeatureDisabledError,
+  type RoundtableFeatureGates,
   redactSecrets,
   renderBotDirectory,
   renderPromptSegment,
@@ -118,11 +121,17 @@ import {
   takeRetryOperationId,
 } from "@rakazo/core/node/manual-retry-match";
 import {
+  acknowledgeSessionCheckpoint,
+  acquireSessionAdmission,
   appendEventInTransaction,
   applyPlanSubmission,
   avatarChangeView,
+  CHAT_GROUP_KIND_AGENT_PAIR,
   backgroundTaskLockTransactionOptions,
+  beginCheckpointResume,
   changeBotAvatarInTransaction,
+  claimExternalEffectForExecution,
+  completeSessionAdmission,
   createSpaceForMember,
   createThreadMessageInTransaction,
   currentThreadGeneration,
@@ -130,6 +139,7 @@ import {
   enqueueDeliveryInTransaction,
   findDefaultModelCredential,
   findModelCredential,
+  findResumableCheckpoint,
   getFactForActor,
   InvalidSpaceNameError,
   isTooManyDatabaseConnections,
@@ -137,32 +147,52 @@ import {
   loadCurrentPlanProjection,
   loadPendingPlanReviewRepair,
   loadRunHistoryMessages,
+  loadThreadContextAfterCheckpoint,
   type McpServer,
+  markCheckpointResumeConsumed,
+  markCheckpointResumeRestored,
+  markSessionAdmissionRecovering,
+  markSessionRuntimeStarted,
   type Prisma,
   type PrismaClient,
   parseComputerMode,
   planExecutionGate,
   planReviewRoundForToolExecution,
+  prepareSessionExecution,
   promoteLeasedRunWithAttempt,
   publishRunStep,
   publishRunTodo,
+  type RunTaskInstructions,
+  readTaskInstructionsForRun,
   reconcileAttemptFenceConflict,
+  recordCheckpointProof,
+  recordGroupMembershipFailureInTransaction,
   recordLegacyNativePlanDecision,
   registerBackgroundTaskProjection,
+  releaseExternalEffectClaim,
+  releaseRecoveredSessionAdmission,
+  releaseSessionAdmission,
+  releaseSuspendedSessionAdmission,
   renewOwnedRunLease,
+  renewSessionAdmission,
+  requeueExpiredSessionAdmissionWaiter,
   retireModelCredential,
+  type SessionAdmissionLease,
   SpaceLimitError,
   scheduleAutomaticRunRetry,
+  sessionCheckpointId,
+  StaleExecutionError,
   submitDraftForReview,
+  TaskInstructionIntegrityError,
   type ThreadEvents,
 } from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+import { enrichLogContext, getLogger } from "@rakazo/logging";
 import {
   deleteFactAsActor,
   FactNotFoundError,
+  type FactServiceDeps,
   recallFactsForActor,
   recordMemoryFromRun,
-  type FactServiceDeps,
 } from "@rakazo/memory";
 import { parse as parseShellCommand } from "shell-quote";
 import {
@@ -176,7 +206,11 @@ import {
   redactAgentCommandResult,
 } from "./agent-environment.js";
 import type { AgentlyMailService } from "./agently-mail.js";
-import { AgentScopeTransientError } from "./agentscope-runtime.js";
+import {
+  AgentScopeAgentRuntime,
+  AgentScopeRunRejectedError,
+  AgentScopeTransientError,
+} from "./agentscope-runtime.js";
 import { buildApprovalAskBlock } from "./approval-ask.js";
 import {
   approvalPausedToolResult,
@@ -194,8 +228,6 @@ import {
   catalogApprovalRequest,
   catalogExecuteToolName,
   catalogIdForRoute,
-  claimApprovedEffect,
-  claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
   denyRevokedPermissionEffects,
@@ -220,6 +252,8 @@ import { createAutoReviewProvider } from "./auto-review-factory.js";
 import { authorizedAvatarRequest, requestedAvatarBodyColor } from "./avatar-change-request.js";
 import { attachedImageArtifactIds, resolveUpdateBotAvatar } from "./bot-avatar.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
+import { messageGroup, returnMessageGroupOutcome } from "./message-group.js";
+import { interventionOriginForRun } from "./run-origin.js";
 import {
   allowPrivateHttpSecretOrigins,
   findBotSecret,
@@ -243,6 +277,17 @@ import { type CloudAgentConnection, cloudAgentsEnabled } from "./cloud-agent-fac
 import { executeCloudAgentTool } from "./cloud-agent-service.js";
 import { validCloudAgentArgs } from "./cloud-agent-tools.js";
 import { selectCloudAgentTools } from "./cloud-agent-tools-select.js";
+import {
+  availableHistoryBudgetTokens,
+  type CompactionMargins,
+  type CompactionMode,
+  compactionModeForTurn,
+  DEFAULT_COMPACTION_MARGINS,
+  decideCompactionTrigger,
+  detectContextOverflow,
+  ensureHistoryCompacted,
+  estimateRequestTokens,
+} from "./compaction-mode.js";
 import {
   collectLogIds,
   mergeConnectedPlugins,
@@ -276,8 +321,8 @@ import { resolveDeploymentModel } from "./deployment-model.js";
 import { handoffToGroupBot, loadGroupContext } from "./group-handoff.js";
 import {
   COMPACTION_BATCH_SIZE,
-  compactHistory,
   type CompactHistoryDeps,
+  compactHistory,
   formatCompactedSummary,
   formatRecalledMemory,
   HISTORY_WINDOW_SIZE,
@@ -287,17 +332,6 @@ import {
   selectCompactedHistory,
   shouldEnqueueCompaction,
 } from "./history-compaction.js";
-import {
-  availableHistoryBudgetTokens,
-  compactionModeForTurn,
-  DEFAULT_COMPACTION_MARGINS,
-  decideCompactionTrigger,
-  detectContextOverflow,
-  ensureHistoryCompacted,
-  estimateRequestTokens,
-  type CompactionMargins,
-  type CompactionMode,
-} from "./compaction-mode.js";
 import {
   assertConnectorToolArgs,
   CATALOG_EXECUTE,
@@ -320,10 +354,10 @@ import { loadAgentMemoryContext } from "./memory-context.js";
 import {
   assembleMemoryInjection,
   loadMemoryInjectionInputs,
+  type MemoryInjectionInputs,
   MIGRATION_MEMORY_BUDGETS,
   POST_MIGRATION_MEMORY_BUDGETS,
   scaleMemoryBudgetsToWindow,
-  type MemoryInjectionInputs,
 } from "./memory-injection.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
 import {
@@ -480,6 +514,11 @@ export const PLAN_SERVICE_TOOL_NAMES = new Set([
  * old approval).
  */
 const PLAN_RECORD_TOOL_NAMES = PLAN_RECORD_OPERATION_KINDS;
+
+/** Plan records and the secret card keep intended status until their resume/answer step. */
+export function effectClaimsBeforeExecution(toolName: string): boolean {
+  return toolName !== "request_secret" && !PLAN_RECORD_TOOL_NAMES.has(toolName);
+}
 
 /** Tools that stay visible while the run is in the read-only PLAN phase. */
 const PLAN_PHASE_KEEP_TOOLS = new Set([
@@ -738,8 +777,68 @@ export function isProtectedComputerLifecycleCommand(command: string): boolean {
   return false;
 }
 
+export type AnsweredAskForResume = {
+  status?: string;
+  answer?: string;
+  actions?: ReadonlyArray<{ id: string; label: string }>;
+};
+
+/**
+ * A choice ask stores the opaque action id (`choice-N`). The resumed Runtime
+ * hands this string to the model as the ask_user tool result, so the model must
+ * receive the human label the user actually chose, not the wire id.
+ */
+export function resumeAnswerFromAsk(block: AnsweredAskForResume): string | undefined {
+  if (block.status !== "answered" || typeof block.answer !== "string") return undefined;
+  const choice = block.actions?.find(
+    (action) => action.id === block.answer && /^choice-\d+$/.test(action.id),
+  );
+  return choice?.label ?? block.answer;
+}
+
 /** Cap the roster so a large Space cannot flood the prompt. */
 const BOT_DIRECTORY_LIMIT = 40;
+
+/**
+ * The teammate directory a run's prompt carries. Hidden in standard groups
+ * (the roster there is the group context), kept in DMs, and kept in pair
+ * Threads too: a delegated run needs to discover further teammates (B → C)
+ * through the same user/Space-scoped roster a DM sees.
+ */
+export async function teammateDirectoryForThread(
+  prisma: PrismaClient,
+  input: {
+    thread: { groupId: string | null; group?: { kind: string | null } | null };
+    botId: string;
+    spaceId: string;
+    userId: string;
+  },
+): Promise<string | undefined> {
+  if (input.thread.groupId && input.thread.group?.kind !== CHAT_GROUP_KIND_AGENT_PAIR) {
+    return undefined;
+  }
+  return renderBotDirectory(
+    (
+      await prisma.bot.findMany({
+        where: {
+          spaceId: input.spaceId,
+          userId: input.userId,
+          archivedAt: null,
+          id: { not: input.botId },
+          thread: { isNot: null },
+        },
+        select: { id: true, name: true, title: true, description: true },
+        orderBy: { createdAt: "asc" },
+        take: BOT_DIRECTORY_LIMIT,
+      })
+    ).map((peer) => ({
+      id: peer.id,
+      name: peer.name,
+      title: peer.title,
+      description: peer.description,
+    })),
+  );
+}
 const MISSING_MODEL_MESSAGE = "Connect a model in Settings before running bots.";
 /** Consecutive non-busy setup failures tolerated before the run fails with the real reason. */
 const MAX_SETUP_FAILURES = 5;
@@ -752,6 +851,11 @@ export interface ExecutorDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
   runtime: AgentRuntime;
+  /** Test seam for the Task instruction envelope; production reads PostgreSQL. */
+  taskInstructions?: (
+    prisma: PrismaClient,
+    input: { runId: string; leaseOwner: string; leaseFence: number },
+  ) => Promise<RunTaskInstructions | null>;
   sandbox: SandboxProvider;
   memory: MemoryStore;
   memoryProviders: MemoryProviderResolver;
@@ -794,6 +898,14 @@ export interface ExecutorDeps {
   cloudAgent?: CloudAgentConnection | null;
   /** Deployment-level Agently mailbox sending. Null/omit means send_email stays uninjected. */
   mail?: AgentlyMailService | null;
+  /** Server-resolved roundtable gates. Absent means every roundtable capability is closed. */
+  roundtableFeatures?: RoundtableFeatureGates;
+  /**
+   * RT-12: membership approvals only exist on the unified card surface; with
+   * the gate off the tool returns its ordinary not-a-member error instead of
+   * leaving a card no client can answer.
+   */
+  cardsUnifiedV2?: boolean;
   /** Optional Auto Review verifier. When omitted, the factory selects from env (llm | jev | scripted). */
   autoReview?: AutoReviewProvider;
   /**
@@ -1065,6 +1177,7 @@ export function buildApprovalContinuation(
 }
 
 export function createRunExecutor(deps: ExecutorDeps) {
+  const usesSessionAdmission = deps.runtime instanceof AgentScopeAgentRuntime;
   const web = deps.web ?? createWebProvider();
   const browser = deps.browser ?? createBrowserProvider(undefined, { sandbox: deps.sandbox });
   const cloudAgent = deps.cloudAgent;
@@ -1177,6 +1290,190 @@ export function createRunExecutor(deps: ExecutorDeps) {
         thinkingLevel: resolved.thinkingLevel ?? null,
       };
     }
+  };
+
+  /**
+   * RT-26 recovery hook: an RT-25 `recovering` owner is released only when the
+   * Runtime proves the shared slot clean or detaches it under the SAME attempt,
+   * fence, and suspension key, and that proof is acknowledged by PostgreSQL.
+   * An unreachable Runtime, a missing binding, or a mismatched proof leaves the
+   * owner recovering; elapsed time is never a proof.
+   */
+  const settleRecoveringSessionOwner = async (input: {
+    run: { id: string; userId: string; spaceId: string; botId: string; threadId: string };
+    sessionKey: string;
+    executionId: string;
+    attemptId: string;
+    admissionFence: number;
+    suspensionKey: string;
+    expiresAt: Date | null;
+    threadGeneration: number;
+  }): Promise<boolean> => {
+    const detach = deps.runtime.inspectAndDetach?.bind(deps.runtime);
+    if (!detach) return false;
+    const runId = input.run.id;
+    const checkpointId = sessionCheckpointId({
+      runId,
+      attemptId: input.attemptId,
+      admissionFence: input.admissionFence,
+    });
+    try {
+      // PR #126 review P2 ④, same watermark discipline as the suspend path:
+      // a recovery probe must not claim the newest Thread rows as covered.
+      // Keep the watermark this binding already recorded; for a first proof
+      // fall back to this Run's most recent checkpoint value — its native
+      // state was restored from there — and otherwise claim nothing.
+      // Under-claiming only re-merges context on the next resume;
+      // over-claiming loses messages permanently.
+      const existing = await deps.prisma.agentSessionCheckpoint.findUnique({
+        where: { id: checkpointId },
+        select: { coveredMessageSeq: true },
+      });
+      const knownCoveredSeq =
+        existing?.coveredMessageSeq ??
+        (
+          await deps.prisma.agentSessionCheckpoint.findFirst({
+            where: {
+              runId,
+              sessionKey: input.sessionKey,
+              coveredMessageSeq: { not: null },
+            },
+            orderBy: { coveredMessageSeq: "desc" },
+            select: { coveredMessageSeq: true },
+          })
+        )?.coveredMessageSeq;
+      const coveredMessageSeq = Math.max(0, knownCoveredSeq ?? 0);
+      const intervention = await deps.prisma.intervention.findFirst({
+        where: {
+          runId,
+          attemptId: input.attemptId,
+          executionFence: input.admissionFence,
+          suspensionKey: input.suspensionKey,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true },
+      });
+      const claimable =
+        intervention && (intervention.status === "pending" || intervention.status === "answered")
+          ? intervention
+          : null;
+      const proof = await detach({
+        identity: {
+          userId: input.run.userId,
+          spaceId: input.run.spaceId,
+          botId: input.run.botId,
+          threadId: input.run.threadId,
+          runId,
+        },
+        sessionKey: input.sessionKey,
+        sessionGeneration: input.threadGeneration,
+        executionId: input.executionId,
+        attemptId: input.attemptId,
+        fence: input.admissionFence,
+        suspensionKey: input.suspensionKey,
+        checkpointId,
+      });
+      if (proof.checkpointId !== checkpointId) return false;
+      const binding = {
+        sessionKey: input.sessionKey,
+        runId,
+        attemptId: input.attemptId,
+        executionId: input.executionId,
+        admissionFence: input.admissionFence,
+        suspensionKey: input.suspensionKey,
+      };
+      await recordCheckpointProof(deps.prisma, {
+        binding,
+        proof,
+        threadGeneration: input.threadGeneration,
+      });
+      const acknowledged = await acknowledgeSessionCheckpoint(deps.prisma, {
+        binding,
+        proof,
+        pendingInterventionId: claimable?.id ?? null,
+        coveredMessageSeq,
+      });
+      if (!acknowledged) return false;
+      const released = await releaseRecoveredSessionAdmission(deps.prisma, {
+        lease: {
+          kind: "acquired",
+          sessionKey: input.sessionKey,
+          runId,
+          executionId: input.executionId,
+          admissionFence: input.admissionFence,
+          expiresAt: input.expiresAt ?? new Date(),
+        },
+        attemptId: input.attemptId,
+        suspensionKey: input.suspensionKey,
+        proof: {
+          kind: proof.kind,
+          checkpointId: proof.checkpointId,
+          digest: proof.digest,
+        },
+      });
+      if (released.kind !== "released") return false;
+      if (released.nextRunId && released.nextRunId !== runId) {
+        await deps.jobs
+          .enqueue(runContinueJob(released.nextRunId))
+          .catch((error) =>
+            getLogger().error(
+              "recovered session admission successor enqueue failed; reconciler will recover",
+              error,
+            ),
+          );
+      }
+      return true;
+    } catch (error) {
+      getLogger().error(
+        "recovering session admission could not be proven",
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      return false;
+    }
+  };
+
+  /** RT-26 proof for the Run that still owns a recovering chat admission. */
+  const recoverSessionOwner = async (owner: {
+    id: string;
+    userId: string;
+    spaceId: string;
+    botId: string;
+    threadId: string;
+  }): Promise<boolean> => {
+    if (!usesSessionAdmission) return false;
+    const existingAdmission = await deps.prisma.agentSessionAdmission.findFirst({
+      where: { ownerRunId: owner.id, state: "recovering" },
+      select: {
+        sessionKey: true,
+        ownerExecutionId: true,
+        ownerAttemptId: true,
+        suspensionKey: true,
+        fence: true,
+        expiresAt: true,
+      },
+    });
+    if (
+      !existingAdmission?.ownerExecutionId ||
+      !existingAdmission.ownerAttemptId ||
+      !existingAdmission.suspensionKey
+    ) {
+      return false;
+    }
+    const recoveringThread = await deps.prisma.thread.findFirst({
+      where: { id: owner.threadId, spaceId: owner.spaceId },
+      select: { historyCompactionGeneration: true },
+    });
+    if (!recoveringThread) return false;
+    return settleRecoveringSessionOwner({
+      run: owner,
+      sessionKey: existingAdmission.sessionKey,
+      executionId: existingAdmission.ownerExecutionId,
+      attemptId: existingAdmission.ownerAttemptId,
+      admissionFence: existingAdmission.fence,
+      suspensionKey: existingAdmission.suspensionKey,
+      expiresAt: existingAdmission.expiresAt,
+      threadGeneration: recoveringThread.historyCompactionGeneration,
+    });
   };
 
   return {
@@ -1393,8 +1690,119 @@ export function createRunExecutor(deps: ExecutorDeps) {
     async continueRun(runId: string, workerId: string) {
       const run = await deps.prisma.run.findUnique({ where: { id: runId } });
       if (!run) return;
-      if (isTerminal(run.status as RunStatus)) return;
+      // Budget failure and other terminal outcomes keep the RT-25 recovering
+      // park. The delivery Run stays queued until THIS hook acknowledges a
+      // fresh Runtime proof. Returning first left that delivery queued with
+      // no later claim of the terminal owner. The terminal Run is not resumed.
+      if (isTerminal(run.status as RunStatus)) {
+        await recoverSessionOwner(run);
+        return;
+      }
+      // RT-26: only this Run's own unconsumed acknowledged checkpoint may be
+      // resumed, and the checkpoint row (runId + sessionKey + status) is the
+      // authority — not the claim-time status. The answer transaction re-queues
+      // the Run before this claim reads it, so an answer-driven resume arrives
+      // as queued/running, while a crash-recovered pause still reads
+      // waiting_input. A fresh Run has no checkpoint row, so the lookup below
+      // is a no-op for it.
+      const mayResumeCheckpoint =
+        run.status === "waiting_input" ||
+        run.status === "queued" ||
+        run.status === "running";
       const now = new Date();
+      const existingAdmission = usesSessionAdmission
+        ? await deps.prisma.agentSessionAdmission.findFirst({
+            where: { ownerRunId: runId, state: { in: ["owned", "recovering"] } },
+            select: {
+              sessionKey: true,
+              ownerExecutionId: true,
+              ownerAttemptId: true,
+              suspensionKey: true,
+              fence: true,
+              expiresAt: true,
+              state: true,
+            },
+          })
+        : null;
+      if (existingAdmission?.state === "recovering") {
+        // RT-26: only a fresh Runtime proof of THIS owner's exact binding may
+        // release the RT-25 recovering state. Without it the session stays
+        // blocked instead of being handed to the next Run on a timeout.
+        if (
+          !existingAdmission.ownerExecutionId ||
+          !existingAdmission.ownerAttemptId ||
+          !existingAdmission.suspensionKey
+        ) {
+          return;
+        }
+        const recoveringThread = await deps.prisma.thread.findFirst({
+          where: { id: run.threadId, spaceId: run.spaceId },
+          select: { historyCompactionGeneration: true },
+        });
+        if (!recoveringThread) return;
+        const released = await settleRecoveringSessionOwner({
+          run,
+          sessionKey: existingAdmission.sessionKey,
+          executionId: existingAdmission.ownerExecutionId,
+          attemptId: existingAdmission.ownerAttemptId,
+          admissionFence: existingAdmission.fence,
+          suspensionKey: existingAdmission.suspensionKey,
+          expiresAt: existingAdmission.expiresAt,
+          threadGeneration: recoveringThread.historyCompactionGeneration,
+        });
+        if (!released) return;
+      }
+      if (
+        existingAdmission?.state === "owned" &&
+        (run.status === "leased" || run.status === "running") &&
+        run.leaseExpiresAt &&
+        run.leaseExpiresAt <= now &&
+        existingAdmission.ownerExecutionId
+      ) {
+        await markSessionAdmissionRecovering(
+          deps.prisma,
+          {
+            kind: "acquired",
+            sessionKey: existingAdmission.sessionKey,
+            runId,
+            executionId: existingAdmission.ownerExecutionId,
+            admissionFence: existingAdmission.fence,
+            expiresAt: existingAdmission.expiresAt ?? now,
+          },
+          "run_claim_expired_while_session_owned",
+          now,
+        );
+        return;
+      }
+      if (
+        usesSessionAdmission &&
+        run.status === "leased" &&
+        run.leaseOwner &&
+        run.leaseExpiresAt &&
+        run.leaseExpiresAt <= now
+      ) {
+        const executionId = `${runId}:run-lease:${run.leaseFence}`;
+        const queuedAdmission = await deps.prisma.agentSessionAdmissionRequest.findUnique({
+          where: { executionId },
+          select: { sessionKey: true },
+        });
+        if (
+          queuedAdmission &&
+          (await requeueExpiredSessionAdmissionWaiter(
+            deps.prisma,
+            {
+              sessionKey: queuedAdmission.sessionKey,
+              runId,
+              executionId,
+              runLeaseOwner: run.leaseOwner,
+              runLeaseFence: run.leaseFence,
+            },
+            now,
+          ))
+        ) {
+          return;
+        }
+      }
       if (
         run.status === "running" &&
         run.leaseOwner &&
@@ -1544,6 +1952,51 @@ export function createRunExecutor(deps: ExecutorDeps) {
         await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint, heldForTakeover);
         return;
       }
+      let admission: SessionAdmissionLease | null = null;
+      if (usesSessionAdmission) {
+        const admissionThread = await deps.prisma.thread.findFirstOrThrow({
+          where: { id: run.threadId, spaceId: run.spaceId },
+          select: { historyCompactionGeneration: true },
+        });
+        const acquired = await acquireSessionAdmission(deps.prisma, {
+          userId: run.userId,
+          spaceId: run.spaceId,
+          botId: run.botId,
+          threadId: run.threadId,
+          threadGeneration: admissionThread.historyCompactionGeneration,
+          runId,
+          executionId: `${runId}:run-lease:${fence}`,
+          runLeaseOwner: workerId,
+          runLeaseFence: fence,
+        });
+        if (acquired.kind !== "acquired") {
+          await writeComputerRunRequeue(
+            deps,
+            runId,
+            workerId,
+            fence,
+            resumeCheckpoint,
+            heldForTakeover,
+          );
+          await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
+          return;
+        }
+        admission = acquired;
+      }
+      const wakeNextAdmission = async (result: {
+        kind: "released" | "stale";
+        nextRunId?: string | null;
+      }) => {
+        if (result.kind !== "released" || !result.nextRunId) return;
+        await deps.jobs
+          .enqueue(runContinueJob(result.nextRunId))
+          .catch((error) =>
+            getLogger().error(
+              "session admission successor enqueue failed; reconciler will recover",
+              error,
+            ),
+          );
+      };
       let attempt: { id: string; fence: number } | null;
       try {
         attempt = await promoteLeasedRunWithAttempt(deps.prisma, {
@@ -1554,6 +2007,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
         });
       } catch (error) {
         if (!isAttemptUniqueViolation(error)) {
+          if (admission) {
+            await releaseSessionAdmission(deps.prisma, admission)
+              .then(wakeNextAdmission)
+              .catch(() => undefined);
+          }
           await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
           throw error;
         }
@@ -1566,12 +2024,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
           startedAt: current.startedAt ?? new Date(),
         });
         if (reconciled.outcome !== "reused") {
+          if (admission) {
+            await releaseSessionAdmission(deps.prisma, admission)
+              .then(wakeNextAdmission)
+              .catch(() => undefined);
+          }
           await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
           return;
         }
         attempt = reconciled.attempt;
       }
       if (!attempt) {
+        if (admission) {
+          await releaseSessionAdmission(deps.prisma, admission)
+            .then(wakeNextAdmission)
+            .catch(() => undefined);
+        }
         await releaseComputerExecutionLease(deps.prisma, computerLease).catch(() => undefined);
         return;
       }
@@ -1582,13 +2050,45 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let screenRelease: { computer: ComputerRef; context: AdapterContext } | undefined;
       let runAbortController: AbortController | null = null;
       let detachShutdown: (() => void) | undefined;
+      let sessionMayRelease = true;
+      let sessionSettled = false;
+      // RT-26F (PR #126 review P2 ④): the highest Thread message ACTUALLY
+      // ingested into this Attempt's native state — the history window loaded
+      // at claim plus, on a resume, the merged suspension context. A paused
+      // Run's checkpoint watermark is this value, never the newest PostgreSQL
+      // row: a parallel Run's messages that arrived after the load were not
+      // absorbed and must stay uncovered so the next resume merges them.
+      let ingestedMessageSeq = 0;
+      // RT-26: the exact execution binding of the attempt that owns the shared
+      // AgentScope slot. A pause card may only carry this binding, and only this
+      // binding's Runtime proof may release the admission.
+      let executionBinding: { fence: number; suspensionKey: string } | null = null;
+      const pauseBinding = () =>
+        executionBinding
+          ? {
+              executionFence: executionBinding.fence,
+              suspensionKey: executionBinding.suspensionKey,
+            }
+          : {};
+      let settleSuspendedSession: (() => Promise<boolean>) | null = null;
+      let checkpointResume:
+        | {
+            resumeId: string;
+            executionId: string;
+            restored: boolean;
+            resume: NonNullable<AgentRunRequest["resumeCheckpoint"]>;
+            threadContext: NonNullable<AgentRunRequest["threadContextAfterSuspension"]>;
+          }
+        | undefined;
+      let sessionRuntimeCompleted = false;
       const heartbeat = setInterval(() => {
         void Promise.all([
           renewRunLease(deps, runId, workerId, fence),
           renewComputerExecutionLease(deps.prisma, computerLease),
+          admission ? renewSessionAdmission(deps.prisma, admission) : Promise.resolve(true),
         ])
-          .then(([runRenewed, computerRenewed]) => {
-            if (!runRenewed || !computerRenewed) {
+          .then(([runRenewed, computerRenewed, admissionRenewed]) => {
+            if (!runRenewed || !computerRenewed || !admissionRenewed) {
               leaseValid = false;
               runAbortController?.abort();
             }
@@ -1602,6 +2102,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
 
       const runSecrets = [...deps.secrets];
       try {
+        // Read the envelope only after this worker owns the Run lease and has
+        // opened its Attempt. The recorded revision is the exact input the
+        // model below consumes; later amendments cannot rewrite it mid-flight.
+        const instructions = await (deps.taskInstructions ?? readTaskInstructionsForRun)(
+          deps.prisma,
+          { runId, leaseOwner: workerId, leaseFence: fence },
+        );
+        if (!instructions) return;
+        const instructionText = formatTaskInstructionEnvelope(instructions.envelope);
         const sourceBlocks =
           run.trigger === "messaging" && run.sourceMessageId
             ? ((
@@ -1618,7 +2127,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
           thread,
           messages,
           peerMessage,
-          task,
           storedConnections,
           defaultCredential,
           settings,
@@ -1631,12 +2139,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
             where: { id: run.botId },
             include: { computer: true },
           }),
-          deps.prisma.thread.findUniqueOrThrow({ where: { id: run.threadId } }),
+          deps.prisma.thread.findUniqueOrThrow({
+            where: { id: run.threadId },
+            include: { group: { select: { kind: true } } },
+          }),
           loadRunHistoryMessages(deps.prisma, run, LEGACY_HISTORY_WINDOW_SIZE, channelId),
           run.trigger === "bot_message"
             ? loadBotMessageContext(deps.prisma, run.sourceMessageId)
             : Promise.resolve(undefined),
-          deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId } }),
           deps.prisma.connection.findMany({
             where: { userId: run.userId, spaceId: run.spaceId },
             select: {
@@ -1778,6 +2288,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
           run.sourceMessageId,
         );
         const turnBlocks = currentTurnMessage?.blocks;
+        // The window this Run received at claim time bounds its native state:
+        // it includes the current-turn message that was seeded as this turn's
+        // input. Later PostgreSQL rows are not part of it.
+        ingestedMessageSeq = messages.reduce(
+          (max, message) => Math.max(max, message.seq),
+          0,
+        );
         const allowSilentPeerMessage = botMessageAllowsSilence(
           peerMessage?.intent,
           peerMessage?.repliesToRequest,
@@ -1799,7 +2316,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           thread.historyCompactedUpToSeq != null
             ? semanticMemory.recall(
                 {
-                  query: task.prompt,
+                  query: instructionText,
                   scope: memoryScope,
                   botId: bot.id,
                   historyGeneration: thread.historyCompactionGeneration,
@@ -1896,6 +2413,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               `Could not complete the delegated request: ${message}`,
               "status",
             ).catch((error) => getLogger().error("bot message failure return", error));
+          }
+          if (run.trigger === "message_group") {
+            await returnMessageGroupOutcome(deps, { ...run, status: "failed" }).catch((error) =>
+              getLogger().error("message group failure return", error),
+            );
           }
           if (!failed.continuationRunId) {
             await notifyRun(deps, run, {
@@ -2034,6 +2556,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             graphicalToolsAllowed,
             pageBrowserAllowed,
             groupId: thread.groupId,
+            groupKind: thread.group?.kind ?? null,
             trigger: run.trigger,
             semanticMemoryEnabled,
             cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
@@ -2041,6 +2564,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             voiceCall,
             mailEnabled: Boolean(deps.mail),
             planningEnabled: turnPolicy.planning.mode === "auto",
+            publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
+            messageGroupEnabled: deps.roundtableFeatures?.message_group === true,
+            ownerRun: turnPolicy.ownership.mode === "owner",
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -2128,6 +2654,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               graphicalToolsAllowed,
               pageBrowserAllowed,
               groupId: thread.groupId,
+              groupKind: thread.group?.kind ?? null,
               trigger: run.trigger,
               semanticMemoryEnabled,
               cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
@@ -2135,6 +2662,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               voiceCall,
               mailEnabled: Boolean(deps.mail),
               planningEnabled: turnPolicy.planning.mode === "auto",
+              publicCollaborationEnabled: deps.roundtableFeatures?.public_collaboration === true,
+              messageGroupEnabled: deps.roundtableFeatures?.message_group === true,
+              ownerRun: turnPolicy.ownership.mode === "owner",
             }),
             ...(hasMessagingIdentity ? agentConnectionTools : []),
           ];
@@ -2153,7 +2683,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const approvedEffects = await deps.prisma.externalEffect.findMany({
           where: { runId, status: "approved" },
           orderBy: APPROVED_EFFECT_REPLAY_ORDER,
-          select: { kind: true, request: true },
+          select: { kind: true, request: true, idempotencyKey: true },
         });
         const approvedEffectReplays = createApprovedEffectReplayQueue(approvedEffects);
         const baseComputerInstruction = heldForTakeover
@@ -2236,7 +2766,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         let handedOff = false;
         let progressRedactor = createStreamingRedactor(runSecrets);
         const scripted = deps.runtime.describe().capabilities.scripted;
-        const script = scripted ? inferScript(task.prompt, takeoverResume?.checkpoint) : undefined;
+        const script = scripted
+          ? inferScript(instructionText, takeoverResume?.checkpoint)
+          : undefined;
         const flushProgress = async () => {
           if (scripted || !pendingProgress) return;
           await deps.events.append({
@@ -2298,6 +2830,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
           return secretPausedToolResult();
         };
 
+        const retainPausedSessionAdmission = async () => {
+          if (!admission) return;
+          const current = await deps.prisma.run.findUnique({
+            where: { id: runId },
+            select: { status: true },
+          });
+          if (current?.status === "waiting_input") approvalPausePending = true;
+        };
+
         /**
          * UX-02: suspend the run on the typed plan_review card. The review
          * round is already pending in PostgreSQL (the plan service committed
@@ -2321,6 +2862,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: redactSecrets(item.title, runSecrets),
             })),
           };
+          const planReviewOrigin = await interventionOriginForRun(deps.prisma, run);
           const paused = await deps.events.pauseRunForInput({
             spaceId: run.spaceId,
             threadId: run.threadId,
@@ -2329,6 +2871,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             attemptId: attempt.id,
             leaseOwner: workerId,
             leaseFence: fence,
+            ...planReviewOrigin,
+            ...pauseBinding(),
             blocks: [
               {
                 kind: "ask",
@@ -2353,7 +2897,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             title: `${bot.name} needs a plan decision`,
             body: `Plan v${safeContent.contentVersion} is waiting for your review.`,
             botId: bot.id,
-            threadId: thread.id,
+            threadId: planReviewOrigin.presentationThreadId ?? thread.id,
           });
         };
 
@@ -2372,6 +2916,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
           executionId: string,
         ) => {
           context.signal.throwIfAborted();
+          // A10: an edited outbound draft replays with content that no longer
+          // hashes to the original approval key, so reuse the approved row's key.
+          let approvedReplayKey: string | undefined;
           const retryOperationId = takeRetryOperationId(args);
           if (handedOff) {
             return { error: "This stage was handed off. End the turn without more tool calls." };
@@ -2549,6 +3096,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               CATALOG_APPROVAL_TOOL,
             );
             if (resourceError) return { error: resourceError };
+            approvedReplayKey = approvedEffectReplays.nextKey();
             const approvedRequest = approvedEffectReplays.take(nextApprovedTool)!;
             const approvedCatalog = catalogApprovalDetails(approvedRequest, CATALOG_APPROVAL_TOOL);
             if (approvedCatalog && !catalogRemapped) {
@@ -2682,9 +3230,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ? 0
               : nextMutatingEffectOccurrence(replayEffectToolName, args);
           const effectKey =
-            usesApprovalKey && occurrence === 0
+            approvedReplayKey ??
+            (usesApprovalKey && occurrence === 0
               ? approvalEffectKey(runId, replayEffectToolName, args)
-              : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence);
+              : toolEffectIdempotencyKey(runId, replayEffectToolName, args, occurrence));
           // Connector read-only hints must not bypass approval or review. Retry
           // reuse skips declared reads so they re-read current state.
           let continueOperationId: string | undefined;
@@ -2754,6 +3303,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
+                ...(await interventionOriginForRun(deps.prisma, run)),
+                ...pauseBinding(),
                 blocks: [
                   {
                     kind: "ask",
@@ -2797,7 +3348,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 toolName: name,
                 connectorKind,
                 args: redactToolArgsForReview(args, runSecrets),
-                userTask: redactSecrets(task.prompt, runSecrets),
+                userTask: redactSecrets(instructionText, runSecrets),
                 botDescription: redactSecrets(
                   `${bot.name}: ${bot.title}\n${bot.description}`,
                   runSecrets,
@@ -2929,16 +3480,37 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (context.signal.aborted) return pauseForApproval();
 
           const needsApproval = gateDecision === "ask";
-          const bypassApproval = gateDecision === "allow" && requiresApprovalByDefault;
           let claimedEffect = false;
 
           const claimOrReturn = async (
             from: "approved" | "intended",
           ): Promise<unknown | undefined> => {
-            const claim = from === "approved" ? claimApprovedEffect : claimIntendedEffect;
-            if (await claim(deps.prisma, applied!.effect.id)) {
+            const claim = await claimExternalEffectForExecution(deps.prisma, {
+              effectId: applied!.effect.id,
+              expectedStatus: from,
+              execution: { runId, leaseOwner: workerId, leaseFence: fence },
+            });
+            if (claim.outcome === "claimed") {
               claimedEffect = true;
               return undefined;
+            }
+            if (
+              claim.outcome === "run_not_found" ||
+              claim.outcome === "run_cancelled" ||
+              claim.outcome === "run_not_running" ||
+              claim.outcome === "stale_execution" ||
+              claim.outcome === "lease_expired"
+            ) {
+              // The action never started. Stop this Attempt without writing a
+              // result the next retry could misread as a completed side effect.
+              leaseValid = false;
+              runAbortController?.abort();
+              return {
+                error: "Execution authority was lost before this action started; it was not executed.",
+              };
+            }
+            if (claim.outcome === "effect_executing") {
+              return settleUncertainEffect(deps.prisma, applied!.effect.id, name);
             }
             const current = await deps.prisma.externalEffect.findUnique({
               where: { id: applied!.effect.id },
@@ -2959,6 +3531,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return pauseForApproval();
             }
             await workspaceCheckpoint.flush();
+            const approvalOrigin = await interventionOriginForRun(deps.prisma, run);
             const paused = await deps.events.pauseRunForInput({
               spaceId: run.spaceId,
               threadId: run.threadId,
@@ -2967,6 +3540,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
               attemptId: attempt.id,
               leaseOwner: workerId,
               leaseFence: fence,
+              ...approvalOrigin,
+              ...pauseBinding(),
               blocks: [
                 buildApprovalAskBlock(applied!.effect.id, name, args, runSecrets, {
                   reviewReason,
@@ -2984,7 +3559,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: `${bot.name} needs approval`,
               body: `Review before ${name}`,
               botId: bot.id,
-              threadId: thread.id,
+              threadId: approvalOrigin.presentationThreadId ?? thread.id,
             });
             return pauseForApproval();
           };
@@ -3051,7 +3626,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           } else if (needsApproval && applied) {
             return requestApproval();
-          } else if (bypassApproval && applied) {
+          } else if (applied && effectClaimsBeforeExecution(name)) {
+            // Every external-effect execution — approved or intended — crosses
+            // the same database fence before a provider can be called. Plan
+            // records keep their intended status across a review pause so the
+            // resumed bridge call can answer from the durable decision.
             const early = await claimOrReturn("intended");
             if (early !== undefined) return early;
           }
@@ -3504,9 +4083,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               runId,
               text: String(args.content ?? ""),
               scopeKind: "bot",
-              ...(typeof args.source_quote === "string"
-                ? { sourceQuote: args.source_quote }
-                : {}),
+              ...(typeof args.source_quote === "string" ? { sourceQuote: args.source_quote } : {}),
             });
             if (result.status === "invalid") {
               return finish({
@@ -4147,9 +4724,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               runId,
               text: String(args.content ?? ""),
               scopeKind: "bot",
-              ...(typeof args.source_quote === "string"
-                ? { sourceQuote: args.source_quote }
-                : {}),
+              ...(typeof args.source_quote === "string" ? { sourceQuote: args.source_quote } : {}),
             });
             if (result.status === "invalid") {
               return finish({
@@ -4405,11 +4980,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               // Action approval authorizes showing the card; it is not a credential submission.
               // Return the claim to intended so the answer transaction can approve the saved value.
               if (claimedEffect) {
-                const released = await deps.prisma.externalEffect.updateMany({
-                  where: { id: applied!.effect.id, status: "executing" },
-                  data: { status: "intended" },
+                const released = await releaseExternalEffectClaim(deps.prisma, {
+                  effectId: applied!.effect.id,
+                  execution: { runId, leaseOwner: workerId, leaseFence: fence },
                 });
-                if (released.count !== 1) return uncertainEffectResult(name);
+                if (!released) return uncertainEffectResult(name);
                 claimedEffect = false;
               }
             }
@@ -4547,6 +5122,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return pauseForSecret();
             }
             await workspaceCheckpoint.flush();
+            const secretOrigin = await interventionOriginForRun(deps.prisma, run);
             const paused = await deps.events.pauseRunForInput({
               spaceId: run.spaceId,
               threadId: run.threadId,
@@ -4555,6 +5131,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
               attemptId: attempt.id,
               leaseOwner: workerId,
               leaseFence: fence,
+              ...secretOrigin,
+              ...pauseBinding(),
               blocks: [
                 {
                   kind: "ask",
@@ -4576,7 +5154,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               title: `${bot.name} needs a code`,
               body: String(args.label ?? "Code"),
               botId: bot.id,
-              threadId: thread.id,
+              threadId: secretOrigin.presentationThreadId ?? thread.id,
             });
             return pauseForSecret();
           }
@@ -4854,27 +5432,249 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 : { ok: true },
             );
           }
+          if (name === "message_group") {
+            if (turnPolicy.ownership.mode !== "owner") {
+              return finish({ error: "message_group is only available to the owner of this turn" });
+            }
+            if (args.targetTaskId !== undefined || args.target_task_id !== undefined) {
+              return finish({ error: "message_group cannot attach to existing work" });
+            }
+            const sendToGroup = () =>
+              messageGroup(
+                deps,
+                { ...run, sourceMessageId: run.sourceMessageId },
+                { id: bot.id, name: bot.name },
+                {
+                  group_id: args.group_id ? String(args.group_id) : undefined,
+                  confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
+                  message: redactSecrets(String(args.message ?? ""), runSecrets),
+                  intent: args.intent ? String(args.intent) : undefined,
+                  topic: args.topic ? redactSecrets(String(args.topic), runSecrets) : undefined,
+                },
+                { deliveryKey: effectKey },
+              );
+            const deliveredResult = (sent: {
+              groupId: string;
+              groupName: string;
+              targetRunId: string;
+              locator: unknown;
+              note: string;
+              replayed?: true;
+            }) => ({
+              ok: true as const,
+              groupId: sent.groupId,
+              groupName: sent.groupName,
+              targetRunId: sent.targetRunId,
+              locator: sent.locator,
+              note: sent.note,
+              ...(sent.replayed ? { replayed: true } : {}),
+            });
+            let sent: Awaited<ReturnType<typeof messageGroup>>;
+            try {
+              sent = await sendToGroup();
+            } catch (error) {
+              if (error instanceof RoundtableFeatureDisabledError) {
+                return finish({
+                  error: {
+                    code: error.code,
+                    feature: error.feature,
+                    retryable: error.retryable,
+                  },
+                });
+              }
+              throw error;
+            }
+            if (!sent.ok && "kind" in sent) {
+              if (sent.kind === "membership_required") {
+                // message_group is a mutating tool, so its effect was already
+                // claimed as executing. Return the claim to intended before
+                // suspending: the resumed call must pass the duplicate-effect
+                // gate and reach the bound request instead of reading the
+                // pause as an uncertain side effect.
+                const priorStatus =
+                  applied?.effect.status === "approved" ? "approved" : "intended";
+                let releasedForPause = false;
+                if (applied && claimedEffect) {
+                  const released = await releaseExternalEffectClaim(
+                    deps.prisma,
+                    {
+                      effectId: applied.effect.id,
+                      execution: { runId, leaseOwner: workerId, leaseFence: fence },
+                    },
+                    { to: priorStatus },
+                  );
+                  if (!released) return finish(uncertainEffectResult(name));
+                  claimedEffect = false;
+                  releasedForPause = true;
+                }
+                const paused = await deps.events.pauseRunForGroupMembership({
+                  spaceId: run.spaceId,
+                  threadId: run.threadId,
+                  botId: bot.id,
+                  runId,
+                  attemptId: attempt.id,
+                  leaseOwner: workerId,
+                  leaseFence: fence,
+                  ...pauseBinding(),
+                  groupId: sent.groupId,
+                  botName: bot.name,
+                  message: sent.message,
+                  topic: sent.topic,
+                  deliveryKey: sent.deliveryKey,
+                });
+                if (paused.outcome === "paused") {
+                  approvalPausePending = true;
+                  return approvalPausedToolResult();
+                }
+                // The wait did not happen, so this attempt continues. Reclaim
+                // the effect before any retry or failure result so the resumed
+                // call and the completion stay fenced.
+                if (releasedForPause && applied) {
+                  const reclaimed = await claimOrReturn(priorStatus);
+                  if (reclaimed !== undefined) return finish(reclaimed);
+                }
+                if (paused.outcome === "already_member") {
+                  const retried = await sendToGroup();
+                  if (retried.ok) return finish(deliveredResult(retried));
+                  if (!retried.ok && "error" in retried) return finish({ error: retried.error });
+                  return finish({ error: "message_group could not start this work" });
+                }
+                if (paused.outcome === "not_manageable") {
+                  const failure = await deps.prisma
+                    .$transaction((tx) =>
+                      recordGroupMembershipFailureInTransaction(tx, {
+                        spaceId: run.spaceId,
+                        threadId: run.threadId,
+                        botId: bot.id,
+                        runId,
+                        groupId: sent.groupId,
+                        groupName: sent.groupName,
+                        deliveryKey: sent.deliveryKey,
+                      }),
+                    )
+                    .catch((error) => {
+                      getLogger().error("group membership failure card", error);
+                      return null;
+                    });
+                  if (failure) {
+                    await deps.events
+                      .notify(run.threadId, failure.seq)
+                      .catch(() => undefined);
+                  }
+                  return finish({
+                    error:
+                      "You do not have member-management permission for this group, so the work has not started. Ask the group owner or an admin to continue.",
+                  });
+                }
+                if (paused.outcome === "unavailable") {
+                  return finish({ error: "This group is no longer available." });
+                }
+                throw new Error("Could not pause this run for the membership decision.");
+              }
+              if (sent.kind === "membership_forbidden") {
+                if (sent.threadId && sent.eventSeq !== undefined) {
+                  await deps.events.notify(sent.threadId, sent.eventSeq).catch(() => undefined);
+                }
+                return finish({
+                  error:
+                    "You do not have member-management permission for this group, so the work has not started. Ask the group owner or an admin to continue.",
+                });
+              }
+              if (sent.kind === "membership_denied") {
+                return finish({
+                  ok: true,
+                  denied: true,
+                  note: "The user chose not to add this Bot to the group. The work has not started and nothing was sent. Do not retry unless the user asks again.",
+                });
+              }
+              if (sent.kind === "membership_cancelled") {
+                return finish({
+                  ok: true,
+                  denied: true,
+                  note: "The membership request expired or was withdrawn before the user decided. The work has not started. Do not retry unless the user asks again.",
+                });
+              }
+              if (sent.kind === "membership_failed") {
+                return finish({
+                  ok: true,
+                  failed: true,
+                  note: "The membership change could not be applied, so the work has not started and nothing was sent. Tell the user briefly that the group owner or an admin must handle it. Do not retry unless the user asks again.",
+                });
+              }
+              return finish({
+                ok: true,
+                pending: true,
+                note: "This request is already waiting for the user's membership decision. It has not been sent again.",
+              });
+            }
+            if (!sent.ok) {
+              return finish({
+                error: "error" in sent ? sent.error : "message_group could not start this work",
+              });
+            }
+            return finish(deliveredResult(sent));
+          }
           if (name === "message_bot") {
-            const sent = await messageBot(
-              deps,
-              { ...run, sourceMessageId: run.sourceMessageId },
-              { id: bot.id, name: bot.name },
-              {
-                bot_id: args.bot_id ? String(args.bot_id) : undefined,
-                confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
-                message: redactSecrets(String(args.message ?? ""), runSecrets),
-                intent: args.intent as
-                  | "request"
-                  | "result"
-                  | "question"
-                  | "status"
-                  | "fyi"
-                  | undefined,
-                deliveryKey: effectKey,
-              },
-            );
+            // Async public delegation creates a support Run without this Run's
+            // source-chat origin, so its answer could never reach the source
+            // chat. The message_group owner completes the work itself.
+            if (run.trigger === "message_group")
+              return finish({ error: "message_bot is not available for this work" });
+            let sent: Awaited<ReturnType<typeof messageBot>>;
+            const toolIntent = args.intent as
+              | "request"
+              | "result"
+              | "question"
+              | "status"
+              | "fyi"
+              | undefined;
+            try {
+              sent = await messageBot(
+                deps,
+                { ...run, sourceMessageId: run.sourceMessageId },
+                { id: bot.id, name: bot.name },
+                {
+                  bot_id: args.bot_id ? String(args.bot_id) : undefined,
+                  confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
+                  message: redactSecrets(String(args.message ?? ""), runSecrets),
+                  intent: toolIntent,
+                  deliveryKey: effectKey,
+                },
+                // An explicit result/status answers the requester through the
+                // persisted origin while this run is still live; the automatic
+                // outcome return stays the terminal-path complement.
+                toolIntent === "result" || toolIntent === "status"
+                  ? { allowTerminalSource: true }
+                  : undefined,
+              );
+            } catch (error) {
+              if (error instanceof RoundtableFeatureDisabledError) {
+                return finish({
+                  error: {
+                    code: error.code,
+                    feature: error.feature,
+                    retryable: error.retryable,
+                  },
+                });
+              }
+              throw error;
+            }
             if (!sent.ok) return finish({ error: sent.error });
-            return finish({ ok: true, botId: sent.botId, name: sent.name, note: sent.note });
+            return finish({
+              ok: true,
+              botId: sent.botId,
+              name: sent.name,
+              note: sent.note,
+              ...("targetRunId" in sent
+                ? {
+                    targetRunId: sent.targetRunId,
+                    ...("destination" in sent && "locator" in sent
+                      ? { destination: sent.destination, locator: sent.locator }
+                      : {}),
+                  }
+                : {}),
+              ...("replayed" in sent && sent.replayed ? { replayed: true } : {}),
+            });
           }
           if (name === "connect_agent") {
             const result = await connectAgent(
@@ -4911,6 +5711,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             return finish(result);
           }
           if (name === "handoff_to_bot") {
+            // A handoff successor has no origin lineage, so a message_group
+            // owner Run that handed off could never return its result to the
+            // source chat. Keep this work in the target group instead.
+            if (run.trigger === "message_group")
+              return finish({ error: "handoff_to_bot is not available for this work" });
             if (!thread.groupId) return finish({ error: "handoff_to_bot is only for group chats" });
             const result = await handoffToGroupBot(deps, run, thread.groupId, {
               bot_id: args.bot_id ? String(args.bot_id) : undefined,
@@ -5010,7 +5815,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
           currentTurnImages,
         );
         const taskPrompt = expandSkillReferencesInPrompt(
-          [task.prompt, attachedFilesPrompt, missingImagesInstruction].filter(Boolean).join("\n\n"),
+          [instructionText, attachedFilesPrompt, missingImagesInstruction]
+            .filter(Boolean)
+            .join("\n\n"),
           agentSkills,
         );
         const invokedSkill = savedSkills.find((skill) =>
@@ -5029,7 +5836,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         );
         const replyContext = await loadReplyContext(deps.prisma, thread.id, run.sourceMessageId);
         const retryFraming = run.retryOfRunId
-          ? manualRetryPromptPrefix(task.prompt, retryChain)
+          ? manualRetryPromptPrefix(instructionText, retryChain)
           : undefined;
         const prompt = [
           retryFraming,
@@ -5054,14 +5861,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
           });
           return;
         }
-        const answeredAskMessages = scripted
-          ? []
-          : await deps.prisma.message.findMany({
-              where: { runId, role: "bot" },
-              orderBy: { seq: "desc" },
-              take: 8,
-              select: { blocks: true },
-            });
+        // FIX-127: every runtime learns the latest answered ask of this Run.
+        // The scripted runtime previously replayed its fixture from turn 0 and
+        // could not consume the answer, so a resumed waiting_input Run asked
+        // the same question again instead of continuing like the persisted-
+        // state Runtime (which resolves the pending ask_user call with the
+        // answer as a SUCCESS tool result).
+        const answeredAskMessages = await deps.prisma.message.findMany({
+          where: { runId, role: "bot" },
+          orderBy: { seq: "desc" },
+          take: 8,
+          select: { blocks: true },
+        });
         let resumeAnswer: string | undefined;
         let foundAsk = false;
         for (const message of answeredAskMessages) {
@@ -5075,13 +5886,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               block.kind === "ask"
             ) {
               foundAsk = true;
-              if (
-                "status" in block &&
-                block.status === "answered" &&
-                "answer" in block &&
-                typeof block.answer === "string"
-              )
-                resumeAnswer = block.answer;
+              resumeAnswer = resumeAnswerFromAsk(block);
               break;
             }
           }
@@ -5138,7 +5943,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               legacyImportedDocumentIds: injectionInputs.readModel.legacyImportedDocumentIds,
             },
             budgets,
-            { taskText: task.prompt },
+            { taskText: instructionText },
           );
           memoryContext = assembled.content;
           getLogger().info("memory.injection assembled", {
@@ -5202,29 +6007,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           : history;
         const runtimeHistory = [...historicalContext, ...historyWithImages];
         // Without a roster a bot only knows the bots it spawned itself.
-        const botDirectory = thread.groupId
-          ? undefined
-          : renderBotDirectory(
-              (
-                await deps.prisma.bot.findMany({
-                  where: {
-                    spaceId: run.spaceId,
-                    userId: run.userId,
-                    archivedAt: null,
-                    id: { not: bot.id },
-                    thread: { isNot: null },
-                  },
-                  select: { id: true, name: true, title: true, description: true },
-                  orderBy: { createdAt: "asc" },
-                  take: BOT_DIRECTORY_LIMIT,
-                })
-              ).map((peer) => ({
-                id: peer.id,
-                name: peer.name,
-                title: peer.title,
-                description: peer.description,
-              })),
-            );
+        const botDirectory = await teammateDirectoryForThread(deps.prisma, {
+          thread,
+          botId: bot.id,
+          spaceId: run.spaceId,
+          userId: run.userId,
+        });
 
         if (heldForTakeover) {
           const releasedCheckpoint = takeoverCheckpointOf(
@@ -5334,11 +6122,317 @@ export function createRunExecutor(deps: ExecutorDeps) {
             await failRunBeforeModel(contextOverflow);
             return;
           }
+          const suspensionKey = admission ? randomUUID() : null;
+          if (admission && suspensionKey) {
+            const preparedAdmission = {
+              ...admission,
+              attemptId: attempt.id,
+              suspensionKey,
+            };
+            if (!(await prepareSessionExecution(deps.prisma, preparedAdmission))) {
+              leaseValid = false;
+              return;
+            }
+            if (!(await markSessionRuntimeStarted(deps.prisma, preparedAdmission))) {
+              leaseValid = false;
+              return;
+            }
+            executionBinding = { fence: admission.admissionFence, suspensionKey };
+            // From this point until a normal stream return, only a Runtime clean/detached
+            // proof may release the chat admission. RT-25 deliberately has no timeout shortcut.
+            sessionMayRelease = false;
+            if (mayResumeCheckpoint) {
+              // RT-26: restore only THIS Run's acknowledged checkpoint, under
+              // the new execution fence and suspension key of this Attempt.
+              const checkpoint = await findResumableCheckpoint(deps.prisma, {
+                runId,
+                sessionKey: admission.sessionKey,
+                threadGeneration: thread.historyCompactionGeneration,
+              });
+              if (checkpoint) {
+                const intervention = checkpoint.intervention;
+                if (intervention && intervention.status !== "answered") {
+                  throw new Error("Checkpoint resumed without an answered pending request");
+                }
+                // Crash window: AgentScope persisted the ask call, but the
+                // worker died before pauseRunForInput created its
+                // Intervention. Restoring now would make resumeTools fall
+                // back to the task prompt as the "answer" and skip the user
+                // entirely — recreate the input request instead; the answer
+                // then resumes through the normal checkpoint path.
+                const pendingCalls = Array.isArray(checkpoint.pendingCalls)
+                  ? (checkpoint.pendingCalls as Array<{ name?: unknown }>)
+                  : [];
+                // Only an ask_user call is a lost INPUT request. A pending
+                // request_takeover (takeover pauses create no Intervention by
+                // design) follows its own release path through the takeover
+                // checkpoint instead of being re-asked as a question.
+                const lostInputRequest =
+                  pendingCalls.length > 0 &&
+                  pendingCalls.some((call) => call?.name === "ask_user");
+                if (lostInputRequest && !intervention) {
+                  await workspaceCheckpoint.flush().catch(() => undefined);
+                  const origin = await interventionOriginForRun(deps.prisma, run);
+                  const paused = await deps.events.pauseRunForInput({
+                    spaceId: run.spaceId,
+                    threadId: run.threadId,
+                    botId: run.botId,
+                    runId,
+                    attemptId: attempt.id,
+                    leaseOwner: workerId,
+                    leaseFence: fence,
+                    ...pauseBinding(),
+                    ...origin,
+                    blocks: [
+                      {
+                        kind: "ask",
+                        text: "The agent was interrupted while asking you a question and the question text was lost. Answer here; the run continues with your reply.",
+                        status: "pending",
+                      },
+                    ],
+                  });
+                  if (paused) {
+                    // Associate the replacement card with the original
+                    // checkpoint: its answered revision is what authorizes
+                    // the next claim to restore the pending call instead of
+                    // recreating yet another card.
+                    const replacement = await deps.prisma.intervention.findFirst({
+                      where: { runId, status: "pending" },
+                      orderBy: { createdAt: "desc" },
+                      select: { id: true },
+                    });
+                    if (replacement) {
+                      await deps.prisma.agentSessionCheckpoint.updateMany({
+                        where: { id: checkpoint.id, pendingInterventionId: null },
+                        data: { pendingInterventionId: replacement.id },
+                      });
+                    }
+                    await notifyRun(deps, run, {
+                      kind: "help",
+                      title: `${bot.name} needs an answer`,
+                      body: "A question from before the interruption is waiting for your reply.",
+                      botId: bot.id,
+                      threadId: origin.presentationThreadId ?? thread.id,
+                    });
+                    // PR #126 review P2 ③: this Attempt never entered the
+                    // runtime, so it releases the admission exactly like the
+                    // pre-runtime paths. Leaving the flag false parked the NEW
+                    // admission in recovering under a binding that no Java
+                    // checkpoint can ever prove detached (the manifest belongs
+                    // to the old binding), so answering the card could not
+                    // unblock the session and other Runs were dragged in. The
+                    // checkpoint stays unconsumed and is linked to the
+                    // replacement card through pendingInterventionId, so the
+                    // answer resumes through the normal checkpoint path.
+                    sessionMayRelease = true;
+                    return;
+                  }
+                }
+                const decisionKey = intervention
+                  ? `${intervention.id}:${intervention.revision}`
+                  : `checkpoint:${checkpoint.id}`;
+                const begun = await beginCheckpointResume(deps.prisma, {
+                  checkpointId: checkpoint.id,
+                  runId,
+                  sessionKey: admission.sessionKey,
+                  threadGeneration: thread.historyCompactionGeneration,
+                  resume: {
+                    attemptId: attempt.id,
+                    executionId: admission.executionId,
+                    admissionFence: admission.admissionFence,
+                    suspensionKey,
+                  },
+                  decisionKey,
+                  ...(intervention
+                    ? {
+                        decision: {
+                          interventionId: intervention.id,
+                          status: intervention.status,
+                          decision: intervention.decision,
+                        },
+                      }
+                    : {}),
+                  ...(resumeAnswer === undefined ? {} : { answer: resumeAnswer }),
+                });
+                if (begun.kind === "rejected") {
+                  throw new Error("Checkpoint resume was rejected for this execution");
+                }
+                const threadContext =
+                  checkpoint.coveredMessageSeq === null
+                    ? []
+                    : await loadThreadContextAfterCheckpoint(deps.prisma, {
+                        threadId: thread.id,
+                        afterSeq: checkpoint.coveredMessageSeq,
+                        excludeRunId: runId,
+                      });
+                // PR #126 review P2 ④: the merged suspension context is handed
+                // to this resume attempt too, so it raises the ingested bound.
+                ingestedMessageSeq = threadContext.reduce(
+                  (max, message) => Math.max(max, message.seq),
+                  ingestedMessageSeq,
+                );
+                checkpointResume = {
+                  resumeId: begun.resumeId,
+                  executionId: admission.executionId,
+                  restored: false,
+                  threadContext,
+                  resume: {
+                    checkpointId: checkpoint.id,
+                    digest: checkpoint.digest,
+                    sessionKey: admission.sessionKey,
+                    sourceRunId: checkpoint.runId,
+                    sourceAttemptId: checkpoint.attemptId,
+                    sourceExecutionId: checkpoint.executionId,
+                    sourceFence: checkpoint.admissionFence,
+                    sourceSuspensionKey: checkpoint.suspensionKey,
+                    attemptId: attempt.id,
+                    executionId: admission.executionId,
+                    fence: admission.admissionFence,
+                    suspensionKey,
+                  },
+                };
+              }
+            }
+          }
+          if (admission && suspensionKey) {
+            // RT-26 closure for a suspended attempt. The Runtime proof is
+            // persisted and acknowledged before the admission may be released;
+            // any failure leaves the RT-25 owner absorbing/recovering.
+            settleSuspendedSession = async () => {
+              const detach = deps.runtime.inspectAndDetach?.bind(deps.runtime);
+              if (!detach) return false;
+              try {
+                const state = await deps.prisma.run.findUnique({
+                  where: { id: runId },
+                  select: { status: true },
+                });
+                const waiting =
+                  state?.status === "waiting_input" || state?.status === "waiting_takeover";
+                // RT-26: the pause card must carry this exact attempt, fence, and
+                // suspension key. Answering clears pendingRunKey, so the binding
+                // columns (not the unique pending key) identify the card here.
+                const intervention = await deps.prisma.intervention.findFirst({
+                  where: {
+                    runId,
+                    attemptId: attempt.id,
+                    executionFence: admission.admissionFence,
+                    suspensionKey,
+                  },
+                  orderBy: { createdAt: "desc" },
+                  select: { id: true, status: true },
+                });
+                const claimable =
+                  intervention &&
+                  (intervention.status === "pending" || intervention.status === "answered")
+                    ? intervention
+                    : null;
+                if (waiting && !claimable) {
+                  // The pending card was not created by this execution binding;
+                  // no proof can claim it and the owner stays unconfirmed.
+                  return false;
+                }
+                const watermark = await deps.prisma.thread.findUnique({
+                  where: { id: thread.id },
+                  select: { nextMessageSeq: true },
+                });
+                // PR #126 review P2 ④: cover only the messages this Attempt
+                // actually absorbed. Rows a parallel Run B wrote after the
+                // claim-time load stay uncovered so the next resume merges
+                // them; the PostgreSQL watermark only bounds the value.
+                const pgLatestSeq = Math.max(0, (watermark?.nextMessageSeq ?? 1) - 1);
+                const coveredMessageSeq = Math.min(ingestedMessageSeq, pgLatestSeq);
+                const checkpointId = sessionCheckpointId({
+                  runId,
+                  attemptId: attempt.id,
+                  admissionFence: admission.admissionFence,
+                });
+                const proof = await detach({
+                  identity: {
+                    userId: run.userId,
+                    spaceId: run.spaceId,
+                    botId: run.botId,
+                    threadId: run.threadId,
+                    runId,
+                  },
+                  sessionKey: admission.sessionKey,
+                  sessionGeneration: thread.historyCompactionGeneration,
+                  executionId: admission.executionId,
+                  attemptId: attempt.id,
+                  fence: admission.admissionFence,
+                  suspensionKey,
+                  checkpointId,
+                });
+                if (proof.checkpointId !== checkpointId) return false;
+                const binding = {
+                  sessionKey: admission.sessionKey,
+                  runId,
+                  attemptId: attempt.id,
+                  executionId: admission.executionId,
+                  admissionFence: admission.admissionFence,
+                  suspensionKey,
+                };
+                await recordCheckpointProof(deps.prisma, {
+                  binding,
+                  proof,
+                  threadGeneration: thread.historyCompactionGeneration,
+                });
+                const acknowledged = await acknowledgeSessionCheckpoint(deps.prisma, {
+                  binding,
+                  proof,
+                  pendingInterventionId: claimable?.id ?? null,
+                  coveredMessageSeq,
+                });
+                if (!acknowledged) return false;
+                const released = await releaseSuspendedSessionAdmission(deps.prisma, admission, {
+                  kind: proof.kind,
+                  checkpointId: proof.checkpointId,
+                  digest: proof.digest,
+                });
+                if (released.kind !== "released") return false;
+                await wakeNextAdmission(released);
+                sessionSettled = true;
+                return true;
+              } catch (error) {
+                await markSessionAdmissionRecovering(
+                  deps.prisma,
+                  admission,
+                  "checkpoint_detach_unconfirmed",
+                ).catch(() => undefined);
+                getLogger().error(
+                  "suspended session checkpoint could not be confirmed",
+                  error instanceof Error ? error : new Error(String(error)),
+                );
+                return false;
+              }
+            };
+          }
+          // RUNTIME-RELIABILITY-01: bind the attempt identity at the seam that
+          // hands the Run to the runtime. The adapter, the tool-bridge callbacks
+          // and the terminal persistence all log inside this async context, so
+          // one binding covers the rest of the attempt instead of restating the
+          // identifiers at every call site.
+          enrichLogContext({
+            "run.id": runId,
+            "attempt.id": attempt.id,
+            ...(admission ? { "session.key": admission.sessionKey } : {}),
+          });
           const runtimeEvents = deps.runtime.run(
             {
               botId: bot.id,
               threadId: thread.id,
               runId,
+              sessionAdmission:
+                admission && suspensionKey
+                  ? {
+                      sessionKey: admission.sessionKey,
+                      executionId: admission.executionId,
+                      attemptId: attempt.id,
+                      fence: admission.admissionFence,
+                      suspensionKey,
+                    }
+                  : undefined,
+              resumeCheckpoint: checkpointResume?.resume,
+              threadContextAfterSuspension: checkpointResume?.threadContext,
               sessionGeneration: thread.historyCompactionGeneration,
               excludeDeliveredTaskIds: outboxTasks.flatMap((row) =>
                 row.backgroundTaskId ? [row.backgroundTaskId] : [],
@@ -5759,6 +6853,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
             context,
           );
           for await (const event of withRuntimeCleanup(runtimeEvents, runAbortController)) {
+            if (checkpointResume && !checkpointResume.restored) {
+              // The Runtime produced its first event, so the atomic restore of
+              // the checkpoint under this execution succeeded.
+              await markCheckpointResumeRestored(deps.prisma, {
+                resumeId: checkpointResume.resumeId,
+                executionId: checkpointResume.executionId,
+              }).catch((error) => getLogger().error("checkpoint resume restore ack failed", error));
+              checkpointResume.restored = true;
+            }
             if (approvalPausePending) return;
             if (!leaseValid) return;
             const now = Date.now();
@@ -5834,6 +6937,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 label: redactSecrets(action.label, runSecrets),
               }));
               await workspaceCheckpoint.flush();
+              const askOrigin = await interventionOriginForRun(deps.prisma, run);
               const paused = await deps.events.pauseRunForInput({
                 spaceId: run.spaceId,
                 threadId: run.threadId,
@@ -5842,6 +6946,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
+                ...askOrigin,
+                ...pauseBinding(),
                 blocks: [
                   {
                     kind: "ask",
@@ -5860,7 +6966,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 title: `${bot.name} needs an answer`,
                 body: safeText,
                 botId: bot.id,
-                threadId: thread.id,
+                threadId: askOrigin.presentationThreadId ?? thread.id,
               });
               return;
             } else if (event.type === "takeover") {
@@ -5889,9 +6995,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 hasStreamedText = false;
                 pendingProgress = "";
               }
-              await publishMessage(deps, run, "bot", [
-                { kind: "computer", state: "Needs you", text: safeReason },
-              ]);
+              // RT-05F: a delegated run executes in a hidden pair Thread; the
+              // takeover request must reach the persisted visible origin while
+              // the run and its computer lease stay bound to the execution.
+              const takeoverOrigin = await interventionOriginForRun(deps.prisma, run);
+              await publishMessage(
+                deps,
+                run,
+                "bot",
+                [{ kind: "computer", state: "Needs you", text: safeReason }],
+                undefined,
+                undefined,
+                takeoverOrigin.presentationThreadId,
+              );
               await workspaceCheckpoint.flush();
               if (!(await holdComputerExecutionLeaseForTakeover(deps.prisma, computerLease))) {
                 throw new Error("Computer lease expired before takeover");
@@ -5906,6 +7022,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 leaseFence: fence,
                 reason: safeReason,
                 computerId: storedComputer.id,
+                ...(takeoverOrigin.presentationThreadId
+                  ? { presentationThreadId: takeoverOrigin.presentationThreadId }
+                  : {}),
               });
               if (!paused) return;
               retainComputerLease = true;
@@ -5914,7 +7033,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 title: `${bot.name} needs you on the screen`,
                 body: safeReason,
                 botId: bot.id,
-                threadId: thread.id,
+                threadId: takeoverOrigin.presentationThreadId ?? thread.id,
               });
               return;
             } else if (event.type === "tool") {
@@ -5926,14 +7045,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
               if (event.name !== "message_user") {
                 await publishMidTurnNarration();
               }
-              await deps.events.append({
-                spaceId: run.spaceId,
-                threadId: thread.id,
-                botId: bot.id,
-                type: "agent.tool.called",
-                runId,
-                payload: { name: event.name, executionId: event.executionId },
-              });
+              try {
+                await deps.events.append({
+                  spaceId: run.spaceId,
+                  threadId: thread.id,
+                  botId: bot.id,
+                  type: "agent.tool.called",
+                  runId,
+                  execution: { leaseOwner: workerId, leaseFence: fence },
+                  payload: { name: event.name, executionId: event.executionId },
+                });
+              } catch (error) {
+                if (!(error instanceof StaleExecutionError)) throw error;
+                leaseValid = false;
+                runAbortController?.abort();
+                return;
+              }
               if (
                 !scripted &&
                 (await enforceRunBudgets(
@@ -5945,8 +7072,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   new Date(),
                   runId,
                 ))
-              )
+              ) {
+                await retainPausedSessionAdmission();
                 return;
+              }
               pendingToolNames.push(event.name);
               tryFlushPendingTools();
               const loopGuard = advanceToolCallLoopGuard(toolCallStreak, event.name, event.args);
@@ -5986,6 +7115,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     { id: bot.id, name: bot.name },
                     stuckText,
                   ).catch((error) => getLogger().error("bot message loop-guard return", error));
+                }
+                if (run.trigger === "message_group") {
+                  await returnMessageGroupOutcome(deps, { ...run, status: "completed" }, {
+                    text: stuckText,
+                  }).catch((error) =>
+                    getLogger().error("message group loop-guard return", error),
+                  );
                 }
                 runAbortController?.abort();
                 return;
@@ -6100,8 +7236,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   new Date(),
                   runId,
                 ))
-              )
+              ) {
+                await retainPausedSessionAdmission();
                 return;
+              }
             } else if (event.type === "done") {
               if (!assembled && event.text) {
                 if (publishedMidTurnUserMessage || discardedMidTurnNarration) {
@@ -6116,7 +7254,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
           }
 
-          if (approvalPausePending || !leaseValid) return;
+          if (approvalPausePending) return;
+          sessionRuntimeCompleted = true;
+          sessionMayRelease = true;
+
+          if (!leaseValid) return;
           approvedEffectReplays.assertDrained();
           pendingProgress += progressRedactor.finish();
           await flushProgress();
@@ -6230,6 +7372,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 markUnread: completionMarksUnread(run.trigger, text),
               });
           if (!finalized) return;
+          if (checkpointResume) {
+            await markCheckpointResumeConsumed(deps.prisma, {
+              resumeId: checkpointResume.resumeId,
+              executionId: checkpointResume.executionId,
+            }).catch((error) => getLogger().error("checkpoint resume consume ack failed", error));
+          }
           if (finalized.continuationRunId) {
             await deps.jobs
               .enqueue(runContinueJob(finalized.continuationRunId))
@@ -6249,6 +7397,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 : botMessageOutcome.text,
               permissionRevoked ? "status" : botMessageOutcome.intent,
             ).catch((error) => getLogger().error("bot message result return", error));
+          }
+          if (run.trigger === "message_group") {
+            // Mirror the bot_message recovery: a turn that published mid-turn
+            // text and then left an empty final reply still has durable output
+            // to return. Otherwise the source chat keeps only the receipt.
+            const groupOutcome = permissionRevoked
+              ? null
+              : botMessageOutcomeFromMidTurn(text, midTurnUserTexts);
+            await returnMessageGroupOutcome(
+              deps,
+              { ...run, status: permissionRevoked ? "failed" : "completed" },
+              {
+                text: groupOutcome?.text ?? text,
+                progressOnly: groupOutcome?.intent === "status",
+              },
+            ).catch((error) => getLogger().error("message group result return", error));
           }
           const notifyBody = completionNotificationPreview(text);
           if (
@@ -6345,9 +7509,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 runtime: deps.runtime,
                 jobs: deps.jobs,
                 memoryProviders: deps.memoryProviders,
-                ...(deps.deploymentModelKey
-                  ? { deploymentModelKey: deps.deploymentModelKey }
-                  : {}),
+                ...(deps.deploymentModelKey ? { deploymentModelKey: deps.deploymentModelKey } : {}),
                 memoryDigestKey: deps.memoryDigestKey,
                 ...(pin ? { pinnedModel: pin } : {}),
                 resolvePinnedModel: resolvePinnedModelIdentity,
@@ -6368,8 +7530,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         nextMessageSeq: true,
                       },
                     }),
-                  enqueueBackground: () =>
-                    deps.jobs.enqueue(historyCompactJob(thread.id, pin)),
+                  enqueueBackground: () => deps.jobs.enqueue(historyCompactJob(thread.id, pin)),
                   compactOnce: () => compactHistory(compactDeps, thread.id),
                 },
                 mode,
@@ -6406,6 +7567,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
         } catch (error) {
           if (!terminalCheckpointComplete) {
             await workspaceCheckpoint.flush().catch(() => undefined);
+          }
+          if (admission && !sessionMayRelease) {
+            if (error instanceof AgentScopeRunRejectedError) {
+              // The runtime refused before touching this session, so RT-25's
+              // pre-runtime release is still valid.
+              sessionMayRelease = true;
+            } else {
+              await retainPausedSessionAdmission().catch(() => undefined);
+            }
+            if (approvalPausePending) return;
+            // Any other uncertain outcome is settled only by the Runtime proof
+            // in the finally block; it marks the owner recovering on failure.
+            if (!sessionMayRelease) return;
           }
           const message = redactSecrets(
             error instanceof Error ? error.message : String(error),
@@ -6467,6 +7641,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               "status",
             ).catch((returnError) => getLogger().error("bot message failure return", returnError));
           }
+          if (run.trigger === "message_group") {
+            await returnMessageGroupOutcome(deps, { ...run, status: "failed" }).catch((error) =>
+              getLogger().error("message group failure return", error),
+            );
+          }
           if (runSendsFinishNotification(run.trigger) && !failed.continuationRunId) {
             await notifyRun(deps, run, {
               kind: "failure",
@@ -6478,6 +7657,23 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
         }
       } catch (setupError) {
+        if (setupError instanceof TaskInstructionIntegrityError) {
+          // A cleared Thread removed the amendment log. Requeueing cannot
+          // repair it, so fail the Run with the real reason instead.
+          await deps.events.finalizeRun({
+            spaceId: run.spaceId,
+            threadId: run.threadId,
+            botId: run.botId,
+            runId,
+            taskId: run.taskId,
+            attemptId: attempt.id,
+            leaseOwner: workerId,
+            leaseFence: fence,
+            outcome: "failed",
+            error: redactSecrets(setupError.message, runSecrets),
+          });
+          return;
+        }
         const computerBusy = setupError instanceof ComputerBusyError;
         const retryForever = computerBusy || isTooManyDatabaseConnections(setupError);
         // undici collapses every network failure to "fetch failed"; the cause names the
@@ -6551,6 +7747,43 @@ export function createRunExecutor(deps: ExecutorDeps) {
       } finally {
         detachShutdown?.();
         clearInterval(heartbeat);
+        // RT-26: a suspended attempt releases its chat admission only after
+        // the Runtime proved the shared slot clean/detached and that proof was
+        // acknowledged. Only a Run parked on a card may hand the slot back
+        // through its own checkpoint: a Run that ENDED unconfirmed (budget
+        // abort, stream failure) keeps the RT-25 recovering park, because its
+        // Worker-side abort chain may still be settling and the delivery that
+        // follows must queue behind the admission instead of entering a
+        // half-persisted session. A later claim of the same owner may still
+        // release it through the recovery hook with a fresh proof.
+        if (admission && !sessionMayRelease && !sessionSettled) {
+          const ended = await deps.prisma.run
+            .findUnique({ where: { id: runId }, select: { status: true } })
+            .catch(() => null);
+          const parkedOnCard =
+            ended?.status === "waiting_input" || ended?.status === "waiting_takeover";
+          const settled =
+            parkedOnCard && settleSuspendedSession
+              ? await settleSuspendedSession().catch(() => false)
+              : false;
+          if (!settled && !sessionSettled) {
+            await markSessionAdmissionRecovering(
+              deps.prisma,
+              admission,
+              parkedOnCard
+                ? settleSuspendedSession
+                  ? "checkpoint_detach_unconfirmed"
+                  : "checkpoint_detach_unavailable"
+                : "agentscope_runtime_outcome_unconfirmed",
+            ).catch(() => undefined);
+          }
+        }
+        if (admission && sessionMayRelease && !sessionSettled) {
+          const released = sessionRuntimeCompleted
+            ? await completeSessionAdmission(deps.prisma, admission).catch(() => null)
+            : await releaseSessionAdmission(deps.prisma, admission).catch(() => null);
+          if (released?.kind === "released") await wakeNextAdmission(released);
+        }
         if (!retainComputerLease) {
           if (screenRelease) {
             await deps.sandbox
@@ -6721,6 +7954,14 @@ export function selectBuiltinToolsForRun(options: {
   /** send_email exists only when the deployment connected an Agently mailbox. */
   mailEnabled?: boolean;
   planningEnabled?: boolean;
+  /** Opens group message_bot only after destination-aware public dispatch is live. */
+  publicCollaborationEnabled?: boolean;
+  /** Pair Threads keep message_bot regardless of the group (public) gate. */
+  groupKind?: string | null;
+  /** Opens the direct-chat message_group tool after its gate is enabled. */
+  messageGroupEnabled?: boolean;
+  /** Support Runs only answer their requester; cross-session work is owner-only. */
+  ownerRun?: boolean;
 }) {
   return selectCloudAgentTools(
     selectMemoryTools(
@@ -6731,6 +7972,9 @@ export function selectBuiltinToolsForRun(options: {
             options.pageBrowserAllowed ?? options.graphicalToolsAllowed,
           ),
           options.groupId,
+          options.publicCollaborationEnabled,
+          options.groupKind,
+          options.messageGroupEnabled && options.ownerRun !== false,
         ),
         options.trigger,
       ),
@@ -6740,6 +7984,10 @@ export function selectBuiltinToolsForRun(options: {
   ).filter(
     (tool) =>
       (options.voiceCall || tool.name !== "end_call") &&
+      // A message_group owner Run must finish its own work: handoff and async
+      // delegation both create Runs without this Run's source-chat origin.
+      (options.trigger !== "message_group" ||
+        (tool.name !== "handoff_to_bot" && tool.name !== "message_bot")) &&
       (options.trigger === "user" ||
         options.trigger === "follow_up" ||
         tool.name !== "change_avatar") &&
@@ -7133,13 +8381,25 @@ async function publishMessage(
   blocks: MessageBlock[],
   markUnread?: boolean,
   clientNonce?: string,
+  /** Project this message into a user-visible Thread instead of the run's execution Thread. */
+  presentationThreadId?: string,
 ) {
   const committed = await deps.prisma.$transaction((tx) =>
-    persistMessageInTransaction(tx, run, role, blocks, markUnread, clientNonce),
+    persistMessageInTransaction(
+      tx,
+      run,
+      role,
+      blocks,
+      markUnread,
+      clientNonce,
+      presentationThreadId,
+    ),
   );
-  await deps.events.notify(run.threadId, committed.eventSeq).catch((error) => {
-    getLogger().error("thread message realtime notification", error);
-  });
+  await deps.events
+    .notify(presentationThreadId ?? run.threadId, committed.eventSeq)
+    .catch((error) => {
+      getLogger().error("thread message realtime notification", error);
+    });
   return committed.message;
 }
 
@@ -7150,9 +8410,11 @@ async function persistMessageInTransaction(
   blocks: MessageBlock[],
   markUnread?: boolean,
   clientNonce?: string,
+  presentationThreadId?: string,
 ) {
+  const threadId = presentationThreadId ?? run.threadId;
   const message = await createThreadMessageInTransaction(tx, {
-    threadId: run.threadId,
+    threadId,
     role,
     originKind: role === "bot" ? "bot" : "system",
     blocks,
@@ -7163,7 +8425,7 @@ async function persistMessageInTransaction(
   });
   const event = await appendEventInTransaction(tx, {
     spaceId: run.spaceId,
-    threadId: run.threadId,
+    threadId,
     botId: run.botId,
     type: "thread.message.created",
     runId: run.id,

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CHAT_GROUP_KIND_AGENT_PAIR, CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import type { PrismaClient } from "./client.js";
+import { lockOwnedGroup, touchGroupUpdatedAt } from "./group-thread-locks.js";
 import { createGroupRepos } from "./groups.js";
 import { IsolationError } from "./scope.js";
 
@@ -70,6 +72,7 @@ describe("archiveGroup", () => {
   };
   let queryRaw: ReturnType<typeof vi.fn>;
   let findFirst: ReturnType<typeof vi.fn>;
+  let findUnique: ReturnType<typeof vi.fn>;
   let findManyRuns: ReturnType<typeof vi.fn>;
   let findManyComputers: ReturnType<typeof vi.fn>;
   let runUpdateMany: ReturnType<typeof vi.fn>;
@@ -84,11 +87,16 @@ describe("archiveGroup", () => {
 
   beforeEach(() => {
     queryRaw = vi.fn().mockResolvedValue([{ id: "group-1" }]);
+    findUnique = vi.fn().mockResolvedValue({ thread: { id: "thread-1" } });
     findFirst = vi.fn().mockResolvedValue({ thread: { id: "thread-1" } });
-    findManyRuns = vi.fn().mockResolvedValue([
-      { id: "run-1", taskId: "task-1" },
-      { id: "run-legacy", taskId: "task-legacy" },
-    ]);
+    findManyRuns = vi.fn(async (args?: { where?: { trigger?: string } }) =>
+      args?.where?.trigger
+        ? []
+        : [
+            { id: "run-1", taskId: "task-1" },
+            { id: "run-legacy", taskId: "task-legacy" },
+          ],
+    );
     // computer-1 matches production: the lease is ownership, executionRunId stays unset.
     // computer-legacy is the executionRunId fallback for a run with no lease row.
     // computer-2's executionRunId names a reclaimed run; resume must not follow that column.
@@ -219,7 +227,7 @@ describe("archiveGroup", () => {
     groupUpdate = vi.fn();
     const tx = {
       $queryRaw: queryRaw,
-      chatGroup: { findFirst, update: groupUpdate },
+      chatGroup: { findFirst, findUnique, update: groupUpdate },
       run: {
         findMany: findManyRuns,
         updateMany: vi.fn(),
@@ -228,6 +236,11 @@ describe("archiveGroup", () => {
       },
       attempt: { updateMany: attemptUpdateMany },
       task: { updateMany: taskUpdateMany },
+      steeringMessage: {
+        findMany: vi.fn().mockResolvedValue([]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
       thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
       computerExecutionLease: { findMany: leaseFindMany, updateMany: leaseUpdateMany },
       computer: { findMany: findManyComputers, updateMany: computerUpdateMany },
@@ -298,6 +311,7 @@ describe("archiveGroup", () => {
           id: "group-1",
           spaceId: actor.spaceId,
           userId: actor.userId,
+          kind: CHAT_GROUP_KIND_STANDARD,
         },
         select: { archivedAt: true, thread: { select: { id: true } } },
       }),
@@ -440,5 +454,194 @@ describe("archiveGroup", () => {
     const repos = createGroupRepos(prisma);
     await expect(repos.archiveGroup(actor, "group-1")).rejects.toBeInstanceOf(IsolationError);
     expect(groupUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("hidden agent_pair exclusion", () => {
+  const actor = {
+    spaceId: "workspace-1",
+    userId: "user-1",
+    email: "user@example.test",
+    isDeploymentOwner: false,
+  };
+
+  /** Stands in for the row RT-02 lets exist: a hidden pair group with two Bots. */
+  const pairRow = {
+    id: "group-pair",
+    spaceId: "workspace-1",
+    userId: "user-1",
+    name: "Agent pair",
+    kind: CHAT_GROUP_KIND_AGENT_PAIR,
+    pinned: false,
+    sectionId: null,
+    archivedAt: null,
+    createdAt: new Date("2026-10-22T00:00:00.000Z"),
+    updatedAt: new Date("2026-10-22T00:00:00.000Z"),
+    thread: { id: "thread-pair", unread: true, messages: [] },
+    members: [
+      { bot: { id: "bot-a", name: "Joy", color: "#111", runs: [] } },
+      { bot: { id: "bot-b", name: "小蓝", color: "#222", runs: [] } },
+    ],
+  };
+
+  /** Emulates the database: the pair row is returned unless the caller excluded it. */
+  function honourKind(where: { kind?: string }) {
+    return where.kind === CHAT_GROUP_KIND_STANDARD ? null : pairRow;
+  }
+
+  it("keeps pair groups out of the sidebar list", async () => {
+    const findMany = vi.fn(async ({ where }: { where: { kind?: string } }) => {
+      const row = honourKind(where);
+      return row ? [row] : [];
+    });
+    const repos = createGroupRepos({ chatGroup: { findMany } } as unknown as PrismaClient);
+
+    await expect(repos.listGroups(actor)).resolves.toEqual([]);
+    expect(findMany.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
+  });
+
+  it("keeps pair groups out of cross-space navigation and its unread badge", async () => {
+    const findMany = vi.fn(async ({ where }: { where: { kind?: string } }) => {
+      const row = honourKind(where);
+      return row ? [row] : [];
+    });
+    const repos = createGroupRepos({ chatGroup: { findMany } } as unknown as PrismaClient);
+
+    await expect(repos.listSpaceGroupsForSpaces(actor, ["workspace-1"])).resolves.toEqual([]);
+    expect(findMany.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
+  });
+
+  it("refuses to load a pair group through the normal group read", async () => {
+    const findFirst = vi.fn(async ({ where }: { where: { kind?: string } }) => honourKind(where));
+    const repos = createGroupRepos({ chatGroup: { findFirst } } as unknown as PrismaClient);
+
+    await expect(repos.getGroup(actor, "group-pair")).rejects.toBeInstanceOf(IsolationError);
+    expect(findFirst.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
+  });
+
+  it("refuses to address a pair group as a human send target", async () => {
+    const findFirst = vi.fn(async ({ where }: { where: { kind?: string } }) => honourKind(where));
+    const repos = createGroupRepos({ chatGroup: { findFirst } } as unknown as PrismaClient);
+
+    await expect(repos.getGroupTarget(actor, "group-pair")).rejects.toBeInstanceOf(IsolationError);
+    expect(findFirst.mock.calls[0]?.[0].where).toMatchObject({ kind: CHAT_GROUP_KIND_STANDARD });
+  });
+
+  function mutationHarness() {
+    const findFirst = vi.fn(async ({ where }: { where: { kind?: string } }) => honourKind(where));
+    const groupUpdate = vi.fn();
+    const groupDelete = vi.fn();
+    const groupUpdateMany = vi.fn(async ({ where }: { where: { id: string; kind?: string } }) => ({
+      count: where.kind === CHAT_GROUP_KIND_STANDARD && where.id !== "group-pair" ? 1 : 0,
+    }));
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
+      chatGroup: {
+        findUnique: vi.fn(async () => ({ thread: { id: "thread-1" } })),
+        findFirst,
+        update: groupUpdate,
+        updateMany: groupUpdateMany,
+        delete: groupDelete,
+      },
+      thread: { update: vi.fn() },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+      chatGroup: { updateMany: groupUpdateMany },
+    } as unknown as PrismaClient;
+    return {
+      repos: createGroupRepos(prisma),
+      findFirst,
+      groupUpdate,
+      groupDelete,
+      groupUpdateMany,
+    };
+  }
+
+  it("refuses updateGroup on a known pair id without writing", async () => {
+    const harness = mutationHarness();
+
+    await expect(
+      harness.repos.updateGroup(actor, { groupId: "group-pair", name: "hijacked" }),
+    ).rejects.toBeInstanceOf(IsolationError);
+    expect(harness.findFirst.mock.calls[0]?.[0].where).toMatchObject({
+      id: "group-pair",
+      kind: CHAT_GROUP_KIND_STANDARD,
+    });
+    expect(harness.groupUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses archiveGroup on a known pair id without writing", async () => {
+    const harness = mutationHarness();
+
+    await expect(harness.repos.archiveGroup(actor, "group-pair")).rejects.toBeInstanceOf(
+      IsolationError,
+    );
+    expect(harness.findFirst.mock.calls[0]?.[0].where).toMatchObject({
+      id: "group-pair",
+      kind: CHAT_GROUP_KIND_STANDARD,
+    });
+    expect(harness.groupUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses restoreGroup on a known pair id", async () => {
+    const harness = mutationHarness();
+
+    await expect(harness.repos.restoreGroup(actor, "group-pair")).rejects.toBeInstanceOf(
+      IsolationError,
+    );
+    expect(harness.groupUpdateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "group-pair", kind: CHAT_GROUP_KIND_STANDARD }),
+      data: { archivedAt: null },
+    });
+  });
+
+  it("refuses removeGroup on a known pair id without deleting", async () => {
+    const harness = mutationHarness();
+
+    await expect(harness.repos.removeGroup(actor, "group-pair")).rejects.toBeInstanceOf(
+      IsolationError,
+    );
+    expect(harness.findFirst.mock.calls[0]?.[0].where).toMatchObject({
+      id: "group-pair",
+      kind: CHAT_GROUP_KIND_STANDARD,
+    });
+    expect(harness.groupDelete).not.toHaveBeenCalled();
+  });
+
+  it("still restores a standard group", async () => {
+    const harness = mutationHarness();
+
+    await expect(harness.repos.restoreGroup(actor, "group-1")).resolves.toBeUndefined();
+    expect(harness.groupUpdateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "group-1", kind: CHAT_GROUP_KIND_STANDARD }),
+      data: { archivedAt: null },
+    });
+  });
+
+  it("locks only owned standard groups", async () => {
+    let sql = "";
+    const queryRaw = vi.fn(async (strings: TemplateStringsArray) => {
+      sql = strings.join("?");
+      return [];
+    });
+
+    await expect(
+      lockOwnedGroup({ $queryRaw: queryRaw as never }, actor, "group-pair"),
+    ).rejects.toBeInstanceOf(IsolationError);
+    expect(sql).toContain('"kind" =');
+  });
+
+  it("touches only a standard group's updatedAt", async () => {
+    const updateMany = vi.fn(async ({ where }: { where: { id: string; kind?: string } }) => ({
+      count: where.kind === CHAT_GROUP_KIND_STANDARD && where.id !== "group-pair" ? 1 : 0,
+    }));
+    const client = { chatGroup: { updateMany } } as never;
+
+    await expect(touchGroupUpdatedAt(client, "group-pair")).rejects.toBeInstanceOf(IsolationError);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "group-pair", kind: CHAT_GROUP_KIND_STANDARD },
+      data: { updatedAt: expect.any(Date) },
+    });
   });
 });

@@ -1,0 +1,1052 @@
+import { describe, expect, it } from "vitest";
+import {
+  type CollaborationDestination,
+  type CollaborationReceiptTarget,
+  type DestinationLocator,
+  type GroupPanelQueries,
+  type GroupQueries,
+  type GroupWorkQueries,
+  type GroupWorkState,
+  parseArtifactSummary,
+  parseAttemptId,
+  parseBackgroundExecutionRef,
+  parseBotId,
+  parseCollaborationDestination,
+  parseCollaborationOrigin,
+  parseCollaborationReceipt,
+  parseDeliveryBatchKey,
+  parseDestinationLocator,
+  parseGroupAgentIdentity,
+  parseGroupAgentMember,
+  parseGroupId,
+  parseGroupMembersSummary,
+  parseGroupPageQuery,
+  parseGroupQuery,
+  parseGroupRoutineSummary,
+  parseGroupUserMember,
+  parseGroupWorkDetail,
+  parseGroupWorkItem,
+  parseGroupWorkQuery,
+  parseGroupWorkState,
+  parseInterventionId,
+  parseMessageId,
+  parseRunId,
+  parseRunInstructionRef,
+  parseRuntimeTaskId,
+  parseSpaceId,
+  parseTaskId,
+  parseTaskInstructionEnvelope,
+  parseThreadId,
+  parseUserId,
+  ROUNDTABLE_CONTRACT_INVALID,
+  RoundtableContractError,
+  type RunId,
+  type TaskId,
+} from "./roundtable-contracts.js";
+
+const ids = {
+  user: parseUserId("user-1"),
+  space: parseSpaceId("space-1"),
+  bot: parseBotId("bot-1"),
+  peerBot: parseBotId("bot-2"),
+  group: parseGroupId("group-1"),
+  thread: parseThreadId("thread-1"),
+  pairThread: parseThreadId("thread-pair"),
+  message: parseMessageId("message-1"),
+  task: parseTaskId("task-1"),
+  rootRun: parseRunId("run-root"),
+  run: parseRunId("run-1"),
+  attempt: parseAttemptId("attempt-1"),
+  runtimeTask: parseRuntimeTaskId("runtime-task-1"),
+  intervention: parseInterventionId("intervention-1"),
+};
+
+function expectContractError(fn: () => unknown, contract: string, path?: string): void {
+  let caught: unknown;
+  try {
+    fn();
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(RoundtableContractError);
+  const error = caught as RoundtableContractError;
+  expect(error.code).toBe(ROUNDTABLE_CONTRACT_INVALID);
+  expect(error.contract).toBe(contract);
+  if (path !== undefined) expect(error.path).toBe(path);
+}
+
+function assertNever(value: never): never {
+  throw new Error(`unhandled contract variant: ${JSON.stringify(value)}`);
+}
+
+function describeDestination(destination: CollaborationDestination): string {
+  switch (destination.kind) {
+    case "current_group":
+      return `group:${destination.groupId}/${destination.threadId}`;
+    case "agent_pair":
+      return `pair:${destination.pairThreadId}/${destination.peerBotId}`;
+    default:
+      return assertNever(destination);
+  }
+}
+
+function describeLocator(locator: DestinationLocator): string {
+  switch (locator.kind) {
+    case "group_message":
+      return `group:${locator.groupId}/${locator.threadId}/${locator.messageId}`;
+    case "pair_message":
+      return `pair:${locator.pairThreadId}/${locator.messageId}`;
+    default:
+      return assertNever(locator);
+  }
+}
+
+function describeWorkState(state: GroupWorkState): string {
+  switch (state.kind) {
+    case "queued":
+    case "cancelled":
+      return state.kind;
+    case "working":
+      return `working:${state.currentAction ?? ""}`;
+    case "waiting":
+      return `waiting:${state.reason}`;
+    case "failed":
+      return `failed:${state.summary}`;
+    case "done":
+      return `done:${state.resultMessageId ?? ""}`;
+    default:
+      return assertNever(state);
+  }
+}
+
+function describeReceiptTarget(target: CollaborationReceiptTarget): string {
+  switch (target.kind) {
+    case "bot":
+      return `bot:${target.botId}`;
+    case "group":
+      return `group:${target.groupId}/${target.threadId}`;
+    default:
+      return assertNever(target);
+  }
+}
+
+const workState: GroupWorkState = { kind: "working", currentAction: "reading tests" };
+const workItem = {
+  taskId: ids.task,
+  rootRunId: ids.rootRun,
+  ownerBotId: ids.bot,
+  state: workState,
+  updatedAt: "2026-10-22T10:00:00.000Z",
+  children: [],
+};
+const envelope = {
+  taskId: ids.task,
+  revision: 2,
+  original: { content: "Compare LCP across releases.", messageId: ids.message },
+  amendments: [{ messageId: ids.message, seq: 4, content: "Split by region." }],
+};
+const actor = { kind: "user" as const, userId: ids.user, spaceId: ids.space };
+const agentIdentity = {
+  kind: "agent" as const,
+  botId: ids.bot,
+  name: "Little Blue",
+  color: "#3366ff",
+  avatarMode: "character" as const,
+  avatarCharacter: "dot" as const,
+  avatarBodyColor: "blue" as const,
+};
+const agentMember = { ...agentIdentity, status: "idle" };
+const peerAgentMember = {
+  ...agentIdentity,
+  botId: ids.peerBot,
+  name: "Little Cyan",
+  status: "idle" as const,
+};
+const currentUser = {
+  kind: "user" as const,
+  userId: ids.user,
+  name: "Joy",
+  image: null,
+  avatarStyle: "robot" as const,
+};
+const membersSummary = {
+  groupId: ids.group,
+  threadId: ids.thread,
+  currentUser,
+  agents: [agentMember, peerAgentMember],
+  agentCount: 2,
+  memberCount: 3,
+};
+const routine = {
+  id: "routine-1",
+  botId: ids.bot,
+  threadId: ids.thread,
+  name: "Morning brief",
+  prompt: "Summarize overnight incident reports.",
+  crons: ["0 9 * * *"],
+  timezone: "Asia/Shanghai",
+  active: true,
+  notify: true,
+  webhookEnabled: false,
+  githubEnabled: false,
+  messageProvider: null,
+  lastRunAt: "2026-10-22T01:00:00.000Z",
+  nextRunAt: "2026-10-23T01:00:00.000Z",
+  createdAt: "2026-10-01T00:00:00.000Z",
+  executorBot: agentIdentity,
+};
+
+describe("roundtable branded ids", () => {
+  it("parses every architecture id", () => {
+    expect(parseUserId("user-1")).toBe(ids.user);
+    expect(parseSpaceId("space-1")).toBe(ids.space);
+    expect(parseBotId("bot-1")).toBe(ids.bot);
+    expect(parseGroupId("group-1")).toBe(ids.group);
+    expect(parseThreadId("thread-1")).toBe(ids.thread);
+    expect(parseMessageId("message-1")).toBe(ids.message);
+    expect(parseTaskId("task-1")).toBe(ids.task);
+    expect(parseRunId("run-1")).toBe(ids.run);
+    expect(parseAttemptId("attempt-1")).toBe(ids.attempt);
+    expect(parseRuntimeTaskId("runtime-task-1")).toBe(ids.runtimeTask);
+    expect(parseInterventionId("intervention-1")).toBe(ids.intervention);
+  });
+
+  it("rejects empty and non-string ids", () => {
+    for (const value of ["", null, undefined, 1, {}, []]) {
+      expect(() => parseTaskId(value)).toThrow(RoundtableContractError);
+    }
+  });
+
+  it("keeps TaskId and RunId in separate namespaces", () => {
+    // @ts-expect-error TaskId is not assignable to RunId.
+    const run: RunId = ids.task;
+    expect(run).toBe(ids.task);
+  });
+
+  it("does not let a RuntimeTaskId pass as a user-visible TaskId", () => {
+    // @ts-expect-error RuntimeTaskId is not assignable to TaskId.
+    const task: TaskId = ids.runtimeTask;
+    expect(task).toBe(ids.runtimeTask);
+  });
+});
+
+describe("CollaborationDestination", () => {
+  it("parses the public group variant", () => {
+    const destination = parseCollaborationDestination({
+      kind: "current_group",
+      groupId: ids.group,
+      threadId: ids.thread,
+    });
+    expect(destination).toEqual({
+      kind: "current_group",
+      groupId: ids.group,
+      threadId: ids.thread,
+    });
+    expect(describeDestination(destination)).toBe(`group:${ids.group}/${ids.thread}`);
+  });
+
+  it("parses the private pair variant", () => {
+    const destination = parseCollaborationDestination({
+      kind: "agent_pair",
+      pairThreadId: ids.pairThread,
+      peerBotId: ids.peerBot,
+    });
+    expect(destination).toEqual({
+      kind: "agent_pair",
+      pairThreadId: ids.pairThread,
+      peerBotId: ids.peerBot,
+    });
+    expect(describeDestination(destination)).toBe(`pair:${ids.pairThread}/${ids.peerBot}`);
+  });
+
+  it("fails closed on an unknown kind", () => {
+    expectContractError(
+      () =>
+        parseCollaborationDestination({
+          kind: "group",
+          groupId: ids.group,
+          threadId: ids.thread,
+        }),
+      "CollaborationDestination",
+      "kind",
+    );
+  });
+
+  it("rejects destination fields from both variants", () => {
+    expectContractError(
+      () =>
+        parseCollaborationDestination({
+          kind: "agent_pair",
+          pairThreadId: ids.pairThread,
+          peerBotId: ids.peerBot,
+          groupId: ids.group,
+          threadId: ids.thread,
+        }),
+      "CollaborationDestination",
+      "",
+    );
+  });
+
+  it("rejects incomplete and non-object payloads", () => {
+    expectContractError(
+      () => parseCollaborationDestination({ kind: "agent_pair", pairThreadId: ids.pairThread }),
+      "CollaborationDestination",
+      "peerBotId",
+    );
+    expectContractError(
+      () => parseCollaborationDestination([ids.group]),
+      "CollaborationDestination",
+      "destination",
+    );
+  });
+});
+
+describe("origin and locator", () => {
+  it("parses an origin with an optional source message", () => {
+    expect(
+      parseCollaborationOrigin({
+        sourceThreadId: ids.thread,
+        sourceRunId: ids.rootRun,
+        sourceMessageId: ids.message,
+      }),
+    ).toEqual({
+      sourceThreadId: ids.thread,
+      sourceRunId: ids.rootRun,
+      sourceMessageId: ids.message,
+    });
+    expect(
+      parseCollaborationOrigin({
+        sourceThreadId: ids.thread,
+        sourceRunId: ids.rootRun,
+      }),
+    ).toEqual({ sourceThreadId: ids.thread, sourceRunId: ids.rootRun });
+  });
+
+  it("requires the origin thread and run", () => {
+    expectContractError(
+      () => parseCollaborationOrigin({ sourceThreadId: ids.thread }),
+      "CollaborationOrigin",
+      "sourceRunId",
+    );
+  });
+
+  it("parses both locator variants", () => {
+    const groupLocator = parseDestinationLocator({
+      kind: "group_message",
+      groupId: ids.group,
+      threadId: ids.thread,
+      messageId: ids.message,
+    });
+    const pairLocator = parseDestinationLocator({
+      kind: "pair_message",
+      pairThreadId: ids.pairThread,
+      messageId: ids.message,
+    });
+    expect(describeLocator(groupLocator)).toBe(`group:${ids.group}/${ids.thread}/${ids.message}`);
+    expect(describeLocator(pairLocator)).toBe(`pair:${ids.pairThread}/${ids.message}`);
+  });
+
+  it("fails closed on unknown and mixed locator kinds", () => {
+    expectContractError(
+      () =>
+        parseDestinationLocator({
+          kind: "bot_message",
+          botId: ids.bot,
+          messageId: ids.message,
+        }),
+      "DestinationLocator",
+      "kind",
+    );
+    expectContractError(
+      () =>
+        parseDestinationLocator({
+          kind: "pair_message",
+          pairThreadId: ids.pairThread,
+          messageId: ids.message,
+          groupId: ids.group,
+        }),
+      "DestinationLocator",
+      "",
+    );
+  });
+});
+
+describe("TaskInstructionEnvelope", () => {
+  it("parses the original instruction and ordered amendments", () => {
+    expect(parseTaskInstructionEnvelope(envelope)).toEqual(envelope);
+  });
+
+  it("allows an envelope without a source message or amendments", () => {
+    expect(
+      parseTaskInstructionEnvelope({
+        taskId: ids.task,
+        revision: 1,
+        original: { content: "Original request." },
+        amendments: [],
+      }),
+    ).toEqual({
+      taskId: ids.task,
+      revision: 1,
+      original: { content: "Original request." },
+      amendments: [],
+    });
+  });
+
+  it("rejects a non-positive revision and unordered amendments", () => {
+    expectContractError(
+      () => parseTaskInstructionEnvelope({ ...envelope, revision: 0 }),
+      "TaskInstructionEnvelope",
+      "revision",
+    );
+    expectContractError(
+      () => parseTaskInstructionEnvelope({ ...envelope, revision: 3 }),
+      "TaskInstructionEnvelope",
+      "revision",
+    );
+    expectContractError(
+      () =>
+        parseTaskInstructionEnvelope({
+          ...envelope,
+          amendments: [
+            { messageId: ids.message, seq: 8, content: "Second." },
+            { messageId: ids.message, seq: 4, content: "First." },
+          ],
+        }),
+      "TaskInstructionEnvelope",
+      "amendments[1].seq",
+    );
+  });
+
+  it("rejects a missing original block", () => {
+    expectContractError(
+      () => parseTaskInstructionEnvelope({ taskId: ids.task, revision: 1, amendments: [] }),
+      "TaskInstructionEnvelope",
+      "original",
+    );
+  });
+
+  it("rejects counters beyond JavaScript's safe integer range", () => {
+    const overflow = Number.MAX_SAFE_INTEGER + 1;
+    expectContractError(
+      () => parseTaskInstructionEnvelope({ ...envelope, revision: overflow }),
+      "TaskInstructionEnvelope",
+      "revision",
+    );
+    expectContractError(
+      () =>
+        parseTaskInstructionEnvelope({
+          ...envelope,
+          amendments: [{ messageId: ids.message, seq: overflow, content: "Split by region." }],
+        }),
+      "TaskInstructionEnvelope",
+      "amendments[0].seq",
+    );
+  });
+});
+
+describe("RunInstructionRef and BackgroundExecutionRef", () => {
+  it("parses the revision consumed by a Run", () => {
+    expect(parseRunInstructionRef({ taskId: ids.task, consumedRevision: 2 })).toEqual({
+      taskId: ids.task,
+      consumedRevision: 2,
+    });
+    expectContractError(
+      () => parseRunInstructionRef({ taskId: ids.task, consumedRevision: 0 }),
+      "RunInstructionRef",
+      "consumedRevision",
+    );
+  });
+
+  it("keeps the product task and runtime task identities separate", () => {
+    const execution = parseBackgroundExecutionRef({
+      taskId: ids.task,
+      runId: ids.run,
+      attemptId: ids.attempt,
+      runtimeTaskId: ids.runtimeTask,
+      consumedRevision: 2,
+    });
+    expect(execution.taskId).toBe(ids.task);
+    expect(execution.runtimeTaskId).toBe(ids.runtimeTask);
+    expect(parseBackgroundExecutionRef(execution)).toEqual(execution);
+  });
+
+  it("rejects a background execution without a runtime task identity", () => {
+    expectContractError(
+      () =>
+        parseBackgroundExecutionRef({
+          taskId: ids.task,
+          runId: ids.run,
+          attemptId: ids.attempt,
+          consumedRevision: 2,
+        }),
+      "BackgroundExecutionRef",
+      "runtimeTaskId",
+    );
+  });
+});
+
+describe("DeliveryBatchKey", () => {
+  const batchKey = {
+    threadId: ids.thread,
+    threadGeneration: 3,
+    botId: ids.bot,
+    originRunId: ids.rootRun,
+    executionTaskId: ids.task,
+    executionRunId: ids.run,
+    attemptId: ids.attempt,
+    runtimeTaskId: ids.runtimeTask,
+    consumedRevision: 2,
+  };
+
+  it("parses a complete execution identity", () => {
+    expect(parseDeliveryBatchKey(batchKey)).toEqual(batchKey);
+    expect(parseDeliveryBatchKey({ ...batchKey, threadGeneration: 0 })).toEqual({
+      ...batchKey,
+      threadGeneration: 0,
+    });
+  });
+
+  it("rejects a negative generation and a missing runtime identity", () => {
+    expectContractError(
+      () => parseDeliveryBatchKey({ ...batchKey, threadGeneration: -1 }),
+      "DeliveryBatchKey",
+      "threadGeneration",
+    );
+    const { runtimeTaskId: _runtimeTaskId, ...withoutRuntimeTask } = batchKey;
+    expectContractError(
+      () => parseDeliveryBatchKey(withoutRuntimeTask),
+      "DeliveryBatchKey",
+      "runtimeTaskId",
+    );
+  });
+});
+
+describe("CollaborationReceipt", () => {
+  it("represents a group receipt without a fake toBotId", () => {
+    const receipt = parseCollaborationReceipt({
+      kind: "collaboration_receipt",
+      target: { kind: "group", groupId: ids.group, threadId: ids.thread },
+      state: "sent",
+      destination: {
+        kind: "group_message",
+        groupId: ids.group,
+        threadId: ids.thread,
+        messageId: ids.message,
+      },
+    });
+    expect(describeReceiptTarget(receipt.target)).toBe(`group:${ids.group}/${ids.thread}`);
+    expect(receipt.destination?.kind).toBe("group_message");
+  });
+
+  it("rejects a group target carrying toBotId", () => {
+    expectContractError(
+      () =>
+        parseCollaborationReceipt({
+          kind: "collaboration_receipt",
+          target: {
+            kind: "group",
+            groupId: ids.group,
+            threadId: ids.thread,
+            toBotId: ids.bot,
+          },
+          state: "failed",
+          destination: null,
+        }),
+      "CollaborationReceiptTarget",
+      "",
+    );
+  });
+
+  it("requires a locator for delivered receipts and permits a retained locator on work failure", () => {
+    expectContractError(
+      () =>
+        parseCollaborationReceipt({
+          kind: "collaboration_receipt",
+          target: { kind: "bot", botId: ids.peerBot },
+          state: "sent",
+          destination: null,
+        }),
+      "CollaborationReceipt",
+      "destination",
+    );
+    expect(
+      parseCollaborationReceipt({
+        kind: "collaboration_receipt",
+        target: { kind: "bot", botId: ids.peerBot },
+        state: "failed",
+        destination: {
+          kind: "pair_message",
+          pairThreadId: ids.pairThread,
+          messageId: ids.message,
+        },
+      }).destination?.kind,
+    ).toBe("pair_message");
+    expect(
+      parseCollaborationReceipt({
+        kind: "collaboration_receipt",
+        target: { kind: "bot", botId: ids.peerBot },
+        state: "failed",
+        destination: null,
+      }).destination,
+    ).toBeNull();
+  });
+
+  it("parses user-safe receipt display labels and rejects internal-only fields", () => {
+    const receipt = parseCollaborationReceipt({
+      kind: "collaboration_receipt",
+      target: { kind: "group", groupId: ids.group, threadId: ids.thread },
+      state: "sent",
+      destination: {
+        kind: "group_message",
+        groupId: ids.group,
+        threadId: ids.thread,
+        messageId: ids.message,
+      },
+      display: { groupName: "Launch room", topic: "Performance risk review" },
+    });
+    expect(receipt.display).toEqual({
+      groupName: "Launch room",
+      topic: "Performance risk review",
+    });
+    expectContractError(
+      () =>
+        parseCollaborationReceipt({
+          kind: "collaboration_receipt",
+          target: { kind: "group", groupId: ids.group, threadId: ids.thread },
+          state: "sent",
+          destination: {
+            kind: "group_message",
+            groupId: ids.group,
+            threadId: ids.thread,
+            messageId: ids.message,
+          },
+          display: { groupName: "Launch room", topic: "Performance risk review", runId: "r1" },
+        }),
+      "CollaborationReceiptDisplay",
+      "",
+    );
+  });
+
+  it("rejects a group receipt pointing at a pair locator", () => {
+    expectContractError(
+      () =>
+        parseCollaborationReceipt({
+          kind: "collaboration_receipt",
+          target: { kind: "group", groupId: ids.group, threadId: ids.thread },
+          state: "completed",
+          destination: {
+            kind: "pair_message",
+            pairThreadId: ids.pairThread,
+            messageId: ids.message,
+          },
+        }),
+      "CollaborationReceipt",
+      "destination",
+    );
+  });
+
+  it("fails closed on an unknown state or target kind", () => {
+    expectContractError(
+      () =>
+        parseCollaborationReceipt({
+          kind: "collaboration_receipt",
+          target: { kind: "bot", botId: ids.peerBot },
+          state: "unknown",
+          destination: null,
+        }),
+      "CollaborationReceipt",
+      "state",
+    );
+    expectContractError(
+      () =>
+        parseCollaborationReceipt({
+          kind: "collaboration_receipt",
+          target: { kind: "room", groupId: ids.group },
+          state: "failed",
+          destination: null,
+        }),
+      "CollaborationReceiptTarget",
+      "kind",
+    );
+  });
+});
+
+describe("group read contracts", () => {
+  it("parses a group page query and rejects an unbounded limit", () => {
+    expect(
+      parseGroupPageQuery({
+        actor: { kind: "user", userId: ids.user, spaceId: ids.space },
+        groupId: ids.group,
+        cursor: "cursor-1",
+        limit: 20,
+      }),
+    ).toEqual({
+      actor: { kind: "user", userId: ids.user, spaceId: ids.space },
+      groupId: ids.group,
+      cursor: "cursor-1",
+      limit: 20,
+    });
+    expectContractError(
+      () =>
+        parseGroupPageQuery({
+          actor: { kind: "user", userId: ids.user, spaceId: ids.space },
+          groupId: ids.group,
+          limit: 0,
+        }),
+      "GroupPageQuery",
+      "limit",
+    );
+    expectContractError(
+      () =>
+        parseGroupPageQuery({
+          actor: { kind: "user", userId: ids.user, spaceId: ids.space },
+          groupId: ids.group,
+          limit: 61,
+        }),
+      "GroupPageQuery",
+      "limit",
+    );
+  });
+
+  it("parses an unpaged group query and rejects page fields", () => {
+    expect(parseGroupQuery({ actor, groupId: ids.group })).toEqual({
+      actor,
+      groupId: ids.group,
+    });
+    expectContractError(
+      () => parseGroupQuery({ actor, groupId: ids.group, limit: 20 }),
+      "GroupQuery",
+      "",
+    );
+  });
+
+  it("rejects a non-user actor", () => {
+    expectContractError(
+      () =>
+        parseGroupPageQuery({
+          actor: { kind: "system", userId: ids.user, spaceId: ids.space },
+          groupId: ids.group,
+          limit: 20,
+        }),
+      "UserActor",
+      "kind",
+    );
+  });
+
+  it("parses a group work query", () => {
+    expect(
+      parseGroupWorkQuery({
+        actor: { kind: "user", userId: ids.user, spaceId: ids.space },
+        groupId: ids.group,
+        taskId: ids.task,
+      }),
+    ).toEqual({
+      actor: { kind: "user", userId: ids.user, spaceId: ids.space },
+      groupId: ids.group,
+      taskId: ids.task,
+    });
+  });
+
+  it("parses every work state variant", () => {
+    const states: GroupWorkState[] = [
+      { kind: "queued" },
+      { kind: "working" },
+      { kind: "working", currentAction: "reading" },
+      { kind: "waiting", reason: "approval" },
+      { kind: "waiting", reason: "input" },
+      { kind: "waiting", reason: "resource" },
+      { kind: "failed", summary: "provider error" },
+      { kind: "done" },
+      { kind: "done", resultMessageId: ids.message },
+      { kind: "cancelled" },
+    ];
+    for (const state of states) {
+      expect(parseGroupWorkState(state)).toEqual(state);
+      expect(describeWorkState(state)).toContain(state.kind);
+    }
+  });
+
+  it("fails closed on unknown work states and waiting reasons", () => {
+    expectContractError(() => parseGroupWorkState({ kind: "running" }), "GroupWorkState", "kind");
+    expectContractError(
+      () => parseGroupWorkState({ kind: "waiting", reason: "meeting" }),
+      "GroupWorkState",
+      "reason",
+    );
+    expectContractError(
+      () => parseGroupWorkState({ kind: "cancelled", currentAction: "still running" }),
+      "GroupWorkState",
+      "",
+    );
+  });
+
+  it("parses a recursive work item and a detail envelope", () => {
+    const item = parseGroupWorkItem({
+      ...workItem,
+      children: [
+        {
+          ...workItem,
+          taskId: parseTaskId("task-child"),
+          rootRunId: ids.rootRun,
+          state: { kind: "queued" },
+        },
+      ],
+    });
+    expect(item.children.map((child) => child.taskId)).toEqual(["task-child"]);
+    expect(
+      parseGroupWorkDetail({
+        groupId: ids.group,
+        work: item,
+        instruction: envelope,
+      }),
+    ).toEqual({ groupId: ids.group, work: item, instruction: envelope });
+    expectContractError(
+      () =>
+        parseGroupWorkDetail({
+          groupId: ids.group,
+          work: item,
+          instruction: { ...envelope, taskId: parseTaskId("task-other") },
+        }),
+      "GroupWorkDetail",
+      "instruction.taskId",
+    );
+  });
+
+  it("rejects a work item without a children array", () => {
+    const { children: _children, ...withoutChildren } = workItem;
+    expectContractError(() => parseGroupWorkItem(withoutChildren), "GroupWorkItem", "children");
+  });
+
+  it("lets panel and work modules implement only their own port", async () => {
+    const panel: GroupPanelQueries = {
+      listArtifacts: async () => ({ items: [], nextCursor: null }),
+      listRoutines: async () => [],
+      listMembers: async () => membersSummary,
+    };
+    const work: GroupWorkQueries = {
+      listWork: async () => ({ items: [workItem], nextCursor: null }),
+      getWork: async () => ({
+        groupId: ids.group,
+        work: workItem,
+        instruction: envelope,
+      }),
+    };
+    const all: GroupQueries = { ...panel, ...work };
+
+    expect((await all.listMembers({ actor, groupId: ids.group })).agentCount).toBe(2);
+    expect((await all.listWork({ actor, groupId: ids.group, limit: 20 })).items[0]?.taskId).toBe(
+      ids.task,
+    );
+  });
+
+  it("keeps the current user and agents as separate identities", () => {
+    expect(parseGroupAgentIdentity(agentIdentity)).toEqual(agentIdentity);
+    expect(parseGroupAgentMember(agentMember)).toEqual(agentMember);
+    expect(parseGroupUserMember(currentUser)).toEqual(currentUser);
+    expect(parseGroupMembersSummary(membersSummary)).toEqual(membersSummary);
+  });
+
+  it("counts only agents in agentCount and derives memberCount", () => {
+    const parsed = parseGroupMembersSummary(membersSummary);
+    expect(parsed.currentUser.userId).toBe(ids.user);
+    expect(parsed.agents.map((agent) => agent.botId)).toEqual([ids.bot, ids.peerBot]);
+    expect(parsed.agentCount).toBe(2);
+    expect(parsed.memberCount).toBe(parsed.agentCount + 1);
+  });
+
+  it("rejects bot member kinds, mismatched counts and duplicate agents", () => {
+    expectContractError(
+      () => parseGroupAgentMember({ ...agentMember, kind: "bot" }),
+      "GroupAgentMember",
+      "kind",
+    );
+    expectContractError(
+      () => parseGroupMembersSummary({ ...membersSummary, agentCount: 3 }),
+      "GroupMembersSummary",
+      "agentCount",
+    );
+    expectContractError(
+      () => parseGroupMembersSummary({ ...membersSummary, memberCount: 1 }),
+      "GroupMembersSummary",
+      "memberCount",
+    );
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          ...membersSummary,
+          agents: [agentMember, { ...agentMember, name: "Duplicate" }],
+          agentCount: 2,
+          memberCount: 3,
+        }),
+      "GroupMembersSummary",
+      "agents[1].botId",
+    );
+    expectContractError(
+      () => parseGroupMembersSummary({ ...membersSummary, agents: "none" }),
+      "GroupMembersSummary",
+      "agents",
+    );
+  });
+
+  it("rejects a group summary above the six-Agent product cap", () => {
+    const agents = Array.from({ length: 7 }, (_, index) => ({
+      ...agentMember,
+      botId: parseBotId(`bot-${index + 1}`),
+    }));
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          groupId: ids.group,
+          threadId: ids.thread,
+          currentUser,
+          agents,
+          agentCount: agents.length,
+          memberCount: agents.length + 1,
+        }),
+      "GroupMembersSummary",
+      "agentCount",
+    );
+  });
+
+  it("rejects a group summary below the two-Agent product floor", () => {
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          groupId: ids.group,
+          threadId: ids.thread,
+          currentUser,
+          agents: [agentMember],
+          agentCount: 1,
+          memberCount: 2,
+        }),
+      "GroupMembersSummary",
+      "agentCount",
+    );
+    expectContractError(
+      () =>
+        parseGroupMembersSummary({
+          groupId: ids.group,
+          threadId: ids.thread,
+          currentUser,
+          agents: [agentMember],
+          agentCount: 2,
+          memberCount: 3,
+        }),
+      "GroupMembersSummary",
+      "agents",
+    );
+  });
+
+  it("rejects avatar identities that do not match their avatar mode", () => {
+    expectContractError(
+      () => parseGroupAgentMember({ ...agentMember, avatarCharacter: null }),
+      "GroupAgentMember",
+      "avatarCharacter",
+    );
+    expectContractError(
+      () => parseGroupAgentMember({ ...agentMember, avatarMode: "legacy" }),
+      "GroupAgentMember",
+      "avatarCharacter",
+    );
+    expectContractError(
+      () => parseGroupUserMember({ ...currentUser, image: 42 }),
+      "GroupUserMember",
+      "image",
+    );
+  });
+
+  it("requires a concrete executor on every group routine", () => {
+    expect(parseGroupRoutineSummary(routine)).toEqual(routine);
+    expect(
+      parseGroupRoutineSummary({
+        ...routine,
+        lastRunAt: null,
+        nextRunAt: null,
+        messageProvider: "slack",
+      }),
+    ).toEqual({
+      ...routine,
+      lastRunAt: null,
+      nextRunAt: null,
+      messageProvider: "slack",
+    });
+    const { executorBot: _executorBot, ...withoutExecutor } = routine;
+    expectContractError(
+      () => parseGroupRoutineSummary(withoutExecutor),
+      "GroupRoutineSummary",
+      "executorBot",
+    );
+    expectContractError(
+      () =>
+        parseGroupRoutineSummary({
+          ...routine,
+          executorBot: { ...agentIdentity, botId: ids.peerBot },
+        }),
+      "GroupRoutineSummary",
+      "executorBot.botId",
+    );
+    expectContractError(
+      () => parseGroupRoutineSummary({ ...routine, active: "yes" }),
+      "GroupRoutineSummary",
+      "active",
+    );
+    expectContractError(
+      () => parseGroupRoutineSummary({ ...routine, messageProvider: "slack\ninvalid" }),
+      "GroupRoutineSummary",
+      "messageProvider",
+    );
+    expectContractError(
+      () => parseGroupRoutineSummary({ ...routine, messageProvider: "x".repeat(51) }),
+      "GroupRoutineSummary",
+      "messageProvider",
+    );
+  });
+
+  it("keeps artifact provenance, pagination fields and version count", () => {
+    const artifact = {
+      id: "artifact-1",
+      botId: ids.bot,
+      groupId: ids.group,
+      runId: ids.run,
+      name: "report.csv",
+      description: null,
+      mimeType: "text/csv",
+      size: 42,
+      version: 2,
+      versionCount: 3,
+      createdAt: "2026-10-22T10:00:00.000Z",
+    };
+    expect(parseArtifactSummary(artifact)).toEqual(artifact);
+    expect(
+      parseArtifactSummary({
+        ...artifact,
+        botId: null,
+        groupId: null,
+        runId: null,
+      }),
+    ).toEqual({ ...artifact, botId: null, groupId: null, runId: null });
+    expectContractError(
+      () => parseArtifactSummary({ ...artifact, groupId: "" }),
+      "ArtifactSummary",
+      "groupId",
+    );
+    const { botId: _botId, ...withoutBotId } = artifact;
+    expectContractError(() => parseArtifactSummary(withoutBotId), "ArtifactSummary", "botId");
+    const { description: _description, ...withoutDescription } = artifact;
+    expectContractError(
+      () => parseArtifactSummary(withoutDescription),
+      "ArtifactSummary",
+      "description",
+    );
+    expectContractError(
+      () => parseArtifactSummary({ ...artifact, size: -1 }),
+      "ArtifactSummary",
+      "size",
+    );
+    expectContractError(
+      () => parseArtifactSummary({ ...artifact, versionCount: 0 }),
+      "ArtifactSummary",
+      "versionCount",
+    );
+  });
+});

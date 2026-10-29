@@ -116,8 +116,16 @@ final class PlanBridgeTool extends ToolBase {
             // the harness PlanModeManager was built with), so enter/exit and
             // PLAN.md land on the identical paths.
             AgentState state = RuntimeContext.resolveAgentState(context, agent);
+            // RUNTIME-RELIABILITY-01: plain local manager (no filesystem
+            // indirection, no namespace, no index). The single-argument
+            // WorkspaceManager constructor opens a SQLite WorkspaceIndex
+            // connection per construction and this projection runs on every
+            // plan tool call — the connection was never closed. The plain
+            // manager keeps the identical physical paths (PLAN.md and the plan
+            // dir are workspace-relative local files either way).
             PlanModeManager manager = new PlanModeManager(
-                    new WorkspaceManager(workspace), PlanModeManager.DEFAULT_PLAN_DIR);
+                    new WorkspaceManager(workspace, null, null, null),
+                    PlanModeManager.DEFAULT_PLAN_DIR);
             if (state != null) {
                 if ("plan_enter".equals(name) && "entered".equals(status)
                         && !manager.isPlanActive(state)) {
@@ -137,7 +145,13 @@ final class PlanBridgeTool extends ToolBase {
                 writePlanProjectionFile(value);
             }
         } catch (Exception error) {
-            System.err.println("Plan projection failed (backend plan stays authoritative): " + error);
+            // The projection is best-effort and the backend plan stays
+            // authoritative, so the run continues. Only the type is recorded:
+            // the message can carry a workspace path.
+            RuntimeLog.warn("runtime.plan.projection_failed", RuntimeLog.bindings(
+                    "session.key", parentSession,
+                    "projection.site", "plan_state",
+                    "error.type", error.getClass().getName()));
         }
     }
 
@@ -179,7 +193,10 @@ final class PlanBridgeTool extends ToolBase {
             Files.createDirectories(dir);
             Files.writeString(dir.resolve("PLAN.md"), renderPlanMarkdown(plan), StandardCharsets.UTF_8);
         } catch (Exception error) {
-            System.err.println("PLAN.md projection write failed: " + error);
+            RuntimeLog.warn("runtime.plan.projection_failed", RuntimeLog.bindings(
+                    "session.key", parentSession,
+                    "projection.site", "plan_file",
+                    "error.type", error.getClass().getName()));
         }
     }
 }

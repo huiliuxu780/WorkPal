@@ -1,0 +1,49 @@
+CARD-01D gate-leak A/B — RUN B (post-fix harness: gate-off batch, then gate-on batch)
+=====================================================================================
+worktree         : /Users/rivers/Documents/WorkPal-worktrees/card-attention (branch codex/card-attention)
+git HEAD         : 7e463570f5f86ee9e792a65b509ee41fe4a8c13e
+harness under test: packages/testkit/src/cli/{harness.ts,e2e-spec-selection.ts} exactly as committed
+                   at HEAD (splitGateBatches present); restored with
+                     git checkout HEAD -- packages/testkit/src/cli/harness.ts \
+                                          packages/testkit/src/cli/e2e-spec-selection.ts
+                   and verified: git diff --stat HEAD -- packages/testkit/ -> empty
+application code : identical to run A
+node / pnpm      : v22.23.3 / 9.15.0
+database         : disposable WORKPAL_E2E_DATABASE_URL -> workpal_e2e_gateab_b
+spec union       : the SAME union as run A, passed as one --spec argument
+captured         : 2026-10-27, local run
+
+Command (identical to run A except for the database name)
+---------------------------------------------------------
+export WORKPAL_E2E_DATABASE_URL="<root DATABASE_URL with the database name workpal_e2e_gateab_b>"
+pnpm test:e2e --runtime=scripted --spec="card-attention.spec.ts|ui-appearance.spec.ts|settings-shell.spec.ts|card-ui-interactions.spec.ts|peer-messages.spec.ts|group-membership.spec.ts|card-display-content.spec.ts|onboarding-conversation.spec.ts|onboarding-model-auto-skip.spec.ts|login-card.spec.ts"
+
+Result
+------
+The harness now runs two gate-compatible children, each with its own API/Web/DB lifecycle:
+  gate-off batch (5 legacy specs, 8 tests) -> 8 passed. login-card.spec.ts and
+    onboarding-conversation.spec.ts, which failed in run A on the same code, pass here.
+  gate-on batch (5 gated specs, 14 tests) -> 13 passed, 1 failed. The single failure is
+    group-membership.spec.ts:129, the read-once effect-status race documented in
+    ../membership-effect-race/README.md (the row reached "completed" 1.9s after the read);
+    it is not a gate leak and it is fixed by polling that row in run C.
+EXIT=1 is therefore attributable to that race alone; the gate leak is gone.
+
+Excerpt of the local log (line numbers refer to the uncommitted full log)
+-------------------------------------------------------------------------
+> workpal@0.1.0 test:e2e /Users/rivers/Documents/WorkPal-worktrees/card-attention
+> tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=card-attention.spec.ts|ui-appearance.spec.ts|settings-shell.spec.ts|card-ui-interactions.spec.ts|peer-messages.spec.ts|group-membership.spec.ts|card-display-content.spec.ts|onboarding-conversation.spec.ts|onboarding-model-auto-skip.spec.ts|login-card.spec.ts"
+E2E: gate-off batch
+> tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=ui-appearance.spec.ts|settings-shell.spec.ts|onboarding-conversation.spec.ts|onboarding-model-auto-skip.spec.ts|login-card.spec.ts"
+Running 8 tests using 1 worker
+::notice title=🎭 Playwright Run Summary::  8 passed (44.9s)
+  8 passed (44.9s)
+E2E: gate-on batch
+> tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=card-attention.spec.ts|card-ui-interactions.spec.ts|peer-messages.spec.ts|group-membership.spec.ts|card-display-content.spec.ts"
+Running 14 tests using 1 worker
+::error file=e2e/group-membership.spec.ts,title=[chromium] › e2e/group-membership.spec.ts:26:3 › group membership approval (X-GROUP) › joins once, delivers once, and returns the result,line=129,col=9::  1) [chromium] › e2e/group-membership.spec.ts:26:3 › group membership approval (X-GROUP) › joins once, delivers once, and returns the result %0A    Error: expect(received).toBe(expected) // Object.is equality%0A%0A    Expected: "completed"%0A    Received: "intended"%0A%0A      127 |           })%0A      128 |         ).status,%0A    > 129 |       ).toBe("completed");%0A          |         ^%0A      130 |     } finally {%0A      131 |       await pool.end();%0A      132 |     }%0A        at /Users/rivers/Documents/WorkPal-worktrees/card-attention/apps/web/e2e/group-membership.spec.ts:129:9
+  ✘  10 [chromium] › e2e/group-membership.spec.ts:26:3 › group membership approval (X-GROUP) › joins once, delivers once, and returns the result (21.9s)
+  1 failed
+    [chromium] › e2e/group-membership.spec.ts:26:3 › group membership approval (X-GROUP) › joins once, delivers once, and returns the result 
+  13 passed (2.9m)
+EXIT=1

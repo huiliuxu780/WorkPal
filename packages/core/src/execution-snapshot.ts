@@ -62,6 +62,8 @@ export type ExecutionSummaryFacts = {
     trigger: string;
     error: string | null;
     orchestration: unknown;
+    /** Durable trigger message link; several Runs may share one message. */
+    sourceMessageId?: string | null;
     startedAt: string | null;
     completedAt: string | null;
     /** Immutable creation time; the updatedAt fallback for Runs without events. */
@@ -91,6 +93,8 @@ export type ExecutionSummaryFacts = {
   activityTruncated?: boolean;
   retryOfRunId?: string | null;
   retrySuccessorRunId?: string | null;
+  followUpOfRunId?: string | null;
+  followUpSuccessorRunId?: string | null;
   manualRetry?: ExecutionSummary["manualRetry"];
 };
 
@@ -160,6 +164,7 @@ export function buildExecutionSummary(facts: ExecutionSummaryFacts): ExecutionSu
     runId: run.id,
     threadId: run.threadId,
     botId: run.botId,
+    ...(run.sourceMessageId ? { sourceMessageId: run.sourceMessageId } : {}),
     rev: facts.rev,
     status: run.status,
     ...(waitKind
@@ -185,6 +190,10 @@ export function buildExecutionSummary(facts: ExecutionSummaryFacts): ExecutionSu
     ...(incomplete.length > 0 ? { incompleteSections: incomplete } : {}),
     ...(facts.retryOfRunId ? { retryOfRunId: facts.retryOfRunId } : {}),
     ...(facts.retrySuccessorRunId ? { retrySuccessorRunId: facts.retrySuccessorRunId } : {}),
+    ...(facts.followUpOfRunId ? { followUpOfRunId: facts.followUpOfRunId } : {}),
+    ...(facts.followUpSuccessorRunId
+      ? { followUpSuccessorRunId: facts.followUpSuccessorRunId }
+      : {}),
     ...(facts.manualRetry ? { manualRetry: facts.manualRetry } : {}),
   });
 }

@@ -17,7 +17,7 @@ import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   IsolationError,
-  lockOwnedGroup,
+  lockOwnedStandardGroupThread,
   type PrismaClient,
   touchGroupUpdatedAt,
 } from "@rakazo/db";
@@ -39,7 +39,10 @@ export async function handoffToGroupBot(
   const deliveryKey = `group-handoff:${run.id}`;
   const committed = await deps.prisma.$transaction(async (tx) => {
     try {
-      await lockOwnedGroup(tx, run, groupId);
+      await lockOwnedStandardGroupThread(tx, run, {
+        groupId,
+        threadId: run.threadId,
+      });
     } catch (error) {
       if (error instanceof IsolationError)
         return { error: "group is no longer available" } as const;
@@ -137,7 +140,9 @@ export async function handoffToGroupBot(
       });
       hasNewUserInstruction = Boolean(newer);
     }
-    if (isHandoffBounceBack({ targetBotId: targetId, fromBotId: bouncedFrom, hasNewUserInstruction })) {
+    if (
+      isHandoffBounceBack({ targetBotId: targetId, fromBotId: bouncedFrom, hasNewUserInstruction })
+    ) {
       return { error: HANDOFF_BOUNCE_ERROR } as const;
     }
     // §13 hard ownership-transfer budget per user turn: Alice→Bob is depth 1,

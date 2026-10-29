@@ -435,25 +435,106 @@ interface AgentTurnPolicyBase {
   routing: { kind: string };
 }
 
-export type AgentTurnPolicy = (AgentTurnPolicyBase & { version: "v1" }) | (AgentTurnPolicyBase & {
-  version: "v2";
-  budget: {
-    maxTokens: number;
-    maxCostUsd: number;
-    maxDurationSec: number;
-    maxToolCalls: number;
-    maxChildAgents: number;
-    maxDepth: number;
+export type AgentTurnPolicy =
+  | (AgentTurnPolicyBase & { version: "v1" })
+  | (AgentTurnPolicyBase & {
+      version: "v2";
+      budget: {
+        maxTokens: number;
+        maxCostUsd: number;
+        maxDurationSec: number;
+        maxToolCalls: number;
+        maxChildAgents: number;
+        maxDepth: number;
+      };
+      approval: { timeoutSec: number; onTimeout: "expire" };
+      retry: { maxAuto: number; retryable: string[] };
+      subagent: { permissionInheritance: "subset-readonly" };
+    });
+
+/** RT-26: identity of one native pending-state checkpoint. */
+export interface AgentCheckpointResume {
+  checkpointId: string;
+  digest: string;
+  /** The chat session key the checkpoint was detached from; the Runtime
+   *  requires it to equal the resumed Run's session admission key. */
+  sessionKey: string;
+  sourceRunId: string;
+  sourceAttemptId: string;
+  sourceExecutionId: string;
+  sourceFence: number;
+  sourceSuspensionKey: string;
+  /** The NEW execution binding this restore runs under. */
+  attemptId: string;
+  executionId: string;
+  fence: number;
+  suspensionKey: string;
+}
+
+export interface AgentThreadContextMessage {
+  seq: number;
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * RT-26: proof from the Runtime that the shared AgentScope session slot is
+ * clean (no pending native call) or that its pending state was atomically
+ * detached into `checkpointId`. Only this proof may release chat admission.
+ */
+export interface AgentSessionCheckpointProof {
+  kind: "clean" | "detached";
+  checkpointId: string;
+  digest: string;
+  pendingCalls: Array<{ id?: string; name?: string; state?: string }>;
+  runtimeInstanceId?: string;
+}
+
+export interface AgentSessionCheckpointDetachRequest {
+  identity: {
+    userId: string;
+    spaceId: string;
+    botId: string;
+    threadId: string;
+    runId: string;
   };
-  approval: { timeoutSec: number; onTimeout: "expire" };
-  retry: { maxAuto: number; retryable: string[] };
-  subagent: { permissionInheritance: "subset-readonly" };
-});
+  sessionKey: string;
+  /** Thread history-compaction generation the shared slot is keyed by. */
+  sessionGeneration: number;
+  executionId: string;
+  attemptId: string;
+  fence: number;
+  suspensionKey: string;
+  checkpointId: string;
+}
 
 export interface AgentRunRequest {
   botId: string;
   threadId: string;
   runId: string;
+  /**
+   * Durable backend admission proof for a stateful AgentScope chat execution.
+   * Auxiliary scopes are intentionally outside the chat admission resource.
+   */
+  sessionAdmission?: {
+    sessionKey: string;
+    executionId: string;
+    attemptId: string;
+    fence: number;
+    suspensionKey: string;
+  };
+  /**
+   * RT-26: restore an acknowledged checkpoint of THIS Run under a new
+   * execution fence and suspension key. The Runtime verifies every source and
+   * target binding against its own snapshot manifest before touching state.
+   */
+  resumeCheckpoint?: AgentCheckpointResume;
+  /**
+   * RT-26: trusted Thread messages appended while this Run was suspended,
+   * ordered by PostgreSQL seq. The Runtime renders a bounded, deterministic
+   * context block; it is not native state of another Run.
+   */
+  threadContextAfterSuspension?: AgentThreadContextMessage[];
   sourceMessageId?: string | null;
   /**
    * Backend-selected auxiliary executions are stateless and do not share the

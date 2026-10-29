@@ -1,4 +1,4 @@
-import type { ExecutionSummary } from "@rakazo/contracts";
+import type { DisplayBlock, ExecutionSummary } from "@rakazo/contracts";
 
 interface MessageIdentity {
   id: string;
@@ -11,6 +11,8 @@ export interface ThreadHistory<TMessage extends MessageIdentity> {
   olderCursor: number | null;
   /** Per-Run execution summaries carried by snapshots and history pages. */
   executions?: readonly ExecutionSummary[];
+  /** CARD-01C display projection carried by snapshots and history pages. */
+  displayBlocks?: readonly DisplayBlock[];
 }
 
 /**
@@ -32,17 +34,38 @@ export function mergeExecutionsByRun(
   });
 }
 
+/**
+ * Merge display blocks across a refresh (or an older-page prepend). The first
+ * source wins per blockId — it is the fresher projection of that block — and
+ * blocks only known to the other source survive, so loaded history pages keep
+ * their cards after a snapshot refresh.
+ */
+export function mergeDisplayBlocks(
+  first: readonly DisplayBlock[] | undefined,
+  second: readonly DisplayBlock[] | undefined,
+): DisplayBlock[] | undefined {
+  if (first === undefined && second === undefined) return undefined;
+  const seen = new Set<string>();
+  return [...(first ?? []), ...(second ?? [])].filter((block) => {
+    if (seen.has(block.blockId)) return false;
+    seen.add(block.blockId);
+    return true;
+  });
+}
+
 export function mergeThreadHistory<
   TMessage extends MessageIdentity,
   TSnapshot extends ThreadHistory<TMessage>,
 >(previous: TSnapshot | null, recent: TSnapshot, preserveLoadedHistory = false): TSnapshot {
   if (!previous || previous.threadId !== recent.threadId || !preserveLoadedHistory) return recent;
   const executions = mergeExecutionsByRun(recent.executions, previous.executions);
+  const displayBlocks = mergeDisplayBlocks(recent.displayBlocks, previous.displayBlocks);
   return {
     ...recent,
     messages: mergeMessagePages(previous.messages, recent.messages),
     olderCursor: previous.olderCursor,
     ...(executions ? { executions } : {}),
+    ...(displayBlocks ? { displayBlocks } : {}),
   };
 }
 
@@ -54,11 +77,13 @@ export function prependThreadHistoryPage<
     return previous;
   }
   const executions = mergeExecutionsByRun(previous.executions, page.executions);
+  const displayBlocks = mergeDisplayBlocks(previous.displayBlocks, page.displayBlocks);
   return {
     ...previous,
     messages: mergeMessagesById(page.messages, previous.messages),
     olderCursor: page.olderCursor,
     ...(executions ? { executions } : {}),
+    ...(displayBlocks ? { displayBlocks } : {}),
   };
 }
 

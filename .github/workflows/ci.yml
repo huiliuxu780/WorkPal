@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: full runs every current CI check; selective uses this commit's diff against main
+        description: full runs every current CI check; selective uses this commit's diff against main; visual runs only the daily screenshot specs
         type: choice
-        options: [full, selective]
+        options: [full, selective, visual]
         default: full
   schedule:
     - cron: "17 3 * * *"
@@ -30,8 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docs: ${{ steps.select.outputs.docs }}
+      harness: ${{ steps.select.outputs.harness }}
+      harness_mode: ${{ steps.select.outputs.harness_mode }}
       web: ${{ steps.select.outputs.web }}
       backend: ${{ steps.select.outputs.backend }}
+      db_postgres: ${{ steps.select.outputs.db_postgres }}
       runtime_jar: ${{ steps.select.outputs.runtime_jar }}
       agentscope: ${{ steps.select.outputs.agentscope }}
       worker_chain: ${{ steps.select.outputs.worker_chain }}
@@ -73,6 +76,23 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  harness:
+    name: harness
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.harness == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm lint
+      - run: pnpm test:inventory
+      - run: pnpm test:ci-select
+      - run: pnpm test:docs
+      - name: Unit tests (inventory-selected, hermetic)
+        if: ${{ needs.select-checks.outputs.harness_mode == 'full' || needs.select-checks.outputs.harness_mode == 'unit' }}
+        run: pnpm test:unit
+
   docs:
     name: docs
     needs: select-checks
@@ -112,6 +132,17 @@ jobs:
       - run: pnpm --filter @rakazo/db generate
       - name: Focused web E2E (scripted runtime, no Worker process)
         run: pnpm test:e2e --runtime=scripted --spec="${{ needs.select-checks.outputs.web_e2e_spec }}"
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
 
   backend:
     name: backend
@@ -134,7 +165,40 @@ jobs:
       - run: pnpm --filter @rakazo/db check
       - run: pnpm --filter @rakazo/testkit check
       - run: pnpm --filter @rakazo/worker test
-      - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts packages/adapters/src/scenario-contract.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
+      - run: pnpm exec vitest run packages/adapters/src/agentscope-runtime.test.ts packages/adapters/src/scenario-contract.test.ts packages/adapters/src/approval-effect.test.ts packages/adapters/src/executor-effect-idempotency.test.ts packages/adapters/src/executor-readonly-approval.test.ts packages/adapters/src/manual-retry-reuse.test.ts apps/api/src/env.test.ts apps/api/src/team-chat-judge.test.ts
+
+  db-postgres:
+    name: db-postgres
+    needs: select-checks
+    if: ${{ needs.select-checks.outputs.db_postgres == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: workpal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d workpal_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/workpal_test
+      VERIFY_DATABASE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/db generate
+      - run: pnpm --filter @rakazo/db exec prisma migrate deploy
+      # Every inventory entry classified as PostgreSQL runs here. The selector
+      # also adds this job whenever a changed test is PostgreSQL-classified.
+      # RT-11's atomic delivery, idempotency, concurrency, and permission
+      # boundaries are PostgreSQL behavior; they are part of the same group.
+      - run: pnpm test:postgres
 
   runtime-jar:
     name: runtime-jar
@@ -189,6 +253,17 @@ jobs:
       - run: pnpm test:e2e --runtime=agentscope --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts|capability-rules.spec.ts"
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
 
   worker-chain:
     name: worker-chain
@@ -212,6 +287,52 @@ jobs:
       - run: pnpm test:worker-chain
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
+
+  visual-web:
+    name: Daily web screenshots
+    needs: select-checks
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'visual') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @rakazo/db generate
+      - name: Daily visual specs (scripted runtime)
+        run: pnpm test:e2e --runtime=scripted --spec="ui-appearance.spec.ts|settings-shell.spec.ts"
+      - name: Upload daily visual screenshots and report
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-visual-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
+      - name: Upload Playwright failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.job }}-${{ github.sha }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            playwright-report/
+            apps/web/test-results/
+            test-report/
 
   agent-runtime-image:
     name: agent-runtime-image
@@ -245,8 +366,10 @@ jobs:
     needs:
       - select-checks
       - docs
+      - harness
       - web
       - backend
+      - db-postgres
       - runtime-jar
       - agentscope
       - worker-chain
@@ -262,8 +385,10 @@ jobs:
           SELECT_RESULT: ${{ needs.select-checks.outputs.result }}
           RESULT_SELECT_CHECKS: ${{ needs.select-checks.result }}
           RESULT_DOCS: ${{ needs.docs.result }}
+          RESULT_HARNESS: ${{ needs.harness.result }}
           RESULT_WEB: ${{ needs.web.result }}
           RESULT_BACKEND: ${{ needs.backend.result }}
+          RESULT_DB_POSTGRES: ${{ needs.db-postgres.result }}
           RESULT_RUNTIME_JAR: ${{ needs.runtime-jar.result }}
           RESULT_AGENTSCOPE: ${{ needs.agentscope.result }}
           RESULT_WORKER_CHAIN: ${{ needs.worker-chain.result }}

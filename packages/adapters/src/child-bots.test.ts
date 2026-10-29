@@ -12,6 +12,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { browserProfilePathForScreen } from "@rakazo/core/node/desktop-runtime";
 import type { createRepos, PrismaClient } from "@rakazo/db";
+import { CHAT_GROUP_KIND_STANDARD } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   archiveBot,
@@ -229,6 +230,7 @@ describe("destroyBot", () => {
           findMany: vi.fn().mockResolvedValue([]),
           deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
+        chatGroupMember: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
         artifact: { findMany: findArtifacts, deleteMany: deleteArtifacts },
         computerExecutionLease: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
         computer: { updateMany: releaseComputers },
@@ -322,16 +324,20 @@ describe("destroyBot", () => {
     const expireExecutionLeases = vi.fn().mockResolvedValue({ count: 1 });
     const clearExecution = vi.fn().mockResolvedValue({ count: 1 });
     const queryRaw = vi.fn().mockResolvedValue([{ id: "group-1" }, { id: "group-2" }]);
-    const findRuns = vi.fn().mockResolvedValue([
-      {
-        id: "group-run",
-        taskId: "group-task",
-        botId: "bot-2",
-        bot: {
-          computer: { homeKey: "team-home", kind: "fake", providerRef: "screen-1" },
-        },
-      },
-    ]);
+    const findRuns = vi.fn(async (args?: { where?: { trigger?: string } }) =>
+      args?.where?.trigger
+        ? []
+        : [
+            {
+              id: "group-run",
+              taskId: "group-task",
+              botId: "bot-2",
+              bot: {
+                computer: { homeKey: "team-home", kind: "fake", providerRef: "screen-1" },
+              },
+            },
+          ],
+    );
     const transaction = vi.fn(async (callback: (tx: unknown) => Promise<void>) =>
       callback({
         $queryRaw: queryRaw,
@@ -369,7 +375,14 @@ describe("destroyBot", () => {
         run: {
           findMany: findRuns,
           updateManyAndReturn: cancelRuns,
+          findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
         },
+        thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
+        event: {
+          create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+        steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
         attempt: { updateMany: cancelAttempts },
         task: { updateMany: cancelTasks },
         chatGroupMember: { deleteMany: deleteMemberships },
@@ -471,6 +484,86 @@ describe("destroyBot", () => {
         botId: "bot-2",
       }),
     );
+  });
+
+  it("keeps a hidden agent_pair group when its partner Bot is deleted", async () => {
+    const deleteGroups = vi.fn().mockResolvedValue({ count: 0 });
+    const deleteMemberships = vi.fn().mockResolvedValue({ count: 0 });
+    const pairGroup = {
+      id: "group-pair",
+      thread: { id: "thread-pair" },
+      members: [
+        { botId: "bot-1", bot: { archivedAt: null } },
+        { botId: "bot-2", bot: { archivedAt: null } },
+      ],
+    };
+    // Emulates the database: the hidden pair row is visible unless the caller
+    // scoped the query to standard groups. Losing bot-1 leaves the pair with one
+    // active member, which would dissolve it and destroy readable history.
+    const findGroups = vi.fn(async ({ where }: { where: { kind?: string } }) =>
+      where.kind === CHAT_GROUP_KIND_STANDARD ? [] : [pairGroup],
+    );
+    const transaction = vi.fn(async (callback: (tx: unknown) => Promise<void>) =>
+      callback({
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        chatGroup: { findMany: findGroups, deleteMany: deleteGroups },
+        chatGroupMember: { deleteMany: deleteMemberships },
+        run: {
+          findMany: vi.fn().mockResolvedValue([]),
+          updateManyAndReturn: vi.fn().mockResolvedValue([]),
+        },
+        attempt: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        task: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        artifact: {
+          findMany: vi.fn().mockResolvedValue([]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        computerExecutionLease: {
+          deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        computer: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        $executeRaw: vi.fn(),
+        botDeletion: { create: vi.fn() },
+        bot: { delete: vi.fn() },
+      }),
+    );
+    const prisma = {
+      computer: { findUnique: vi.fn().mockResolvedValue(null) },
+      run: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      routine: { findMany: vi.fn().mockResolvedValue([]) },
+      artifact: { findMany: vi.fn().mockResolvedValue([]) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      $transaction: transaction,
+    } as unknown as PrismaClient;
+
+    await destroyBot(
+      {
+        prisma,
+        sandbox: {
+          releaseScreen: vi.fn().mockResolvedValue(undefined),
+        } as unknown as SandboxProvider,
+        home: {} as AgentHomeStore,
+        jobs: { cancel: vi.fn().mockResolvedValue(undefined) } as unknown as JobPublisher,
+      },
+      { id: "bot-1", spaceId: "workspace-1", name: "Researcher", archivedAt: null },
+      context,
+      { deleteMemories: true },
+    );
+
+    expect(findGroups).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ kind: CHAT_GROUP_KIND_STANDARD }),
+      }),
+    );
+    expect(deleteGroups).not.toHaveBeenCalled();
+    // The pair group survives for its readable history, but the deleted Bot's
+    // membership row must still go or the bot row itself violates the
+    // ON DELETE NO ACTION foreign key.
+    expect(deleteMemberships).toHaveBeenCalledWith({ where: { botId: "bot-1" } });
   });
 
   it("surfaces transaction failures instead of reporting deletion success", async () => {
@@ -955,6 +1048,9 @@ describe("archiveBot", () => {
         ...groupCleanup,
         run: {
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findMany: vi.fn(async (args?: { where?: { trigger?: string } }) =>
+            args?.where?.trigger ? [] : [{ id: "run-1", taskId: "task-1" }],
+          ),
           updateManyAndReturn: vi.fn().mockResolvedValue([
             {
               id: "run-1",
@@ -966,6 +1062,7 @@ describe("archiveBot", () => {
           ]),
           findUnique: vi.fn().mockResolvedValue({ status: "cancelled" }),
         },
+        steeringMessage: { findMany: vi.fn().mockResolvedValue([]) },
         attempt: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         task: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 1 }) },
@@ -1245,6 +1342,7 @@ function deletionPrisma(team: { id: string }) {
         findMany: vi.fn().mockResolvedValue([]),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      chatGroupMember: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       artifact: {
         findMany: vi.fn().mockResolvedValue([]),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),

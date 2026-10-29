@@ -4,6 +4,7 @@ import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { InterventionEventPayloadSchema } from "./intervention.js";
 import { McpTransportSchema } from "./mcp.js";
+import { OutboundDraftStateSchema } from "./outbound-draft.js";
 import {
   PlanReviewContentSchema,
   PlanReviewDecisionSchema,
@@ -61,6 +62,7 @@ export const ProductEventType = z.enum([
   "run.cancelled",
   "run.retried",
   "run.manual_retry_requested",
+  "task.amended",
   "budget.exceeded",
   "delivery.created",
   "delivery.sent",
@@ -69,6 +71,7 @@ export const ProductEventType = z.enum([
   "approval.resolved",
   "intervention.created",
   "intervention.resolved",
+  "outbound.draft.updated",
   "computer.status",
   "computer.takeover.requested",
   "computer.takeover.granted",
@@ -98,6 +101,27 @@ export const ProductEventType = z.enum([
   "heartbeat",
 ]);
 export type ProductEventType = z.infer<typeof ProductEventType>;
+
+export const TaskAmendmentApplicationSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("active_steering"), targetRunId: Id }),
+  z.strictObject({ kind: z.literal("queued_update_only"), targetRunId: Id }),
+  z.strictObject({
+    kind: z.literal("completed_follow_up"),
+    targetRunId: Id,
+    followUpRunId: Id,
+  }),
+  z.strictObject({
+    kind: z.literal("failed_record_only"),
+    targetRunId: Id,
+    requiresExplicitRetry: z.literal(true),
+  }),
+  z.strictObject({
+    kind: z.literal("cancelled_record_only"),
+    targetRunId: Id,
+    requiresExplicitRetry: z.literal(true),
+  }),
+]);
+export type TaskAmendmentApplication = z.infer<typeof TaskAmendmentApplicationSchema>;
 
 /** Event.id remains the durable eventId; these fields can be read by older clients. */
 export const EventEnvelopeMeta = z.object({
@@ -158,6 +182,24 @@ export const ProductEventPayloadSchemas = {
     taskId: Id,
     actorUserId: Id,
   }),
+  "task.amended": z
+    .object({
+      taskId: Id,
+      messageId: Id,
+      /** Server-assigned amendment sequence within the Task. */
+      seq: z.number().int().positive(),
+      /** Task aggregate revision after this amendment: seq + 1. */
+      revision: z.number().int().positive(),
+      actorUserId: Id.optional(),
+      source: z.enum(["explicit", "ask_answer", "choice_answer"]),
+      /** RT-14 application result. Older RT-13 events legitimately omit it. */
+      application: TaskAmendmentApplicationSchema.optional(),
+    })
+    .strict()
+    .refine((payload) => payload.revision === payload.seq + 1, {
+      message: "revision must equal the original revision plus this amendment",
+      path: ["revision"],
+    }),
   "effect.reconciled": z.union([
     z.object({
       executionId: z.string().min(1),
@@ -186,6 +228,12 @@ export const ProductEventPayloadSchemas = {
   }),
   "intervention.created": InterventionEventPayloadSchema,
   "intervention.resolved": InterventionEventPayloadSchema,
+  "outbound.draft.updated": z
+    .object({
+      interventionId: Id,
+      state: OutboundDraftStateSchema,
+    })
+    .strict(),
   // Run↔Artifact membership changes. Safe metadata only; the bytes never
   // ride along. Emitted so an Artifact change moves the Run's snapshot `rev`.
   "thread.artifact": z
@@ -261,8 +309,52 @@ const ChartBlock = z
 export const SecretAskPurpose = z.enum(["otp", "password", "api_key"]);
 export type SecretAskPurpose = z.infer<typeof SecretAskPurpose>;
 
-export const MessageBlock = z.discriminatedUnion("kind", [
+/**
+ * Structured inline identity for a text block. `text` is the plain projection
+ * used by history and quotes; `bot_mention` keeps the stable Bot id so a
+ * renderer can link to the user's long-term chat without parsing `@name`.
+ */
+export const MessageInline = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), text: z.string() }),
+  z.object({ kind: z.literal("bot_mention"), botId: Id, label: z.string().min(1).max(200) }),
+]);
+export type MessageInline = z.infer<typeof MessageInline>;
+
+export const CollaborationReceiptTarget = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("group"), groupId: Id, threadId: Id }),
+  z.object({ kind: z.literal("bot"), botId: Id }),
+]);
+export type CollaborationReceiptTarget = z.infer<typeof CollaborationReceiptTarget>;
+
+export const DestinationLocator = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("group_message"), groupId: Id, threadId: Id, messageId: Id }),
+  z.object({ kind: z.literal("pair_message"), pairThreadId: Id, messageId: Id }),
+]);
+export type DestinationLocator = z.infer<typeof DestinationLocator>;
+
+export const CollaborationReceiptBlock = z.object({
+  kind: z.literal("collaboration_receipt"),
+  target: CollaborationReceiptTarget,
+  state: z.enum(["sent", "failed", "completed", "cancelled"]),
+  /** Navigation only; the destination renderer authorizes the reader again. */
+  destination: DestinationLocator.nullable(),
+  /** User-safe labels; internal ids and execution states never belong here. */
+  display: z
+    .object({
+      groupName: z.string().min(1).max(200),
+      topic: z.string().min(1).max(200),
+    })
+    .optional(),
+});
+export type CollaborationReceiptBlock = z.infer<typeof CollaborationReceiptBlock>;
+
+export const MessageBlock = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("text"),
+    text: z.string(),
+    /** Present only on messages written with typed mention identity. */
+    inlines: z.array(MessageInline).min(1).optional(),
+  }),
   z.object({
     kind: z.literal("card"),
     lines: z.array(z.object({ k: z.string(), v: z.string() })),
@@ -403,7 +495,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
       approvalBoundaries: z.string(),
       failureHandling: z.string(),
     }),
-    status: z.enum(["draft", "saved"]),
+    status: z.enum(["draft", "saved", "discarded"]),
   }),
   ChartBlock,
   z.object({
@@ -439,6 +531,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     /** Links ownership transfers in one user-started group turn. */
     hop: z.number().int().positive().optional(),
   }),
+  CollaborationReceiptBlock,
   z.object({
     /** A group-chat message delivered into a member bot's own thread. */
     kind: z.literal("channel_message"),
@@ -470,6 +563,19 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     returnToMessageId: Id.optional(),
     /** Links in a bot-started chain; absent when a person started it. */
     hop: z.number().int().nonnegative().optional(),
+  }),
+  z.object({
+    /**
+     * X-GROUP-FAIL: the cross-group request stopped before any work started
+     * because the requesting user may not manage the target group's members.
+     * A server-written fact, never a model-authored card: the no-permission
+     * branch must stay distinct from a tool approval and from generic failures.
+     */
+    kind: z.literal("group_membership_failure"),
+    groupId: Id,
+    groupName: z.string().min(1).max(200),
+    botId: Id,
+    reason: z.literal("member_permission"),
   }),
 ]);
 export type MessageBlock = z.infer<typeof MessageBlock>;

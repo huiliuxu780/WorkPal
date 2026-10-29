@@ -12,29 +12,37 @@ import {
   type ProductEvent,
 } from "@rakazo/contracts";
 import {
+  authorizeInterventionPresentation,
   BUDGET_ACTIONS,
   blocksToAgentHistoryText,
   budgetAskCheckpoint,
   callIdFromClientNonce,
+  decideMessageRoute,
   increasedBudgetForViolation,
   isApprovalAskBlock,
   isConversationalRun,
   isSecretAskBlock,
   messagingChannelId,
   parseBudgetAskCheckpoint,
+  RoundtableContractError,
+  type RoundtableFeatureGates,
   resolveAskChoice,
+  resolveInterventionThreads,
+  resolveRoundtableFeatureGates,
   sanitizeJsonValue,
   turnPolicyFromRun,
 } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
-import { cancelRunsInTransaction } from "./cancel-runs.js";
+import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { enqueueDeliveryInTransaction } from "./delivery-records.js";
+import { assertActiveExecutionFence } from "./execution-fence.js";
 import {
   assertSafeClientSubmissionId,
   emitInterventionCreated,
   findOrdinaryTextAsks,
+  INTERVENTION_WAIT_MS,
   InterventionRejected,
   insertPausedIntervention,
   interventionStore,
@@ -42,7 +50,9 @@ import {
   type ResolveInterventionOutcome,
   resolveInterventionInTransaction,
   settleAnsweredIntervention,
+  settleMembershipIntervention,
 } from "./interventions.js";
+import { lockInterventionThreads } from "./locks.js";
 import { invalidateThreadMemoryEvidence } from "./memory-facts.js";
 import {
   assertRunCanWriteHistory,
@@ -50,6 +60,8 @@ import {
   createThreadMessageInTransaction,
   RunHistoryWriteError,
 } from "./messages.js";
+import { IsolationError } from "./scope.js";
+import { appendTaskAmendmentInTransaction } from "./task-instructions.js";
 import { withTransactionRetry } from "./transaction-retry.js";
 
 const EVENT_BATCH_SIZE = 200;
@@ -63,9 +75,17 @@ export interface AppendEventInput {
   type: ProductEvent["type"];
   payload: Record<string, unknown>;
   runId?: string;
+  /** Typed cancel outcome only. Lets the cancelled owner write its one outcome. */
+  allowTypedCancel?: boolean;
   schemaVersion?: number;
   causationId?: string;
   parentRunId?: string;
+  /**
+   * Require this Run's current execution lease in the same transaction.
+   * Execution facts (for example agent.tool.called) use it so a worker that
+   * lost the Run cannot persist a start fact a retry policy might trust.
+   */
+  execution?: { leaseOwner: string; leaseFence: number };
 }
 
 export interface ThreadEvents {
@@ -80,6 +100,9 @@ export interface ThreadEvents {
   finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunResult | false>;
   notify(threadId: string, seq: number): Promise<void>;
   pauseRunForInput(input: PauseRunForInput): Promise<boolean>;
+  pauseRunForGroupMembership(
+    input: PauseRunForGroupMembershipInput,
+  ): Promise<PauseRunForGroupMembershipResult>;
   pauseRunForTakeover(input: PauseRunForTakeover): Promise<boolean>;
   sendUserMessage(input: SendUserMessageInput): Promise<SendUserMessageResult>;
   follow(threadId: string, cursor: number, signal?: AbortSignal): AsyncGenerator<ProductEvent>;
@@ -169,12 +192,35 @@ export type FinalizeRunInput = FinalizeRunBase &
 
 export interface PauseRunForInput {
   spaceId: string;
+  /** Thread of the pausing Run. It holds the ask Message and is resumed. */
   threadId: string;
+  /**
+   * Thread the user answers from, when the Run executes somewhere the user must
+   * not write to (a fixed Agent pair). Requires `origin` and the `private_pair`
+   * capability; without both the pause fails instead of publishing the wait into
+   * a Thread the collaboration was never anchored in. Defaults to `threadId`.
+   */
+  presentationThreadId?: string;
+  /**
+   * CollaborationOrigin anchoring a cross-Thread wait to its visible source.
+   * Typed as `unknown` on purpose: it arrives from persisted Run lineage, so the
+   * core resolver parses it rather than trusting a caller-shaped object.
+   */
+  origin?: unknown;
+  /** Deployment gates; absent means every roundtable capability is off. */
+  gates?: RoundtableFeatureGates;
   botId: string;
   runId: string;
   attemptId: string;
   leaseOwner: string;
   leaseFence: number;
+  /**
+   * RT-26: the chat admission fence and suspension key of the Attempt that
+   * creates this pending request. A later checkpoint may only claim this card
+   * when all three executions bindings match, so one Run cannot answer another.
+   */
+  executionFence?: number;
+  suspensionKey?: string;
   blocks: MessageBlock[];
   /**
    * Unredacted choice actions for resume. Persisted only on the run checkpoint
@@ -203,6 +249,43 @@ export interface PauseRunForInput {
   };
 }
 
+/**
+ * RT-12: pause the source Run on a scoped "join the group and continue"
+ * request. The request row, the Intervention and the card Message commit
+ * together; no target-group write happens before the decision.
+ */
+export interface PauseRunForGroupMembershipInput {
+  spaceId: string;
+  threadId: string;
+  botId: string;
+  runId: string;
+  attemptId: string;
+  leaseOwner: string;
+  leaseFence: number;
+  executionFence?: number;
+  suspensionKey?: string;
+  gates?: RoundtableFeatureGates;
+  groupId: string;
+  botName: string;
+  /** Original redacted message_group content; never regenerated after approval. */
+  message: string;
+  topic?: string | null;
+  deliveryKey: string;
+}
+
+export type PauseRunForGroupMembershipResult =
+  | {
+      outcome: "paused";
+      requestId: string;
+      interventionId: string;
+      messageId: string;
+      expiresAt: string;
+    }
+  | { outcome: "already_member" }
+  | { outcome: "not_manageable" }
+  | { outcome: "unavailable" }
+  | { outcome: "run_not_running" };
+
 const CHOICE_ASK_CHECKPOINT_KIND = "choice_ask_v1";
 
 function choiceAskCheckpoint(
@@ -229,28 +312,6 @@ function manualRetryEffectIdFromCheckpoint(checkpoint: string | null | undefined
   }
 }
 
-function resumeChoiceLabel(
-  selected: { id: string; label: string },
-  checkpoint: string | null | undefined,
-): string {
-  if (!checkpoint) return selected.label;
-  try {
-    const parsed = JSON.parse(checkpoint) as {
-      kind?: string;
-      actions?: Array<{ id?: unknown; label?: unknown }>;
-    };
-    if (parsed.kind !== CHOICE_ASK_CHECKPOINT_KIND || !Array.isArray(parsed.actions)) {
-      return selected.label;
-    }
-    const offered = parsed.actions.find((action) => action.id === selected.id);
-    return typeof offered?.label === "string" && offered.label.length > 0
-      ? offered.label
-      : selected.label;
-  } catch {
-    return selected.label;
-  }
-}
-
 export interface PauseRunForTakeover {
   spaceId: string;
   threadId: string;
@@ -262,13 +323,32 @@ export interface PauseRunForTakeover {
   reason: string;
   /** Computer that should expose the pending takeover to the UI via controlRunId. */
   computerId: string;
+  /**
+   * RT-05F: user-visible Thread a delegated run's takeover request must be
+   * presented in. The run keeps waiting in its execution Thread; the waiting
+   * event and realtime wake go where the user can see them.
+   */
+  presentationThreadId?: string;
 }
 
 export interface AnswerRunInput {
   spaceId: string;
+  /** Thread of the Run being answered: it holds the ask Message and resumes. */
   threadId: string;
+  /**
+   * Thread the user answered from when it is not the Run's own — an origin-aware
+   * Intervention whose card is projected into the Thread that started the work.
+   * Defaults to `threadId`.
+   */
+  presentationThreadId?: string;
   runId: string;
   messageId: string;
+  /**
+   * User Message created by the send flow that carried this answer. When set,
+   * the amendment reuses it; when absent, commitAnswerRunInput appends a user
+   * Message in the same transaction. The mutable Bot ask card is never a source.
+   */
+  answerMessageId?: string;
   answeredByUserId: string;
   answer: string;
   /** Only for a login card; `answer` carries its password. */
@@ -284,6 +364,7 @@ export interface AnswerRunInput {
 
 export interface ResolveInterventionInput {
   spaceId: string;
+  /** Thread the submission is addressed at: the card's presentation Thread. */
   threadId: string;
   interventionId: string;
   clientSubmissionId: string;
@@ -291,9 +372,18 @@ export interface ResolveInterventionInput {
   answer: string;
   username?: string;
   feedback?: string;
+  /** A10: the outbound draft revision and fingerprint the user confirmed. */
+  outbound?: { revision: number; fingerprint: string };
+  /** RT-12: the bound message_group request revision the card showed. */
+  requestRevision?: number;
+  /** Deployment gates; absent means every roundtable capability is off. */
+  gates?: RoundtableFeatureGates;
 }
 
 const INTERVENTION_TRANSACTION = { timeout: 20_000, maxWait: 20_000 };
+
+/** Fail closed: a caller that wires no gates gets no cross-Thread behaviour. */
+const ROUNDTABLE_GATES_DISABLED = resolveRoundtableFeatureGates({});
 
 export interface SendUserMessageInput {
   spaceId: string;
@@ -336,12 +426,26 @@ export interface RunSecretWriter {
 export function createThreadEvents(
   prisma: PrismaClient,
   realtime?: RealtimeFanout,
-  options: { catchUpMs?: number; runSecretWriter?: RunSecretWriter } = {},
+  options: {
+    catchUpMs?: number;
+    runSecretWriter?: RunSecretWriter;
+    /** Process-wide roundtable gates; absent means every capability is off. */
+    roundtableFeatures?: RoundtableFeatureGates;
+    /** RT-12: the unified card surface must exist before membership waits are created. */
+    cardsUnifiedV2?: boolean;
+  } = {},
 ): ThreadEvents {
+  const gates = options.roundtableFeatures ?? ROUNDTABLE_GATES_DISABLED;
   return {
     answerRunInput: (input) => answerRunInput(prisma, input, realtime, options.runSecretWriter),
     resolveIntervention: (input) =>
-      resolveIntervention(prisma, input, realtime, options.runSecretWriter),
+      resolveIntervention(
+        prisma,
+        { ...input, gates: input.gates ?? gates },
+        realtime,
+        options.runSecretWriter,
+        { cardsUnifiedV2: options.cardsUnifiedV2 === true },
+      ),
     append: (input) => appendEvent(prisma, input, realtime),
     claimSteering: (input) => claimSteering(prisma, input),
     clearThread: (input) => clearThread(prisma, input, realtime),
@@ -349,7 +453,10 @@ export function createThreadEvents(
       finalizeComputerControlRelease(prisma, input, realtime),
     finalizeRun: (input) => finalizeRun(prisma, input, realtime),
     notify: (threadId, seq) => notifyRealtime(realtime, threadId, seq),
-    pauseRunForInput: (input) => pauseRunForInput(prisma, input, realtime),
+    pauseRunForInput: (input) =>
+      pauseRunForInput(prisma, { ...input, gates: input.gates ?? gates }, realtime),
+    pauseRunForGroupMembership: (input) =>
+      pauseRunForGroupMembership(prisma, { ...input, gates: input.gates ?? gates }, realtime),
     pauseRunForTakeover: (input) => pauseRunForTakeover(prisma, input, realtime),
     sendUserMessage: (input) => sendUserMessage(prisma, input, realtime),
     follow: (threadId, cursor, signal) =>
@@ -363,6 +470,20 @@ export async function clearThread(
   realtime?: RealtimeFanout,
 ): Promise<ClearThreadResult> {
   const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    if (input.groupId) {
+      // Clear is a standard-group mutation even though it is addressed by thread:
+      // the groupId path updates chat_groups and reaches every message/run below.
+      const group = await tx.chatGroup.findFirst({
+        where: {
+          id: input.groupId,
+          spaceId: input.spaceId,
+          kind: CHAT_GROUP_KIND_STANDARD,
+          thread: { id: input.threadId },
+        },
+        select: { id: true },
+      });
+      if (!group) throw new IsolationError();
+    }
     const thread = await tx.thread.update({
       where: {
         id: input.threadId,
@@ -382,7 +503,12 @@ export async function clearThread(
       select: { id: true, taskId: true },
     });
     const now = new Date();
-    const cancelledRuns = await cancelRunsInTransaction(tx, activeRuns, now);
+    const { applyCancelTerminalPolicy, cancelPolicyFor } = await import("./cancel-terminal.js");
+    const cancelled = await applyCancelTerminalPolicy(tx, activeRuns, now, {
+      policy: cancelPolicyFor("thread_cleared"),
+      appendEvents: false,
+    });
+    const cancelledRuns = cancelled.rows;
     const runIds = cancelledRuns.map((run) => run.id);
     await tx.backgroundAgentTask?.updateMany({
       where: { threadId: input.threadId, status: "running" },
@@ -398,6 +524,11 @@ export async function clearThread(
         executionLeaseExpiresAt: null,
       },
     });
+    // Clearing is destructive for Task instructions too: amendment Messages
+    // and task.amended Events disappear while Task.revision stays. Such a Task
+    // fails closed on envelope reads and is fenced from retry by
+    // executionEventCeilings (`thread_cleared`); it is never resumed from a
+    // silently truncated instruction.
     await tx.message.deleteMany({ where: { threadId: input.threadId } });
     await tx.event.deleteMany({ where: { threadId: input.threadId } });
     // ME-01 M5: clearing a thread does not delete confirmed memories, but it
@@ -503,9 +634,10 @@ export async function sendUserMessage(
         clientNonce: input.clientNonce,
       });
       const createRun = input.createRun !== false;
-      // Include the creation intro. It has no tools, so it must not absorb the message, and a
-      // second run would overlap it on a dedicated computer. Pending steering waits for the
-      // continuation that starts when the intro finishes.
+      // RT-27: inbound messaging and webhook writes use the same decision as the
+      // web composer. Exactly one eligible conversational Run takes steering; two
+      // or more, or none, get their own Task instead of "whichever row came first".
+      // A creation intro, routine, webhook, or delivery turn is never a candidate.
       const activeRuns =
         createRun && !input.allowParallelRun
           ? await tx.run.findMany({
@@ -516,12 +648,27 @@ export async function sendUserMessage(
                   in: ["running", "queued", "leased", "waiting_input", "waiting_takeover"],
                 },
               },
-              select: { id: true, taskId: true, trigger: true },
+              select: { id: true, taskId: true, botId: true, status: true, trigger: true },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             })
           : [];
-      // Steer a conversational run when there is one; a routine, webhook, or intro turn only holds the queue.
+      const decision =
+        createRun && !input.allowParallelRun
+          ? decideMessageRoute({
+              botId: input.botId,
+              candidates: activeRuns.map((run) => ({
+                runId: run.id,
+                taskId: run.taskId,
+                botId: run.botId,
+                status: run.status,
+                trigger: run.trigger,
+              })),
+            })
+          : null;
       const busy =
-        activeRuns.find((run) => isConversationalRun(run.trigger)) ?? activeRuns[0] ?? null;
+        decision?.kind === "steer_existing_run"
+          ? (activeRuns.find((run) => run.id === decision.runId) ?? null)
+          : null;
       let task = null;
       let run = null;
       if (createRun && !busy) {
@@ -552,15 +699,12 @@ export async function sendUserMessage(
           await tx.message.update({ where: { id: message.id }, data: { runId: run.id } });
         }
       } else if (createRun && busy) {
-        const held = !isConversationalRun(busy.trigger);
         await tx.steeringMessage.create({
           data: {
             messageId: message.id,
             botId: input.botId,
             userId: input.userId,
-            // Keep messaging on the hold so the later run is mirrored back to that app.
-            runId: held ? null : busy.id,
-            ...(held && input.trigger === "messaging" ? { originTrigger: "messaging" } : {}),
+            runId: busy.id,
           },
         });
         await tx.message.update({ where: { id: message.id }, data: { runId: busy.id } });
@@ -670,9 +814,11 @@ export async function commitAnswerRunInput(
   input: AnswerRunInput,
   runSecretWriter?: RunSecretWriter,
 ): Promise<{ threadId: string; seq: number; cancelledRunId?: string } | null> {
-  // Thread row first, then run rows — the same order as clearThread and finalizeRun, so a
-  // concurrent clear cannot deadlock against this transaction.
-  await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+  // Thread rows first, then run rows — the same order as clearThread and
+  // finalizeRun, so a concurrent clear cannot deadlock against this transaction.
+  // An origin-aware answer also settles its Intervention in the presentation
+  // Thread, so that Thread is locked here rather than after the Run.
+  await lockInterventionThreads(tx, input.threadId, input.presentationThreadId);
   await tx.$queryRaw`SELECT id FROM runs WHERE id = ${input.runId} FOR UPDATE`;
   const run = await tx.run.findFirst({
     where: {
@@ -769,6 +915,7 @@ export async function commitAnswerRunInput(
         botId: run.botId,
         waitStartedAt: run.waitStartedAt,
       },
+      presentationThreadId: input.presentationThreadId,
       messageId: message.id,
       ask: pendingAsk,
       resolvedByUserId: input.answeredByUserId,
@@ -797,27 +944,27 @@ export async function commitAnswerRunInput(
     }
     const now = new Date();
     const reason = selectedChoice.id === "narrow_scope" ? "budget_narrowed" : "budget_cancelled";
-    const cancelledRows = await cancelRunsInTransaction(
+    const { applyCancelTerminalPolicy, cancelPolicyFor } = await import("./cancel-terminal.js");
+    const cancelledRows = await applyCancelTerminalPolicy(
       tx,
       [{ id: input.runId, taskId: run.taskId }],
       now,
       {
-        error: reason,
-        clearCheckpoint: true,
-        match: { status: "waiting_input", waitKind: "input" },
+        policy: cancelPolicyFor(reason),
+        cancelOptions: {
+          error: reason,
+          clearCheckpoint: true,
+          match: { status: "waiting_input", waitKind: "input" },
+        },
       },
     );
-    if (cancelledRows.length !== 1) throw new Error("Budget Run was no longer waiting");
+    if (cancelledRows.rows.length !== 1) throw new Error("Budget Run was no longer waiting");
     await expireComputerExecutionLeases(tx, { runId: input.runId });
-    const cancelled = await appendEventInTransaction(tx, {
-      spaceId: input.spaceId,
+    return {
       threadId: input.threadId,
-      botId: run.botId,
-      type: "run.cancelled",
-      runId: input.runId,
-      payload: { reason },
-    });
-    return { threadId: cancelled.threadId, seq: cancelled.seq, cancelledRunId: input.runId };
+      seq: cancelledRows.eventSeq ?? 0,
+      cancelledRunId: input.runId,
+    };
   }
 
   // UX-02 unified plan review: the decision binds to the exact plan version the
@@ -922,34 +1069,31 @@ export async function commitAnswerRunInput(
           botId: run.botId,
           waitStartedAt: run.waitStartedAt,
         },
+        presentationThreadId: input.presentationThreadId,
         messageId: message.id,
         ask: pendingAsk,
         resolvedByUserId: input.answeredByUserId,
         clientSubmissionId: input.clientSubmissionId,
       });
-      const cancelledRows = await cancelRunsInTransaction(
+      const { applyCancelTerminalPolicy, cancelPolicyFor } = await import("./cancel-terminal.js");
+      const cancelledRows = await applyCancelTerminalPolicy(
         tx,
         [{ id: input.runId, taskId: run.taskId }],
         new Date(),
         {
-          error: "plan_rejected",
-          clearCheckpoint: true,
-          match: { status: "waiting_input", waitKind: "approval" },
+          policy: cancelPolicyFor("plan_rejected"),
+          cancelOptions: {
+            error: "plan_rejected",
+            clearCheckpoint: true,
+            match: { status: "waiting_input", waitKind: "approval" },
+          },
         },
       );
-      if (cancelledRows.length !== 1) throw new Error("Plan review Run was no longer waiting");
+      if (cancelledRows.rows.length !== 1) throw new Error("Plan review Run was no longer waiting");
       await expireComputerExecutionLeases(tx, { runId: input.runId });
-      const cancelled = await appendEventInTransaction(tx, {
-        spaceId: input.spaceId,
-        threadId: input.threadId,
-        botId: run.botId,
-        type: "run.cancelled",
-        runId: input.runId,
-        payload: { reason: "plan_rejected" },
-      });
       return {
-        threadId: cancelled.threadId,
-        seq: cancelled.seq,
+        threadId: input.threadId,
+        seq: cancelledRows.eventSeq ?? 0,
         cancelledRunId: input.runId,
       };
     }
@@ -974,6 +1118,7 @@ export async function commitAnswerRunInput(
         botId: run.botId,
         waitStartedAt: run.waitStartedAt,
       },
+      presentationThreadId: input.presentationThreadId,
       messageId: message.id,
       ask: pendingAsk,
       resolvedByUserId: input.answeredByUserId,
@@ -1086,20 +1231,18 @@ export async function commitAnswerRunInput(
         ...(pendingAsk.credential ? { result: { credentialSaved: pendingAsk.credential } } : {}),
       },
     });
-  } else if (!budgetAsk && !retryEffectId) {
-    const resumeLabel = selectedChoice
-      ? resumeChoiceLabel(selectedChoice, run.checkpoint)
-      : undefined;
-    const task = await tx.task.updateMany({
-      where: { runs: { some: { id: input.runId } } },
-      data: {
-        prompt: selectedChoice
-          ? `Selected choice ${selectedChoice.id}: ${resumeLabel}`
-          : input.answer,
-      },
-    });
-    if (task.count !== 1) throw new Error("Run task was not available to answer");
   }
+
+  // Ordinary text and choice answers revise the Task instruction log. Approval,
+  // secret, budget and manual-retry decisions stay control facts and never
+  // become natural-language amendments. Only an append-only user Message is a
+  // body source; Task.prompt is never rewritten.
+  const amendmentSource =
+    !approvalAsk && !secretAsk && !budgetAsk && !retryEffectId
+      ? selectedChoice
+        ? ("choice_answer" as const)
+        : ("ask_answer" as const)
+      : null;
 
   const blocks = parsed.data.map((block) =>
     block === pendingAsk
@@ -1111,6 +1254,48 @@ export async function commitAnswerRunInput(
       : block,
   );
   await tx.message.update({ where: { id: message.id }, data: { blocks } });
+  if (amendmentSource) {
+    // The amendment body is always an append-only user Message. The send flow
+    // already created one; the legacy answer entry did not, so append it here.
+    // The Bot ask card is only a presentation surface and is never the source.
+    const amendmentText =
+      amendmentSource === "choice_answer" && selectedChoice
+        ? `Selected choice ${selectedChoice.id}: ${selectedChoice.label}`
+        : input.answer;
+    const answerMessage = input.answerMessageId
+      ? null
+      : await createThreadMessageInTransaction(tx, {
+          threadId: input.threadId,
+          role: "user",
+          originKind: "human_web",
+          authorUserId: input.answeredByUserId,
+          blocks: [{ kind: "text", text: amendmentText }],
+          botId: run.botId,
+          runId: input.runId,
+          ...(input.clientSubmissionId ? { clientNonce: input.clientSubmissionId } : {}),
+        });
+    if (answerMessage) {
+      await appendEventInTransaction(tx, {
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: run.botId,
+        type: "thread.message.created",
+        runId: input.runId,
+        payload: { messageId: answerMessage.id, role: "user", blocks: answerMessage.blocks },
+      });
+    }
+    await appendTaskAmendmentInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      actorUserId: input.answeredByUserId,
+      targetTaskId: run.taskId,
+      messageId: answerMessage?.id ?? input.answerMessageId,
+      source: amendmentSource,
+      // The Run lock above already authorized this answer. Group members keep
+      // the existing ability to answer a Bot's ask without owning the Task.
+      requireTaskOwner: false,
+    });
+  }
   const updated = await appendEventInTransaction(tx, {
     spaceId: input.spaceId,
     threadId: input.threadId,
@@ -1149,6 +1334,7 @@ export async function commitAnswerRunInput(
       botId: run.botId,
       waitStartedAt: run.waitStartedAt,
     },
+    presentationThreadId: input.presentationThreadId,
     messageId: message.id,
     ask: pendingAsk,
     resolvedByUserId: input.answeredByUserId,
@@ -1194,13 +1380,27 @@ export async function answerRunInput(
 async function locateInterventionTarget(
   prisma: PrismaClient,
   input: { spaceId: string; threadId: string; interventionId: string },
-): Promise<{ runId: string; messageId: string } | null> {
+): Promise<{ runId: string; messageId: string; executionThreadId: string } | null> {
   const store = interventionStore(prisma);
   if (store) {
     const row = await store.findUnique({ where: { id: input.interventionId } });
     if (row) {
       if (row.spaceId !== input.spaceId || row.threadId !== input.threadId) return null;
-      return { runId: row.runId, messageId: row.messageId };
+      // The executing Thread is derived from the bound Run and never taken from
+      // the caller: the row's own threadId is only the presentation anchor, while
+      // the Run is the sole authority for where the ask Message lives and which
+      // execution a decision may resume. A Run that left the Space, or is gone,
+      // leaves nothing that can be answered.
+      const run = await prisma.run.findFirst({
+        where: { id: row.runId, spaceId: input.spaceId },
+        select: { threadId: true },
+      });
+      if (!run) return null;
+      return {
+        runId: row.runId,
+        messageId: row.messageId,
+        executionThreadId: run.threadId,
+      };
     }
   }
   const messageId = legacyMessageId(input.interventionId);
@@ -1212,10 +1412,10 @@ async function locateInterventionTarget(
   if (!message?.runId) return null;
   const run = await prisma.run.findFirst({
     where: { id: message.runId, threadId: input.threadId, spaceId: input.spaceId },
-    select: { id: true },
+    select: { id: true, threadId: true },
   });
   if (!run) return null;
-  return { runId: run.id, messageId: message.id };
+  return { runId: run.id, messageId: message.id, executionThreadId: run.threadId };
 }
 
 export async function resolveIntervention(
@@ -1223,6 +1423,7 @@ export async function resolveIntervention(
   input: ResolveInterventionInput,
   realtime?: RealtimeFanout,
   runSecretWriter?: RunSecretWriter,
+  options?: { cardsUnifiedV2?: boolean },
 ): Promise<ResolveInterventionOutcome> {
   try {
     assertSafeClientSubmissionId(input.clientSubmissionId, input.answer);
@@ -1232,26 +1433,38 @@ export async function resolveIntervention(
   }
   const located = await locateInterventionTarget(prisma, input);
   if (!located) return { outcome: "rejected", reason: "not_found" };
+  // Answering away from the executing Thread is a roundtable capability. The
+  // refusal propagates as RoundtableFeatureDisabledError so the API can report
+  // the disabled feature instead of dressing it up as a stale card.
+  authorizeInterventionPresentation({
+    gates: input.gates ?? ROUNDTABLE_GATES_DISABLED,
+    executionThreadId: located.executionThreadId,
+    presentationThreadId: input.threadId,
+  });
   let outcome: ResolveInterventionOutcome;
   try {
     outcome = await prisma.$transaction(
       (tx: Prisma.TransactionClient) =>
-        resolveInterventionInTransaction(tx, { ...input, runId: located.runId }, (transaction) =>
-          commitAnswerRunInput(
-            transaction,
-            {
+        resolveInterventionInTransaction(
+          tx,
+          { ...input, runId: located.runId, executionThreadId: located.executionThreadId },
+          (transaction) =>
+            commitInterventionDecision(transaction, {
               spaceId: input.spaceId,
-              threadId: input.threadId,
+              threadId: located.executionThreadId,
+              presentationThreadId: input.threadId,
               runId: located.runId,
               messageId: located.messageId,
+              interventionId: input.interventionId,
               answeredByUserId: input.answeredByUserId,
               answer: input.answer,
               username: input.username,
               clientSubmissionId: input.clientSubmissionId,
               feedback: input.feedback,
-            },
-            runSecretWriter,
-          ),
+              requestRevision: input.requestRevision,
+              cardsUnifiedV2: options?.cardsUnifiedV2 === true,
+              runSecretWriter,
+            }),
         ),
       INTERVENTION_TRANSACTION,
     );
@@ -1267,7 +1480,116 @@ export async function resolveIntervention(
   if (outcome.applied && outcome.seq > 0) {
     await notifyRealtime(realtime, outcome.threadId, outcome.seq);
   }
+  // The settled projection is appended to the presentation Thread, so its own
+  // followers need that position or the answering user watches a stale card.
+  if (
+    outcome.applied &&
+    outcome.presentationThreadId !== undefined &&
+    outcome.presentationSeq !== undefined &&
+    outcome.presentationSeq > 0
+  ) {
+    await notifyRealtime(realtime, outcome.presentationThreadId, outcome.presentationSeq);
+  }
+  if (outcome.applied && outcome.membershipDelivery) {
+    await notifyRealtime(
+      realtime,
+      outcome.membershipDelivery.targetThreadId,
+      outcome.membershipDelivery.targetEventSeq,
+    );
+  }
   return outcome;
+}
+
+/**
+ * One submission entry with two explicit business branches: a bound
+ * group-membership request resolves through its own transaction, everything
+ * else keeps the ordinary ask/tool-approval answer path.
+ */
+async function commitInterventionDecision(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    threadId: string;
+    presentationThreadId: string;
+    runId: string;
+    messageId: string;
+    interventionId: string;
+    answeredByUserId: string;
+    answer: string;
+    username?: string;
+    clientSubmissionId: string;
+    feedback?: string;
+    requestRevision?: number;
+    cardsUnifiedV2: boolean;
+    runSecretWriter?: RunSecretWriter;
+  },
+): Promise<{
+  threadId: string;
+  seq: number;
+  cancelledRunId?: string;
+  membershipDelivery?: {
+    targetRunId: string;
+    targetThreadId: string;
+    targetEventSeq: number;
+  };
+} | null> {
+  const { loadGroupMembershipRequestForIntervention, resolveGroupMembershipDecisionInTransaction } =
+    await import("./group-membership.js");
+  const membership = await loadGroupMembershipRequestForIntervention(tx, input.interventionId);
+  if (membership) {
+    // A deployment without the unified card surface must not settle a wait the
+    // user could not see; refusing keeps the card and the decision atomic.
+    if (!input.cardsUnifiedV2) return null;
+    const resolved = await resolveGroupMembershipDecisionInTransaction(
+      tx,
+      {
+        spaceId: input.spaceId,
+        threadId: input.presentationThreadId,
+        executionThreadId: input.threadId,
+        runId: input.runId,
+        interventionId: input.interventionId,
+        answeredByUserId: input.answeredByUserId,
+        answer: input.answer,
+        clientSubmissionId: input.clientSubmissionId,
+        expectedRevision: input.requestRevision,
+      },
+      async (status, decision) => {
+        await settleMembershipIntervention(tx, {
+          interventionId: input.interventionId,
+          status,
+          ...(decision ? { decision } : {}),
+          ...(status === "answered" ? { resolvedByUserId: input.answeredByUserId } : {}),
+          clientSubmissionId: input.clientSubmissionId,
+        });
+        const remaining = await tx.intervention.count({
+          where: { runId: input.runId, status: "pending" },
+        });
+        if (remaining > 0) throw new Error("Run still has a pending intervention");
+      },
+    );
+    if (!resolved.ok) return null;
+    return {
+      threadId: resolved.threadId,
+      seq: resolved.seq,
+      ...(resolved.delivery ? { membershipDelivery: resolved.delivery } : {}),
+    };
+  }
+  return commitAnswerRunInput(
+    tx,
+    {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      presentationThreadId: input.presentationThreadId,
+      runId: input.runId,
+      messageId: input.messageId,
+      answeredByUserId: input.answeredByUserId,
+      answer: input.answer,
+      username: input.username,
+      clientSubmissionId: input.clientSubmissionId,
+      feedback: input.feedback,
+    },
+    input.runSecretWriter,
+  );
 }
 
 /**
@@ -1281,6 +1603,8 @@ export async function answerSingleOrdinaryTextInTransaction(
     threadId: string;
     answeredByUserId: string;
     answer: string;
+    /** User Message already persisted by the send flow; reused as the amendment body. */
+    answerMessageId?: string;
     runIds: readonly string[];
   },
 ): Promise<{ threadId: string; seq: number; runId: string } | null> {
@@ -1294,6 +1618,7 @@ export async function answerSingleOrdinaryTextInTransaction(
     threadId: input.threadId,
     runId: target.runId,
     messageId: target.messageId,
+    ...(input.answerMessageId ? { answerMessageId: input.answerMessageId } : {}),
     answeredByUserId: input.answeredByUserId,
     answer,
   });
@@ -1325,10 +1650,41 @@ export async function pauseRunForInput(
   input: PauseRunForInput,
   realtime?: RealtimeFanout,
 ): Promise<boolean> {
+  // Resolved before the transaction opens: a pause that is not allowed to leave
+  // the executing Thread must fail without having written anything.
+  const threads = resolveInterventionThreads({
+    gates: input.gates ?? ROUNDTABLE_GATES_DISABLED,
+    executionThreadId: input.threadId,
+    presentationThreadId: input.presentationThreadId,
+    origin: input.origin,
+  });
   const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // Thread row first, then run rows — the same order as clearThread and finalizeRun, so a
-    // concurrent clear cannot deadlock against this transaction.
-    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+    // Thread rows first, then run rows — the same order as clearThread and
+    // finalizeRun, so a concurrent clear cannot deadlock against this
+    // transaction. Both Threads of an origin-aware pause are in the set: the
+    // projection event writes the presentation Thread row.
+    await lockInterventionThreads(tx, threads.executionThreadId, threads.presentationThreadId);
+    if (threads.origin !== null) {
+      // The origin is what makes this wait publishable away from the Run, so the
+      // source Run has to be real: same Space and actually anchored in the
+      // presentation Thread. A fabricated anchor would otherwise hand one Run's
+      // approval to whoever can write in an unrelated Thread.
+      const source = await tx.run.findFirst({
+        where: {
+          id: threads.origin.sourceRunId,
+          spaceId: input.spaceId,
+          threadId: threads.presentationThreadId,
+        },
+        select: { id: true },
+      });
+      if (!source) {
+        throw new RoundtableContractError(
+          "CollaborationOrigin",
+          "sourceRunId",
+          "must be a Run of the presentation Thread in this Space",
+        );
+      }
+    }
     const approvalEffectId = input.blocks.find(
       (block) => block.kind === "ask" && Boolean(block.approvalEffectId),
     );
@@ -1383,10 +1739,12 @@ export async function pauseRunForInput(
     const messageId = randomUUID();
     const pausedIntervention = await insertPausedIntervention(tx, {
       spaceId: input.spaceId,
-      threadId: input.threadId,
+      threads,
       botId: input.botId,
       runId: input.runId,
       attemptId: input.attemptId,
+      executionFence: input.executionFence,
+      suspensionKey: input.suspensionKey,
       messageId,
       blocks: input.blocks,
       waitStartedAt,
@@ -1416,13 +1774,7 @@ export async function pauseRunForInput(
       runId: input.runId,
       payload: { waitKind },
     });
-    const interventionEvent = await emitInterventionCreated(tx, {
-      spaceId: input.spaceId,
-      threadId: input.threadId,
-      botId: input.botId,
-      runId: input.runId,
-      interventionId: pausedIntervention.id,
-    });
+    const interventionEvent = await emitInterventionCreated(tx, pausedIntervention.id);
     let planReviewEvent: { threadId: string; seq: number } | null = null;
     if (input.planReviewRound) {
       const paired = await tx.runPlanReview.updateMany({
@@ -1477,12 +1829,197 @@ export async function pauseRunForInput(
     return {
       threadId: waitingEvent.threadId,
       seq: approvalEvent?.seq ?? budgetEvent?.seq ?? planReviewEvent?.seq ?? interventionEvent.seq,
+      // Only a cross-Thread pause has a second Thread to publish to; otherwise
+      // this is the same position the line above already reports.
+      presentation: threads.crossThread ? interventionEvent : null,
     };
   }, INTERVENTION_TRANSACTION);
 
   if (!committed) return false;
   await notifyRealtime(realtime, committed.threadId, committed.seq);
+  if (committed.presentation) {
+    await notifyRealtime(realtime, committed.presentation.threadId, committed.presentation.seq);
+  }
   return true;
+}
+
+export async function pauseRunForGroupMembership(
+  prisma: PrismaClient,
+  input: PauseRunForGroupMembershipInput,
+  realtime?: RealtimeFanout,
+): Promise<PauseRunForGroupMembershipResult> {
+  const threads = resolveInterventionThreads({
+    gates: input.gates ?? ROUNDTABLE_GATES_DISABLED,
+    executionThreadId: input.threadId,
+  });
+  const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await lockInterventionThreads(tx, threads.executionThreadId, threads.presentationThreadId);
+    const run = await tx.run.findFirst({
+      where: {
+        id: input.runId,
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        status: "running",
+        leaseOwner: input.leaseOwner,
+        leaseFence: input.leaseFence,
+      },
+      select: { userId: true, taskId: true, sourceMessageId: true },
+    });
+    if (!run) return { outcome: "run_not_running" as const };
+    // The source Run is a Bot's direct chat; a group Run never asks to join
+    // another group on the user's behalf.
+    const sourceThread = await tx.thread.findFirst({
+      where: {
+        id: input.threadId,
+        spaceId: input.spaceId,
+        userId: run.userId,
+        botId: input.botId,
+      },
+      select: { id: true, groupId: true },
+    });
+    if (!sourceThread || sourceThread.groupId) {
+      return { outcome: "not_manageable" as const };
+    }
+    const { inspectGroupMembershipTarget, buildGroupMembershipPresentation } = await import(
+      "./group-membership.js"
+    );
+    const target = await inspectGroupMembershipTarget(tx, {
+      spaceId: input.spaceId,
+      userId: run.userId,
+      botId: input.botId,
+      groupId: input.groupId,
+    });
+    if (!target.ok) {
+      return {
+        outcome:
+          target.reason === "not_manageable"
+            ? ("not_manageable" as const)
+            : ("unavailable" as const),
+      };
+    }
+    if (target.isMember) return { outcome: "already_member" as const };
+
+    const waitStartedAt = new Date();
+    const paused = await tx.run.updateMany({
+      where: {
+        id: input.runId,
+        spaceId: input.spaceId,
+        threadId: input.threadId,
+        botId: input.botId,
+        status: "running",
+        leaseOwner: input.leaseOwner,
+        leaseFence: input.leaseFence,
+      },
+      data: {
+        status: "waiting_input",
+        waitKind: "approval",
+        waitStartedAt,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+      },
+    });
+    if (paused.count !== 1) return { outcome: "run_not_running" as const };
+    const attempt = await tx.attempt.updateMany({
+      where: {
+        id: input.attemptId,
+        runId: input.runId,
+        fence: input.leaseFence,
+        status: "running",
+      },
+      data: { status: "waiting_input", finishedAt: new Date() },
+    });
+    if (attempt.count !== 1) throw new Error("Active run attempt was not available to pause");
+
+    const presentation = buildGroupMembershipPresentation({
+      botName: input.botName,
+      groupName: target.group.name,
+    });
+    const askBlock: MessageBlock = {
+      kind: "ask",
+      text: presentation.text,
+      detail: presentation.detail,
+      status: "pending",
+      actions: [
+        { id: "approve", label: "Join and continue" },
+        { id: "deny", label: "Not now" },
+      ],
+    };
+    const messageId = randomUUID();
+    const requestId = randomUUID();
+    const pausedIntervention = await insertPausedIntervention(tx, {
+      spaceId: input.spaceId,
+      threads,
+      botId: input.botId,
+      runId: input.runId,
+      attemptId: input.attemptId,
+      ...(input.executionFence !== undefined ? { executionFence: input.executionFence } : {}),
+      ...(input.suspensionKey ? { suspensionKey: input.suspensionKey } : {}),
+      messageId,
+      blocks: [askBlock],
+      waitStartedAt,
+      groupMembership: {
+        id: requestId,
+        spaceId: input.spaceId,
+        userId: run.userId,
+        botId: input.botId,
+        groupId: target.group.id,
+        groupName: target.group.name,
+        sourceThreadId: sourceThread.id,
+        sourceRunId: input.runId,
+        requestMessageId: run.sourceMessageId ?? null,
+        deliveryKey: input.deliveryKey,
+        requestRevision: 1,
+        message: input.message,
+        topic: input.topic ?? null,
+      },
+    });
+    const message = await createThreadMessageInTransaction(tx, {
+      id: messageId,
+      threadId: input.threadId,
+      role: "bot",
+      originKind: "system",
+      blocks: pausedIntervention.blocks,
+      botId: input.botId,
+      runId: input.runId,
+    });
+    await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: input.botId,
+      type: "thread.message.created",
+      runId: input.runId,
+      payload: { messageId: message.id, role: "bot", blocks: pausedIntervention.blocks },
+    });
+    await appendEventInTransaction(tx, {
+      spaceId: input.spaceId,
+      threadId: input.threadId,
+      botId: input.botId,
+      type: "run.waiting_input",
+      runId: input.runId,
+      payload: { waitKind: "approval" },
+    });
+    const interventionEvent = await emitInterventionCreated(tx, pausedIntervention.id);
+    await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
+    return {
+      outcome: "paused" as const,
+      requestId,
+      interventionId: pausedIntervention.id,
+      messageId: message.id,
+      expiresAt: new Date(waitStartedAt.getTime() + INTERVENTION_WAIT_MS).toISOString(),
+      seq: interventionEvent.seq,
+    };
+  }, INTERVENTION_TRANSACTION);
+
+  if (committed.outcome !== "paused") return committed;
+  await notifyRealtime(realtime, input.threadId, committed.seq);
+  return {
+    outcome: "paused",
+    requestId: committed.requestId,
+    interventionId: committed.interventionId,
+    messageId: committed.messageId,
+    expiresAt: committed.expiresAt,
+  };
 }
 
 export async function pauseRunForTakeover(
@@ -1571,7 +2108,7 @@ export async function pauseRunForTakeover(
 
     const waitingEvent = await appendEventInTransaction(tx, {
       spaceId: input.spaceId,
-      threadId: input.threadId,
+      threadId: input.presentationThreadId ?? input.threadId,
       botId: input.botId,
       type: "computer.takeover.requested",
       runId: input.runId,
@@ -1664,12 +2201,56 @@ export async function finalizeComputerControlRelease(
         reason: input.reason,
       },
     });
-    return { threadId: event.threadId, seq: event.seq, runId };
+    // RT-05F: a delegated run's takeover was PROJECTED into its visible
+    // origin; the release must reach that Thread too or the user's chat keeps
+    // showing the wait after acting. Walk the persisted origin chain to the
+    // first visible Thread (same rule as the projection).
+    let projected: { threadId: string; seq: number } | null = null;
+    if (input.runId) {
+      let hop = await tx.run.findUnique({
+        where: { id: input.runId },
+        select: { originThreadId: true, originRunId: true },
+      });
+      for (let depth = 0; hop?.originThreadId && hop.originRunId && depth < 8; depth += 1) {
+        const originThread = await tx.thread.findUnique({
+          where: { id: hop.originThreadId },
+          select: { id: true, group: { select: { kind: true } } },
+        });
+        if (!originThread) break;
+        if (originThread.group?.kind !== "agent_pair") {
+          if (originThread.id !== bot.thread.id) {
+            const projectedEvent = await appendEventInTransaction(tx, {
+              spaceId: input.spaceId,
+              threadId: originThread.id,
+              botId: input.botId,
+              runId: runId ?? undefined,
+              type: "computer.takeover.released",
+              payload: {
+                holder: input.holder,
+                leaseId: input.leaseId,
+                reason: input.reason,
+                projected: true,
+              },
+            });
+            projected = { threadId: projectedEvent.threadId, seq: projectedEvent.seq };
+          }
+          break;
+        }
+        hop = await tx.run.findUnique({
+          where: { id: hop.originRunId },
+          select: { originThreadId: true, originRunId: true },
+        });
+      }
+    }
+    return { threadId: event.threadId, seq: event.seq, runId, projected };
   });
 
   if (!committed) return false;
   if (committed.threadId && committed.seq !== null) {
     await notifyRealtime(realtime, committed.threadId, committed.seq);
+  }
+  if (committed.projected) {
+    await notifyRealtime(realtime, committed.projected.threadId, committed.projected.seq);
   }
   return { runId: committed.runId };
 }
@@ -1902,16 +2483,20 @@ async function finalizeRunOnce(
         data: { runId: null },
       });
     }
-    const continuationRunId = await createSteeringContinuation(tx, input);
+    const continuationRunId = await continueReleasedSteeringInTransaction(tx, input);
     await tx.bot.update({ where: { id: input.botId }, data: { updatedAt: now } });
     return { threadId: lastEvent.threadId, seq: lastSeq, continuationRunId };
   });
 }
 
-async function createSteeringContinuation(
+/** One queued continuation for released steering. Does not acquire session admission. */
+export async function continueReleasedSteeringInTransaction(
   tx: Prisma.TransactionClient,
-  input: FinalizeRunBase,
+  input: { spaceId: string; threadId: string; botId: string },
 ): Promise<string | null> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.botId}), hashtext(${input.threadId}))`;
+  const { botMayContinueConversation } = await import("./cancel-terminal.js");
+  if (!(await botMayContinueConversation(tx, input.botId, input.threadId))) return null;
   const active = await tx.run.findFirst({
     where: {
       threadId: input.threadId,
@@ -1989,6 +2574,10 @@ export async function appendEventInTransaction(
     data: { nextEventSeq: { increment: 1 } },
     select: { nextEventSeq: true },
   });
+  if (input.execution) {
+    if (!input.runId) throw new Error("An execution fence requires a runId");
+    await assertActiveExecutionFence(tx, { runId: input.runId, ...input.execution });
+  }
   // run.cancelled is appended after the run row already reads cancelled, so it
   // asserts the terminal status where every other event needs a writable run.
   // thread.artifact is a Thread-maintenance membership fact (user-initiated
@@ -2002,7 +2591,9 @@ export async function appendEventInTransaction(
   if (input.type === "run.cancelled") {
     await assertRunIsCancelled(tx, input.runId);
   } else if (input.type !== "thread.artifact") {
-    await assertRunCanWriteHistory(tx, input.runId);
+    await assertRunCanWriteHistory(tx, input.runId, {
+      allowTypedCancel: input.allowTypedCancel,
+    });
   }
   // Unpaired UTF-16 surrogates (e.g. a split emoji high half) are invalid JSON for Postgres.
   const payload = sanitizeJsonValue(input.payload);

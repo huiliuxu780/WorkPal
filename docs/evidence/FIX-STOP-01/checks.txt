@@ -1,0 +1,32 @@
+FIX-STOP-01 v2 current repository checks
+Date: 2026-10-28
+Validation source head: e686b562689374d5710d12e575ceeb5121dc9ae2
+
+1. pnpm --filter @rakazo/db check
+   tsc --noEmit -p tsconfig.json
+   Exit: 0
+
+2. pnpm --filter @rakazo/worker check
+   tsc --noEmit -p tsconfig.json
+   Exit: 0
+
+3. CI=1 pnpm lint
+   Checked 1978 files. No fixes applied.
+   74 warnings, 5 infos, 0 errors.
+   Exit: 0
+
+4. pnpm test:inventory
+   564 tracked test files; Errors: 0; PostgreSQL: 51.
+   Exit: 0
+
+5. pnpm test:ci-select
+   100 passed, 0 failed.
+   Exit: 0
+
+6. pnpm test:docs
+   34 passed, 0 failed.
+   Exit: 0
+
+7. node scripts/ci/check-docs.mjs --all
+   Checked 163 markdown files; relative links ok.
+   Exit: 0

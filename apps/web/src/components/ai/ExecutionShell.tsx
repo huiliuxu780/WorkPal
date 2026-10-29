@@ -1,6 +1,7 @@
 import type {
   ActivityItem,
   ExecutionSummary,
+  InteractionView,
   InterventionView,
   RunPlanRevision,
   RunStepSnapshot,
@@ -26,6 +27,7 @@ export function ExecutionShell({
   canExpand,
   summary,
   pendingInterventionViews,
+  pendingInteractionViews,
   plan,
   steps,
   now,
@@ -62,6 +64,8 @@ export function ExecutionShell({
   summary?: ExecutionSummary | null;
   /** Pending Intervention views for this Run, for the card's auxiliary line. */
   pendingInterventionViews?: readonly InterventionView[];
+  /** CARD-01B pending views; preferred for the headline when present. */
+  pendingInteractionViews?: readonly InteractionView[];
   /** The backend-published structured Plan — the only progress source. */
   plan?: RunPlanRevision | null;
   /** Loaded semantic steps — failed-step line and current-item elapsed. */
@@ -106,6 +110,7 @@ export function ExecutionShell({
     status,
     summary,
     pendingInterventions: pendingInterventionViews,
+    pendingInteractions: pendingInteractionViews,
     ...(plan ? { plan } : {}),
     steps,
     ...(now !== undefined ? { now } : {}),

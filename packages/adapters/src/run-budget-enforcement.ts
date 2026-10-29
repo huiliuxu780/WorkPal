@@ -5,7 +5,9 @@ import {
   runBudgetViolations,
   turnPolicyFromRun,
 } from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import { type PrismaClient, recordRunAbortRevocations, type ThreadEvents } from "@rakazo/db";
+import { deliverRunAborts } from "./revoke-cancelled-work.js";
+import { interventionOriginForRun } from "./run-origin.js";
 
 /** Independent of the model stream, so a hung model call still reaches its duration limit. */
 export async function enforceRunBudgets(
@@ -75,6 +77,7 @@ export async function enforceRunBudgets(
     const changed = policy.interaction.interactive
       ? await deps.events.pauseRunForInput({
           ...common,
+          ...(await interventionOriginForRun(deps.prisma, run)),
           budgetExceeded: violation,
           blocks: [{
             kind: "ask",
@@ -91,8 +94,9 @@ export async function enforceRunBudgets(
           budgetExceeded: violation,
         });
     if (!changed) continue;
+    await recordRunAbortRevocations(deps.prisma, [run.id]);
+    await deliverRunAborts(deps.prisma, (id) => deps.runtime.abort(id), [run.id]);
     enforced += 1;
-    await deps.runtime.abort(run.id).catch(() => undefined);
   }
   return enforced;
 }

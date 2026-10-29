@@ -3,7 +3,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentScopeAgentRuntime, type AgentScopeTransientError } from "./agentscope-runtime.js";
+import {
+  AgentScopeAgentRuntime,
+  type AgentScopeRunRejectedError,
+  type AgentScopeSessionConflictError,
+  type AgentScopeTransientError,
+} from "./agentscope-runtime.js";
 
 const servers: ReturnType<typeof createServer>[] = [];
 
@@ -86,7 +91,10 @@ describe("AgentScopeAgentRuntime", () => {
     }
     expect(fixture.requests[0]).toMatchObject({
       history: [
-        { id: "db-1", provenance: { kind: "message", originKind: "human_web", authorUserId: "user-1" } },
+        {
+          id: "db-1",
+          provenance: { kind: "message", originKind: "human_web", authorUserId: "user-1" },
+        },
         { provenance: { kind: "application", contextKind: "durable_memory", generation: 0 } },
       ],
     });
@@ -108,6 +116,204 @@ describe("AgentScopeAgentRuntime", () => {
       retryReason: "provider_5xx",
     } satisfies Partial<AgentScopeTransientError>);
   });
+
+  it("classifies Runtime 409 as a session conflict and preserves the admission proof", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(409, { "content-type": "application/json" });
+      response.end('{"error":"Session already has an active run"}');
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const request = runRequest();
+    request.sessionAdmission = {
+      sessionKey: "agentscope:chat:v1:tenant:session",
+      executionId: "execution-1",
+      attemptId: "attempt-1",
+      fence: 7,
+      suspensionKey: "suspension-1",
+    };
+    const drain = async () => {
+      for await (const _event of runtime.run(request, runContext())) {
+        // drain
+      }
+    };
+
+    await expect(drain()).rejects.toMatchObject({
+      name: "AgentScopeSessionConflictError",
+    } satisfies Partial<AgentScopeSessionConflictError>);
+    expect(fixture.requests[0]).toMatchObject({ sessionAdmission: request.sessionAdmission });
+  });
+
+  it("keeps the checkpoint resume and suspension thread context on the runtime wire", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(`${JSON.stringify({ type: "done", text: "ok" })}\n`);
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const request = runRequest();
+    request.sessionAdmission = {
+      sessionKey: "agentscope:chat:v1:tenant:session",
+      executionId: "execution-2",
+      attemptId: "attempt-2",
+      fence: 8,
+      suspensionKey: "suspension-2",
+    };
+    request.resumeCheckpoint = {
+      checkpointId: "ckpt_test0001",
+      digest: "a".repeat(64),
+      sessionKey: "agentscope:chat:v1:tenant:session",
+      sourceRunId: "run-1",
+      sourceAttemptId: "attempt-1",
+      sourceExecutionId: "execution-1",
+      sourceFence: 7,
+      sourceSuspensionKey: "suspension-1",
+      attemptId: "attempt-2",
+      executionId: "execution-2",
+      fence: 8,
+      suspensionKey: "suspension-2",
+    };
+    request.threadContextAfterSuspension = [
+      { seq: 3, role: "user", content: "answered while paused" },
+    ];
+    for await (const _event of runtime.run(request, runContext())) {
+      // drain
+    }
+    expect(fixture.requests[0]).toMatchObject({
+      resumeCheckpoint: {
+        checkpointId: "ckpt_test0001",
+        // The Runtime requires the resume to carry the session admission key.
+        sessionKey: "agentscope:chat:v1:tenant:session",
+        sourceFence: 7,
+        fence: 8,
+      },
+      threadContextAfterSuspension: [{ seq: 3, role: "user", content: "answered while paused" }],
+    });
+  });
+
+  it("detaches a session checkpoint under the exact execution binding", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          kind: "detached",
+          checkpointId: "ckpt_test0001",
+          digest: "b".repeat(64),
+          pendingCalls: [{ id: "call-1", name: "ask_user", state: "asking" }],
+          runtimeInstanceId: "runtime-1",
+        }),
+      );
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    const proof = await runtime.inspectAndDetach({
+      identity: {
+        userId: "user-1",
+        spaceId: "space-1",
+        botId: "bot-1",
+        threadId: "thread-1",
+        runId: "run-1",
+      },
+      sessionKey: "agentscope:chat:v1:tenant:session",
+      sessionGeneration: 3,
+      executionId: "execution-1",
+      attemptId: "attempt-1",
+      fence: 7,
+      suspensionKey: "suspension-1",
+      checkpointId: "ckpt_test0001",
+    });
+    expect(proof).toMatchObject({
+      kind: "detached",
+      checkpointId: "ckpt_test0001",
+      digest: "b".repeat(64),
+    });
+    expect(fixture.requests[0]).toMatchObject({
+      sessionKey: "agentscope:chat:v1:tenant:session",
+      executionId: "execution-1",
+      attemptId: "attempt-1",
+      fence: 7,
+      suspensionKey: "suspension-1",
+      checkpointId: "ckpt_test0001",
+    });
+  });
+
+  it("rejects a runtime checkpoint proof for another checkpoint id or shape", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          kind: "detached",
+          checkpointId: "ckpt_other00001",
+          digest: "not-a-digest",
+          pendingCalls: [],
+        }),
+      );
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    await expect(
+      runtime.inspectAndDetach({
+        identity: {
+          userId: "user-1",
+          spaceId: "space-1",
+          botId: "bot-1",
+          threadId: "thread-1",
+          runId: "run-1",
+        },
+        sessionKey: "agentscope:chat:v1:tenant:session",
+        sessionGeneration: 3,
+        executionId: "execution-1",
+        attemptId: "attempt-1",
+        fence: 7,
+        suspensionKey: "suspension-1",
+        checkpointId: "ckpt_test0001",
+      }),
+    ).rejects.toThrow("malformed pending-state proof");
+  });
+
+  it("maps a detach conflict to a session conflict error", async () => {
+    const fixture = await listen((_request, response) => {
+      response.writeHead(409, { "content-type": "application/json" });
+      response.end('{"error":"Shared session is not owned by this execution binding"}');
+    });
+    const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+    await expect(
+      runtime.inspectAndDetach({
+        identity: {
+          userId: "user-1",
+          spaceId: "space-1",
+          botId: "bot-1",
+          threadId: "thread-1",
+          runId: "run-1",
+        },
+        sessionKey: "agentscope:chat:v1:tenant:session",
+        sessionGeneration: 3,
+        executionId: "execution-1",
+        attemptId: "attempt-1",
+        fence: 7,
+        suspensionKey: "suspension-1",
+        checkpointId: "ckpt_test0001",
+      }),
+    ).rejects.toMatchObject({
+      name: "AgentScopeSessionConflictError",
+    } satisfies Partial<AgentScopeSessionConflictError>);
+  });
+
+  it.each([410, 422])(
+    "classifies Runtime %i as a definitive pre-execution rejection",
+    async (status) => {
+      const fixture = await listen((_request, response) => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end('{"error":"Run rejected before execution"}');
+      });
+      const runtime = new AgentScopeAgentRuntime({ baseUrl: fixture.url });
+      const drain = async () => {
+        for await (const _event of runtime.run(runRequest(), runContext())) {
+          // drain
+        }
+      };
+
+      await expect(drain()).rejects.toMatchObject({
+        name: "AgentScopeRunRejectedError",
+      } satisfies Partial<AgentScopeRunRejectedError>);
+    },
+  );
 
   it("classifies model timeout events without retrying unrelated model errors", async () => {
     const fixture = await listen((_request, response) => {
@@ -199,7 +405,14 @@ describe("AgentScopeAgentRuntime", () => {
       delegation: { mode: "auto", background: true, maxChildren: 3, maxDepth: 1 },
       ownership: { mode: "owner", ownerBotId: "bot-1" },
       routing: { kind: "direct" },
-      budget: { maxTokens: 200_000, maxCostUsd: 1, maxDurationSec: 900, maxToolCalls: 50, maxChildAgents: 3, maxDepth: 1 },
+      budget: {
+        maxTokens: 200_000,
+        maxCostUsd: 1,
+        maxDurationSec: 900,
+        maxToolCalls: 50,
+        maxChildAgents: 3,
+        maxDepth: 1,
+      },
       approval: { timeoutSec: 86_400, onTimeout: "expire" },
       retry: { maxAuto: 2, retryable: ["llm_timeout", "network_error"] },
       subagent: { permissionInheritance: "subset-readonly" },
@@ -207,14 +420,18 @@ describe("AgentScopeAgentRuntime", () => {
     for await (const _event of runtime.run(next, runContext())) {
       // drain
     }
-    expect(fixture.requests[0]).toMatchObject({ turnPolicy: {
-      version: "v2",
-      budget: { maxTokens: 200_000, maxToolCalls: 50 },
-      approval: { timeoutSec: 86_400, onTimeout: "expire" },
-      retry: { maxAuto: 2 },
-      subagent: { permissionInheritance: "subset-readonly" },
-    } });
-    expect((fixture.requests[0] as { turnPolicy: Record<string, unknown> }).turnPolicy).not.toHaveProperty("action");
+    expect(fixture.requests[0]).toMatchObject({
+      turnPolicy: {
+        version: "v2",
+        budget: { maxTokens: 200_000, maxToolCalls: 50 },
+        approval: { timeoutSec: 86_400, onTimeout: "expire" },
+        retry: { maxAuto: 2 },
+        subagent: { permissionInheritance: "subset-readonly" },
+      },
+    });
+    expect(
+      (fixture.requests[0] as { turnPolicy: Record<string, unknown> }).turnPolicy,
+    ).not.toHaveProperty("action");
   });
 
   it("serializes scoped skills for AgentScope on-demand loading", async () => {
@@ -413,7 +630,10 @@ describe("AgentScopeAgentRuntime", () => {
           runId: string;
           toolBridge: { url: string; token: string };
         };
-        const surfaceUrl = outbound.toolBridge.url.replace("/v1/tool-executions", "/v1/tool-surface");
+        const surfaceUrl = outbound.toolBridge.url.replace(
+          "/v1/tool-executions",
+          "/v1/tool-surface",
+        );
         const first = await fetch(surfaceUrl, {
           method: "POST",
           headers: {
@@ -542,7 +762,10 @@ describe("AgentScopeAgentRuntime", () => {
           runId: string;
           toolBridge: { url: string; token: string };
         };
-        const surfaceUrl = outbound.toolBridge.url.replace("/v1/tool-executions", "/v1/tool-surface");
+        const surfaceUrl = outbound.toolBridge.url.replace(
+          "/v1/tool-executions",
+          "/v1/tool-surface",
+        );
         const surface = await fetch(surfaceUrl, {
           method: "POST",
           headers: {
@@ -612,7 +835,11 @@ describe("AgentScopeAgentRuntime", () => {
       // drain
     }
     expect(executeTool).toHaveBeenCalledWith("alpha_tool", {}, "call-stale-execute");
-    expect(executeTool).toHaveBeenCalledWith("beta_tool", { mode: "restored" }, "call-live-execute");
+    expect(executeTool).toHaveBeenCalledWith(
+      "beta_tool",
+      { mode: "restored" },
+      "call-live-execute",
+    );
   });
 
   it("keeps only a task-scoped bridge after the parent stream ends", async () => {

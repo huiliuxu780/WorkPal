@@ -1,12 +1,26 @@
 import { execSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getRequestListener } from "@hono/node-server";
 import { deliveryDispatchJob } from "@rakazo/adapter-kit";
 import { enforceRunBudgets } from "@rakazo/adapters";
 import { loadRootEnv } from "@rakazo/core/node/load-root-env";
-import { createThreadEvents } from "@rakazo/db";
+import { createThreadEvents, pauseRunForInput } from "@rakazo/db";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
+import {
+  allocateResources,
+  handoffPorts,
+  releaseResources,
+  requirePort,
+} from "../resources/leases.js";
+import { assertWorkpalE2eDatabaseUrl, taskSlugFrom } from "../resources/plan.js";
+import {
+  FULL_E2E_GATE_OFF_SPEC,
+  FULL_E2E_GATED_SPEC,
+  specSelects,
+  splitGateBatches,
+} from "./e2e-spec-selection.js";
 import { startJavaRuntime } from "./java-runtime.js";
 import { runProcess } from "./process.js";
 
@@ -35,6 +49,7 @@ if (integration && sandboxProvider !== "fake") {
 if (agentRuntime !== "agentscope" && agentRuntime !== "scripted") {
   throw new Error('Runtime must be "agentscope" or "scripted"');
 }
+
 if (sandboxProvider === "e2b" && !process.env.E2B_API_KEY) {
   throw new Error("E2B_API_KEY is required when --sandbox=e2b");
 }
@@ -46,6 +61,37 @@ if (sandboxProvider === "box" && !process.env.BOX_API_KEY) {
 }
 
 async function main() {
+  if (e2e && !e2eSpec) {
+    // The unified-card and private-pair specs require gates the rest of the
+    // suite must run without. A full run is therefore two gate-compatible
+    // batches, each with its own API/Web/DB lifecycle.
+    const baseArgs = process.argv
+      .slice(2)
+      .filter((arg) => arg !== "--e2e" && !arg.startsWith("--spec="));
+    console.log("Full E2E: gate-off batch");
+    await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${FULL_E2E_GATE_OFF_SPEC}`], {
+      ...process.env,
+      WORKPAL_E2E_FULL_BATCH: "gate-off",
+    });
+    console.log("Full E2E: gate-on batch");
+    await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${FULL_E2E_GATED_SPEC}`], process.env);
+    return;
+  }
+  if (!integration) {
+    const batches = splitGateBatches(e2eSpec);
+    if (batches) {
+      // Gate-on and gate-off specs cannot share one process: the gates change
+      // legacy card surfaces. Keep each batch's behavior intact.
+      const baseArgs = process.argv
+        .slice(2)
+        .filter((arg) => arg !== "--e2e" && !arg.startsWith("--spec="));
+      console.log("E2E: gate-off batch");
+      await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${batches.plain.join("|")}`], process.env);
+      console.log("E2E: gate-on batch");
+      await runProcess("pnpm", ["test:e2e", ...baseArgs, `--spec=${batches.gated.join("|")}`], process.env);
+      return;
+    }
+  }
   const mode = integration ? "integration" : "e2e";
   const reportDir = path.resolve("test-report", mode);
   await mkdir(reportDir, { recursive: true });
@@ -53,21 +99,25 @@ async function main() {
   // when a container runtime is unavailable. Integration suites still need clones.
   const externalDatabaseUrl = process.env.WORKPAL_E2E_DATABASE_URL;
   if (externalDatabaseUrl) {
-    const url = new URL(externalDatabaseUrl);
-    if (integration || !["localhost", "127.0.0.1"].includes(url.hostname) ||
-        !url.pathname.startsWith("/workpal_e2e_")) {
-      throw new Error("WORKPAL_E2E_DATABASE_URL must name a local workpal_e2e_ database in E2E mode");
-    }
+    assertWorkpalE2eDatabaseUrl(externalDatabaseUrl, integration ? "integration" : "e2e");
   }
-  const container = externalDatabaseUrl
-    ? undefined
-    : await new PostgreSqlContainer("postgres:16-alpine").start();
+  // Lease the ports before starting Postgres so a conflict fails closed.
+  const resources = await allocateResources({
+    purpose: "e2e",
+    cwd: process.cwd(),
+    taskSlug: taskSlugFrom(process.argv, process.env),
+    env: process.env,
+  });
+  const apiPort = requirePort(resources, "api");
+  const webPort = requirePort(resources, "web");
+  let container: Awaited<ReturnType<PostgreSqlContainer["start"]>> | undefined;
   let javaRuntime: Awaited<ReturnType<typeof startJavaRuntime>> | undefined;
   let javaRuntimeDirectory: string | undefined;
   try {
+    container = externalDatabaseUrl
+      ? undefined
+      : await new PostgreSqlContainer("postgres:16-alpine").start();
     const databaseUrl = externalDatabaseUrl ?? container!.getConnectionUri();
-    const apiPort = Number(process.env.API_PORT ?? 3110);
-    const webPort = Number(process.env.WEB_PORT ?? 5180);
     const webOrigin = `http://127.0.0.1:${webPort}`;
 
     process.env.DATABASE_URL = databaseUrl;
@@ -94,6 +144,37 @@ async function main() {
     process.env.DATA_DIR = path.join(reportDir, "data");
     process.env.SIGNUPS_ENABLED = "true";
     process.env.SIGNUP_ALLOWLIST = "";
+    // The in-process E2E API exercises the gated cross-session handoff when
+    // that spec runs; the production default stays closed. Integration suites
+    // opt in themselves.
+    if (
+      !integration &&
+      (process.env.WORKPAL_E2E_FULL_BATCH === "gate-off" ||
+        specSelects(e2eSpec, "message-group.spec.ts") ||
+        specSelects(e2eSpec, "group-membership.spec.ts") ||
+        specSelects(e2eSpec, "card-attention.spec.ts"))
+    ) {
+      process.env.ROUNDTABLE_MESSAGE_GROUP_ENABLED = "true";
+    }
+    // RT-09 private pair receipts only carry a pair locator when the pair
+    // delivery is on; these specs assert the bound private history instead of
+    // the legacy destination-chat fallback.
+    if (
+      !integration &&
+      (specSelects(e2eSpec, "peer-messages.spec.ts") ||
+        specSelects(e2eSpec, "card-ui-interactions.spec.ts"))
+    ) {
+      process.env.ROUNDTABLE_PRIVATE_PAIR_ENABLED = "true";
+    }
+    if (
+      !integration &&
+      (specSelects(e2eSpec, "card-ui-interactions.spec.ts") ||
+        specSelects(e2eSpec, "card-display-content.spec.ts") ||
+        specSelects(e2eSpec, "group-membership.spec.ts") ||
+        specSelects(e2eSpec, "card-attention.spec.ts"))
+    ) {
+      process.env.CARDS_UNIFIED_V2_ENABLED = "true";
+    }
     process.env.CI = "1";
     if (integration || agentRuntime === "agentscope") {
       javaRuntimeDirectory = await mkdtemp(path.join(reportDir, "runtime-"));
@@ -183,7 +264,6 @@ async function main() {
       { ComposioEmulator, EmailEmulator, PipedreamConnector, ThirdPartyConnectorEmulator },
       { createApp },
     ] = await Promise.all([import("@rakazo/adapters"), import("../../../../apps/api/src/app.ts")]);
-    const { serve } = await import("@hono/node-server");
     const thirdParties = new ThirdPartyConnectorEmulator();
     const pipedream = new PipedreamConnector(
       {
@@ -227,10 +307,351 @@ async function main() {
     budgetSweep?.unref?.();
     let activeRequests = 0;
     const requestWaiters = new Set<() => void>();
-    const server = serve({
-      fetch: async (request) => {
+    const server = resources.servers.api;
+    if (!server) throw new Error("port:api unassigned");
+    server.on(
+      "request",
+      getRequestListener(async (request) => {
         if (new URL(request.url).pathname === "/__e2e/emails") {
           return Response.json(email.sent, { headers: { "cache-control": "no-store" } });
+        }
+        if (
+          new URL(request.url).pathname === "/__e2e/display-blocks" &&
+          request.method === "POST"
+        ) {
+          // CARD-01C visual fixture: persist real message blocks and artifacts
+          // so the server projection produces every DisplayBlock kind.
+          const input = (await request.json()) as {
+            botId?: string;
+            threadId?: string;
+            imageId?: string;
+            fileId?: string;
+            htmlId?: string;
+            pageId?: string;
+            probeText?: string;
+            narrationImageId?: string;
+            toolProbeImageId?: string;
+            toolProbeText?: string;
+          };
+          if (
+            !input.botId ||
+            !input.threadId ||
+            !input.imageId ||
+            !input.fileId ||
+            !input.htmlId ||
+            !input.pageId
+          ) {
+            return Response.json({ error: "botId, threadId and artifacts are required" }, { status: 400 });
+          }
+          const bot = await handles.prisma.bot.findUnique({ where: { id: input.botId } });
+          const thread = await handles.prisma.thread.findFirst({
+            where: { id: input.threadId, botId: input.botId },
+          });
+          if (!bot || !thread || thread.spaceId !== bot.spaceId || thread.userId !== bot.userId) {
+            return Response.json({ error: "bot thread not found" }, { status: 404 });
+          }
+          const head = await handles.prisma.message.aggregate({
+            where: { threadId: thread.id },
+            _max: { seq: true },
+          });
+          let seq = (head._max.seq ?? 0) + 1;
+          const longText = Array.from(
+            { length: 14 },
+            (_, index) => `Line ${index + 1}: the weekly report records a measurable change.`,
+          ).join("\n");
+          const displayMessage = await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "bot",
+              botId: bot.id,
+              blocks: [
+                { kind: "text", text: `Weekly report\n\n${longText}` },
+                {
+                  kind: "chart",
+                  name: "Weekly trend",
+                  spec: {
+                    title: "Weekly trend",
+                    marks: [
+                      {
+                        type: "dot",
+                        options: { x: "day", y: "count", fill: "currentColor", r: 8 },
+                      },
+                    ],
+                  },
+                  data: [
+                    { day: "Mon", count: 3 },
+                    { day: "Tue", count: 5 },
+                  ],
+                },
+                {
+                  kind: "card",
+                  lines: [
+                    { k: "Owner", v: "Ada" },
+                    { k: "Status", v: "Ready" },
+                  ],
+                },
+                {
+                  // A legacy connection record from before CARD-01: replay is
+                  // read-only and must not grow an Authorize action.
+                  kind: "connect",
+                  name: "Linear",
+                  initial: "L",
+                  color: "#5E6AD2",
+                  status: "connected",
+                },
+                {
+                  kind: "image",
+                  artifactId: input.imageId,
+                  mimeType: "image/png",
+                  name: "chart.png",
+                },
+                {
+                  kind: "file",
+                  artifactId: input.fileId,
+                  mimeType: "text/plain",
+                  name: "notes.txt",
+                  size: 5,
+                },
+                {
+                  kind: "file",
+                  artifactId: input.htmlId,
+                  mimeType: "text/html",
+                  name: "report.html",
+                  size: 64,
+                },
+                {
+                  kind: "file",
+                  artifactId: input.pageId,
+                  mimeType: "text/markdown",
+                  name: "brief.md",
+                  size: 32,
+                },
+                {
+                  kind: "subagent",
+                  agentId: "display-agent",
+                  name: "Researcher",
+                  task: "Collect the weekly metrics",
+                  status: "completed",
+                  // A result that wraps far beyond the three-line clamp so the
+                  // task card must offer the full-text entry.
+                  result: longText,
+                },
+                {
+                  kind: "cloud_agent",
+                  agentId: "display-cloud-agent",
+                  title: "Remote fix",
+                  status: "finished",
+                  url: "https://cloud.example.test/agents/1",
+                  prUrl: "https://github.example.test/demo/pull/9",
+                },
+              ] as never,
+            },
+          });
+          const callId = "display-call";
+          if (input.narrationImageId) {
+            // A short bot text plus an image: after the image is suppressed by
+            // its media card, the message qualifies as narration, so the
+            // projected card must render from the narration path too.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  { kind: "text", text: "Here is the chart capture you asked for." },
+                  {
+                    kind: "image",
+                    artifactId: input.narrationImageId,
+                    mimeType: "image/png",
+                    name: "chart.png",
+                  },
+                ] as never,
+              },
+            });
+          }
+          if (input.toolProbeImageId) {
+            // Steps plus an image: once the image is suppressed by its media
+            // card, only tool activity remains, so the card must survive the
+            // tool-only narration paths with the preference on and off.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  {
+                    kind: "steps",
+                    steps: [{ label: "Read the chart", count: 1 }],
+                    durationMs: 1_200,
+                  },
+                  {
+                    kind: "image",
+                    artifactId: input.toolProbeImageId,
+                    mimeType: "image/png",
+                    name: "probe.png",
+                  },
+                ] as never,
+              },
+            });
+          }
+          if (input.toolProbeText) {
+            // Steps plus a long text: the text folds into its markdown card
+            // and only the steps remain visible.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [
+                  {
+                    kind: "steps",
+                    steps: [{ label: "Summarize the report", count: 1 }],
+                    durationMs: 900,
+                  },
+                  { kind: "text", text: `Tool probe\n\n${longText}` },
+                ] as never,
+              },
+            });
+          }
+          if (input.probeText) {
+            // A separate bot message so the viewport-reflow regression gets a
+            // markdown card whose fold decision flips on narrow viewports.
+            await handles.prisma.message.create({
+              data: {
+                threadId: thread.id,
+                seq: seq++,
+                role: "bot",
+                botId: bot.id,
+                blocks: [{ kind: "text", text: input.probeText }] as never,
+              },
+            });
+          }
+          await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "user",
+              blocks: [{ kind: "text", text: "The weather is sunny." }],
+              clientNonce: `call:${callId}:user`,
+            },
+          });
+          await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "bot",
+              botId: bot.id,
+              blocks: [{ kind: "text", text: "Sunny and 22 degrees." }],
+              clientNonce: `call:${callId}:reply`,
+            },
+          });
+          await handles.prisma.message.create({
+            data: {
+              threadId: thread.id,
+              seq: seq++,
+              role: "bot",
+              botId: bot.id,
+              blocks: [{ kind: "voice_call", title: "Weather check", farewell: "Bye" }],
+              clientNonce: `call:${callId}:marker`,
+            },
+          });
+          return Response.json(
+            { messageId: displayMessage.id },
+            { headers: { "cache-control": "no-store" } },
+          );
+        }
+        if (
+          new URL(request.url).pathname === "/__e2e/outbound-draft" &&
+          request.method === "POST"
+        ) {
+          // A10 screenshot/visual fixture: seed a real send_email approval
+          // through the production pause path, without a model tool call.
+          const input = (await request.json()) as { botId?: string; threadId?: string };
+          if (!input.botId || !input.threadId) {
+            return Response.json({ error: "botId and threadId are required" }, { status: 400 });
+          }
+          const bot = await handles.prisma.bot.findUnique({ where: { id: input.botId } });
+          const thread = await handles.prisma.thread.findFirst({
+            where: { id: input.threadId, botId: input.botId },
+          });
+          if (!bot || !thread || thread.spaceId !== bot.spaceId || thread.userId !== bot.userId) {
+            return Response.json({ error: "bot thread not found" }, { status: 404 });
+          }
+          const task = await handles.prisma.task.create({
+            data: {
+              spaceId: bot.spaceId,
+              userId: bot.userId,
+              botId: bot.id,
+              threadId: thread.id,
+              prompt: "Seed an outbound draft for visual acceptance",
+              status: "running",
+            },
+          });
+          const run = await handles.prisma.run.create({
+            data: {
+              spaceId: bot.spaceId,
+              userId: bot.userId,
+              botId: bot.id,
+              threadId: thread.id,
+              taskId: task.id,
+              status: "running",
+              trigger: "user",
+              leaseOwner: "e2e-seed",
+              leaseFence: 1,
+              leaseExpiresAt: new Date(Date.now() + 60_000),
+            },
+          });
+          const attempt = await handles.prisma.attempt.create({
+            data: { runId: run.id, fence: 1, status: "running" },
+          });
+          const effect = await handles.prisma.externalEffect.create({
+            data: {
+              spaceId: bot.spaceId,
+              runId: run.id,
+              kind: "send_email",
+              idempotencyKey: `e2e-outbound-${run.id}`,
+              status: "intended",
+              request: {
+                to: ["ada@example.test"],
+                subject: "Weekly digest",
+                text: "Original body",
+              },
+            },
+          });
+          const paused = await pauseRunForInput(handles.prisma, {
+            spaceId: bot.spaceId,
+            threadId: thread.id,
+            botId: bot.id,
+            runId: run.id,
+            attemptId: attempt.id,
+            leaseOwner: "e2e-seed",
+            leaseFence: 1,
+            blocks: [
+              {
+                kind: "ask",
+                text: "Review before send_email",
+                detail: "to: ada@example.test\nsubject: Weekly digest\nbody: Original body",
+                status: "pending",
+                approvalEffectId: effect.id,
+                actions: [
+                  { id: "allow", label: "Allow once" },
+                  { id: "always", label: "Always allow" },
+                  { id: "deny", label: "Deny" },
+                ],
+              },
+            ],
+          });
+          if (!paused) {
+            return Response.json({ error: "seed pause failed" }, { status: 409 });
+          }
+          return Response.json(
+            { runId: run.id, threadId: thread.id },
+            { headers: { "cache-control": "no-store" } },
+          );
         }
         activeRequests += 1;
         try {
@@ -242,14 +663,15 @@ async function main() {
             requestWaiters.clear();
           }
         }
-      },
-      port: apiPort,
-      hostname: "127.0.0.1",
-    });
+      }, { hostname: "127.0.0.1" }),
+    );
+    server.ref();
     await waitForHealth(`http://127.0.0.1:${apiPort}/health`, 15_000);
 
     try {
       try {
+        // Vite binds WEB_PORT itself. The lease still reserves the number.
+        await handoffPorts(resources.key, ["web"]);
         await runProcess(
           "pnpm",
           [
@@ -339,6 +761,7 @@ async function main() {
     await javaRuntime?.stop();
     if (javaRuntimeDirectory) await rm(javaRuntimeDirectory, { recursive: true, force: true });
     await container?.stop().catch(() => undefined);
+    await releaseResources(resources).catch(() => undefined);
   }
 }
 

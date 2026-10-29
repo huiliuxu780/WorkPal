@@ -7,7 +7,13 @@ import {
   nextCronDate,
   ONCE_ROUTINE_CRON,
 } from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import {
+  CHAT_GROUP_KIND_AGENT_PAIR,
+  createThreadPolicy,
+  IsolationError,
+  type PrismaClient,
+  type ThreadEvents,
+} from "@rakazo/db";
 
 export { isOneShotRoutineCron, ONCE_ROUTINE_CRON };
 
@@ -24,14 +30,25 @@ export function filterBuiltinToolsForRun<T extends { name: string }>(
 export function filterBuiltinToolsForThread<T extends { name: string }>(
   tools: T[],
   groupId: string | null | undefined,
+  publicCollaborationEnabled = false,
+  groupKind: string | null | undefined = null,
+  messageGroupEnabled = false,
 ): T[] {
-  return tools.filter(
-    (tool) =>
-      (groupId || tool.name !== "handoff_to_bot") &&
-      // In a group the room is the shared surface: hand the stage to a member
-      // rather than starting a private thread off to one side.
-      (!groupId || tool.name !== "message_bot"),
-  );
+  return tools.filter((tool) => {
+    if (tool.name === "message_group") return !groupId && messageGroupEnabled;
+    if (!groupId) return tool.name !== "handoff_to_bot";
+    // In a group, message_bot is only safe once dispatch posts into the shared
+    // Thread instead of the target bot's DM. The server gate owns that rollout.
+    if (tool.name === "message_bot") {
+      // A pair Thread only exists through the gated private delivery path, and
+      // the delegated chain finishes there: message_bot is its reply surface
+      // (clarification, interim status, explicit result), so it does not
+      // depend on the independent public-collaboration gate.
+      if (groupKind === CHAT_GROUP_KIND_AGENT_PAIR) return true;
+      return publicCollaborationEnabled;
+    }
+    return true;
+  });
 }
 
 type ScheduleUnit = "minutes" | "hours" | "days" | "seconds";
@@ -221,6 +238,15 @@ export async function createScheduleFromTool(
   const timezone = String(input.timezone ?? "UTC");
   const resolved = resolveScheduleTiming(input.schedule, timezone);
   if (!resolved.ok) return { error: resolved.error };
+
+  try {
+    await createThreadPolicy(deps.prisma).assertRoutineBindingAllowed(input.threadId);
+  } catch (error) {
+    if (error instanceof IsolationError) {
+      return { error: "Schedules cannot be bound to this thread." };
+    }
+    throw error;
+  }
 
   const row = await deps.prisma.routine.create({
     data: {

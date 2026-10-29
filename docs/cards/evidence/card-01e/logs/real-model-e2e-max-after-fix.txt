@@ -1,0 +1,4 @@
+$ REAL_MODEL_ID=qwen3.8-max ... pnpm test:e2e --runtime=agentscope --spec="card-real-model.spec.ts" (after resumeAnswerFromAsk)
+  ✓  1 [chromium] › e2e/card-real-model.spec.ts:25:1 › real DashScope model creates an ask card that reaches attention and resumes (29.8s)
+::notice title=🎭 Playwright Run Summary::  1 passed (32.6s)
+  1 passed (32.6s)

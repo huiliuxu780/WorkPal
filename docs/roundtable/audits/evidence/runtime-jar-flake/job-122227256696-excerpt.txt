@@ -1,0 +1,57 @@
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:29.5825149Z [INFO] Running com.workpal.runtime.AgentScopeBackgroundProbeTest
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:29.6903009Z agentscope.signal event=PRE_CALL run=cancel-parent thread=thread-1 generation=0 elapsed_ms=10
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:29.6903744Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:29.6904182Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:29.6904612Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:29.6905177Z agentscope.signal event=POST_CALL run=cancel-parent thread=thread-1 generation=0 elapsed_ms=35 messages=0
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.0910259Z agentscope.signal event=PRE_CALL run=session-probe thread=thread-1 generation=0 elapsed_ms=4
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.0911298Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.1799604Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.1800040Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.1800331Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.1800877Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.1801646Z agentscope.signal event=POST_CALL run=session-probe thread=thread-1 generation=0 elapsed_ms=45 messages=0
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.1908677Z agentscope.signal event=PRE_CALL run=compaction-probe thread=thread-1 generation=0 elapsed_ms=3
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.1909237Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.2908022Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.2908707Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.2941501Z agentscope.signal event=POST_CALL run=compaction-probe thread=thread-1 generation=0 elapsed_ms=19 messages=0
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.2942952Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.3909678Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.3910005Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.4909995Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.4910529Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.5912556Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.5913032Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.6652932Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.6921298Z agentscope.signal event=PRE_CALL run=failure-parent thread=thread-1 generation=0 elapsed_ms=4
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.6921996Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.6922349Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.6922700Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:30.7914013Z agentscope.signal event=POST_CALL run=failure-parent thread=thread-1 generation=0 elapsed_ms=27 messages=0
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.1765028Z agentscope.signal event=PRE_CALL run=production-gate thread=thread-1 generation=0 elapsed_ms=4
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.1766155Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.1766852Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.1767575Z agentscope.signal event=POST_CALL run=production-gate thread=thread-1 generation=0 elapsed_ms=55 messages=0
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2015924Z agentscope.signal event=PRE_CALL run=delivery-parent thread=thread-1 generation=0 elapsed_ms=4
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2017410Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2017998Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2018479Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2019344Z agentscope.signal event=POST_CALL run=delivery-parent thread=thread-1 generation=0 elapsed_ms=20 messages=0
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2808086Z agentscope.signal event=PRE_CALL run=delivery-follow-up thread=thread-1 generation=0 elapsed_ms=4
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2835502Z Tool bridge returned HTTP 404
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2866275Z agentscope.signal event=POST_CALL run=delivery-follow-up thread=thread-1 generation=0 elapsed_ms=9 messages=0
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2890150Z [ERROR] Tests run: 7, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 9.704 s <<< FAILURE! -- in com.workpal.runtime.AgentScopeBackgroundProbeTest
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2892207Z [ERROR] com.workpal.runtime.AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession -- Time elapsed: 0.102 s <<< FAILURE!
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2894111Z org.opentest4j.AssertionFailedError: the delivered task must be marked delivered in the native repository ==> expected: not <null>
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2895597Z 	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2896725Z 	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2897790Z 	at org.junit.jupiter.api.AssertNotNull.failNull(AssertNotNull.java:49)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2898678Z 	at org.junit.jupiter.api.AssertNotNull.assertNotNull(AssertNotNull.java:35)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2899570Z 	at org.junit.jupiter.api.Assertions.assertNotNull(Assertions.java:312)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2901122Z 	at com.workpal.runtime.AgentScopeBackgroundProbeTest.registrationTerminalAndDeliveryStayBoundToTheOwningChildAndSession(AgentScopeBackgroundProbeTest.java:253)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2902572Z 	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2903337Z 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2904057Z 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2904680Z 
+runtime-jar	Run mvn -B -f services/agent-runtime/pom.xml package	2026-10-27T13:48:39.2905058Z [INFO] Running com.workpal.runtime.PromptComposerTest

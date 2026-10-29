@@ -391,6 +391,61 @@ describe("run tool selection", () => {
       expect.arrayContaining(["schedule_list", "schedule_cancel"]),
     );
   });
+
+  it("offers message_bot in a group only behind the public collaboration gate", () => {
+    const namesFor = (groupId: string | null, publicCollaborationEnabled: boolean) =>
+      selectBuiltinToolsForRun({
+        graphicalToolsAllowed: false,
+        groupId,
+        trigger: "user",
+        semanticMemoryEnabled: false,
+        messagingChannelRun: false,
+        publicCollaborationEnabled,
+      }).map((tool) => tool.name);
+
+    expect(namesFor("group-1", false)).not.toContain("message_bot");
+    expect(namesFor("group-1", false)).toContain("handoff_to_bot");
+    expect(namesFor("group-1", true)).toContain("message_bot");
+    expect(namesFor("group-1", true)).toContain("handoff_to_bot");
+    expect(namesFor(null, false)).toContain("message_bot");
+  });
+
+  it("offers message_group only in a direct chat behind its own gate", () => {
+    const namesFor = (groupId: string | null, messageGroupEnabled: boolean, ownerRun = true) =>
+      selectBuiltinToolsForRun({
+        graphicalToolsAllowed: false,
+        groupId,
+        trigger: "user",
+        semanticMemoryEnabled: false,
+        messagingChannelRun: false,
+        messageGroupEnabled,
+        ownerRun,
+      }).map((tool) => tool.name);
+
+    expect(namesFor(null, true)).toContain("message_group");
+    expect(namesFor(null, false)).not.toContain("message_group");
+    expect(namesFor("group-1", true)).not.toContain("message_group");
+    expect(namesFor(null, true, false)).not.toContain("message_group");
+  });
+
+  it("withholds handoff_to_bot and message_bot from a message_group owner run", () => {
+    const namesFor = (trigger: string) =>
+      selectBuiltinToolsForRun({
+        graphicalToolsAllowed: false,
+        groupId: "group-1",
+        trigger,
+        semanticMemoryEnabled: false,
+        messagingChannelRun: false,
+        publicCollaborationEnabled: true,
+      }).map((tool) => tool.name);
+
+    // Handoff successors and public-delegation support Runs have no
+    // source-chat origin, so the owner must finish its own work.
+    expect(namesFor("message_group")).not.toContain("handoff_to_bot");
+    expect(namesFor("message_group")).not.toContain("message_bot");
+    expect(namesFor("user")).toContain("handoff_to_bot");
+    expect(namesFor("user")).toContain("message_bot");
+  });
 });
 
 describe("recent turn images", () => {
@@ -2026,6 +2081,15 @@ description: Prepare standup notes
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,
+      taskInstructions: async () => ({
+        envelope: {
+          taskId: "task-1",
+          revision: 1,
+          original: { content: "hello" },
+          amendments: [],
+        },
+        ref: { taskId: "task-1", consumedRevision: 1 },
+      }),
       runtime: {
         describe: () => ({ capabilities: { scripted: false } }),
         run: runtimeRun,

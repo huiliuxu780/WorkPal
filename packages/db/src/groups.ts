@@ -7,13 +7,12 @@ import {
   type SpaceGroup,
 } from "@rakazo/contracts";
 import { selectGroupLead } from "@rakazo/core";
-import {
-  backgroundTaskLockTransactionOptions,
-  lockThreadForBackgroundTask,
-} from "./background-task-registration.js";
+import { CHAT_GROUP_KIND_STANDARD } from "./agent-pairs.js";
+import { backgroundTaskLockTransactionOptions } from "./background-task-registration.js";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
-import { cancelRunsInTransaction, type CancelledRunRow } from "./cancel-runs.js";
+import { applyCancelTerminalPolicy, cancelPolicyFor } from "./cancel-terminal.js";
 import type { Prisma, PrismaClient } from "./client.js";
+import { expireComputerExecutionLeases } from "./computers.js";
 import {
   backgroundParentRunIdsExcept,
   findLiveBackgroundTasks,
@@ -21,8 +20,7 @@ import {
   recordBackgroundRevocations,
   recordRunAbortRevocations,
 } from "./execution-revocations.js";
-import { expireComputerExecutionLeases } from "./computers.js";
-import { appendEventInTransaction } from "./events.js";
+import { lockOwnedStandardGroupThreadByGroupId } from "./group-thread-locks.js";
 import { IsolationError } from "./scope.js";
 import { lockSpaceForContentCreation } from "./spaces.js";
 import { activeRunSelection, activeRunStatuses, previewFromBlocks } from "./thread-listing.js";
@@ -138,6 +136,13 @@ async function assertOwnedBots(
   });
 }
 
+/**
+ * These repos address user-managed groups only. `agent_pair` groups are a
+ * separate hidden surface with their own read path, so exclusion belongs here
+ * rather than in every caller that must not forget it.
+ */
+const standardGroupScope = { kind: CHAT_GROUP_KIND_STANDARD } as const;
+
 const groupInclude = {
   thread: {
     include: {
@@ -170,13 +175,16 @@ const groupTargetInclude = {
           id: true,
           name: true,
           color: true,
+          avatarMode: true,
+          avatarCharacter: true,
+          avatarBodyColor: true,
           runs: activeRunSelection,
         },
       },
     },
-    orderBy: { createdAt: "asc" as const },
+    orderBy: [{ createdAt: "asc" }, { botId: "asc" }],
   },
-} as const;
+} satisfies Prisma.ChatGroupInclude;
 
 type RunTeardownTarget = {
   id: string;
@@ -270,6 +278,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         spaceId: { in: spaceIds },
         userId: actor.userId,
         archivedAt: null,
+        ...standardGroupScope,
       },
       select: {
         id: true,
@@ -304,6 +313,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: options.archived ? { not: null } : null,
+          ...standardGroupScope,
         },
         include: groupInclude,
         orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
@@ -322,6 +332,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           spaceId: actor.spaceId,
           userId: actor.userId,
           ...(options.includeArchived ? {} : { archivedAt: null }),
+          ...standardGroupScope,
         },
         include: groupInclude,
       });
@@ -329,13 +340,14 @@ export function createGroupRepos(prisma: PrismaClient) {
       return group as GroupRecord;
     },
 
-    async getGroupTarget(actor: Actor, groupId: string) {
+    async getGroupTarget(actor: Pick<Actor, "userId" | "spaceId">, groupId: string) {
       const group = await prisma.chatGroup.findFirst({
         where: {
           id: groupId,
           spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: null,
+          ...standardGroupScope,
         },
         include: groupTargetInclude,
       });
@@ -354,6 +366,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           data: {
             spaceId: actor.spaceId,
             userId: actor.userId,
+            kind: CHAT_GROUP_KIND_STANDARD,
             name: input.name.trim(),
             // Product Harness: creation order becomes the initial lead —
             // explicit fallback metadata, not the routing algorithm.
@@ -390,13 +403,14 @@ export function createGroupRepos(prisma: PrismaClient) {
     ): Promise<{ group: Group; cancelledRunIds: string[]; backgroundParentRunIds: string[] }> {
       const members = input.botIds ? await assertOwnedBots(prisma, actor, input.botIds) : undefined;
       const updated = await prisma.$transaction(async (tx) => {
-        const threadId = await lockGroupThreadThenOwner(tx, actor, input.groupId);
+        const { threadId } = await lockOwnedStandardGroupThreadByGroupId(tx, actor, input.groupId);
         const current = await tx.chatGroup.findFirst({
           where: {
             id: input.groupId,
             spaceId: actor.spaceId,
             userId: actor.userId,
             archivedAt: null,
+            ...standardGroupScope,
           },
           include: {
             members: { select: { botId: true, bot: { select: { archivedAt: true } } } },
@@ -431,7 +445,11 @@ export function createGroupRepos(prisma: PrismaClient) {
             })
           : [];
         const cancelledRuns = activeRuns.length
-          ? await cancelRunsInTransaction(tx, activeRuns, new Date())
+          ? (
+              await applyCancelTerminalPolicy(tx, activeRuns, new Date(), {
+                policy: cancelPolicyFor("member_removed"),
+              })
+            ).rows
           : [];
         const backgroundTasks = removedBotIds.length
           ? await markLiveBackgroundTasksCancelling(tx, {
@@ -443,7 +461,6 @@ export function createGroupRepos(prisma: PrismaClient) {
           await expireComputerExecutionLeases(tx, {
             runId: { in: cancelledRuns.map((run) => run.id) },
           });
-          await appendCancelledRunEvents(tx, cancelledRuns, "member_removed");
         }
         if (input.name !== undefined) {
           await tx.chatGroup.update({
@@ -504,12 +521,15 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async archiveGroup(actor: Actor, groupId: string) {
       const archived = await prisma.$transaction(async (tx) => {
-        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
+        const { threadId } = await lockOwnedStandardGroupThreadByGroupId(tx, actor, groupId, {
+          allowArchived: true,
+        });
         const current = await tx.chatGroup.findFirst({
           where: {
             id: groupId,
             spaceId: actor.spaceId,
             userId: actor.userId,
+            ...standardGroupScope,
           },
           select: { archivedAt: true, thread: { select: { id: true } } },
         });
@@ -530,13 +550,16 @@ export function createGroupRepos(prisma: PrismaClient) {
         const { targets } = await snapshotRunTeardownTargets(tx, runIds);
 
         const cancelledRuns = runIds.length
-          ? await cancelRunsInTransaction(tx, activeRuns, now)
+          ? (
+              await applyCancelTerminalPolicy(tx, activeRuns, now, {
+                policy: cancelPolicyFor("group_archived"),
+              })
+            ).rows
           : [];
         const backgroundTasks = await markLiveBackgroundTasksCancelling(tx, {
           threadId: current.thread.id,
         });
         if (cancelledRuns.length) {
-          await appendCancelledRunEvents(tx, cancelledRuns, "group_archived");
           await tx.event.deleteMany({
             where: { type: "thread.progress", runId: { in: cancelledRuns.map((run) => run.id) } },
           });
@@ -584,7 +607,12 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async restoreGroup(actor: Actor, groupId: string) {
       const restored = await prisma.chatGroup.updateMany({
-        where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
+        where: {
+          id: groupId,
+          spaceId: actor.spaceId,
+          userId: actor.userId,
+          ...standardGroupScope,
+        },
         data: { archivedAt: null },
       });
       if (restored.count !== 1) throw new IsolationError();
@@ -592,9 +620,17 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async removeGroup(actor: Actor, groupId: string) {
       const removed = await prisma.$transaction(async (tx) => {
-        const threadId = await lockGroupThreadThenOwner(tx, actor, groupId);
-        const group = await tx.chatGroup.findUnique({
-          where: { id: groupId },
+        const { threadId } = await lockOwnedStandardGroupThreadByGroupId(tx, actor, groupId, {
+          allowArchived: true,
+        });
+        const group = await tx.chatGroup.findFirst({
+          where: {
+            id: groupId,
+            spaceId: actor.spaceId,
+            userId: actor.userId,
+            ...standardGroupScope,
+            thread: { id: threadId },
+          },
           select: {
             artifacts: { select: { storageKey: true } },
             members: { orderBy: { createdAt: "asc" }, take: 1, select: { botId: true } },
@@ -646,67 +682,4 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     mapGroup,
   };
-}
-
-async function appendCancelledRunEvents(
-  tx: Prisma.TransactionClient,
-  runs: readonly CancelledRunRow[],
-  reason: string,
-) {
-  for (const run of runs) {
-    await appendEventInTransaction(tx, {
-      spaceId: run.spaceId,
-      threadId: run.threadId,
-      botId: run.botId,
-      runId: run.id,
-      type: "run.cancelled",
-      payload: { reason },
-    });
-  }
-}
-
-/**
- * Thread row first, then the group row. Clear and Send already lock the thread
- * before they update the group, so the opposite order deadlocks.
- */
-async function lockGroupThreadThenOwner(
-  tx: Prisma.TransactionClient,
-  actor: Pick<Actor, "spaceId" | "userId">,
-  groupId: string,
-): Promise<string> {
-  const preview = await tx.chatGroup.findFirst({
-    where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
-    select: { thread: { select: { id: true } } },
-  });
-  if (!preview?.thread) throw new IsolationError();
-  const locked = await lockThreadForBackgroundTask(tx, preview.thread.id);
-  if (!locked) throw new IsolationError();
-  await lockOwnedGroup(tx, actor, groupId);
-  return preview.thread.id;
-}
-
-export async function lockOwnedGroup(
-  prisma: Pick<Prisma.TransactionClient, "$queryRaw">,
-  actor: Pick<Actor, "spaceId" | "userId">,
-  groupId: string,
-) {
-  const locked = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id
-    FROM chat_groups
-    WHERE id = ${groupId}
-      AND "spaceId" = ${actor.spaceId}
-      AND "userId" = ${actor.userId}
-    FOR UPDATE
-  `;
-  if (locked.length !== 1) throw new IsolationError();
-}
-
-export async function touchGroupUpdatedAt(
-  prisma: Pick<Prisma.TransactionClient, "chatGroup">,
-  groupId: string,
-) {
-  await prisma.chatGroup.update({
-    where: { id: groupId },
-    data: { updatedAt: new Date() },
-  });
 }

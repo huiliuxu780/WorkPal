@@ -1,4 +1,4 @@
-import type { InterventionView } from "@rakazo/contracts";
+import type { InteractionView, InterventionView } from "@rakazo/contracts";
 
 /**
  * A locally settled receipt only fills the gap between submit and the next
@@ -52,6 +52,77 @@ export function coveredAskMessageIds(
     covered.add(view.messageId);
   }
   return covered;
+}
+
+/**
+ * CARD-01B coverage: the strict InteractionView is the only surface when the
+ * gate is on, so a message-backed view (including app_connect, MCP assignment
+ * and skill drafts) must suppress its legacy block. The same "region gone,
+ * bubble settled" release applies as in the legacy helper.
+ */
+export function coveredAskMessageIdsFromInteractions(
+  interactions: readonly InteractionView[] | undefined,
+  context?: {
+    eligibleRunIds?: ReadonlySet<string>;
+    settledAskMessageIds?: ReadonlySet<string>;
+  },
+): ReadonlySet<string> {
+  if (!interactions) return new Set();
+  const covered = new Set<string>();
+  for (const view of interactions) {
+    const messageId = view.source.messageId;
+    if (!messageId) continue;
+    if (context) {
+      const runId = view.source.runId;
+      const regionGone =
+        view.status !== "pending" && (runId === null || !context.eligibleRunIds?.has(runId));
+      const bubbleSettled = context.settledAskMessageIds?.has(messageId) ?? false;
+      if (regionGone && bubbleSettled) continue;
+    }
+    covered.add(messageId);
+  }
+  return covered;
+}
+
+/**
+ * The thread projection only sees messages in the loaded page; the execution
+ * snapshot also projects its own Run's messages, which may be paged out. Merge
+ * detail views in so an expanded execution can still show its approval cards.
+ * The thread view wins at an equal revision (it is the live lifecycle); a
+ * strictly newer detail view replaces it.
+ */
+export function mergeInteractionViews(
+  thread: readonly InteractionView[] | undefined,
+  detail: readonly InteractionView[] | undefined,
+): InteractionView[] | undefined {
+  if (!thread) return detail ? [...detail] : undefined;
+  const byId = new Map(thread.map((view) => [view.interactionId, view]));
+  for (const view of detail ?? []) {
+    const current = byId.get(view.interactionId);
+    if (!current || view.revision > current.revision) byId.set(view.interactionId, view);
+  }
+  return [...byId.values()];
+}
+
+function interactionKindToInterventionKind(
+  kind: InteractionView["kind"],
+): "approval" | "input" | "plan_review" | null {
+  if (kind === "action_approval") return "approval";
+  if (kind === "input_request") return "input";
+  if (kind === "plan_review") return "plan_review";
+  return null;
+}
+
+/** Header kinds from the strict pending projection; session control has its own entry. */
+export function pendingInteractionKindsForRun(
+  interactions: readonly InteractionView[] | undefined,
+  runId: string,
+): Array<"approval" | "input" | "plan_review"> | undefined {
+  if (!interactions) return undefined;
+  return interactions
+    .filter((view) => view.source.runId === runId && view.status === "pending")
+    .map((view) => interactionKindToInterventionKind(view.kind))
+    .filter((kind): kind is "approval" | "input" | "plan_review" => kind !== null);
 }
 
 /**

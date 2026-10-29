@@ -9,9 +9,9 @@ import { revokeCancellingBackgroundTasks } from "@rakazo/adapters";
 import { AutomatedSenderPoliciesSchema, type MessageBlock } from "@rakazo/contracts";
 import { BOT_MESSAGE_MAX_HOPS, PRODUCT_BRAND } from "@rakazo/core";
 import {
-  appendEventInTransaction,
+  applyCancelTerminalPolicy,
   cancelChildrenOfCancelledRuns,
-  cancelRunsInTransaction,
+  cancelPolicyFor,
   type PrismaClient,
   type ThreadEvents,
 } from "@rakazo/db";
@@ -1096,22 +1096,13 @@ export class TeamChatBridge {
         if (taskId) {
           const cancelled = await this.deps.prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM threads WHERE id = ${thread.id} FOR UPDATE`;
-            const rows = await cancelRunsInTransaction(
+            const settled = await applyCancelTerminalPolicy(
               tx,
               [{ id: sent.runId!, taskId }],
               new Date(),
+              { policy: cancelPolicyFor("routine_wake") },
             );
-            for (const run of rows) {
-              await appendEventInTransaction(tx, {
-                spaceId: run.spaceId,
-                threadId: run.threadId,
-                botId: run.botId,
-                runId: run.id,
-                type: "run.cancelled",
-                payload: { reason: "routine_wake" },
-              });
-            }
-            return rows;
+            return settled.rows;
           });
           if (cancelled.length) {
             const descendants = await cancelChildrenOfCancelledRuns(

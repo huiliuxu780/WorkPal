@@ -1,0 +1,484 @@
+[
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 28,
+        "examples": [
+          "span「搜索」（3.00:1）",
+          "div.nav-label「最近」（2.50:1）",
+          "span#activeChatSub.chat-sub「Joy、小蓝、小橙、小紫」（2.78:1）"
+        ]
+      },
+      {
+        "rule": "longMeasure",
+        "label": "正文行太长",
+        "count": 2,
+        "examples": [
+          "div.bubble「我先把目标和依赖理清，再让最合适的人并行推进。发」（每行约 46 字）",
+          "div.bubble「我先拆成两路。 小蓝 核对性能基线和回归风险； 」（每行约 46 字）"
+        ]
+      }
+    ]
+  },
+  {
+    "file": "page-@2x.png",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 2,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 28,
+        "examples": [
+          "span「搜索」（3.00:1）",
+          "div.nav-label「最近」（2.50:1）",
+          "span#activeChatSub.chat-sub「Joy、小蓝、小橙、小紫」（2.78:1）"
+        ]
+      },
+      {
+        "rule": "longMeasure",
+        "label": "正文行太长",
+        "count": 2,
+        "examples": [
+          "div.bubble「我先把目标和依赖理清，再让最合适的人并行推进。发」（每行约 46 字）",
+          "div.bubble「我先拆成两路。 小蓝 核对性能基线和回归风险； 」（每行约 46 字）"
+        ]
+      }
+    ]
+  },
+  {
+    "file": "motion-probe-library",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 1,
+    "group": "library",
+    "motion": {
+      "load": {
+        "elements": 15,
+        "loops": 4,
+        "maxMove": 669,
+        "maxSize": 0.22,
+        "maxOpacity": 0.97,
+        "top": [
+          {
+            "el": "div.message.user",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message.user",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          }
+        ]
+      },
+      "steps": {
+        "elements": 2,
+        "loops": 0,
+        "maxMove": 336,
+        "maxSize": 0,
+        "maxOpacity": 1,
+        "top": [
+          {
+            "el": "aside.work-panel",
+            "move": 336,
+            "size": 0,
+            "opacity": 1,
+            "loop": false,
+            "sources": [
+              "transition:transform",
+              "transition:opacity"
+            ]
+          },
+          {
+            "el": "button#groupDetailsButton.group-title-button",
+            "move": 1,
+            "size": 0,
+            "opacity": 0,
+            "loop": false,
+            "sources": [
+              "transition:background-color",
+              "transition:transform",
+              "transition:box-shadow"
+            ]
+          }
+        ]
+      },
+      "hero": {
+        "elements": 0,
+        "loops": 0,
+        "maxMove": 0,
+        "maxSize": 0,
+        "maxOpacity": 0,
+        "top": [],
+        "layers": 0
+      },
+      "scroll": {
+        "elements": 0,
+        "loops": 0,
+        "maxMove": 0,
+        "maxSize": 0,
+        "maxOpacity": 0,
+        "top": [],
+        "scrollable": false
+      }
+    },
+    "issues": []
+  },
+  {
+    "file": "motion-probe-toggle",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 1,
+    "group": "toggle",
+    "motion": {
+      "load": {
+        "elements": 15,
+        "loops": 4,
+        "maxMove": 669,
+        "maxSize": 0.22,
+        "maxOpacity": 0.97,
+        "top": [
+          {
+            "el": "div.message.user",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message.user",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          },
+          {
+            "el": "div.message",
+            "move": 669,
+            "size": 0,
+            "opacity": 0.97,
+            "loop": false,
+            "sources": [
+              "css:enter"
+            ]
+          }
+        ]
+      },
+      "steps": {
+        "elements": 2,
+        "loops": 0,
+        "maxMove": 265,
+        "maxSize": 0,
+        "maxOpacity": 0.87,
+        "top": [
+          {
+            "el": "aside.work-panel",
+            "move": 265,
+            "size": 0,
+            "opacity": 0.87,
+            "loop": false,
+            "sources": [
+              "transition:transform",
+              "transition:opacity"
+            ]
+          },
+          {
+            "el": "button#groupDetailsButton.group-title-button",
+            "move": 1,
+            "size": 0,
+            "opacity": 0,
+            "loop": false,
+            "sources": [
+              "transition:background-color",
+              "transition:transform",
+              "transition:box-shadow"
+            ]
+          }
+        ]
+      },
+      "hero": {
+        "elements": 0,
+        "loops": 0,
+        "maxMove": 0,
+        "maxSize": 0,
+        "maxOpacity": 0,
+        "top": [],
+        "layers": 0
+      },
+      "scroll": {
+        "elements": 0,
+        "loops": 0,
+        "maxMove": 0,
+        "maxSize": 0,
+        "maxOpacity": 0,
+        "top": [],
+        "scrollable": false
+      }
+    },
+    "issues": []
+  },
+  {
+    "file": "motion-entry-end.jpg",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 1,
+    "group": "entry",
+    "issues": [
+      "录屏：没装 ffmpeg，只留了 motion-entry-start/mid/end.jpg 三帧"
+    ],
+    "frames": {
+      "start": {
+        "file": "motion-entry-start.jpg",
+        "source": "Page.screencastFrame",
+        "timeMs": 135
+      },
+      "mid": {
+        "file": "motion-entry-mid.jpg",
+        "source": "Page.screencastFrame",
+        "timeMs": 286
+      },
+      "end": {
+        "file": "motion-entry-end.jpg",
+        "source": "Page.captureScreenshot",
+        "timeMs": 1706
+      }
+    },
+    "sampling": {
+      "mode": "entry"
+    },
+    "durationMs": 1706,
+    "consistency": {
+      "status": "matched",
+      "reference": "motion-entry-end.jpg",
+      "different": false,
+      "changedPixels": 13,
+      "maxTilePixels": 3,
+      "pixelRatio": 0.000014027636602204282
+    },
+    "failed": true
+  },
+  {
+    "file": "motion-library-end.jpg",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 1,
+    "group": "library",
+    "issues": [
+      "录屏：没装 ffmpeg，只留了 motion-library-start/mid/end.jpg 三帧"
+    ],
+    "frames": {
+      "start": {
+        "file": "motion-library-start.jpg",
+        "source": "Page.captureScreenshot",
+        "timeMs": 725
+      },
+      "mid": {
+        "file": "motion-library-mid.jpg",
+        "source": "Page.screencastFrame",
+        "timeMs": 833
+      },
+      "end": {
+        "file": "motion-library-end.jpg",
+        "source": "Page.captureScreenshot",
+        "timeMs": 2300
+      }
+    },
+    "sampling": {
+      "mode": "action",
+      "step": 2,
+      "action": "click",
+      "raw": "click [data-panel-tab=\"library\"]"
+    },
+    "durationMs": 2300,
+    "consistency": {
+      "status": "matched",
+      "reference": "motion-library-end.jpg",
+      "different": false,
+      "changedPixels": 0,
+      "maxTilePixels": 0,
+      "pixelRatio": 0
+    },
+    "failed": true
+  },
+  {
+    "file": "motion-toggle-end.jpg",
+    "state": null,
+    "size": "1202x771",
+    "zoom": 1,
+    "group": "toggle",
+    "issues": [
+      "录屏：没装 ffmpeg，只留了 motion-toggle-start/mid/end.jpg 三帧"
+    ],
+    "frames": {
+      "start": {
+        "file": "motion-toggle-start.jpg",
+        "source": "Page.captureScreenshot",
+        "timeMs": 705
+      },
+      "mid": {
+        "file": "motion-toggle-mid.jpg",
+        "source": "Page.screencastFrame",
+        "timeMs": 814
+      },
+      "end": {
+        "file": "motion-toggle-end.jpg",
+        "source": "Page.captureScreenshot",
+        "timeMs": 2282
+      }
+    },
+    "sampling": {
+      "mode": "action",
+      "step": 2,
+      "action": "click",
+      "raw": "click #groupDetailsButton"
+    },
+    "durationMs": 2282,
+    "consistency": {
+      "status": "matched",
+      "reference": "motion-toggle-end.jpg",
+      "different": false,
+      "changedPixels": 0,
+      "maxTilePixels": 0,
+      "pixelRatio": 0
+    },
+    "failed": true
+  }
+]

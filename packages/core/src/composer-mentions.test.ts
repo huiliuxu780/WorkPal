@@ -244,3 +244,96 @@ describe("strip and connector intent", () => {
     expect(routineScheduleSubtitle(["0 9 * * 1-5"], "Chief")).toContain("Chief");
   });
 });
+
+describe("resolveComposerSendPlan mention spans", () => {
+  it("locates typed Bot chips in the prompt that is sent", () => {
+    const plan = resolveComposerSendPlan({
+      text: "@Alpha @Beta review this",
+      mentions: [
+        { kind: "bot", id: "b1", name: "Alpha" },
+        { kind: "bot", id: "b2", name: "Beta" },
+      ],
+      hasAttachments: false,
+    });
+    expect(plan.trimmed).toBe("@Alpha @Beta review this");
+    expect(plan.mentionSpans).toEqual([
+      { botId: "b1", start: 0, end: 6 },
+      { botId: "b2", start: 7, end: 12 },
+    ]);
+  });
+
+  it("accounts for a leading skill line", () => {
+    const plan = resolveComposerSendPlan({
+      text: "/Daily digest\n@Alpha check",
+      mentions: [{ kind: "bot", id: "b1", name: "Alpha" }],
+      hasAttachments: false,
+    });
+    expect(plan.mentionSpans).toEqual([{ botId: "b1", start: 14, end: 20 }]);
+  });
+
+  it("keeps Bot offsets after group, routine and connector chips are stripped", () => {
+    const plan = resolveComposerSendPlan({
+      text: "@Alpha @Planning @Digest @Gmail review",
+      mentions: [
+        { kind: "bot", id: "b1", name: "Alpha" },
+        { kind: "group", id: "g1", name: "Planning" },
+        { kind: "routine", id: "r1", name: "Digest" },
+        { kind: "connector", id: "c1", name: "Gmail", connectionId: "c1" },
+      ],
+      hasAttachments: false,
+    });
+    expect(plan.trimmed).toBe("@Alpha review");
+    expect(plan.mentionSpans).toEqual([{ botId: "b1", start: 0, end: 6 }]);
+  });
+
+  it("skips everyone while locating the next Bot chip", () => {
+    const plan = resolveComposerSendPlan({
+      text: "@everyone @Alpha check",
+      mentions: [
+        { kind: "everyone", id: "everyone", name: "everyone" },
+        { kind: "bot", id: "b1", name: "Alpha" },
+      ],
+      hasAttachments: false,
+    });
+    expect(plan.mentionSpans).toEqual([{ botId: "b1", start: 10, end: 16 }]);
+  });
+
+  it("only creates spans for identities selected by the composer", () => {
+    expect(
+      resolveComposerSendPlan({
+        text: "@Alpha check",
+        mentions: [],
+        hasAttachments: false,
+      }).mentionSpans,
+    ).toEqual([]);
+    expect(
+      resolveComposerSendPlan({
+        text: "hello @Alpha",
+        mentions: [{ kind: "bot", id: "b1", name: "Alpha" }],
+        hasAttachments: false,
+      }).mentionSpans,
+    ).toEqual([{ botId: "b1", start: 6, end: 12 }]);
+    expect(
+      resolveComposerSendPlan({
+        text: "@Alpha check",
+        mentions: [{ kind: "bot", id: "b1", name: "Al" }],
+        hasAttachments: false,
+      }).mentionSpans,
+    ).toEqual([]);
+  });
+
+  it("preserves interleaved Bot mention positions for segmented instructions", () => {
+    const plan = resolveComposerSendPlan({
+      text: "@Alpha do X, @Beta do Y",
+      mentions: [
+        { kind: "bot", id: "b1", name: "Alpha" },
+        { kind: "bot", id: "b2", name: "Beta" },
+      ],
+      hasAttachments: false,
+    });
+    expect(plan.mentionSpans).toEqual([
+      { botId: "b1", start: 0, end: 6 },
+      { botId: "b2", start: 13, end: 18 },
+    ]);
+  });
+});

@@ -1,0 +1,403 @@
+// @vitest-environment jsdom
+
+import type { AttentionQueueItem, AttentionQueuePage } from "@rakazo/contracts";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const list = vi.hoisted(() => vi.fn());
+vi.mock("../lib/rpc", () => ({ rpc: { attention: { list } } }));
+vi.mock("@lingui/core/macro", () => ({
+  t: (strings: TemplateStringsArray, ...values: unknown[]) =>
+    strings.reduce((acc, part, index) => acc + part + String(values[index] ?? ""), ""),
+}));
+vi.mock("@lingui/react/macro", () => ({
+  Trans: ({ children }: { children?: React.ReactNode }) => children,
+}));
+
+import { AttentionQueue } from "./AttentionQueue";
+
+const ISO = "2026-10-27T10:00:00.000Z";
+
+function item(overrides: Partial<AttentionQueueItem> = {}): AttentionQueueItem {
+  return {
+    stableId: "i-1",
+    interactionId: "i-1",
+    revision: 1,
+    kind: "input_request",
+    status: "pending",
+    attentionAt: ISO,
+    expiresAt: null,
+    source: {
+      spaceId: "space-1",
+      threadId: "thread-1",
+      messageId: "message-1",
+      runId: "run-1",
+      botId: "bot-1",
+    },
+    presentation: { text: "Which city should I use?" },
+    botName: "Scout",
+    conversationKind: "direct",
+    conversationId: "bot-1",
+    conversationName: "Scout",
+    taskTitle: "Plan the launch",
+    ...overrides,
+  };
+}
+
+type Rendered = { host: HTMLElement; root: ReturnType<typeof createRoot> };
+const rendered: Rendered[] = [];
+
+async function render(node: React.ReactNode): Promise<HTMLElement> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  rendered.push({ host, root });
+  await act(async () => root.render(node));
+  return host;
+}
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+/** Render plus a rerender hook so a prop change (refreshToken) can start a second load. */
+async function renderRerenderable(node: React.ReactNode) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  rendered.push({ host, root });
+  await act(async () => root.render(node));
+  return {
+    host,
+    rerender: async (next: React.ReactNode) => {
+      await act(async () => root.render(next));
+    },
+  };
+}
+
+class FakeNotification {
+  static permission: NotificationPermission = "granted";
+  static instances: FakeNotification[] = [];
+  static requestPermission = vi.fn(async () => FakeNotification.permission);
+  onclick: (() => void) | null = null;
+  closed = false;
+  constructor(
+    readonly title: string,
+    readonly options?: NotificationOptions,
+  ) {
+    FakeNotification.instances.push(this);
+  }
+  close() {
+    this.closed = true;
+  }
+}
+
+beforeAll(() => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+});
+
+beforeEach(() => {
+  list.mockReset();
+  FakeNotification.permission = "granted";
+  FakeNotification.instances = [];
+  vi.stubGlobal("Notification", FakeNotification);
+  vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  vi.spyOn(window, "focus").mockImplementation(() => undefined);
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+});
+
+afterEach(() => {
+  for (const { host, root } of rendered.splice(0)) {
+    act(() => root.unmount());
+    host.remove();
+  }
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("AttentionQueue", () => {
+  it("renders nothing and does not query while the card gate is off", async () => {
+    const host = await render(
+      <AttentionQueue
+        enabled={false}
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    expect(host.textContent).toBe("");
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("loads the queue, establishes a baseline, and notifies only new revisions", async () => {
+    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });
+    const onOpenItem = vi.fn();
+    const onItems = vi.fn();
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={{ botId: "other-bot" }}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={onOpenItem}
+        onItems={onItems}
+      />,
+    );
+    await flush();
+    expect(host.querySelector('[data-testid="attention-count"]')?.textContent).toBe("1");
+    expect(onItems).toHaveBeenCalledWith([item()]);
+    // The first load is the baseline: old pending work never pops a notification.
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    const second = item({
+      interactionId: "i-2",
+      stableId: "i-2",
+      taskTitle: null,
+      presentation: { text: "Ship the release?" },
+    });
+    list.mockResolvedValue({ items: [item(), second], total: 2, nextCursor: null });
+    await act(async () => {
+      host.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
+    });
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(1);
+    expect(FakeNotification.instances[0]?.title).toContain("Scout");
+    // Fixed per-kind copy: nothing the Bot wrote may reach the OS notification.
+    expect(FakeNotification.instances[0]?.options?.body).toBe(
+      "A question is waiting for your answer. Open WorkPal to review.",
+    );
+    expect(FakeNotification.instances[0]?.options?.body).not.toContain("Ship the release?");
+    expect(FakeNotification.instances[0]?.options?.body).not.toContain("Which city");
+
+    // Same revision again: no duplicate notification.
+    await act(async () => {
+      host.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
+    });
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(1);
+
+    // Clicking the notification returns to the source interaction.
+    FakeNotification.instances[0]?.onclick?.();
+    expect(onOpenItem).toHaveBeenCalledWith(second);
+  });
+
+  it("suppresses a notification for the source thread in the foreground", async () => {
+    list.mockResolvedValue({ items: [], total: 0, nextCursor: null });
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={{ botId: "bot-1" }}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    list.mockResolvedValue({
+      items: [item({ interactionId: "i-3", stableId: "i-3" })],
+      total: 1,
+      nextCursor: null,
+    });
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    await act(async () => {
+      host.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
+    });
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+  });
+
+  it("loads the next page and keeps rows unique", async () => {
+    list.mockResolvedValueOnce({
+      items: [item()],
+      total: 2,
+      nextCursor: "cursor-1",
+    });
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    list.mockResolvedValueOnce({
+      items: [item(), item({ interactionId: "i-2", stableId: "i-2" })],
+      total: 2,
+      nextCursor: null,
+    });
+    await act(async () =>
+      (host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
+    );
+    const more = document.querySelector('[data-testid="attention-load-more"]') as HTMLButtonElement;
+    expect(more.textContent).toContain("1 remaining");
+    await act(async () => more.click());
+    await flush();
+    expect(list).toHaveBeenLastCalledWith({ limit: 50, cursor: "cursor-1" });
+    const rows = document.querySelectorAll('[data-testid="attention-item"]');
+    expect(rows).toHaveLength(2);
+    expect(document.querySelector('[data-testid="attention-load-more"]')).toBeNull();
+  });
+
+  it("does not replay older pages as new notifications", async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) =>
+      item({ interactionId: `page-1-${index}`, stableId: `page-1-${index}` }),
+    );
+    list.mockResolvedValueOnce({ items: firstPage, total: 51, nextCursor: "cursor-1" });
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    await act(async () =>
+      (host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
+    );
+    list.mockResolvedValueOnce({
+      items: [item({ interactionId: "page-2-1", stableId: "page-2-1" })],
+      total: 51,
+      nextCursor: null,
+    });
+    await act(async () =>
+      (document.querySelector('[data-testid="attention-load-more"]') as HTMLButtonElement).click(),
+    );
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    // The next poll reads page one again; its keys must still be known as
+    // already-seen even though page two was the last snapshot.
+    list.mockResolvedValueOnce({ items: firstPage, total: 51, nextCursor: "cursor-1" });
+    await act(async () => {
+      host.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
+    });
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+  });
+
+  it("opens a row without submitting any decision", async () => {
+    const onOpenItem = vi.fn();
+    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={onOpenItem}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    const trigger = host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement;
+    await act(async () => trigger.click());
+    const row = document.querySelector('[data-testid="attention-item"]') as HTMLButtonElement;
+    expect(row.textContent).toContain("Which city should I use?");
+    expect(row.textContent).toContain("Scout");
+    expect(row.textContent).not.toContain("run-1");
+    await act(async () => row.click());
+    expect(onOpenItem).toHaveBeenCalledWith(item());
+  });
+
+  it("shows the empty and error states", async () => {
+    list.mockResolvedValueOnce({ items: [], total: 0, nextCursor: null });
+    const host = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    expect(host.querySelector('[data-testid="attention-empty"]')).toBeNull();
+    await act(async () =>
+      (host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
+    );
+    expect(document.querySelector('[data-testid="attention-empty"]')?.textContent).toContain(
+      "Nothing needs you",
+    );
+
+    list.mockRejectedValue(new Error("boom"));
+    const retryHost = await render(
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={1}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+      />,
+    );
+    await flush();
+    await act(async () =>
+      (retryHost.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
+    );
+    expect(document.body.textContent).toContain("Couldn't load pending requests.");
+  });
+
+  it("drops a superseded response so a settled request cannot resurrect", async () => {
+    const onItems = vi.fn();
+    const stale = deferred<AttentionQueuePage>();
+    list.mockImplementationOnce(() => stale.promise);
+    const queue = (refreshToken: number) => (
+      <AttentionQueue
+        enabled
+        activeTarget={null}
+        botNotificationsEnabled={() => true}
+        refreshToken={refreshToken}
+        onOpenItem={() => undefined}
+        onItems={onItems}
+      />
+    );
+    const { host, rerender } = await renderRerenderable(queue(0));
+
+    // Shell answers the request locally and bumps refreshToken while the poll
+    // is still in flight, so two loads now race.
+    const fresh = deferred<AttentionQueuePage>();
+    list.mockImplementationOnce(() => fresh.promise);
+    await rerender(queue(1));
+
+    // The newer request settles first and proves the queue is empty.
+    await act(async () => {
+      fresh.resolve({ items: [], total: 0, nextCursor: null });
+      await Promise.resolve();
+    });
+    // The superseded response lands afterwards with the request still pending.
+    await act(async () => {
+      stale.resolve({ items: [item()], total: 1, nextCursor: null });
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(FakeNotification.instances).toHaveLength(0);
+    expect(onItems).toHaveBeenLastCalledWith([]);
+    expect(host.querySelector('[data-testid="attention-count"]')).toBeNull();
+  });
+});

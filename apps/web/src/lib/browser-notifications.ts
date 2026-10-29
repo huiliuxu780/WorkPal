@@ -65,6 +65,20 @@ export function shouldNotifyBrowser(
   );
 }
 
+/**
+ * CARD-01D: with the unified card surface on, the attention queue is the only
+ * notification source. The legacy per-bot notifier would push ordinary bot
+ * messages and terminal events the card forbids.
+ */
+export function shouldNotifyLegacyBrowser(
+  event: Pick<ProductEvent, "id" | "type" | "threadId" | "seq" | "payload">,
+  context: BrowserNotificationContext,
+  cardsUnifiedV2: boolean,
+): boolean {
+  if (cardsUnifiedV2) return false;
+  return shouldNotifyBrowser(event, context);
+}
+
 export function browserNotificationMessage(
   event: Pick<ProductEvent, "type" | "payload">,
   botName: string,

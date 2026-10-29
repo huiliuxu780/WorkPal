@@ -1,0 +1,46 @@
+docker build -f infra/compose/Dockerfile -t workpal-persona-verify:2126838 .   (branch codex/fix-persona-agents-context @ 2126838)
+
+/app
+--- /app top level:
+.
+..
+.agents
+.coderabbit.yaml
+.dockerignore
+.gitattributes
+.gitignore
+.npmrc
+.zcode
+.zcodeignore
+AGENTS.md
+CHANGELOG.md
+CLAUDE.md
+CONTRIBUTING.md
+LICENSE
+README.md
+SECURITY.md
+SETUP_PROMPT.md
+VISION.md
+apps
+biome.json
+bot-context-assembly.png
+docs
+infra
+node_modules
+package.json
+packages
+pnpm-lock.yaml
+pnpm-workspace.yaml
+prompts
+scripts
+services
+skills-lock.json
+test-report
+tsconfig.base.json
+turbo.json
+vitest.config.ts
+vitest.unit.config.ts
+--- sensitive paths:
+PRESENT AGENTS.md
+absent  MEMORY.md
+absent  knowledge

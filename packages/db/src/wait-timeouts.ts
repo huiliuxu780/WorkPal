@@ -1,6 +1,6 @@
 import { MessageBlock } from "@rakazo/contracts";
 import { cancelChildrenOfCancelledRuns } from "./cancel-child-runs.js";
-import { cancelRunsInTransaction } from "./cancel-runs.js";
+import { applyCancelTerminalPolicy, cancelPolicyFor } from "./cancel-terminal.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";
 import { appendEventInTransaction } from "./events.js";
@@ -126,32 +126,27 @@ export async function expireWaitingRunInTransaction(
       payload: { approvalEffectId: pendingApproval.approvalEffectId, decision: "expired" },
     });
   }
-  const cancelled = await cancelRunsInTransaction(
+  const cancelled = await applyCancelTerminalPolicy(
     tx,
     [{ id: run.id, taskId: run.taskId }],
     now,
     {
-      error: "wait_timeout",
-      attemptError: "wait_timeout",
-      // A concurrent answer or claim changes status or the wait clock. Do not cancel that row.
-      match: {
-        status: run.status,
-        waitKind: run.waitKind,
-        waitStartedAt: run.waitStartedAt,
+      policy: cancelPolicyFor("wait_timeout"),
+      cancelOptions: {
+        error: "wait_timeout",
+        attemptError: "wait_timeout",
+        // A concurrent answer or claim changes status or the wait clock. Do not cancel that row.
+        match: {
+          status: run.status,
+          waitKind: run.waitKind,
+          waitStartedAt: run.waitStartedAt,
+        },
       },
     },
   );
-  if (cancelled.length !== 1) throw new Error("Expired run was no longer waiting");
+  if (cancelled.rows.length !== 1) throw new Error("Expired run was no longer waiting");
   await expireComputerExecutionLeases(tx, { runId: run.id });
-  const event = await appendEventInTransaction(tx, {
-    spaceId: run.spaceId,
-    threadId: run.threadId,
-    botId: run.botId,
-    runId: run.id,
-    type: "run.cancelled",
-    payload: { reason: "wait_timeout" },
-  });
-  return { runId: run.id, threadId: run.threadId, seq: event.seq };
+  return { runId: run.id, threadId: run.threadId, seq: cancelled.eventSeq ?? 0 };
 }
 
 /** Claim a waiting Run under the Thread lock, so a concurrent answer cannot revive it. */

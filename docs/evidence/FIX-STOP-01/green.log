@@ -1,0 +1,30 @@
+# FIX-STOP-01 green — same six cases, same command, after the narrowed fix
+
+Date 2026-10-28. Host macOS arm64, Node v24.18.0, pnpm 9.15.0.
+Fix SHA: 55bb228 (narrowed scheme B: cancelled owner AND confirmed native abort).
+Test: packages/db/src/stop-session-release.postgres.test.ts (six cases).
+Database: throwaway postgres:16 container on an OS-assigned port, database
+workpal_e2e_wt_verify_lifecycle_concurr_c57d79f7d1 from this worktree's agent:doctor plan
+(conflicts: none). Each suite clones an isolated database from the migration template and drops it
+in afterAll. Prerequisite: pnpm --filter @rakazo/db generate and prisma migrate deploy.
+No real model, no scripted runtime, no capture proxy: persistence layer only, driving the production
+cancel policy (applyCancelTerminalPolicy + cancelPolicyFor("user_stopped"), the transaction body of
+apps/api stopThreadRuns) and the admission functions executor.ts calls.
+Host paths below are replaced with <worktree>. No credential appears in these files.
+
+Command: identical to red.log.
+
+6 passed. Both branches of every cancellation scenario are asserted: while the run_abort
+revocation is present the session stays parked (recovering, or owned when the runtime never
+started), and once it is deleted — what deliverRunAborts does after runtime.abort() returns — the
+successor takes the session in the same tick.
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m<worktree>[39m
+
+ [32m✓[39m packages/db/src/stop-session-release.postgres.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 485[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m6 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 09:44:16
+[2m   Duration [22m 1.59s[2m (transform 756ms, setup 11ms, import 1.02s, tests 485ms, environment 0ms)[22m

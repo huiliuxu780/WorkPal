@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +38,7 @@ public final class RuntimeServer {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/health", this::health);
         server.createContext("/v1/runs", this::runs);
+        server.createContext("/v1/sessions", this::sessions);
         server.createContext("/v1/state/bots", this::botState);
         server.createContext("/v1/background-tasks", this::backgroundTasks);
     }
@@ -135,30 +137,54 @@ public final class RuntimeServer {
             request = json.readValue(body, RunRequest.class);
             request.validate();
         } catch (Exception e) {
+            // Bound before the run identity exists: a rejected request still has
+            // to be attributable to the trace the caller arrived on.
+            RuntimeLog.bind(header(exchange, "traceparent"), header(exchange, "x-request-id"));
+            try {
+                RuntimeLog.warn("runtime.run.rejected", Map.of("reject.reason",
+                        e instanceof IllegalArgumentException ? "invalid_argument" : "unparseable_request"));
+            } finally {
+                RuntimeLog.clear();
+            }
             reply(exchange, 422, Map.of("error", e instanceof IllegalArgumentException ? e.getMessage() : "Invalid run request"));
             return;
         }
-        String slot = request.identity().userId() + "\u0000" + request.identity().spaceId()
-                + "\u0000" + request.botId() + "\u0000" + request.threadId() + "\u0000" + request.generation()
-                + "\u0000" + request.scope() + (request.isChat() ? "" : "\u0000" + request.runId());
+        RuntimeLog.bind(header(exchange, "traceparent"), header(exchange, "x-request-id"));
+        try {
+        Map<String, String> run = RuntimeEngine.runBindings(request);
+        if (request.isChat() && !validSessionAdmission(request)) {
+            RuntimeLog.warn("runtime.run.rejected", rejected(run, "missing_session_admission"));
+            reply(exchange, 422, Map.of("error", "Valid session admission proof is required"));
+            return;
+        }
+        String slot = request.isChat() ? request.sessionAdmission().sessionKey()
+                : request.identity().userId() + "\u0000" + request.identity().spaceId()
+                    + "\u0000" + request.botId() + "\u0000" + request.threadId() + "\u0000"
+                    + request.generation() + "\u0000" + request.scope() + "\u0000" + request.runId();
         synchronized (stateLifecycle) {
             if (purgedBots.contains(botSlot(request.identity().userId(), request.identity().spaceId(), request.botId()))) {
+                RuntimeLog.warn("runtime.run.rejected", rejected(run, "bot_state_purged"));
                 reply(exchange, 410, Map.of("error", "Bot runtime state was purged")); return;
             }
             if (activeRuns.putIfAbsent(request.runId(), Thread.currentThread()) != null) {
+                RuntimeLog.warn("runtime.run.rejected", rejected(run, "run_already_active"));
                 reply(exchange, 409, Map.of("error", "Run is already active")); return;
             }
             activeIdentities.put(request.runId(), request.identity());
             if (activeSessions.putIfAbsent(slot, request.runId()) != null) {
                 activeRuns.remove(request.runId());
                 activeIdentities.remove(request.runId());
+                RuntimeLog.warn("runtime.run.rejected", rejected(run, "session_already_active"));
                 reply(exchange, 409, Map.of("error", "Session already has an active run")); return;
             }
         }
+        RuntimeLog.info("runtime.run.accepted", run);
         exchange.getResponseHeaders().set("content-type", "application/x-ndjson");
         exchange.getResponseHeaders().set("cache-control", "no-store");
         exchange.getResponseHeaders().set("x-agent-runtime-instance", instanceId);
         exchange.sendResponseHeaders(200, 0);
+        boolean cancelled = false;
+        String failure = null;
         try (var output = exchange.getResponseBody()) {
             RuntimeEngine.EventSink sink = event -> {
                 if (Thread.currentThread().isInterrupted()) throw new IOException("Run cancelled");
@@ -168,15 +194,17 @@ public final class RuntimeServer {
             };
             try {
                 engine.execute(request, sink);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException cancellation) {
+                cancelled = true;
                 Thread.currentThread().interrupt();
             } catch (Exception error) {
-                if (!Thread.currentThread().isInterrupted()) {
-                    System.err.println("Agent runtime failure: " + error.getClass().getName());
-                    for (int index = 0; index < Math.min(4, error.getStackTrace().length); index++) {
-                        System.err.println("  at " + error.getStackTrace()[index]);
-                    }
-                    sink.emit(Map.of("type", "error", "message", safeError(error)));
+                if (Thread.currentThread().isInterrupted()) {
+                    cancelled = true;
+                } else {
+                    failure = FailureCategory.of(error, false);
+                    RuntimeLog.error("runtime.run.failed", run, failure, error);
+                    sink.emit(Map.of("type", "error", "message", safeError(error),
+                            "category", failure));
                 }
             }
         } finally {
@@ -185,11 +213,91 @@ public final class RuntimeServer {
             activeSessions.remove(slot, request.runId());
             exchange.close();
         }
+        if (cancelled) RuntimeLog.info("runtime.run.cancelled", run);
+        else if (failure == null) RuntimeLog.info("runtime.run.completed", run);
+        } finally {
+            RuntimeLog.clear();
+        }
+    }
+
+    private static String header(HttpExchange exchange, String name) {
+        return exchange.getRequestHeaders().getFirst(name);
+    }
+
+    private static Map<String, Object> rejected(Map<String, String> run, String reason) {
+        Map<String, Object> bindings = new LinkedHashMap<>(run);
+        bindings.put("reject.reason", reason);
+        return bindings;
     }
 
     private static String safeError(Exception error) {
         // Provider and connector exceptions can contain credential-bearing URLs or headers.
         return "Agent execution failed";
+    }
+
+    private static boolean validSessionAdmission(RunRequest request) {
+        RunRequest.SessionAdmission admission = request.sessionAdmission();
+        return admission != null
+                && SessionAdmissionKey.forChat(request).equals(admission.sessionKey())
+                && !RunRequest.blank(admission.executionId())
+                && !RunRequest.blank(admission.attemptId())
+                && admission.fence() != null && admission.fence() > 0
+                && !RunRequest.blank(admission.suspensionKey());
+    }
+
+    private record SessionRequest(RunRequest.Identity identity, String sessionKey,
+            Integer sessionGeneration, String executionId, String attemptId, Long fence,
+            String suspensionKey, String checkpointId) {}
+
+    private void sessions(HttpExchange exchange) throws IOException {
+        String path = exchange.getRequestURI().getPath();
+        boolean detach = "/v1/sessions/inspect-and-detach".equals(path);
+        if (!"POST".equals(exchange.getRequestMethod())
+                || (!detach && !"/v1/sessions/inspect".equals(path))) {
+            reply(exchange, 404, Map.of("error", "not found"));
+            return;
+        }
+        SessionRequest request;
+        try {
+            byte[] body = exchange.getRequestBody().readNBytes(64 * 1024 + 1);
+            if (body.length > 64 * 1024) throw new IllegalArgumentException("Session request is too large");
+            request = json.readValue(body, SessionRequest.class);
+            if (request == null || request.identity() == null
+                    || RunRequest.blank(request.identity().userId())
+                    || RunRequest.blank(request.identity().spaceId())
+                    || RunRequest.blank(request.identity().botId())
+                    || RunRequest.blank(request.identity().threadId())
+                    || RunRequest.blank(request.identity().runId())
+                    || request.sessionGeneration() == null || request.sessionGeneration() < 0
+                    || request.fence() == null || request.fence() <= 0
+                    || RunRequest.blank(request.sessionKey())
+                    || !request.sessionKey().matches("agentscope:chat:v1:[0-9a-f]{64}:[0-9a-f]{64}")
+                    || RunRequest.blank(request.executionId())
+                    || RunRequest.blank(request.attemptId())
+                    || RunRequest.blank(request.suspensionKey())
+                    || RunRequest.blank(request.checkpointId())
+                    || !request.checkpointId().matches("[A-Za-z0-9_-]{8,120}")) {
+                throw new IllegalArgumentException("Invalid session request");
+            }
+        } catch (Exception error) {
+            reply(exchange, 422, Map.of("error", "Invalid session request"));
+            return;
+        }
+        try {
+            Map<String, Object> proof = detach
+                    ? engine.inspectAndDetach(instanceId, request.identity(), request.sessionKey(),
+                            request.sessionGeneration(), request.executionId(), request.attemptId(),
+                            request.fence(), request.suspensionKey(), request.checkpointId())
+                    : engine.inspectPendingState(instanceId, request.identity(), request.sessionKey(),
+                            request.sessionGeneration(), request.checkpointId(),
+                            request.executionId(), request.attemptId(), request.fence(),
+                            request.suspensionKey());
+            reply(exchange, 200, proof);
+        } catch (SessionCheckpointStore.Conflict conflict) {
+            reply(exchange, 409, Map.of("error", conflict.getMessage()));
+        } catch (Exception error) {
+            reply(exchange, 500, Map.of("error", "Cannot inspect AgentScope session state"));
+        }
     }
 
     private static String botSlot(String user, String space, String bot) {

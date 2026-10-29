@@ -5,10 +5,17 @@ import {
   runContinueJob,
 } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
-import type { Pool, PrismaClient, ThreadEvents } from "@rakazo/db";
+import {
+  confirmedCancelOutcomeText,
+  type Pool,
+  type PrismaClient,
+  reasonsReadyForCancelOutcome,
+  type ThreadEvents,
+} from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import type { PoolClient } from "pg";
 import { returnBotMessageOutcome } from "./bot-messages.js";
+import { returnMessageGroupOutcome } from "./message-group.js";
 import { scheduleComputerControlExpiry } from "./computer-control.js";
 import { isUserProgressClientNonce } from "./user-progress.js";
 
@@ -261,6 +268,11 @@ export function createJobReconciler(
             userId: true,
             sourceMessageId: true,
             orchestration: true,
+            // A delegated Run returns through the origin it persisted, not the
+            // Thread it happens to execute in.
+            originThreadId: true,
+            originRunId: true,
+            originMessageId: true,
             status: true,
             error: true,
             bot: { select: { name: true } },
@@ -292,6 +304,107 @@ export function createJobReconciler(
               intent,
             ).catch((error) => {
               getLogger().error("bot message outcome reconciliation", error);
+              return false;
+            });
+            if (!returned) {
+              await deps.prisma.run.updateMany({
+                where: { id: run.id, botOutcomeReturnedAt: null },
+                data: { updatedAt: new Date() },
+              });
+            }
+          }),
+        );
+
+        // Typed cancel outcomes. Empty while product copy is unconfirmed, so this
+        // sweep does not invent a sentence or read Run.error.
+        const readyReasons = reasonsReadyForCancelOutcome();
+        if (readyReasons.length > 0) {
+          const pendingCancels = await deps.prisma.cancelOutcomeOutbox.findMany({
+            where: { deliveredAt: null, reason: { in: readyReasons } },
+            orderBy: [
+              { lastAttemptAt: "asc" },
+              { createdAt: "asc" },
+              { id: "asc" },
+            ],
+            take: batchSize,
+          });
+          await Promise.all(
+            pendingCancels.map(async (intent) => {
+              const text = confirmedCancelOutcomeText(intent.reason);
+              if (!text) return;
+              const returned = await returnBotMessageOutcome(
+                { prisma: deps.prisma, jobs: deps.jobs, events },
+                {
+                  id: intent.runId,
+                  spaceId: intent.spaceId,
+                  threadId: intent.threadId,
+                  botId: intent.senderBotId,
+                  userId: intent.userId,
+                  sourceMessageId: intent.sourceMessageId,
+                  originThreadId: intent.originThreadId,
+                  originRunId: intent.originRunId,
+                  originMessageId: intent.originMessageId,
+                },
+                { id: intent.senderBotId, name: intent.senderName },
+                text,
+                "status",
+                { allowTypedCancel: true },
+              ).catch((error) => {
+                getLogger().error("bot message cancel outcome reconciliation", error);
+                return false;
+              });
+              if (!returned) {
+                await deps.prisma.cancelOutcomeOutbox.updateMany({
+                  where: { id: intent.id, deliveredAt: null },
+                  data: { lastAttemptAt: new Date() },
+                });
+                return;
+              }
+              await deps.prisma.cancelOutcomeOutbox.updateMany({
+                where: { id: intent.id, deliveredAt: null },
+                data: { deliveredAt: new Date() },
+              });
+            }),
+          );
+        }
+
+        const messageGroupOutcomes = await deps.prisma.run.findMany({
+          where: {
+            trigger: "message_group",
+            status: { in: ["completed", "failed", "cancelled"] },
+            botOutcomeReturnedAt: null,
+          },
+          orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+          take: batchSize,
+          select: {
+            id: true,
+            spaceId: true,
+            threadId: true,
+            botId: true,
+            userId: true,
+            status: true,
+            error: true,
+            originThreadId: true,
+            originRunId: true,
+            originMessageId: true,
+            sourceMessageId: true,
+          },
+        });
+        await Promise.all(
+          messageGroupOutcomes.map(async (run) => {
+            const transcript =
+              run.status === "completed"
+                ? await botRunOutcomeText(deps.prisma, run.id, {
+                    // The delivery message is this Run's prompt, not its output.
+                    excludeMessageId: run.sourceMessageId,
+                  })
+                : { text: "", progressOnly: false };
+            const returned = await returnMessageGroupOutcome(
+              { prisma: deps.prisma, jobs: deps.jobs, events },
+              run,
+              { text: transcript.text, progressOnly: transcript.progressOnly },
+            ).catch((error) => {
+              getLogger().error("message group outcome reconciliation", error);
               return false;
             });
             if (!returned) {
@@ -378,20 +491,22 @@ async function botRunOutcomeText(
       findMany: (args: {
         where: { runId: string; role: "bot" };
         orderBy: { seq: "asc" };
-        select: { blocks: true; clientNonce: true };
-      }) => Promise<Array<{ blocks: unknown; clientNonce: string | null }>>;
+        select: { id: true; blocks: true; clientNonce: true };
+      }) => Promise<Array<{ id: string; blocks: unknown; clientNonce: string | null }>>;
     };
   },
   runId: string,
+  options: { excludeMessageId?: string | null } = {},
 ): Promise<{ text: string; progressOnly: boolean }> {
   const messages = await prisma.message.findMany({
     where: { runId, role: "bot" },
     orderBy: { seq: "asc" },
-    select: { blocks: true, clientNonce: true },
+    select: { id: true, blocks: true, clientNonce: true },
   });
   const progressParts: string[] = [];
   const finalParts: string[] = [];
   for (const message of messages) {
+    if (options.excludeMessageId && message.id === options.excludeMessageId) continue;
     const text = messageText(message.blocks);
     if (!text) continue;
     if (isUserProgressClientNonce(message.clientNonce)) progressParts.push(text);

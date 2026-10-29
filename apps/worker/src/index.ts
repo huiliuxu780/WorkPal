@@ -60,7 +60,12 @@ import {
   SpaceMemoryProviderResolver,
   sandboxProviderOptionsFromEnv,
 } from "@rakazo/adapters";
-import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
+import {
+  resolveCardsUnifiedFeatureGate,
+  resolveEncryptionKey,
+  resolveRoundtableFeatureGates,
+  resolveSupervisorToken,
+} from "@rakazo/core";
 import {
   appendEventInTransaction,
   cancelChildrenOfCancelledRuns,
@@ -77,10 +82,15 @@ import {
 import { SERVICE_NAMES } from "@rakazo/logging";
 import { createRootLogger } from "@rakazo/logging/axiom";
 import { MarkdownMemoryStore } from "@rakazo/memory";
+import { reconcileSessionAdmissions } from "./session-admission-reconciler.js";
 
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
 async function main() {
+  // Fail fast on invalid deployment gates. Consumed by the Intervention pause
+  // path, which is the only roundtable entry point the Worker drives today.
+  const roundtableFeatures = resolveRoundtableFeatureGates(process.env);
+  const cardsUnifiedV2 = resolveCardsUnifiedFeatureGate(process.env).cardsUnifiedV2;
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
   // Shared by Prisma, the reconciliation leadership lock, and both graphile-worker
@@ -99,6 +109,8 @@ async function main() {
   const secrets = new EncryptedSecretStore(resolveEncryptionKey(process.env));
   const events = createThreadEvents(prisma, realtime, {
     runSecretWriter: createRunSecretWriter(secrets),
+    roundtableFeatures,
+    cardsUnifiedV2,
   });
   // Task credentials and callbacks live in the Worker process. A stopped Worker cannot
   // resume a native local supplier; expire its projection after missed heartbeats.
@@ -298,6 +310,20 @@ async function main() {
   const artifacts = new LocalArtifactStore(dataDir);
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;
   const jobs: JobPublisher = inMemoryJobs ?? new GraphileJobPublisher(pool);
+  const admissionSweep =
+    runtime instanceof AgentScopeAgentRuntime
+      ? setInterval(() => {
+          void reconcileSessionAdmissions(prisma, jobs).catch((error) =>
+            logger.error("session admission reconciliation", error),
+          );
+        }, 10_000)
+      : null;
+  admissionSweep?.unref?.();
+  if (admissionSweep) {
+    void reconcileSessionAdmissions(prisma, jobs).catch((error) =>
+      logger.error("session admission reconciliation", error),
+    );
+  }
   const reconcileWaitingRuns = async () => {
     const expired = await expireWaitingRuns(prisma);
     const descendantIds = await listDescendantRunIds(
@@ -439,6 +465,8 @@ async function main() {
     },
     home,
     artifacts,
+    roundtableFeatures,
+    cardsUnifiedV2,
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: async (userId) => {
@@ -565,6 +593,7 @@ async function main() {
     clearInterval(cancellationSweep);
     clearInterval(childCancellationSweep);
     clearInterval(budgetSweep);
+    if (admissionSweep) clearInterval(admissionSweep);
     if (memoryOutboxSweep) clearInterval(memoryOutboxSweep);
     if (memoryScanSweep) clearInterval(memoryScanSweep);
     try {
@@ -598,7 +627,7 @@ async function main() {
     void stop().finally(() => process.exit(1));
   });
 
-  logger.info("worker ready");
+  logger.info("worker ready", { roundtableFeatures });
 }
 
 main().catch(async (error) => {

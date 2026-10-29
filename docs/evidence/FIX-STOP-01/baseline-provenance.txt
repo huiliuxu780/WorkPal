@@ -1,0 +1,59 @@
+# FIX-STOP-01 baseline provenance — how the red was produced
+
+PR #149 has two delivery heads in its history:
+  99168a6  the FIRST delivery (superseded): it already contained a fix — the rejected
+           'any terminal owner releases' predicate. Using it as the red baseline would be
+           wrong, because that tree is not the defect, it is a different (incorrect) fix.
+  a409140  merged main, the branch base, and the only tree that actually contains the defect.
+
+The red therefore restores ONLY the two production files from a409140 into the fixed
+working tree. The test file is never touched, so red and green run byte-identical cases.
+
+## Commands and hashes (run at HEAD 91459a0, working tree clean)
+
+$ git rev-parse HEAD
+91459a0f496dd8c348cd522984a87f46aa644c9c
+$ git status --short   # empty = clean
+?? docs/evidence/FIX-STOP-01/baseline-provenance.txt
+
+### before reverting
+e8c83d586cb0b1ca9bb6370125ba7a0ec72b85935a67e8d075560e9cd76158fd  packages/db/src/session-admission.ts
+716817a45ad049b2a2518198e3c9d56d5f4b05d759349a1745aef877b4cbfbed  apps/worker/src/session-admission-reconciler.ts
+22c3b22d83d5fe2b17e61715f4bc93724975ea74032fb3747b443b3d502d825b  packages/db/src/stop-session-release.postgres.test.ts
+
+$ git show a409140:packages/db/src/session-admission.ts > packages/db/src/session-admission.ts
+$ git show a409140:apps/worker/src/session-admission-reconciler.ts > apps/worker/src/session-admission-reconciler.ts
+$ shasum -a 256 <the two files> $(git show a409140:<path> | shasum -a 256)
+
+### after reverting only the two source files
+de648e7be41486befe489f3eaf588405a34ddb79ad3717bb3811d9f3f4744f67  packages/db/src/session-admission.ts
+6aa71b41b1d4b3bc140bc0b869c71847a8d36ade4a7d3c749295873a0271ccc7  apps/worker/src/session-admission-reconciler.ts
+22c3b22d83d5fe2b17e61715f4bc93724975ea74032fb3747b443b3d502d825b  packages/db/src/stop-session-release.postgres.test.ts
+
+### same two paths as they exist in a409140, for comparison
+packages/db/src/session-admission.ts: de648e7be41486befe489f3eaf588405a34ddb79ad3717bb3811d9f3f4744f67  -
+apps/worker/src/session-admission-reconciler.ts: 6aa71b41b1d4b3bc140bc0b869c71847a8d36ade4a7d3c749295873a0271ccc7  -
+
+$ git diff --name-only   # must list exactly the two source files
+apps/worker/src/session-admission-reconciler.ts
+packages/db/src/session-admission.ts
+
+### red run (same command as green.log)
+$ pnpm exec vitest run packages/db/src/stop-session-release.postgres.test.ts --no-file-parallelism
+[31m     [31m×[31m S1: cancelling an in-flight generation hands the session over only after the abort is confirmed[39m[32m 78[2mms[22m[39m
+[31m     [31m×[31m S1b: cancelling before the runtime started follows the same two facts, not the TTL[39m[32m 34[2mms[22m[39m
+[31m     [31m×[31m S2: appended steering is explicitly discarded and the session follows the same abort fact[39m[32m 37[2mms[22m[39m
+     [32m✓[39m S3: Stop that lands on an already terminal Run changes nothing and leaves the session usable[32m 35[2mms[22m[39m
+[31m     [31m×[31m S4: a worker restart or expired lease frees a cancelled session only after the abort is confirmed[39m[32m 40[2mms[22m[39m
+     [32m✓[39m a failed owner stays parked: the boundary worker-chain.spec.ts:546 and :785 guard[32m 22[2mms[22m[39m
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (6)[39m
+red exit=1
+
+$ git checkout -- <the two files>   # restore the fix from HEAD
+### after restoring
+e8c83d586cb0b1ca9bb6370125ba7a0ec72b85935a67e8d075560e9cd76158fd  packages/db/src/session-admission.ts
+716817a45ad049b2a2518198e3c9d56d5f4b05d759349a1745aef877b4cbfbed  apps/worker/src/session-admission-reconciler.ts
+22c3b22d83d5fe2b17e61715f4bc93724975ea74032fb3747b443b3d502d825b  packages/db/src/stop-session-release.postgres.test.ts
+$ git status --short   # empty = tree clean again
+?? docs/evidence/FIX-STOP-01/baseline-provenance.txt

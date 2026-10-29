@@ -421,6 +421,54 @@ class RuntimeIntegrationTest {
         } finally { bridge.stop(0); model.stop(0); }
     }
 
+    /**
+     * FIX-127 contract: a Run resumed after its ask was answered resolves the
+     * persisted pending ask_user call with the answer as a SUCCESS tool result
+     * and never re-emits the ask. The scripted test runtime mirrors this
+     * behavior so a resumed waiting_input Run continues instead of re-asking.
+     */
+    @Test void answeredAskResumesWithToolResultInsteadOfReasking() throws Exception {
+        List<JsonNode> modelRequests = new CopyOnWriteArrayList<>();
+        HttpServer model = scriptedModel(modelRequests, List.of());
+        try {
+            String tenant = sha256Hex("user-1\u0000space-1");
+            String session = sha256Hex("bot-1\u0000thread-1\u00000");
+            JsonFileAgentStateStore store =
+                    new JsonFileAgentStateStore(temp.resolve("state").resolve(sha256Hex("bot-1")));
+            AgentState asked = AgentState.builder()
+                    .userId(tenant)
+                    .sessionId(session)
+                    .replyId("reply-ask")
+                    .curIter(1)
+                    .addMessage(Msg.builder().role(MsgRole.ASSISTANT).name("assistant")
+                            .content(List.of(new ToolUseBlock("call-ask", "ask_user",
+                                    Map.of("question", "Which city should I use?"),
+                                    "{\"question\":\"Which city should I use?\"}", Map.of(),
+                                    ToolCallState.PENDING)))
+                            .build())
+                    .build();
+            store.save(tenant, session, "agent_state", asked);
+            RuntimeEngine engine = new RuntimeEngine(JSON, temp.resolve("state"), temp.resolve("workspace"));
+            List<Map<String, Object>> events = new ArrayList<>();
+            RunRequest base = request(model.getAddress().getPort(), "ask-answered", "user-1",
+                    "space-1", List.of(), null);
+            RunRequest answered = new RunRequest(base.botId(), base.threadId(), base.runId(),
+                    base.executionScope(), base.sourceMessageId(), base.identity(), base.prompt(),
+                    base.productName(), base.instructions(), base.history(),
+                    base.currentTurnImages(), base.skills(), base.tools(), base.toolBridge(),
+                    base.model(), base.allowSilentEmpty(), base.emptyResponseText(),
+                    base.sessionGeneration(), "Paris");
+            engine.execute(answered, events::add);
+            assertEquals("done", events.getLast().get("type"));
+            assertTrue(events.stream().noneMatch(event -> "ask".equals(event.get("type"))),
+                    "an answered ask must not be asked again on resume");
+            assertTrue(events.stream().noneMatch(event -> "paused".equals(event.get("type"))),
+                    "the resumed Run must not pause again");
+            assertTrue(modelRequests.getLast().path("messages").toString().contains("User response: Paris"),
+                    "the answer must reach the model as the ask_user tool result");
+        } finally { model.stop(0); }
+    }
+
     private static HttpServer planBridge(List<JsonNode> toolCalls,
             AtomicReference<String> planExitResult) throws Exception {
         HttpServer bridge = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -894,12 +942,19 @@ class RuntimeIntegrationTest {
         try {
             HttpClient client = HttpClient.newHttpClient();
             URI runs = URI.create("http://127.0.0.1:" + runtime.port() + "/v1/runs");
-            RunRequest input = request(model.getAddress().getPort(), "cancel-1", "user-1", "space-1", List.of(), null);
+            RunRequest input = admitted(request(model.getAddress().getPort(), "cancel-1", "user-1", "space-1", List.of(), null));
             var response = client.sendAsync(HttpRequest.newBuilder(runs)
                     .header("content-type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(input))).build(),
                     HttpResponse.BodyHandlers.ofInputStream());
             assertTrue(modelStarted.await(5, TimeUnit.SECONDS));
+            RunRequest contender = admitted(request(model.getAddress().getPort(), "cancel-2",
+                    "user-1", "space-1", List.of(), null));
+            var conflict = client.send(HttpRequest.newBuilder(runs)
+                    .header("content-type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(contender))).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(409, conflict.statusCode());
             URI cancel = URI.create(runs + "/cancel-1");
             var stopped = client.send(HttpRequest.newBuilder(cancel).DELETE().build(),
                     HttpResponse.BodyHandlers.ofString());
@@ -929,7 +984,7 @@ class RuntimeIntegrationTest {
                             "{\"userId\":\"user-1\",\"spaceId\":\"space-1\",\"botId\":\"bot-1\"}"))
                     .build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, purge.statusCode());
-            RunRequest request = request(12345, "after-purge", "user-1", "space-1", List.of(), null);
+            RunRequest request = admitted(request(12345, "after-purge", "user-1", "space-1", List.of(), null));
             var run = client.send(HttpRequest.newBuilder(base.resolve("/v1/runs"))
                     .header("content-type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(request)))
@@ -1132,6 +1187,12 @@ class RuntimeIntegrationTest {
         });
         server.start();
         return server;
+    }
+
+    private static RunRequest admitted(RunRequest request) {
+        return request.withSessionAdmission(new RunRequest.SessionAdmission(
+                SessionAdmissionKey.forChat(request), request.runId() + ":execution",
+                request.runId() + ":attempt", 1L, request.runId() + ":suspension"));
     }
 
     private static RunRequest request(int port, String runId, String user, String space,

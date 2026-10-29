@@ -1,0 +1,18 @@
+# CI web job 122831588323 (run 40692502560, head 4a69d67) — extracted lines
+
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:04:27.0794911Z Running 8 tests using 1 worker
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:05:25.9461048Z ##[notice]  8 passed (1.0m)
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:05:25.9470045Z   8 passed (1.0m)
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:05:45.3471157Z Running 14 tests using 1 worker
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:07:09.5150124Z   ✓   1 [chromium] › e2e/card-attention.spec.ts:19:3 › attention queue (N1-N4) › queues pending requests, returns to the source, and notifies new ones (1.4m)
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:07:32.7882552Z   ✓   2 [chromium] › e2e/card-attention.spec.ts:295:3 › attention queue (N1-N4) › keeps the list usable when browser notifications are denied (23.3s)
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:09:39.8312406Z ##[notice]  14 passed (4.0m)
+web	Focused web E2E (scripted runtime, no Worker process)	2026-10-28T13:09:39.8314307Z   14 passed (4.0m)
+
+# Local default full gate-on batch (E2E_GATE_SPECS) — tail
+13:11:28.060 INFO  job.completed service.name=rakazo-api job.id=e4f669bf-20d5-4d66-b0e6-6e2aec208587 job.type=delivery.dispatch trace.id=510e30a27080dd91a1fd4e101c2f8ff6 span.id=d624296fe39e375c job.duration_ms=4 job.outcome=ok
+  ✓  15 [chromium] › e2e/peer-messages.spec.ts:135:1 › expands a multi-target receipt and opens one bound private pair (6.4s)
+::notice title=🎭 Playwright Run Summary::  15 passed (3.2m)
+
+  15 passed (3.2m)
+EXIT=0

@@ -1,0 +1,4 @@
+$ pnpm test:e2e --runtime=scripted --spec="approval-resume.spec.ts"
+  ✓  1 [chromium] › e2e/approval-resume.spec.ts:6:1 › approval input resumes durable work (11.0s)
+::notice title=🎭 Playwright Run Summary::  1 passed (13.9s)
+  1 passed (13.9s)

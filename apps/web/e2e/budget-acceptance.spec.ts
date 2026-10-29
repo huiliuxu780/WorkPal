@@ -1,5 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 import { AgentScopeAgentRuntime } from "../../../packages/adapters/src/agentscope-runtime.js";
+import { createRunExecutor } from "../../../packages/adapters/src/executor.js";
+import { settleDeliveryRun } from "../../../packages/adapters/src/result-delivery.js";
+import { deliverRunAborts } from "../../../packages/adapters/src/revoke-cancelled-work.js";
 import { enforceRunBudgets } from "../../../packages/adapters/src/run-budget-enforcement.js";
 import { createDb, createThreadEvents } from "../../../packages/db/src/index.js";
 import { startModelEmulator } from "../../../packages/testkit/src/model-emulator.js";
@@ -75,14 +78,14 @@ async function switchToTaskModel(page: Page, botId: string, apiKey: string, task
  * (retryPendingRunAborts). The held model stream fixture needs the same
  * retry before another Run may use the Java session slot.
  */
-async function releaseNativeRun(runId: string) {
-  const url = process.env.AGENTSCOPE_URL ?? "";
+async function releaseNativeRun(db: Db, runId: string) {
+  const runtime = new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL ?? "" });
   for (let attempt = 0; attempt < 8; attempt++) {
-    const response = await fetch(`${url}/v1/runs/${runId}`, { method: "DELETE" }).catch(() => null);
-    if (response && (response.status === 200 || response.status === 404)) return response.status;
+    const result = await deliverRunAborts(db.prisma, (id) => runtime.abort(id), [runId]);
+    if (result.revoked.includes(runId)) return;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
-  return -1;
+  throw new Error(`Runtime abort was not confirmed for ${runId}`);
 }
 
 async function waitRunRunning(page: Page, db: Db, botId: string) {
@@ -109,6 +112,56 @@ async function waitRunRunning(page: Page, db: Db, botId: string) {
     )
     .not.toBeNull();
   return runId;
+}
+
+/**
+ * H2-99 / #99: the Worker job returns from `continueRun` and only then calls
+ * `settleDeliveryRun`, so the delivery Run can be completed with its message
+ * visible while the DeliveryRecord is still `claimed`. Single-read assertions
+ * hit that window at random. Hold the exact row the settle updates so the
+ * settle transaction blocks on the lock instead of racing the assertion.
+ */
+async function holdClaimedDeliveryRecord(db: Db, runId: string) {
+  const client = await db.pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query<{ status: string; deliveryRunId: string | null }>(
+      'SELECT "status", "deliveryRunId" FROM "delivery_records" WHERE "runId" = $1 FOR UPDATE',
+      [runId],
+    );
+    expect(locked.rows).toHaveLength(1);
+    expect(locked.rows[0]).toMatchObject({ status: "claimed" });
+    return {
+      async release() {
+        await client.query("ROLLBACK");
+        client.release();
+      },
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    client.release();
+    throw error;
+  }
+}
+
+/** The authority tuple settleDeliveryRun must produce exactly once. */
+async function deliveryFacts(db: Db, input: { runId: string; threadId: string; deliveryRunId: string }) {
+  const record = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId: input.runId } });
+  const [deliverySentEvents, deliveryBotMessages, deliveryRuns] = await Promise.all([
+    db.prisma.event.count({ where: { threadId: input.threadId, type: "delivery.sent" } }),
+    db.prisma.message.count({
+      where: { threadId: input.threadId, role: "bot", runId: input.deliveryRunId },
+    }),
+    db.prisma.run.count({ where: { threadId: input.threadId, trigger: "delivery" } }),
+  ]);
+  return {
+    recordStatus: record.status,
+    deliveredAt: record.deliveredAt?.toISOString() ?? null,
+    recordDeliveryRunId: record.deliveryRunId,
+    deliverySentEvents,
+    deliveryBotMessages,
+    deliveryRuns,
+  };
 }
 
 test("token budget breach lets the owner raise the budget and the same Run finishes", async ({
@@ -179,7 +232,7 @@ test("token budget breach lets the owner raise the budget and the same Run finis
     // End the held model stream so the Java session slot frees deterministically
     // before the owner resumes the same Run (the Worker's abort retry alone races).
     releaseTokenHold?.();
-    await releaseNativeRun(runId);
+    await releaseNativeRun(db, runId);
     const intervention = await db.prisma.intervention.findFirstOrThrow({ where: { runId } });
     expect(await db.prisma.run.findUnique({ where: { id: runId }, select: { status: true } }))
       .toMatchObject({ status: "waiting_input" });
@@ -428,7 +481,7 @@ test("tool-call budget breach narrows scope through the unified cancellation pat
   }
 });
 
-test("routine budget breach fails the Run and proactively delivers one summary", async ({
+test("routine budget breach fails the Run and queues one delivery behind recovering admission", async ({
   page,
 }) => {
   test.skip(process.env.AGENT_RUNTIME !== "agentscope", "Run with --runtime=agentscope");
@@ -500,6 +553,12 @@ test("routine budget breach fails the Run and proactively delivers one summary",
         { timeout: 20_000 },
       )
       .not.toBeNull();
+    // The fixture call is held open so the enforce below aborts an in-flight
+    // model stream, exactly like the Worker sweep. The abort races the model
+    // request itself, so wait for the hold to engage before rewinding the
+    // attempt clock; otherwise the request may never be sent and the fixture
+    // step can never be consumed.
+    await expect.poll(() => releaseRoutineHold, { timeout: 30_000 }).not.toBeUndefined();
     const fixtureRun = await db.prisma.run.findUniqueOrThrow({ where: { id: runId } });
     expect(fixtureRun.trigger).toBe("routine");
     const userMessagesBefore = await db.prisma.message.count({
@@ -537,57 +596,210 @@ test("routine budget breach fails the Run and proactively delivers one summary",
       "run.failed",
       "delivery.created",
     ]);
-    // Free the Java session slot before the delivery Run needs the Thread.
+    // Free the Java session slot after the Worker persisted its abort retry.
+    // RT-25 retains chat admission until RT-26 supplies clean/detached proof,
+    // so the delivery Run must remain queued instead of entering the session.
     releaseRoutineHold?.();
-    await releaseNativeRun(runId);
+    await releaseNativeRun(db, runId);
 
-    // The outbox merge window plus the production dispatch sweep deliver one
-    // summary Run and one message to the main Thread without any user input.
+    // Queue boundary. The dispatch sweep leases the delivery Run for a moment
+    // while admission is still recovering, then requeues it. That lease is not
+    // session entry: running, completed, or delivery.sent fails this poll.
+    // Reproduced on 810a223: the exact queued/null read raced status=leased,
+    // leaseOwner=api.
     await expect
       .poll(
-        async () =>
-          db.prisma.run.findFirst({
+        async () => {
+          const delivery = await db.prisma.run.findFirst({
             where: { threadId: thread.id, trigger: "delivery" },
             select: { id: true, status: true },
-          }),
+          });
+          if (!delivery) return "missing-run";
+          if (
+            delivery.status === "running" ||
+            delivery.status === "completed" ||
+            delivery.status === "failed" ||
+            delivery.status === "cancelled"
+          ) {
+            return delivery.status;
+          }
+          if (delivery.status !== "queued" && delivery.status !== "leased") return delivery.status;
+          const admission = await db.prisma.agentSessionAdmission.findFirst({
+            where: { ownerRunId: runId },
+            select: { state: true, ownerRunId: true },
+          });
+          if (admission?.state !== "recovering" || admission.ownerRunId !== runId) {
+            return `admission:${admission?.state ?? "missing"}`;
+          }
+          const sent = await db.prisma.event.count({
+            where: { threadId: thread.id, type: "delivery.sent" },
+          });
+          if (sent !== 0) return `sent:${sent}`;
+          const record = await db.prisma.deliveryRecord.findFirst({
+            where: { runId },
+            select: { status: true, deliveryRunId: true, deliveredAt: true },
+          });
+          if (
+            record?.status !== "claimed" ||
+            record.deliveryRunId !== delivery.id ||
+            record.deliveredAt
+          ) {
+            return "record-not-held";
+          }
+          const summaries = await db.prisma.message.count({
+            where: { threadId: thread.id, role: "bot", runId: delivery.id },
+          });
+          if (summaries !== 0) return `summaries:${summaries}`;
+          const runs = await db.prisma.run.count({
+            where: { threadId: thread.id, trigger: "delivery" },
+          });
+          if (runs !== 1) return `runs:${runs}`;
+          return "recovering-unsent";
+        },
         { timeout: 120_000 },
       )
-      .toMatchObject({ status: "completed" });
-    await expect(
-      page
-        .getByTestId("transcript")
-        .getByText("The scheduled fixture run failed on its duration budget."),
-    ).toBeVisible({ timeout: 60_000 });
+      .toBe("recovering-unsent");
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "user" } })).toBe(
       userMessagesBefore,
     );
-
     const deliveryRun = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
-    const record = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
-    expect(record.deliveryRunId).toBe(deliveryRun.id);
-    expect(record.status).toBe("sent");
-    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(1);
-    expect(
-      await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
-    const summaries = await db.prisma.message.findMany({
-      where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
-    });
-    expect(summaries).toHaveLength(1);
 
-    // Repeated Worker scheduling neither redelivers nor forks a second summary.
-    await page.waitForTimeout(12_000);
-    expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(1);
+    // H2-99 / #99: pin the claimed record before the Worker can settle it. The
+    // dispatch above bound this exact row; the settle update blocks on the lock
+    // until the assertions below have observed the intermediate state.
+    const barrier = await holdClaimedDeliveryRecord(db, runId);
+    const timeline: Array<
+      { at: string; stage: string; replayCalls?: number } & Awaited<
+        ReturnType<typeof deliveryFacts>
+      >
+    > = [
+      {
+        at: new Date().toISOString(),
+        stage: "barrier-held",
+        ...(await deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id })),
+      },
+    ];
+    try {
+      // Production RT-26 hook: continue the terminal owner. A fresh Runtime
+      // proof releases admission and the in-process delivery sweep continues
+      // the queued Run. The enqueue from this process is not the API queue.
+      const runtime = new AgentScopeAgentRuntime({ baseUrl: process.env.AGENTSCOPE_URL ?? "" });
+      const executor = createRunExecutor({
+        prisma: db.prisma,
+        runtime,
+        jobs: {
+          enqueue: async () => undefined,
+          cancel: async () => undefined,
+        },
+        events: createThreadEvents(db.prisma),
+      } as unknown as Parameters<typeof createRunExecutor>[0]);
+      expect(await executor.continueRun(runId, "e2e-budget-recovery")).toBeUndefined();
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.prisma.agentSessionAdmission.findFirst({
+                where: { ownerRunId: runId },
+                select: { state: true },
+              })
+            )?.state ?? "missing",
+          { timeout: 30_000 },
+        )
+        .not.toBe("recovering");
+
+      await expect
+        .poll(
+          async () =>
+            (
+              await db.prisma.run.findFirst({
+                where: { id: deliveryRun.id },
+                select: { status: true },
+              })
+            )?.status ?? "missing",
+          { timeout: 120_000 },
+        )
+        .toBe("completed");
+      await expect(
+        page
+          .getByTestId("transcript")
+          .getByText("The scheduled fixture run failed on its duration budget."),
+      ).toBeVisible({ timeout: 60_000 });
+      timeline.push({
+        at: new Date().toISOString(),
+        stage: "run-completed-transcript-visible",
+        ...(await deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id })),
+      });
+
+      // The window this test exists for: the delivery Run is completed and its
+      // message is on screen, yet the record is still claimed because the
+      // Worker's settle UPDATE is blocked on the lock held above.
+      const held = await db.prisma.deliveryRecord.findFirstOrThrow({ where: { runId } });
+      expect(held.status).toBe("claimed");
+      expect(held.deliveredAt).toBeNull();
+      expect(held.deliveryRunId).toBe(deliveryRun.id);
+      expect(
+        await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
+      ).toBe(0);
+      expect(
+        await db.prisma.message.count({
+          where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
+        }),
+      ).toBe(1);
+    } finally {
+      await barrier.release();
+      // Keep the observed states on failure too: the red run's whole point is
+      // the claimed snapshot under a completed Run.
+      test.info().attach("settle-timeline", {
+        body: JSON.stringify(timeline, null, 2),
+        contentType: "application/json",
+      });
+    }
+
+    // The authority tuple settleDeliveryRun must produce exactly once. Poll
+    // instead of racing the commit that the barrier held back.
+    const facts = () =>
+      deliveryFacts(db, { runId, threadId: thread.id, deliveryRunId: deliveryRun.id });
+    await expect
+      .poll(facts, { timeout: 120_000, intervals: [100, 250, 500, 1_000] })
+      .toEqual({
+        recordStatus: "sent",
+        deliveredAt: expect.any(String),
+        recordDeliveryRunId: deliveryRun.id,
+        deliverySentEvents: 1,
+        deliveryBotMessages: 1,
+        deliveryRuns: 1,
+      });
+    const settled = await facts();
+    timeline.push({ at: new Date().toISOString(), stage: "settled", ...settled });
+
+    // Exactly once: replaying settle for the same delivery Run must not add a
+    // second event, message or record transition.
+    const settleDeps = {
+      prisma: db.prisma,
+      jobs: { enqueue: async () => undefined, cancel: async () => undefined },
+      events: createThreadEvents(db.prisma),
+      workerId: "e2e-settle-replay",
+    } as unknown as Parameters<typeof settleDeliveryRun>[0];
+    await settleDeliveryRun(settleDeps, deliveryRun.id);
+    await settleDeliveryRun(settleDeps, deliveryRun.id);
+    expect(await facts()).toEqual(settled);
+    timeline.push({
+      at: new Date().toISOString(),
+      stage: "after-settle-replay",
+      replayCalls: 2,
+      ...(await facts()),
+    });
+    // The run log is the durable copy of this timeline; the attachment alone is
+    // cleaned up for passing tests.
+    console.log("H2-99 settle timeline", JSON.stringify(timeline));
     expect(
-      await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
-    expect(
-      await db.prisma.message.count({
-        where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
+      await db.prisma.run.findUniqueOrThrow({
+        where: { id: runId },
+        select: { status: true, error: true },
       }),
-    ).toBe(1);
+    ).toMatchObject({ status: "failed", error: "budget_exceeded:duration_sec" });
     task.assertComplete();
   } finally {
     await task?.close();

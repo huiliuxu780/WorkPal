@@ -1,0 +1,1014 @@
+{
+  "audit": "RT-UI-AUDIT-01",
+  "title": "圆桌任务、已合入实现与确认原型之间的原型一致性审计",
+  "generatedAt": "2026-10-23",
+  "baseSha": "4571a9eaf88a20e7ca37c4846d523389ba95c378",
+  "branch": "codex/rt-ui-prototype-conformance-audit",
+  "disclaimer": "本审计不代表生产 UI 偏差已经修复；修复由 remediationPlan 中的独立任务承担。",
+  "authorityOrder": [
+    "docs/roundtable/prototype/DESIGN.md 的明确约束",
+    "docs/roundtable/prototype/index.html 的实际渲染结果及既有确认截图（audits/evidence/prototype/）",
+    "roundtable-product-requirements.md 的产品语义",
+    "WorkPal 现有组件和视觉语言（补足原型未规定细节）",
+    "roundtable-implementation-plan.md 与历史任务提示词（派生材料，冲突时修订）"
+  ],
+  "scopePrinciple": "96 个原子验收场景不等于 96 个页面状态。原型只裁决 8 段主故事线与 29 个高价值分支的实际渲染；其余场景由 API、Runtime、投影和端到端测试覆盖，不得为覆盖完整而新增 UI（DESIGN.md L4、PRD §13.1、§14）。",
+  "evidenceManifest": {
+    "prototypeStates": [
+      "prototype:main-stage-1",
+      "prototype:main-stage-2",
+      "prototype:main-stage-3",
+      "prototype:main-stage-4",
+      "prototype:main-stage-5",
+      "prototype:main-stage-6",
+      "prototype:main-stage-7",
+      "prototype:main-stage-8",
+      "prototype:branch-U-ACTIVE",
+      "prototype:branch-U-MULTI",
+      "prototype:branch-U-CONFLICT",
+      "prototype:branch-U-STOP",
+      "prototype:branch-A-ACTIVE",
+      "prototype:branch-A-BACKGROUND",
+      "prototype:branch-A-COMPLETED",
+      "prototype:branch-A-AMBIGUOUS",
+      "prototype:branch-X-GROUP",
+      "prototype:branch-X-BOT",
+      "prototype:branch-X-GROUP-APPROVE",
+      "prototype:branch-X-GROUP-FAIL",
+      "prototype:branch-X-RETURN",
+      "prototype:branch-Q-REVERSE",
+      "prototype:branch-Q-MULTI",
+      "prototype:branch-Q-ORIGINS",
+      "prototype:branch-Q-UNAVAILABLE",
+      "prototype:branch-C-MULTI",
+      "prototype:branch-C-DUAL",
+      "prototype:branch-C-ROOTS",
+      "prototype:branch-C-LATE",
+      "prototype:branch-P-SCOPED",
+      "prototype:branch-P-ALLOW",
+      "prototype:branch-P-DENY",
+      "prototype:branch-P-STALE",
+      "prototype:branch-F-OFFLINE",
+      "prototype:branch-F-RETRY",
+      "prototype:branch-F-DEDUPE",
+      "prototype:branch-F-PARTIAL"
+    ],
+    "interactionStates": [
+      "prototype:interaction:work-tab",
+      "prototype:interaction:task-detail",
+      "prototype:interaction:amend-chip",
+      "prototype:interaction:receipt-expanded",
+      "prototype:interaction:pair-float",
+      "prototype:interaction:rail-details",
+      "prototype:interaction:rail-library",
+      "prototype:interaction:rail-members",
+      "prototype:interaction:narrow-main",
+      "prototype:interaction:narrow-overlay",
+      "prototype:interaction:narrow-capsule-opens-work"
+    ],
+    "mainAppSurfaces": [
+      "main-app:group-chat-with-mention",
+      "main-app:rail-details",
+      "main-app:rail-work",
+      "main-app:rail-library",
+      "main-app:rail-members",
+      "main-app:group-chat-after-run",
+      "main-app:narrow-group-chat",
+      "main-app:narrow-rail"
+    ],
+    "evidenceRoot": "docs/roundtable/audits/evidence/"
+  },
+  "conflicts": [
+    {
+      "id": "CF-01",
+      "kind": "confirmed",
+      "severity": "P1",
+      "title": "RT-08 任务定义与 PR #116 把每个目标的 Run 执行状态渲染进聊天消息",
+      "currentFact": "PR #116 的 PublicDelegationMessage.tsx 为每个目标渲染 StatusEntry：statusPresentation 输出 Queued/Running/Completed/Failed/Cancelled 徽标，data-status 暴露原始状态名，details 展开显示 Waiting to start 等 detail；public-collaboration.ts 从 Run 状态推导 PublicDelegationStatus。",
+      "prototypeEvidence": "prototype:main-stage-2 —— 公开委派渲染为一条自然 @ 消息，附语义药丸「性能基线 · 已派给小蓝」「首屏方案 · 已派给小橙」；prototype:main-stage-3 —— 目标进度只以 Bot 真实消息 + 「已启动后台工作 · 跑性能基线」状态行出现。DESIGN.md L8/L23/L24：聊天区不展示状态机解释与实现术语。",
+      "locations": [
+        "roundtable-implementation-plan.md:297（RT-08 输出「独立投递状态和失败状态」）",
+        "PR #116 apps/web/src/components/ai/PublicDelegationMessage.tsx:13-79（statusPresentation/StatusEntry）",
+        "PR #116 apps/web/e2e/group-chats.spec.ts（data-status=\"queued\" 断言）"
+      ],
+      "whyConflict": "把 Run 状态机（queued/running/completed）直接变成产品文案，违背「自然 @ 委派」约束和 DESIGN.md L24 的工作页签文案边界；96 场景的逐目标状态应由工作投影承载，不是聊天消息。",
+      "correctBehavior": "公开委派消息 = 发送者 + 自然 @ 正文 + 语义药丸（已派给 X / 未送达 X）；失败呈现遵循 prototype:branch-F-OFFLINE / X-UNAVAILABLE 的红色「未发送给」行；逐目标真实状态只进 RT-20/RT-23 工作投影。",
+      "remediationOwner": "RT-08（重开 PR #116，按修订后的任务描述重做）",
+      "remediationTask": "FIX-MSG-A",
+      "blocksDevelopment": true
+    },
+    {
+      "id": "CF-02",
+      "kind": "confirmed",
+      "severity": "P1",
+      "title": "main 已把群内公开委派渲染成私下回执样式并打开 peer 对话视图",
+      "currentFact": "RT-06 合入后，群 Thread 中的 bot_message_sent/bot_message_received block 在 Shell.tsx 中与私下 peer 回执共用同一条 CollaborationMarker 路径：label「Messaged X」，点击调用 onOpenPeerMessages 打开 A↔B peer 对话视图。",
+      "prototypeEvidence": "prototype:main-stage-2/3 —— 公开委派是群 Thread 内的自然 @ 消息与目标 Bot 的真实回复；DESIGN.md L8「群内公开 @Agent 仍留在群 Thread，不与私下对话混用」、L9 mention 只导航到用户与该 Bot 的单聊。",
+      "locations": [
+        "apps/web/src/pages/Shell.tsx:6779-6795",
+        "apps/web/src/components/ai/CollaborationMarker.tsx:6-27"
+      ],
+      "whyConflict": "公开协作与私下 receipt 混用同一 UI 与同一导航语义；群内公开委派不应打开 peer 对话，也不应显示为轻回执。",
+      "correctBehavior": "群 Thread 的 bot_message_sent/received 按 FIX-MSG-A 渲染为自然 @ 消息；CollaborationMarker 仅保留给来源会话的私下轻回执（RT-09 实现后）。",
+      "remediationOwner": "RT-08",
+      "remediationTask": "FIX-MSG-A",
+      "blocksDevelopment": true
+    },
+    {
+      "id": "CF-03",
+      "kind": "confirmed",
+      "severity": "P1",
+      "title": "RT-14（后端状态转换任务）的验收承担了「追加复核」UI 展示",
+      "currentFact": "roundtable-implementation-plan.md:441 要求 RT-14「completed Task 保留旧结果并显示『追加复核』」；「显示」是 UI 投影职责，写在后端任务的验收里会诱导在状态转换代码中夹带展示逻辑。",
+      "prototypeEvidence": "prototype:branch-A-COMPLETED —— 「追加复核」以 Bot 消息状态行「Task1 · 追加复核进行中」+ 活动胶囊「Task1 已追加复核 · 原结果仍保留」呈现；任务详情（prototype:interaction:task-detail）以「要求与补充」时间线呈现。展示位置归工作页（RT-23）。",
+      "locations": ["roundtable-implementation-plan.md:441"],
+      "whyConflict": "后端任务越权决定 UI 文案与位置；PRD AC30/A06 只规定产品语义，具体展示归 RT-23 且必须复刻原型位置与结构。",
+      "correctBehavior": "RT-14 只负责 follow-up Run 事实与旧结果保留；「追加复核」的展示由 RT-23 在任务详情与状态行中按 prototype:branch-A-COMPLETED 实现。",
+      "remediationOwner": "RT-23（展示）；本 PR 已修订计划文本",
+      "remediationTask": "FIX-WORK-D",
+      "blocksDevelopment": false
+    },
+    {
+      "id": "CF-04",
+      "kind": "confirmed",
+      "severity": "P1",
+      "title": "原型自身在聊天区文案中使用 Run / attempt / steering 等实现术语（blocking decision）",
+      "currentFact": "任务规则把「在聊天消息中展示 queued、Run、Attempt、revision、lease、fence、steering、delivery key、recovering 等实现术语」列为冲突类型；但原型实际渲染中：U-ACTIVE 活动胶囊「小蓝已接收 steering · 后台基线继续」（index.html:662）、C-MULTI 胶囊「2 个目标 Run 已独立完成」（:825）、F-OFFLINE 系统行「……没有创建 support Run。」（:896）、F-RETRY 状态行「重试中 · attempt 2 / 3」（:905）、F-DEDUPE 系统行「已复用现有 Run」（:915）与胶囊「小蓝仅有 1 个有效 Run」（:917）。DESIGN.md 的术语禁令只限定「工作页签文案」（L24），未覆盖聊天区。",
+      "prototypeEvidence": "prototype:branch-U-ACTIVE、prototype:branch-C-MULTI、prototype:branch-F-OFFLINE、prototype:branch-F-RETRY、prototype:branch-F-DEDUPE（截图与 index.html 行号如上）。",
+      "locations": [
+        "docs/roundtable/prototype/index.html:662,825,896,905,915,917",
+        "RT-24 输出「Agent 拒绝、阶段进展、结论冲突和部分失败消息规范」（roundtable-implementation-plan.md:675）"
+      ],
+      "whyConflict": "两个高优先级来源真实冲突：任务规则（本审计任务书）禁止聊天消息出现这些术语，而原型渲染（权威来源 #2）包含它们。按任务规则不得自行选边。",
+      "correctBehavior": "D1 已裁决（A）：修改原型/DESIGN 把术语禁令扩展到聊天区，并同步改写上述 6 处文案；裁决前 RT-24 等文案类任务不得新增含这些术语的文案。",
+      "resolution": "D1=A（2026-10-24 用户裁决）：维持禁令并扩展到聊天区。原型 6 处文案已改写为用户语言，DESIGN.md 术语禁令扩展至聊天区（stacked PR codex/rt-d1-prototype-copy-revision）；RT-24 按修订后原型实现。",
+      "remediationOwner": "D1=A 已裁决：原型修订 PR 改写 6 处文案并扩展 DESIGN 禁令；FIX-APPROVE-E 为文案承载方，RT-24 按修订后原型实现",
+      "remediationTask": "FIX-APPROVE-E",
+      "blocksDevelopment": false,
+      "decisionId": "D1"
+    },
+    {
+      "id": "CF-05",
+      "kind": "missing-requirement",
+      "severity": "P2",
+      "title": "侧边栏「后台任务」全局任务中心无任务负责，且 main 上不存在",
+      "currentFact": "main 的侧边栏只有搜索、Bot 名册、集成（见 main-app:group-chat-with-mention）；CAP-01 已退役旧 Task Center。RT-00～RT-30 没有任何任务负责侧边栏全局任务中心。",
+      "prototypeEvidence": "prototype:main-stage-1 —— 侧边栏「后台任务」入口带计数徽标 6；DESIGN.md L20「侧边栏『后台任务』继续是跨会话的全局任务中心」；PRD §9.3「侧边栏全局任务中心展示跨会话工作」。",
+      "locations": ["roundtable-implementation-plan.md §4（31 个任务均未覆盖该 surface）"],
+      "whyConflict": "原型要求存在、PRD 有产品语义，但实施计划遗漏；RT-30 全链验收时该 surface 无归属。",
+      "correctBehavior": "新增修复任务 FIX-SIDEBAR-G：侧边栏「后台任务」入口（是否显示计数需与 DESIGN L14「工作入口不显示数量」的适用范围按 D2=B 保留单一口径徽标），读取与群内「工作」相同的 Task/Run/BackgroundAgentTask 投影。",
+      "remediationOwner": "FIX-SIDEBAR-G（新任务）",
+      "remediationTask": "FIX-SIDEBAR-G",
+      "blocksDevelopment": false,
+      "decisionId": "D2"
+    },
+    {
+      "id": "CF-06",
+      "kind": "missing-requirement",
+      "severity": "P3",
+      "title": "资料库文件行缺少悬停更多操作",
+      "currentFact": "已合入的 RT-22 GroupPanel 资料库行只有缩略图、名称、时间，无悬停更多操作入口。",
+      "prototypeEvidence": "prototype:interaction:rail-library 与 DESIGN.md L19「每行只保留缩略图、名称、更新时间和悬停更多操作」。",
+      "locations": ["apps/web/src/pages/shell/group-panel.tsx:390-431"],
+      "whyConflict": "原型要求存在但实现遗漏（P3：交互增强，不阻断）。",
+      "correctBehavior": "行内悬停出现更多操作（对齐 Grokbot 资料行视觉），保持无外框、无逐行「打开」按钮。",
+      "remediationOwner": "RT-22 后续修复（FIX-GROUP-C）",
+      "remediationTask": "FIX-GROUP-C",
+      "blocksDevelopment": false
+    },
+    {
+      "id": "CF-07",
+      "kind": "ambiguous",
+      "severity": "P3",
+      "title": "成员行状态把 queued/running/interrupted 统一映射为「后台工作中」",
+      "currentFact": "group-panel.tsx:486-492 将 running/queued/interrupted 都显示为「Working in background（后台工作中）」；正在群里回复的会话 Run 也会显示为后台工作中。",
+      "prototypeEvidence": "prototype:interaction:rail-members（成员行「性能 Agent · 后台工作中」对应后台任务；原型主线中小蓝「正在回复」与「后台跑基线」是并行两条，见 prototype:branch-C-DUAL）。",
+      "locations": ["apps/web/src/pages/shell/group-panel.tsx:486-492"],
+      "whyConflict": "PRD §9.2 要求不把成员压成三选一状态；当前映射在「正在回复」场景语义不准。是否需要区分「正在回复 / 后台工作中」取决于 RT-24 的活动胶囊语义合并，列为待澄清而非确定冲突。",
+      "correctBehavior": "成员行语义状态需要能表达「正在回复」与「后台工作中」并存，或明确只投影后台工作并在活动胶囊表达前台状态；由 RT-24 与 RT-22 联合澄清。",
+      "remediationOwner": "RT-24 + RT-22（FIX-GROUP-C / FIX-APPROVE-E）",
+      "remediationTask": "FIX-GROUP-C",
+      "blocksDevelopment": false
+    },
+    {
+      "id": "CF-08",
+      "kind": "confirmed",
+      "severity": "P3",
+      "title": "「AgentScope service connection failed」实现术语直达用户",
+      "currentFact": "adapters 在 Runtime 连接失败时写入用户可见的 Run error 文案「AgentScope service connection failed」，ExecutionCard 原样展示（见 main-app:group-chat-after-run）。这是圆桌之前的存量路径，但属于「API/adapter 文案向 UI 泄漏内部语义」的实例子。",
+      "prototypeEvidence": "prototype:branch-F-OFFLINE / F-RETRY —— 失败以 Agent 视角或中性状态行呈现，不出现执行器名称。",
+      "locations": [
+        "packages/adapters/src/agentscope-runtime.ts:909",
+        "apps/web/src/components/ai/ExecutionCard.tsx（原样渲染 error 文案）"
+      ],
+      "whyConflict": "执行器名称是实现术语，不应作为用户文案；不阻断圆桌开发，但应纳入文案修复批次。",
+      "correctBehavior": "错误投影使用用户可理解的语义（如「执行服务暂时不可用」），实现细节留在日志与审计。",
+      "remediationOwner": "FIX-APPROVE-E（存量文案修复，非 RT 任务）",
+      "remediationTask": "FIX-APPROVE-E",
+      "blocksDevelopment": false
+    },
+    {
+      "id": "CF-09",
+      "kind": "false-positive",
+      "severity": "P3",
+      "title": "原型工作页页头「3 项进行中」不是「入口计数」违规",
+      "currentFact": "DESIGN.md L14 禁止的是「工作入口/页签」显示数量；prototype:interaction:work-tab 页头「进行中的工作 3 项进行中」位于工作页内容区，属于页面内容而非入口。index.html 源码中存在 progress 数值但页面未渲染百分比（任务书已预警），本审计以实际渲染为准。",
+      "prototypeEvidence": "prototype:interaction:work-tab。",
+      "locations": ["docs/roundtable/prototype/index.html（work panel 头部）"],
+      "whyConflict": "无冲突；记录裁决依据，防止后续把「页面内计数」误当违规，或把「入口计数」误当允许。",
+      "correctBehavior": "入口与页签永不显示数量；工作页内的进行中计数按原型保留。",
+      "remediationOwner": "无（记录性裁决）",
+      "remediationTask": null,
+      "blocksDevelopment": false
+    },
+    {
+      "id": "CF-10",
+      "kind": "confirmed",
+      "severity": "P2",
+      "title": "RT-03 输出「服务端列表、搜索、群选择器和未读过滤」表述会诱导后端任务实现 UI 面",
+      "currentFact": "计划把「群选择器」写成 RT-03 的输出；在途 PR #118 实际是纯后端（排除查询），未引入 UI，但任务文本会诱导后续实现者补 UI。",
+      "prototypeEvidence": "DESIGN.md L8「该对话不进入侧边栏」；pair 不出现在列表/搜索/选择器是负向查询契约（PRD §4.1、AC18）。",
+      "locations": ["roundtable-implementation-plan.md:183"],
+      "whyConflict": "RT-03 应为 backend-only；列表/选择器等 surface 归 RT-09/RT-22。",
+      "correctBehavior": "改写为服务端排除行为的查询契约表述；本 PR 已修订。",
+      "remediationOwner": "本 PR（计划修订完成）；RT-03 保持 backend-only",
+      "remediationTask": null,
+      "blocksDevelopment": false
+    },
+    {
+      "id": "CF-11",
+      "kind": "confirmed",
+      "severity": "P2",
+      "title": "RT-25 的 lease/fence/409/recovering 必须显式声明为非用户可见",
+      "currentFact": "RT-25（已暂停，未开工）的任务文本在输出与验收中合法使用 queued/lease/fence/409/recovering 作为内部语义；此前任务提示词曾将其当作产品文案方向。计划文本缺少显式禁令，验证器也无法检查未声明的可见性。",
+      "prototypeEvidence": "DESIGN.md L24（工作页签不暴露实现术语）；架构 §4.7（这些状态属于 admission 机制）；RT-20 GroupWorkState 是唯一用户可见状态词表。",
+      "locations": ["roundtable-implementation-plan.md:700-701"],
+      "whyConflict": "不消除表述歧义，RT-25 恢复时可能再次把内部状态写成 UI 文案；预防性修订。",
+      "correctBehavior": "计划增加边界条款（本 PR 已加）；JSON 中这些词全部 userVisible:false，验证器强制。",
+      "remediationOwner": "本 PR（计划修订完成）；RT-25 恢复时遵守",
+      "remediationTask": null,
+      "blocksDevelopment": false
+    },
+    {
+      "id": "CF-12",
+      "kind": "missing-requirement",
+      "severity": "P3",
+      "title": "顶部「工作」直达入口无归属，main 上不存在",
+      "currentFact": "原型顶栏右侧有「工作」按钮直达工作页签；main 顶栏只有群胶囊（打开默认详情页签）。RT-22 只交付页签本身，未含顶部窄入口；RT-23 未开工。",
+      "prototypeEvidence": "prototype:main-stage-1（顶栏「工作」按钮）；DESIGN.md L14/L16「顶部『工作』……只负责直达对应页签」。",
+      "locations": ["apps/web/src/pages/Shell.tsx（顶栏无工作直达）"],
+      "whyConflict": "原型要求存在但无任务归属；工作页（RT-23）未交付前入口无目标页，列为 P3 缺失。",
+      "correctBehavior": "顶部窄入口随 FIX-GROUP-C / RT-23 落地：点击直达工作页签，不显示数量。",
+      "remediationOwner": "RT-22 后续修复 + RT-23",
+      "remediationTask": "FIX-GROUP-C",
+      "blocksDevelopment": false
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "原型聊天区文案中的 Run / attempt / steering / support Run 是否保留",
+      "context": "CF-04：任务规则禁止聊天消息出现实现术语；原型 U-ACTIVE/C-MULTI/F-OFFLINE/F-RETRY/F-DEDUPE 六处实际渲染包含它们；DESIGN.md 术语禁令只覆盖工作页签。",
+      "options": [
+        "A：扩展禁令到聊天区——先出独立原型修订 PR 改写 6 处文案，RT-24 按新文案实现",
+        "B：维持原型逐字文案为权威——RT-24 照抄，任务规则让步"
+      ],
+      "status": "resolved",
+      "resolution": "A（2026-10-24 用户裁决）：扩展禁令到聊天区。原型 6 处文案已改写，DESIGN.md 新增聊天区文案边界条款（stacked PR codex/rt-d1-prototype-copy-revision）。",
+      "blocks": ["CF-04", "RT-24 文案规范"]
+    },
+    {
+      "id": "D2",
+      "title": "侧边栏「后台任务」入口是否显示计数徽标",
+      "context": "CF-05：原型侧边栏显示徽标 6；DESIGN.md L14 的「不显示数量」只写明适用于右栏工作入口与页签，理由是 Task/Agent/Run 计数口径不同。侧边栏全局中心是否同样适用需裁决。",
+      "options": ["A：同样不显示数量（与 L14 理由一致）", "B：显示后台任务计数（按原型现状）"],
+      "status": "resolved",
+      "resolution": "B（2026-10-24 用户裁决）：保留徽标。口径定义为「运行中的后台任务数」——单一口径的客观计数（PRD O07「后台仍有 N 项」先例），不属于 DESIGN L14 针对混合口径工作入口的禁令范围。",
+      "blocks": ["CF-05", "FIX-SIDEBAR-G"]
+    }
+  ],
+  "remediationPlan": [
+    {
+      "taskId": "FIX-MSG-A",
+      "title": "群消息与公开委派：重做 RT-08 公开委派渲染并剥离私有回执路径",
+      "surface": "group-chat / chat-message / receipt",
+      "dependsOn": ["RT-06（已合入）", "RT-07（已合入）", "D1 已裁决（A）"],
+      "files": [
+        "apps/web/src/components/ai/PublicDelegationMessage.tsx",
+        "apps/web/src/lib/public-collaboration.ts",
+        "apps/web/src/pages/Shell.tsx（bot_message_sent/received 分支）",
+        "apps/web/e2e/group-chats.spec.ts"
+      ],
+      "prototypeRefs": [
+        "prototype:main-stage-2",
+        "prototype:main-stage-3",
+        "prototype:branch-F-OFFLINE",
+        "DESIGN.md:L8",
+        "DESIGN.md:L23",
+        "DESIGN.md:L24"
+      ],
+      "acceptance": [
+        "公开委派渲染为发送者 + 自然 @ 正文 + 语义药丸（已派给 X）；无 queued/running/completed 等执行状态标签，无 data-status 执行枚举",
+        "群 Thread 的协作 block 不再打开 peer 对话视图",
+        "失败呈现为红色「未发送给 X」行（对齐原型）",
+        "键盘可达、390px 窄屏不横向溢出",
+        "Web 组件测试与 Playwright 断言按新契约重写"
+      ],
+      "screenshotRequirements": ["重放 prototype:main-stage-2/3 的等价生产状态并截图对比"]
+    },
+    {
+      "taskId": "FIX-PAIR-B",
+      "title": "private receipt 与 pair 浮窗：RT-09 实现",
+      "surface": "receipt / pair-float / sidebar(负向)",
+      "dependsOn": ["RT-05（依赖 RT-03 #118、RT-04 已合入）"],
+      "files": [
+        "apps/web/src/components/ai/（receipt 行 + pair 浮窗组件）",
+        "apps/web/src/pages/Shell.tsx（来源会话回执渲染、onOpenPeerMessages 改造）"
+      ],
+      "prototypeRefs": [
+        "prototype:branch-X-BOT",
+        "prototype:branch-Q-MULTI",
+        "prototype:interaction:receipt-expanded",
+        "prototype:interaction:pair-float",
+        "prototype:branch-Q-UNAVAILABLE",
+        "DESIGN.md:L8",
+        "DESIGN.md:L10",
+        "DESIGN.md:L11"
+      ],
+      "acceptance": [
+        "来源会话只保留一行独立轻回执（已发消息给 X ›），位于两条消息之间、不嵌进回复气泡",
+        "多目标点击在原行下方展开头像+名字紧凑名单",
+        "浮窗为整张独立浮窗：顶部居中身份胶囊、只读、无输入框、底部唯一「关闭聊天」",
+        "pair 不出现在侧边栏、列表、搜索、群选择器、未读数",
+        "Bot 停用后历史仍可查看、新投递显示「未发送给 X」"
+      ],
+      "screenshotRequirements": [
+        "单目标回执、展开名单、浮窗打开三张截图对比 prototype:branch-X-BOT / receipt-expanded / pair-float"
+      ]
+    },
+    {
+      "taskId": "FIX-GROUP-C",
+      "title": "群详情基础页：RT-22 后续修复（悬停操作、状态语义、顶部直达挂点）",
+      "surface": "right-rail:library / right-rail:members / chat-header",
+      "dependsOn": ["RT-22（已合入）"],
+      "files": [
+        "apps/web/src/pages/shell/group-panel.tsx",
+        "apps/web/src/pages/Shell.tsx（顶栏工作直达挂点）"
+      ],
+      "prototypeRefs": [
+        "prototype:interaction:rail-library",
+        "prototype:interaction:rail-members",
+        "prototype:main-stage-1",
+        "DESIGN.md:L14",
+        "DESIGN.md:L19"
+      ],
+      "acceptance": [
+        "资料库行悬停出现更多操作，行保持无外框、无逐行「打开」按钮",
+        "成员行状态语义与 RT-24 澄清结论一致（CF-07）",
+        "顶部「工作」窄入口不显示数量（CF-12；工作页未上线前可指向占位页签）"
+      ],
+      "screenshotRequirements": ["资料库行悬停态截图对比 prototype:interaction:rail-library"]
+    },
+    {
+      "taskId": "FIX-WORK-D",
+      "title": "工作页与 Task 详情：RT-23 实现",
+      "surface": "right-rail:work / task-detail / chat chip / composer",
+      "dependsOn": ["RT-14（#117）", "RT-20（依赖 RT-18 链）", "RT-22（已合入）"],
+      "files": [
+        "apps/web/src/pages/shell/group-panel.tsx（work 面板）",
+        "apps/web/src/components/ai/（task chip / 补充要求挂点）"
+      ],
+      "prototypeRefs": [
+        "prototype:interaction:work-tab",
+        "prototype:interaction:task-detail",
+        "prototype:interaction:amend-chip",
+        "prototype:branch-A-COMPLETED",
+        "DESIGN.md:L14",
+        "DESIGN.md:L15",
+        "DESIGN.md:L22",
+        "DESIGN.md:L24"
+      ],
+      "acceptance": [
+        "工作树为同骨架扁平行 + 一层子任务；点击原位切换任务详情，不叠加第二层抽屉/模态",
+        "详情只显示负责人、当前动作、阶段节点、最近进展、原始要求、按时间追加的补充、当前有效口径",
+        "「追加复核」按 prototype:branch-A-COMPLETED 位置与结构呈现（CF-03 修复落点）",
+        "「补充要求」回到聊天输入框并携带 task 引用 chip；「停止」只命中该 Task",
+        "不显示百分比（批处理真实计数除外）；不出现 Run/attempt/lease/revision 等术语",
+        "消息 chip、工作页、Task 详情命中同一 taskId"
+      ],
+      "screenshotRequirements": [
+        "work-tab、task-detail、amend-chip 三态截图对比 prototype:interaction:*"
+      ]
+    },
+    {
+      "taskId": "FIX-APPROVE-E",
+      "title": "审批、失败和恢复投影：RT-12/RT-24/RT-28 UI 面与存量文案修复",
+      "surface": "approval-card / chat-message / activity-capsule / execution-card",
+      "dependsOn": [
+        "RT-12（依赖 RT-11、CARD-01A、CARD-01B）",
+        "RT-24（合流任务）",
+        "RT-28",
+        "CARD-01E（最终视觉验收）",
+        "D1 已裁决（A）"
+      ],
+      "files": [
+        "packages/adapters/src/agentscope-runtime.ts:909（错误文案）",
+        "apps/web/src/components/ai/ExecutionCard.tsx（错误展示）",
+        "apps/web/src/pages/Shell.tsx（状态消息/审批卡渲染）"
+      ],
+      "prototypeRefs": [
+        "prototype:main-stage-7",
+        "prototype:branch-P-SCOPED",
+        "prototype:branch-P-ALLOW",
+        "prototype:branch-P-DENY",
+        "prototype:branch-P-STALE",
+        "prototype:branch-X-GROUP-APPROVE",
+        "prototype:branch-X-GROUP-FAIL",
+        "prototype:branch-F-OFFLINE",
+        "prototype:branch-F-RETRY",
+        "prototype:branch-F-PARTIAL"
+      ],
+      "acceptance": [
+        "审批卡内嵌在消息流：问题 + 拒绝/允许一次（或暂不加入/加入并继续），允许后显示授权范围",
+        "RT-12、RT-24、RT-28 负责业务状态和持久事实；CARD-01A 提供协议和投影；CARD-01B 提供 Card Shell 和 Interaction renderer",
+        "不独立创建第二套审批卡、状态 renderer 或 group_membership 视觉；CARD-01E 承担最终视觉验收",
+        "失败/恢复状态行遵循 D1 裁决后的原型文案；不允许出现执行器名称（CF-08：AgentScope 字样清除）",
+        "跨会话审批卡（把 A 加入群？）只在来源单聊出现，拒绝/过期不产生目标群消息"
+      ],
+      "screenshotRequirements": ["P-SCOPED/P-ALLOW/P-DENY/X-GROUP-APPROVE/X-GROUP-FAIL 五态生产截图对比"]
+    },
+    {
+      "taskId": "FIX-GLOBAL-F",
+      "title": "响应式与键盘行为：跨 surface 一致性收尾",
+      "surface": "all / narrow-screen / keyboard",
+      "dependsOn": ["FIX-MSG-A", "FIX-PAIR-B", "FIX-GROUP-C", "FIX-WORK-D", "FIX-APPROVE-E"],
+      "files": ["apps/web/e2e/*.spec.ts（narrow/keyboard 断言）"],
+      "prototypeRefs": [
+        "prototype:interaction:narrow-main",
+        "prototype:interaction:narrow-overlay",
+        "prototype:interaction:narrow-capsule-opens-work",
+        "DESIGN.md:L12"
+      ],
+      "acceptance": [
+        "窄屏隐藏左侧导航、群详情面板变覆盖层、（原型的场景选择器仅评审工具不落生产）",
+        "聊天内任务状态与活动胶囊直达工作页签；页签键盘方向键导航保持"
+      ],
+      "screenshotRequirements": ["430px 群聊 + 覆盖层两张截图对比 prototype:interaction:narrow-*"]
+    },
+    {
+      "taskId": "FIX-SIDEBAR-G",
+      "title": "侧边栏「后台任务」全局任务中心（新 surface，含 D2 裁决）",
+      "surface": "sidebar",
+      "dependsOn": ["D2 已裁决（B）", "RT-20"],
+      "files": ["apps/web/src/pages/Shell.tsx（侧边栏入口）"],
+      "prototypeRefs": ["prototype:main-stage-1", "DESIGN.md:L20", "PRD §9.3"],
+      "acceptance": [
+        "侧边栏「后台任务」入口展示跨会话工作，与群内「工作」读取同一投影（不复制状态）",
+        "计数徽标按 D2=B：单一口径后台任务数（运行中的后台任务）"
+      ],
+      "screenshotRequirements": ["与 prototype:main-stage-1 侧边栏对比截图"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "RT-00",
+      "title": "建立 gate 和计划验证器",
+      "deliveryStatus": "merged(PR #103)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["api", "worker", "core"],
+      "exposedTerms": [
+        { "term": "ROUNDTABLE_*_ENABLED", "userVisible": false },
+        { "term": "ROUNDTABLE_FEATURE_DISABLED", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "不把部署变量或完整服务端配置暴露给 Web（任务书原文）；无 UI 面。"
+    },
+    {
+      "id": "RT-01",
+      "title": "固化跨模块类型",
+      "deliveryStatus": "merged(PR #104)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["contracts", "core"],
+      "exposedTerms": [
+        { "term": "DeliveryBatchKey", "userVisible": false },
+        { "term": "RuntimeTaskId", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "类型与 locator 仅服务导航与后端边界。"
+    },
+    {
+      "id": "RT-02",
+      "title": "增加固定 Agent pair 身份",
+      "deliveryStatus": "merged(PR #109/#112)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["db"],
+      "exposedTerms": [{ "term": "pairKey", "userVisible": false }],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "pairKey 不进入 UI 和工具 contract（架构 §3.4）。"
+    },
+    {
+      "id": "RT-03",
+      "title": "实施 pair Thread 访问策略",
+      "deliveryStatus": "pending(PR #118, 暂停中)",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["DESIGN.md:L8", "prototype:branch-Q-ORIGINS"],
+      "affectedSurfaces": ["api", "db"],
+      "exposedTerms": [{ "term": "agent_pair", "userVisible": false }],
+      "conflictIds": ["CF-10"],
+      "remediationOwner": "本 PR 计划修订",
+      "notes": "可见性负向契约：pair 不出现在列表/搜索/选择器/未读；只读投影按 origin 逐条授权；UI 表面归 RT-09/RT-22。"
+    },
+    {
+      "id": "RT-04",
+      "title": "实施来源 Thread 审批",
+      "deliveryStatus": "merged(PR #110)",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["prototype:main-stage-7", "prototype:branch-P-SCOPED", "DESIGN.md:L25"],
+      "affectedSurfaces": ["approval-card", "api", "db"],
+      "exposedTerms": [
+        { "term": "executionThreadId", "userVisible": false },
+        { "term": "presentationThreadId", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "审批出现在来源可见 Thread（presentationThreadId），这是 UI 投影语义；执行定位字段不可见。"
+    },
+    {
+      "id": "RT-05",
+      "title": "把 private message_bot 迁入 pair Thread",
+      "deliveryStatus": "not-started",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["prototype:branch-X-BOT", "DESIGN.md:L8"],
+      "affectedSurfaces": ["receipt", "api", "adapters"],
+      "exposedTerms": [
+        { "term": "delivery key", "userVisible": false },
+        { "term": "pairThreadId", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "receipt 是用户可见元素：轻回执语义（一行独立行）在这里定形，视觉归 RT-09。"
+    },
+    {
+      "id": "RT-06",
+      "title": "增加群内 public message_bot",
+      "deliveryStatus": "merged(PR #107/#115)",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["prototype:main-stage-2", "prototype:main-stage-3", "DESIGN.md:L8"],
+      "affectedSurfaces": ["chat-message", "adapters", "api"],
+      "exposedTerms": [
+        { "term": "bot_message_sent", "userVisible": false },
+        { "term": "support Run", "userVisible": false }
+      ],
+      "conflictIds": ["CF-02"],
+      "remediationOwner": "RT-08（渲染面）",
+      "notes": "后端已把协作 block 写进群 Thread；「前端不伪造确认消息」是投影契约。当前 Web 渲染违反公开/私下分离（CF-02），由 RT-08 修复。"
+    },
+    {
+      "id": "RT-07",
+      "title": "增加结构化 Agent mention",
+      "deliveryStatus": "merged(PR #108)",
+      "classification": "direct-ui",
+      "prototypeRefs": ["prototype:main-stage-2", "DESIGN.md:L9"],
+      "affectedSurfaces": ["chat-message"],
+      "exposedTerms": [],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "已合入实现（AgentMentionText）符合约束：仅结构化 inline 生成链接、无链接回退、不可用身份不跳转；mention 只导航不创建任务。"
+    },
+    {
+      "id": "RT-08",
+      "title": "渲染公开群委派消息",
+      "deliveryStatus": "pending(PR #116, 暂停中)",
+      "classification": "direct-ui",
+      "prototypeRefs": [
+        "prototype:main-stage-2",
+        "prototype:main-stage-3",
+        "prototype:branch-F-OFFLINE",
+        "DESIGN.md:L8",
+        "DESIGN.md:L23",
+        "DESIGN.md:L24"
+      ],
+      "affectedSurfaces": ["chat-message", "activity-capsule"],
+      "exposedTerms": [
+        { "term": "queued", "userVisible": false },
+        { "term": "running", "userVisible": false },
+        { "term": "completed", "userVisible": false },
+        {
+          "term": "failed",
+          "userVisible": true,
+          "decisionRef": "prototype:branch-F-OFFLINE 失败呈现（未发送给 X）",
+          "note": "以语义文案呈现，非状态枚举标签"
+        },
+        { "term": "sourceRunId", "userVisible": false }
+      ],
+      "conflictIds": ["CF-01", "CF-02"],
+      "remediationOwner": "RT-08（重开 #116 按修订任务描述）",
+      "notes": "修复任务 FIX-MSG-A。"
+    },
+    {
+      "id": "RT-09",
+      "title": "实现 private receipt 和 pair 浮窗",
+      "deliveryStatus": "not-started",
+      "classification": "direct-ui",
+      "prototypeRefs": [
+        "prototype:branch-X-BOT",
+        "prototype:branch-Q-MULTI",
+        "prototype:branch-Q-UNAVAILABLE",
+        "prototype:interaction:pair-float",
+        "prototype:interaction:receipt-expanded",
+        "DESIGN.md:L8",
+        "DESIGN.md:L10",
+        "DESIGN.md:L11"
+      ],
+      "affectedSurfaces": ["receipt", "pair-float"],
+      "exposedTerms": [],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "修复任务 FIX-PAIR-B 的实施载体；浮窗不进侧边栏、无输入能力。"
+    },
+    {
+      "id": "RT-10",
+      "title": "扩展多 mention 指令分段",
+      "deliveryStatus": "merged(PR #113)",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["prototype:branch-U-MULTI", "prototype:branch-A-AMBIGUOUS"],
+      "affectedSurfaces": ["chat-message", "core", "api"],
+      "exposedTerms": [],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "「无法可靠分段时的澄清结果」是用户可见消息：对齐 A-AMBIGUOUS 的候选选择 UI 与「尚未修改任何执行」胶囊。"
+    },
+    {
+      "id": "RT-11",
+      "title": "实施已入群 Bot 的 message_group",
+      "deliveryStatus": "not-started",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["prototype:branch-X-GROUP", "DESIGN.md:L7"],
+      "affectedSurfaces": ["receipt", "chat-message", "api", "adapters"],
+      "exposedTerms": [
+        {
+          "term": "queued",
+          "userVisible": false,
+          "note": "目标 Run 先保持 queued 是内部语义；来源回显只显示「已接手 · 正在推进」类语义状态"
+        }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "来源回显卡对齐 prototype:branch-X-GROUP（已入群 / 已接手·正在推进 / 去现场看看）。"
+    },
+    {
+      "id": "RT-12",
+      "title": "增加跨群成员审批和恢复",
+      "deliveryStatus": "not-started",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": [
+        "prototype:branch-X-GROUP-APPROVE",
+        "prototype:branch-X-GROUP-FAIL",
+        "prototype:branch-X-RETURN",
+        "DESIGN.md:L7"
+      ],
+      "affectedSurfaces": ["approval-card", "chat-message"],
+      "exposedTerms": [],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "「是否把 A 加入群？」审批卡与最终状态只在来源单聊；无成员管理权直接失败不显示假审批。group_membership 严格协议来自 CARD-01A，Card Shell 来自 CARD-01B，最终视觉由 CARD-01E 验收；依赖 RT-04、RT-11、CARD-01A、CARD-01B。"
+    },
+    {
+      "id": "RT-13",
+      "title": "建立 Task 指令日志并迁移 prompt 路径",
+      "deliveryStatus": "merged(PR #114)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["db", "core", "adapters"],
+      "exposedTerms": [
+        { "term": "revision", "userVisible": false },
+        { "term": "seq", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "envelope 是输入组装逻辑；revision 只服务端排序用，不进 UI。"
+    },
+    {
+      "id": "RT-14",
+      "title": "按 Task 状态应用补充",
+      "deliveryStatus": "pending(PR #117, 暂停中)",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": [
+        "prototype:branch-A-COMPLETED",
+        "prototype:branch-A-ACTIVE",
+        "prototype:branch-A-BACKGROUND"
+      ],
+      "affectedSurfaces": ["api", "db", "chat-message(由 RT-23 承载)"],
+      "exposedTerms": [
+        { "term": "steering", "userVisible": false },
+        { "term": "revision", "userVisible": false }
+      ],
+      "conflictIds": ["CF-03"],
+      "remediationOwner": "RT-23（展示）；计划已修订",
+      "notes": "状态转换的事实供 RT-23 投影；「追加复核」展示移出 RT-14 验收。"
+    },
+    {
+      "id": "RT-15",
+      "title": "验证 AgentScope 后台安全能力",
+      "deliveryStatus": "merged(探针报告 #106)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["runtime"],
+      "exposedTerms": [],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "探针结论：delegation 继续 suspended（报告第 7/8 节）。"
+    },
+    {
+      "id": "RT-16",
+      "title": "建立后台执行身份和注册事务",
+      "deliveryStatus": "paused(2026-10-22 官方暂停)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["db", "runtime"],
+      "exposedTerms": [
+        {
+          "term": "runtimeTaskId",
+          "userVisible": false,
+          "note": "任务书原文：内部 runtime ID 不暴露给用户"
+        }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": ""
+    },
+    {
+      "id": "RT-17",
+      "title": "处理后台 revision 和迟到结果",
+      "deliveryStatus": "blocked(RT-16 暂停)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["db", "core"],
+      "exposedTerms": [
+        { "term": "revision", "userVisible": false },
+        { "term": "fence", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": ""
+    },
+    {
+      "id": "RT-18",
+      "title": "完成后台生命周期和隔离 delivery",
+      "deliveryStatus": "blocked(RT-16 暂停)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["db", "worker"],
+      "exposedTerms": [
+        { "term": "lease", "userVisible": false },
+        { "term": "delivery key", "userVisible": false },
+        { "term": "attempt", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "结果以执行 Agent 身份的新消息呈现（O01），消息本身是普通消息，不携带内部身份字段。"
+    },
+    {
+      "id": "RT-19",
+      "title": "收紧取消、成员和资源边界",
+      "deliveryStatus": "not-started",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["api", "db"],
+      "exposedTerms": [],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "取消/移群的效果经工作投影与消息呈现，本任务不定义 UI。"
+    },
+    {
+      "id": "RT-20",
+      "title": "建立群工作和审计投影",
+      "deliveryStatus": "not-started",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": [
+        "prototype:interaction:work-tab",
+        "prototype:interaction:task-detail",
+        "DESIGN.md:L14",
+        "DESIGN.md:L24"
+      ],
+      "affectedSurfaces": ["right-rail:work", "api", "core"],
+      "exposedTerms": [
+        {
+          "term": "queued",
+          "userVisible": true,
+          "decisionRef": "architecture:§3.8 GroupWorkState 是面向用户的离散状态词表",
+          "note": "呈现为「排队中/等待开始」类语义文案，不暴露枚举名"
+        },
+        {
+          "term": "percent",
+          "userVisible": false,
+          "note": "禁止虚构百分比；仅客观可知批处理显示真实计数"
+        }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "GroupWorkState 是唯一允许的用户可见工作状态词表。"
+    },
+    {
+      "id": "RT-21",
+      "title": "补齐群资料、例行任务和成员查询",
+      "deliveryStatus": "merged(PR #105)",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": [
+        "prototype:interaction:rail-library",
+        "prototype:interaction:rail-members",
+        "DESIGN.md:L20"
+      ],
+      "affectedSurfaces": ["right-rail:library", "right-rail:members", "right-rail:details", "api"],
+      "exposedTerms": [],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "read model 按 group scope 服务端过滤，禁止客户端全局过滤。"
+    },
+    {
+      "id": "RT-22",
+      "title": "还原群聊胶囊和右栏基础页",
+      "deliveryStatus": "merged(PR #111)",
+      "classification": "direct-ui",
+      "prototypeRefs": [
+        "prototype:main-stage-1",
+        "prototype:interaction:rail-details",
+        "prototype:interaction:rail-library",
+        "prototype:interaction:rail-members",
+        "prototype:interaction:narrow-overlay",
+        "DESIGN.md:L14",
+        "DESIGN.md:L15",
+        "DESIGN.md:L16",
+        "DESIGN.md:L17",
+        "DESIGN.md:L18",
+        "DESIGN.md:L19"
+      ],
+      "affectedSurfaces": [
+        "chat-header",
+        "right-rail:details",
+        "right-rail:library",
+        "right-rail:members",
+        "right-rail:work(占位)"
+      ],
+      "exposedTerms": [],
+      "conflictIds": ["CF-06", "CF-07", "CF-12"],
+      "remediationOwner": "FIX-GROUP-C",
+      "notes": "已合入实现经截图核对符合四页签/无框编辑/日期分组/无框成员行；工作页签诚实占位「尚未接入」。"
+    },
+    {
+      "id": "RT-23",
+      "title": "实现工作页和 Task 详情",
+      "deliveryStatus": "not-started",
+      "classification": "direct-ui",
+      "prototypeRefs": [
+        "prototype:interaction:work-tab",
+        "prototype:interaction:task-detail",
+        "prototype:interaction:amend-chip",
+        "prototype:branch-A-COMPLETED",
+        "DESIGN.md:L15",
+        "DESIGN.md:L22",
+        "DESIGN.md:L24"
+      ],
+      "affectedSurfaces": ["right-rail:work", "task-detail", "composer"],
+      "exposedTerms": [
+        { "term": "runtime task", "userVisible": false },
+        { "term": "lease", "userVisible": false },
+        { "term": "hop", "userVisible": false },
+        { "term": "revision", "userVisible": false }
+      ],
+      "conflictIds": ["CF-03"],
+      "remediationOwner": null,
+      "notes": "修复任务 FIX-WORK-D 的实施载体。"
+    },
+    {
+      "id": "RT-24",
+      "title": "补齐群路由、冲突和收尾行为",
+      "deliveryStatus": "not-started",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": [
+        "prototype:branch-U-ACTIVE",
+        "prototype:branch-U-CONFLICT",
+        "prototype:branch-C-MULTI",
+        "prototype:branch-C-ROOTS",
+        "prototype:branch-C-LATE",
+        "prototype:branch-F-OFFLINE",
+        "prototype:branch-F-PARTIAL",
+        "DESIGN.md:L23"
+      ],
+      "affectedSurfaces": ["chat-message", "activity-capsule"],
+      "exposedTerms": [
+        { "term": "Run", "userVisible": false, "decisionRef": "D1" },
+        { "term": "attempt", "userVisible": false, "decisionRef": "D1" },
+        { "term": "steering", "userVisible": false, "decisionRef": "D1" },
+        { "term": "support Run", "userVisible": false, "decisionRef": "D1" }
+      ],
+      "conflictIds": ["CF-04", "CF-07"],
+      "remediationOwner": "D1 裁决后执行",
+      "notes": "状态/冲突/部分失败消息规范对齐原型渲染；D1 未裁决前不得新增含这些术语的文案。"
+    },
+    {
+      "id": "RT-25",
+      "title": "实施持久 session admission lease",
+      "deliveryStatus": "not-started(分支零提交, 暂停中)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["db", "worker", "runtime"],
+      "exposedTerms": [
+        { "term": "lease", "userVisible": false },
+        { "term": "fence", "userVisible": false },
+        { "term": "409", "userVisible": false },
+        { "term": "recovering", "userVisible": false },
+        {
+          "term": "queued",
+          "userVisible": false,
+          "note": "admission 队列语义；用户可见侧只允许 GroupWorkState"
+        }
+      ],
+      "conflictIds": ["CF-11"],
+      "remediationOwner": "本 PR 计划修订（预防性）",
+      "notes": "恢复工作时只能做后端；不得引入任何新界面语义。"
+    },
+    {
+      "id": "RT-26",
+      "title": "隔离和恢复 AgentScope pending state",
+      "deliveryStatus": "not-started",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["runtime", "db"],
+      "exposedTerms": [
+        { "term": "checkpoint", "userVisible": false },
+        { "term": "suspensionKey", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": ""
+    },
+    {
+      "id": "RT-27",
+      "title": "实施确定性 steering 和 session 排队接入",
+      "deliveryStatus": "not-started",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["api", "worker"],
+      "exposedTerms": [
+        { "term": "steering", "userVisible": false },
+        { "term": "queued", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "steering 效果的用户反馈由 RT-24 活动胶囊表达。"
+    },
+    {
+      "id": "RT-28",
+      "title": "实施 blocked helper 的受控续跑",
+      "deliveryStatus": "not-started",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["prototype:branch-P-SCOPED", "prototype:main-stage-7", "DESIGN.md:L25"],
+      "affectedSurfaces": ["approval-card", "chat-message", "runtime"],
+      "exposedTerms": [
+        { "term": "background_continuation", "userVisible": false },
+        { "term": "allowlist", "userVisible": false }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "问题与答案在来源 Thread 呈现；pair Thread 不可写；内部 scope 名不进 UI。"
+    },
+    {
+      "id": "RT-29",
+      "title": "恢复生产 run_subagent(background:true)",
+      "deliveryStatus": "blocked(RT-16 暂停)",
+      "classification": "backend-only",
+      "prototypeRefs": [],
+      "affectedSurfaces": ["runtime", "adapters"],
+      "exposedTerms": [
+        { "term": "run_subagent", "userVisible": false },
+        {
+          "term": "taskId",
+          "userVisible": false,
+          "note": "工具向父 Run 返回产品 taskId 是 Agent 间数据，不进入用户界面"
+        }
+      ],
+      "conflictIds": [],
+      "remediationOwner": null,
+      "notes": "「Agent 仍可说话」的呈现由活动胶囊（RT-24）承担。"
+    },
+    {
+      "id": "RT-30",
+      "title": "运行集成、故障和灰度验收",
+      "deliveryStatus": "not-started",
+      "classification": "ui-projection-contract",
+      "prototypeRefs": ["prototype:main-stage-1", "prototype:main-stage-8", "DESIGN.md:L4"],
+      "affectedSurfaces": ["all", "e2e"],
+      "exposedTerms": [],
+      "conflictIds": ["CF-05", "CF-08"],
+      "remediationOwner": null,
+      "notes": "96 场景按 DESIGN L4 分流：8+28 进原型/E2E 视觉验收，其余 API/Runtime/投影测试；不新增同构 UI。"
+    }
+  ]
+}

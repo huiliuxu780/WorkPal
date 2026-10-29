@@ -142,14 +142,16 @@ import {
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
   promptSegment,
+  RoundtableFeatureDisabledError,
   turnExecutionForSource,
   userTurnCollaboration,
 } from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import type { PrismaClient, ResolveInterventionOutcome, ThreadEvents } from "@rakazo/db";
 import {
   AvatarChangeDenied,
   acknowledgeAvatarFailure,
   appendEventInTransaction,
+  applyTaskAmendment,
   avatarChangeView,
   BotSectionNameConflictError,
   CannotDeleteDefaultSpaceError,
@@ -165,6 +167,7 @@ import {
   createRepos,
   createSpaceForMember,
   createThreadMessageInTransaction,
+  createThreadPolicy,
   defaultModelCredentialCandidates,
   deleteEmptySpaceForMember,
   deleteUnreferencedCredentialSecret,
@@ -180,15 +183,19 @@ import {
   issueMessagingLinkCode,
   listBotAvatarChanges,
   listDescendantRunIds,
+  loadAttentionPage,
   loadBotAvatarStates,
   loadExecutionSnapshot,
   loadRunActivityPage,
-  lockOwnedGroup,
+  lockOwnedStandardGroupThread,
   ManualRetryDenied,
   newestModelCredentialOrder,
   newestVoiceCredentialOrder,
   Prisma,
   parseComputerMode,
+  projectExecutionDisplayBlocks,
+  projectExecutionInteractions,
+  readTaskInstructionView,
   releaseSpaceDeletionClaim,
   renewSpaceDeletionClaim,
   restoreBotUnderComputerQuota,
@@ -200,8 +207,11 @@ import {
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
   summarizeModelUsage,
+  TaskAmendmentRejected,
+  TaskInstructionIntegrityError,
   touchGroupUpdatedAt,
   undoBotAvatarChangeInTransaction,
+  updateOutboundDraftRevision,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "./agent-secrets.js";
@@ -217,6 +227,7 @@ import {
   listArtifactVersions,
   listSpaceArtifacts,
 } from "./artifacts.js";
+import { CURRENT_USER_AVATAR_STYLE } from "./avatar-style.js";
 import {
   appendAvatarUpdatedEvent,
   botProfileLabelsChanged,
@@ -227,6 +238,14 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import { createGroupPanelQueries } from "./group-queries.js";
+import {
+  parseGroupArtifactListQuery,
+  parseGroupPanelQuery,
+  toWireArtifactPage,
+  toWireGroupMembers,
+  toWireGroupRoutines,
+} from "./group-queries-rpc.js";
 import { searchIntegrationCatalog } from "./integration-catalog.js";
 import {
   dismissMcpServerApprovals,
@@ -263,6 +282,7 @@ import {
   promptFocus,
   startOnboarding,
 } from "./onboarding.js";
+import { mapRoutine } from "./routines.js";
 import { getRunDetail, listSpaceRuns } from "./runs.js";
 import { addScreenProxyCapability } from "./screen-proxy.js";
 import { querySpaceSearch } from "./search.js";
@@ -550,8 +570,16 @@ function mcpAssignmentDto(row: {
 
 export interface RouterDeps {
   cloudAgent?: CloudAgentConnection | null;
+  /**
+   * CARD-01A total gate. Absent/false keeps every snapshot response exactly as
+   * before; true adds the strict interaction/display projection and capability.
+   */
+  cardsUnifiedV2?: boolean;
   prisma: PrismaClient;
   events: ThreadEvents;
+  /** Test seams for RT-14 Task amendment application and its product read model. */
+  applyTaskAmendment?: typeof applyTaskAmendment;
+  readTaskInstructionView?: typeof readTaskInstructionView;
   auth: Auth;
   jobs: JobPublisher;
   sandbox: SandboxProvider;
@@ -776,6 +804,20 @@ export function createRouter(deps: RouterDeps) {
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
   const groupRepos = createGroupRepos(deps.prisma);
+  const threadPolicy = createThreadPolicy(deps.prisma);
+  const resolveHumanWritableThreadTarget = async (
+    actor: Actor,
+    input: { botId?: string; groupId?: string },
+  ) => {
+    const target = await resolveThreadTarget(deps.prisma, actor, input);
+    await threadPolicy.assertResolvedHumanCanWrite({
+      actor,
+      threadId: target.threadId,
+      classification: target.kind,
+    });
+    return target;
+  };
+  const groupPanelQueries = createGroupPanelQueries(deps);
   const turnRouting =
     deps.turnRouting ??
     createTurnRoutingProvider({
@@ -2049,6 +2091,60 @@ export function createRouter(deps: RouterDeps) {
         }
         return { ok: true as const };
       }),
+      artifacts: {
+        list: authed.groups.artifacts.list.handler(async ({ context, input }) => {
+          const query = parseGroupArtifactListQuery(context.actor, input);
+          try {
+            return toWireArtifactPage(await groupPanelQueries.listArtifacts(query));
+          } catch (error) {
+            if (error instanceof ArtifactListCursorError) {
+              throw new ORPCError("BAD_REQUEST", { message: error.message });
+            }
+            if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
+            throw error;
+          }
+        }),
+      },
+      routines: {
+        list: authed.groups.routines.list.handler(async ({ context, input }) => {
+          const query = parseGroupPanelQuery(context.actor, input.groupId);
+          try {
+            return toWireGroupRoutines(await groupPanelQueries.listRoutines(query));
+          } catch (error) {
+            if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
+            throw error;
+          }
+        }),
+      },
+      members: {
+        list: authed.groups.members.list.handler(async ({ context, input }) => {
+          const query = parseGroupPanelQuery(context.actor, input.groupId);
+          try {
+            return toWireGroupMembers(await groupPanelQueries.listMembers(query));
+          } catch (error) {
+            if (error instanceof IsolationError) throw new ORPCError("NOT_FOUND");
+            throw error;
+          }
+        }),
+      },
+    },
+    attention: {
+      list: authed.attention.list.handler(async ({ context, input }) => {
+        // The queue is a CARD-01 read model. Gate-off keeps the legacy UI and
+        // has no queue entry point, so fail explicitly instead of returning an
+        // empty page that would look like "nothing needs you".
+        if (!deps.cardsUnifiedV2) {
+          throw new ORPCError("FORBIDDEN", {
+            message: "The attention queue requires unified cards.",
+          });
+        }
+        return loadAttentionPage(deps.prisma, {
+          spaceId: context.actor.spaceId,
+          userId: context.actor.userId,
+          cursor: input.cursor ?? null,
+          limit: input.limit,
+        });
+      }),
     },
     botSections: {
       list: authed.botSections.list.handler(async ({ context }) =>
@@ -2069,6 +2165,25 @@ export function createRouter(deps: RouterDeps) {
       }),
     },
     threads: {
+      pairMessages: authed.threads.pairMessages.handler(async ({ context, input }) => {
+        try {
+          return await threadPolicy.readPairMessages({
+            actor: context.actor,
+            originLocator: {
+              sourceReceiptMessageId: input.sourceReceiptMessageId,
+              pairThreadId: input.locator.pairThreadId,
+              messageId: input.locator.messageId,
+            },
+            before: input.before,
+            limit: input.limit,
+          });
+        } catch (error) {
+          if (error instanceof IsolationError) {
+            throw new ORPCError("NOT_FOUND", { message: "Pair history was not found." });
+          }
+          throw error;
+        }
+      }),
       head: authed.threads.head.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         return threadHead(deps.prisma, target);
@@ -2130,14 +2245,85 @@ export function createRouter(deps: RouterDeps) {
         if ((await modelSetup(deps, context.actor)).needsModel) {
           throw new ORPCError("BAD_REQUEST", { message: "Connect a model to start a run." });
         }
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         if (target.kind === "bot") {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
         }
         return sendThreadMessage({ ...deps, turnRouting }, context.actor, target, input);
       }),
-      react: authed.threads.react.handler(async ({ context, input }) => {
+      amendTask: authed.threads.amendTask.handler(async ({ context, input }) => {
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
+        let appended: Awaited<ReturnType<typeof applyTaskAmendment>>;
+        try {
+          appended = await (deps.applyTaskAmendment ?? applyTaskAmendment)(deps.prisma, {
+            spaceId: context.actor.spaceId,
+            threadId: target.threadId,
+            actorUserId: context.actor.userId,
+            targetTaskId: input.targetTaskId,
+            content: input.text,
+            clientNonce: input.clientNonce,
+          });
+        } catch (error) {
+          if (error instanceof TaskAmendmentRejected) {
+            if (error.reason === "conflict") {
+              throw new ORPCError("CONFLICT", {
+                message: "This amendment conflicts with an existing task revision.",
+              });
+            }
+            // Missing, foreign-space and foreign-user Tasks are indistinguishable.
+            throw new ORPCError("NOT_FOUND", { message: "Task was not found." });
+          }
+          if (error instanceof TaskInstructionIntegrityError) {
+            throw new ORPCError("CONFLICT", {
+              message: "This task's instruction history is no longer available.",
+            });
+          }
+          throw error;
+        }
+        await deps.events.notify(target.threadId, appended.eventSeq).catch((error) => {
+          getLogger().error("task amendment realtime notification", error);
+        });
+        if (!appended.replayed && appended.application.kind === "completed_follow_up") {
+          await deps.jobs
+            .enqueue(runContinueJob(appended.application.followUpRunId))
+            .catch((error) => getLogger().error("task amendment follow-up enqueue", error));
+        }
+        return {
+          taskId: appended.ref.taskId,
+          messageId: appended.messageId,
+          revision: appended.ref.consumedRevision,
+          seq: appended.seq,
+          replayed: appended.replayed,
+          application: appended.application,
+        };
+      }),
+      taskInstructions: authed.threads.taskInstructions.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        try {
+          const view = await (deps.readTaskInstructionView ?? readTaskInstructionView)(
+            deps.prisma,
+            {
+              taskId: input.targetTaskId,
+              spaceId: context.actor.spaceId,
+              threadId: target.threadId,
+            },
+          );
+          if (!view) throw new ORPCError("NOT_FOUND", { message: "Task was not found." });
+          return view;
+        } catch (error) {
+          if (error instanceof TaskInstructionIntegrityError) {
+            throw new ORPCError("CONFLICT", {
+              message: "This task's instruction history is no longer available.",
+            });
+          }
+          if (error instanceof TaskAmendmentRejected) {
+            throw new ORPCError("CONFLICT", { message: "This task cannot be read safely." });
+          }
+          throw error;
+        }
+      }),
+      react: authed.threads.react.handler(async ({ context, input }) => {
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         const result = await reactToThreadMessage(deps, context.actor, target, input);
         if (result.eventSeq != null) {
           await deps.events.notify(target.threadId, result.eventSeq).catch((error) => {
@@ -2147,7 +2333,7 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       stop: authed.threads.stop.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         const { cancelledRunIds } = await stopThreadRuns(deps, context.actor, target);
         await revokeNativeCancellation(deps, cancelledRunIds);
         await cancelDescendantsNow(deps, cancelledRunIds);
@@ -2155,7 +2341,7 @@ export function createRouter(deps: RouterDeps) {
       }),
       cancelBackgroundTask: authed.threads.cancelBackgroundTask.handler(
         async ({ context, input }) => {
-          const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+          const target = await resolveHumanWritableThreadTarget(context.actor, input);
           if (target.kind !== "bot" || !deps.cancelRuntimeBackgroundTask) {
             throw new ORPCError("BAD_REQUEST", {
               message: "Background task cancellation is unavailable.",
@@ -2186,7 +2372,7 @@ export function createRouter(deps: RouterDeps) {
         },
       ),
       clear: authed.threads.clear.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         const contextBotId = target.kind === "bot" ? target.botId : target.memberBotIds[0];
         if (!contextBotId) throw new IsolationError();
         const { cancelledRunIds, historyCompactionGeneration } = await deps.events.clearThread({
@@ -2240,7 +2426,7 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       followUp: authed.threads.followUp.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         if (target.kind === "bot") {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
           const sent = await deps.events.sendUserMessage({
@@ -2284,7 +2470,10 @@ export function createRouter(deps: RouterDeps) {
             });
             if (existing) return null;
           }
-          await lockOwnedGroup(tx, context.actor, target.groupId);
+          const lockedGroup = await lockOwnedStandardGroupThread(tx, context.actor, {
+            groupId: target.groupId,
+            threadId: target.threadId,
+          });
           const group = await tx.chatGroup.findFirst({
             where: {
               id: target.groupId,
@@ -2306,7 +2495,7 @@ export function createRouter(deps: RouterDeps) {
           const turnOwner = await resolveGroupTurnOwner({
             tx,
             groupId: target.groupId,
-            leadBotId: group.leadBotId,
+            leadBotId: lockedGroup.leadBotId,
             members: group.members.map((member) => ({
               botId: member.bot.id,
               name: member.bot.name,
@@ -2333,7 +2522,7 @@ export function createRouter(deps: RouterDeps) {
               orderBy: { createdAt: "desc" },
               select: { botId: true },
             });
-            const leadBotId = group.leadBotId;
+            const leadBotId = lockedGroup.leadBotId;
             botId =
               previous?.botId ??
               (leadBotId && turnOwner.ownerBotIds.includes(leadBotId)
@@ -2523,7 +2712,7 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
       answer: authed.threads.answer.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         let answered = false;
         try {
           answered = await deps.events.answerRunInput({
@@ -2565,17 +2754,37 @@ export function createRouter(deps: RouterDeps) {
       }),
       resolveIntervention: authed.threads.resolveIntervention.handler(
         async ({ context, input }) => {
-          const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-          const result = await deps.events.resolveIntervention({
-            spaceId: context.actor.spaceId,
-            threadId: target.threadId,
-            interventionId: input.interventionId,
-            clientSubmissionId: input.clientSubmissionId,
-            answeredByUserId: context.actor.userId,
-            answer: input.answer,
-            username: input.username,
-            feedback: input.feedback,
-          });
+          const target = await resolveHumanWritableThreadTarget(context.actor, input);
+          let result: ResolveInterventionOutcome;
+          try {
+            result = await deps.events.resolveIntervention({
+              spaceId: context.actor.spaceId,
+              threadId: target.threadId,
+              interventionId: input.interventionId,
+              clientSubmissionId: input.clientSubmissionId,
+              answeredByUserId: context.actor.userId,
+              answer: input.answer,
+              username: input.username,
+              feedback: input.feedback,
+              outbound: input.outbound,
+              requestRevision: input.requestRevision,
+            });
+          } catch (error) {
+            // Answering away from the executing Thread is a gated capability.
+            // Report the disabled feature itself rather than a stale-card
+            // conflict, so a client can tell "turned off" from "too late".
+            if (error instanceof RoundtableFeatureDisabledError) {
+              throw new ORPCError("FORBIDDEN", {
+                message: error.message,
+                data: {
+                  code: error.code,
+                  feature: error.feature,
+                  retryable: error.retryable,
+                },
+              });
+            }
+            throw error;
+          }
           if (result.outcome === "rejected") {
             if (result.reason === "forbidden") {
               throw new ORPCError("FORBIDDEN", {
@@ -2602,16 +2811,59 @@ export function createRouter(deps: RouterDeps) {
               getLogger().error("thread answer enqueue", error);
             });
           }
+          if (result.applied && result.membershipDelivery) {
+            // The approving transaction committed the target Run; this is only
+            // its wake. The reconciler repairs a missed one.
+            await deps.jobs
+              .enqueue(runContinueJob(result.membershipDelivery.targetRunId))
+              .catch((error) => {
+                getLogger().error("group membership target enqueue", error);
+              });
+          }
           return { outcome: result.outcome, intervention: result.intervention };
         },
       ),
+      updateOutboundDraft: authed.threads.updateOutboundDraft.handler(
+        async ({ context, input }) => {
+          const target = await resolveHumanWritableThreadTarget(context.actor, input);
+          const result = await updateOutboundDraftRevision(deps.prisma, {
+            spaceId: context.actor.spaceId,
+            threadId: target.threadId,
+            userId: context.actor.userId,
+            interventionId: input.interventionId,
+            expectedRevision: input.expectedRevision,
+            recipients: input.recipients,
+            subject: input.subject,
+            body: input.body,
+          });
+          if (result.outcome === "rejected") {
+            if (result.reason === "forbidden") {
+              throw new ORPCError("FORBIDDEN", {
+                message: "Only the run owner can edit this draft",
+              });
+            }
+            if (result.reason === "not_found") {
+              throw new ORPCError("NOT_FOUND", { message: "Outbound draft was not found" });
+            }
+            throw new ORPCError("CONFLICT", {
+              message: "The draft moved on; reload the card before editing again",
+            });
+          }
+          if (result.seq > 0) {
+            await deps.events
+              .notify(result.threadId, result.seq)
+              .catch((error) => getLogger().error("outbound draft notify", error));
+          }
+          return result.state;
+        },
+      ),
       markRead: authed.threads.markRead.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         await setThreadUnreadState(deps.prisma, context.actor, target, false);
         return { ok: true as const };
       }),
       markUnread: authed.threads.markUnread.handler(async ({ context, input }) => {
-        const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const target = await resolveHumanWritableThreadTarget(context.actor, input);
         await setThreadUnreadState(deps.prisma, context.actor, target, true);
         return { ok: true as const };
       }),
@@ -5853,10 +6105,26 @@ export function createRouter(deps: RouterDeps) {
             threadId: target.threadId,
             spaceId: target.spaceId,
             runId: input.runId,
+            cardsUnifiedV2: deps.cardsUnifiedV2,
           });
         });
         if (!snapshot) throw new ORPCError("NOT_FOUND");
-        return snapshot;
+        if (!deps.cardsUnifiedV2) return snapshot;
+        return {
+          ...snapshot,
+          interactionCapabilities: { cardsUnifiedV2: true as const },
+          // The DB projection already merges message-backed approvals (MCP
+          // assignment/app authorization) with durable Interventions.
+          interactions:
+            snapshot.interactions ?? projectExecutionInteractions(snapshot.interventions),
+          displayBlocks: snapshot.result
+            ? projectExecutionDisplayBlocks(snapshot.result.blocks, {
+                threadId: target.threadId,
+                messageId: snapshot.result.messageId,
+                runId: snapshot.summary.runId,
+              })
+            : [],
+        };
       }),
       executionActivityPage: authed.runs.executionActivityPage.handler(
         async ({ context, input }) => {
@@ -6235,9 +6503,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     computerHost: computerHostFor(setup.settings?.computerHost, deps.env.sandboxProvider),
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
-    // Bloub is the only avatar style; stored robot/organic values are legacy
-    // rows from before the migration and are normalized on read.
-    avatarStyle: "bloub" as const,
+    avatarStyle: CURRENT_USER_AVATAR_STYLE,
   };
 }
 
@@ -6629,40 +6895,6 @@ function nextRoutineDate(crons: string[], timezone: string): Date {
   }
   if (!next) throw new ORPCError("BAD_REQUEST", { message: "Enter a valid cron expression." });
   return next;
-}
-
-function mapRoutine(row: {
-  id: string;
-  botId: string;
-  name: string;
-  prompt: string;
-  crons: string[];
-  timezone: string;
-  active: boolean;
-  notify: boolean;
-  webhookEnabled: boolean;
-  githubEnabled: boolean;
-  messageProvider: string | null;
-  lastRunAt: Date | null;
-  nextRunAt: Date | null;
-  createdAt: Date;
-}) {
-  return {
-    id: row.id,
-    botId: row.botId,
-    name: row.name,
-    prompt: row.prompt,
-    crons: row.crons,
-    timezone: row.timezone,
-    active: row.active,
-    notify: row.notify,
-    webhookEnabled: row.webhookEnabled,
-    githubEnabled: row.githubEnabled,
-    messageProvider: row.messageProvider,
-    lastRunAt: row.lastRunAt?.toISOString() ?? null,
-    nextRunAt: row.nextRunAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-  };
 }
 
 async function listRoutinesDto(deps: RouterDeps, actor: Actor, botId: string) {

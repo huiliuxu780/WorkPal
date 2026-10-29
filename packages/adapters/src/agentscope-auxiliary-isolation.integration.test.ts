@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentRunRequest, AgentRuntimeEvent, AgentTurnPolicy } from "@rakazo/adapter-kit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AgentScopeAgentRuntime } from "./agentscope-runtime.js";
+import { withAgentScopeTestAdmission } from "./testing/agentscope-session-admission.js";
 
 // AG-01 acceptance #2/#3 at the real boundary: TS adapter -> Java runtime ->
 // local model protocol fixture. Every auxiliary execution scope must reach the
@@ -155,7 +156,8 @@ describe("AgentScope auxiliary execution isolation", () => {
 
   const consume = async (input: AgentRunRequest) => {
     const events: AgentRuntimeEvent[] = [];
-    for await (const event of runtime.run(input, context())) events.push(event);
+    const request = withAgentScopeTestAdmission(input, { userId: "user-1", spaceId: "space-1" });
+    for await (const event of runtime.run(request, context())) events.push(event);
     return events;
   };
 

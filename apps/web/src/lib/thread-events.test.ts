@@ -1,5 +1,6 @@
 import type {
   ComputerStatus,
+  InteractionView,
   ProductEvent,
   ThreadMessage,
   ThreadSnapshot,
@@ -14,6 +15,7 @@ import {
   computerPanelAutoUsesBoot,
   computerPanelNeedsMaintenance,
   computerTakeoverBlocked,
+  isSessionControlLifecycleEvent,
   isThreadSnapshotEvent,
   mergeThreadSnapshot,
   prependThreadMessagePage,
@@ -197,6 +199,38 @@ describe("thread event reduction", () => {
       replyToMessageId: "message-1",
     });
     expect(next?.cursor).toBe(4);
+  });
+
+  it("applies a persisted system cancellation notice", () => {
+    const next = reduceThreadSnapshot(
+      snapshot([]),
+      event({
+        type: "thread.message.created",
+        seq: 4,
+        payload: {
+          messageId: "notice-1",
+          role: "system",
+          blocks: [
+            {
+              kind: "text",
+              text: "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。",
+            },
+          ],
+          notice: "steering_unhandled",
+          reason: "superseded",
+        },
+      }),
+    );
+
+    expect(next?.messages.find((message) => message.id === "notice-1")).toMatchObject({
+      role: "system",
+      blocks: [
+        {
+          kind: "text",
+          text: "未处理：没有可接替的工作。这条消息还在，请重新指定一位成员。",
+        },
+      ],
+    });
   });
 
   it("appends a quoted reply carrying its excerpt", () => {
@@ -1571,6 +1605,26 @@ describe("thread event reduction", () => {
     expect(next?.messages[0]?.callId).toBe("c-1");
   });
 
+  it("keeps a known Run association when an update cannot name a cancelled Run", () => {
+    const initial = snapshot([
+      { ...message("receipt-1", [{ kind: "text", text: "已入席" }]), runId: "run-cancelled" },
+    ]);
+    const next = reduceThreadSnapshot(
+      initial,
+      event({
+        type: "thread.message.updated",
+        seq: 9,
+        runId: undefined,
+        payload: {
+          messageId: "receipt-1",
+          role: "bot",
+          blocks: [{ kind: "text", text: "已取消" }],
+        },
+      }),
+    );
+    expect(next?.messages[0]).toMatchObject({ id: "receipt-1", runId: "run-cancelled" });
+  });
+
   it("preserves botId on durable bot messages", () => {
     const initial = snapshot([]);
     const next = reduceThreadSnapshot(
@@ -1970,6 +2024,312 @@ describe("activity projection reduction (Phase 4)", () => {
       reduceThreadSnapshot(resolved, event({ type: "thread.cleared", seq: 7 }))?.interventions,
     ).toEqual([]);
     expect(isThreadSnapshotEvent(event({ type: "intervention.created" }))).toBe(true);
+  });
+
+  it("refreshes the thread on takeover lifecycle events only", () => {
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.takeover.requested" }))).toBe(
+      true,
+    );
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.takeover.granted" }))).toBe(true);
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.takeover.released" }))).toBe(
+      true,
+    );
+    expect(isSessionControlLifecycleEvent(event({ type: "run.waiting_input" }))).toBe(false);
+    expect(isSessionControlLifecycleEvent(event({ type: "computer.status" }))).toBe(false);
+  });
+
+  it("settles the strict interaction projection when an intervention resolves", () => {
+    const base = snapshot([]);
+    const pending: InteractionView = {
+      kind: "action_approval",
+      interactionId: "intervention-1",
+      revision: 1,
+      status: "pending",
+      createdAt: "2026-10-12T00:00:00.000Z",
+      expiresAt: null,
+      attentionAt: "2026-10-12T00:00:00.000Z",
+      source: {
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        messageId: "message-1",
+        runId: "run-1",
+        botId: "bot-1",
+      },
+      presentation: { text: "Review the action" },
+      decision: null,
+      approval: {
+        kind: "tool",
+        authority: "external_effect",
+        effectId: "effect-1",
+        effectStatus: "intended",
+        actions: [{ id: "allow", label: "Allow once" }],
+      },
+    };
+    const resolved = reduceThreadSnapshot(
+      { ...base, interactions: [pending] },
+      event({
+        type: "intervention.resolved",
+        seq: 4,
+        payload: {
+          interventionId: "intervention-1",
+          revision: 2,
+          kind: "approval",
+          status: "answered",
+          runId: "run-1",
+          attemptId: "attempt-1",
+          messageId: "message-1",
+          botId: "bot-1",
+          createdAt: "2026-10-12T00:00:00.000Z",
+          actor: { botId: "bot-1" },
+          approval: {
+            effectId: "effect-1",
+            decision: "approved",
+            effectStatus: "approved",
+            actions: [{ id: "allow", label: "Allow once" }],
+          },
+          presentation: { text: "Review the action" },
+        },
+      }),
+    );
+    expect(resolved?.interactions?.[0]).toMatchObject({
+      interactionId: "intervention-1",
+      revision: 2,
+      status: "answered",
+      decision: "approved",
+      approval: { kind: "tool", effectStatus: "approved" },
+    });
+    const cleared = reduceThreadSnapshot(
+      {
+        ...resolved!,
+        displayBlocks: [{ kind: "markdown", blockId: "block-1", text: "Hello" }],
+      },
+      event({ type: "thread.cleared", seq: 5 }),
+    );
+    expect(cleared?.interactions).toEqual([]);
+    expect(cleared?.displayBlocks).toEqual([]);
+  });
+
+  it("updates an outbound draft projection from a revision event", () => {
+    const initial = {
+      ...snapshot([]),
+      interactions: [
+        {
+          kind: "action_approval" as const,
+          interactionId: "intervention-outbound",
+          revision: 1,
+          status: "pending" as const,
+          createdAt: "2026-10-12T00:00:00.000Z",
+          expiresAt: null,
+          attentionAt: "2026-10-12T00:00:00.000Z",
+          source: {
+            spaceId: "workspace-1",
+            threadId: "thread-1",
+            messageId: "message-1",
+            runId: "run-1",
+            botId: "bot-1",
+          },
+          presentation: { text: "Review the outbound draft" },
+          decision: null,
+          approval: {
+            kind: "outbound" as const,
+            authority: "external_effect" as const,
+            effectId: "effect-1",
+            effectStatus: "intended",
+            channel: "email" as const,
+            recipientCount: 1,
+            subject: "Weekly digest",
+            fingerprint: "fp-r2-12345678",
+            draftState: {
+              channel: "email" as const,
+              draft: {
+                revision: 2,
+                fingerprint: "fp-r2-12345678",
+                recipients: ["ada@example.test"],
+                subject: "Weekly digest",
+                body: "Original body",
+              },
+              revisions: [
+                {
+                  revision: 2,
+                  fingerprint: "fp-r2-12345678",
+                  subject: "Weekly digest",
+                  createdAt: "2026-10-12T00:00:00.000Z",
+                  status: "pending" as const,
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const state = {
+      channel: "email" as const,
+      draft: {
+        revision: 3,
+        fingerprint: "fp-r3-12345678",
+        recipients: ["ada@example.test", "lin@example.test"],
+        subject: "Weekly digest r3",
+        body: "Edited elsewhere",
+      },
+      revisions: [
+        {
+          revision: 2,
+          fingerprint: "fp-r2-12345678",
+          subject: "Weekly digest",
+          createdAt: "2026-10-12T00:00:00.000Z",
+          status: "superseded" as const,
+        },
+        {
+          revision: 3,
+          fingerprint: "fp-r3-12345678",
+          subject: "Weekly digest r3",
+          createdAt: "2026-10-12T00:01:00.000Z",
+          status: "pending" as const,
+        },
+      ],
+    };
+    const updated = reduceThreadSnapshot(
+      initial,
+      event({
+        type: "outbound.draft.updated",
+        seq: 4,
+        payload: { interventionId: "intervention-outbound", state },
+      }),
+    );
+    const approval = updated?.interactions?.[0];
+    expect(approval?.kind).toBe("action_approval");
+    if (approval?.kind !== "action_approval" || approval.approval.kind !== "outbound") {
+      throw new Error("outbound interaction expected");
+    }
+    expect(approval.approval).toMatchObject({
+      recipientCount: 2,
+      subject: "Weekly digest r3",
+      fingerprint: "fp-r3-12345678",
+      draftState: { draft: { revision: 3, body: "Edited elsewhere" } },
+    });
+  });
+
+  it("settles a message-backed skill card when another tab updates the message", () => {
+    const playbook = {
+      whenToUse: "Every Friday.",
+      inputs: [],
+      steps: ["Summarize"],
+      howToCheck: "Five bullets",
+      whatToReturn: "Digest",
+      approvalBoundaries: "Never send without approval.",
+      failureHandling: "Report missing sources.",
+    };
+    const pending: InteractionView = {
+      kind: "action_approval",
+      interactionId: "legacy_block:skill_draft:message-1:0",
+      revision: 1,
+      status: "pending",
+      createdAt: "2026-10-12T00:00:00.000Z",
+      expiresAt: null,
+      attentionAt: "2026-10-12T00:00:00.000Z",
+      source: {
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        messageId: "message-1",
+        runId: "run-1",
+        botId: "bot-1",
+      },
+      presentation: { text: "Digest", detail: "Friday summary" },
+      decision: null,
+      approval: {
+        kind: "skill_save",
+        authority: "business_transaction",
+        skillId: "skill-1",
+        name: "Digest",
+        goal: "Friday summary",
+        contentRevision: 1,
+        playbook,
+      },
+    };
+    const updated = reduceThreadSnapshot(
+      { ...snapshot([]), interactions: [pending] },
+      event({
+        type: "thread.message.updated",
+        seq: 4,
+        payload: {
+          messageId: "message-1",
+          role: "bot",
+          blocks: [
+            {
+              kind: "skill_draft",
+              skillId: "skill-1",
+              name: "Digest",
+              goal: "Friday summary",
+              playbook,
+              status: "discarded",
+            },
+          ],
+        },
+      }),
+    );
+    expect(updated?.interactions?.[0]).toMatchObject({
+      interactionId: "legacy_block:skill_draft:message-1:0",
+      status: "cancelled",
+      decision: "denied",
+    });
+  });
+
+  it("carries a business membership decision through the live reducer", () => {
+    const presentation = { text: "Add Joy to “Design”?" };
+    const membership: InteractionView = {
+      kind: "action_approval",
+      interactionId: "intervention-membership",
+      revision: 1,
+      status: "pending",
+      createdAt: "2026-10-27T00:00:00.000Z",
+      expiresAt: null,
+      attentionAt: "2026-10-27T00:00:00.000Z",
+      source: {
+        spaceId: "workspace-1",
+        threadId: "thread-1",
+        messageId: "message-membership",
+        runId: "run-1",
+        botId: "bot-1",
+      },
+      presentation,
+      decision: null,
+      approval: {
+        kind: "group_membership",
+        authority: "business_transaction",
+        action: "add_bot_to_group",
+        groupId: "group-1",
+        botId: "bot-1",
+        messageGroupRequestId: "request-1",
+        requestRevision: 1,
+        sourceThreadId: "thread-1",
+        sourceMessageId: "message-membership",
+        presentation,
+      },
+    };
+    const payload = {
+      interventionId: membership.interactionId,
+      revision: 2,
+      kind: "approval",
+      status: "answered",
+      runId: "run-1",
+      attemptId: "attempt-1",
+      messageId: "message-membership",
+      botId: "bot-1",
+      createdAt: "2026-10-27T00:00:00.000Z",
+      actor: { botId: "bot-1" },
+      presentation,
+      decision: "denied",
+    };
+    const updated = reduceThreadSnapshot(
+      { ...snapshot([]), interactions: [membership] },
+      event({ type: "intervention.resolved", seq: 4, payload }),
+    );
+    expect(updated?.interventions?.[0]).toMatchObject({ status: "answered", decision: "denied" });
+    expect(updated?.interactions?.[0]).toMatchObject({
+      interactionId: "intervention-membership",
+      status: "answered",
+      decision: "denied",
+    });
   });
 
   it("carries the plan review projection and its decision through the reducer (UX-02)", () => {

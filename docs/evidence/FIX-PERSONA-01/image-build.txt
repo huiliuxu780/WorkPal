@@ -1,0 +1,2 @@
+#13 exporting manifest list sha256:dad44fe57aed8fc29cffc961abccaeaf5b68f233607f37134737863bada6a4ea done
+#13 naming to docker.io/library/workpal-persona-verify:2126838 done

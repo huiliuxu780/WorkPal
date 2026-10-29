@@ -170,6 +170,92 @@ describe("inferScript change_avatar", () => {
   });
 });
 
+async function collectEvents(
+  request: Parameters<ScriptedAgentRuntime["run"]>[0],
+): Promise<AgentRuntimeEvent[]> {
+  const runtime = new ScriptedAgentRuntime();
+  const events: AgentRuntimeEvent[] = [];
+  for await (const event of runtime.run(request)) {
+    events.push(event);
+  }
+  return events;
+}
+
+describe("ScriptedAgentRuntime answered-ask resume (FIX-127)", () => {
+  const baseRequest = {
+    botId: "bot-1",
+    threadId: "thread-1",
+    runId: "run-ask-1",
+    prompt: "ask me which city to use",
+    instructions: "",
+    history: [],
+    tools: [],
+    model: { provider: "scripted", id: "scripted" },
+  };
+
+  it("resumes an answered free-text ask past the ask turn without asking again", async () => {
+    const first = await collectEvents(baseRequest);
+    expect(first.some((event) => event.type === "ask")).toBe(true);
+    expect(first.some((event) => event.type === "done")).toBe(false);
+
+    const resumed = await collectEvents({ ...baseRequest, resumeAnswer: "Paris" });
+    // The persisted-state Runtime resolves the pending ask_user call with the
+    // answer and continues — the resumed scripted Run must not re-ask, and the
+    // deterministic completion acknowledges the answer it consumed.
+    expect(resumed.some((event) => event.type === "ask")).toBe(false);
+    expect(resumed.at(-1)).toMatchObject({ type: "done", text: "done. i handled: Paris" });
+  });
+
+  it("resumes an answered choice ask (with actions) past the ask turn", async () => {
+    const request = {
+      ...baseRequest,
+      runId: "run-choice-1",
+      prompt: "pick from these cities with tappable choices",
+    };
+    const first = await collectEvents(request);
+    const ask = first.find((event) => event.type === "ask");
+    expect(ask).toMatchObject({ type: "ask" });
+
+    const resumed = await collectEvents({ ...request, resumeAnswer: "choice-2" });
+    expect(resumed.some((event) => event.type === "ask")).toBe(false);
+    expect(resumed.at(-1)).toMatchObject({ type: "done" });
+  });
+
+  it("does not replay the turns before the answered ask", async () => {
+    const request = {
+      ...baseRequest,
+      runId: "run-steps-1",
+      prompt: "run 3 tracked steps then ask",
+      script: inferScript("run 3 tracked steps then ask"),
+    };
+    const first = await collectEvents(request);
+    expect(first.filter((event) => event.type === "tool")).toHaveLength(6);
+    expect(first.some((event) => event.type === "ask")).toBe(true);
+
+    // The pre-ask tools already executed in the paused attempt; the real
+    // Runtime continues from persisted state, so the resume replays none.
+    const resumed = await collectEvents({ ...request, resumeAnswer: "Paris" });
+    expect(resumed.filter((event) => event.type === "tool")).toHaveLength(0);
+    expect(resumed.some((event) => event.type === "ask")).toBe(false);
+    expect(resumed.at(-1)).toMatchObject({ type: "done" });
+  });
+
+  it("keeps replaying ask-free scripts unchanged on resume", async () => {
+    const request = {
+      ...baseRequest,
+      runId: "run-secret-1",
+      prompt: "show a secret card for a masked api key",
+      script: inferScript("show a secret card for a masked api key"),
+    };
+    const first = await collectEvents(request);
+    const resumed = await collectEvents({ ...request, resumeAnswer: "" });
+    expect(resumed.map((event) => event.type)).toEqual(first.map((event) => event.type));
+    expect(resumed.filter((event) => event.type === "tool").map((event) => event.name)).toEqual([
+      "request_secret",
+    ]);
+  });
+});
+
 describe("ScriptedAgentRuntime executionIds", () => {
   it("gives repeated tools distinct executionIds within a run", async () => {
     const runtime = new ScriptedAgentRuntime();
@@ -202,5 +288,37 @@ describe("ScriptedAgentRuntime executionIds", () => {
       )
       .map((event) => event.executionId);
     expect(toolIds).toEqual(["run-1:message_agent:0", "run-1:message_agent:1"]);
+  });
+});
+
+describe("inferScript message_group", () => {
+  it("takes the performance review to a named group", () => {
+    expect(
+      inferScript('Take the performance risk review to the group named "新版发布圆桌".'),
+    ).toEqual([
+      {
+        assistant: "going to that room now.",
+        toolCalls: [
+          {
+            name: "message_group",
+            args: {
+              confirm_name: "新版发布圆桌",
+              message: "Check the launch performance risk and report back.",
+              intent: "request",
+              topic: "性能风险核对",
+            },
+          },
+        ],
+        complete: true,
+      },
+    ]);
+  });
+
+  it("returns deterministic group work and the source summary", () => {
+    const group = inferScript("Check the launch performance risk and report back.");
+    expect(group[0]?.assistant).toContain("Group result:");
+    const returned = inferScript("<group_result>Group result: done.</group_result>");
+    expect(returned[0]?.assistant).toContain("I brought the result back:");
+    expect(returned[0]?.complete).toBe(true);
   });
 });

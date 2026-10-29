@@ -6,6 +6,11 @@ import {
   AvatarModeSchema,
   BotAvatarValueSchema,
 } from "./bot-avatar.js";
+import {
+  DisplayBlockSchema,
+  InteractionCapabilitiesSchema,
+  InteractionViewSchema,
+} from "./card-interaction.js";
 import { ThreadMessageSchema } from "./events.js";
 import { ExecutionSummarySchema } from "./execution-snapshot.js";
 import { Id, MemoryScope, RunStatus, RunTrigger, SandboxKind, WaitKind } from "./ids.js";
@@ -157,6 +162,41 @@ export type UpdateGroupInput = z.infer<typeof UpdateGroupInput>;
 export const GroupDetailSchema = GroupSchema.extend({
   messages: z.array(ThreadMessageSchema).optional(),
 });
+
+/** Stable agent identity for group headers and routine execution labels. */
+const GroupAgentIdentitySchema = z.object({
+  kind: z.literal("agent"),
+  botId: Id,
+  name: z.string(),
+  color: z.string(),
+  avatarMode: AvatarModeSchema,
+  avatarCharacter: AvatarCharacterSchema.nullable(),
+  avatarBodyColor: AvatarBodyColorSchema,
+});
+
+const GroupAgentMemberSchema = GroupAgentIdentitySchema.extend({
+  status: z.string(),
+});
+
+const GroupUserMemberSchema = z.object({
+  kind: z.literal("user"),
+  userId: Id,
+  name: z.string(),
+  image: z.string().nullable(),
+  avatarStyle: AvatarStyleSchema,
+});
+
+export const GroupMembersSchema = z.object({
+  groupId: Id,
+  threadId: Id,
+  currentUser: GroupUserMemberSchema,
+  agents: z.array(GroupAgentMemberSchema),
+  /** Agents only: the current user is never counted here. */
+  agentCount: z.number().int().nonnegative(),
+  /** Agents plus the current user, so header counts can include the user. */
+  memberCount: z.number().int().positive(),
+});
+export type GroupMembers = z.infer<typeof GroupMembersSchema>;
 export type GroupDetail = z.infer<typeof GroupDetailSchema>;
 
 export const BotSectionSchema = z.object({
@@ -460,6 +500,13 @@ export const RoutineSchema = z.object({
   createdAt: z.string(),
 });
 export type Routine = z.infer<typeof RoutineSchema>;
+
+/** A routine shown in a group panel still names the Bot that will execute it. */
+export const GroupRoutineSummarySchema = RoutineSchema.extend({
+  threadId: Id,
+  executorBot: GroupAgentIdentitySchema,
+});
+export type GroupRoutineSummary = z.infer<typeof GroupRoutineSummarySchema>;
 
 export const CreateRoutineInput = z
   .object({
@@ -810,6 +857,12 @@ export const ArtifactSchema = z.object({
 
 export type Artifact = z.infer<typeof ArtifactSchema>;
 
+export const ArtifactPageSchema = z.object({
+  items: z.array(ArtifactSchema.extend({ versionCount: z.number().int() })),
+  nextCursor: z.string().nullable(),
+});
+export type ArtifactPage = z.infer<typeof ArtifactPageSchema>;
+
 export const ArtifactVersionSchema = z.object({
   id: Id,
   version: z.number().int(),
@@ -978,8 +1031,39 @@ export const ThreadMessagePageSchema = z.object({
    * relying on the snapshot's recent-Run window. Absent from older servers.
    */
   executions: z.array(ExecutionSummarySchema).optional(),
+  /**
+   * CARD-01C display projection for this page's messages, matching the
+   * snapshot's recent window so paginated history renders identically.
+   * Present only when the server-side cards_unified_v2 gate is enabled;
+   * absent on older servers and gate-off deployments.
+   */
+  displayBlocks: z.array(DisplayBlockSchema).optional(),
 });
 export type ThreadMessagePage = z.infer<typeof ThreadMessagePageSchema>;
+
+/**
+ * Human projection of an Agent pair message. Physical Thread sequence numbers
+ * stay private because gaps would reveal messages from unauthorized origins.
+ */
+export const PairThreadMessageSchema = ThreadMessageSchema.omit({ threadId: true, seq: true });
+export type PairThreadMessage = z.infer<typeof PairThreadMessageSchema>;
+
+export const PairThreadMessagePageSchema = z.object({
+  pairThreadId: Id,
+  messages: z.array(PairThreadMessageSchema),
+  totalCount: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+  /** Opaque stable cursor: the oldest visible message id on this page. */
+  olderCursor: Id.nullable(),
+  /** Zero-based position inside the actor's authorized projection only. */
+  target: z
+    .object({
+      messageId: Id,
+      visibleIndex: z.number().int().nonnegative(),
+    })
+    .nullable(),
+});
+export type PairThreadMessagePage = z.infer<typeof PairThreadMessagePageSchema>;
 
 export type { ActivityItem, ActivityKind, ActivityStatus } from "./activity.js";
 // The Activity projection lives in its own module so the ExecutionSnapshot
@@ -1008,6 +1092,14 @@ export const ThreadSnapshotSchema = z.object({
   todos: z.array(RunTodoSnapshotSchema).optional(),
   /** Pending Interventions for this thread. Absent on snapshots from older servers. */
   interventions: z.array(InterventionViewSchema).optional(),
+  /**
+   * CARD-01A strict projection. Present only when the server-side
+   * cards_unified_v2 gate is enabled; older servers and gate-off deployments
+   * omit all three fields, so existing behavior is unchanged.
+   */
+  interactionCapabilities: InteractionCapabilitiesSchema.optional(),
+  interactions: z.array(InteractionViewSchema).optional(),
+  displayBlocks: z.array(DisplayBlockSchema).optional(),
   /**
    * Bounded per-Run execution summaries for the current thread generation:
    * active Runs, Runs with pending Interventions, and recent terminal Runs.

@@ -1,0 +1,33 @@
+FIX-STOP-01 v2 current process-chain evidence
+Date: 2026-10-28
+Validation source head: e686b562689374d5710d12e575ceeb5121dc9ae2
+Environment:
+  JAVA_HOME=<Homebrew JDK 21>
+  DOCKER_HOST=<local Colima socket>
+  TESTCONTAINERS_RYUK_DISABLED=true
+
+Command 1:
+  pnpm test:worker-chain
+
+Output:
+  worker-chain timings (ms): {"claimToRunningMs":2104,"budgetEnforcementMs":8892,"crashRestartToQueuedMs":2284}
+  Playwright Run Summary: 5 passed (3.6m)
+  Exit: 0
+
+The cancellation scenario uses three deterministic gates:
+1. runtimeStartedAt is non-null before the Worker stops.
+2. Stop writes run_abort; successor remains queued and the model is not called.
+3. Production deliverRunAborts removes run_abort, but the successor remains
+   queued until the restarted Worker obtains and acknowledges an RT-26 proof.
+
+After proof acknowledgement the test records a worker-log offset and asserts
+that the remaining log contains no "could not be proven" message. It also
+asserts the successor leaves queued, reaches the transcript, and the cancelled
+owner no longer holds the admission.
+
+Command 2:
+  pnpm test:e2e --runtime=agentscope --spec=agentscope-product.spec.ts
+
+Output:
+  Playwright Run Summary: 6 passed (57.6s)
+  Exit: 0

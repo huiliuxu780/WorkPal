@@ -12,6 +12,7 @@ import {
   BotAvatarChangeViewSchema,
   BotAvatarStateSchema,
 } from "./bot-avatar.js";
+import { AttentionQueuePageSchema } from "./card-interaction.js";
 import {
   ActionApprovalRuleSchema,
   ActionAutoReviewSettingsSchema,
@@ -20,6 +21,7 @@ import {
   AgentSkillCatalogEntrySchema,
   AgentSkillSchema,
   AppBootstrapSchema,
+  ArtifactPageSchema,
   ArtifactSchema,
   ArtifactVersionSchema,
   ArtifactWithContentSchema,
@@ -43,6 +45,8 @@ import {
   ExportManifestSchema,
   ExternalConversationPolicySchema,
   GroupDetailSchema,
+  GroupMembersSchema,
+  GroupRoutineSummarySchema,
   GroupSchema,
   IntegrationCatalogResultSchema,
   McpServerConfigInput,
@@ -58,6 +62,7 @@ import {
   ModelConnectInputSchema,
   ModelCredentialSchema,
   ModelOAuthBeginSchema,
+  PairThreadMessagePageSchema,
   REPLY_QUOTE_MAX_LENGTH,
   ReorderBotsInput,
   RoutineSchema,
@@ -87,7 +92,11 @@ import {
   VoiceInfoSchema,
   VoiceStatusSchema,
 } from "./domain.js";
-import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
+import {
+  ComputerCommandSchema,
+  ProductEventSchema,
+  TaskAmendmentApplicationSchema,
+} from "./events.js";
 import {
   ACTIVITY_PAGE_MAX_LIMIT,
   ExecutionActivityPageSchema,
@@ -121,9 +130,16 @@ import {
   MemorySummaryGetInputSchema,
   MemorySummarySchema,
 } from "./memory-facts.js";
+import {
+  OUTBOUND_DRAFT_MAX_SUBJECT_CHARS,
+  OutboundDraftBodySchema,
+  OutboundDraftRecipientsSchema,
+  OutboundDraftStateSchema,
+} from "./outbound-draft.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
+import { TaskInstructionViewSchema } from "./task-instructions.js";
 
 const botId = z.object({ botId: Id });
 const groupId = z.object({ groupId: Id });
@@ -152,6 +168,12 @@ const structuredMentionTarget = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("connector"), id: Id }),
 ]);
 
+const mentionSpan = z.object({
+  botId: Id,
+  start: z.number().int().nonnegative(),
+  end: z.number().int().positive(),
+});
+
 const threadSendInput = threadTarget
   .safeExtend({
     text: z.string().optional(),
@@ -161,12 +183,26 @@ const threadSendInput = threadTarget
       .array(z.union([Id, structuredMentionTarget]))
       .max(64)
       .optional(),
+    /**
+     * Character ranges of typed bot mention chips inside `text`. The server
+     * stores the identity as structured message inlines; it never derives
+     * mention links from bare `@name` text.
+     */
+    mentionSpans: z.array(mentionSpan).max(64).optional(),
     replyToMessageId: Id.optional(),
     replyQuote: z.string().trim().min(1).max(REPLY_QUOTE_MAX_LENGTH).optional(),
     clientNonce: z.string().min(1).max(200).optional(),
+    /**
+     * RT-27: address an existing Task explicitly. The message becomes that
+     * Task's next instruction revision (or its recorded-only amendment when the
+     * Task is terminal); it never starts a new Task and never falls back to an
+     * active Run when the id is unknown or out of scope.
+     */
+    targetTaskId: Id.optional(),
   })
   .superRefine((input, ctx) => {
     const text = input.text?.trim() ?? "";
+    const rawText = input.text ?? "";
     const artifactIds = input.artifactIds ?? [];
     if (!text && artifactIds.length === 0) {
       ctx.addIssue({
@@ -175,12 +211,107 @@ const threadSendInput = threadTarget
         path: ["text"],
       });
     }
+    if (input.targetTaskId) {
+      if (!text) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement needs text",
+          path: ["text"],
+        });
+      }
+      if (artifactIds.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement cannot carry attachments",
+          path: ["artifactIds"],
+        });
+      }
+      if (input.replyToMessageId) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement cannot reply to another message",
+          path: ["replyToMessageId"],
+        });
+      }
+      if (!input.clientNonce) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A Task supplement needs a clientNonce",
+          path: ["clientNonce"],
+        });
+      }
+    }
     if (input.replyQuote && !input.replyToMessageId) {
       ctx.addIssue({
         code: "custom",
         message: "replyQuote requires replyToMessageId",
         path: ["replyQuote"],
       });
+    }
+    const typedBotIds = new Set(
+      (input.mentions ?? []).flatMap((mention) =>
+        typeof mention === "string" ? [mention] : mention.kind === "bot" ? [mention.id] : [],
+      ),
+    );
+    const seenBotIds = new Set<string>();
+    let previousEnd = 0;
+    for (const [index, span] of (input.mentionSpans ?? []).entries()) {
+      const path = ["mentionSpans", index];
+      if (span.end <= span.start) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan end must be greater than start",
+          path,
+        });
+        continue;
+      }
+      if (span.start < previousEnd) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpans must be ordered and non-overlapping",
+          path,
+        });
+      }
+      previousEnd = span.end;
+      if (span.end > rawText.length) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must stay inside text",
+          path,
+        });
+        continue;
+      }
+      if (rawText[span.start] !== "@") {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must start at an @ token",
+          path,
+        });
+      }
+      const lastUnit = rawText.charCodeAt(span.end - 1);
+      const nextUnit = rawText.charCodeAt(span.end);
+      if (lastUnit >= 0xd800 && lastUnit <= 0xdbff && nextUnit >= 0xdc00 && nextUnit <= 0xdfff) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must not split a UTF-16 surrogate pair",
+          path,
+        });
+      }
+      if (!typedBotIds.has(span.botId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan must reference a typed bot mention",
+          path,
+        });
+      }
+      if (seenBotIds.has(span.botId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "mentionSpan bot is duplicated",
+          path,
+        });
+      }
+      seenBotIds.add(span.botId);
     }
   });
 
@@ -315,6 +446,37 @@ export const appContract = {
     archive: oc.input(groupId).output(z.object({ ok: z.literal(true) })),
     restore: oc.input(groupId).output(z.object({ ok: z.literal(true) })),
     remove: oc.input(groupId).output(z.object({ ok: z.literal(true) })),
+    artifacts: {
+      list: oc
+        .input(
+          groupId.safeExtend({
+            cursor: z.string().optional(),
+            limit: z.number().int().min(1).max(60).optional(),
+          }),
+        )
+        .output(ArtifactPageSchema),
+    },
+    routines: {
+      list: oc.input(groupId).output(z.array(GroupRoutineSummarySchema)),
+    },
+    members: {
+      list: oc.input(groupId).output(GroupMembersSchema),
+    },
+  },
+  attention: {
+    /**
+     * CARD-01D bounded pending queue for the current actor: durable pending
+     * Interventions, current SessionControls and strictly mapped business
+     * approvals in the actor's own Threads.
+     */
+    list: oc
+      .input(
+        z.object({
+          cursor: z.string().max(300).optional(),
+          limit: z.number().int().min(1).max(50).optional(),
+        }),
+      )
+      .output(AttentionQueuePageSchema),
   },
   botSections: {
     list: oc.output(z.array(BotSectionSchema)),
@@ -326,6 +488,20 @@ export const appContract = {
       .output(BotSectionSchema),
   },
   threads: {
+    pairMessages: oc
+      .input(
+        z.object({
+          sourceReceiptMessageId: Id,
+          locator: z.object({
+            kind: z.literal("pair_message"),
+            pairThreadId: Id,
+            messageId: Id,
+          }),
+          before: Id.optional(),
+          limit: z.number().int().min(1).max(100).default(50),
+        }),
+      )
+      .output(PairThreadMessagePageSchema),
     head: oc.input(threadTarget).output(
       z.object({
         threadId: Id,
@@ -351,6 +527,11 @@ export const appContract = {
     subscribe: oc
       .input(threadTarget.safeExtend({ cursor: z.number().int().min(-1) }))
       .output(eventIterator(ProductEventSchema)),
+    /**
+     * Group sends with typed spans reject ambiguous attribution with
+     * `UNPROCESSABLE_CONTENT` and `data.code = "GROUP_MENTION_CLARIFICATION_REQUIRED"`.
+     * No Task/Run is created; clients must branch on the code, not the message.
+     */
     send: oc.input(threadSendInput).output(
       z.object({
         taskId: Id,
@@ -359,6 +540,28 @@ export const appContract = {
         runIds: z.array(Id).optional(),
       }),
     ),
+    /** Apply a natural-language revision according to the bound Run's state. */
+    amendTask: oc
+      .input(
+        threadTarget.safeExtend({
+          targetTaskId: Id,
+          text: z.string().trim().min(1).max(100_000),
+          clientNonce: z.string().min(1).max(200),
+        }),
+      )
+      .output(
+        z.object({
+          taskId: Id,
+          messageId: Id,
+          revision: z.number().int().nonnegative(),
+          seq: z.number().int().nonnegative(),
+          replayed: z.boolean(),
+          application: TaskAmendmentApplicationSchema,
+        }),
+      ),
+    taskInstructions: oc
+      .input(threadTarget.safeExtend({ targetTaskId: Id }))
+      .output(TaskInstructionViewSchema),
     react: oc
       .input(
         threadTarget.safeExtend({
@@ -424,9 +627,42 @@ export const appContract = {
            * for `request_changes`, optional reason for `reject`.
            */
           feedback: z.string().trim().min(1).max(2000).optional(),
+          /**
+           * A10: the outbound draft revision and fingerprint the user
+           * confirmed. Required once an edit exists, so an approval can never
+           * ride on content the user did not see.
+           */
+          outbound: z
+            .object({
+              revision: z.number().int().positive(),
+              fingerprint: z.string().min(8).max(128),
+            })
+            .strict()
+            .optional(),
+          /**
+           * RT-12: the bound message_group request revision the card showed.
+           * A decision against a different request version is a conflict.
+           */
+          requestRevision: z.number().int().positive().optional(),
         }),
       )
       .output(ResolveInterventionResultSchema),
+    /**
+     * A10: save an outbound draft as a new immutable revision. The previous
+     * revision is superseded; the pending entry always shows the latest one.
+     */
+    updateOutboundDraft: oc
+      .input(
+        threadTarget.safeExtend({
+          interventionId: Id,
+          /** Optimistic guard: the revision the editor was based on. */
+          expectedRevision: z.number().int().positive(),
+          recipients: OutboundDraftRecipientsSchema,
+          subject: z.string().trim().min(1).max(OUTBOUND_DRAFT_MAX_SUBJECT_CHARS),
+          body: OutboundDraftBodySchema,
+        }),
+      )
+      .output(OutboundDraftStateSchema),
     markRead: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
     markUnread: oc.input(threadTarget).output(z.object({ ok: z.literal(true) })),
   },
@@ -527,9 +763,7 @@ export const appContract = {
         .output(MemoryFactMutationResultSchema),
     },
     factEvidence: {
-      list: oc
-        .input(MemoryFactEvidenceListInputSchema)
-        .output(z.array(MemoryFactEvidenceSchema)),
+      list: oc.input(MemoryFactEvidenceListInputSchema).output(z.array(MemoryFactEvidenceSchema)),
     },
     summary: {
       get: oc.input(MemorySummaryGetInputSchema).output(MemorySummarySchema),
@@ -862,12 +1096,7 @@ export const appContract = {
           limit: z.number().int().min(1).max(60).optional(),
         }),
       )
-      .output(
-        z.object({
-          items: z.array(ArtifactSchema.extend({ versionCount: z.number().int() })),
-          nextCursor: z.string().nullable(),
-        }),
-      ),
+      .output(ArtifactPageSchema),
     listVersions: oc.input(z.object({ familyId: Id })).output(z.array(ArtifactVersionSchema)),
     create: oc
       .input(

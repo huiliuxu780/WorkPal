@@ -27,6 +27,14 @@
     "dev": {
       "cache": false,
       "env": ["PUBLIC_POSTHOG_HOST", "PUBLIC_POSTHOG_KEY"],
+      "passThroughEnv": [
+        "API_PORT",
+        "API_PROXY_TARGET",
+        "API_URL",
+        "BETTER_AUTH_URL",
+        "WEB_ORIGIN",
+        "WEB_PORT"
+      ],
       "persistent": true
     }
   }

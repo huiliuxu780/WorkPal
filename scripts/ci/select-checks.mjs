@@ -10,14 +10,17 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { testPathTraits } from "../testing/test-inventory.mjs";
 
 export const ZERO_SHA = "0".repeat(40);
 
 /** Jobs a developer can see as selected/skipped. runtime-jar is implied. */
 export const CHECK_JOBS = [
   "docs",
+  "harness",
   "web",
   "backend",
+  "db-postgres",
   "agentscope",
   "worker-chain",
   "agent-runtime-image",
@@ -36,6 +39,19 @@ const AVATAR_WEB_E2E = [
   "avatar-bot-change.spec.ts",
 ];
 const EXECUTION_WEB_E2E = ["execution-card.spec.ts", "task-center.spec.ts"];
+const CARD_UI_INTERACTIONS_WEB_E2E = [
+  "card-ui-interactions.spec.ts",
+  "peer-messages.spec.ts",
+  "group-membership.spec.ts",
+];
+const CARD_DISPLAY_WEB_E2E = ["card-display-content.spec.ts"];
+const CARD_ATTENTION_WEB_E2E = ["card-attention.spec.ts", ...DEFAULT_WEB_E2E];
+const MESSAGE_GROUP_WEB_E2E = ["message-group.spec.ts", ...DEFAULT_WEB_E2E];
+const GROUP_MEMBERSHIP_WEB_E2E = [
+  "group-membership.spec.ts",
+  "message-group.spec.ts",
+  ...DEFAULT_WEB_E2E,
+];
 const ONBOARDING_WEB_E2E = [
   "onboarding-conversation.spec.ts",
   "onboarding-model-auto-skip.spec.ts",
@@ -89,6 +105,8 @@ const WORKER_DB_STEMS = [
   "packages/db/src/background-task-registration",
   "packages/db/src/wait-timeouts",
   "packages/db/src/execution-revocations",
+  "packages/db/src/execution-fence",
+  "packages/db/src/external-effects",
 ];
 
 const CORE_WEB_STEMS = [
@@ -248,7 +266,7 @@ export function classifyPath(file) {
     anyStem(p, WORKER_DB_STEMS)
   ) {
     return {
-      jobs: ["backend", "worker-chain"],
+      jobs: ["backend", "worker-chain", "db-postgres"],
       reason: "Worker process, lease, outbox, or Graphile handoff",
       webE2e: [],
     };
@@ -275,6 +293,34 @@ export function classifyPath(file) {
       jobs: ["agentscope", "agent-runtime-image"],
       reason: "Java AgentScope runtime or its image build context",
       webE2e: [],
+    };
+  }
+
+  // The cross-session group handoff only exists behind the message_group gate;
+  // its receipt, contract, and adapter paths must run the closed-loop spec.
+  if (
+    stemMatch(p, "packages/adapters/src/message-group") ||
+    stemMatch(p, "packages/core/src/roundtable-contracts") ||
+    stemMatch(p, "packages/core/src/roundtable-feature-gates")
+  ) {
+    return {
+      jobs: ["backend", "agentscope", "db-postgres", "web"],
+      reason: "message_group delivery, receipt, and return path",
+      webE2e: MESSAGE_GROUP_WEB_E2E,
+    };
+  }
+
+  // RT-12: the membership request binding, its approval branch, and the
+  // X-GROUP cards are one closed loop across the DB, API, and web surface.
+  if (
+    stemMatch(p, "packages/db/src/group-membership") ||
+    stemMatch(p, "packages/db/src/message-group-delivery") ||
+    stemMatch(p, "packages/contracts/src/card-interaction")
+  ) {
+    return {
+      jobs: ["backend", "agentscope", "db-postgres", "web"],
+      reason: "group membership approval and the X-GROUP card surface",
+      webE2e: GROUP_MEMBERSHIP_WEB_E2E,
     };
   }
 
@@ -327,10 +373,41 @@ export function classifyPath(file) {
     };
   }
 
+  // FIX-127: the Task instruction envelope pins what a resumed Run re-reads
+  // after an answered ask, and the executor's ask/resume path (including the
+  // scripted fixtures it plays back) decides whether the resumed Run asks
+  // again or continues. Those regressions are only caught by the Execution
+  // Card ask flow, so they must select it (issue #127 CI blind spot).
+  if (
+    stemMatch(p, "packages/db/src/task-instructions") ||
+    stemMatch(p, "packages/adapters/src/executor") ||
+    stemMatch(p, "packages/adapters/src/scripted-runtime")
+  ) {
+    const jobs = stemMatch(p, "packages/db/src/task-instructions")
+      ? ["backend", "agentscope", "db-postgres", "web"]
+      : ["backend", "agentscope", "web"];
+    return {
+      jobs,
+      reason: "answered-ask resume path drives the Execution Card ask flow",
+      webE2e: EXECUTION_WEB_E2E,
+    };
+  }
+
   if (isUnder(p, "packages/db")) {
     return {
-      jobs: ["backend", "agentscope"],
+      jobs: ["backend", "agentscope", "db-postgres"],
       reason: "database access layer used by API, Worker, and journeys",
+      webE2e: [],
+    };
+  }
+
+  if (
+    isUnder(p, "packages/testkit/src/resources") ||
+    isUnder(p, "packages/testkit/src/cli/resources")
+  ) {
+    return {
+      jobs: ["harness", "backend", "agentscope"],
+      reason: "worktree resource planner and agent doctor",
       webE2e: [],
     };
   }
@@ -379,7 +456,7 @@ export function classifyPath(file) {
 }
 
 function full(reason) {
-  return { jobs: [...FULL_JOBS], reason, webE2e: [...DEFAULT_WEB_E2E] };
+  return { full: true, jobs: [...FULL_JOBS], reason, webE2e: [...DEFAULT_WEB_E2E] };
 }
 
 const WEB_E2E_DIR = "apps/web/e2e";
@@ -410,6 +487,35 @@ function mappedWebE2e(file) {
   ) {
     return AVATAR_WEB_E2E;
   }
+  // CARD-01C display components and the shared table/markdown adapters.
+  if (
+    isUnder(file, "apps/web/src/components/ai/display") ||
+    file.includes("ArtifactFileCard") ||
+    file.includes("SandboxedHtmlViewer") ||
+    file.includes("VoiceChatCard") ||
+    file.includes("CloudAgentCard") ||
+    stemMatch(file, "apps/web/src/pages/shell/message-cards") ||
+    stemMatch(file, "apps/web/src/pages/Artifacts") ||
+    file.includes("packages/chat-ui/src/markdown-table")
+  ) {
+    return CARD_DISPLAY_WEB_E2E;
+  }
+  // CARD-01B renderers and the RT-09 private-pair receipt/overlay are one
+  // production path: a change here must run both the gate-on card spec and the
+  // bound private-history spec. Display content shares Shell/execution mounts.
+  if (
+    isUnder(file, "apps/web/src/components/ai/interactions") ||
+    file.includes("PeerReceiptRow") ||
+    file.includes("peer-receipts") ||
+    file.includes("peer-transcript") ||
+    file.includes("PeerMessagesOverlay") ||
+    file.includes("InterventionRegion") ||
+    stemMatch(file, "apps/web/src/pages/Shell") ||
+    stemMatch(file, "apps/web/src/pages/shell/use-execution-transcript")
+  ) {
+    return unique([...CARD_UI_INTERACTIONS_WEB_E2E, ...CARD_DISPLAY_WEB_E2E]);
+  }
+  if (file.includes("GroupDestinationReceipt")) return MESSAGE_GROUP_WEB_E2E;
   if (
     isUnder(file, "apps/web/src/components/ai") ||
     file.includes("execution") ||
@@ -461,11 +567,26 @@ function implyRuntimeJar(jobs) {
 }
 
 /**
- * @param {{ files?: string[], mode?: "selective" | "full", forceReason?: string, base?: string, head?: string }} input
+ * @param {{ files?: string[], mode?: "selective" | "full" | "visual", forceReason?: string, base?: string, head?: string }} input
  */
 export function selectChecks(input) {
   const base = input.base ?? null;
   const head = input.head ?? null;
+
+  if (input.mode === "visual") {
+    return buildResult({
+      mode: "selective",
+      files: input.files ?? [],
+      selected: [],
+      reasons: {
+        "*": input.forceReason ?? "daily visual screenshots only",
+      },
+      webE2e: [],
+      base,
+      head,
+      harnessMode: null,
+    });
+  }
 
   if (input.mode === "full") {
     const reason = input.forceReason ?? "full verification requested";
@@ -477,6 +598,7 @@ export function selectChecks(input) {
       webE2e: [...DEFAULT_WEB_E2E],
       base,
       head,
+      harnessMode: "full",
     });
   }
 
@@ -492,21 +614,50 @@ export function selectChecks(input) {
       webE2e: [...DEFAULT_WEB_E2E],
       base,
       head,
+      harnessMode: "full",
     });
   }
 
   const selected = new Set();
   const reasons = {};
   const webE2e = new Set();
+  const directSpecs = new Set();
   const fileReasons = [];
+  let harnessMode = null;
+  let sawUnitChange = false;
+  let forceHarnessFull = false;
 
   for (const file of files) {
     const classified = classifyPath(file);
-    for (const job of classified.jobs) selected.add(job);
+    const traits = testPathTraits(file);
+    const jobs = [...classified.jobs];
+    if (traits.isPostgres && !jobs.includes("db-postgres")) jobs.push("db-postgres");
+    for (const job of jobs) selected.add(job);
     for (const spec of classified.webE2e) webE2e.add(spec);
-    fileReasons.push({ file, jobs: classified.jobs, reason: classified.reason });
-    if (!reasons[classified.jobs.join("+")]) {
-      reasons[classified.jobs.join("+")] = `${file}: ${classified.reason}`;
+    const directSpec = executableWebSpecName(file);
+    if (directSpec) directSpecs.add(directSpec);
+    fileReasons.push({ file, jobs, reason: classified.reason });
+    if (!reasons[jobs.join("+")]) {
+      reasons[jobs.join("+")] = `${file}: ${classified.reason}`;
+    }
+    if (classified.full) forceHarnessFull = true;
+    if (traits.isUnit) sawUnitChange = true;
+    const docsOnly = jobs.length === 1 && jobs[0] === "docs";
+    if (!docsOnly || traits.isTest) {
+      selected.add("harness");
+      harnessMode = harnessMode ?? "inventory";
+    }
+  }
+  if (harnessMode) {
+    harnessMode = forceHarnessFull ? "full" : sawUnitChange ? "unit" : "inventory";
+  }
+
+  // The CARD/pair specs run with feature gates enabled for the whole
+  // Playwright invocation. Do not mix in legacy execution specs that assert
+  // the gate-off card path unless that spec itself changed.
+  if (webE2e.has("card-ui-interactions.spec.ts")) {
+    for (const spec of ["execution-card.spec.ts", "task-center.spec.ts"]) {
+      if (!directSpecs.has(spec)) webE2e.delete(spec);
     }
   }
 
@@ -519,10 +670,21 @@ export function selectChecks(input) {
     base,
     head,
     fileReasons,
+    harnessMode,
   });
 }
 
-function buildResult({ mode, files, selected, reasons, webE2e, base, head, fileReasons }) {
+function buildResult({
+  mode,
+  files,
+  selected,
+  reasons,
+  webE2e,
+  base,
+  head,
+  fileReasons,
+  harnessMode,
+}) {
   const selectedSet = new Set(implyRuntimeJar(selected));
   const selectedJobs = ALL_JOBS.filter((job) => selectedSet.has(job));
   const skippedJobs = ALL_JOBS.filter((job) => !selectedSet.has(job));
@@ -540,6 +702,7 @@ function buildResult({ mode, files, selected, reasons, webE2e, base, head, fileR
     reasons,
     fileReasons: fileReasons ?? [],
     webE2eSpec,
+    harnessMode: selectedSet.has("harness") ? (harnessMode ?? "inventory") : null,
     flags: Object.fromEntries(ALL_JOBS.map((job) => [job, selectedSet.has(job)])),
   };
   result.summary = formatSummary(result);
@@ -557,6 +720,7 @@ export function formatSummary(result) {
     `- Skipped: ${result.skipped.join(", ") || "(none)"}`,
   ];
   if (result.webE2eSpec) lines.push(`- Focused web E2E: \`${result.webE2eSpec}\``);
+  if (result.harnessMode) lines.push(`- H1 harness mode: \`${result.harnessMode}\``);
   lines.push(``, `### Why`);
   for (const [key, reason] of Object.entries(result.reasons)) {
     lines.push(`- **${key}**: ${reason}`);
@@ -632,6 +796,15 @@ export function resolveGitHubSelection(
   const modeInput = env.MODE_INPUT || "";
   const sha = env.GITHUB_SHA ?? env.EVENT_AFTER ?? "";
 
+  if (event === "workflow_dispatch" && modeInput === "visual") {
+    return selectChecks({
+      mode: "visual",
+      forceReason: "daily visual screenshots only; the scheduled full verification is unchanged",
+      base: null,
+      head: sha || null,
+    });
+  }
+
   if (
     event === "schedule" ||
     modeInput === "full" ||
@@ -690,6 +863,7 @@ export function writeGitHubOutput(result, env = process.env) {
   const block = [
     ...kv,
     `mode=${result.mode}`,
+    `harness_mode=${result.harnessMode ?? ""}`,
     `web_e2e_spec=${result.webE2eSpec}`,
     `result<<__CI01_RESULT__`,
     JSON.stringify({ mode: result.mode, selected: result.selected, flags: result.flags }),

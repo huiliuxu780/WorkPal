@@ -1,0 +1,33 @@
+# RUNTIME-RELIABILITY-01 — Java Runtime structured correlation events
+# Captured from a real 'mvn -f services/agent-runtime/pom.xml test' run (128 tests, BUILD SUCCESS).
+# Envelope and field names match @rakazo/logging, so one trace.id greps across processes.
+# service.name is rakazo-agent-runtime (TS services use rakazo-api / rakazo-worker).
+# On the long hex values below: session.key is agentscope:chat:v1:<sha256>:<sha256>
+# over the JUnit fixtures' literal identities (bot-1, thread-1, server-suspend-1,
+# cancel-1, run-a). They are hashed synthetic test identifiers, not credentials and
+# not real user data. trace.id and span.id are random hex from the same test run.
+
+## HTTP boundary: run accepted, trace bound, attempt + session identity present
+{"timestamp":"2026-10-28T16:23:56.922371Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","trace.id":"2f520bb90571a417bdd0e0215a4ab74f","span.id":"ea1e3397bee47501","run.id":"server-suspend-1","thread.id":"thread-1","bot.id":"bot-1","attempt.id":"server-suspend-1:attempt","session.key":"agentscope:chat:v1:8884939074a6c8411948bc490ae0f320319ab373fd31bf9f4ed0cc0d3aa65203:dbb8eced28dbc22bf057c0a1492b3049328dcbd427eb67925d47f403f8da1e3a"}
+{"timestamp":"2026-10-28T16:24:17.206562Z","level":"info","message":"runtime.run.accepted","service.name":"rakazo-agent-runtime","trace.id":"0ac314bb6c95690e28c391a580bee870","span.id":"cbfd237e4fc3a0f7","run.id":"cancel-1","thread.id":"thread-1","bot.id":"bot-1","attempt.id":"cancel-1:attempt","session.key":"agentscope:chat:v1:8884939074a6c8411948bc490ae0f320319ab373fd31bf9f4ed0cc0d3aa65203:dbb8eced28dbc22bf057c0a1492b3049328dcbd427eb67925d47f403f8da1e3a"}
+
+## model-call boundary: stream started (engine layer, direct execute carries no HTTP trace)
+{"timestamp":"2026-10-28T16:23:55.899105Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","run.id":"recovery-spawn","thread.id":"thread-1","bot.id":"bot-1","stream.resume_index":0}
+{"timestamp":"2026-10-28T16:23:56.854610Z","level":"info","message":"runtime.stream.started","service.name":"rakazo-agent-runtime","run.id":"recovery-deliver","thread.id":"thread-1","bot.id":"bot-1","stream.resume_index":0}
+
+## tool-bridge boundary
+
+## pause / cancel / failure events
+{"timestamp":"2026-10-28T16:23:57.339290Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","run.id":"run-a","thread.id":"thread-1","bot.id":"bot-1","attempt.id":"attempt-a","session.key":"agentscope:chat:v1:8884939074a6c8411948bc490ae0f320319ab373fd31bf9f4ed0cc0d3aa65203:dbb8eced28dbc22bf057c0a1492b3049328dcbd427eb67925d47f403f8da1e3a","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-28T16:23:57.367764Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","run.id":"run-a","thread.id":"thread-1","bot.id":"bot-1","attempt.id":"attempt-a","session.key":"agentscope:chat:v1:8884939074a6c8411948bc490ae0f320319ab373fd31bf9f4ed0cc0d3aa65203:dbb8eced28dbc22bf057c0a1492b3049328dcbd427eb67925d47f403f8da1e3a","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-28T16:23:57.428519Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","run.id":"run-a","thread.id":"thread-1","bot.id":"bot-1","attempt.id":"attempt-a","session.key":"agentscope:chat:v1:8884939074a6c8411948bc490ae0f320319ab373fd31bf9f4ed0cc0d3aa65203:dbb8eced28dbc22bf057c0a1492b3049328dcbd427eb67925d47f403f8da1e3a","pause.reason":"approval-or-secret"}
+{"timestamp":"2026-10-28T16:24:08.939918Z","level":"info","message":"runtime.run.paused","service.name":"rakazo-agent-runtime","run.id":"run-pending","thread.id":"thread-1","bot.id":"bot-1","pause.reason":"approval-or-secret"}
+
+## distinct events emitted
+ 125 "message":"runtime.stream.started"
+   6 "message":"runtime.run.paused"
+   2 "message":"runtime.run.rejected"
+   2 "message":"runtime.run.accepted"
+   1 "message":"runtime.stream.failed"
+   1 "message":"runtime.run.completed"
+   1 "message":"runtime.run.cancelled"

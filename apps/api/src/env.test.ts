@@ -1,3 +1,10 @@
+import {
+  CARDS_UNIFIED_V2_ENV,
+  CardsUnifiedFeatureConfigError,
+  ROUNDTABLE_FEATURE_ENV,
+  ROUNDTABLE_FEATURES,
+  RoundtableFeatureConfigError,
+} from "@rakazo/core";
 import { describe, expect, it } from "vitest";
 import { loadEnv } from "./env.js";
 
@@ -15,6 +22,32 @@ describe("loadEnv", () => {
     expect(env.wakeupDriver).toBe("graphile");
     expect(env.apiHost).toBe("127.0.0.1");
     expect(env.nodeEnv).toBe("test");
+  });
+
+  it("keeps the CARD-01 gate off by default and independent of Roundtable", () => {
+    expect(loadEnv(base).cardsUnifiedFeature).toEqual({ cardsUnifiedV2: false });
+    expect(
+      loadEnv({
+        ...base,
+        ROUNDTABLE_PRIVATE_PAIR_ENABLED: "true",
+        ROUNDTABLE_MESSAGE_GROUP_ENABLED: "true",
+      }).cardsUnifiedFeature,
+    ).toEqual({ cardsUnifiedV2: false });
+  });
+
+  it("enables the CARD-01 gate only when explicitly true", () => {
+    expect(loadEnv({ ...base, [CARDS_UNIFIED_V2_ENV]: "true" }).cardsUnifiedFeature).toEqual({
+      cardsUnifiedV2: true,
+    });
+    expect(loadEnv({ ...base, [CARDS_UNIFIED_V2_ENV]: "false" }).cardsUnifiedFeature).toEqual({
+      cardsUnifiedV2: false,
+    });
+  });
+
+  it("fails startup for illegal CARD-01 gate values", () => {
+    expect(() => loadEnv({ ...base, [CARDS_UNIFIED_V2_ENV]: "yes" })).toThrow(
+      CardsUnifiedFeatureConfigError,
+    );
   });
 
   it("keeps explicit emulator settings for pnpm test", () => {
@@ -213,5 +246,41 @@ describe("loadEnv", () => {
     expect(loadEnv({ ...base, MCP_ALLOW_PRIVATE_ENDPOINT: "1" }).mcpAllowPrivateEndpoint).toBe(
       false,
     );
+  });
+
+  it("keeps every roundtable gate closed by default", () => {
+    const gates = loadEnv(base).roundtableFeatures;
+    for (const feature of ROUNDTABLE_FEATURES) expect(gates[feature]).toBe(false);
+  });
+
+  it("enables each roundtable gate independently", () => {
+    for (const enabled of ROUNDTABLE_FEATURES) {
+      const gates = loadEnv({
+        ...base,
+        [ROUNDTABLE_FEATURE_ENV[enabled]]: "true",
+      }).roundtableFeatures;
+      for (const feature of ROUNDTABLE_FEATURES) {
+        expect(gates[feature], feature).toBe(feature === enabled);
+      }
+    }
+  });
+
+  it("keeps explicitly disabled roundtable gates closed", () => {
+    const gates = loadEnv({
+      ...base,
+      [ROUNDTABLE_FEATURE_ENV.background_helper]: "false",
+    }).roundtableFeatures;
+    expect(gates.background_helper).toBe(false);
+  });
+
+  it("fails API startup on invalid roundtable gate values", () => {
+    for (const value of ["1", "yes", "ture"]) {
+      expect(() =>
+        loadEnv({
+          ...base,
+          [ROUNDTABLE_FEATURE_ENV.message_group]: value,
+        }),
+      ).toThrow(RoundtableFeatureConfigError);
+    }
   });
 });

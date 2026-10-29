@@ -5,7 +5,9 @@ import io.agentscope.core.hook.HookEvent;
 import io.agentscope.core.hook.HookEventType;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.memory.compaction.TokenCounterUtil;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import reactor.core.publisher.Mono;
 
 /**
@@ -26,15 +28,11 @@ import reactor.core.publisher.Mono;
  */
 final class WorkPalMemorySignalHook implements Hook {
 
-    private final String runId;
-    private final String threadId;
-    private final int generation;
+    private final Map<String, Object> identity;
     private final long startedAtNanos = System.nanoTime();
 
     WorkPalMemorySignalHook(RunRequest request) {
-        this.runId = request.runId();
-        this.threadId = request.threadId();
-        this.generation = request.generation();
+        this.identity = RuntimeEngine.bindingsWith(request, "memory.generation", request.generation());
     }
 
     @Override
@@ -59,12 +57,9 @@ final class WorkPalMemorySignalHook implements Hook {
 
     private void emit(HookEvent event, HookEventType type) {
         long elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000L;
-        StringBuilder line = new StringBuilder(160);
-        line.append("agentscope.signal event=").append(type.name())
-                .append(" run=").append(runId)
-                .append(" thread=").append(threadId)
-                .append(" generation=").append(generation)
-                .append(" elapsed_ms=").append(elapsedMs);
+        Map<String, Object> bindings = new LinkedHashMap<>(identity);
+        bindings.put("signal.event", type.name());
+        bindings.put("signal.elapsed_ms", elapsedMs);
         if (type == HookEventType.POST_CALL || type == HookEventType.PRE_SUMMARY) {
             // Bounded counts only — estimated tokens and message count, never
             // content. TokenCounterUtil is the same estimator the native
@@ -72,15 +67,15 @@ final class WorkPalMemorySignalHook implements Hook {
             try {
                 if (event.getMemory() != null) {
                     List<Msg> messages = event.getMemory().getMessages();
-                    line.append(" messages=").append(messages == null ? 0 : messages.size());
+                    bindings.put("memory.messages", messages == null ? 0 : messages.size());
                     if (messages != null && !messages.isEmpty()) {
-                        line.append(" estimated_tokens=").append(TokenCounterUtil.calculateToken(messages));
+                        bindings.put("memory.estimated_tokens", TokenCounterUtil.calculateToken(messages));
                     }
                 }
             } catch (RuntimeException ignored) {
                 // Estimation is best-effort metadata.
             }
         }
-        System.err.println(line);
+        RuntimeLog.info("agentscope.signal", bindings);
     }
 }

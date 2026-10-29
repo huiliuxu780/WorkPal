@@ -1,14 +1,27 @@
-import { expect, test } from "@playwright/test";
-import { activeBotId, captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import { captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
+
+async function scrollIntoView(locator: Locator) {
+  await expect(async () => {
+    await locator.scrollIntoViewIfNeeded();
+  }).toPass({ timeout: 5_000 });
+}
+
+async function finishWelcomeSetup(page: Page) {
+  const choice = page.getByRole("button", { name: /Day-to-day work/ });
+  if (await choice.isVisible().catch(() => false)) {
+    await choice.click();
+  }
+}
 
 test("shows peer chips in transcript and opens view-only peer chat", async ({ page }, testInfo) => {
   const stamp = Date.now();
   await signup(page, `peer-msg-${stamp}@rakazo.test`, "password12", "Peer Msg");
   await completeOnboarding(page);
+  await finishWelcomeSetup(page);
   await page.goto("/app");
   await page.waitForURL(/\/app\/[^/]+$/);
 
-  const chiefId = activeBotId(page);
   await rpc(page, "bots/create", {
     name: "Researcher",
     title: "",
@@ -26,77 +39,85 @@ test("shows peer chips in transcript and opens view-only peer chat", async ({ pa
     timeout: 60_000,
   });
 
-  await expect
-    .poll(
-      async () => {
-        const history = await rpc<{
-          messages: Array<{ blocks: Array<{ kind: string; text?: string }> }>;
-        }>(page, "threads/messages", { botId: chiefId, includePeerRuns: true });
-        const peerTexts = history.messages.flatMap((message) =>
-          message.blocks
-            .filter(
-              (block) => block.kind === "bot_message_sent" || block.kind === "bot_message_received",
-            )
-            .map((block) => block.text ?? ""),
-        );
-        return peerTexts.some((text) => text.includes("peer-exchange-alpha"));
-      },
-      { timeout: 60_000 },
-    )
-    .toBe(true);
-
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 60_000 });
 
   const transcript = page.getByTestId("transcript");
-  const chip = transcript
-    .getByTestId("peer-receipt-chip")
+  const receipt = transcript
+    .getByTestId("peer-receipt-row")
     .filter({ hasText: "Researcher" })
     .first();
-  await expect(chip).toBeVisible({ timeout: 30_000 });
-  await expect(chip.getByText(/Messaged|Message from/)).toBeVisible();
-  await expect(chip).toHaveAccessibleName(/Messaged Researcher|Message from Researcher/);
-  await expect(chip.locator(".rakazo-agent-avatar")).toBeVisible();
-  await expect(chip).not.toContainText("{peer}");
-  // User bubble still contains the phrase; peer body must not appear outside the chip.
-  await expect(chip).not.toContainText("peer-exchange-alpha");
+  await expect(receipt).toBeVisible({ timeout: 30_000 });
+  await expect(receipt.getByText(/Messaged/)).toBeVisible();
+  await expect(receipt.getByRole("button", { name: "Messaged Researcher" })).toBeVisible();
+  await expect(receipt.locator(".rakazo-agent-avatar")).toBeVisible();
+  await expect(receipt).not.toContainText("{peer}");
+  // User bubble still contains the phrase; the private body stays out of the row.
+  await expect(receipt).not.toContainText("peer-exchange-alpha");
   await expect(
     transcript.getByTestId("message-user-bubble").getByText("peer-exchange-alpha"),
   ).toHaveCount(1);
-  const assertChipLeftAligned = async () => {
+  const assertReceiptCompact = async () => {
     const transcriptBox = await transcript.boundingBox();
-    const chipBox = await chip.boundingBox();
+    // The row is a full-width centering track; the visible receipt pill is the
+    // compact unit the prototype constrains.
+    const pillBox = await receipt
+      .getByRole("button", { name: "Messaged Researcher" })
+      .boundingBox();
     expect(transcriptBox).not.toBeNull();
-    expect(chipBox).not.toBeNull();
-    // Transcript padding is 16px mobile / 28px desktop; centering must fail this assertion.
-    expect(chipBox!.x - transcriptBox!.x).toBeLessThanOrEqual(32);
-    // Stay under 75% of the transcript width so the chip cannot become a full-width bar.
-    expect(chipBox!.width).toBeLessThan(transcriptBox!.width * 0.75);
+    expect(pillBox).not.toBeNull();
+    // The prototype centers the lightweight receipt divider in the transcript.
+    const transcriptCenter = transcriptBox!.x + transcriptBox!.width / 2;
+    const pillCenter = pillBox!.x + pillBox!.width / 2;
+    expect(Math.abs(transcriptCenter - pillCenter)).toBeLessThanOrEqual(24);
+    // Stay under 75% of the transcript width so the row cannot become a full-width bar.
+    expect(pillBox!.width).toBeLessThan(transcriptBox!.width * 0.75);
   };
 
-  await assertChipLeftAligned();
+  await assertReceiptCompact();
   await expect(composer).toBeVisible();
-  await captureScreenshot(page, testInfo, "peer-chip-desktop");
+  await scrollIntoView(receipt);
+  await captureScreenshot(page, testInfo, "peer-receipt-desktop");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await chip.scrollIntoViewIfNeeded();
-  await expect(chip).toBeVisible();
+  await scrollIntoView(receipt);
+  await expect(receipt).toBeVisible();
   await expect(composer).toBeVisible();
-  await assertChipLeftAligned();
-  await captureScreenshot(page, testInfo, "peer-chip-mobile");
+  await assertReceiptCompact();
+  await captureScreenshot(page, testInfo, "peer-receipt-mobile");
 
-  await chip.focus();
-  await expect(chip).toBeFocused();
-  await chip.press("Enter");
+  const trigger = receipt.getByRole("button", { name: "Messaged Researcher" });
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
+  await trigger.press("Enter");
   const view = page.getByTestId("peer-conversation-view");
   await expect(view).toBeVisible();
   await expect(view.getByRole("heading", { name: /Chief · Researcher/ })).toBeVisible();
-  await expect(view.getByText("This chat is view-only")).toBeVisible();
-  await expect(view.getByRole("button", { name: "Close" })).toHaveCount(1);
+  await expect(
+    view.getByText(
+      "You can read this collaboration record, but you cannot speak in the chat between Agents.",
+    ),
+  ).toBeVisible();
+  await expect(view.getByRole("button", { name: "Close chat", exact: true })).toHaveCount(1);
   await expect(view.getByText("peer-exchange-alpha").first()).toBeVisible({
     timeout: 30_000,
   });
   await expect(view.getByRole("textbox")).toHaveCount(0);
   await expect(view.getByText("Loading")).toHaveCount(0);
+  // The current Bot's own message is authored and right-aligned in the pair view.
+  const sentRow = view
+    .locator('[data-testid="peer-message"][data-direction="sent"]')
+    .filter({ hasText: "peer-exchange-alpha" })
+    .first();
+  await expect(sentRow).toContainText("Chief");
+  const authorAvatar = sentRow.locator(".rakazo-agent-avatar");
+  await expect(authorAvatar).toBeVisible();
+  const transcriptBox = await view.getByTestId("peer-conversation-transcript").boundingBox();
+  const avatarBox = await authorAvatar.boundingBox();
+  expect(transcriptBox).not.toBeNull();
+  expect(avatarBox).not.toBeNull();
+  expect(avatarBox!.x + avatarBox!.width / 2).toBeGreaterThan(
+    transcriptBox!.x + transcriptBox!.width / 2,
+  );
   const peerTranscript = view.getByTestId("peer-conversation-transcript");
   await peerTranscript.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -109,4 +130,65 @@ test("shows peer chips in transcript and opens view-only peer chat", async ({ pa
     )
     .toBe(true);
   await captureScreenshot(page, testInfo, "peer-view-only");
+});
+
+test("expands a multi-target receipt and opens one bound private pair", async ({
+  page,
+}, testInfo) => {
+  const stamp = Date.now();
+  await signup(page, `peer-multi-${stamp}@rakazo.test`, "password12", "Peer Multi");
+  await completeOnboarding(page);
+  await finishWelcomeSetup(page);
+  await page.goto("/app");
+  await page.waitForURL(/\/app\/[^/]+$/);
+
+  for (const name of ["Researcher", "Analyst"]) {
+    await rpc(page, "bots/create", {
+      name,
+      title: "",
+      description: "",
+      instructions: "",
+      notifyOnFinish: true,
+    });
+  }
+  await page.reload();
+  const composer = page.getByRole("combobox", { name: "Message Chief" });
+  await expect(composer).toBeVisible({ timeout: 15_000 });
+  await composer.fill("message both bots named Researcher and Analyst saying peer-multi-alpha");
+  await composer.press("Enter");
+
+  const transcript = page.getByTestId("transcript");
+  const row = transcript.getByTestId("peer-receipt-row").filter({ hasText: "2 Agents" });
+  await expect(row).toBeVisible({ timeout: 60_000 });
+  await expect(row).toHaveAttribute("data-receipt-count", "2");
+  await expect(row).not.toContainText("peer-multi-alpha");
+  await scrollIntoView(row);
+  await captureScreenshot(page, testInfo, "peer-receipt-multi-desktop");
+
+  const toggle = row.getByRole("button", {
+    name: "Show the 2 Agents this message was sent to",
+  });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("menuitem", { name: "Open the chat with Researcher" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Open the chat with Analyst" })).toBeVisible();
+  await captureScreenshot(page, testInfo, "peer-receipt-multi-open");
+
+  await page.getByRole("menuitem", { name: "Open the chat with Researcher" }).click();
+  const view = page.getByTestId("peer-conversation-view");
+  await expect(view).toBeVisible();
+  await expect(view.getByRole("heading", { name: /Chief · Researcher/ })).toBeVisible();
+  await expect(view.getByText("peer-multi-alpha").first()).toBeVisible({ timeout: 30_000 });
+  await expect(view.getByRole("button", { name: "Close chat", exact: true })).toHaveCount(1);
+  await expect(view.getByRole("textbox")).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "peer-overlay-multi-desktop");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(view).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+  ).toBeLessThanOrEqual(1);
+  await captureScreenshot(page, testInfo, "peer-overlay-multi-narrow");
+  await view.getByRole("button", { name: "Close chat", exact: true }).click();
+  await expect(view).toHaveCount(0);
 });

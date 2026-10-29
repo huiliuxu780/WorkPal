@@ -74,6 +74,8 @@ describe("classifyPath", () => {
       "packages/adapters/src/wakeup.postgres.test.ts",
       "packages/adapters/src/result-delivery.ts",
       "packages/db/src/run-lease.ts",
+      "packages/db/src/execution-fence.ts",
+      "packages/db/src/external-effects.ts",
       "packages/adapter-kit/src/background-jobs.ts",
       "apps/web/e2e/worker-chain.spec.ts",
     ]) {
@@ -81,6 +83,21 @@ describe("classifyPath", () => {
       assert.ok(jobs.includes("worker-chain"), file);
       assert.equal(jobs.includes("web"), false, file);
     }
+  });
+
+  it("routes effect execution fencing to DB and executor verification", () => {
+    for (const file of [
+      "packages/db/src/execution-fence.ts",
+      "packages/db/src/external-effects.ts",
+      "packages/db/src/effect-execution-fence.postgres.test.ts",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("db-postgres"), file);
+      assert.ok(result.jobs.includes("backend"), file);
+    }
+    const executor = classifyPath("packages/adapters/src/executor-readonly-approval.test.ts");
+    assert.ok(executor.jobs.includes("backend"));
+    assert.ok(executor.jobs.includes("agentscope"));
   });
 
   it("unions a changed web spec with its product-path mapping", () => {
@@ -101,6 +118,27 @@ describe("classifyPath", () => {
     assert.ok(approval.webE2e.includes("approval-resume.spec.ts"));
     assert.ok(approval.webE2e.includes("ui-appearance.spec.ts"));
     assert.ok(approval.webE2e.includes("settings-shell.spec.ts"));
+  });
+
+  it("routes message_group production paths to the closed-loop spec", () => {
+    for (const file of [
+      "packages/adapters/src/message-group.ts",
+      "packages/adapters/src/message-group.postgres.test.ts",
+      "packages/core/src/roundtable-contracts.ts",
+      "packages/core/src/roundtable-feature-gates.ts",
+      "apps/web/src/components/ai/GroupDestinationReceipt.tsx",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("web"), file);
+      assert.ok(result.webE2e.includes("message-group.spec.ts"), file);
+    }
+    const backend = classifyPath("packages/adapters/src/message-group.ts");
+    assert.ok(backend.jobs.includes("backend"));
+    assert.ok(backend.jobs.includes("agentscope"));
+    assert.ok(backend.jobs.includes("db-postgres"));
+    assert.deepEqual(classifyPath("apps/web/src/components/ai/GroupDestinationReceipt.tsx").jobs, [
+      "web",
+    ]);
   });
 
   it("keeps AgentScope and Worker exclusive specs off the web E2E mapping", () => {
@@ -155,12 +193,82 @@ describe("classifyPath", () => {
     }
   });
 
+  it("selects the real-postgres constraint job for database and migration changes", () => {
+    for (const file of [
+      "packages/db/src/groups.ts",
+      "packages/db/src/agent-pairs.ts",
+      "packages/db/src/agent-pairs.postgres.test.ts",
+      "packages/db/src/postgres-test-database.ts",
+      "packages/db/src/cancel-runs.ts",
+    ]) {
+      assert.ok(classifyPath(file).jobs.includes("db-postgres"), file);
+    }
+    assert.ok(classifyPath("packages/db/prisma/schema.prisma").jobs.includes("db-postgres"));
+    assert.ok(
+      classifyPath(
+        "packages/db/prisma/migrations/20261022000000_agent_pair_chat_groups/migration.sql",
+      ).jobs.includes("db-postgres"),
+    );
+    assert.equal(classifyPath("docs/privacy.md").jobs.includes("db-postgres"), false);
+  });
+
   it("maps TS adapters to backend + agentscope, not worker-chain", () => {
-    const result = classifyPath("packages/adapters/src/executor.ts");
+    const result = classifyPath("packages/adapters/src/agentscope-runtime.ts");
     assert.ok(result.jobs.includes("backend"));
     assert.ok(result.jobs.includes("agentscope"));
     assert.equal(result.jobs.includes("worker-chain"), false);
     assert.equal(result.jobs.includes("web"), false);
+  });
+
+  it("maps the answered-ask resume paths to the Execution Card E2E", () => {
+    for (const file of [
+      "packages/db/src/task-instructions.ts",
+      "packages/db/src/task-instructions.test.ts",
+      "packages/db/src/task-instructions.postgres.test.ts",
+      "packages/adapters/src/executor.ts",
+      "packages/adapters/src/executor.test.ts",
+      "packages/adapters/src/scripted-runtime.ts",
+      "packages/adapters/src/scripted-runtime.test.ts",
+    ]) {
+      const result = classifyPath(file);
+      assert.ok(result.jobs.includes("web"), `${file} must select the web E2E job`);
+      assert.ok(result.webE2e.includes("execution-card.spec.ts"), file);
+      assert.equal(result.jobs.includes("worker-chain"), false, file);
+    }
+    // The instruction envelope keeps the real-postgres constraint job.
+    assert.ok(classifyPath("packages/db/src/task-instructions.ts").jobs.includes("db-postgres"));
+    // FIX-127 regression: the focused Playwright pattern must actually collect
+    // execution-card.spec.ts for these paths, not just list it.
+    const selection = selectChecks({ files: ["packages/adapters/src/executor.ts"] });
+    assert.ok(selection.selected.includes("web"));
+    assert.match(selection.webE2eSpec, /execution-card\.spec\.ts/);
+    const instructions = selectChecks({ files: ["packages/db/src/task-instructions.ts"] });
+    assert.ok(instructions.selected.includes("web"));
+    assert.match(instructions.webE2eSpec, /execution-card\.spec\.ts/);
+  });
+
+  it("selects the worktree resource planner without narrowing harness or compose", () => {
+    for (const file of [
+      "packages/testkit/src/resources/leases.ts",
+      "packages/testkit/src/resources/plan.ts",
+      "packages/testkit/src/resources/doctor-main.ts",
+      "packages/testkit/src/resources/resources.test.ts",
+      "packages/testkit/src/cli/resources/doctor.ts",
+    ]) {
+      const jobs = classifyPath(file).jobs;
+      for (const job of ["harness", "backend", "agentscope"]) {
+        assert.ok(jobs.includes(job), `${file} missing ${job}`);
+      }
+    }
+    for (const file of [
+      "packages/testkit/src/cli/harness.ts",
+      "scripts/dev-workpal.mjs",
+      "infra/compose/docker-compose.yml",
+      "infra/compose/docker-compose.postgres-host.yml",
+    ]) {
+      const jobs = classifyPath(file).jobs;
+      for (const job of CHECK_JOBS) assert.ok(jobs.includes(job), `${file} missing ${job}`);
+    }
   });
 
   it("forces full for contracts, lockfile, CI, and unknown source", () => {
@@ -195,6 +303,61 @@ describe("selectChecks", () => {
     assert.match(result.webE2eSpec, /avatar-style/);
   });
 
+  it("selects message-group.spec.ts for message_group adapter and receipt changes", () => {
+    for (const files of [
+      ["packages/adapters/src/message-group.ts"],
+      ["packages/core/src/roundtable-contracts.ts"],
+      ["apps/web/src/components/ai/GroupDestinationReceipt.tsx"],
+    ]) {
+      const result = selectChecks({ files });
+      assert.match(result.webE2eSpec, /message-group\.spec\.ts/, files.join(","));
+    }
+  });
+
+  it("selects the CARD-01B and private-pair specs for their shared production path", () => {
+    for (const file of [
+      "apps/web/src/components/ai/interactions/ActionApprovalCard.tsx",
+      "apps/web/src/components/ai/PeerReceiptRow.tsx",
+      "apps/web/src/lib/peer-receipts.ts",
+      "apps/web/src/lib/peer-transcript.ts",
+      "apps/web/src/pages/PeerMessagesOverlay.tsx",
+      "apps/web/src/pages/Shell.tsx",
+    ]) {
+      const result = selectChecks({ files: [file] });
+      assert.match(result.webE2eSpec, /card-ui-interactions\.spec\.ts/, file);
+      assert.match(result.webE2eSpec, /peer-messages\.spec\.ts/, file);
+      // The gate-on batch must not include legacy execution specs.
+      assert.doesNotMatch(result.webE2eSpec, /execution-card\.spec\.ts/, file);
+    }
+  });
+
+  it("selects the display-content spec for CARD-01C production paths", () => {
+    for (const file of [
+      "apps/web/src/components/ai/display/DisplayBlockView.tsx",
+      "apps/web/src/components/ArtifactFileCard.tsx",
+      "apps/web/src/components/SandboxedHtmlViewer.tsx",
+      "apps/web/src/pages/shell/message-cards.tsx",
+      "packages/chat-ui/src/markdown-table.tsx",
+    ]) {
+      const result = selectChecks({ files: [file] });
+      assert.match(result.webE2eSpec, /card-display-content\.spec\.ts/, file);
+    }
+    const shell = selectChecks({ files: ["apps/web/src/pages/Shell.tsx"] });
+    assert.match(shell.webE2eSpec, /card-display-content\.spec\.ts/);
+    assert.match(shell.webE2eSpec, /card-ui-interactions\.spec\.ts/);
+  });
+
+  it("keeps an explicitly changed legacy execution spec in the batch", () => {
+    const result = selectChecks({
+      files: [
+        "apps/web/e2e/execution-card.spec.ts",
+        "apps/web/src/components/ai/interactions/ActionApprovalCard.tsx",
+      ],
+    });
+    assert.match(result.webE2eSpec, /execution-card\.spec\.ts/);
+    assert.match(result.webE2eSpec, /card-ui-interactions\.spec\.ts/);
+  });
+
   it("includes a changed executable spec in the focused web E2E set", () => {
     const history = selectChecks({ files: ["apps/web/e2e/execution-history.spec.ts"] });
     assert.match(history.webE2eSpec, /execution-history\.spec\.ts/);
@@ -222,6 +385,7 @@ describe("selectChecks", () => {
       "execution-history.spec.ts",
       "avatar-studio.spec.ts",
       "approval-resume.spec.ts",
+      "message-group.spec.ts",
     ]) {
       const result = selectChecks({ files: [`apps/web/e2e/${spec}`] });
       const collected = collect(result.webE2eSpec);
@@ -240,6 +404,61 @@ describe("selectChecks", () => {
     assert.equal(worker.webE2eSpec, "");
     assert.ok(worker.selected.includes("worker-chain"));
     assert.equal(worker.selected.includes("web"), false);
+  });
+
+  it("selects the H1 harness for every non-docs change with the right mode", () => {
+    const unit = selectChecks({ files: ["packages/core/src/plain.test.ts"] });
+    assert.ok(unit.selected.includes("harness"));
+    assert.equal(unit.harnessMode, "unit");
+    assert.equal(unit.selected.includes("db-postgres"), false);
+
+    const source = selectChecks({ files: ["apps/api/src/index.ts"] });
+    assert.ok(source.selected.includes("harness"));
+    assert.equal(source.harnessMode, "inventory");
+
+    const docs = selectChecks({ files: ["docs/privacy.md"] });
+    assert.equal(docs.selected.includes("harness"), false);
+    assert.equal(docs.harnessMode, null);
+
+    const docsTest = selectChecks({
+      files: ["docs/roundtable/verify-implementation-plan.test.mjs"],
+    });
+    assert.ok(docsTest.selected.includes("harness"));
+    assert.equal(docsTest.harnessMode, "inventory");
+
+    const infra = selectChecks({ files: ["scripts/testing/test-inventory.mjs"] });
+    assert.equal(infra.harnessMode, "full");
+    assert.ok(infra.selected.includes("harness"));
+    for (const job of CHECK_JOBS) assert.ok(infra.selected.includes(job), job);
+  });
+
+  it("routes changed PostgreSQL tests to db-postgres and the inventory harness", () => {
+    for (const file of [
+      "packages/db/src/run-steps.postgres.test.ts",
+      "packages/adapters/src/run-budget-enforcement.postgres.test.ts",
+      "packages/adapters/src/session-checkpoint-watermark.postgres.test.ts",
+      "packages/testkit/src/messaging.test.ts",
+    ]) {
+      const result = selectChecks({ files: [file] });
+      assert.ok(result.selected.includes("db-postgres"), file);
+      assert.ok(result.selected.includes("harness"), file);
+      assert.equal(result.harnessMode, "inventory", file);
+    }
+
+    const messageGroup = selectChecks({
+      files: ["packages/adapters/src/message-group.postgres.test.ts"],
+    });
+    assert.ok(messageGroup.selected.includes("db-postgres"));
+    assert.ok(messageGroup.selected.includes("web"));
+    assert.match(messageGroup.webE2eSpec, /message-group\.spec\.ts/);
+    assert.ok(messageGroup.selected.includes("harness"));
+  });
+
+  it("keeps an ordinary-suffix Java replay out of unit mode", () => {
+    const result = selectChecks({ files: ["packages/testkit/src/computer-replay.test.ts"] });
+    assert.ok(result.selected.includes("harness"));
+    assert.equal(result.harnessMode, "inventory");
+    assert.ok(result.selected.includes("backend"));
   });
 
   it("unions multiple classes", () => {
@@ -349,6 +568,30 @@ describe("GitHub events", () => {
     assert.equal(dispatched.mode, "full");
   });
 
+  it("visual dispatch runs no product jobs while the schedule stays full", () => {
+    const visual = resolveGitHubSelection({
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+      MODE_INPUT: "visual",
+      GITHUB_SHA: "abc",
+    });
+    assert.deepEqual(visual.selected, []);
+    assert.equal(visual.webE2eSpec, "");
+    const scheduled = resolveGitHubSelection({ GITHUB_EVENT_NAME: "schedule", GITHUB_SHA: "abc" });
+    assert.equal(scheduled.mode, "full");
+    assert.equal(scheduled.selected.includes("web"), true);
+  });
+
+  it("keeps budget acceptance on agentscope and execution card on the web job", () => {
+    const budget = selectChecks({ files: ["apps/web/e2e/budget-acceptance.spec.ts"] });
+    assert.equal(budget.selected.includes("agentscope"), true);
+    assert.equal(budget.selected.includes("web"), false);
+    assert.equal(budget.webE2eSpec.includes("budget-acceptance.spec.ts"), false);
+    const card = selectChecks({ files: ["apps/web/e2e/execution-card.spec.ts"] });
+    assert.equal(card.selected.includes("web"), true);
+    assert.equal(card.webE2eSpec.includes("execution-card.spec.ts"), true);
+    assert.equal(card.selected.includes("agentscope"), false);
+  });
+
   it("unreadable PR SHAs throw instead of succeeding as docs", () => {
     assert.throws(
       () =>
@@ -404,6 +647,46 @@ describe("workflow contract", () => {
       yaml,
       /push: \$\{\{\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\s*\}\}/,
     );
+  });
+
+  it("runs the effect execution fence suites in backend and DB jobs", () => {
+    const backend = yaml.split("\n  backend:")[1]?.split("\n  db-postgres:")[0] ?? "";
+    for (const file of [
+      "approval-effect.test.ts",
+      "executor-effect-idempotency.test.ts",
+      "executor-readonly-approval.test.ts",
+      "manual-retry-reuse.test.ts",
+    ]) {
+      assert.match(backend, new RegExp(`packages/adapters/src/${file.replaceAll(".", "\\.")}`));
+    }
+  });
+
+  it("runs every DB postgres suite against a real postgres service", () => {
+    const block = yaml.split("\n  db-postgres:")[1]?.split("\n  runtime-jar:")[0] ?? "";
+    assert.match(block, /image: postgres:16/);
+    assert.match(block, /VERIFY_DATABASE: "1"/);
+    assert.match(block, /pnpm --filter @rakazo\/db exec prisma migrate deploy/);
+    assert.match(block, /pnpm test:postgres/);
+    const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+    assert.match(pkg.scripts["test:postgres"], /run-test-group\.mjs postgres/);
+    const runner = readFileSync(path.join(repoRoot, "scripts/testing/run-test-group.mjs"), "utf8");
+    assert.match(runner, /--no-file-parallelism/);
+    assert.match(yaml, /RESULT_DB_POSTGRES: \$\{\{\s*needs\.db-postgres\.result\s*\}\}/);
+  });
+
+  it("runs the H1 harness gates and requires them in CI result", () => {
+    const block = yaml.split("\n  harness:")[1]?.split("\n  docs:")[0] ?? "";
+    assert.match(block, /pnpm lint/);
+    assert.match(block, /pnpm test:inventory/);
+    assert.match(block, /pnpm test:ci-select/);
+    assert.match(block, /pnpm test:docs/);
+    assert.match(block, /pnpm test:unit/);
+    assert.match(
+      block,
+      /harness_mode == 'full' \|\| needs\.select-checks\.outputs\.harness_mode == 'unit'/,
+    );
+    assert.match(yaml, /RESULT_HARNESS: \$\{\{\s*needs\.harness\.result\s*\}\}/);
+    assert.match(yaml, /\n {6}- harness\n/);
   });
 });
 

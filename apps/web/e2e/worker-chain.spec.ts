@@ -2,8 +2,12 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { deliverRunAborts } from "../../../packages/adapters/src/revoke-cancelled-work.js";
 import { createDb } from "../../../packages/db/src/index.js";
-import { startModelEmulator } from "../../../packages/testkit/src/model-emulator.js";
+import {
+  type ModelEmulatorStep,
+  startModelEmulator,
+} from "../../../packages/testkit/src/model-emulator.js";
 import { activeBotId, completeOnboarding, rpc, signup } from "./helpers";
 
 type Emulator = Awaited<ReturnType<typeof startModelEmulator>>;
@@ -52,7 +56,14 @@ const DIRECT_REPLY = "WORKER_CHAIN_DIRECT_REPLY completed by the standalone work
 const ROUTINE_MARKER = "WORKER_CHAIN_ROUTINE_FIXTURE";
 const ROUTINE_PROMPT = `${ROUTINE_MARKER}: report the nightly fixture status.`;
 const RECOVERY_MARKER = "WORKER_CHAIN_RECOVERY_FIXTURE hold this stream open for the crash test.";
-const RECOVERY_REPLY = "WORKER_CHAIN_RECOVERY_REPLY completed by the retried attempt.";
+const MODEL_FAILURE_MARKER = "WORKER_CHAIN_MODEL_FAILURE_FIXTURE";
+// Synthetic provider text: a fake credential and a fake host, deliberately not
+// shaped like something the redactor would rewrite, so the assertions below
+// prove the provider's own words never reach the user, the persisted Run error,
+// or any process log.
+const MODEL_FAILURE_SECRET = "ZZSYNTHETICPROVIDERSECRETZZ";
+const MODEL_FAILURE_HOST = "zzsynthetic-provider-host.invalid";
+const MODEL_FAILURE_DETAIL = `upstream returned 500 for key ${MODEL_FAILURE_SECRET} at https://${MODEL_FAILURE_HOST}/v1`;
 const DELIVERY_INSTRUCTION = "Write one concise user-facing update";
 const DELIVERY_TEXT =
   "WORKER_CHAIN_DELIVERY: the scheduled fixture run failed on its duration budget.";
@@ -400,7 +411,7 @@ test("a user Run stays queued while the Worker is down and is claimed and execut
   }
 });
 
-test("a cancelled Run retried while the Worker is down stays queued until the Worker claims it", async ({
+test("a retry after an in-flight cancellation waits for the RT-26 detach proof, not for the abort 200", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -442,12 +453,8 @@ test("a cancelled Run retried while the Worker is down stays queued until the Wo
             },
           },
         },
-        {
-          ...expectRetryFixture,
-          response: { type: "text", text: retryReply },
-        },
-        // Abort of the held original can issue a follow-up model request.
-        // Keep a spare text step so that leftover does not starve the retry.
+        // FIX-STOP-01: the retry now actually runs once the abort is confirmed,
+        // so it needs its own answer. Consumed only in the released branch.
         {
           ...expectRetryFixture,
           response: { type: "text", text: retryReply },
@@ -463,6 +470,18 @@ test("a cancelled Run retried while the Worker is down stays queued until the Wo
     // that call leaves the hold step unused, and the successor then hangs on it.
     await expect.poll(async () => task?.requests.length ?? 0, { timeout: 30_000 }).toBe(1);
     await expect.poll(() => release !== undefined, { timeout: 10_000 }).toBe(true);
+    // FIX-STOP-01 proof gate. Everything below is deterministic: the Worker is
+    // stopped before Stop, so nothing can consume the abort behind our back and
+    // the states are observed rather than raced.
+    const admissionBefore = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+      where: { ownerRunId: original.id, state: { in: ["owned", "recovering"] } },
+    });
+    expect(
+      admissionBefore.runtimeStartedAt,
+      "the Runtime must have started, otherwise this Run takes the never-started fast path",
+    ).not.toBeNull();
+
+    await stopWorker();
     await rpc(page, "threads/stop", { botId });
     await pollRunStatus(db, original.id, "cancelled", 60_000);
     try {
@@ -470,15 +489,32 @@ test("a cancelled Run retried while the Worker is down stays queued until the Wo
     } catch {
       // Stream already closed by stop.
     }
+    // Let the Java thread unwind so the later inspectAndDetach has a live session
+    // to detach. This is the production abort seam and it does not touch the
+    // run_abort revocation row.
     await releaseNativeRun(original.id);
     await expect
       .poll(
         async () => db.prisma.attempt.count({ where: { runId: original.id, status: "running" } }),
-        { timeout: 30_000 },
+        { timeout: 60_000 },
       )
       .toBe(0);
+    // The Worker is stopped before Stop, so its finally block never runs and the
+    // admission stays `owned`. Either state means the cancelled owner still holds
+    // the session; the reconciler parks an `owned` owner into `recovering` before
+    // handing it to the RT-26 hook.
+    await expect
+      .poll(
+        async () =>
+          (
+            await db.prisma.agentSessionAdmission.findFirstOrThrow({
+              where: { ownerRunId: original.id },
+            })
+          ).state,
+        { timeout: 60_000 },
+      )
+      .toMatch(/^(owned|recovering)$/);
 
-    await stopWorker();
     const requestsBeforeRetry = task.requests.length;
     const retried = await rpc<{ runId: string; taskId: string; replayed: boolean }>(
       page,
@@ -487,41 +523,130 @@ test("a cancelled Run retried while the Worker is down stays queued until the Wo
     );
     expect(retried.replayed).toBe(false);
     expect(retried.taskId).toBe(original.taskId);
-    for (let index = 0; index < 16; index += 1) {
+
+    const expectStillBlocked = async (phase: string) => {
       const run = await db.prisma.run.findUniqueOrThrow({
         where: { id: retried.runId },
         select: { status: true, leaseOwner: true, retryOfRunId: true },
       });
-      expect(run.status).toBe("queued");
-      expect(run.leaseOwner).toBeNull();
-      expect(run.retryOfRunId).toBe(original.id);
-      expect(task.requests.length, "model fixture called without a Worker").toBe(
-        requestsBeforeRetry,
-      );
-      await page.waitForTimeout(500);
-    }
+      const holder = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+        where: { ownerRunId: original.id },
+      });
+      expect(
+        {
+          phase,
+          retryStatus: run.status,
+          retryLeaseOwner: run.leaseOwner,
+          retryOfRunId: run.retryOfRunId,
+          modelCalls: task.requests.length,
+        },
+        `${phase}: the retry must not run before the RT-26 proof is acknowledged`,
+      ).toEqual({
+        phase,
+        retryStatus: "queued",
+        retryLeaseOwner: null,
+        retryOfRunId: original.id,
+        modelCalls: requestsBeforeRetry,
+      });
+      expect(
+        ["owned", "recovering"],
+        `${phase}: the cancelled owner must still hold the session`,
+      ).toContain(holder.state);
+    };
 
-    const worker = await startWorker();
-    await pollRunStatus(db, retried.runId, "running", 60_000);
-    const running = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
-    expect(running.leaseOwner).not.toBe("api");
-    const leasePid = running.leaseOwner!.split("-")[0]!;
-    expect(workerNodePids().has(leasePid)).toBe(true);
-    await pollRunStatus(db, retried.runId, "completed", 60_000);
+    // Gate 1 — the abort has not been delivered at all.
+    await expect(
+      db.prisma.executionRevocation.findFirst({
+        where: { kind: "run_abort", subjectId: original.id },
+      }),
+      "Stop must leave a run_abort revocation for the Worker sweep",
+    ).resolves.not.toBeNull();
+    await page.waitForTimeout(1_000);
+    await expectStillBlocked("abort-pending");
+
+    // Gate 2 — deliver the abort through the production function, so the
+    // revocation row is deleted exactly as the Worker would. This is not a detach
+    // proof: abort() returns when the DELETE does, the Java handler only cancels
+    // and interrupts, and activeRuns/activeSessions drop when the thread reaches
+    // its finally. The session must therefore stay held.
+    const delivered = await deliverRunAborts(
+      db.prisma,
+      async (runId) => {
+        const status = await releaseNativeRun(runId);
+        if (status < 0) throw new Error(`native abort never landed for ${runId}`);
+      },
+      [original.id],
+    );
+    expect(delivered.revoked).toEqual([original.id]);
+    await expect(
+      db.prisma.executionRevocation.findFirst({
+        where: { kind: "run_abort", subjectId: original.id },
+      }),
+      "delivering the abort deletes the revocation",
+    ).resolves.toBeNull();
+    await page.waitForTimeout(1_000);
+    await expectStillBlocked("abort-delivered-without-proof");
+
+    // Gate 3 — open the gate. The Worker's reconciler classifies the session and
+    // re-dispatches the owner; the existing RT-26 chain does the rest:
+    // continueRun -> recoverSessionOwner -> inspectAndDetach -> recordCheckpointProof
+    // -> acknowledgeSessionCheckpoint -> releaseRecoveredSessionAdmission. Nothing
+    // is inserted by hand here.
+    const restarted = await startWorker();
+    const workerLog = restarted.generation
+      ? path.join(reportDir, `worker-${restarted.generation}.log`)
+      : "";
+    await expect
+      .poll(
+        async () => {
+          const proof = await db.prisma.agentSessionCheckpoint.findFirst({
+            where: { runId: original.id },
+            orderBy: { createdAt: "desc" },
+            select: { proofKind: true, ackedAt: true, status: true },
+          });
+          return proof
+            ? `${proof.proofKind}/${proof.status}/${proof.ackedAt ? "acked" : "unacked"}`
+            : "none";
+        },
+        { timeout: 180_000 },
+      )
+      .toMatch(/^(clean|detached)\/(recorded|consumed)\/acked$/);
+    const releaseLogOffset = workerLog
+      ? (await readFile(workerLog, "utf8").catch(() => "")).length
+      : 0;
+    await expect
+      .poll(
+        async () =>
+          (await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } })).status,
+        { timeout: 120_000 },
+      )
+      .not.toBe("queued");
     await expect(page.getByTestId("transcript").getByText(retryReply)).toBeVisible({
-      timeout: 15_000,
+      timeout: 120_000,
     });
-    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
-    expect(final.status).toBe("completed");
+    if (workerLog) {
+      const afterRelease = (await readFile(workerLog, "utf8").catch(() => "")).slice(
+        releaseLogOffset,
+      );
+      expect(
+        afterRelease,
+        "after the acknowledged proof the Worker must not log a failed recovery proof",
+      ).not.toContain("could not be proven");
+    }
+    const releasedHolder = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+      where: { sessionKey: admissionBefore.sessionKey },
+    });
+    expect(releasedHolder.state, "the session ends up free, not parked").not.toBe("recovering");
+    expect(
+      releasedHolder.ownerRunId,
+      "the retry owns the session after the proof, not the cancelled Run",
+    ).not.toBe(original.id);
     const source = await db.prisma.run.findUniqueOrThrow({ where: { id: original.id } });
     expect(source.status).toBe("cancelled");
+    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: retried.runId } });
     expect(final.taskId).toBe(original.taskId);
     expect(final.threadId).toBe(original.threadId);
-    expect(worker.pid).toBeGreaterThan(0);
-    expect(task.requests.length).toBeGreaterThan(requestsBeforeRetry);
-    const retryRequest = task.requests.at(-1);
-    expect(JSON.stringify(retryRequest?.messages ?? [])).toContain("WORKER_CHAIN_RETRY_FIXTURE");
-    expect(JSON.stringify(retryRequest?.messages ?? []).toLowerCase()).toContain("manual retry");
+    task.assertComplete();
     await recordTimings();
   } finally {
     await startWorker().catch(() => undefined);
@@ -537,16 +662,13 @@ test("a cancelled Run retried while the Worker is down stays queued until the Wo
   }
 });
 
-test("a Routine over-budget failure is proactively delivered exactly once by the standalone Worker", async ({
-  page,
-}) => {
+test("a Routine failure queues one delivery behind recovering chat admission", async ({ page }) => {
   test.setTimeout(600_000);
   const apiKey = "worker-chain-routine-key";
   const db = createDb(process.env.DATABASE_URL!);
   let intro: Emulator | undefined;
   let task: Emulator | undefined;
   let releaseRoutineHold: (() => void) | undefined;
-  let releaseDeliveryHold: (() => void) | undefined;
   let isolationIntro: Emulator | undefined;
   try {
     await expect.poll(async () => (await workerStatus()).running).toBe(true);
@@ -572,23 +694,6 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
             type: "hold",
             onOpen: (release) => {
               releaseRoutineHold = release;
-            },
-          },
-        },
-        {
-          // The Worker-dispatched delivery Run: the production prompt template
-          // quotes the failed Run's budget error. Held so the executing
-          // Worker process can be identified from the durable lease.
-          expect(request) {
-            const all = JSON.stringify(request.messages);
-            expect(all).toContain(DELIVERY_INSTRUCTION);
-            expect(all).toContain("budget_exceeded:duration_sec");
-          },
-          response: {
-            type: "hold",
-            text: DELIVERY_TEXT,
-            onOpen: (release) => {
-              releaseDeliveryHold = release;
             },
           },
         },
@@ -641,9 +746,8 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
     expect(record.threadId).toBe(thread.id);
     expect(record.status).toBe("pending");
 
-    // The Worker's enforce-time abort normally freed the Java session already;
-    // this bounded DELETE (same seam as budget-acceptance) guarantees the
-    // thread slot before the delivery Run needs it.
+    // The bounded DELETE frees the Java process slot, but RT-25 deliberately
+    // does not treat that transport response as RT-26 clean/detached proof.
     const released = await releaseNativeRun(runId);
     if (released === -1) {
       try {
@@ -655,7 +759,6 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
 
     // Outbox merge window (30s) + the Worker's dispatch sweep (10s): the
     // Worker itself claims the record and creates the trigger=delivery Run.
-    const deliveryGeneration = (await workerStatus()).generation;
     await expect
       .poll(
         async () =>
@@ -667,26 +770,17 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
           )?.status ?? "none",
         { timeout: 180_000 },
       )
-      .toBe("running");
+      .toBe("queued");
     const inFlight = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
-    expect(inFlight.leaseOwner, "the standalone Worker executes the delivery Run").not.toBeNull();
-    const deliveryPid = inFlight.leaseOwner!.split("-")[0]!;
-    expect(workerNodePids().has(deliveryPid)).toBe(true);
-    expect((await workerLogReadyPids(deliveryGeneration)).has(deliveryPid)).toBe(true);
+    expect(inFlight).toMatchObject({ status: "queued", leaseOwner: null, error: null });
+    await expect(
+      db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),
+    ).resolves.toMatchObject({ state: "recovering", ownerRunId: runId });
 
-    await expect
-      .poll(async () => releaseDeliveryHold !== undefined, { timeout: 30_000 })
-      .toBe(true);
-    releaseDeliveryHold!();
-    await pollRunStatus(db, inFlight.id, "completed", 120_000);
-    await expect(page.getByTestId("transcript").getByText(DELIVERY_TEXT)).toBeVisible({
-      timeout: 60_000,
-    });
-
-    // Traceable ID chain: delivery.created → delivery Run → bot message →
-    // delivery.sent, all bound to the same source Run and outbox record.
+    // The durable chain reaches delivery.created → queued delivery Run. It
+    // cannot produce a bot message or delivery.sent before RT-26 releases the owner.
     const deliveryRun = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
@@ -695,35 +789,28 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
       where: { id: deliveryRun.taskId },
     });
     expect(deliveryTask.prompt).toContain(DELIVERY_INSTRUCTION);
-    const sent = await db.prisma.deliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
-    expect(sent.status).toBe("sent");
-    expect(sent.deliveryRunId).toBe(deliveryRun.id);
-    expect(sent.deliveredAt).not.toBeNull();
-    timings.outboxToSentMs = sent.deliveredAt!.getTime() - record.createdAt.getTime();
+    const claimed = await db.prisma.deliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
+    expect(claimed.status).toBe("claimed");
+    expect(claimed.deliveryRunId).toBe(deliveryRun.id);
+    expect(claimed.deliveredAt).toBeNull();
     const createdEvent = await db.prisma.event.findFirstOrThrow({
       where: { runId, type: "delivery.created" },
       select: { payload: true, seq: true },
     });
     expect((createdEvent.payload as { deliveryId?: string }).deliveryId).toBe(record.id);
     expect((createdEvent.payload as { sourceRunId?: string }).sourceRunId).toBe(runId);
-    const sentEvent = await db.prisma.event.findFirstOrThrow({
-      where: { threadId: thread.id, type: "delivery.sent" },
-      select: { payload: true, seq: true },
-    });
-    expect((sentEvent.payload as { deliveryId?: string }).deliveryId).toBe(record.id);
     const summaries = await db.prisma.message.findMany({
       where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
     });
-    expect(summaries).toHaveLength(1);
-    expect(JSON.stringify(summaries[0]!.blocks)).toContain(DELIVERY_TEXT);
-    expect((sentEvent.payload as { messageId?: string }).messageId).toBe(summaries[0]!.id);
-    expect(sentEvent.seq).toBeGreaterThan(createdEvent.seq);
+    expect(summaries).toHaveLength(0);
+    expect(
+      await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
+    ).toBe(0);
     // Delivery never fabricates a user turn.
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "user" } })).toBe(
       userMessagesBefore,
     );
-    // Both model calls (Routine Run + delivery Run) were served to the Java process.
-    expect(task.requests.length).toBe(2);
+    expect(task.requests.length).toBe(1);
 
     // Duplicate scheduling: further dispatch sweeps redeliver nothing.
     await page.waitForTimeout(25_000);
@@ -732,14 +819,14 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
     );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(1);
+    ).toBe(0);
 
-    // Worker restart after settle: the durable sent record is never re-dispatched.
+    // Worker restart cannot bypass the recovering admission or duplicate the Run.
     await stopWorker();
     await startWorker();
     await page.waitForTimeout(15_000);
@@ -748,16 +835,16 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
     );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(1);
+    ).toBe(0);
     const afterRestart = await db.prisma.deliveryRecord.findUniqueOrThrow({
       where: { id: record.id },
     });
-    expect(afterRestart.status).toBe("sent");
+    expect(afterRestart.status).toBe("claimed");
     expect(afterRestart.deliveryRunId).toBe(deliveryRun.id);
 
     // Cross-Space isolation: a second user's fresh Space/Thread never sees the
@@ -802,11 +889,6 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
   } finally {
     await startWorker().catch(() => undefined);
     try {
-      releaseDeliveryHold?.();
-    } catch {
-      // Stream already closed.
-    }
-    try {
       releaseRoutineHold?.();
     } catch {
       // Stream already closed.
@@ -819,7 +901,7 @@ test("a Routine over-budget failure is proactively delivered exactly once by the
   }
 });
 
-test("a Worker crash before the outbox merge window recovers after restart and delivers exactly once", async ({
+test("an outbox restart creates one queued delivery behind recovering admission", async ({
   page,
 }) => {
   test.setTimeout(600_000);
@@ -852,14 +934,6 @@ test("a Worker crash before the outbox merge window recovers after restart and d
               releaseRoutineHold = release;
             },
           },
-        },
-        {
-          expect(request) {
-            const all = JSON.stringify(request.messages);
-            expect(all).toContain(DELIVERY_INSTRUCTION);
-            expect(all).toContain("budget_exceeded:duration_sec");
-          },
-          response: { type: "text", text: DELIVERY_TEXT },
         },
       ],
     });
@@ -894,9 +968,8 @@ test("a Worker crash before the outbox merge window recovers after restart and d
       where: { id: pending.id },
     });
     expect(stoppedRecord.status).toBe("pending");
-    // The failed source Run's Java session must be freed while the Worker is
-    // down (its enforce-time abort is best-effort); the runtime process is
-    // independent of the Worker and keeps serving.
+    // Free the Java process slot while the Worker is down. This is not a
+    // persisted clean/detached proof and therefore cannot release admission.
     const released = await releaseNativeRun(runId);
     if (released === -1) {
       try {
@@ -931,45 +1004,49 @@ test("a Worker crash before the outbox merge window recovers after restart and d
     await startWorker();
     await expect
       .poll(
-        async () =>
-          (
-            await db.prisma.run.findFirst({
-              where: { threadId: thread.id, trigger: "delivery" },
-              select: { status: true },
-            })
-          )?.status ?? "none",
+        async () => {
+          const run = await db.prisma.run.findFirst({
+            where: { threadId: thread.id, trigger: "delivery" },
+            select: { id: true, status: true, leaseOwner: true },
+          });
+          if (!run) return "none";
+          const queuedAdmissions = await db.prisma.agentSessionAdmissionRequest.count({
+            where: { runId: run.id, state: "queued" },
+          });
+          return `${run.status}:${run.leaseOwner ?? "none"}:${queuedAdmissions}`;
+        },
         { timeout: 180_000 },
       )
-      .toBe("completed");
-    await expect(page.getByTestId("transcript").getByText(DELIVERY_TEXT)).toBeVisible({
-      timeout: 60_000,
-    });
+      .toBe("queued:none:1");
     const recovery = await db.prisma.deliveryRecord.findUniqueOrThrow({
       where: { id: pending.id },
     });
-    timings.crashRestartToSentMs = (recovery.deliveredAt?.getTime() ?? Date.now()) - restartStart;
+    timings.crashRestartToQueuedMs = Date.now() - restartStart;
 
     const deliveryRun = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
-    expect(recovery.status).toBe("sent");
+    expect(recovery.status).toBe("claimed");
     expect(recovery.deliveryRunId).toBe(deliveryRun.id);
-    expect(recovery.deliveredAt).not.toBeNull();
-    // Exactly once: one delivery Run, one settled record, one message, one event.
+    expect(recovery.deliveredAt).toBeNull();
+    expect(deliveryRun).toMatchObject({ status: "queued", leaseOwner: null, error: null });
+    await expect(
+      db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),
+    ).resolves.toMatchObject({ state: "recovering", ownerRunId: runId });
+    // Exactly once up to RT-25's admission boundary.
     expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
       1,
     );
     expect(await db.prisma.deliveryRecord.count({ where: { runId } })).toBe(1);
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
+    ).toBe(0);
     const summaries = await db.prisma.message.findMany({
       where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
     });
-    expect(summaries).toHaveLength(1);
-    expect(JSON.stringify(summaries[0]!.blocks)).toContain(DELIVERY_TEXT);
+    expect(summaries).toHaveLength(0);
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "bot" } })).toBe(
-      botMessagesBefore + 1,
+      botMessagesBefore,
     );
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "user" } })).toBe(
       userMessagesBefore,
@@ -982,12 +1059,12 @@ test("a Worker crash before the outbox merge window recovers after restart and d
     );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(1);
+    ).toBe(0);
     task.assertComplete();
     await recordTimings();
   } finally {
@@ -1004,16 +1081,15 @@ test("a Worker crash before the outbox merge window recovers after restart and d
   }
 });
 
-test("a Worker killed mid-Run recovers the same Run through lease-loss retry and completes it", async ({
+test("a Worker killed mid-Run parks chat admission in recovering without retrying", async ({
   page,
 }) => {
-  test.setTimeout(1_200_000);
+  test.setTimeout(240_000);
   const apiKey = "worker-chain-recovery-key";
   const db = createDb(process.env.DATABASE_URL!);
   let intro: Emulator | undefined;
   let task: Emulator | undefined;
   let releaseFirst: (() => void) | undefined;
-  let releaseRetry: (() => void) | undefined;
   try {
     await expect.poll(async () => (await workerStatus()).running).toBe(true);
     await assertTopologyHealth();
@@ -1040,21 +1116,6 @@ test("a Worker killed mid-Run recovers the same Run through lease-loss retry and
             },
           },
         },
-        {
-          // Retried Attempt on the SAME Run after lease-loss recovery; held so
-          // the executing Worker generation is identified from the durable
-          // lease before the Run is released to completion.
-          expect(request) {
-            expect(JSON.stringify(request.messages)).toContain("WORKER_CHAIN_RECOVERY_FIXTURE");
-          },
-          response: {
-            type: "hold",
-            text: RECOVERY_REPLY,
-            onOpen: (release) => {
-              releaseRetry = release;
-            },
-          },
-        },
       ],
     });
     await switchToTaskModel(page, botId, apiKey, task);
@@ -1075,6 +1136,11 @@ test("a Worker killed mid-Run recovers the same Run through lease-loss retry and
     // The Run is promoted before the Java process issues the model call; wait
     // for the fixture to actually receive it before killing the Worker.
     await expect.poll(async () => task?.requests.length ?? 0, { timeout: 30_000 }).toBe(1);
+    const ownedAdmission = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+      where: { ownerRunId: run.id, state: "owned" },
+    });
+    expect(ownedAdmission.ownerAttemptId).not.toBeNull();
+    expect(ownedAdmission.runtimeStartedAt).not.toBeNull();
     const killedGeneration = (await workerStatus()).generation;
 
     // SIGKILL mid-model-call: no graceful drain, no abort, no finalize.
@@ -1085,119 +1151,170 @@ test("a Worker killed mid-Run recovers the same Run through lease-loss retry and
       "running",
     );
     expect(orphaned.leaseOwner).toBe(deadLeaseOwner);
-    const orphanedAttempt = await db.prisma.attempt.findFirstOrThrow({
+    await db.prisma.attempt.findFirstOrThrow({
       where: { runId: run.id, status: "running" },
-      select: { fence: true },
     });
     expect(task.requests.length, "no model activity while the Worker is dead").toBe(1);
-    await expect(page.getByTestId("transcript").getByText(RECOVERY_REPLY)).toHaveCount(0);
 
-    // No clock seam here: the run lease and the computer execution lease are
-    // both hard-coded 5-minute TTLs renewed by the same 60s heartbeat, so the
-    // dead Worker's leases expire on the real clock at most 5 minutes after
-    // the kill. Recovery then runs entirely in production code: the
-    // reconciler's run.continue enqueue supersedes the SIGKILLed graphile
-    // job's stale lock (replace-mode add_job nulls the locked row's key and
-    // inserts a fresh job), the lease-loss path aborts the orphaned Java
-    // session and schedules the automatic retry, and the expired
-    // computer-execution lease is reclaimed on promotion.
-
-    const recoveryStart = Date.now();
+    // Move only the durable admission clock past expiry. This avoids a five-minute
+    // wall-clock wait while exercising the production reconciler and preserves the
+    // key RT-25 fact: expiry is not proof that Runtime released shared state.
+    await db.prisma.agentSessionAdmission.update({
+      where: { sessionKey: ownedAdmission.sessionKey },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
     const worker = await startWorker();
     expect(worker.generation).toBe(killedGeneration + 1);
 
-    // The restarted Worker re-runs run.continue; the production lease-loss
-    // path aborts the orphaned Java session (closing the first held model
-    // stream), schedules the automatic lease_lost retry (5s) and re-executes
-    // the SAME Run under a new fence.
-    await expect
-      .poll(async () => db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } }), {
-        timeout: 480_000,
-      })
-      .toBe(1);
-    const retriedEvent = await db.prisma.event.findFirstOrThrow({
-      where: { runId: run.id, type: "run.retried" },
-      select: { payload: true },
-    });
-    expect((retriedEvent.payload as { reason?: string }).reason).toBe("lease_lost");
-    const retriedAttempt = await db.prisma.attempt.findFirstOrThrow({
-      where: { runId: run.id, status: "retry_scheduled" },
-      select: { fence: true, error: true },
-    });
-    expect(retriedAttempt.fence).toBe(orphanedAttempt.fence);
-    expect(retriedAttempt.error).toContain("lease expired");
-
     await expect
       .poll(
-        async () => {
-          const current = await db.prisma.run.findUnique({
-            where: { id: run.id },
-            select: { status: true, leaseFence: true, leaseOwner: true },
-          });
-          return current &&
-            current.status === "running" &&
-            current.leaseFence > retriedAttempt.fence &&
-            current.leaseOwner
-            ? current.leaseOwner
-            : null;
-        },
-        { timeout: 480_000 },
+        async () =>
+          (
+            await db.prisma.agentSessionAdmission.findUniqueOrThrow({
+              where: { sessionKey: ownedAdmission.sessionKey },
+            })
+          ).state,
+        { timeout: 30_000 },
       )
-      .not.toBeNull();
-    const rerun = await db.prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    expect(rerun.leaseOwner).not.toBeNull();
-    expect(rerun.leaseOwner).not.toBe(deadLeaseOwner);
-    const retryPid = rerun.leaseOwner!.split("-")[0]!;
-    expect(workerNodePids().has(retryPid)).toBe(true);
-    expect(
-      (await workerLogReadyPids(worker.generation)).has(retryPid),
-      "the NEW Worker generation's own log records the retry lease-holder pid",
-    ).toBe(true);
+      .toBe("recovering");
 
-    await expect.poll(async () => releaseRetry !== undefined, { timeout: 30_000 }).toBe(true);
-    releaseRetry!();
-    await pollRunStatus(db, run.id, "completed", 120_000);
-    timings.leaseLossRecoveryMs = Date.now() - recoveryStart;
-    // Real-clock recovery: ≤5min lease TTL + ≤30s reconciler + 5s retry delay
-    // + re-execution. Bound generously; the measured value is recorded.
-    expect(timings.leaseLossRecoveryMs, "bounded recovery").toBeLessThan(660_000);
-
-    await expect(page.getByTestId("transcript").getByText(RECOVERY_REPLY)).toBeVisible({
-      timeout: 60_000,
-    });
-    const final = await db.prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    expect(final.status).toBe("completed");
-    expect(final.error).toBeNull();
+    const parked = await db.prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(parked).toMatchObject({ status: "queued", leaseOwner: null, error: null });
     const attempts = await db.prisma.attempt.findMany({
       where: { runId: run.id },
       orderBy: { fence: "asc" },
     });
-    expect(attempts).toHaveLength(2);
-    expect(attempts[0]!.status).toBe("retry_scheduled");
-    expect(attempts[1]!.status).toBe("completed");
-    expect(attempts[1]!.fence).toBeGreaterThan(attempts[0]!.fence);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      status: "interrupted",
+      error: "session_admission_expired",
+    });
+    expect(await db.prisma.event.count({ where: { runId: run.id, type: "run.retried" } })).toBe(0);
     const replies = await db.prisma.message.findMany({
       where: { threadId: thread.id, role: "bot", runId: run.id },
     });
-    expect(replies).toHaveLength(1);
-    expect(JSON.stringify(replies[0]!.blocks)).toContain(RECOVERY_REPLY);
-    // Both model calls served the same Run content — the orphaned Attempt and
-    // the retry — correlated by fixture request log, DB attempts and lease pids.
-    expect(task.requests.length).toBe(2);
+    expect(replies).toHaveLength(0);
+    expect(task.requests.length).toBe(1);
+    await page.waitForTimeout(12_000);
+    expect(task.requests.length, "recovering admission must not re-enter Runtime").toBe(1);
+    await expect(
+      db.prisma.agentSessionAdmission.findUniqueOrThrow({
+        where: { sessionKey: ownedAdmission.sessionKey },
+      }),
+    ).resolves.toMatchObject({
+      state: "recovering",
+      ownerRunId: run.id,
+      fence: ownedAdmission.fence,
+    });
     task.assertComplete();
     await recordTimings();
   } finally {
     await startWorker().catch(() => undefined);
     try {
-      releaseRetry?.();
-    } catch {
-      // Stream already closed.
-    }
-    try {
       releaseFirst?.();
     } catch {
       // Stream already closed.
     }
+    await task?.close();
+    await intro?.close();
+    await db.prisma.$disconnect();
+    await db.pool.end();
+  }
+});
+
+test("a provider failure is recorded without its own text and the Run is stopped, not left running", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  const apiKey = "worker-chain-model-failure-key";
+  const db = createDb(process.env.DATABASE_URL!);
+  let intro: Emulator | undefined;
+  let task: Emulator | undefined;
+  let botId = "";
+  try {
+    await expect.poll(async () => (await workerStatus()).running).toBe(true);
+    await assertTopologyHealth();
+    const setup = await setupChatBot(
+      page,
+      apiKey,
+      "Ready for the model failure test.",
+      "Worker Chain Model Failure",
+    );
+    intro = setup.intro;
+    botId = setup.botId;
+    task = await startModelEmulator({
+      apiKey,
+      // A handful of identical error replies. The count is not asserted: how
+      // often a failing Run gets re-driven is the recovery paths' behaviour, is
+      // the subject of a separate defect, and must not become this test's
+      // contract. assertComplete is deliberately not called for the same reason.
+      steps: Array.from(
+        { length: 4 },
+        (): ModelEmulatorStep => ({
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(MODEL_FAILURE_MARKER);
+          },
+          // A real provider 5xx over the real AgentScope HTTP/SSE transport: the
+          // fixture answers with an error status and its own message, which is
+          // exactly the text that must not survive the journey.
+          response: { type: "error", status: 500, message: MODEL_FAILURE_DETAIL },
+        }),
+      ),
+    });
+    await switchToTaskModel(page, botId, apiKey, task);
+
+    await sendMessage(page, MODEL_FAILURE_MARKER);
+    const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
+    const created = await waitUserRun(db, thread.id);
+
+    // One real provider failure, observed as a persisted error on this thread.
+    // Scoped to the thread rather than to the first Run because which Run the
+    // failure lands on belongs to the recovery paths, not to this test.
+    const persistedErrors = async () => {
+      const runs = await db.prisma.run.findMany({
+        where: { threadId: thread.id },
+        select: { id: true, error: true },
+      });
+      const attempts = await db.prisma.attempt.findMany({
+        where: { runId: { in: runs.map((run) => run.id) } },
+        select: { error: true },
+      });
+      return [...runs.map((run) => run.error), ...attempts.map((attempt) => attempt.error)].filter(
+        (error): error is string => typeof error === "string" && error.length > 0,
+      );
+    };
+    await expect
+      .poll(async () => (await persistedErrors()).length, {
+        timeout: 120_000,
+        message: "the provider failure must be recorded on the Run or one of its attempts",
+      })
+      .toBeGreaterThan(0);
+    expect(task.requests.length, "the model fixture answered the failing Run").toBeGreaterThan(0);
+
+    const errors = await persistedErrors();
+    for (const error of errors) {
+      expect(error).not.toContain(MODEL_FAILURE_SECRET);
+      expect(error).not.toContain(MODEL_FAILURE_HOST);
+    }
+
+    // Stop through the product's own path and prove the Run does not keep
+    // running behind the test: nothing may call the model again afterwards.
+    await rpc(page, "threads/stop", { botId });
+    await expect
+      .poll(
+        async () =>
+          db.prisma.run.count({
+            where: { threadId: thread.id, status: { notIn: ["completed", "failed", "cancelled"] } },
+          }),
+        { timeout: 90_000, message: "every Run of the thread must reach a terminal state" },
+      )
+      .toBe(0);
+    const requestsAtStop = task.requests.length;
+    await page.waitForTimeout(10_000);
+    expect(task.requests.length, "no model call may follow the stop").toBe(requestsAtStop);
+    expect(created.id).toBeTruthy();
+  } finally {
+    if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
     await task?.close();
     await intro?.close();
     await db.prisma.$disconnect();

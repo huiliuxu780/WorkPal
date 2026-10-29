@@ -1174,7 +1174,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "message_bot",
     description:
-      'Send a useful update, question, or result to another of the user\'s bots. You must call this tool to actually deliver it — writing the message in your own reply text (e.g. "[to Comms] ...") does not send anything and the recipient never sees it. Delivery is async and does not end your turn. Continue independent work; do not poll or send ack-only messages. Later updates only if they add something new.',
+      "Send a useful update, question, or result to another of the user's bots. In a group chat this posts a public delegation to a current group member in the shared thread; only current members can be targeted. In a direct chat it delivers to that bot's chat. You must call this tool to actually deliver it — writing the message in your own reply text (e.g. \"[to Comms] ...\") does not send anything and the recipient never sees it. Delivery is async and does not end your turn. Continue independent work; do not poll or send ack-only messages. Later updates only if they add something new.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1191,6 +1191,38 @@ export const builtinAgentTools: ConnectorTool[] = [
         },
       },
       required: ["message"],
+    },
+  },
+  {
+    name: "message_group",
+    description:
+      "In your direct chat only: take a new piece of work to one of the user's existing groups. You must already be a member of that group. This posts your request in the group, starts separate work for you there, and leaves a receipt in the direct chat; the result comes back here separately. It does not attach to existing work or reuse work already in progress. Use message_bot for another bot and handoff_to_bot only inside a group.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        group_id: { type: "string", description: "Stable target group id." },
+        confirm_name: {
+          type: "string",
+          description:
+            "Exact group name only when group_id is unavailable; it must resolve to exactly one group.",
+        },
+        message: {
+          type: "string",
+          description: "The work to post and complete in the target group.",
+        },
+        intent: {
+          type: "string",
+          enum: ["request"],
+          description: "Only a new request is supported.",
+        },
+        topic: {
+          type: "string",
+          description:
+            "Optional short user-facing label for the direct-chat receipt, e.g. the work item being taken over.",
+        },
+      },
+      required: ["message"],
+      additionalProperties: false,
     },
   },
   {

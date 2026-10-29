@@ -6,11 +6,14 @@ export type ApprovalPausedToolResult = AgentToolExecutionResult & { terminate: t
 export interface ApprovedEffectReplay {
   kind: string;
   request: unknown;
+  /** The persisted key of the approved effect; an edited replay reuses it. */
+  idempotencyKey?: string;
 }
 
 export interface ApprovedEffectReplayQueue {
   nextToolName(): string | undefined;
   nextRequest(): unknown;
+  nextKey(): string | undefined;
   take(toolName: string): unknown;
   assertDrained(): void;
 }
@@ -26,6 +29,9 @@ export function createApprovedEffectReplayQueue(
     },
     nextRequest() {
       return pending[0]?.request;
+    },
+    nextKey() {
+      return pending[0]?.idempotencyKey;
     },
     take(toolName) {
       const next = pending[0];
@@ -362,15 +368,6 @@ export type DuplicateEffectGate =
   | { action: "paused" }
   | { action: "uncertain"; toolName: string };
 
-export type ExternalEffectStore = {
-  externalEffect: {
-    updateMany: (args: {
-      where: { id: string; status: string };
-      data: { status: string };
-    }) => Promise<{ count: number }>;
-  };
-};
-
 export function resolveDuplicateEffectGate(
   effect: { status: string; result?: unknown },
   toolName: string,
@@ -431,28 +428,6 @@ export async function settleUncertainEffect(
   if (!current) return result;
   const gate = resolveDuplicateEffectGate(current, toolName);
   return gate.action === "return" ? gate.result : result;
-}
-
-export async function claimApprovedEffect(
-  store: ExternalEffectStore,
-  effectId: string,
-): Promise<boolean> {
-  const claimed = await store.externalEffect.updateMany({
-    where: { id: effectId, status: "approved" },
-    data: { status: "executing" },
-  });
-  return claimed.count === 1;
-}
-
-export async function claimIntendedEffect(
-  store: ExternalEffectStore,
-  effectId: string,
-): Promise<boolean> {
-  const claimed = await store.externalEffect.updateMany({
-    where: { id: effectId, status: "intended" },
-    data: { status: "executing" },
-  });
-  return claimed.count === 1;
 }
 
 export const PERMISSION_REVOKED_REASON = "permission_revoked" as const;

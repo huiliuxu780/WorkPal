@@ -1,4 +1,5 @@
 import type {
+  ActionApprovalView,
   ExecutionSnapshot,
   ExecutionSummary,
   InterventionView,
@@ -14,7 +15,8 @@ import { eligibleExecutionRunIds, shouldRenderExecutionSurface } from "./executi
  * UX-01B core rule 1: the Execution surface exists if and only if a Run has
  * a structured Plan, a semantic Step, a pending Intervention, or has failed.
  * Todos, tool Activity, message steps blocks and plain running states never
- * create one on their own.
+ * create one on their own. CARD-01B adds a gate-on-only fifth signal: any
+ * strict InteractionView, because its region is the card's only surface.
  */
 
 const ISO = "2026-10-12T00:00:00.000Z";
@@ -97,6 +99,36 @@ function intervention(overrides: Partial<InterventionView> = {}): InterventionVi
   } as InterventionView;
 }
 
+function strictInteraction(overrides: Partial<ActionApprovalView> = {}): ActionApprovalView {
+  return {
+    kind: "action_approval",
+    interactionId: "int-1",
+    revision: 1,
+    status: "pending",
+    createdAt: ISO,
+    expiresAt: null,
+    attentionAt: ISO,
+    source: {
+      spaceId: "space-1",
+      threadId: "thread-1",
+      messageId: "m-1",
+      runId: "run-1",
+      botId: "bot-1",
+    },
+    presentation: { text: "Connect Notion?" },
+    decision: null,
+    approval: {
+      kind: "connect.app_authorization",
+      authority: "business_transaction",
+      connectorId: "connector-1",
+      provider: "notion",
+      name: "Notion",
+      description: null,
+    },
+    ...overrides,
+  };
+}
+
 function detailSnapshot(overrides: Partial<ExecutionSnapshot> = {}): ExecutionSnapshot {
   return {
     summary: summary(),
@@ -114,10 +146,11 @@ describe("shouldRenderExecutionSurface", () => {
     hasPlan: false,
     hasSemanticSteps: false,
     hasPendingIntervention: false,
+    hasInteraction: false,
     failed: false,
   };
 
-  it("is false when none of the four conditions hold", () => {
+  it("is false when none of the five conditions hold", () => {
     expect(shouldRenderExecutionSurface(none)).toBe(false);
   });
 
@@ -131,6 +164,10 @@ describe("shouldRenderExecutionSurface", () => {
 
   it("is true for a pending Intervention alone", () => {
     expect(shouldRenderExecutionSurface({ ...none, hasPendingIntervention: true })).toBe(true);
+  });
+
+  it("is true for a strict Interaction alone, in any status", () => {
+    expect(shouldRenderExecutionSurface({ ...none, hasInteraction: true })).toBe(true);
   });
 
   it("is true for a failed Run alone", () => {
@@ -183,6 +220,24 @@ describe("eligibleExecutionRunIds", () => {
       serverSummaries: new Map([["run-iv", summary({ runId: "run-iv", status: "waiting_input" })]]),
     });
     expect(ids.has("run-iv")).toBe(true);
+  });
+
+  it("includes a Run that executes in another Thread and projects only its Intervention", () => {
+    // RT-04 / AC20: the answering Thread holds no Run row and no summary for the
+    // executing Run — `loadExecutionSummaries` is Thread-scoped — so the pending
+    // projection is the only signal that can earn the card a surface here.
+    const ids = eligibleExecutionRunIds({
+      ...base,
+      interventions: [intervention({ runId: "run-in-pair-thread" })],
+    });
+    expect(ids.has("run-in-pair-thread")).toBe(true);
+    // Once settled it no longer earns one: a finished foreign execution has no
+    // surface in a Thread that never ran it.
+    const settled = eligibleExecutionRunIds({
+      ...base,
+      interventions: [intervention({ runId: "run-in-pair-thread", status: "answered" })],
+    });
+    expect(settled.has("run-in-pair-thread")).toBe(false);
   });
 
   it("includes a waiting Run even before its Intervention projection arrives", () => {
@@ -243,6 +298,49 @@ describe("eligibleExecutionRunIds", () => {
       serverSummaries: new Map([["run-settled", summary({ runId: "run-settled" })]]),
     });
     expect(ids.has("run-settled")).toBe(false);
+  });
+
+  it("keeps a completed Run whose strict Interaction settled", () => {
+    // CARD-01B gate-on: the Interaction Region is the card's only surface, so
+    // a settled app authorization must not delete its shell and history.
+    const ids = eligibleExecutionRunIds({
+      ...base,
+      interactions: [
+        strictInteraction({
+          status: "answered",
+          source: {
+            spaceId: "space-1",
+            threadId: "thread-1",
+            messageId: "m-1",
+            runId: "run-card",
+            botId: "bot-1",
+          },
+        }),
+      ],
+      serverSummaries: new Map([["run-card", summary({ runId: "run-card" })]]),
+    });
+    expect(ids.has("run-card")).toBe(true);
+  });
+
+  it("keeps a Run that only projects a strict Interaction from another Thread", () => {
+    // RT-04: the answering Thread has no Run row, yet the strict projection is
+    // the only place the answered card can live.
+    const ids = eligibleExecutionRunIds({
+      ...base,
+      interactions: [
+        strictInteraction({
+          status: "answered",
+          source: {
+            spaceId: "space-1",
+            threadId: "thread-1",
+            messageId: "m-1",
+            runId: "run-foreign",
+            botId: "bot-1",
+          },
+        }),
+      ],
+    });
+    expect(ids.has("run-foreign")).toBe(true);
   });
 
   it("reads a Plan from a loaded detail snapshot", () => {

@@ -1,0 +1,19 @@
+# RUNTIME-RELIABILITY-01 — Java flake RED (fix reverted, regression test kept)
+# baseline: a29c711   date: 2026-10-28
+# command: mvn -B -f services/agent-runtime/pom.xml test \
+#   -Dtest='AgentScopeBackgroundProbeTest#deliveryMarkLandsInTheOwningSessionsSingleNativeTaskRecord,RuntimeIntegrationTest#sessionSlotIsReleasedBeforeTheRunResponseCompletes' \
+#   -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.test.failure.ignore=true
+# main sources reverted to a29c711; the regression test is the new one.
+
+## reverted files (git status at red time)
+ M services/agent-runtime/src/test/java/com/workpal/runtime/AgentScopeBackgroundProbeTest.java
+ M services/agent-runtime/src/test/java/com/workpal/runtime/RuntimeIntegrationTest.java
+ (PlanBridgeTool.java / RuntimeEngine.java / RuntimeServer.java were at a29c711)
+
+## result
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.567 s <<< FAILURE! -- in com.workpal.runtime.AgentScopeBackgroundProbeTest
+[ERROR] com.workpal.runtime.AgentScopeBackgroundProbeTest.deliveryMarkLandsInTheOwningSessionsSingleNativeTaskRecord -- Time elapsed: 1.425 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: the owning session's native task record must exist exactly once: [<TMPDIR>, <TMPDIR>] ==> expected: <1> but was: <2>
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.519 s -- in com.workpal.runtime.RuntimeIntegrationTest
+[ERROR]   AgentScopeBackgroundProbeTest.deliveryMarkLandsInTheOwningSessionsSingleNativeTaskRecord:320 the owning session's native task record must exist exactly once: [<TMPDIR>, <TMPDIR>] ==> expected: <1> but was: <2>
+[ERROR] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0

@@ -164,6 +164,15 @@ async function runWithModel(modelId: string) {
   const finalizeRun = vi.fn(async () => ({ continuationRunId: null }));
   const executor = createRunExecutor({
     prisma,
+    taskInstructions: async () => ({
+      envelope: {
+        taskId: run.taskId,
+        revision: 1,
+        original: { content: "Look again" },
+        amendments: [],
+      },
+      ref: { taskId: run.taskId, consumedRevision: 1 },
+    }),
     runtime: { describe: () => ({ capabilities: { scripted: false } }), run: runtimeRun },
     sandbox: { describe: () => ({ capabilities: { graphical: false } }) },
     memory: { read: async () => ({ documents: [] }) },

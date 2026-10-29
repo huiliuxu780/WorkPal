@@ -3,10 +3,11 @@ import {
   legacyScopedToolEffectIdempotencyKey,
   toolEffectIdempotencyKey,
 } from "@rakazo/core/node/approval-effect-key";
+import { TaskInstructionIntegrityError } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import type * as AutoReviewModule from "./auto-review.js";
 import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
-import { createRunExecutor } from "./executor.js";
+import { createRunExecutor, effectClaimsBeforeExecution } from "./executor.js";
 
 vi.mock("./computer-lifecycle.js", async (importOriginal) => ({
   ...(await importOriginal<typeof ComputerLifecycleModule>()),
@@ -38,7 +39,15 @@ type ToolCall = {
   executionId: string;
 };
 
-function fixture(runId = "run-1") {
+function fixture(
+  runId = "run-1",
+  instruction?: {
+    revision: number;
+    original: string;
+    amendments: Array<{ seq: number; content: string }>;
+  },
+  instructionFailure?: Error,
+) {
   const effects: Effect[] = [];
   const results: unknown[] = [];
   const scratchpadRows: Array<{
@@ -61,7 +70,9 @@ function fixture(runId = "run-1") {
     userId: "user-1",
     status: "queued",
     trigger: "user",
+    leaseOwner: null as string | null,
     leaseFence: 0,
+    leaseExpiresAt: null as Date | null,
     planPhase: null as string | null,
   };
   const memoryCommit = vi.fn(async () => ({ revision: "rev-1" }));
@@ -193,50 +204,105 @@ function fixture(runId = "run-1") {
     externalEffect,
   };
   let factCreates = 0;
-  Object.assign(prisma, { $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
-    callback({
-      $queryRaw: vi.fn(async () => [{ id: run.id }]),
-      run: {
-        findUnique: vi.fn(async () => ({ ...run, leaseExpiresAt: new Date(Date.now() + 60_000) })),
-        updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-          Object.assign(run, data);
-          return { count: 1 };
+  Object.assign(prisma, {
+    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        $queryRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          const sql = strings.join("");
+          if (sql.includes('"external_effects"')) {
+            const effect = effects.find((candidate) => candidate.id === values[0]);
+            return effect
+              ? [
+                  {
+                    id: effect.id,
+                    runId: effect.runId ?? run.id,
+                    status: effect.status,
+                    result: effect.result ?? null,
+                  },
+                ]
+              : [];
+          }
+          return [
+            {
+              id: run.id,
+              status: run.status,
+              leaseOwner: run.leaseOwner,
+              leaseFence: run.leaseFence,
+              leaseExpiresAt: run.leaseExpiresAt,
+              leaseValid:
+                run.leaseExpiresAt !== null && run.leaseExpiresAt.getTime() > Date.now(),
+            },
+          ];
         }),
-      },
-      attempt: prisma.attempt,
-      // ME-01: remember now writes first-party facts through this transaction.
-      memoryFact: {
-        findFirst: vi.fn(async () => null),
-        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-          factCreates += 1;
-          return { id: `fact-${factCreates}`, revision: 1, ...data };
-        }),
-      },
-      memoryFactRevision: { create: vi.fn(async () => ({})) },
-      memoryEvidence: { create: vi.fn(async () => ({})) },
-      memoryShard: {
-        upsert: vi.fn(async () => ({ id: "shard-1", version: 0 })),
-        findUniqueOrThrow: vi.fn(async () => ({ id: "shard-1", version: 0 })),
-        update: vi.fn(async () => ({ id: "shard-1", version: 1 })),
-      },
-      memoryJobOutbox: { upsert: vi.fn(async () => ({})) },
-    }),
-  ) });
+        run: {
+          findUnique: vi.fn(async () => ({
+            ...run,
+            leaseExpiresAt: run.leaseExpiresAt ?? new Date(Date.now() + 60_000),
+          })),
+          updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+            Object.assign(run, data);
+            return { count: 1 };
+          }),
+        },
+        externalEffect,
+        attempt: prisma.attempt,
+        // ME-01: remember now writes first-party facts through this transaction.
+        memoryFact: {
+          findFirst: vi.fn(async () => null),
+          create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+            factCreates += 1;
+            return { id: `fact-${factCreates}`, revision: 1, ...data };
+          }),
+        },
+        memoryFactRevision: { create: vi.fn(async () => ({})) },
+        memoryEvidence: { create: vi.fn(async () => ({})) },
+        memoryShard: {
+          upsert: vi.fn(async () => ({ id: "shard-1", version: 0 })),
+          findUniqueOrThrow: vi.fn(async () => ({ id: "shard-1", version: 0 })),
+          update: vi.fn(async () => ({ id: "shard-1", version: 1 })),
+        },
+        memoryJobOutbox: { upsert: vi.fn(async () => ({})) },
+      }),
+    ),
+  });
   const pauseRunForInput = vi.fn(async () => {
     run.status = "waiting_input";
     return true;
   });
   const finalizeRun = vi.fn(async () => ({ continuationRunId: null }));
   let calls: ToolCall[] = [];
+  let lastRequest: AgentRunRequest | undefined;
   const runtimeRun = vi.fn(async function* (request: AgentRunRequest) {
+    lastRequest = request;
     for (const call of calls) {
       const result = await request.executeTool!(call.name, call.args, call.executionId);
       results.push(result);
     }
     yield { type: "done" as const, text: "Done" };
   });
+  const instructionReads: Array<{ runId: string; leaseOwner: string; leaseFence: number }> = [];
   const executor = createRunExecutor({
     prisma,
+    taskInstructions: async (
+      _prisma: unknown,
+      input: { runId: string; leaseOwner: string; leaseFence: number },
+    ) => {
+      instructionReads.push(input);
+      if (instructionFailure) throw instructionFailure;
+      return {
+        envelope: {
+          taskId: run.taskId,
+          revision: instruction?.revision ?? 1,
+          original: { content: instruction?.original ?? "Update shared state" },
+          amendments: (instruction?.amendments ?? []).map((amendment) => ({
+            messageId: `message-${amendment.seq}`,
+            seq: amendment.seq,
+            content: amendment.content,
+          })),
+        },
+        ref: { taskId: run.taskId, consumedRevision: instruction?.revision ?? 1 },
+      };
+    },
     runtime: { describe: () => ({ capabilities: { scripted: false } }), run: runtimeRun },
     connector: {
       discoverTools: async () => [],
@@ -269,7 +335,12 @@ function fixture(runId = "run-1") {
     runRow: run,
     executor,
     pauseRunForInput,
+    finalizeRun,
     runtimeRun,
+    instructionReads,
+    get lastRequest() {
+      return lastRequest;
+    },
     setCalls(next: ToolCall[]) {
       calls = next;
     },
@@ -283,7 +354,63 @@ function fixture(runId = "run-1") {
   };
 }
 
+describe("effect claim policy", () => {
+  it("keeps plan records and request_secret intended across their pause", () => {
+    for (const name of [
+      "plan_enter",
+      "plan_write",
+      "plan_exit",
+      "publish_run_plan",
+      "publish_run_step",
+      "publish_run_todo",
+      "request_secret",
+    ]) {
+      expect(effectClaimsBeforeExecution(name), name).toBe(false);
+    }
+    expect(effectClaimsBeforeExecution("send_email")).toBe(true);
+    expect(effectClaimsBeforeExecution("destination.write")).toBe(true);
+  });
+});
+
 describe("mutating tool effect idempotency keys", () => {
+  it("feeds the original and all server-ordered amendments to the runtime", async () => {
+    const f = fixture("run-envelope", {
+      revision: 3,
+      original: "Original task",
+      amendments: [
+        { seq: 2, content: "Second amendment" },
+        { seq: 1, content: "First amendment" },
+      ],
+    });
+    await f.run();
+    expect(f.instructionReads).toEqual([
+      { runId: "run-envelope", leaseOwner: "worker-1", leaseFence: 1 },
+    ]);
+    const prompt = f.lastRequest?.prompt ?? "";
+    expect(prompt).toContain("Task instruction revision 3.");
+    expect(prompt).toContain("Original task");
+    expect(prompt.indexOf("[amendment 1]")).toBeGreaterThan(-1);
+    expect(prompt.indexOf("[amendment 1]")).toBeLessThan(prompt.indexOf("[amendment 2]"));
+    expect(prompt).toContain("First amendment");
+    expect(prompt).toContain("Second amendment");
+  });
+
+  it("fails the Run instead of calling the runtime when the envelope is incomplete", async () => {
+    const f = fixture(
+      "run-incomplete",
+      undefined,
+      new TaskInstructionIntegrityError("task-1", 3, 0),
+    );
+    await f.executor.continueRun(f.runRow.id, "worker-1");
+    expect(f.runtimeRun).not.toHaveBeenCalled();
+    expect(f.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "failed",
+        error: expect.stringContaining("is incomplete"),
+      }),
+    );
+  });
+
   it("executes different tools that share a reused provider tool-call id", async () => {
     const f = fixture("run-a");
     f.setCalls([
@@ -461,7 +588,10 @@ describe("mutating tool effect idempotency keys", () => {
     expect(f.factCreates).toBe(2);
     expect(f.effects).toHaveLength(2);
     expect(f.effects[0]?.idempotencyKey).not.toBe(f.effects[1]?.idempotencyKey);
-    expect(f.results).toEqual([expect.objectContaining({ ok: true }), expect.objectContaining({ ok: true })]);
+    expect(f.results).toEqual([
+      expect.objectContaining({ ok: true }),
+      expect.objectContaining({ ok: true }),
+    ]);
   });
 
   it("replays a legacy bare provider idempotency key for the same run and tool", async () => {
@@ -575,7 +705,10 @@ describe("mutating tool effect idempotency keys", () => {
     expect(f.effects[1]?.idempotencyKey).toBe(
       toolEffectIdempotencyKey("run-live-repeat", "remember", args, 1),
     );
-    expect(f.results).toEqual([expect.objectContaining({ ok: true }), expect.objectContaining({ ok: true })]);
+    expect(f.results).toEqual([
+      expect.objectContaining({ ok: true }),
+      expect.objectContaining({ ok: true }),
+    ]);
   });
 
   it("replays a legacy scoped key when restart assigns a new tool-call id", async () => {

@@ -13,8 +13,6 @@ import {
   catalogApprovalRequest,
   catalogExecuteToolName,
   catalogToolPrefix,
-  claimApprovedEffect,
-  claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
   denyRevokedPermissionEffects,
@@ -35,6 +33,17 @@ describe("approved effect replay", () => {
 
     expect(queue.take("destination.write")).toEqual(approved);
     expect(queue.take("destination.write")).toBeUndefined();
+  });
+
+  it("exposes the approved key so an edited replay can reuse its effect", () => {
+    const edited = { to: ["ada@example.test"], subject: "r2", text: "Edited" };
+    const queue = createApprovedEffectReplayQueue([
+      { kind: "send_email", request: edited, idempotencyKey: "run:send_email:original" },
+    ]);
+
+    expect(queue.nextKey()).toBe("run:send_email:original");
+    expect(queue.take("send_email")).toEqual(edited);
+    expect(queue.nextKey()).toBeUndefined();
   });
 
   it("keeps independently approved calls in creation order", () => {
@@ -315,40 +324,6 @@ describe("resolveDuplicateEffectGate", () => {
   });
 });
 
-describe("claimApprovedEffect", () => {
-  it("claims approved effects exactly once", async () => {
-    const store = {
-      externalEffect: {
-        updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 }),
-      },
-    };
-
-    await expect(claimApprovedEffect(store, "effect-1")).resolves.toBe(true);
-    await expect(claimApprovedEffect(store, "effect-1")).resolves.toBe(false);
-    expect(store.externalEffect.updateMany).toHaveBeenCalledWith({
-      where: { id: "effect-1", status: "approved" },
-      data: { status: "executing" },
-    });
-  });
-});
-
-describe("claimIntendedEffect", () => {
-  it("claims intended effects exactly once", async () => {
-    const store = {
-      externalEffect: {
-        updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 }),
-      },
-    };
-
-    await expect(claimIntendedEffect(store, "effect-1")).resolves.toBe(true);
-    await expect(claimIntendedEffect(store, "effect-1")).resolves.toBe(false);
-    expect(store.externalEffect.updateMany).toHaveBeenCalledWith({
-      where: { id: "effect-1", status: "intended" },
-      data: { status: "executing" },
-    });
-  });
-});
-
 describe("replaceCompletedExternalEffectResult", () => {
   it("updates the stored result for a completed effect", async () => {
     const store = {
@@ -452,12 +427,8 @@ describe("approved effect resume", () => {
           result: await settleUncertainEffect(store, effectId, toolName),
         };
       }
-      if (!(await claimApprovedEffect(store, effectId))) {
-        const current = await store.externalEffect.findUnique({ where: { id: effectId } });
-        if (!current) {
-          throw new Error(`tool ${toolName} has an earlier execution with an uncertain outcome`);
-        }
-        const retryGate = resolveDuplicateEffectGate(current, toolName);
+      if (status !== "approved") {
+        const retryGate = resolveDuplicateEffectGate(effect, toolName);
         if (retryGate.action === "return") return { executed: false, result: retryGate.result };
         if (retryGate.action === "uncertain") {
           return {
@@ -467,6 +438,7 @@ describe("approved effect resume", () => {
         }
         throw new Error(`tool ${toolName} has an earlier execution with an uncertain outcome`);
       }
+      status = "executing";
       destinationWrites += 1;
       if (options?.complete !== false) {
         status = "completed";

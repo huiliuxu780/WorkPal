@@ -1,0 +1,53 @@
+# FIX-STOP-01 real-model attempt — BLOCKED BY AN ENVIRONMENT FAULT, not an acceptance run
+
+Date 2026-10-28. Head 89de89a working tree. Real model: dashscope qwen3.8-flash, key supplied by the
+owner and used only via an env var; it is not in any file, commit, or log below.
+
+Stack: pnpm dev (api 65383, web 65384, sandbox supervisor 7091, Java runtime from this branch),
+a dedicated dev database, and a Playwright script (deleted after the attempt, see note).
+
+## What actually happened
+
+1. signup, model connect (real key), onboarding intro run — all reached the runtime.
+2. A long prompt started a Run; It was observed running, then threads/stop returned ok and the
+   Run became cancelled. Stop path works with the real model.
+3. The next message LEFT queued and acquired execution — the admission was released, which is
+   the property this card is about — and then failed at sandbox provisioning.
+
+## The blocker
+
+Every run in this environment ends with:
+
+  sandbox provision failed: 500 {"error":"computer home must be the bot's home directory"}
+
+Runs as recorded in the dev database (trigger | status | error):
+
+created | failed | sandbox provision failed: 500 {"error":"computer home must be the bot's home directory"}
+user | cancelled | sandbox provision failed: 500 {"error":"computer home must be the bot's home directory"}
+user | failed | sandbox provision failed: 500 {"error":"computer home must be the bot's home directory"}
+
+The onboarding intro Run inherits the same error, so the model path itself is fine and the
+sandbox/computer configuration of this ad-hoc dev stack is not.
+
+## Why this is not acceptance evidence
+
+An environment failure is explicitly not a red for the target defect and not a green either.
+The real-model manual acceptance therefore remains NOT DONE. What this attempt does establish is
+narrow: with the real model and the real stack, Stop cancelled the Run and the follow-up message
+was not left queued — it was admitted and then hit an unrelated sandbox fault. That is a
+supporting observation from an uncontrolled environment, not the controlled manual run the card asks
+for, and it is not counted as one.
+
+## What would unblock it
+
+- A dev stack whose sandbox supervisor accepts the bot home (the E2E harness uses a fake sandbox
+  provider and does not hit this path), or
+- confirmation that the sandbox provider/home env this ad-hoc stack omitted can be derived from
+  the repo's compose profile, then re-run the same scenario for screenshots plus the Run and
+  admission rows.
+
+## Note on the script
+
+The throwaway Playwright script was removed from the worktree so it cannot be mistaken for a
+committed test. It lives only in this description; the durable coverage is
+stop-session-release.postgres.test.ts and worker-chain.spec.ts:402.

@@ -10,19 +10,17 @@ import { ALL_JOBS } from "./select-checks.mjs";
 
 const RESULT_ENV = {
   docs: "RESULT_DOCS",
+  harness: "RESULT_HARNESS",
   web: "RESULT_WEB",
   backend: "RESULT_BACKEND",
+  "db-postgres": "RESULT_DB_POSTGRES",
   "runtime-jar": "RESULT_RUNTIME_JAR",
   agentscope: "RESULT_AGENTSCOPE",
   "worker-chain": "RESULT_WORKER_CHAIN",
   "agent-runtime-image": "RESULT_AGENT_RUNTIME_IMAGE",
 };
 
-export function verifyResult({
-  selectResult,
-  selectChecksOutcome,
-  jobResults,
-}) {
+export function verifyResult({ selectResult, selectChecksOutcome, jobResults }) {
   if (selectChecksOutcome !== "success") {
     return {
       ok: false,

@@ -93,6 +93,16 @@ describe("buildExecutionSummary", () => {
     expect(summary.incompleteSections).toEqual(["artifacts"]);
   });
 
+  it("carries the durable source-message link only when recorded", () => {
+    expect(buildExecutionSummary(facts()).sourceMessageId).toBeUndefined();
+    expect(
+      buildExecutionSummary(facts({ run: run({ sourceMessageId: "message-1" }) })).sourceMessageId,
+    ).toBe("message-1");
+    expect(
+      buildExecutionSummary(facts({ run: run({ sourceMessageId: null }) })).sourceMessageId,
+    ).toBeUndefined();
+  });
+
   it("is deterministic and never mixes two Runs' facts", () => {
     const left = buildExecutionSummary(facts({ run: run({ id: "run-a" }), rev: 3 }));
     const right = buildExecutionSummary(
@@ -145,6 +155,18 @@ describe("buildExecutionSummary", () => {
     const without = buildExecutionSummary(facts({ sourceMessageId: null }));
     expect(without.sourceMessageId).toBeUndefined();
     expect(buildExecutionSummary(facts()).sourceMessageId).toBeUndefined();
+  });
+
+  it("carries amendment follow-up lineage separately from retry lineage", () => {
+    const summary = buildExecutionSummary(
+      facts({
+        followUpOfRunId: "run-original",
+        followUpSuccessorRunId: "run-review",
+      }),
+    );
+    expect(summary.followUpOfRunId).toBe("run-original");
+    expect(summary.followUpSuccessorRunId).toBe("run-review");
+    expect(summary.retryOfRunId).toBeUndefined();
   });
 });
 

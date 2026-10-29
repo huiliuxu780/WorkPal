@@ -10,6 +10,7 @@ import {
   type ExecutionSnapshot,
   type ExecutionSummary,
   MAX_SUMMARY_ARTIFACTS,
+  type MessageBlock,
   RunPlanRevisionSchema,
   RunStepSnapshotSchema,
   RunTodoSnapshotSchema,
@@ -20,6 +21,7 @@ import {
   type ActivityRunContext,
   type ActivitySourceEvent,
   buildExecutionSummary,
+  callIdFromClientNonce,
   composeRunRev,
   decodeExecutionActivityCursor,
   type ExecutionSummaryFacts,
@@ -28,6 +30,7 @@ import {
   projectActivity,
   projectManualRetryEligibility,
 } from "@rakazo/core";
+import { type CardMessageFact, projectExecutionCardInteractions } from "./card-interactions.js";
 import type { PrismaClient } from "./client.js";
 import { Prisma } from "./client.js";
 import { currentThreadGeneration } from "./events.js";
@@ -162,7 +165,28 @@ export type SummaryRunRow = {
   createdAt: Date;
   snapshotRev: number;
   retryOfRunId?: string | null;
+  followUpOfRunId?: string | null;
 };
+
+/** Columns every summary read needs; one shape for window and message reads. */
+const SUMMARY_RUN_SELECT = {
+  id: true,
+  threadId: true,
+  botId: true,
+  taskId: true,
+  status: true,
+  waitKind: true,
+  trigger: true,
+  error: true,
+  orchestration: true,
+  sourceMessageId: true,
+  startedAt: true,
+  completedAt: true,
+  createdAt: true,
+  snapshotRev: true,
+  retryOfRunId: true,
+  followUpOfRunId: true,
+} as const;
 
 /** Latest `thread.cleared` seq per Thread in one grouped pass (absent = 0). */
 export async function currentThreadGenerations(
@@ -228,13 +252,23 @@ export async function buildExecutionSummariesForRuns(
   if (present.length === 0) return [];
   const scopedIds = present.map((run) => run.id);
   const successorRows = await db.run.findMany({
-    where: { retryOfRunId: { in: scopedIds } },
-    select: { id: true, retryOfRunId: true, status: true },
+    where: {
+      OR: [{ retryOfRunId: { in: scopedIds } }, { followUpOfRunId: { in: scopedIds } }],
+    },
+    select: { id: true, retryOfRunId: true, followUpOfRunId: true, status: true },
   });
-  const successorByPredecessor = new Map<string, { id: string; status: string }>();
+  const retrySuccessorByPredecessor = new Map<string, { id: string; status: string }>();
+  const followUpSuccessorByPredecessor = new Map<string, { id: string; status: string }>();
   for (const row of successorRows) {
-    if (!row.retryOfRunId) continue;
-    successorByPredecessor.set(row.retryOfRunId, { id: row.id, status: row.status });
+    if (row.retryOfRunId) {
+      retrySuccessorByPredecessor.set(row.retryOfRunId, { id: row.id, status: row.status });
+    }
+    if (row.followUpOfRunId) {
+      followUpSuccessorByPredecessor.set(row.followUpOfRunId, {
+        id: row.id,
+        status: row.status,
+      });
+    }
   }
   const taskIds = [...new Set(present.map((run) => run.taskId))];
   const sourceIds = present
@@ -355,6 +389,7 @@ export async function buildExecutionSummariesForRuns(
         trigger: run.trigger,
         error: run.error,
         orchestration: run.orchestration,
+        sourceMessageId: run.sourceMessageId,
         startedAt: toIso(run.startedAt),
         completedAt: toIso(run.completedAt),
         createdAt: run.createdAt.toISOString(),
@@ -378,12 +413,14 @@ export async function buildExecutionSummariesForRuns(
       anchorMessageId: anchorMessage?.id ?? null,
       sourceMessageId: run.sourceMessageId,
       retryOfRunId: run.retryOfRunId ?? null,
-      retrySuccessorRunId: successorByPredecessor.get(run.id)?.id ?? null,
+      retrySuccessorRunId: retrySuccessorByPredecessor.get(run.id)?.id ?? null,
+      followUpOfRunId: run.followUpOfRunId ?? null,
+      followUpSuccessorRunId: followUpSuccessorByPredecessor.get(run.id)?.id ?? null,
       manualRetry: projectManualRetryEligibility({
         status: run.status,
         trigger: run.trigger,
         orchestration: run.orchestration,
-        successorStatus: successorByPredecessor.get(run.id)?.status ?? null,
+        successorStatus: retrySuccessorByPredecessor.get(run.id)?.status ?? null,
       }),
     };
     summaries.push(buildExecutionSummary(facts));
@@ -407,25 +444,63 @@ export async function loadExecutionSummaries(
   if (runIds.length === 0) return [];
   const runs = await db.run.findMany({
     where: { id: { in: runIds }, threadId: input.threadId, spaceId: input.spaceId },
-    select: {
-      id: true,
-      threadId: true,
-      botId: true,
-      taskId: true,
-      status: true,
-      waitKind: true,
-      trigger: true,
-      error: true,
-      orchestration: true,
-      sourceMessageId: true,
-      startedAt: true,
-      completedAt: true,
-      createdAt: true,
-      snapshotRev: true,
-      retryOfRunId: true,
-    },
+    select: SUMMARY_RUN_SELECT,
   });
   return buildExecutionSummariesForRuns(db, { spaceId: input.spaceId, runs });
+}
+
+/**
+ * The message → Runs projection (PD-01P): every Run whose durable source is
+ * one of the given history-page messages.
+ *
+ * A user turn can create several Runs (a multi-Bot group dispatch creates one
+ * Run per destination, each with `sourceMessageId` set to the same message),
+ * while the legacy `messages.runId` column only records the first. This reads
+ * the whole page in ONE query — no per-message N+1 — unions the legacy
+ * message→run ids for pre-`sourceMessageId` rows, and relies on the shared
+ * builder for the Thread generation fence, retry eligibility, and all other
+ * summary facts. The Thread+Space scope is applied in the query itself, so a
+ * Run from another Thread or Space can never leak through a shared message id.
+ *
+ * Output order is `Run.createdAt ASC, Run.id ASC` — the database order is
+ * made explicit here so paging, reloads, and query-plan changes project the
+ * same sequence. A Run reachable through both the legacy id and its source
+ * message appears once (the builder dedupes by Run id).
+ */
+export async function loadExecutionSummariesForMessages(
+  db: TxLike,
+  input: {
+    threadId: string;
+    spaceId: string;
+    /** Messages of the loaded history page; each may own 0..N Runs. */
+    messageIds: readonly string[];
+    /** Legacy `Message.runId` links; unioned but never treated as exhaustive. */
+    runIds?: readonly string[];
+  },
+): Promise<ExecutionSummary[]> {
+  const messageIds = [...new Set(input.messageIds)].sort();
+  const runIds = [...new Set(input.runIds ?? [])].sort();
+  if (messageIds.length === 0 && runIds.length === 0) return [];
+  const runs = await db.run.findMany({
+    where: {
+      threadId: input.threadId,
+      spaceId: input.spaceId,
+      OR: [
+        ...(messageIds.length > 0 ? [{ sourceMessageId: { in: messageIds } }] : []),
+        ...(runIds.length > 0 ? [{ id: { in: runIds } }] : []),
+      ],
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: SUMMARY_RUN_SELECT,
+  });
+  const summaries = await buildExecutionSummariesForRuns(db, {
+    spaceId: input.spaceId,
+    runs,
+  });
+  // The builder filters stale/cleared Runs and dedupes; restore its rows to the
+  // stable source order rather than the builder's batching order.
+  const position = new Map(runs.map((run, index) => [run.id, index]));
+  return summaries.sort((a, b) => (position.get(a.runId) ?? 0) - (position.get(b.runId) ?? 0));
 }
 
 /* ------------------------------------------------------------------ */
@@ -637,7 +712,13 @@ export async function loadRunActivityPage(
  */
 export async function loadExecutionSnapshot(
   db: TxLike,
-  input: { threadId: string; spaceId: string; runId: string },
+  input: {
+    threadId: string;
+    spaceId: string;
+    runId: string;
+    /** CARD-01A: merge message-backed approvals into the snapshot projection. */
+    cardsUnifiedV2?: boolean;
+  },
 ): Promise<ExecutionSnapshot | null> {
   const [run, generation] = await Promise.all([
     db.run.findFirst({
@@ -683,7 +764,14 @@ export async function loadExecutionSnapshot(
       // as its final result or miss a later legacy Ask in the same window.
       orderBy: { seq: "desc" },
       take: SUMMARY_MESSAGE_SCAN_LIMIT,
-      select: { id: true, runId: true, blocks: true },
+      select: {
+        id: true,
+        role: true,
+        runId: true,
+        clientNonce: true,
+        blocks: true,
+        createdAt: true,
+      },
     }),
   ]);
   const summary = summaries[0];
@@ -697,6 +785,26 @@ export async function loadExecutionSnapshot(
           run.id,
         ])
       ).filter((view) => view.runId === run.id);
+
+  const cardInteractions =
+    input.cardsUnifiedV2 && !stale
+      ? projectExecutionCardInteractions({
+          interventions,
+          messages: runMessages.map(
+            (message): CardMessageFact => ({
+              id: message.id,
+              threadId: input.threadId,
+              spaceId: input.spaceId,
+              botId: run.botId,
+              runId: message.runId ?? run.id,
+              createdAt: message.createdAt.toISOString(),
+              role: message.role,
+              callId: callIdFromClientNonce(message.clientNonce),
+              blocks: message.blocks as MessageBlock[],
+            }),
+          ),
+        })
+      : undefined;
 
   const stepsTruncated = stepRows.length > EXECUTION_STEPS_LIMIT;
   const steps = {
@@ -786,6 +894,7 @@ export async function loadExecutionSnapshot(
     timeline,
     activityPage,
     interventions,
+    ...(cardInteractions ? { interactions: cardInteractions } : {}),
     ...(result ? { result } : {}),
   };
 }

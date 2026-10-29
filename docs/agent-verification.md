@@ -6,7 +6,9 @@ model can demonstrate that it chooses a useful action for a natural request.
 
 | Layer | Real components | Stand-ins | Command |
 | --- | --- | --- | --- |
-| Existing fast tests | Product functions and contracts | Scripted agent, services, sandbox | `pnpm test` |
+| Unit gate | Product functions and contracts | Scripted agent, services, sandbox | `pnpm test:unit` |
+| PostgreSQL gate | PostgreSQL 16, migrations, repositories | Scripted agent, services, sandbox | `pnpm test:postgres` |
+| Existing broad tests | Product functions and contracts | Scripted agent, services, sandbox | `pnpm test` |
 | Java runtime regressions | AgentScope HarnessAgent, model stream, Tool Bridge, Skill, Plan, subagent | Loopback model and tool endpoints | `pnpm test:agentscope` |
 | Product journey | API, saved model connection, Postgres, executor, AgentScope Java | Model endpoint, sandbox, connectors | `pnpm test:integration` |
 | Computer replay | AgentScope Java, browser tool handlers, page state | Model endpoint, browser and sandbox | `pnpm test:computer-replay` |
@@ -14,11 +16,129 @@ model can demonstrate that it chooses a useful action for a natural request.
 | Agent quality | Product API, Postgres, executor, AgentScope Java, real model | Sandbox and connected services | `pnpm test:evals --live ...` |
 | Vision acceptance | Product API, AgentScope Java, real vision model, Box or E2B desktop | Fixture website | `pnpm test:computer` |
 
-Default and PR tests never require paid inference. Nightly runs only the web
-tests with emulated providers. Docker topology and browser replay have a manual
-workflow; hosted sandboxes and real-model quality runs require an explicit local
-command. Nightly verification never starts computer sandboxes or requests model
-or sandbox credentials.
+`pnpm test` is the legacy broad Vitest run. It still includes every matched
+file, skips database-gated suites without `VERIFY_DATABASE=1` and
+`DATABASE_URL`, and is not a hermetic gate. Use `pnpm test:unit` for the unit
+gate and the layered commands below for external environments.
+
+## Tracked test inventory
+
+`scripts/testing/test-inventory.mjs` enumerates the Git-tracked `*.test.ts`,
+`*.test.tsx`, and `*.test.mjs` files and assigns each one at least one execution
+entry:
+
+| Category | Environment | Entry |
+| --- | --- | --- |
+| `unit-node` | Node, no external service | `pnpm test:unit` |
+| `unit-jsdom` | Vitest jsdom, no browser process | `pnpm test:unit` |
+| `postgres` | PostgreSQL 16 with migrations | `pnpm test:postgres` (`db-postgres` job) |
+| `integration-harness` | PostgreSQL + app + JDK 21 | `pnpm test:integration --spec=<file>` |
+| `agentscope-request` | JDK 21 AgentScope runtime | `agentscope` CI job |
+| `computer-replay-java` | JDK 21 + Maven | direct `vitest run <file>` |
+| `computer-replay-cli` | JDK 21 + Docker | `pnpm test:computer-replay` |
+| `docker-manual` | Docker / Compose | explicit local command |
+| `live-canary` | live provider credentials | `pnpm test:canary` |
+| `live-computer` | live model and sandbox credentials | `pnpm test:computer` |
+| `process` | local shells, scripts, or helper binaries | `pnpm test:process` |
+| `node-test` | Node's built-in test runner | `pnpm test:ci-select`, `pnpm test:docs` |
+
+A file without a rule defaults to unit only when it has no external suffix and
+no external marker. `*.postgres.test.ts`, `*.integration.test.ts`,
+`*.docker.test.ts`, `*.e2e.test.ts`, and `*.canary.test.ts` require an explicit
+rule, as does any ordinary-looking file that reads `DATABASE_URL`,
+`VERIFY_DATABASE`, `AGENTSCOPE_URL`, Testcontainers, live provider flags, or a
+non-type `node:child_process` import. `*.test.mjs` uses Node's runner, so it
+also requires an explicit rule. A file with more than one execution entry must
+state why the duplicate entry is useful.
+
+Ordinary-suffix exceptions are listed in the inventory rather than inferred from
+the filename. `packages/testkit/src/computer-replay.test.ts` starts the Java
+runtime and is not a unit test. `packages/db/src/delivery-records.test.ts`,
+`packages/db/src/usage-stats.test.ts`, and the testkit messaging, mention-target,
+and runs-list tests connect to PostgreSQL despite their plain names.
+
+`node-test` files are not mixed into Vitest: selector and inventory tests run
+through `pnpm test:ci-select`, and roundtable document verifiers run through
+`pnpm test:docs`. The harness CI job runs both commands.
+
+`pnpm test:inventory` fails on an unclassified tracked test, a rule whose file
+was deleted, a rule whose marker no longer matches, a multi-entry classification
+without a duplicate reason, a unit test that also claims an external category,
+and an entry whose package script, CI job, harness suite list, or unit config
+is missing. `pnpm test:unit` builds its include list from the same inventory, so
+a new external test cannot silently join the hermetic unit gate.
+
+To add a test:
+
+1. Prefer a pure unit test with no external dependency; it needs no inventory
+   rule and runs in `pnpm test:unit`.
+2. If it needs PostgreSQL, Java, Docker, a browser, a process, or credentials,
+   add an explicit rule in `scripts/testing/test-inventory.mjs` with markers,
+   `reason`, and, when it has multiple entries, `duplicateReason`.
+3. Run `pnpm test:inventory`; if it is a unit test, run `pnpm test:unit`.
+4. For a new PostgreSQL file, run `pnpm test:postgres` against a migrated
+   database. CI selects `db-postgres` from the same classification.
+
+`pnpm lint` runs `biome check .`; the formatter and import sorting are part of
+the gate. Five confirmed prototype paths and the precise pre-existing
+formatter/import-sort debt list in `biome.json` are temporarily excluded; H3
+owns closing those exclusions.
+
+Default and PR tests never require paid inference. Docker topology and browser
+replay have a manual workflow; hosted sandboxes and real-model quality runs
+require an explicit local command. Scheduled CI does not start computer
+sandboxes or request model or sandbox credentials.
+
+## E2E failure evidence
+
+The `web`, `agentscope`, `worker-chain`, and `visual-web` jobs upload
+Playwright evidence when the job fails or is cancelled. The artifact name is
+`playwright-<job>-<commit SHA>-<run attempt>`. It contains:
+
+- `playwright-report/` — HTML report
+- `apps/web/test-results/` — trace, screenshot, and video
+- `test-report/` — harness summary when the run created one
+
+Retention is 7 days. A missing directory warns and is skipped; that upload
+does not turn a failed or cancelled job green. Traces, screenshots, and videos
+are kept on failure (`retain-on-failure` / `only-on-failure` in
+`apps/web/playwright.config.ts`). The HTML report is always written to
+`playwright-report/`.
+
+## Daily visual entry
+
+There is one daily visual entry: the `visual-web` job in
+`.github/workflows/ci.yml`. It runs on the existing `17 3 * * *` schedule and
+on `workflow_dispatch` with `mode=visual`. It does not run on pull requests.
+
+It runs only the scripted specs `ui-appearance.spec.ts` and
+`settings-shell.spec.ts` (`pnpm test:e2e --runtime=scripted`). Those specs
+capture the web screenshots. The job uploads `playwright-report/`,
+`apps/web/test-results/`, and `test-report/` as
+`daily-visual-<commit SHA>-<run attempt>`, retained for 14 days.
+
+The same schedule still runs the existing full CI graph. `mode=visual` does
+not. This entry does not run AgentScope, the worker chain, PostgreSQL suites,
+computer replay, live evals, or hosted sandboxes. The old
+`nightly-verification.yml` workflow called a missing `playwright.yml` and
+never produced screenshots. It was removed after one successful manual
+`mode=visual` run. Historical nightly runs remain on GitHub.
+
+## Budget and execution-card races
+
+`budget-acceptance.spec.ts` keeps the queue boundary and the final delivery
+as separate assertions. While the failed routine Run owns a recovering chat
+admission, the delivery Run may be `queued` or briefly `leased` by the
+dispatch sweep, and no `delivery.sent` event exists. `running` or `completed`
+at that point fails the boundary. `continueRun` on that terminal owner then
+uses the production RT-26 proof. Only after that proof does the test require
+the delivery Run to complete and the summary to be sent once.
+
+`execution-card.spec.ts` waits for the ask card itself instead of reloading
+when the region is briefly absent, and it acknowledges `resolveIntervention`
+before expecting the answered echo. Paging waits for each
+`threads/messages` response. It does not use a fixed sleep, and it does not
+treat a disabled Loading button as the end of history.
 Missing live credentials mean **not run**, not a passing model evaluation.
 
 On 2026-10-08 a local acceptance used the existing encrypted WorkPal DashScope
@@ -147,7 +267,7 @@ uses fresh accounts and services. The runner disables its routines and cancels
 its work before proceeding; cleanup failure leaves remaining trials not run.
 
 Live evaluations run only through an explicit local CLI invocation. They are
-not scheduled by the nightly workflow.
+not part of the daily visual entry or the scheduled full CI graph.
 
 The September 2026 Luna/OpenRouter baseline passed all 15 cases over three
 trials each (45/45) after correcting the harness. The initial run passed 41/45:
@@ -200,3 +320,25 @@ injection warnings must not be mistaken for compliance with the injection.
 Keep functional criteria deterministic. Add a model judge only for a quality
 that cannot be graded directly, with a versioned rubric and human calibration.
 Do not let a judge override forbidden effects or missing artifacts.
+
+## Worktree resource isolation
+
+`pnpm agent:doctor` prints the current worktree plan: a stable task id, ports,
+Compose project, volume names, database name, data directory label, and lease
+label. It also lists conflicts and stale leases. The task id comes from a
+normalized worktree path or an explicit `--task` slug. Doctor output omits the
+machine user name and absolute paths.
+
+Ports that the API, Playwright, and Compose must know before they bind are
+reserved by a locked lease. The operating system assigns the port while that
+lock is held, so two worktrees do not probe the same port and then race to bind
+it. `pnpm test:e2e` still starts a private Testcontainer unless
+`WORKPAL_E2E_DATABASE_URL` names a local `workpal_e2e_` database that no other
+active lease holds. Integration runs reject that external URL and keep
+per-suite database clones.
+
+Dev Compose reads `COMPOSE_PROJECT_NAME`, `API_HOST_PORT`, `WEB_HOST_PORT`,
+`POSTGRES_HOST_PORT`, and `WORKPAL_COMPOSE_DATA_DIR`. Named volumes are
+project-scoped. `pnpm agent:doctor --compose-down` removes only the current
+project. After a crash, `pnpm agent:doctor` reports that lease as stale and
+`pnpm agent:doctor --recover` clears only the current worktree's stale lease.

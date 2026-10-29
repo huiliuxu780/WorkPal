@@ -1,4 +1,5 @@
 import { ONCE_ROUTINE_CRON } from "@rakazo/core";
+import { CHAT_GROUP_KIND_AGENT_PAIR } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   cancelScheduleFromTool,
@@ -134,6 +135,7 @@ describe("filterBuiltinToolsForThread", () => {
   const tools = [
     { name: "handoff_to_bot" },
     { name: "message_bot" },
+    { name: "message_group" },
     { name: "schedule_create" },
     { name: "schedule_list" },
     { name: "schedule_cancel" },
@@ -157,10 +159,52 @@ describe("filterBuiltinToolsForThread", () => {
     ]);
   });
 
+  it("opens group message_bot only when destination-aware public dispatch is enabled", () => {
+    expect(filterBuiltinToolsForThread(tools, "group-1", true).map((tool) => tool.name)).toEqual([
+      "handoff_to_bot",
+      "message_bot",
+      "schedule_create",
+      "schedule_list",
+      "schedule_cancel",
+      "remember",
+    ]);
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", false).map((tool) => tool.name),
+    ).not.toContain("message_bot");
+  });
+
+  it("opens message_group only in a direct chat with its own gate", () => {
+    const names = (groupId: string | null, enabled: boolean) =>
+      filterBuiltinToolsForThread(tools, groupId, false, null, enabled).map((tool) => tool.name);
+    expect(names(null, true)).toContain("message_group");
+    expect(names(null, false)).not.toContain("message_group");
+    expect(names("group-1", true)).not.toContain("message_group");
+    expect(names("pair-1", true)).not.toContain("message_group");
+  });
+
+  it("keeps message_bot in pair threads regardless of the public-collaboration gate", () => {
+    // A pair Thread only exists through the gated private delivery path; the
+    // delegated chain needs message_bot to reply (clarify, interim status,
+    // explicit result), so the independent public gate must not remove it.
+    expect(
+      filterBuiltinToolsForThread(tools, "pair-1", false, CHAT_GROUP_KIND_AGENT_PAIR).map(
+        (tool) => tool.name,
+      ),
+    ).toContain("message_bot");
+    // A standard group keeps the public-gate behavior.
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", false, "standard").map((tool) => tool.name),
+    ).not.toContain("message_bot");
+    expect(
+      filterBuiltinToolsForThread(tools, "group-1", true, "standard").map((tool) => tool.name),
+    ).toContain("message_bot");
+  });
+
   it("hides schedule creation from routine runs without removing schedule management", () => {
     expect(filterBuiltinToolsForRun(tools, "routine").map((tool) => tool.name)).toEqual([
       "handoff_to_bot",
       "message_bot",
+      "message_group",
       "schedule_list",
       "schedule_cancel",
       "remember",
@@ -201,6 +245,10 @@ describe("isOneShotRoutineCron", () => {
 });
 
 describe("schedule tool persistence", () => {
+  const writableThread = () => ({
+    thread: { findFirst: vi.fn(async () => ({ id: "thread-1" })) },
+  });
+
   it("creates routines with routine.created and enqueues wakeup", async () => {
     const append = vi.fn(async () => undefined);
     const enqueue = vi.fn(async () => undefined);
@@ -210,7 +258,7 @@ describe("schedule tool persistence", () => {
       nextRunAt: args.data.nextRunAt,
     }));
     const deps = {
-      prisma: { routine: { create } },
+      prisma: { ...writableThread(), routine: { create } },
       events: { append },
       jobs: { enqueue, cancel: vi.fn(async () => undefined) },
     } as unknown as Parameters<typeof createScheduleFromTool>[0];
@@ -248,6 +296,7 @@ describe("schedule tool persistence", () => {
     const remove = vi.fn(async () => undefined);
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -285,6 +334,7 @@ describe("schedule tool persistence", () => {
     const remove = vi.fn(async () => undefined);
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -322,6 +372,7 @@ describe("schedule tool persistence", () => {
     const update = vi.fn(async () => undefined);
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -364,6 +415,7 @@ describe("schedule tool persistence", () => {
   it("propagates when enqueue rollback cannot deactivate", async () => {
     const deps = {
       prisma: {
+        ...writableThread(),
         routine: {
           create: vi.fn(async () => ({
             id: "routine-1",
@@ -399,6 +451,31 @@ describe("schedule tool persistence", () => {
         schedule: { every: 1, unit: "minutes" },
       }),
     ).rejects.toThrow("deactivate failed");
+  });
+
+  it("refuses to bind a Routine to an agent_pair thread", async () => {
+    const create = vi.fn();
+    const deps = {
+      prisma: {
+        thread: { findFirst: vi.fn(async () => null) },
+        routine: { create },
+      },
+      events: { append: vi.fn() },
+      jobs: { enqueue: vi.fn(), cancel: vi.fn() },
+    } as unknown as Parameters<typeof createScheduleFromTool>[0];
+
+    await expect(
+      createScheduleFromTool(deps, {
+        spaceId: "ws-1",
+        botId: "bot-1",
+        userId: "user-1",
+        threadId: "pair-thread-1",
+        name: "Pair schedule",
+        prompt: "Do not create this",
+        schedule: { every: 1, unit: "minutes" },
+      }),
+    ).resolves.toEqual({ error: "Schedules cannot be bound to this thread." });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("scopes group list and cancel to the current thread without narrowing DMs", async () => {

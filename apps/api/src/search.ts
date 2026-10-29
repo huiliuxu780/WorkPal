@@ -1,6 +1,6 @@
 import type { Actor, MessageBlock, SearchHit } from "@rakazo/contracts";
 import { extractLinksFromText, matchesSearchQuery, snippetAroundMatch } from "@rakazo/core";
-import { Prisma, type PrismaClient } from "@rakazo/db";
+import { CHAT_GROUP_KIND_STANDARD, Prisma, type PrismaClient } from "@rakazo/db";
 
 const SEARCH_LIMIT = 25;
 /** Cap name matches so content hits (messages/files/links/routines) keep most of the budget. */
@@ -96,6 +96,8 @@ export async function querySpaceSearch(
       spaceId: actor.spaceId,
       userId: actor.userId,
       name: { contains: query, mode: "insensitive" },
+      // Hidden agent_pair groups are not searchable conversations.
+      kind: CHAT_GROUP_KIND_STANDARD,
     },
     take: CONVERSATION_HIT_LIMIT,
   });
@@ -160,6 +162,7 @@ export async function querySpaceSearch(
       spaceId: actor.spaceId,
       userId: actor.userId,
       groupId: { not: null },
+      group: { is: { kind: CHAT_GROUP_KIND_STANDARD } },
       name: { contains: query, mode: "insensitive" },
     },
     include: { group: { select: { name: true } } },
@@ -272,6 +275,7 @@ export async function querySpaceSearch(
     WHERE t."spaceId" = ${actor.spaceId}
       AND t."userId" = ${actor.userId}
       AND t."groupId" IS NOT NULL
+      AND g.kind = ${CHAT_GROUP_KIND_STANDARD}
       AND m.blocks::text ILIKE ${pattern}
     ORDER BY m."createdAt" DESC
     LIMIT ${SEARCH_LIMIT}

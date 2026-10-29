@@ -1,12 +1,14 @@
 import { i18n } from "@lingui/core";
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown, LinkifiedText } from "@rakazo/chat-ui/web";
+import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
   ActivityItem,
   AgentSkillCatalogEntry,
+  AttentionQueueItem,
   Bot,
   BotSection,
+  CollaborationReceiptBlock,
   ComputerMode,
   ComputerReleaseReason,
   ComputerStatus,
@@ -41,6 +43,7 @@ import {
   type ComposerMention,
   clampMentionHighlightIndex,
   cronFromPreset,
+  GROUP_MENTION_CLARIFICATION_CODE,
   groupBotsForSidebar,
   groupVoiceChats,
   inferAttachmentMimeType,
@@ -49,6 +52,7 @@ import {
   isRunTerminalEvent,
   isToolActivityBlock,
   mentionChipKey,
+  mentionStillInPrompt,
   mergeExecutionsByRun,
   nestRosterByParent,
   plainTextFromMarkdown,
@@ -62,8 +66,10 @@ import {
   searchHitThreadTarget,
   serializeComposerPrompt,
   speechFromBlocks,
+  stripMentionToken,
   truncateSlashDescription,
   userVisibleMessages,
+  voiceDisplayBlockFromGroup,
   withLiveStreamingProgress,
 } from "@rakazo/core";
 import {
@@ -146,7 +152,18 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
-import { CollaborationMarker } from "../components/ai/CollaborationMarker";
+import { MessageText } from "../components/ai/AgentMentionText";
+import {
+  DisplayBlockList,
+  DisplayBlockView,
+  displayBlockMessageIndex,
+  groupDisplayBlocksByMessage,
+  VoiceDisplay,
+} from "../components/ai/display/DisplayBlockView";
+import { PeerReceiptRow } from "../components/ai/PeerReceiptRow";
+import { GroupDestinationReceipt } from "../components/ai/GroupDestinationReceipt";
+import { GroupMembershipFailureCard } from "../components/ai/interactions/ActionApprovalCard";
+import { PublicDelegationMessage } from "../components/ai/PublicDelegationMessage";
 import { CloudAgentCard } from "../components/CloudAgentCard";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import {
@@ -188,7 +205,7 @@ import {
 import {
   deliverBrowserNotification as deliverNativeBrowserNotification,
   requestBrowserNotificationPermission,
-  shouldNotifyBrowser,
+  shouldNotifyLegacyBrowser,
 } from "../lib/browser-notifications";
 import { startCall, useCallSession } from "../lib/call-session";
 import { newClientId } from "../lib/client-id";
@@ -199,6 +216,11 @@ import {
 } from "../lib/computer-screen";
 import { publishComputerCommand } from "../lib/computer-workspace";
 import { desktopBridge } from "../lib/desktop";
+import {
+  EXECUTION_NAV_INTENT_EVENT,
+  rosterAttentionIntent,
+  setExecutionNavIntent,
+} from "../lib/execution-nav";
 import { scheduleFocusPrompt } from "../lib/focus-prompt";
 import { localTimezone } from "../lib/local-timezone";
 import { copyableMessageText } from "../lib/message-text";
@@ -211,17 +233,18 @@ import {
   revokePendingAttachmentPreviews,
 } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
+import { projectPublicDelegations } from "../lib/public-collaboration";
+import {
+  groupPeerReceipts,
+  type PeerReceiptGroup,
+  type PeerReceiptTarget,
+} from "../lib/peer-receipts";
 import { quoteDraftForSelection } from "../lib/quote-selection";
 import { getResponseStreamingEnabled, subscribeResponseStreaming } from "../lib/response-streaming";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import { isRunActive, runStatusLabel, runStatusTextClass } from "../lib/run-status";
 import { sharedInflight } from "../lib/shared-inflight";
-import {
-  EXECUTION_NAV_INTENT_EVENT,
-  rosterAttentionIntent,
-  setExecutionNavIntent,
-} from "../lib/execution-nav";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
@@ -231,6 +254,7 @@ import {
   computerPanelNeedsMaintenance,
   computerTakeoverBlocked,
   isComputerStatusEvent,
+  isSessionControlLifecycleEvent,
   isThreadSnapshotEvent,
   prependThreadMessagePage,
   reconcileRefreshedThread,
@@ -255,6 +279,7 @@ import {
 import { speaker } from "../lib/tts";
 import { createUsageLoader, type UsageLoader, type UsageLoadState } from "../lib/usage-loader";
 import { ActivityList } from "./ActivityList";
+import { AttentionQueue } from "./AttentionQueue";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
@@ -281,6 +306,8 @@ import {
   PickerInfoDialog,
   RenameBotSectionDialog,
 } from "./shell/dialogs";
+import { GroupIdentityCluster } from "./shell/group-identity-cluster";
+import { GroupPanel, type GroupPanelTab } from "./shell/group-panel";
 import {
   AppConnectCard,
   ArtifactImage,
@@ -289,6 +316,7 @@ import {
   McpApprovalCard,
 } from "./shell/message-cards";
 import { useExecutionTranscript } from "./shell/use-execution-transcript";
+import { type GroupArtifactItem, useGroupPanel } from "./shell/use-group-panel";
 import { WindowChrome } from "./WindowChrome";
 
 const BotContextMenu = lazy(() =>
@@ -318,6 +346,7 @@ type Panel =
   | "routine"
   | "create"
   | "create-group"
+  | "group"
   | "group-settings"
   | null;
 
@@ -486,10 +515,16 @@ export function ShellPage() {
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  const [groupTab, setGroupTab] = useState<GroupPanelTab>("details");
+  const [attentionItems, setAttentionItems] = useState<AttentionQueueItem[]>([]);
+  const [attentionRefresh, setAttentionRefresh] = useState(0);
   const [settingsTab, setSettingsTab] = useState<"detail" | "library" | "computer">("detail");
   const [peerConversation, setPeerConversation] = useState<{
     peerBotId: string;
     peerBotName: string;
+    sourceReceiptMessageId: string;
+    pairThreadId: string;
+    messageId: string;
   } | null>(null);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
@@ -768,10 +803,10 @@ export function ShellPage() {
   const manuallyUnread = useRef(new Set<string>());
   const readVisibleGroups = useRef(new Set<string>());
   const notifiedBrowserEvents = useRef(new Set<string>());
+  const cardsUnifiedV2Ref = useRef(false);
   const pendingBrowserNotifications = useRef(new Map<string, PendingBrowserNotification>());
   const computerVisible = useRef(false);
-  computerVisible.current =
-    (panel === "settings" && settingsTab === "computer") || computerOpen;
+  computerVisible.current = (panel === "settings" && settingsTab === "computer") || computerOpen;
   const autoSpoken = useRef<string | null>(null);
   const autoSpokenBotId = useRef<string | null>(null);
 
@@ -782,6 +817,13 @@ export function ShellPage() {
   computerOpenRef.current = computerOpen;
   computerBotIdRef.current = computerBotId ?? active?.id;
   const activeGroup = groups.find((group) => group.id === groupId);
+  const groupPanel = useGroupPanel(inGroup ? (groupId ?? null) : null);
+  useEffect(() => {
+    if (!inGroup && panel === "group") setPanel(null);
+  }, [inGroup, panel]);
+  useEffect(() => {
+    if (panel === "group") groupPanel.reload();
+  }, [panel, groupPanel.reload]);
   const activePendingAttachments = useMemo(
     () => attachmentsForThread(pendingAttachments, inGroup ? groupId : active?.id),
     [active?.id, groupId, inGroup, pendingAttachments],
@@ -881,15 +923,19 @@ export function ShellPage() {
     ) => {
       const botId = event.botId;
       if (typeof botId !== "string") return;
-      const eligible = shouldNotifyBrowser(event, {
-        subscribedThreadId: subscribedThreadId ?? "",
-        initialCursor,
-        streamReady,
-        pageVisible: document.visibilityState === "visible",
-        windowFocused: document.hasFocus(),
-        permission: "granted",
-        notifiedEventIds: notifiedBrowserEvents.current,
-      });
+      const eligible = shouldNotifyLegacyBrowser(
+        event,
+        {
+          subscribedThreadId: subscribedThreadId ?? "",
+          initialCursor,
+          streamReady,
+          pageVisible: document.visibilityState === "visible",
+          windowFocused: document.hasFocus(),
+          permission: "granted",
+          notifiedEventIds: notifiedBrowserEvents.current,
+        },
+        cardsUnifiedV2Ref.current,
+      );
       if (!eligible || !enabled) return;
       const pending = {
         event,
@@ -1406,6 +1452,11 @@ export function ShellPage() {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
         } else if (isComputerStatusEvent(event)) {
+          if (isSessionControlLifecycleEvent(event)) {
+            // The session-control card is derived from the authoritative
+            // snapshot; a screen-only refresh leaves it stale or missing.
+            void refreshThread(active.id).catch(() => undefined);
+          }
           void refreshComputerScreen(active.id).catch(() => undefined);
         }
       },
@@ -1824,6 +1875,67 @@ export function ShellPage() {
     : snapshot?.botId === active?.id
       ? snapshot
       : null;
+  const attentionEnabled = activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true;
+  cardsUnifiedV2Ref.current = attentionEnabled;
+  const openAttentionItem = useCallback(
+    (item: AttentionQueueItem) => {
+      const params = new URLSearchParams();
+      if (item.source.messageId) params.set("m", item.source.messageId);
+      params.set("i", item.interactionId);
+      // Each open is a distinct focus attempt, even for the same interaction.
+      params.set("r", String(Date.now()));
+      navigate({
+        pathname:
+          item.conversationKind === "group"
+            ? `/app/g/${item.conversationId}`
+            : `/app/${item.conversationId}`,
+        search: `?${params.toString()}`,
+      });
+    },
+    [navigate],
+  );
+  const focusedAttentionInteraction = useRef<string | null>(null);
+  useEffect(() => {
+    const interactionId = searchParams.get("i");
+    if (!interactionId) {
+      focusedAttentionInteraction.current = null;
+      return;
+    }
+    const attempt = `${interactionId}:${searchParams.get("r") ?? ""}`;
+    if (focusedAttentionInteraction.current === attempt) return;
+    let cancelled = false;
+    let attempts = 0;
+    const focusCard = () => {
+      if (cancelled) return;
+      const element = [...document.querySelectorAll<HTMLElement>("[data-interaction-id]")].find(
+        (candidate) => candidate.dataset.interactionId === interactionId,
+      );
+      if (element) {
+        element.tabIndex = -1;
+        element.focus({ preventScroll: true });
+        element.scrollIntoView({ block: "center" });
+        focusedAttentionInteraction.current = attempt;
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) window.setTimeout(focusCard, 150);
+    };
+    const frame = window.requestAnimationFrame(focusCard);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [searchParams, activeSnapshot?.threadId]);
+  const waitingMembers = useMemo(() => {
+    const waiting = new Map<string, AttentionQueueItem>();
+    if (!activeGroup) return waiting;
+    for (const item of attentionItems) {
+      if (item.conversationKind !== "group" || item.conversationId !== activeGroup.id) continue;
+      const botId = item.source.botId;
+      if (botId && !waiting.has(botId)) waiting.set(botId, item);
+    }
+    return waiting;
+  }, [activeGroup, attentionItems]);
   // Keep the armed reply even when its parent leaves the loaded page: the
   // server resolves a paged-out target and degrades a deleted one to a plain
   // reply instead of failing the send.
@@ -2225,6 +2337,13 @@ export function ShellPage() {
           cancelFocusPrompt();
         }
       };
+      const sendErrorMessage = (error: unknown) => {
+        const code = (error as { data?: { code?: unknown } } | null)?.data?.code;
+        if (code === GROUP_MENTION_CLARIFICATION_CODE) {
+          return t`I couldn't split this message into reliable tasks. Clarify which Bot should do what.`;
+        }
+        return error instanceof Error ? error.message : t`Failed to send message`;
+      };
       try {
         if (plan.shouldRunRoutines) {
           const sendNonce = newClientNonce();
@@ -2277,6 +2396,7 @@ export function ShellPage() {
             clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
+            mentionSpans: plan.mentionSpans.length ? plan.mentionSpans : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: reroutedToGroup ? undefined : activeReplyTarget?.id,
             replyQuote: reroutedToGroup ? undefined : (activeReplyQuote ?? undefined),
@@ -2287,6 +2407,7 @@ export function ShellPage() {
             clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
+            mentionSpans: plan.mentionSpans.length ? plan.mentionSpans : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: activeReplyTarget?.id,
             replyQuote: activeReplyQuote ?? undefined,
@@ -2323,11 +2444,11 @@ export function ShellPage() {
         else if (botTarget) await refreshThreadRef.current(botTarget);
       } catch (error) {
         if (reroutedToGroup && groupTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(sendErrorMessage(error));
         } else if (groupTarget && activeGroupId.current === groupTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(sendErrorMessage(error));
         } else if (botTarget && activeBotId.current === botTarget) {
-          setSendError(error instanceof Error ? error.message : t`Failed to send message`);
+          setSendError(sendErrorMessage(error));
         }
       } finally {
         sendingRef.current = false;
@@ -2421,11 +2542,13 @@ export function ShellPage() {
     const groupId = activeGroupId.current;
     if (groupId) {
       await refreshGroupThreadRef.current(groupId);
-      return;
+    } else {
+      const id = activeBotId.current;
+      if (!id) return;
+      await refreshThreadRef.current(id);
     }
-    const id = activeBotId.current;
-    if (!id) return;
-    await refreshThreadRef.current(id);
+    // A local decision must leave the attention list and count immediately.
+    setAttentionRefresh((value) => value + 1);
   }, []);
   // Teach chrome needs skills applied before this resolves — refreshThread only
   // kicks skills.list off in the background, so Stop teaching would never mount
@@ -2716,9 +2839,11 @@ export function ShellPage() {
 
   useEffect(() => {
     const heartbeatBotId = computerBot?.id ?? active?.id;
-    if ((!(panel === "settings" && settingsTab === "computer") && !computerOpen) ||
+    if (
+      (!(panel === "settings" && settingsTab === "computer") && !computerOpen) ||
       !heartbeatBotId ||
-      computer?.state !== "running")
+      computer?.state !== "running"
+    )
       return;
     const ping = () =>
       void rpc.computer.heartbeat({ botId: heartbeatBotId }).catch(() => undefined);
@@ -3006,6 +3131,22 @@ export function ShellPage() {
           />
         </InputGroup>
         <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
+          <AttentionQueue
+            enabled={attentionEnabled}
+            activeTarget={
+              inGroup && groupId
+                ? { groupId }
+                : !inGroup && active
+                  ? { botId: active.id }
+                  : null
+            }
+            botNotificationsEnabled={(botId) =>
+              Boolean(bots.find((bot) => bot.id === botId)?.notifyOnFinish)
+            }
+            refreshToken={attentionRefresh}
+            onOpenItem={openAttentionItem}
+            onItems={setAttentionItems}
+          />
           {showSpaceSearch ? (
             <SpaceSearchResults
               hits={searchHits}
@@ -3340,6 +3481,7 @@ export function ShellPage() {
                                         </span>
                                         {item.chat.unread ? (
                                           <span
+                                            data-testid="bot-unread-dot"
                                             aria-hidden="true"
                                             className="inline-block h-2 w-2 rounded-full bg-foreground"
                                           />
@@ -3461,84 +3603,84 @@ export function ShellPage() {
           ) : null}
         </div>
         <div className="mx-3 mb-2 flex items-center gap-2">
-        <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <PopoverTrigger
-            data-testid="user-menu-trigger"
-            aria-label={userName}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-[12px] text-foreground/75 hover:bg-sidebar-accent"
-          >
-            {initials}
-          </PopoverTrigger>
-          {menuOpen ? (
-            <PopoverContent
-              side="top"
-              align="start"
-              className="w-[calc(316px-1.5rem)] max-w-[calc(100vw-3rem)] gap-0 p-1 data-closed:animate-none"
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <PopoverTrigger
+              data-testid="user-menu-trigger"
+              aria-label={userName}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent text-[12px] text-foreground/75 hover:bg-sidebar-accent"
             >
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setMobileSidebarOpen(false);
-                  navigate("/app/artifacts");
-                }}
+              {initials}
+            </PopoverTrigger>
+            {menuOpen ? (
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-[calc(316px-1.5rem)] max-w-[calc(100vw-3rem)] gap-0 p-1 data-closed:animate-none"
               >
-                <FolderOpen className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Artifacts</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                aria-label={t`Settings`}
-                onClick={() => {
-                  setMenuOpen(false);
-                  openSettings("general");
-                }}
-              >
-                <Settings className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Settings</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                aria-label={t`Usage`}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void loadUsage(usageState.range);
-                  openSettings("usage");
-                }}
-              >
-                <Gauge className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Usage</Trans>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start font-normal"
-                onClick={() =>
-                  void authClient.signOut().then(() => {
-                    clearSpaceSelection();
-                    navigate("/");
-                  })
-                }
-              >
-                <LogOut className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Log out</Trans>
-              </Button>
-            </PopoverContent>
-          ) : null}
-        </Popover>
-        <button
-          type="button"
-          onClick={() => setPluginsOpen(true)}
-          data-testid="integrations-entry"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-sidebar-border px-3 py-1.5 text-[12.5px] text-foreground/80 hover:bg-sidebar-accent"
-        >
-          <LayoutGrid size={13} strokeWidth={1.8} className="shrink-0" />
-          <span className="truncate">
-            <Trans>Integrations</Trans>
-          </span>
-        </button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setMobileSidebarOpen(false);
+                    navigate("/app/artifacts");
+                  }}
+                >
+                  <FolderOpen className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Artifacts</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  aria-label={t`Settings`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openSettings("general");
+                  }}
+                >
+                  <Settings className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Settings</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  aria-label={t`Usage`}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void loadUsage(usageState.range);
+                    openSettings("usage");
+                  }}
+                >
+                  <Gauge className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Usage</Trans>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start font-normal"
+                  onClick={() =>
+                    void authClient.signOut().then(() => {
+                      clearSpaceSelection();
+                      navigate("/");
+                    })
+                  }
+                >
+                  <LogOut className="text-muted-foreground" strokeWidth={1.75} />
+                  <Trans>Log out</Trans>
+                </Button>
+              </PopoverContent>
+            ) : null}
+          </Popover>
+          <button
+            type="button"
+            onClick={() => setPluginsOpen(true)}
+            data-testid="integrations-entry"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-sidebar-border px-3 py-1.5 text-[12.5px] text-foreground/80 hover:bg-sidebar-accent"
+          >
+            <LayoutGrid size={13} strokeWidth={1.8} className="shrink-0" />
+            <span className="truncate">
+              <Trans>Integrations</Trans>
+            </span>
+          </button>
         </div>
       </aside>
 
@@ -3588,227 +3730,268 @@ export function ShellPage() {
         />
       )}
 
-        <main
-          aria-hidden={mobileSidebarOpen || undefined}
-          inert={mobileSidebarOpen}
-          className="relative flex min-w-0 flex-1 flex-col bg-background"
-        >
-          {/* Window drag region formerly provided by the conversation header. */}
-          <div className="app-drag pointer-events-none absolute inset-x-0 top-0 h-12" aria-hidden="true" />
-          {(active || activeGroup) && !mobileSidebarOpen ? (
-            <div className="pointer-events-none absolute inset-x-0 top-2.5 z-40 flex items-start justify-center px-3">
-              <div className="app-no-drag pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
-                {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
-                <button
-                  type="button"
-                  aria-label={t`Open navigation`}
-                  onClick={() => setMobileSidebarOpen(true)}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
-                >
-                  <Menu size={19} strokeWidth={1.7} />
-                </button>
-                {botsSidebarCollapsed ? (
-                  <button
-                    type="button"
-                    data-testid="restore-bots-sidebar"
-                    aria-label={t`Show bots`}
-                    title={t`Show bots`}
-                    onClick={() => setBotsSidebarCollapsedPref(false)}
-                    className="hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
-                  >
-                    <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
-                  </button>
-                ) : null}
-              </div>
-              {/* One control only: avatar, name and run status share a single
-                  click that opens or closes the Bot panel (UX-03 F5). */}
+      <main
+        aria-hidden={mobileSidebarOpen || undefined}
+        inert={mobileSidebarOpen}
+        className="relative flex min-w-0 flex-1 flex-col bg-background"
+      >
+        {/* Window drag region formerly provided by the conversation header. */}
+        <div
+          className="app-drag pointer-events-none absolute inset-x-0 top-0 h-12"
+          aria-hidden="true"
+        />
+        {(active || activeGroup) && !mobileSidebarOpen ? (
+          <div className="pointer-events-none absolute inset-x-0 top-2.5 z-40 flex items-start justify-center px-3">
+            <div className="app-no-drag pointer-events-auto absolute left-3 top-0.5 flex items-center gap-1 md:left-[22px]">
+              {botsSidebarCollapsed && desktopBridge() ? <WindowChrome /> : null}
               <button
                 type="button"
-                data-testid="bot-settings-trigger"
-                title={inGroup ? t`Open group settings` : t`Open bot settings`}
-                aria-label={
-                  inGroup
-                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                    : (active?.name ?? t`Select a bot`)
-                }
-                onClick={() => {
-                  const target = inGroup ? ("group-settings" as const) : ("settings" as const);
-                  setPanel(panel === target ? null : target);
-                }}
-                className="app-no-drag pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
+                aria-label={t`Open navigation`}
+                onClick={() => setMobileSidebarOpen(true)}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:hidden"
               >
-                {inGroup ? (
+                <Menu size={19} strokeWidth={1.7} />
+              </button>
+              {botsSidebarCollapsed ? (
+                <button
+                  type="button"
+                  data-testid="restore-bots-sidebar"
+                  aria-label={t`Show bots`}
+                  title={t`Show bots`}
+                  onClick={() => setBotsSidebarCollapsedPref(false)}
+                  className="hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground/75 hover:bg-accent md:grid"
+                >
+                  <PanelLeftOpen size={19} strokeWidth={1.7} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+            {/* One control only: avatar, name and run status share a single
+                  click that opens or closes the Bot panel (UX-03 F5). */}
+            <button
+              type="button"
+              data-testid="bot-settings-trigger"
+              aria-expanded={inGroup ? panel === "group" : undefined}
+              title={inGroup ? t`Open group details` : t`Open bot settings`}
+              aria-label={
+                inGroup
+                  ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                  : (active?.name ?? t`Select a bot`)
+              }
+              onClick={() => {
+                if (inGroup) {
+                  setGroupTab("details");
+                  setPanel(panel === "group" ? null : "group");
+                  return;
+                }
+                setPanel(panel === "settings" ? null : "settings");
+              }}
+              className="app-no-drag pointer-events-auto flex h-[38px] items-center gap-2.5 rounded-full border border-border/70 bg-card/85 pe-3 ps-1.5 shadow-sm backdrop-blur-md hover:border-foreground/25"
+            >
+              {inGroup ? (
+                groupPanel.members ? (
+                  <GroupIdentityCluster members={groupPanel.members} variant="capsule" />
+                ) : (
                   <GroupAvatar
                     members={activeSnapshot?.members ?? activeGroup?.members ?? []}
                     size={26}
                   />
-                ) : active ? (
-                  <BotAvatar
-                    color={active.color}
-                    identity={active.id}
-                    size={26}
-                    status={activeBotLiveStatus}
-                  />
-                ) : null}
-                <span
-                  className="max-w-[150px] truncate text-[13px] font-medium text-foreground"
-                  dir="auto"
-                >
-                  {inGroup
-                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                    : (active?.name ?? t`Select a bot`)}
-                </span>
-                {!inGroup && active && panelRun ? (
-                  <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-                    <span
-                      className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
-                      style={
-                        isRunActive(panelRun.status)
-                          ? { animation: "rkPulse 1.2s ease-in-out infinite" }
-                          : undefined
-                      }
-                      aria-hidden="true"
-                    />
-                    <span className={runStatusTextClass(panelRun.status)}>
-                      {runStatusLabel(panelRun.status)}
-                    </span>
-                  </span>
-                ) : null}
-              </button>
-            </div>
-          ) : null}
-          {!active && !activeGroup && initialBotsLoaded ? (
-            <div className="grid flex-1 place-items-center">
-              <Button onClick={() => setPanel("create")}>
-                <Plus size={16} aria-hidden="true" />
-                <Trans>Create new Bot</Trans>
-              </Button>
-            </div>
-          ) : (
-            <Transcript
-              key={activeSnapshot?.threadId}
-              scrollRef={messageScroll}
-              reservePillBand={Boolean(active || activeGroup)}
-              scrollRequest={scrollRequest}
-              onScrollRequestHandled={clearScrollRequest}
-              artifactTarget={transcriptArtifactTarget}
-              messages={transcriptMessages}
-              plans={activeSnapshot?.plans}
-              steps={activeSnapshot?.steps}
-              todos={activeSnapshot?.todos}
-              runs={[
-                ...(activeSnapshot?.run ? [activeSnapshot.run] : []),
-                ...(activeSnapshot?.activeRuns ?? []),
-                ...(activeSnapshot?.recentRuns ?? []),
-              ]}
-              activeRunIds={currentRuns
-                .filter((run) => isRunActive(run.status))
-                .map((run) => run.id)}
-              showToolActivity={showToolActivity}
-              olderCursor={activeSnapshot?.olderCursor ?? null}
-              loadingOlder={loadingOlder}
-              interventions={activeSnapshot?.interventions}
-              threadId={activeSnapshot?.threadId ?? ""}
-              executions={activeSnapshot?.executions}
-              running={transcriptRunning}
-              activity={inlineActivity}
-              backgroundTasks={backgroundActivity}
-              onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
-              showActivityAvatars={inGroup}
-              activityBotColors={activityBotColors}
-              onLoadOlder={loadOlder}
-              onOpenBot={openBot}
-              onAnswer={answerMessage}
-              onReply={(message) => {
-                setReplyTarget(message);
-                setReplyQuote(null);
-              }}
-              onQuote={(message, quote) => {
-                setReplyTarget(message);
-                setReplyQuote(quote);
-              }}
-              onReact={reactToMessage}
-              onJumpToMessage={jumpToReplyMessage}
-              onOpenPeerMessages={(peer) => {
-                setPeerConversation(peer);
-              }}
-              memberName={resolveTranscriptMemberName}
-              botNameOf={resolveTranscriptBotDisplayName}
-              peerBot={resolveTranscriptBot}
-              onRefresh={refreshActiveThread}
-              onBotChanged={refreshBots}
-              onAddRoutine={addSkillRoutine}
-              voiceReady={Boolean(voiceStatus?.ready)}
-              speakingMessageId={speakingMessageId}
-              onSpeak={speakMessage}
-              onOpenComputer={onOpenComputer}
-            />
-          )}
-          {recordingSkill ? (
-            <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-              <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
-            </div>
-          ) : null}
-          {active || activeGroup ? (
-            <Composer
-              key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
-              activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
-              running={composerRunning}
-              disabled={Boolean(recordingSkill)}
-              pendingAttachments={activePendingAttachments}
-              attachmentNotice={attachmentNotice}
-              sendError={sendError}
-              runError={displayedRunError}
-              runErrorId={displayedRunErrorId}
-              onRunErrorPresented={handleRunErrorPresented}
-              onDismissError={dismissComposerError}
-              sending={sending}
-              fileInputRef={fileInputRef}
-              onAttachmentPick={onAttachmentPick}
-              onRemoveAttachment={removeAttachment}
-              onSend={sendMessage}
-              onStop={stopRun}
-              onVoice={
-                !inGroup && active
-                  ? () => {
-                      if (!voiceStatus?.ready) {
-                        openSettings("voice");
-                        return;
-                      }
-                      startCall({
-                        botId: active.id,
-                        botName: active.name,
-                        botColor: active.color,
-                        transcribe: Boolean(voiceStatus?.transcribe),
-                      });
+                )
+              ) : active ? (
+                <BotAvatar
+                  color={active.color}
+                  identity={active.id}
+                  size={26}
+                  status={activeBotLiveStatus}
+                />
+              ) : null}
+              <span
+                className="max-w-[150px] truncate text-[13px] font-medium text-foreground"
+                dir="auto"
+              >
+                {inGroup
+                  ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                  : (active?.name ?? t`Select a bot`)}
+              </span>
+              {!inGroup && active && panelRun ? (
+                <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                  <span
+                    className={`size-2 shrink-0 rounded-full bg-current ${runStatusTextClass(panelRun.status)}`}
+                    style={
+                      isRunActive(panelRun.status)
+                        ? { animation: "rkPulse 1.2s ease-in-out infinite" }
+                        : undefined
                     }
-                  : undefined
+                    aria-hidden="true"
+                  />
+                  <span className={runStatusTextClass(panelRun.status)}>
+                    {runStatusLabel(panelRun.status)}
+                  </span>
+                </span>
+              ) : null}
+            </button>
+            {inGroup ? (
+              <div className="app-no-drag pointer-events-auto absolute top-0.5 right-3">
+                <button
+                  type="button"
+                  data-testid="group-work-entry"
+                  aria-label={t`Work`}
+                  aria-expanded={panel === "group" && groupTab === "work"}
+                  onClick={() => {
+                    setGroupTab("work");
+                    setPanel("group");
+                  }}
+                  className={`${panel ? "hidden md:flex" : "flex"} h-8 items-center rounded-[9px] border border-border/70 bg-card/85 px-3 text-[12px] font-medium text-muted-foreground shadow-sm backdrop-blur-md hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none`}
+                >
+                  <Trans>Work</Trans>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {!active && !activeGroup && initialBotsLoaded ? (
+          <div className="grid flex-1 place-items-center">
+            <Button onClick={() => setPanel("create")}>
+              <Plus size={16} aria-hidden="true" />
+              <Trans>Create new Bot</Trans>
+            </Button>
+          </div>
+        ) : (
+          <Transcript
+            key={activeSnapshot?.threadId}
+            scrollRef={messageScroll}
+            reservePillBand={Boolean(active || activeGroup)}
+            scrollRequest={scrollRequest}
+            onScrollRequestHandled={clearScrollRequest}
+            artifactTarget={transcriptArtifactTarget}
+            messages={transcriptMessages}
+            plans={activeSnapshot?.plans}
+            steps={activeSnapshot?.steps}
+            todos={activeSnapshot?.todos}
+            runs={[
+              ...(activeSnapshot?.run ? [activeSnapshot.run] : []),
+              ...(activeSnapshot?.activeRuns ?? []),
+              ...(activeSnapshot?.recentRuns ?? []),
+            ]}
+            activeRunIds={currentRuns.filter((run) => isRunActive(run.status)).map((run) => run.id)}
+            showToolActivity={showToolActivity}
+            olderCursor={activeSnapshot?.olderCursor ?? null}
+            loadingOlder={loadingOlder}
+            interventions={activeSnapshot?.interventions}
+            interactions={activeSnapshot?.interactions}
+            displayBlocks={activeSnapshot?.displayBlocks}
+            cardsUnifiedV2={activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true}
+            conversationName={
+              inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
+            }
+            groupNameOf={(groupId) => groups.find((group) => group.id === groupId)?.name}
+            threadId={activeSnapshot?.threadId ?? ""}
+            executions={activeSnapshot?.executions}
+            running={transcriptRunning}
+            activity={inlineActivity}
+            backgroundTasks={backgroundActivity}
+            onCancelBackgroundTask={inGroup ? undefined : cancelBackgroundTask}
+            showActivityAvatars={inGroup}
+            activityBotColors={activityBotColors}
+            onLoadOlder={loadOlder}
+            onOpenBot={openBot}
+            onAnswer={answerMessage}
+            onReply={(message) => {
+              setReplyTarget(message);
+              setReplyQuote(null);
+            }}
+            onQuote={(message, quote) => {
+              setReplyTarget(message);
+              setReplyQuote(quote);
+            }}
+            onReact={reactToMessage}
+            onJumpToMessage={jumpToReplyMessage}
+            onOpenPeerMessages={(target) => {
+              if (!target.destination) return;
+              setPeerConversation({
+                peerBotId: target.botId,
+                peerBotName:
+                  resolveTranscriptBotDisplayName(target.botId) ?? target.botName ?? t`Bot`,
+                sourceReceiptMessageId: target.sourceReceiptMessageId,
+                pairThreadId: target.destination.pairThreadId,
+                messageId: target.destination.messageId,
+              });
+            }}
+            memberName={resolveTranscriptMemberName}
+            botNameOf={resolveTranscriptBotDisplayName}
+            peerBot={resolveTranscriptBot}
+            onRefresh={refreshActiveThread}
+            onBotChanged={refreshBots}
+            onAddRoutine={addSkillRoutine}
+            voiceReady={Boolean(voiceStatus?.ready)}
+            speakingMessageId={speakingMessageId}
+            onSpeak={speakMessage}
+            onOpenComputer={onOpenComputer}
+          />
+        )}
+        {recordingSkill ? (
+          <div className="px-6 pb-2 text-center text-[13px] text-destructive">
+            <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
+          </div>
+        ) : null}
+        {active || activeGroup ? (
+          <Composer
+            key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+            activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
+            running={composerRunning}
+            disabled={Boolean(recordingSkill)}
+            pendingAttachments={activePendingAttachments}
+            attachmentNotice={attachmentNotice}
+            sendError={sendError}
+            runError={displayedRunError}
+            runErrorId={displayedRunErrorId}
+            onRunErrorPresented={handleRunErrorPresented}
+            onDismissError={dismissComposerError}
+            sending={sending}
+            fileInputRef={fileInputRef}
+            onAttachmentPick={onAttachmentPick}
+            onRemoveAttachment={removeAttachment}
+            onSend={sendMessage}
+            onStop={stopRun}
+            onVoice={
+              !inGroup && active
+                ? () => {
+                    if (!voiceStatus?.ready) {
+                      openSettings("voice");
+                      return;
+                    }
+                    startCall({
+                      botId: active.id,
+                      botName: active.name,
+                      botColor: active.color,
+                      transcribe: Boolean(voiceStatus?.transcribe),
+                    });
+                  }
+                : undefined
+            }
+            replyTarget={activeReplyTarget}
+            replyQuote={activeReplyQuote}
+            replyTargetName={replyTargetName}
+            onClearReply={clearReply}
+            mentionTargets={composerMentionTargets}
+            agentSkills={agentSkills}
+            onSlashOpen={refreshAgentSkills}
+            onSlashAction={(action) => {
+              if (action === "chat-settings") {
+                setPanel(inGroup ? "group-settings" : "settings");
+                return;
               }
-              replyTarget={activeReplyTarget}
-              replyQuote={activeReplyQuote}
-              replyTargetName={replyTargetName}
-              onClearReply={clearReply}
-              mentionTargets={composerMentionTargets}
-              agentSkills={agentSkills}
-              onSlashOpen={refreshAgentSkills}
-              onSlashAction={(action) => {
-                if (action === "chat-settings") {
-                  setPanel(inGroup ? "group-settings" : "settings");
-                  return;
-                }
-                if (action === "settings-general") {
-                  openSettings("general");
-                  return;
-                }
-                if (action === "settings-usage") {
-                  void loadUsage(usageState.range);
-                  openSettings("usage");
-                }
-              }}
-            />
-          ) : null}
-        </main>
-
+              if (action === "settings-general") {
+                openSettings("general");
+                return;
+              }
+              if (action === "settings-usage") {
+                void loadUsage(usageState.range);
+                openSettings("usage");
+              }
+            }}
+          />
+        ) : null}
+      </main>
 
       <CallCard onSettings={() => openSettings("voice")} />
 
@@ -3865,10 +4048,17 @@ export function ShellPage() {
         }`}
       >
         {panel && (active || activeGroup) ? (
-          <div className="rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[384px]">
+          <div
+            className={
+              panel === "group"
+                ? "h-full w-full md:w-[384px]"
+                : "rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[384px]"
+            }
+          >
             {panel !== "routine" &&
             panel !== "create" &&
             panel !== "create-group" &&
+            panel !== "group" &&
             panel !== "group-settings" ? (
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-[13.5px] text-muted-foreground">
@@ -3891,6 +4081,49 @@ export function ShellPage() {
                   </Button>
                 </div>
               </div>
+            ) : null}
+            {panel === "group" && activeGroup ? (
+              <GroupPanel
+                key={activeGroup.id}
+                members={groupPanel.members}
+                membersError={groupPanel.membersError}
+                groupName={activeGroup.name}
+                tab={groupTab}
+                onTabChange={setGroupTab}
+                onClose={() => setPanel(null)}
+                onRename={async (next) => {
+                  const updated = await rpc.groups.update({
+                    groupId: activeGroup.id,
+                    name: next,
+                  });
+                  setGroups((current) =>
+                    current.map((group) => (group.id === updated.id ? updated : group)),
+                  );
+                  setSnapshot((current) =>
+                    current && current.groupId === updated.id
+                      ? { ...current, groupName: updated.name }
+                      : current,
+                  );
+                  groupPanel.reload();
+                  await Promise.all([refreshBots(), refreshGroupThread(activeGroup.id)]).catch(
+                    () => undefined,
+                  );
+                }}
+                onManageMembers={() => setPanel("group-settings")}
+                waitingMembers={waitingMembers}
+                onOpenAttentionItem={openAttentionItem}
+                routines={groupPanel.routines}
+                routinesError={groupPanel.routinesError}
+                artifacts={groupPanel.artifacts}
+                artifactsError={groupPanel.artifactsError}
+                artifactsLoading={groupPanel.artifactsLoading}
+                nextCursor={groupPanel.nextCursor}
+                onLoadMoreArtifacts={groupPanel.loadMoreArtifacts}
+                onOpenArtifact={(item: GroupArtifactItem) => {
+                  navigate(`/app/artifacts/${item.id}`);
+                }}
+                onRetry={groupPanel.reload}
+              />
             ) : null}
             {panel === "group-settings" && activeGroup ? (
               <GroupSettings
@@ -3935,7 +4168,9 @@ export function ShellPage() {
                         </div>
                       ) : computer?.kind === "desktop" ? (
                         <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground/80" />
-                      ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
+                      ) : computer?.state === "running" &&
+                        embeddedScreenUrl &&
+                        !computerScreenError ? (
                         <iframe
                           title={t`Bot screen preview`}
                           src={embeddedScreenUrl}
@@ -3976,8 +4211,7 @@ export function ShellPage() {
                     <p className="mt-2 truncate text-[13.5px] text-muted-foreground" dir="auto">
                       {t`${active.name}'s screen`}
                     </p>
-                    {!computerOpen &&
-                    computerPanelNeedsMaintenance(computer?.state, booting) ? (
+                    {!computerOpen && computerPanelNeedsMaintenance(computer?.state, booting) ? (
                       <ComputerMaintenanceActions
                         botId={active.id}
                         computer={computer}
@@ -4072,9 +4306,9 @@ export function ShellPage() {
                 running={runningRoutine}
                 error={routineError}
                 onBack={() => {
-                    setPanel("settings");
-                    setSettingsTab("detail");
-                  }}
+                  setPanel("settings");
+                  setSettingsTab("detail");
+                }}
                 onClose={() => setPanel(null)}
                 onEnsureWebhook={async () => {
                   await ensureWebhookSecret(active.id);
@@ -4524,7 +4758,21 @@ export function ShellPage() {
                 pinnedAroundRef.current = null;
                 historyEpoch.current += 1;
                 updateSnapshot((current) =>
-                  current ? { ...current, messages: [], olderCursor: null, run: null } : current,
+                  current
+                    ? {
+                        ...current,
+                        messages: [],
+                        olderCursor: null,
+                        run: null,
+                        activeRuns: [],
+                        plans: [],
+                        steps: [],
+                        todos: [],
+                        interventions: [],
+                        interactions: [],
+                        displayBlocks: [],
+                      }
+                    : current,
                 );
               }
               setClearTarget(null);
@@ -4615,6 +4863,12 @@ export function ShellPage() {
             peerBotColor={
               resolveTranscriptBot(peerConversation.peerBotId)?.color ?? FALLBACK_BOT_COLOR
             }
+            sourceReceiptMessageId={peerConversation.sourceReceiptMessageId}
+            locator={{
+              kind: "pair_message",
+              pairThreadId: peerConversation.pairThreadId,
+              messageId: peerConversation.messageId,
+            }}
             onClose={() => setPeerConversation(null)}
           />
         ) : null}
@@ -4809,6 +5063,11 @@ export const Transcript = memo(function Transcript({
   olderCursor,
   loadingOlder,
   interventions,
+  interactions,
+  displayBlocks,
+  cardsUnifiedV2,
+  conversationName,
+  groupNameOf,
   threadId,
   executions,
   running,
@@ -4856,6 +5115,13 @@ export const Transcript = memo(function Transcript({
   olderCursor: number | null;
   loadingOlder: boolean;
   interventions?: ThreadSnapshot["interventions"];
+  /** CARD-01A strict projection; present only when the server gate is on. */
+  interactions?: ThreadSnapshot["interactions"];
+  /** CARD-01C display projection; present only when the server gate is on. */
+  displayBlocks?: ThreadSnapshot["displayBlocks"];
+  cardsUnifiedV2?: boolean;
+  conversationName?: string;
+  groupNameOf?: (groupId: string) => string | undefined;
   threadId: string;
   /** Server per-Run summaries (HISTORY-001); absent on older servers. */
   executions?: ThreadSnapshot["executions"];
@@ -4874,7 +5140,7 @@ export const Transcript = memo(function Transcript({
   onQuote: (message: ThreadMessage, quote: string) => void;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
   onJumpToMessage: (messageId: string) => void;
-  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
+  onOpenPeerMessages: (target: PeerReceiptTarget) => void;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
   onRefresh: () => Promise<void>;
@@ -4896,11 +5162,38 @@ export const Transcript = memo(function Transcript({
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  const displayBlocksByMessage = useMemo(
+    () => groupDisplayBlocksByMessage(displayBlocks ?? []),
+    [displayBlocks],
+  );
+  const markdownByMessage = useMemo(() => {
+    const map = new Map<string, ThreadSnapshot["displayBlocks"]>();
+    if (cardsUnifiedV2) {
+      for (const block of displayBlocks ?? []) {
+        if (block.kind !== "markdown") continue;
+        const messageId = block.blockId.slice(0, block.blockId.indexOf(":"));
+        const list = map.get(messageId) ?? [];
+        list.push(block);
+        map.set(messageId, list);
+      }
+    }
+    return map;
+  }, [displayBlocks, cardsUnifiedV2]);
+  const [markdownHeights, setMarkdownHeights] = useState<Map<string, number>>(new Map());
+  const onMarkdownMeasure = useCallback((blockId: string, height: number) => {
+    const rounded = Math.round(height);
+    setMarkdownHeights((prev) => {
+      if (prev.get(blockId) === rounded) return prev;
+      const next = new Map(prev);
+      next.set(blockId, rounded);
+      return next;
+    });
+  }, []);
   // UX-01A: the execution region (anchor merge, server summaries, expansion,
   // detail cache, Interventions, execution-nav return focus and the per-anchor
   // ExecutionShell rendering) is owned by useExecutionTranscript; messageById
   // is shared read-only input, not an execution-region responsibility.
-  const { coveredAsks, renderExecutions, messageRetry } = useExecutionTranscript({
+  const { coveredAsks, renderExecutions, standaloneRegion, messageRetry } = useExecutionTranscript({
     threadId,
     artifactTarget,
     messages,
@@ -4911,14 +5204,53 @@ export const Transcript = memo(function Transcript({
     runs,
     activeRunIds,
     interventions,
+    interactions,
+    cardsUnifiedV2,
+    conversationName,
+    groupNameOf,
     executions,
     activity,
     showActivityAvatars,
     activityBotColors,
     botNameOf,
+    onOpenComputer,
     onRefresh,
   });
   const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
+  const peerReceipts = useMemo(() => {
+    // Group transcripts use PublicDelegationMessage; a private pair receipt
+    // (and the wake row behind it) must never surface there.
+    if ("groupId" in artifactTarget) {
+      return {
+        groups: [],
+        groupByMessageId: new Map<string, PeerReceiptGroup>(),
+      };
+    }
+    return groupPeerReceipts(reactionView.visibleMessages);
+  }, [artifactTarget, reactionView.visibleMessages]);
+  // Public `message_bot` deliveries only exist as public collaboration in a
+  // group Thread. Direct threads keep the private receipt chip and pair view.
+  const inGroupTranscript = "groupId" in artifactTarget;
+  const publicDelegations = useMemo(
+    () => (inGroupTranscript ? projectPublicDelegations(messages) : null),
+    [inGroupTranscript, messages],
+  );
+  // Rows merged under a PublicDelegationMessage render their execution anchors
+  // there; an orphan hidden row (a wake with no rendered group) keeps its
+  // anchors at its own transcript position instead.
+  const { mergedAnchorMemberIds, memberToGroupFirst } = useMemo(() => {
+    const ids = new Set<string>();
+    const firstOfMember = new Map<string, string>();
+    if (publicDelegations) {
+      for (const group of publicDelegations.groupsByFirstMessageId.values()) {
+        for (const messageId of group.messageIds) {
+          ids.add(messageId);
+          firstOfMember.set(messageId, group.firstMessageId);
+        }
+      }
+    }
+    return { mergedAnchorMemberIds: ids, memberToGroupFirst: firstOfMember };
+  }, [publicDelegations]);
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -5052,8 +5384,16 @@ export const Transcript = memo(function Transcript({
   useLayoutEffect(() => {
     if (!scrollRequest || scrolledJump.current === scrollRequest.nonce) return;
     const element = scrollRef.current;
+    // A merged delegation member (paired wake or later outbound) has no row
+    // of its own; scroll to its visible group bubble instead so search hits
+    // on those ids land on the rendered delegation.
+    const groupFirstId = publicDelegations?.hiddenMessageIds.has(scrollRequest.messageId)
+      ? memberToGroupFirst.get(scrollRequest.messageId)
+      : undefined;
     const row = element?.querySelector(
-      `[data-message-id="${CSS.escape(scrollRequest.messageId)}"]`,
+      `[data-message-id="${CSS.escape(
+        groupFirstId ?? scrollRequest.messageId,
+      )}"]`,
     );
     if (!element || !row) return;
     scrolledJump.current = scrollRequest.nonce;
@@ -5065,7 +5405,15 @@ export const Transcript = memo(function Transcript({
     jumpScrollTimer.current = window.setTimeout(endJumpScroll, 2_000);
     row.scrollIntoView({ behavior: "smooth", block: "center" });
     onScrollRequestHandled();
-  }, [messages, scrollRequest, scrollRef, endJumpScroll, onScrollRequestHandled]);
+  }, [
+    messages,
+    scrollRequest,
+    scrollRef,
+    endJumpScroll,
+    onScrollRequestHandled,
+    publicDelegations,
+    memberToGroupFirst,
+  ]);
 
   useLayoutEffect(() => {
     if (following.current) snapToEnd();
@@ -5166,6 +5514,33 @@ export const Transcript = memo(function Transcript({
         ) : null}
         {groupVoiceChats(reactionView.visibleMessages).map((item) => {
           if (item.kind === "voiceChat") {
+            if (cardsUnifiedV2) {
+              // Recompute from the merged group: per-page projections only
+              // cover their own window, so trusting one would drop the turns
+              // loaded from older pages. The artifactId, when audio exists,
+              // is the only part taken from the projection.
+              const projectedArtifactId = item.messages
+                .flatMap((message) => displayBlocksByMessage.get(message.id) ?? [])
+                .find((block) => block.kind === "voice");
+              const voiceBlock = voiceDisplayBlockFromGroup(
+                item,
+                projectedArtifactId?.kind === "voice" ? projectedArtifactId.artifactId : null,
+              );
+              if (voiceBlock) {
+                return (
+                  <VoiceDisplay key={item.key} block={voiceBlock} target={artifactTarget} group={item} />
+                );
+              }
+              // The transcript exceeds the display schema's cap; keep the
+              // complete legacy card instead of a clipped projection.
+              return (
+                <VoiceChatCard
+                  key={item.key}
+                  group={item}
+                  revealMessageId={scrollRequest?.messageId}
+                />
+              );
+            }
             return (
               <VoiceChatCard
                 key={item.key}
@@ -5175,11 +5550,125 @@ export const Transcript = memo(function Transcript({
             );
           }
           const message = item.message;
+          const receiptGroup = peerReceipts.groupByMessageId.get(message.id);
+          if (receiptGroup) {
+            if (receiptGroup.anchorMessageId !== message.id) {
+              return (
+                <Fragment key={message.id}>
+                  {renderExecutions(`before:${message.id}`)}
+                  {renderExecutions(message.id)}
+                </Fragment>
+              );
+            }
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                <div data-message-id={message.id} className="relative py-0.5">
+                  <PeerReceiptRow
+                    targets={receiptGroup.targets}
+                    botName={(botId) => botNameOf?.(botId)}
+                    botColor={(botId) => peerBot(botId)?.color}
+                    onOpen={onOpenPeerMessages}
+                  />
+                </div>
+                {renderExecutions(message.id)}
+              </Fragment>
+            );
+          }
+          const publicDelegation = publicDelegations?.groupsByFirstMessageId.get(message.id);
+          if (publicDelegation) {
+            // One natural group message per adjacent same-source delegation.
+            // Merged transport rows keep their execution anchors below so no
+            // Run shell is detached from the transcript.
+            const mergedMessageIds = publicDelegation.messageIds.slice(1);
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                <div data-message-id={message.id} className="group/message relative hover:z-20">
+                  <div className="relative flex justify-start">
+                    <div className="relative w-fit min-w-0 max-w-[min(88%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[88%]">
+                      <PublicDelegationMessage
+                        group={publicDelegation}
+                        onOpenMention={onOpenBot}
+                        resolveBot={(botId) => {
+                          const name = botNameOf?.(botId);
+                          if (!name) return undefined;
+                          return {
+                            name,
+                            color: peerBot(botId)?.color ?? FALLBACK_BOT_COLOR,
+                            available: true,
+                          };
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {renderExecutions(message.id)}
+                {mergedMessageIds.map((messageId) => (
+                  <Fragment key={messageId}>
+                    {renderExecutions(`before:${messageId}`)}
+                    {renderExecutions(messageId)}
+                  </Fragment>
+                ))}
+              </Fragment>
+            );
+          }
+          if (publicDelegations?.hiddenMessageIds.has(message.id)) {
+            // Merged members render no row of their own; the scroll effect
+            // maps their ids onto the group bubble below.
+            if (mergedAnchorMemberIds.has(message.id)) return null;
+            return (
+              <Fragment key={message.id}>
+                {renderExecutions(`before:${message.id}`)}
+                {renderExecutions(message.id)}
+              </Fragment>
+            );
+          }
           const suppressAsk = coveredAsks.has(message.id);
-          const visibleBlocks = suppressAsk
-            ? message.blocks.filter((block) => block.kind !== "ask")
-            : message.blocks;
-          const showMessage = messageHasVisibleBlocks(visibleBlocks, showToolActivity);
+          // Only a bot text whose rendered bubble is taller than the card
+          // fold threshold becomes the markdown display card; ordinary
+          // replies stay in the bubble. Measuring the real render also covers
+          // single-paragraph text that wraps tall on narrow viewports. Every
+          // other projected kind replaces the legacy block it derived from.
+          const messageDisplayBlocks = cardsUnifiedV2
+            ? (displayBlocksByMessage.get(message.id) ?? [])
+            : [];
+          const longMarkdown =
+            message.role === "bot"
+              ? messageDisplayBlocks.find(
+                  (block) =>
+                    block.kind === "markdown" &&
+                    (markdownHeights.get(block.blockId) ?? 0) > LONG_MARKDOWN_HEIGHT_PX,
+                )
+              : undefined;
+          const selectedDisplayBlocks = messageDisplayBlocks.filter(
+            (block) => block.kind !== "markdown" || block === longMarkdown,
+          );
+          // Both suppression predicates key off the original message.blocks
+          // indexes: filtering covered interactions first would shift the
+          // indexes the display blocks point at and remove the wrong block.
+          const hiddenIndexes = new Set<number>();
+          if (suppressAsk) {
+            message.blocks.forEach((block, index) => {
+              if (
+                block.kind === "ask" ||
+                (cardsUnifiedV2 &&
+                  (block.kind === "app_connect" ||
+                    block.kind === "mcp_approval" ||
+                    block.kind === "skill_draft"))
+              ) {
+                hiddenIndexes.add(index);
+              }
+            });
+          }
+          for (const block of selectedDisplayBlocks) {
+            const index = displayBlockMessageIndex(block.blockId, message.id);
+            if (index !== null) hiddenIndexes.add(index);
+          }
+          const visibleBlocks = message.blocks.filter((_, index) => !hiddenIndexes.has(index));
+          const showMessage =
+            messageHasVisibleBlocks(visibleBlocks, showToolActivity) ||
+            selectedDisplayBlocks.length > 0;
           if (!showMessage) {
             // The bubble is invisible (an activity-only live progress
             // placeholder, or a steps-only message with tool activity off),
@@ -5239,10 +5728,13 @@ export const Transcript = memo(function Transcript({
                     <MessageView
                       artifactTarget={artifactTarget}
                       message={message}
+                      blocks={visibleBlocks}
+                      displayBlocks={selectedDisplayBlocks}
+                      markdownCandidates={markdownByMessage.get(message.id)}
+                      onMarkdownMeasure={onMarkdownMeasure}
                       canAnswer
                       suppressAsk={suppressAsk}
                       onOpenBot={onOpenBot}
-                      onOpenPeerMessages={onOpenPeerMessages}
                       onAnswer={onAnswer}
                       speakerName={
                         peerReceipt
@@ -5253,6 +5745,7 @@ export const Transcript = memo(function Transcript({
                       }
                       memberName={memberName}
                       peerBot={peerBot}
+                      botNameOf={botNameOf}
                       replyPreview={
                         message.replyToMessageId
                           ? messageById.get(message.replyToMessageId)
@@ -5313,6 +5806,7 @@ export const Transcript = memo(function Transcript({
           );
         })}
         {renderExecutions("__tail")}
+        {standaloneRegion}
         {backgroundTasks && backgroundTasks.length > 0 ? (
           <BackgroundTaskActivity items={backgroundTasks} onCancel={onCancelBackgroundTask} />
         ) : null}
@@ -5556,6 +6050,9 @@ const Composer = memo(function Composer({
 
   function updateDraft(value: string) {
     setDraft(value);
+    setSelectedMentions((current) =>
+      current.filter((mention) => mentionStillInPrompt(value, mention)),
+    );
     const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
     // `/` only at the start of the draft so forced skills expand (`Use skill:` / `/Name` prefix).
@@ -5570,7 +6067,7 @@ const Composer = memo(function Composer({
   }
 
   function insertMention(mention: ComposerMention) {
-    setDraft((current) => current.replace(/@([\w-]*)$/, ""));
+    setDraft((current) => current.replace(/@([\w-]*)$/, `@${mention.name} `));
     setMentionQuery(null);
     setMentionHighlightIndex(0);
     setSelectedMentions((current) =>
@@ -5595,7 +6092,9 @@ const Composer = memo(function Composer({
 
   function removeLastChip() {
     if (selectedMentions.length > 0) {
+      const last = selectedMentions[selectedMentions.length - 1];
       setSelectedMentions((current) => current.slice(0, -1));
+      if (last) setDraft((current) => stripMentionToken(current, last.name));
       return;
     }
     if (selectedSkill) setSelectedSkill(null);
@@ -6009,13 +6508,14 @@ const Composer = memo(function Composer({
               <button
                 type="button"
                 aria-label={t`Remove mention ${mention.name}`}
-                onClick={() =>
+                onClick={() => {
                   setSelectedMentions((current) =>
                     current.filter(
                       (selected) => mentionChipKey(selected) !== mentionChipKey(mention),
                     ),
-                  )
-                }
+                  );
+                  setDraft((current) => stripMentionToken(current, mention.name));
+                }}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X size={12} strokeWidth={2} />
@@ -6538,17 +7038,78 @@ function AvatarChangeCard({
   );
 }
 
+function GroupReceiptNavigation({
+  block,
+  botName,
+}: {
+  block: CollaborationReceiptBlock;
+  botName: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <GroupDestinationReceipt
+      block={block}
+      botName={botName}
+      onOpen={({ groupId, messageId }) =>
+        navigate({
+          pathname: `/app/g/${groupId}`,
+          search: `?m=${encodeURIComponent(messageId)}`,
+        })
+      }
+    />
+  );
+}
+
+/** A bot bubble text taller than this (the card fold cap, max-h-40) is long. */
+const LONG_MARKDOWN_HEIGHT_PX = 160;
+
+/**
+ * Reports the natural rendered height of an in-bubble bot text so the parent
+ * can decide whether the text becomes a folded markdown display card. A
+ * ResizeObserver re-reports on reflow, so narrow viewports that wrap a
+ * single paragraph into a tall column are covered.
+ */
+function MeasuredBotText({
+  text,
+  blockId,
+  onMeasure,
+}: {
+  text: string;
+  blockId: string;
+  onMeasure: (blockId: string, height: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const report = () => onMeasure(blockId, el.scrollHeight);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [blockId, onMeasure]);
+  return (
+    <div ref={ref}>
+      <ChatMarkdown>{text}</ChatMarkdown>
+    </div>
+  );
+}
+
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
   suppressAsk = false,
   message,
+  blocks,
+  displayBlocks,
+  markdownCandidates,
+  onMarkdownMeasure,
   onAnswer,
   onOpenBot,
-  onOpenPeerMessages,
   speakerName,
   memberName,
   peerBot,
+  botNameOf,
   replyPreview,
   replyToMessageId,
   onJumpToMessage,
@@ -6565,12 +7126,19 @@ const MessageView = memo(function MessageView({
   canAnswer: boolean;
   suppressAsk?: boolean;
   message: ThreadMessage;
+  /** Parent-filtered blocks; defaults to the message's own blocks. */
+  blocks?: ThreadMessage["blocks"];
+  /** CARD-01C display projection for this message, after legacy suppression. */
+  displayBlocks?: ThreadSnapshot["displayBlocks"];
+  /** CARD-01C markdown candidates whose source text still renders in-bubble. */
+  markdownCandidates?: ThreadSnapshot["displayBlocks"];
+  onMarkdownMeasure?: (blockId: string, height: number) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
-  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
+  botNameOf?: (botId: string) => string | undefined;
   replyPreview?: ThreadMessage;
   replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
@@ -6584,15 +7152,16 @@ const MessageView = memo(function MessageView({
   showToolActivity: boolean;
 }) {
   const { t } = useLingui();
+  const messageBlocks = blocks ?? message.blocks;
   const isNarration =
     message.role === "bot" &&
-    message.blocks.length > 0 &&
-    message.blocks.every(
+    messageBlocks.length > 0 &&
+    messageBlocks.every(
       (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const isLive = message.id.startsWith("progress:");
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
-  const visibleNarrationBlocks = renderableMessageBlocks(message.blocks, showToolActivity);
+  const visibleNarrationBlocks = renderableMessageBlocks(messageBlocks, showToolActivity);
   const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const speakerBot = message.botId ? peerBot?.(message.botId) : undefined;
   const speakerColorDef = useMemo(
@@ -6642,12 +7211,30 @@ const MessageView = memo(function MessageView({
     </>
   );
   if (isNarration) {
-    if (visibleNarrationBlocks.length === 0) return null;
-    if (isToolOnlyNarration(message.blocks, showToolActivity)) {
+    if (visibleNarrationBlocks.length === 0) {
+      // Every narration block was suppressed (tool activity hidden and the
+      // remaining text became its markdown card). Keep the projected cards
+      // instead of dropping the message entirely.
+      if (!displayBlocks?.length) return null;
+      return (
+        <>
+          {messageContext}
+          <div className="mt-2">
+            <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+          </div>
+        </>
+      );
+    }
+    if (isToolOnlyNarration(messageBlocks, showToolActivity)) {
       return (
         <>
           {messageContext}
           <ToolOnlyNarration blocks={visibleNarrationBlocks} live={isLive} />
+          {displayBlocks?.length ? (
+            <div className="mt-2">
+              <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+            </div>
+          ) : null}
         </>
       );
     }
@@ -6685,18 +7272,35 @@ const MessageView = memo(function MessageView({
                 );
               }
               if (block.kind === "text" || block.kind === "progress") {
+                const markdownCandidate =
+                  block.kind === "text"
+                    ? (markdownCandidates ?? []).find(
+                        (candidate) =>
+                          candidate.kind === "markdown" && candidate.text === block.text,
+                      )
+                    : undefined;
                 return (
                   <div
                     key={i}
                     data-quote-message-id={block.kind === "text" ? quoteMessageId : undefined}
                   >
-                    <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
+                    {markdownCandidate && onMarkdownMeasure ? (
+                      <MeasuredBotText
+                        text={block.text}
+                        blockId={markdownCandidate.blockId}
+                        onMeasure={onMarkdownMeasure}
+                      />
+                    ) : (
+                      <ChatMarkdown streaming={block.kind === "progress"}>
+                        {block.text}
+                      </ChatMarkdown>
+                    )}
                   </div>
                 );
               }
               return null;
             })}
-            {!isLive && voiceReady && message.blocks.some((block) => block.kind === "text") ? (
+            {!isLive && voiceReady && messageBlocks.some((block) => block.kind === "text") ? (
               <button
                 type="button"
                 aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
@@ -6708,13 +7312,18 @@ const MessageView = memo(function MessageView({
             ) : null}
           </div>
         </div>
+        {displayBlocks?.length ? (
+          <div className="mt-2">
+            <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+          </div>
+        ) : null}
       </>
     );
   }
   return (
     <>
       {messageContext}
-      {message.blocks.map((block, i) => {
+      {messageBlocks.map((block, i) => {
         if (block.kind === "steps" && shouldRenderToolCard(block, showToolActivity)) {
           return (
             <StandaloneToolActivity
@@ -6742,21 +7351,23 @@ const MessageView = memo(function MessageView({
             </div>
           );
         }
-        if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
-          const sent = block.kind === "bot_message_sent";
-          const peer = sent ? block.toBotName : block.fromBotName;
-          const peerBotId = sent ? block.toBotId : block.fromBotId;
-          const label = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
+        if (block.kind === "collaboration_receipt") {
+          // Bot-target receipts render through PeerReceiptRow before this
+          // message view; group receipts keep the destination card below.
+          if (block.target.kind === "bot") return null;
+          if ("groupId" in artifactTarget) return null;
           return (
-            <CollaborationMarker
+            <GroupReceiptNavigation
               key={i}
-              ariaLabel={label}
-              color={peerBot(peerBotId)?.color ?? FALLBACK_BOT_COLOR}
-              identity={peerBotId}
-              label={label}
-              onClick={() => onOpenPeerMessages({ peerBotId, peerBotName: peer })}
+              block={block}
+              botName={message.botId ? (botNameOf?.(message.botId) ?? t`Bot`) : t`Bot`}
             />
           );
+        }
+        if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
+          // Legacy source receipts are grouped into the lightweight row before
+          // this view. Pair-side bodies never reach a human transcript here.
+          return null;
         }
         if (block.kind === "channel_message") {
           return (
@@ -6902,6 +7513,16 @@ const MessageView = memo(function MessageView({
             />
           );
         }
+        if (block.kind === "group_membership_failure") {
+          return (
+            <div key={i} className="flex justify-start py-1">
+              <GroupMembershipFailureCard
+                botName={message.botId ? (botNameOf?.(message.botId) ?? t`Bot`) : t`Bot`}
+                groupName={block.groupName}
+              />
+            </div>
+          );
+        }
         if (block.kind === "choice") {
           const botId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
           if (!botId) return null;
@@ -6913,6 +7534,39 @@ const MessageView = memo(function MessageView({
           return (
             <div key={i} className="flex justify-start py-1">
               <AppConnectCard botId={botId} block={block} />
+            </div>
+          );
+        }
+        if (block.kind === "connect") {
+          // Pre-CARD-01 records are replay-only history: show the stored
+          // connection state with no action entry, because the old message is
+          // not an authorization source after the unified gate took over.
+          return (
+            <div key={i} className="flex justify-start py-1">
+              <div
+                data-testid="legacy-connect-card"
+                className="flex w-fit max-w-full items-center gap-2.5 rounded-[16px] border border-border bg-muted px-4 py-3"
+              >
+                <span
+                  aria-hidden="true"
+                  className="grid size-8 shrink-0 place-items-center rounded-full text-[13px] font-semibold text-white"
+                  style={{ backgroundColor: block.color }}
+                >
+                  {block.initial}
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-[14px] font-medium text-foreground" dir="auto">
+                    {block.name}
+                  </span>
+                  <span className="text-[12px] text-muted-foreground">
+                    {block.status === "connected" ? (
+                      <Trans>Connected</Trans>
+                    ) : (
+                      <Trans>Not connected</Trans>
+                    )}
+                  </span>
+                </span>
+              </div>
             </div>
           );
         }
@@ -6963,9 +7617,9 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text" && message.role === "user") {
-          // User bubbles stay literal text on web and mobile. Only explicit URLs
-          // and email addresses are links, so a sent address is tappable without
-          // formatting bold or headings.
+          // User bubbles stay literal text on web and mobile. Only structured
+          // mention inlines and explicit URLs are links; a bare `@name` is
+          // never promoted to identity.
           return (
             <div key={i} className="flex w-fit max-w-full justify-end [@media(hover:none)]:w-full">
               <div
@@ -6974,12 +7628,38 @@ const MessageView = memo(function MessageView({
                 className="max-w-full whitespace-pre-wrap wrap-anywhere rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground"
                 dir="auto"
               >
-                <LinkifiedText>{block.text}</LinkifiedText>
+                <MessageText
+                  text={block.text}
+                  inlines={block.inlines}
+                  resolveMention={(mentionedBotId) => {
+                    const name = botNameOf?.(mentionedBotId);
+                    if (!name) return undefined;
+                    return {
+                      name,
+                      color: peerBot(mentionedBotId)?.color ?? FALLBACK_BOT_COLOR,
+                      available: true,
+                    };
+                  }}
+                  onOpenMention={onOpenBot}
+                />
               </div>
             </div>
           );
         }
         if (block.kind === "text") {
+          const markdownCandidate = (markdownCandidates ?? []).find(
+            (candidate) => candidate.kind === "markdown" && candidate.text === block.text,
+          );
+          const markdownNode = markdownCandidate && onMarkdownMeasure ? (
+            <MeasuredBotText
+              key={markdownCandidate.blockId}
+              text={block.text}
+              blockId={markdownCandidate.blockId}
+              onMeasure={onMarkdownMeasure}
+            />
+          ) : (
+            <ChatMarkdown key={`md-${i}`}>{block.text}</ChatMarkdown>
+          );
           return (
             <div
               key={i}
@@ -6990,9 +7670,7 @@ const MessageView = memo(function MessageView({
                 className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
                 dir="auto"
               >
-                <div data-quote-message-id={quoteMessageId}>
-                  <ChatMarkdown>{block.text}</ChatMarkdown>
-                </div>
+                <div data-quote-message-id={quoteMessageId}>{markdownNode}</div>
                 {voiceReady ? (
                   <button
                     type="button"
@@ -7086,6 +7764,11 @@ const MessageView = memo(function MessageView({
         }
         return null;
       })}
+      {displayBlocks?.length ? (
+        <div className="mt-2">
+          <DisplayBlockList blocks={displayBlocks} target={artifactTarget} />
+        </div>
+      ) : null}
     </>
   );
 });

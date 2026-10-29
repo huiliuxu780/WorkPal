@@ -39,8 +39,9 @@ async function settledSummary(page: Page, botId: string, titlePart: string): Pro
 }
 
 /**
- * Poll one Run by id until terminal. Free-text answers rewrite the Task
- * prompt, so the title is not a stable handle after an answer.
+ * Poll one Run by id until terminal. RT-13 answers are append-only Task
+ * amendments, so the Run title keeps its original text; polling by id stays
+ * immune to any future title projection over the amendment log.
  */
 async function settledSummaryById(page: Page, botId: string, runId: string): Promise<Summary> {
   let found: Summary | undefined;
@@ -97,6 +98,32 @@ async function expandCard(page: Page, titlePart: string) {
   const button = cardOf(page, titlePart).locator("button[aria-expanded]").first();
   if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
   await expect(button).toHaveAttribute("aria-expanded", "true", { timeout: 15_000 });
+}
+
+/**
+ * Page the transcript until `seen` is true. Each click is acknowledged by the
+ * messages response. A disabled "Loading…" label is the in-flight request,
+ * not the end of history.
+ */
+async function pageUntil(page: Page, seen: () => Promise<boolean>) {
+  for (let guard = 0; guard < 30; guard += 1) {
+    if (await seen()) return;
+    const loading = page.getByRole("button", { name: "Loading…" });
+    if ((await loading.count()) > 0) {
+      await expect(loading).toHaveCount(0, { timeout: 15_000 });
+      continue;
+    }
+    const more = page.getByRole("button", { name: "Load earlier messages" });
+    if ((await more.count()) === 0 || !(await more.isEnabled())) return;
+    const loaded = page.waitForResponse(
+      (response) =>
+        response.url().includes("/rpc/threads/messages") &&
+        response.request().method() === "POST" &&
+        response.ok(),
+    );
+    await more.click();
+    await loaded;
+  }
 }
 
 /** Every visible Run renders exactly one Execution Card. */
@@ -289,13 +316,11 @@ test("a pending input ask submits from the card region without a duplicate bubbl
   await send(page, "run 3 tracked steps then ask");
   await waitingRun(page, botId);
   const pending = await summaryByTitle(page, botId, "run 3 tracked steps then ask");
-  if ((await page.getByTestId("intervention-region").count()) === 0) {
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByPlaceholder(/Message/)).toBeVisible({ timeout: 15_000 });
-  }
   const region = page.getByRole("region", { name: "需要你处理" });
+  // The Run can be waiting_input before the ask card is in the snapshot.
+  // Reloading on a single empty count drops the card that is about to render.
   await expect(region.getByText("Which city should I use?", { exact: true })).toBeVisible({
-    timeout: 15_000,
+    timeout: 30_000,
   });
 
   const shell = page.locator('section[data-testid="execution-shell"]').first();
@@ -309,8 +334,15 @@ test("a pending input ask submits from the card region without a duplicate bubbl
   const answer = `CardAnswer-${stamp}`;
   await region.getByRole("button", { name: "Edit first", exact: true }).click();
   await region.getByRole("textbox", { name: "Answer" }).fill(answer);
+  const resolved = page.waitForResponse(
+    (response) =>
+      response.url().includes("/rpc/threads/resolveIntervention") &&
+      response.request().method() === "POST" &&
+      response.ok(),
+  );
   await region.getByRole("button", { name: "Send answer", exact: true }).click();
-  await expect(region.getByText(`Answered: ${answer}`, { exact: true })).toBeVisible({
+  await resolved;
+  await expect(page.getByText(`Answered: ${answer}`, { exact: true })).toBeVisible({
     timeout: 30_000,
   });
   const settled = await settledSummaryById(page, botId, pending.runId);
@@ -519,7 +551,9 @@ test("a paged-out historical Run expands from its card after loading earlier mes
   await region.getByRole("button", { name: "Edit first", exact: true }).click();
   await region.getByRole("textbox", { name: "Answer" }).fill("Paris");
   await region.getByRole("button", { name: "Send answer", exact: true }).click();
-  // The answer rewrites the Task prompt, so track the Run by id from here.
+  // The answer is an append-only Task amendment; the Run title itself never
+  // changes, but track the Run by id so the assertion cannot drift with any
+  // future title projection over the amendment log.
   const summary = await settledSummaryById(page, botId, pending.runId);
   const title = summary.title;
 
@@ -546,35 +580,20 @@ test("a paged-out historical Run expands from its card after loading earlier mes
   await expect(pill).toBeVisible();
 
   // Page back until the shell returns, then expand from the card.
-  await expect
-    .poll(
-      async () => {
-        if ((await shellOf(page, title).count()) > 0) return 1;
-        const more = page.getByRole("button", { name: "Load earlier messages" });
-        if ((await more.count()) === 0 || !(await more.isEnabled())) return 0;
-        await more.click();
-        await expect(more)
-          .toBeEnabled({ timeout: 15_000 })
-          .catch(() => undefined);
-        return (await shellOf(page, title).count()) > 0 ? 1 : 0;
-      },
-      { timeout: 60_000, intervals: [300, 700] },
+  await pageUntil(page, async () => (await shellOf(page, title).count()) > 0);
+  await expect(shellOf(page, title)).toBeVisible({ timeout: 15_000 });
+  const detailRequest = page
+    .waitForResponse(
+      (response) => response.url().includes("/rpc/runs/executionSnapshot") && response.ok(),
+      { timeout: 15_000 },
     )
-    .toBe(1);
-  const detailRequest = page.waitForResponse((response) =>
-    response.url().includes("/rpc/runs/executionSnapshot"),
-  );
+    .catch(() => null);
   await expandCard(page, title);
   await detailRequest;
   await expect(shellOf(page, title).locator(".exc-details")).not.toHaveAttribute("hidden", "");
   // The answered echo needs the ask message itself; page until it appears.
   const answeredText = shellOf(page, title).getByText("Answered: Paris", { exact: true }).first();
-  for (let guard = 0; guard < 12 && (await answeredText.count()) === 0; guard++) {
-    const more = page.getByRole("button", { name: "Load earlier messages" });
-    if ((await more.count()) === 0 || !(await more.isEnabled().catch(() => false))) break;
-    await more.click();
-    await page.waitForTimeout(300);
-  }
+  await pageUntil(page, async () => (await answeredText.count()) > 0);
   await expect(answeredText).toBeVisible({ timeout: 15_000 });
   // A late stale detail response cannot overwrite the newer snapshot (rev
   // guard) — covered end-to-end by execution-history.spec.ts; here the card
