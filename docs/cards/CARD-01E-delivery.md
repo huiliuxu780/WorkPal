@@ -1,12 +1,12 @@
 # CARD-01E delivery record
 
-状态：`in-progress`（PR #154 复审发现的 Attention input mode 资格问题已修复并证红转绿；等待最终 head CI，生产 gate 仍关闭）
+状态：`ready-to-merge`（PR #154 最终代码 head `dc1a632` 单 attempt 全量 CI 通过，复审无待回复问题；生产 gate 仍关闭）
 
 - 任务书：[第二批 CARD-01E](../tasks/second-batch-20261028/CARD-01E.md) + [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
 - 分支：`codex/card-system-completion`
 - 原始开发基线：`a29c71123d50929faa05d2df588f487169eaad79`（PR #149 后；原始红基线 A/B 使用 `8054cac`）
 - 最终集成基线：`1eac68196e839ad988d4f21a41c1234c50f7862a`（RUNTIME-RELIABILITY-01 / PR #155 合入后的 `main`；以 merge commit `d9d3b6d` 纳入本分支）
-- 门禁 head：等待本次最终集成提交（卡片实现、Attention input mode 修复、Runtime flake 根因修复与批次状态在同一 head）
+- 门禁 head：`dc1a632562c3df4c3ca625e28d1335f19f4f5e5e`（卡片实现、Attention input mode 修复与已合入 `main` 的 Runtime flake 根因修复在同一 head；CI run `40827632351` 单 attempt 11 success / 1 expected skipped）
 
 ## 用户现在能完成的流程
 
