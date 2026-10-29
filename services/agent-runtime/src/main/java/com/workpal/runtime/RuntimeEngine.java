@@ -1441,7 +1441,12 @@ public final class RuntimeEngine {
         BackgroundHandle handle = new BackgroundHandle(request, agent, context, bridge, taskId,
                 childSession);
         background.put(taskId, handle);
-        Thread.ofVirtual().name("workpal-background-" + taskId).start(() -> {
+        // RuntimeLog correlation is a plain ThreadLocal bound at the HTTP
+        // boundary. Capture it before starting the virtual watcher so terminal
+        // delivery and tool-bridge failures stay on the originating Run trace.
+        Map<String, String> correlation = RuntimeLog.current();
+        Thread.ofVirtual().name("workpal-background-" + taskId).start(() ->
+                RuntimeLog.withBindings(correlation, () -> {
             try {
                 long nextHeartbeat = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
                 while (!task.waitForCompletion(1_000)) {
@@ -1471,6 +1476,6 @@ public final class RuntimeEngine {
             } finally {
                 background.remove(taskId, handle);
             }
-        });
+        }));
     }
 }

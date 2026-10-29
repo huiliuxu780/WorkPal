@@ -63,6 +63,25 @@ final class RuntimeLog {
         return bindings != null ? bindings : Map.of();
     }
 
+    /**
+     * Run work on another thread with the originating request correlation.
+     * Virtual/background threads do not inherit a plain ThreadLocal, so callers
+     * must capture {@link #current()} before scheduling and install it around
+     * the asynchronous work. The previous binding is restored for executor
+     * threads that may be reused.
+     */
+    static void withBindings(Map<String, String> bindings, Runnable action) {
+        Map<String, String> previous = BOUND.get();
+        try {
+            if (bindings == null || bindings.isEmpty()) BOUND.remove();
+            else BOUND.set(Map.copyOf(bindings));
+            action.run();
+        } finally {
+            if (previous == null) BOUND.remove();
+            else BOUND.set(previous);
+        }
+    }
+
     static void clear() { BOUND.remove(); }
 
     /**

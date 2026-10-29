@@ -248,6 +248,11 @@ trace 从 `traceparent` 头解析；没有可用 traceparent 时本地生成，�
 `RuntimeEngine` 后台终态投递（只记 `task.id` + 类名，且三次有界重试只在最后一次记一行）、
 `WorkPalMemorySignalHook`（原本已是元数据 only，改成结构化后额外获得 run/attempt/session 关联）。
 
+PR #155 复审补齐后台 watcher 的线程边界：`RuntimeLog` 使用普通 `ThreadLocal`，虚拟线程不会继承
+HTTP handler 上的 trace。`registerBackground` 现在在启动 watcher 前捕获关联绑定，并在虚拟线程的
+完整生命周期内安装、最终恢复；因此后台工具桥拒绝和终态投递重试耗尽仍携带原始 `trace.id`、
+`parent.span.id` 与 `request.id`。`RuntimeLogTest` 用真实虚拟线程固定这一约束。
+
 验证：完整 Java 套件跑完后检索输出，匹配旧格式
 （`agentscope.signal `、`Plan projection`、`PLAN.md projection`、`Tool bridge returned`、
 `Background task event`、`Agent runtime failure`、`  at `）的行数为 **0**；
@@ -264,7 +269,7 @@ worker-chain 全量日志里同样为 **0**。
 | `pnpm test:unit` | 通过（exit 0）：459 文件 / 5549 passed / 2 skipped |
 | `pnpm test:ci-select` / `test:docs` / `test:inventory` | 三项均通过（exit 0） |
 | `pnpm test:postgres` | 通过（exit 0）：**52 文件 / 470 tests 全绿**，跑在一次性 PG16（宿主端口 5499）上，`prisma migrate deploy` exit 0。并见下面"假绿陷阱" |
-| `pnpm test:agentscope`（= `mvn test`） | 128 tests / 0 failures；修复后连续 5 次，加日志后 2 次，撤回 lifecycle 后 2 次，最终门禁 1 次 |
+| `pnpm test:agentscope`（= `mvn test`） | 原最终门禁 128 tests / 0 failures；PR #155 后台 trace 修复后 129 tests / 0 failures |
 | `pnpm test:integration` | **1 failed / 40 passed（41）**，`journeys.test.ts:2063` journey 54。已证明是**既有基线红**，见 `integration-baseline-comparison.txt` |
 | `pnpm test:worker-chain` | **6 passed（3.9m）**，exit 0，含本任务新增的模型失败场景 |
 | `docker build -f infra/compose/Dockerfile .` | 通过（exit 0），内容审计与容器启动见第 2 节 |
@@ -301,7 +306,7 @@ pnpm test:inventory  exit 0
 pnpm test:postgres   exit 0   52 files / 470 passed   (real PG16, migrate deploy exit 0)
 pnpm test:integration exit 1  1 failed / 40 passed (41)  <- journey 54, proven baseline red
 pnpm test:worker-chain exit 0  6 passed (3.9m)   <- incl. the provider-failure scenario
-mvn test             exit 0   Tests run: 128, Failures: 0, Errors: 0, Skipped: 0  BUILD SUCCESS
+mvn test             exit 0   Tests run: 129, Failures: 0, Errors: 0, Skipped: 0  BUILD SUCCESS
 docker build (compose)  exit 0   workpal-rr01:app3
 docker build (java)     exit 0   workpal-rr01:java
 containers             api / worker / web / agentscope all running, all health checks pass
@@ -321,7 +326,7 @@ containers             api / worker / web / agentscope all running, all health c
    temurin `sha256:f37956012e0cb88400e5b3689aeae2d2d735364c1922ae2225536163b5a99f56`。
    **这只用于本地验证**：镜像未推送、未部署，CI 的生产构建仍从 Docker Hub 拉取。
    复审若要求官方来源，需在 Hub 可达的环境重建 Java 镜像。
-2. **`runtime.tools.resumed` 未被任何本地入口触发**。128 个 Java 测试与 worker-chain 都没有
+2. **`runtime.tools.resumed` 未被任何本地入口触发**。129 个 Java 测试与 worker-chain 都没有
    驱动外部工具 resume（`RequireExternalExecutionEvent`），所以工具桥的**成功**路径只有代码审查依据
    （失败路径有：`runtime.tool_bridge.rejected`）。已确认它不引入新失败模式：
    紧随其后的 `resumeTools` 本来就 for-each 遍历同一个 list，`getToolCalls()` 若为 null 原代码同样 NPE。
