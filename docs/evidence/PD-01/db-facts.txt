@@ -1,0 +1,27 @@
+== PD-01 successor chain: predecessor -> successors (unique retryOfRunId) ==
+        predecessor        | predecessor_status |      sourceMessageId      | successor_count |         successor         
+---------------------------+--------------------+---------------------------+-----------------+---------------------------
+ cmvt865n0003mg0x0na6e7uk0 | cancelled          | cmvt865mx003ig0x0l2ttr1fo |               0 | 
+ cmvt865mz003kg0x0i05h2tzo | cancelled          | cmvt865mx003ig0x0l2ttr1fo |               0 | 
+ cmvt8631d002sg0x05to3ugrv | cancelled          | cmvt860ud002dg0x0efww5gub |               0 | 
+ cmvt860uf002fg0x0xbx8b5hq | cancelled          | cmvt860ud002dg0x0efww5gub |               1 | cmvt8631d002sg0x05to3ugrv
+ cmvt842ak003i24x0f8deqly0 | cancelled          | cmvt842ah003e24x08tj7lhfi |               0 | 
+ cmvt842aj003g24x08jcsxgev | cancelled          | cmvt842ah003e24x08tj7lhfi |               0 | 
+(6 行记录)
+
+== Successor inherits the source message link and carries the retry chain ==
+            id             |  status   |       retryOfRunId        | same_source 
+---------------------------+-----------+---------------------------+-------------
+ cmvt8631d002sg0x05to3ugrv | cancelled | cmvt860uf002fg0x0xbx8b5hq | t
+ cmvt85yyz001zg0x0a60rljjo | cancelled | cmvt85y6g001jg0x012oy1fhz | t
+ cmvt85wgb000sg0x0hsbd7pyd | failed    | cmvt85w4w000ag0x0bvxza8ae | t
+ cmvt83zxn002s24x06zhqxrxa | cancelled | cmvt83yuf002g24x0fs0oj2p9 | t
+(4 行记录)
+
+== Group turn: one message, one legacy runId, N sourceMessageId links ==
+        message_id         |     legacy_first_run      | runs_linked_by_source | distinct_bots 
+---------------------------+---------------------------+-----------------------+---------------
+ cmvt842ah003e24x08tj7lhfi | cmvt842aj003g24x08jcsxgev |                     2 |             2
+ cmvt865mx003ig0x0l2ttr1fo | cmvt865mz003kg0x0i05h2tzo |                     2 |             2
+(2 行记录)
+

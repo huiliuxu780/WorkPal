@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PD-01 消息级重试入口 · 可运行原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --background: #fafaf8;
+      --foreground: #1a1a1a;
+      --card: #ffffff;
+      --muted: #f0f0ed;
+      --muted-foreground: #6c6c70;
+      --accent: #eaeae6;
+      --accent-foreground: #1a1a1a;
+      --destructive: #dc2626;
+      --border: #e6e6e0;
+      --ring: #6c6c70;
+      --chat-user: #e2e2dc;
+      --chat-user-foreground: #1a1a1a;
+      --radius: 12px;
+      --shadow: 0 18px 44px rgba(31, 31, 27, .07);
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --background: #0b0c0e;
+      --foreground: #ececee;
+      --card: #141518;
+      --muted: #141518;
+      --muted-foreground: #85858a;
+      --accent: #1a1b20;
+      --accent-foreground: #ececee;
+      --destructive: #ef4444;
+      --border: #1e2026;
+      --ring: #3b82f6;
+      --chat-user: #22242b;
+      --chat-user-foreground: #ececee;
+      --shadow: 0 18px 44px rgba(0, 0, 0, .45);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      background: var(--background);
+      color: var(--foreground);
+      font: 14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    button { font: inherit; color: inherit; }
+    header.proto {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+    }
+    .proto-title { font-weight: 700; letter-spacing: -.01em; margin-right: auto; }
+    .proto-title small { display: block; font-weight: 500; color: var(--muted-foreground); font-size: 12px; }
+    .scenario-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px; }
+    .chip {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12.5px;
+      color: var(--muted-foreground);
+      cursor: pointer;
+    }
+    .chip:hover { background: var(--accent); color: var(--accent-foreground); }
+    .chip[aria-pressed="true"] { background: var(--foreground); border-color: var(--foreground); color: var(--background); }
+    .theme-toggle {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    main { max-width: 780px; margin: 0 auto; padding: 8px 20px 80px; }
+    .stage { border: 1px solid var(--border); border-radius: 18px; background: var(--background); box-shadow: var(--shadow); overflow: hidden; }
+    .stage-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--card); }
+    .stage-head .avatar { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: var(--foreground); color: var(--background); font-size: 12px; font-weight: 700; }
+    .stage-head .name { font-weight: 650; font-size: 13.5px; }
+    .stage-head .sub { color: var(--muted-foreground); font-size: 11.5px; }
+    .transcript { padding: 22px 170px 30px 40px; display: flex; flex-direction: column; gap: 20px; min-height: 340px; }
+    .row { display: flex; }
+    .row.user { justify-content: flex-end; }
+    .row.bot { justify-content: flex-start; }
+    .bubble-wrap { position: relative; max-width: min(520px, 74%); display: flex; flex-direction: column; }
+    .row.user .bubble-wrap { align-items: flex-end; }
+    .row.bot .bubble-wrap { align-items: flex-start; }
+    .bubble {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      border-radius: 20px;
+      padding: 12px 18px;
+      font-size: 15.5px;
+      line-height: 1.45;
+    }
+    .row.user .bubble { background: var(--chat-user); color: var(--chat-user-foreground); }
+    .row.bot .bubble { background: var(--muted); color: var(--foreground); }
+    .bot-name { font-size: 11.5px; color: var(--muted-foreground); margin: 0 0 5px 4px; }
+    .rail {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      opacity: 1;
+      pointer-events: auto;
+      z-index: 5;
+    }
+    .row.user .rail { left: 100%; margin-left: 4px; }
+    .row.bot .rail { right: 100%; margin-right: 4px; }
+    @media (hover: hover) and (pointer: fine) {
+      .rail { opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+      .bubble-wrap:hover .rail,
+      .bubble-wrap:focus-within .rail { opacity: 1; pointer-events: auto; }
+    }
+    .icon-btn {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted-foreground);
+      cursor: pointer;
+      transition: color .12s ease, background-color .12s ease;
+    }
+    .icon-btn:hover { color: var(--foreground); background: var(--accent); }
+    .icon-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+    .icon-btn:disabled { opacity: .55; cursor: default; }
+    .icon-btn[data-retrying="true"] { color: var(--foreground); }
+    .icon-btn .spin { animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(-360deg); } }
+    .retry-error { color: var(--destructive); font-size: 12px; margin-top: 6px; max-width: 220px; }
+    .notice {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted-foreground);
+      background: var(--card);
+    }
+    .card {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-top: 10px;
+      max-width: 560px;
+      box-shadow: 0 1px 1px rgba(0,0,0,.03);
+    }
+    .card h4 { margin: 0 0 2px; font-size: 13.5px; }
+    .card .status { color: var(--muted-foreground); font-size: 12px; }
+    .card .card-actions { margin-top: 10px; display: flex; gap: 8px; }
+    .card .card-actions button {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 5px 10px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .card .card-actions button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+    .annotation { margin-top: 18px; display: grid; gap: 10px; }
+    .note {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--card);
+      padding: 12px 14px;
+      font-size: 12.8px;
+      color: var(--muted-foreground);
+    }
+    .note strong { color: var(--foreground); }
+    .note ul { margin: 6px 0 0; padding-left: 18px; }
+    .legend { font-size: 12px; color: var(--muted-foreground); padding: 0 20px 6px; }
+    .a11y-caption { font-size: 11.5px; color: var(--muted-foreground); margin-top: 6px; }
+    @media (max-width: 640px) {
+      main { padding: 8px 10px 60px; }
+      .transcript { padding: 16px 12px 24px; }
+      .bubble-wrap { max-width: 94%; }
+      .row .rail {
+        position: static;
+        transform: none;
+        margin: 6px 0 0;
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .row.user .rail { justify-content: flex-start; }
+      .row.user .bubble-wrap { align-items: flex-end; }
+      .row.user .rail { align-self: flex-end; }
+      .row.bot .rail { align-self: flex-start; }
+      .icon-btn { width: 44px; height: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="proto">
+    <div class="proto-title">PD-01 消息级重试入口
+      <small>cardless cancelled root Run · 消息操作区 hover / focus / 提交中 / 成功消失</small>
+    </div>
+    <button class="theme-toggle" id="theme-toggle" type="button">切到深色</button>
+  </header>
+
+  <nav class="scenario-bar" id="scenarios" aria-label="场景"></nav>
+  <p class="legend">点击场景切换；鼠标悬停或在消息内按 Tab 可显示操作区。Retry 按钮为图标按钮，accessible name 见每个场景下方说明。</p>
+
+  <main>
+    <section class="stage" aria-label="聊天示例">
+      <div class="stage-head">
+        <div class="avatar" id="stage-avatar">P</div>
+        <div>
+          <div class="name" id="stage-name">Planner</div>
+          <div class="sub" id="stage-sub">单聊 · 已取消 1 个 Run</div>
+        </div>
+      </div>
+      <div class="transcript" id="transcript"></div>
+    </section>
+    <div class="annotation" id="annotation"></div>
+  </main>
+
+  <script>
+    const ICONS = {
+      smile: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.2 2 3.5 2 3.5-2 3.5-2"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/></svg>',
+      reply: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17l-5-5 5-5"/><path d="M4 12h11a5 5 0 0 1 5 5v1"/></svg>',
+      rotate: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+      more: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
+      check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+    };
+
+    // A Run id here mirrors the server projection: cancelled + cardless +
+    // manualRetry.allowed. `botName` is used only for the accessible name.
+    const SCENARIOS = {
+      cardless: {
+        chip: '无卡 cancelled（单 Bot）',
+        stage: { avatar: 'P', name: 'Planner', sub: '单聊 · 已取消 1 个 Run' },
+        messages: [
+          { role: 'user', text: '帮我把周报里的数字核对一遍，先不要发给任何人。', runs: [{ id: 'run-a', botName: 'Planner' }] },
+          { role: 'bot', name: 'Planner', text: '收到，我先检查数据来源。' },
+        ],
+        notes: [
+          '<strong>场景 1 · 触发消息仍在本屏</strong>：Run 在执行卡出现前被 Stop，消息旁出现 Retry。',
+          'accessible name：单入口时为 <code>Retry</code>；aria-label 与图标按钮一致，键盘 Tab 聚焦后可见 focus ring。',
+          '刷新、翻到历史页后入口仍在（服务端 message→runs 投影）。点击成功后入口立即消失，只产生一个 successor。',
+        ],
+      },
+      group: {
+        chip: '群聊双 Bot（无卡）',
+        stage: { avatar: 'G', name: '产品群 · Planner / Coder', sub: '群聊 · 已取消 2 个 Run' },
+        messages: [
+          { role: 'user', text: '@Planner @Coder 分别回答：这个方案的风险和收益各是什么？', runs: [{ id: 'run-p', botName: 'Planner' }, { id: 'run-c', botName: 'Coder' }] },
+        ],
+        notes: [
+          '<strong>场景 4 · 群聊两个无卡 cancelled Run</strong>：两个入口都从 <code>sourceMessageId</code> 恢复，不依赖 <code>message.runId</code>。',
+          'accessible name 可区分：<code>Retry Planner</code> / <code>Retry Coder</code>；顺序按 Run.createdAt 稳定。',
+          '点击其中一个只提交该 Run；提交中所有入口禁用，避免双击产生多个 successor。',
+        ],
+      },
+      carded: {
+        chip: '有卡 Run（无消息入口）',
+        stage: { avatar: 'P', name: 'Planner', sub: '单聊 · cancelled 有执行卡' },
+        messages: [
+          { role: 'user', text: '按这个计划把发布流程跑一遍。', runs: [] },
+          { role: 'bot', name: 'Planner', text: '计划已发布，执行到第二步时被停止。', card: { title: '发布流程', status: '已取消 · 2 个步骤' } },
+        ],
+        notes: [
+          '<strong>场景 5 · 有执行卡</strong>：Retry 只出现在卡片内（卡上操作），消息操作区不出现第二个入口。',
+          'D1 / D7：cancelled 不是执行卡信号，也不在消息侧新增入口。',
+        ],
+      },
+      denied: {
+        chip: 'allowed=false（不显示入口）',
+        stage: { avatar: 'P', name: 'Planner', sub: '单聊 · 投影拒绝重试' },
+        messages: [
+          { role: 'user', text: '再试一次刚才那个任务。', runs: [] },
+          { role: 'bot', name: 'Planner', text: '该 Run 已有活跃的 successor，或不是可重试的 root Run。' },
+        ],
+        notes: [
+          '<strong>场景 5 · denied / 非 root / 已有 successor</strong>：<code>manualRetry.allowed=false</code> 时不显示可执行入口。',
+          '不进入 Attention、通知或 <code>task_status</code>；入口只是消息操作。',
+        ],
+      },
+      submitting: {
+        chip: '重试提交中',
+        stage: { avatar: 'P', name: 'Planner', sub: '单聊 · 正在创建 successor' },
+        autoRetry: 'run-a',
+        messages: [
+          { role: 'user', text: '帮我把周报里的数字核对一遍，先不要发给任何人。', runs: [{ id: 'run-a', botName: 'Planner' }] },
+        ],
+        notes: [
+          '<strong>提交中状态</strong>：按钮 aria-label 变为 <code>Retrying…</code>，图标旋转，按钮 disabled；错误时在按钮旁显示安全文案。',
+          '点击复用 <code>runs/retry</code> + 稳定 <code>clientNonce</code> + <code>retryOfRunId</code> + <code>ExternalEffect.operationId</code>；不重发消息。',
+        ],
+      },
+      success: {
+        chip: '重试成功后入口消失',
+        stage: { avatar: 'P', name: 'Planner', sub: '单聊 · successor 正在执行' },
+        autoRetry: 'run-a',
+        autoSettle: true,
+        messages: [
+          { role: 'user', text: '帮我把周报里的数字核对一遍，先不要发给任何人。', runs: [{ id: 'run-a', botName: 'Planner' }] },
+          { role: 'bot', name: 'Planner', text: '正在继续核对数据。' },
+        ],
+        notes: [
+          '<strong>场景 3 · 先成功、后刷新</strong>：即使前驱 Run 不在最新快照窗口（从历史分页进入），入口也会在成功后立即消失。',
+          '刷新后服务端投影返回 <code>allowed=false</code>；本地不再残留可点击入口。',
+        ],
+      },
+    };
+
+    const transcriptEl = document.getElementById('transcript');
+    const annotationEl = document.getElementById('annotation');
+    const scenariosEl = document.getElementById('scenarios');
+    const stageAvatar = document.getElementById('stage-avatar');
+    const stageName = document.getElementById('stage-name');
+    const stageSub = document.getElementById('stage-sub');
+
+    let current = 'cardless';
+    let retryingRunId = null;
+    let retriedRunIds = new Set();
+    let noticeMessage = null;
+    let timer = null;
+
+    function esc(text) {
+      return text.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    }
+
+    function railFor(message) {
+      if (message.role !== 'user' || !message.runs || message.runs.length === 0) return '';
+      const entries = message.runs.filter((run) => !retriedRunIds.has(run.id));
+      if (entries.length === 0) return noticeMessage ? `<div class="notice">${ICONS.check} ${esc(noticeMessage)}</div>` : '';
+      const multiple = entries.length > 1;
+      const buttons = entries.map((run) => {
+        const retrying = retryingRunId === run.id;
+        const label = retrying ? 'Retrying…' : multiple ? `Retry ${run.botName}` : 'Retry';
+        return `<button class="icon-btn" type="button" data-testid="message-retry" data-run="${run.id}"
+          aria-label="${label}"${retrying ? ' data-retrying="true"' : ''}
+          ${retryingRunId ? 'disabled' : ''} title="${label}">
+          <span class="${retrying ? 'spin' : ''}">${ICONS.rotate}</span>
+        </button>`;
+      }).join('');
+      const error = '';
+      return `<div class="rail" data-testid="message-hover-actions" role="toolbar" aria-label="消息操作">
+        <button class="icon-btn" type="button" aria-label="React" title="React">${ICONS.smile}</button>
+        <button class="icon-btn" type="button" aria-label="Reply" title="Reply">${ICONS.reply}</button>
+        ${buttons}
+        <button class="icon-btn" type="button" aria-label="More" title="More">${ICONS.more}</button>
+      </div>${error}`;
+    }
+
+    function cardFor(card) {
+      if (!card) return '';
+      return `<div class="card" role="group" aria-label="执行卡">
+        <h4>${esc(card.title)}</h4>
+        <div class="status">${esc(card.status)}</div>
+        <div class="card-actions"><button type="button">Retry</button><button type="button">View details</button></div>
+      </div>`;
+    }
+
+    function render() {
+      const scenario = SCENARIOS[current];
+      stageAvatar.textContent = scenario.stage.avatar;
+      stageName.textContent = scenario.stage.name;
+      stageSub.textContent = scenario.stage.sub;
+      transcriptEl.innerHTML = scenario.messages.map((message) => {
+        if (message.role === 'user') {
+          return `<div class="row user"><div class="bubble-wrap">
+            <div class="bubble" tabindex="0">${esc(message.text)}</div>
+            ${railFor(message)}
+          </div></div>`;
+        }
+        return `<div class="row bot"><div class="bubble-wrap">
+          <div class="bot-name">${esc(message.name)}</div>
+          <div class="bubble">${esc(message.text)}</div>
+          ${cardFor(message.card)}
+        </div></div>`;
+      }).join('');
+      transcriptEl.querySelectorAll('[data-testid="message-retry"]').forEach((button) => {
+        button.addEventListener('click', () => startRetry(button.dataset.run));
+      });
+      annotationEl.innerHTML = scenario.notes.map((note) => `<div class="note">${note}</div>`).join('');
+      scenariosEl.querySelectorAll('.chip').forEach((chip) => {
+        chip.setAttribute('aria-pressed', String(chip.dataset.scenario === current));
+      });
+    }
+
+    function startRetry(runId) {
+      if (retryingRunId) return;
+      retryingRunId = runId;
+      noticeMessage = null;
+      render();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        retryingRunId = null;
+        retriedRunIds.add(runId);
+        noticeMessage = '已发起重试 · 入口已移除（successor 已创建）';
+        render();
+      }, 900);
+    }
+
+    Object.entries(SCENARIOS).forEach(([key, scenario]) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.dataset.scenario = key;
+      chip.textContent = scenario.chip;
+      chip.addEventListener('click', () => {
+        current = key;
+        retryingRunId = null;
+        retriedRunIds = new Set();
+        noticeMessage = null;
+        if (timer) clearTimeout(timer);
+        render();
+        const auto = SCENARIOS[key].autoRetry;
+        if (auto) {
+          const delay = SCENARIOS[key].autoSettle ? 1400 : 300;
+          timer = setTimeout(() => startRetry(auto), delay);
+        }
+      });
+      scenariosEl.appendChild(chip);
+    });
+
+    document.getElementById('theme-toggle').addEventListener('click', (event) => {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+      event.target.textContent = dark ? '切到深色' : '切到浅色';
+    });
+
+    render();
+  </script>
+</body>
+</html>
