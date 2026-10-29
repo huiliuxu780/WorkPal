@@ -108,7 +108,7 @@ describeJourneys("required product journeys", () => {
         );
       }
     }
-    return rpc<Snap>(app, cookie, "threads/get", { groupId });
+    return { snapshot: await rpc<Snap>(app, cookie, "threads/get", { groupId }), runIds: targets };
   }
 
   beforeAll(async () => {
@@ -2050,7 +2050,41 @@ describeJourneys("required product journeys", () => {
       expect.arrayContaining([botA.id, botB.id, botC.id, botD.id]),
     );
 
-    await sendGroupAndWait(app, ada, group.id, "@BotA gather sources. @BotB summarize.");
+    // Product default: several plain mentions name ONE response owner (mention
+    // precedence), so the turn must not fan out into one Run per mentioned Bot.
+    const plainMention = await sendGroupAndWait(
+      app,
+      ada,
+      group.id,
+      "@BotA gather sources. @BotB summarize.",
+    );
+    const plainRuns = await prisma.run.findMany({
+      where: {
+        threadId: group.threadId,
+        id: { in: plainMention.runIds },
+      },
+      select: { botId: true },
+    });
+    expect(plainRuns.map((run) => run.botId)).toEqual([botA.id]);
+
+    // Only an explicit separate-answers request makes both mentions owners.
+    const separate = await sendGroupAndWait(
+      app,
+      ada,
+      group.id,
+      "@BotA gather sources. @BotB summarize. Reply separately.",
+    );
+    const separateRuns = await prisma.run.findMany({
+      where: {
+        threadId: group.threadId,
+        id: { in: separate.runIds },
+      },
+      select: { botId: true },
+    });
+    expect(new Set(separateRuns.map((run) => run.botId))).toEqual(
+      new Set([botA.id, botB.id]),
+    );
+
     const mentioned = await rpc<Snap & { threadId: string }>(app, ada, "threads/get", {
       groupId: group.id,
     });
