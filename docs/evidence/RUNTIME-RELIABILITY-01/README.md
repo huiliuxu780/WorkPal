@@ -1,7 +1,13 @@
 # RUNTIME-RELIABILITY-01 — 本地验证证据
 
 基线：`a29c711`（`origin/main`，含 FIX-STOP-01 的 #149 与第一批收尾 #153）。
-分支：`codex/runtime-reliability`。任务书：`docs/tasks/second-batch-20261028/RUNTIME-RELIABILITY-01.md`（该目录尚未提交进 git）。
+分支：`codex/runtime-reliability`。
+任务书：`docs/tasks/second-batch-20261028/RUNTIME-RELIABILITY-01.md`，**已随本分支提交**
+（连同批次说明 `docs/tasks/second-batch-20261028/README.md`）。两份正文与整合者工作树中的
+约定文本逐字一致，**唯一差别是去掉了文件末尾的一个空行**，因为 `git diff --check` 会把
+"new blank line at EOF" 判为不干净；末尾空行不属于约定内容。同批的 `CARD-01E.md` 属另一交付单元、其 PR 已开，**故意未纳入**以免与其冲突。
+任务卡状态仍为 `planned`：按项目规则要等 PR 的最终 head 跑完完整 CI 且相关检查确实执行后才转
+`ready-to-merge`，本分支不自行改状态。
 
 本机前提：Maven 默认走 Homebrew openjdk **27**，所有 `mvn` 命令前都设了
 `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`（`pom.xml` 要求 release 21，CI 用 temurin 21）。
@@ -168,18 +174,25 @@ Java 镜像的 Dockerfile **未修改**（本来就是多阶段、最终层只 `
 
 | 旅程 | trace.id | api | worker | adapter | java | Java 事件序列 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 模型失败 | `d713b1073a39d20d0d54d1072cb05a0c` | 1 | 4 | 2 | 4 | `run.accepted → stream.started → stream.failed → run.failed` |
-| 成功 | `21999723d35ec66b6487d7ac81370ff9` | 1 | 4 | 1 | 3 | `run.accepted → stream.started → run.completed` |
+| 模型失败 | `e600a479e096378d30c45d2b0d7da5f1` | 1 | 4 | 2 | 4 | `run.accepted → stream.started → stream.failed → run.failed` |
+| 成功 | `33f1c3eb48c2da2e096c286103bc30f5` | 1 | 4 | 1 | 3 | `run.accepted → stream.started → run.completed` |
 
 Java 行还带 `parent.span.id` 指回 TS 侧的 span，说明是真正的父子 span 链接，
 而不是把同一个 trace id 复制过去。
 
 **模型失败旅程是怎么造出来的**：新增 worker-chain 场景
-`a model failure stays attributable per attempt and never surfaces provider text`，
+`a provider failure is recorded without its own text and the Run is stopped, not left running`，
 用仓库既有的 `startModelEmulator` 失败回复（`{ type: "error", status: 500, message }`）
 经真实 AgentScope HTTP/SSE 传输打进去。Java 侧记录到的类型是
 `io.agentscope.extensions.model.openai.exception.OpenAIException`（以及 SDK reactor 包装的
 `RetryExhaustedException`）—— 是真实的 provider 层异常，不是模拟结果。
+
+该场景**只验证一次真实 provider 失败**：轮询到该 thread 上出现任一持久化错误即成立，
+不断言 Attempt 数量、不断言由哪条恢复路径落库、不调用 `assertComplete`
+（那会把重试预算写成契约）。断言完成后走产品自己的路径
+`rpc(page, "threads/stop", { botId })` 显式停止，轮询到该 thread 的所有 Run 都进入终态，
+再等 10 秒确认**模型 fixture 没有再被调用**，`finally` 里再兜一次 stop。
+所以测试既不把下面第 5 条那个重驱动缺陷固化成契约，也不留后台 Run。
 
 **安全错误类别**（`FailureCategory`，每个类别都对应真实存在的 throwable 类型或抛出点）：
 `cancelled`（`InterruptedException` / 线程被中断）、`session_conflict`
@@ -287,7 +300,7 @@ pnpm test:docs       exit 0
 pnpm test:inventory  exit 0
 pnpm test:postgres   exit 0   52 files / 470 passed   (real PG16, migrate deploy exit 0)
 pnpm test:integration exit 1  1 failed / 40 passed (41)  <- journey 54, proven baseline red
-pnpm test:worker-chain exit 0  6 passed (3.9m)
+pnpm test:worker-chain exit 0  6 passed (3.9m)   <- incl. the provider-failure scenario
 mvn test             exit 0   Tests run: 128, Failures: 0, Errors: 0, Skipped: 0  BUILD SUCCESS
 docker build (compose)  exit 0   workpal-rr01:app3
 docker build (java)     exit 0   workpal-rr01:java
@@ -322,9 +335,9 @@ containers             api / worker / web / agentscope all running, all health c
    且 180 秒内始终停在 `queued` 而非进入终态。
    说明除 `scheduleAutomaticRunRetry` 外还有别的路径（最可能是租约过期后 reconciler 重新入队）
    在反复驱动同一个 Run。这属于 Run/Attempt 业务语义，**任务书明确禁止本单元修改**，
-   因此未动，也未在新测试里断言终态。新增的 worker-chain 场景据此只断言
-   "失败逐 attempt 被记录 + provider 原文绝不落到持久化的用户可见状态"，
-   并在注释里写明了不断言终态的理由。
+   因此未动。新增的 worker-chain 场景刻意**不依赖**这个行为：它只要求出现一次持久化的
+   provider 失败，然后走产品 Stop 路径把 Run 收干净（见第 3 节），
+   所以将来修好重驱动不会打破这个测试，测试也不会在 Run 仍活跃时结束。
 6. **`pnpm test:integration` 有一条既有基线红**（journey 54），已用基线对照证明与本 diff 无关。
    建议单独立卡，否则每个后续 PR 的 integration 门禁都会带着它。
 7. 未部署，未推远程，未提 PR，未合并。未改 GitHub 设置。
