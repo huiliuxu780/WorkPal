@@ -59,6 +59,16 @@ function successorShell(page: Page, titlePart: string) {
   });
 }
 
+// Local evidence capture for the PD-01 delivery: unset in CI so the run writes
+// nothing into the repository.
+async function capture(page: Page, name: string) {
+  const dir = process.env.WORKPAL_PD01_EVIDENCE_DIR;
+  if (!dir) return;
+  // Let the rail's opacity transition settle before the still.
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: `${dir}/${name}.png` });
+}
+
 function cardOf(page: Page, titlePart: string) {
   return shellOf(page, titlePart).locator('article[data-testid="execution-card"]');
 }
@@ -216,10 +226,36 @@ test("a cancelled cardless Run retries from its triggering message (PD-01)", asy
     .filter({ hasText: `keep working until i stop you ${stamp}` })
     .first();
   await expect(userRow).toBeVisible({ timeout: 20_000 });
+  // Keep the stills focused on the message rail.
+  const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
+  if (await dismiss.first().isVisible().catch(() => false)) await dismiss.first().click();
   await userRow.hover();
   const retry = userRow.getByTestId("message-retry");
   await expect(retry).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('section[data-testid="execution-shell"]')).toHaveCount(0);
+  await capture(page, "desktop-hover");
+  // Keyboard modality: leave and return with Tab so the focus ring is the
+  // :focus-visible ring a keyboard user sees.
+  await retry.focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(retry).toBeFocused();
+  await capture(page, "desktop-keyboard-focus");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await userRow.hover();
+  await expect(retry).toBeVisible();
+  await capture(page, "mobile-390");
+  await page.setViewportSize({ width: 375, height: 812 });
+  await userRow.hover();
+  await expect(retry).toBeVisible();
+  await capture(page, "mobile-375");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await userRow.hover();
+  await expect(retry).toBeVisible();
+  await capture(page, "desktop-dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await userRow.hover();
   await retry.click();
 
   // Exactly one successor through the existing runs/retry path (D5/D8); the
@@ -234,6 +270,7 @@ test("a cancelled cardless Run retries from its triggering message (PD-01)", asy
     )
     .toBe(1);
   await expect(userRow.getByTestId("message-retry")).toHaveCount(0);
+  await capture(page, "retry-entry-gone");
 
   // The successor re-runs the same hanging prompt; leave nothing running.
   await rpc(page, "threads/stop", { botId }).catch(() => undefined);
@@ -306,8 +343,15 @@ test("a group message's secondary-bot cancelled Run restores its entry after pag
   await userRow.hover();
   const retries = userRow.getByTestId("message-retry");
   await expect(retries).toHaveCount(2, { timeout: 15_000 });
-  await expect(retries.nth(0)).toHaveAccessibleName(/Retry .+/);
-  await expect(retries.nth(1)).toHaveAccessibleName(/Retry .+/);
+  // Distinguishable accessible names: each entry names its own Bot, so a
+  // screen-reader user can tell the two retry actions apart (acceptance 4).
+  const retryNames = await retries.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute("aria-label")),
+  );
+  expect(retryNames).toHaveLength(2);
+  for (const name of retryNames) expect(name).toMatch(/^Retry .+/);
+  expect(new Set(retryNames).size).toBe(2);
+  await capture(page, "group-desktop-two-entries");
 
   const triggerMessageId = await (async () => {
     const snapshot = await rpc<{ messages: Array<Record<string, unknown> & { id: string }> }>(
