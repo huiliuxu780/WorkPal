@@ -7478,6 +7478,39 @@ const MessageView = memo(function MessageView({
             </div>
           );
         }
+        if (block.kind === "connect") {
+          // Pre-CARD-01 records are replay-only history: show the stored
+          // connection state with no action entry, because the old message is
+          // not an authorization source after the unified gate took over.
+          return (
+            <div key={i} className="flex justify-start py-1">
+              <div
+                data-testid="legacy-connect-card"
+                className="flex w-fit max-w-full items-center gap-2.5 rounded-[16px] border border-border bg-muted px-4 py-3"
+              >
+                <span
+                  aria-hidden="true"
+                  className="grid size-8 shrink-0 place-items-center rounded-full text-[13px] font-semibold text-white"
+                  style={{ backgroundColor: block.color }}
+                >
+                  {block.initial}
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-[14px] font-medium text-foreground" dir="auto">
+                    {block.name}
+                  </span>
+                  <span className="text-[12px] text-muted-foreground">
+                    {block.status === "connected" ? (
+                      <Trans>Connected</Trans>
+                    ) : (
+                      <Trans>Not connected</Trans>
+                    )}
+                  </span>
+                </span>
+              </div>
+            </div>
+          );
+        }
         if (block.kind === "chart") {
           return (
             <div key={i} className="flex justify-start">

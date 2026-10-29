@@ -121,6 +121,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     createdAt?: Date;
     revision?: number;
     botId?: string;
+    planReview?: unknown;
   }) {
     return prisma.intervention.create({
       data: {
@@ -139,6 +140,7 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
         inputMode: input.inputMode ?? null,
         ...(input.actions ? { inputActions: input.actions } : {}),
         presentation: input.presentation ?? { text: "Decision needed" },
+        ...(input.planReview !== undefined ? { planReview: input.planReview as object } : {}),
         createdAt: input.createdAt ?? new Date(),
       },
     });
@@ -725,11 +727,12 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(next.total).toBeGreaterThan(0);
   });
 
-  it("keeps a still-pending row past its expiresAt until the timeout job expires it", async () => {
+  it("drops a pending row as soon as expiresAt passes while the timeout job owns settlement", async () => {
     const run = await taskRun(dmThreadId, "Expired request");
     const message = await botMessage(dmThreadId, [
       { kind: "ask", text: "Too late?", status: "pending" },
     ]);
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
     const expired = await pendingIntervention({
       threadId: dmThreadId,
       runId: run.id,
@@ -740,11 +743,367 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
       expiresAt: new Date(Date.now() - 1_000),
     });
     const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
-    // Expiry is settled by the wait-timeout job, not hidden by the read model;
-    // a still-pending row remains until its owner expires it.
-    expect(page.items.some((item) => item.interactionId === expired.id)).toBe(true);
-    const duplicated = page.items.filter((item) => item.interactionId === expired.id);
-    expect(duplicated).toHaveLength(1);
+    // An overdue card is no longer actionable even before the wait-timeout job
+    // writes the terminal state; the queue must not keep pointing at it.
+    expect(page.items.some((item) => item.interactionId === expired.id)).toBe(false);
+    expect(page.total).toBe(before.total);
+    expect(
+      await prisma.attentionIntervention.findUnique({ where: { interactionId: expired.id } }),
+    ).not.toBeNull();
+    await prisma.intervention.update({
+      where: { id: expired.id },
+      data: { status: "expired", pendingRunKey: null, resolvedAt: new Date() },
+    });
+    // The trigger removes the projection row with the settlement, so the queue
+    // cannot resurrect an expired request after a timeout job run.
+    expect(
+      await prisma.attentionIntervention.findUnique({ where: { interactionId: expired.id } }),
+    ).toBeNull();
+  });
+
+  it("excludes a pending approval whose posting bot was archived inside an active group", async () => {
+    const retiredGroupBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Retired group bot", color: "test" },
+    });
+    const groupRun = await taskRun(group.threadId, "Retired group work");
+    const retiredMessage = await prisma.$transaction((tx) =>
+      createThreadMessageInTransaction(tx, {
+        threadId: group.threadId,
+        role: "bot",
+        originKind: "system",
+        blocks: [
+          {
+            kind: "app_connect",
+            provider: "github",
+            name: "Retired GitHub",
+            description: "Read repositories",
+            logo: null,
+            status: "pending",
+          },
+        ],
+        botId: retiredGroupBot.id,
+        runId: groupRun.id,
+      }),
+    );
+    const retiredInput = await pendingIntervention({
+      threadId: group.threadId,
+      runId: groupRun.id,
+      messageId: retiredMessage.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Retired group input" },
+      botId: retiredGroupBot.id,
+    });
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    await prisma.bot.update({
+      where: { id: retiredGroupBot.id },
+      data: { archivedAt: new Date() },
+    });
+    const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(after.items.some((item) => item.interactionId === retiredInput.id)).toBe(false);
+    expect(after.items.some((item) => item.source.messageId === retiredMessage.id)).toBe(false);
+    expect(after.total).toBe(before.total - 2);
+  });
+
+  it("excludes a membership request whose target group is no longer manageable", async () => {
+    const foreignGroup = await prisma.chatGroup.create({
+      data: { spaceId, userId: otherUserId, kind: "standard", name: "Foreign room" },
+    });
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const run = await taskRun(dmThreadId, "Join a foreign room");
+    const message = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Add Scout to Foreign room?", status: "pending" },
+    ]);
+    const interventionId = randomUUID();
+    await pendingIntervention({
+      id: interventionId,
+      threadId: dmThreadId,
+      runId: run.id,
+      messageId: message.id,
+      kind: "approval",
+      presentation: { text: "Add Scout to “Foreign room”?" },
+    });
+    await prisma.groupMembershipRequest.create({
+      data: {
+        id: randomUUID(),
+        spaceId,
+        userId: ownerId,
+        botId: bot.id,
+        groupId: foreignGroup.id,
+        groupName: foreignGroup.name,
+        sourceThreadId: dmThreadId,
+        sourceRunId: run.id,
+        cardMessageId: message.id,
+        interventionId,
+        deliveryKey: randomUUID(),
+        requestRevision: 1,
+        message: "Check the build.",
+        presentation: { text: "Add Scout to “Foreign room”?" },
+      },
+    });
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    // Permission is re-read on every request; the total must not count a card
+    // the user can no longer act on.
+    expect(page.items.some((item) => item.interactionId === interventionId)).toBe(false);
+    expect(page.total).toBe(before.total);
+  });
+
+  it("keeps a pending Interaction after its Run reaches a terminal status", async () => {
+    const run = await taskRun(dmThreadId, "Terminal run keeps its ask");
+    const message = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Still open?", status: "pending" },
+    ]);
+    const pending = await pendingIntervention({
+      threadId: dmThreadId,
+      runId: run.id,
+      messageId: message.id,
+      kind: "input",
+      inputMode: "text",
+      presentation: { text: "Still open?" },
+    });
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    // Run lifecycle and request lifecycle have separate owners: finishing the
+    // Run must not make an unanswered request disappear.
+    expect(page.items.some((item) => item.interactionId === pending.id)).toBe(true);
+    await prisma.intervention.update({
+      where: { id: pending.id },
+      data: { status: "cancelled", pendingRunKey: null, resolvedAt: new Date() },
+    });
+  });
+
+  it("does not count pending rows the strict projection cannot render", async () => {
+    const before = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const unrenderable: string[] = [];
+    async function drop(
+      kind: "input" | "approval" | "plan_review",
+      extra: Record<string, unknown>,
+    ) {
+      const run = await taskRun(dmThreadId, `Unrenderable ${kind}`);
+      const message = await botMessage(dmThreadId, [
+        { kind: "ask", text: "Unrenderable request", status: "pending" },
+      ]);
+      const row = await pendingIntervention({
+        threadId: dmThreadId,
+        runId: run.id,
+        messageId: message.id,
+        kind,
+        presentation: { text: "Unrenderable request" },
+        ...extra,
+      });
+      unrenderable.push(row.id);
+      return row;
+    }
+
+    // Plan review without its embedded content: the strict projector returns
+    // null, so it must not inflate the badge.
+    const missingPlan = await drop("plan_review", {});
+    // Plan review with a content object that fails the strict plan schema.
+    const malformedPlan = await drop("plan_review", { planReview: { content: {} } });
+    // Astral characters count as two UTF-16 units in Zod: 600 emoji exceed the
+    // 1000-unit goal cap even though PostgreSQL length() sees 600 code points.
+    const astralPlan = await drop("plan_review", {
+      planReview: {
+        content: {
+          planId: "plan-astral",
+          contentVersion: 1,
+          revision: 1,
+          goal: "😀".repeat(600),
+          items: [{ id: "item-1", title: "Ship", status: "pending" }],
+          source: "publish_run_plan",
+        },
+      },
+    });
+    // Choice input whose action list has no usable id.
+    await drop("input", { inputMode: "choice" });
+    // Historical or malformed input modes are not representable by the strict
+    // card projector and must not inflate the badge count.
+    await drop("input", {});
+    await drop("input", { inputMode: "unsupported" });
+    // Approval without an ExternalEffect or a RT-12 membership request.
+    await drop("approval", {});
+
+    // A membership approval whose request presentation fails the strict
+    // projection: the request trigger must persist renderable=false.
+    const membershipRun = await taskRun(dmThreadId, "Unrenderable membership");
+    const membershipMessage = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Unrenderable membership", status: "pending" },
+    ]);
+    const membershipGroup = await prisma.chatGroup.create({
+      data: { spaceId, userId: ownerId, kind: "standard", name: "Unrenderable join" },
+    });
+    const membership = await pendingIntervention({
+      threadId: dmThreadId,
+      runId: membershipRun.id,
+      messageId: membershipMessage.id,
+      kind: "approval",
+      presentation: { text: "Unrenderable membership" },
+    });
+    unrenderable.push(membership.id);
+    await prisma.groupMembershipRequest.create({
+      data: {
+        id: randomUUID(),
+        spaceId,
+        userId: ownerId,
+        botId: bot.id,
+        groupId: membershipGroup.id,
+        groupName: membershipGroup.name,
+        sourceThreadId: dmThreadId,
+        sourceRunId: membershipRun.id,
+        cardMessageId: membershipMessage.id,
+        interventionId: membership.id,
+        deliveryKey: randomUUID(),
+        requestRevision: 1,
+        message: "Check the build.",
+        presentation: { text: "Add Scout", extra: true } as never,
+      },
+    });
+    const astralMembershipRun = await taskRun(dmThreadId, "Astral membership");
+    const astralMembershipMessage = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Astral membership", status: "pending" },
+    ]);
+    const astralMembership = await pendingIntervention({
+      threadId: dmThreadId,
+      runId: astralMembershipRun.id,
+      messageId: astralMembershipMessage.id,
+      kind: "approval",
+      presentation: { text: "Astral membership" },
+    });
+    unrenderable.push(astralMembership.id);
+    await prisma.groupMembershipRequest.create({
+      data: {
+        id: randomUUID(),
+        spaceId,
+        userId: ownerId,
+        botId: bot.id,
+        groupId: membershipGroup.id,
+        groupName: membershipGroup.name,
+        sourceThreadId: dmThreadId,
+        sourceRunId: astralMembershipRun.id,
+        cardMessageId: astralMembershipMessage.id,
+        interventionId: astralMembership.id,
+        deliveryKey: randomUUID(),
+        requestRevision: 1,
+        message: "Check the build.",
+        // 3000 emoji are 6000 UTF-16 units, above the 4000-unit presentation cap.
+        presentation: { text: "😀".repeat(3000) } as never,
+      },
+    });
+    const flags = await prisma.attentionIntervention.findMany({
+      where: { interactionId: { in: unrenderable } },
+      select: { interactionId: true, renderable: true },
+    });
+    const hiddenFlags = new Set(
+      flags.filter((row) => !row.renderable).map((row) => row.interactionId),
+    );
+    expect(hiddenFlags.has(missingPlan.id)).toBe(true);
+    expect(hiddenFlags.has(malformedPlan.id)).toBe(true);
+    expect(hiddenFlags.has(membership.id)).toBe(true);
+    expect(hiddenFlags.has(astralPlan.id)).toBe(true);
+    expect(hiddenFlags.has(astralMembership.id)).toBe(true);
+
+    const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    expect(after.total).toBe(before.total);
+    for (const id of unrenderable) {
+      expect(after.items.some((item) => item.interactionId === id)).toBe(false);
+    }
+    // The same rule must hold across every page, not only the first one.
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await loadAttentionPage(prisma, {
+        spaceId,
+        userId: ownerId,
+        limit: 2,
+        cursor,
+      });
+      ids.push(...page.items.map((item) => item.interactionId));
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(ids.filter((id) => unrenderable.includes(id))).toEqual([]);
+
+    await prisma.groupMembershipRequest.deleteMany({
+      where: { interventionId: { in: unrenderable } },
+    });
+    await prisma.intervention.deleteMany({ where: { id: { in: unrenderable } } });
+  });
+
+  it("applies UTF-16 length semantics to every bounded plan and membership field", async () => {
+    const astral = "😀";
+    const plan = (
+      contentPatch: Record<string, unknown>,
+      rootPatch: Record<string, unknown> = {},
+    ) => ({
+      ...rootPatch,
+      content: {
+        planId: "plan",
+        contentVersion: 1,
+        revision: 1,
+        goal: "goal",
+        items: [{ id: "item", title: "title", status: "pending" }],
+        source: "publish_run_plan",
+        ...contentPatch,
+      },
+    });
+    const item = (patch: Record<string, unknown>) =>
+      plan({ items: [{ id: "item", title: "title", status: "pending", ...patch }] });
+    async function planOk(value: unknown) {
+      const rows = await prisma.$queryRaw<Array<{ ok: boolean }>>`
+        SELECT attention_plan_review_valid(${JSON.stringify(value)}::jsonb) AS ok
+      `;
+      return rows[0]!.ok;
+    }
+
+    expect(await planOk(plan({}))).toBe(true);
+    expect(await planOk(plan({ goal: astral.repeat(500) }))).toBe(true); // 1000 UTF-16 units
+    expect(await planOk(plan({ goal: astral.repeat(501) }))).toBe(false); // 1002
+    expect(await planOk(item({ id: astral.repeat(33) }))).toBe(false); // 66 > 64
+    expect(await planOk(item({ title: astral.repeat(101) }))).toBe(false); // 202 > 200
+    expect(await planOk(plan({}, { feedback: astral.repeat(1001) }))).toBe(false); // 2002 > 2000
+
+    const membership = (patch: Record<string, unknown>) => ({ text: "Add the Bot", ...patch });
+    async function membershipOk(presentation: unknown) {
+      const rows = await prisma.$queryRaw<Array<{ ok: boolean }>>`
+        SELECT attention_membership_renderable(
+          ${JSON.stringify(presentation)}::jsonb,
+          ${"group"},
+          ${"bot"},
+          ${"request"},
+          ${"thread"},
+          ${"run"},
+          ${"message"},
+          ${"space"},
+          ${1}
+        ) AS ok
+      `;
+      return rows[0]!.ok;
+    }
+
+    expect(await membershipOk(membership({}))).toBe(true);
+    expect(await membershipOk(membership({ text: astral.repeat(2000) }))).toBe(true); // 4000
+    expect(await membershipOk(membership({ text: astral.repeat(2001) }))).toBe(false); // 4002
+    expect(await membershipOk(membership({ detail: astral.repeat(4001) }))).toBe(false); // 8002
+    expect(
+      await membershipOk(
+        membership({
+          credential: {
+            name: astral.repeat(33),
+            origin: "https://example.test",
+            authType: "bearer",
+          },
+        }),
+      ),
+    ).toBe(false); // 66 > 64
+    expect(
+      await membershipOk(
+        membership({
+          credential: { name: "n", origin: astral.repeat(1025), authType: "bearer" },
+        }),
+      ),
+    ).toBe(false); // 2050 > 2048
   });
 
   it("orders by expiresAt ASC NULLS LAST, then attentionAt, then stableId", async () => {
@@ -805,6 +1164,21 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
     // The badge must count every pending row, not the first page of one source.
     expect(after.total - before.total).toBe(520);
+    await prisma.$executeRawUnsafe('ANALYZE "attention_interventions"');
+    const plan = await prisma.$queryRaw<Array<{ "QUERY PLAN": string }>>`
+      EXPLAIN (ANALYZE, BUFFERS)
+      SELECT "interactionId" FROM "attention_interventions"
+      WHERE "userId" = ${ownerId}
+        AND "spaceId" = ${spaceId}
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${new Date()})
+      ORDER BY "expiresAt" ASC NULLS LAST, "attentionAt" ASC, "interactionId" ASC
+      LIMIT 21`;
+    const planText = plan.map((row) => row["QUERY PLAN"]).join("\n");
+    // The first page is a keyset slice of the compact projection; it must not
+    // materialize or sort the whole pending set.
+    expect(planText).toContain("attention_interventions_user_order");
+    const scanned = /rows=(\d+) width/.exec(planText)?.[1];
+    expect(Number(scanned ?? Number.NaN)).toBeLessThan(100);
     const ids: string[] = [];
     let cursor: string | null = null;
     do {

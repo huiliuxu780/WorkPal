@@ -1,0 +1,4 @@
+Mutation: remove source_bot."archivedAt" from durableFilters; run -t "posting bot was archived"
+ FAIL  packages/db/src/attention.postgres.test.ts > CARD-01D attention query (PostgreSQL) > excludes a pending approval whose posting bot was archived inside an active group
+AssertionError: expected true to be false // Object.is equality
+ Test Files  1 failed (1)

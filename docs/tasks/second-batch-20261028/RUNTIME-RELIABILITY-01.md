@@ -1,6 +1,6 @@
 # RUNTIME-RELIABILITY-01：Runtime 生产可靠性
 
-状态：`in-progress`
+状态：`done`（PR #155 已合入 `main`）
 
 建议分支：`codex/runtime-reliability`
 

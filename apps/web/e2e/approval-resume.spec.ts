@@ -32,32 +32,28 @@ test("approval input resumes durable work", async ({ page }, testInfo) => {
   await captureScreenshot(page, testInfo, "21-approval-custom-answer");
   await page.getByRole("button", { name: "Send answer" }).click();
 
-  await expect(prompt).toHaveCount(2, { timeout: 30_000 });
+  // FIX-127 pinned the resumed ask to the persisted Runtime contract: the
+  // answer resolves the pending ask_user call and the same Run finishes; it
+  // does not replay the ask fixture into a second pending card. The answered
+  // prompt stays as the bubble echo introduced by UX-01B.
+  await expect(prompt).toHaveCount(0, { timeout: 30_000 });
   await expect(
     page.getByText("Answered: ask me which city to use again", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send it" })).toHaveCount(1);
-  await captureScreenshot(page, testInfo, "22-second-approval-prompt");
-
-  await page.getByRole("button", { name: "Edit first" }).click();
-  await answer.fill("Paris");
-  await captureScreenshot(page, testInfo, "23-second-approval-answer");
-  await page.getByRole("button", { name: "Send answer" }).click();
-
-  const resumed = page.getByText(
-    "on it. i will work this in the background and come back with a result.",
-    { exact: true },
-  );
+  const resumed = page
+    .getByText("done. i handled: ask me which city to use again", { exact: true })
+    .first();
   await expect(resumed).toBeVisible({ timeout: 30_000 });
-  const handledAnswer = page.getByText("done. i handled: Paris", { exact: true });
-  await expect(handledAnswer).toBeVisible();
-  await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send it" })).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "22-approval-resumed");
 
   await page.reload();
-  await expect(resumed).toBeVisible({ timeout: 20_000 });
-  await expect(handledAnswer).toBeVisible();
-  await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible();
-  await captureScreenshot(page, testInfo, "24-approval-resumed-after-reload");
+  await expect(prompt).toHaveCount(0, { timeout: 20_000 });
+  await expect(
+    page.getByText("Answered: ask me which city to use again", { exact: true }),
+  ).toBeVisible();
+  await expect(resumed).toBeVisible();
+  await captureScreenshot(page, testInfo, "23-approval-resumed-after-reload");
 
   await composer.fill("ask me which city to use");
   await page.keyboard.press("Enter");
@@ -69,5 +65,5 @@ test("approval input resumes durable work", async ({ page }, testInfo) => {
   // never reappears as an operable card anywhere.
   await expect(page.getByTestId("intervention-region")).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Send it" })).toHaveCount(0);
-  await captureScreenshot(page, testInfo, "25-stopped-approval-prompt");
+  await captureScreenshot(page, testInfo, "24-stopped-approval-prompt");
 });

@@ -1,0 +1,19 @@
+Red baseline: old attention.ts before the eligibility fix + the new regression
+FAIL  packages/db/src/attention.postgres.test.ts > CARD-01D attention query (PostgreSQL) > does not count pending rows the strict projection cannot render
+AssertionError: expected 4 to be +0 // Object.is equality
+
+Green: persisted renderable eligibility
+Test Files  1 passed (1)
+Tests  17 passed (17)
+
+Mutation: remove ai.renderable from the read predicate
+FAIL  packages/db/src/attention.postgres.test.ts > CARD-01D attention query (PostgreSQL) > does not count pending rows the strict projection cannot render
+AssertionError: expected 3 to be +0 // Object.is equality
+
+PR #154 review P2: input modes the strict projector cannot represent
+Red, same regression with inputMode NULL and unsupported:
+AssertionError: expected 13 to be 11 // Object.is equality
+
+Green, durable SQL eligibility accepts only text, secret, or choice with a usable action:
+Test Files  1 passed (1)
+Tests  18 passed (18)

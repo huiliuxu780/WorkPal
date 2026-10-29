@@ -1271,6 +1271,26 @@ model Intervention {
   @@map("interventions")
 }
 
+/// CARD-01E: compact attention index for pending Interventions. The
+/// `interventions_attention_projection` database trigger maintains these rows;
+/// application code and migrations never write them directly.
+model AttentionIntervention {
+  interactionId String    @id
+  spaceId       String
+  userId        String
+  threadId      String
+  botId         String
+  kind          String
+  attentionAt   DateTime
+  expiresAt     DateTime?
+  /// Strict-renderability decided by the intervention/membership triggers.
+  renderable    Boolean   @default(true)
+
+  @@index([userId, spaceId, expiresAt, attentionAt, interactionId])
+  @@index([threadId])
+  @@map("attention_interventions")
+}
+
 /// A10: immutable outbound draft revisions. Revision 1 is the effect's own
 /// request; every saved edit appends a row. Rows are never updated or deleted
 /// while the card exists, so the audit keeps every body the user confirmed.

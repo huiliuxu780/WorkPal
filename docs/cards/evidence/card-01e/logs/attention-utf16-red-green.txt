@@ -1,0 +1,8 @@
+Red: SQL validators used PostgreSQL length() (code points)
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mdoes not count pending rows the strict projection cannot render
+[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
+[41m[1m FAIL [22m[49m packages/db/src/attention.postgres.test.ts[2m > [22mCARD-01D attention query (PostgreSQL)[2m > [22mapplies UTF-16 length semantics to every bounded plan and membership field
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+
+Green: attention_utf16_length (UTF-16 units, matching Zod)
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m

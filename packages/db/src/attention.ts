@@ -25,7 +25,7 @@ import {
   loadOriginControlFacts,
   ORIGIN_CONTROL_MAX_DEPTH,
 } from "./card-interactions.js";
-import type { Prisma, PrismaClient } from "./client.js";
+import { Prisma, type PrismaClient } from "./client.js";
 import { interventionView } from "./interventions.js";
 
 export type AttentionQueryInput = {
@@ -38,33 +38,53 @@ export type AttentionQueryInput = {
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 
+type AttentionCursor = { expiresAt: string | null; attentionAt: string; stableId: string };
+
+type DurableProjectionRow = {
+  interactionId: string;
+  expiresAt: Date | null;
+  attentionAt: Date;
+};
+
 /**
- * CARD-01D attention read. It never scans Run history or imports the thread's
- * message window: the three sources are the durable pending Interventions,
- * current SessionControls derived from active Runs, and the strictly mapped
- * pending business approvals (message-bag approvals plus the RT-12 membership
- * requests). Everything is scoped to Threads this user owns.
+ * CARD-01E attention read.
  *
- * No per-source row cap: the queue used to read at most 500 rows per source and
- * derive `total` from that page, so a larger source silently undercounted the
- * badge and could push its later rows off page one. The pending-only predicates
- * (status=pending / active runs / messages carrying a pending approval block)
- * keep the read on indexed, small sets, and the enclosing transaction's timeout
- * remains the hard stop.
+ * Durable pending Interventions are read from the compact
+ * `attention_interventions` projection maintained by the interventions trigger.
+ * The page is a keyset slice of that table and `total` is an exact indexed
+ * count, so candidates the page will not show are never materialized as
+ * Intervention rows, presentation JSON, or ExternalEffect facts. Expired rows
+ * leave the queue at read time; the timeout job still owns their settlement.
+ *
+ * The three remaining sources are bounded by current facts instead of history:
+ * active Runs on the user's visible Threads (takeover/return), the bounded
+ * origin chain of active delegated Runs, and message blocks matched through the
+ * `messages_blocks_gin` index. Plain Runs, Run history, receipts, task_status
+ * and PD-01 Retry are not InteractionViews and never enter this query.
  */
 export async function loadAttentionPage(
   prisma: PrismaClient,
   input: AttentionQueryInput,
 ): Promise<AttentionQueuePage> {
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+  const decoded = input.cursor ? decodeAttentionCursor(input.cursor) : null;
+  // A cursor is opaque but not trusted: an unparseable timestamp would reach
+  // the SQL parameter binder. Fall back to the first page instead of failing.
+  const cursor =
+    decoded &&
+    Number.isFinite(Date.parse(decoded.attentionAt)) &&
+    (decoded.expiresAt === null || Number.isFinite(Date.parse(decoded.expiresAt)))
+      ? decoded
+      : null;
   return prisma.$transaction(
     async (tx) => {
+      const now = new Date();
+      // Human-visible conversations only: a direct chat or a standard group.
+      // Hidden agent_pair threads share the same userId and must never be
+      // addressed directly; their delegated controls are rebased below.
+      // Archived conversations are not navigable, so their requests stay out
+      // of the queue instead of pointing at a source the user cannot open.
       const threads = await tx.thread.findMany({
-        // Human-visible conversations only: a direct chat or a standard group.
-        // Hidden agent_pair threads share the same userId and must never be
-        // addressed directly; their delegated controls are rebased below.
-        // Archived conversations are not navigable, so their requests stay out
-        // of the queue instead of pointing at a source the user cannot open.
         where: {
           spaceId: input.spaceId,
           userId: input.userId,
@@ -74,17 +94,42 @@ export async function loadAttentionPage(
       });
       if (threads.length === 0) return { items: [], total: 0, nextCursor: null };
       const threadById = new Map(threads.map((thread) => [thread.id, thread]));
-      const threadIds = threads.map((thread) => thread.id);
 
-      const views = await loadPendingViews(tx, {
+      const durable = await loadDurableAttention(tx, {
         spaceId: input.spaceId,
         userId: input.userId,
-        threadIds,
-        threadById,
+        cursor,
+        limit,
+        now,
       });
-      const items = projectAttentionItems(views);
-      const total = items.length;
-      const { page, hasMore } = pageItems(items, input.cursor ?? null, limit);
+      const live = await loadLiveAttention(tx, {
+        spaceId: input.spaceId,
+        userId: input.userId,
+        threadIds: threads.map((thread) => thread.id),
+        threadById,
+        now,
+      });
+
+      const cursorItem = cursor
+        ? ({
+            expiresAt: cursor.expiresAt,
+            attentionAt: cursor.attentionAt,
+            stableId: cursor.stableId,
+          } as AttentionItem)
+        : null;
+      const allLiveItems = projectAttentionItems(live.views);
+      const liveItems = allLiveItems.filter(
+        (item) => !cursorItem || compareAttentionItems(item, cursorItem) > 0,
+      );
+      const seen = new Set<string>();
+      const merged: AttentionItem[] = [];
+      for (const item of [...durable.items, ...liveItems].sort(compareAttentionItems)) {
+        const key = `${item.interactionId}\u0000${item.revision}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(item);
+      }
+      const page = merged.slice(0, limit);
       const display = await loadDisplayFacts(tx, {
         spaceId: input.spaceId,
         threads: threadById,
@@ -92,31 +137,218 @@ export async function loadAttentionPage(
       });
       return {
         items: page.map((item) => display.get(item.interactionId) ?? fallbackDisplay(item)),
-        total,
-        nextCursor: hasMore ? encodeAttentionCursor(page[page.length - 1]!) : null,
+        total: durable.total + allLiveItems.length,
+        nextCursor: merged.length > limit ? encodeAttentionCursor(page[page.length - 1]!) : null,
       };
     },
-    { timeout: 20_000, maxWait: 20_000 },
+    {
+      timeout: 20_000,
+      maxWait: 20_000,
+      // The exact count and the keyset page must answer from one snapshot:
+      // under READ COMMITTED a settle between the two statements could make
+      // `total` disagree with the list the client is about to page through.
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    },
   );
 }
 
-async function loadPendingViews(
+/**
+ * Exact count and keyset page over the persisted pending-Intervention
+ * projection. The projection carries only the frozen sort tuple; the page then
+ * loads those Intervention rows, their effect statuses, and the RT-12 facts for
+ * the rows it will actually render.
+ *
+ * `total` uses the same eligibility rule as the page query. Static
+ * renderability (plan-review content, membership presentation) is persisted in
+ * `attention_interventions.renderable` by the database triggers; dynamic facts
+ * (thread/bot/group archival, expiry, membership permission, effect status)
+ * stay in this SQL predicate. No request path loads or projects the full
+ * pending set in Node.
+ */
+async function loadDurableAttention(
   tx: Prisma.TransactionClient,
   input: {
     spaceId: string;
     userId: string;
-    threadIds: string[];
-    threadById: Map<string, { id: string; botId: string | null; groupId: string | null }>;
+    cursor: AttentionCursor | null;
+    limit: number;
+    now: Date;
   },
-): Promise<InteractionView[]> {
-  const views: InteractionView[] = [];
+): Promise<{ items: AttentionItem[]; total: number }> {
+  const countRows = await tx.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS count
+    ${durableFrom(input)}
+    WHERE ${durableFilters({ ...input, cursor: null })}
+  `);
+  const total = Number(countRows[0]?.count ?? 0);
+  if (total === 0) return { items: [], total: 0 };
 
-  // 1. Durable pending Interventions (input, approval, plan review, membership).
-  const pendingRows = await tx.intervention.findMany({
-    where: { threadId: { in: input.threadIds }, status: "pending" },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  });
-  const effectIds = pendingRows
+  const wanted = input.limit + 1;
+  const items: AttentionItem[] = [];
+  let after = input.cursor;
+  while (items.length < wanted) {
+    const remaining = wanted - items.length;
+    const rows = await tx.$queryRaw<DurableProjectionRow[]>(Prisma.sql`
+      SELECT ai."interactionId", ai."expiresAt", ai."attentionAt"
+      ${durableFrom(input)}
+      WHERE ${durableFilters({ ...input, cursor: after })}
+      ORDER BY ai."expiresAt" ASC NULLS LAST, ai."attentionAt" ASC, ai."interactionId" ASC
+      LIMIT ${remaining}
+    `);
+    if (rows.length === 0) break;
+    items.push(...(await projectDurableRows(tx, rows, input.spaceId)));
+    const last = rows[rows.length - 1]!;
+    after = {
+      expiresAt: last.expiresAt ? last.expiresAt.toISOString() : null,
+      attentionAt: last.attentionAt.toISOString(),
+      stableId: last.interactionId,
+    };
+    if (rows.length < remaining) break;
+  }
+  return { items: items.slice(0, wanted), total };
+}
+
+function durableFrom(input: { spaceId: string; userId: string }): Prisma.Sql {
+  return Prisma.sql`
+    FROM "attention_interventions" AS ai
+    JOIN "threads" AS thread
+      ON thread."id" = ai."threadId"
+     AND thread."userId" = ${input.userId}
+     AND thread."spaceId" = ${input.spaceId}
+    LEFT JOIN "bots" AS thread_bot ON thread_bot."id" = thread."botId"
+    LEFT JOIN "chat_groups" AS thread_group ON thread_group."id" = thread."groupId"
+    JOIN "bots" AS source_bot
+      ON source_bot."id" = ai."botId"
+     AND source_bot."spaceId" = ai."spaceId"
+    JOIN "interventions" AS intervention ON intervention."id" = ai."interactionId"
+    LEFT JOIN "external_effects" AS effect ON effect."id" = intervention."effectId"
+  `;
+}
+
+function durableFilters(input: {
+  spaceId: string;
+  userId: string;
+  cursor: AttentionCursor | null;
+  now: Date;
+}): Prisma.Sql {
+  const visibleThread = Prisma.sql`(
+    (thread."botId" IS NOT NULL AND thread_bot."archivedAt" IS NULL)
+    OR (
+      thread."groupId" IS NOT NULL
+      AND thread_group."kind" = 'standard'
+      AND thread_group."archivedAt" IS NULL
+    )
+  )`;
+  const pastExpiry = Prisma.sql`(ai."expiresAt" IS NULL OR ai."expiresAt" > ${input.now})`;
+  const manageableMembership = Prisma.sql`NOT (
+    intervention."kind" = 'approval'
+    AND EXISTS (
+      SELECT 1 FROM "group_membership_requests" AS request
+      WHERE request."interventionId" = intervention."id"
+        AND NOT EXISTS (
+          SELECT 1 FROM "chat_groups" AS target
+          WHERE target."id" = request."groupId"
+            AND target."spaceId" = ${input.spaceId}
+            AND target."userId" = ${input.userId}
+            AND target."kind" = 'standard'
+            AND target."archivedAt" IS NULL
+        )
+    )
+  )`;
+  // The one eligibility rule shared by count and paging. Static renderability
+  // (plan reviews, membership presentations) is persisted in
+  // `attention_interventions.renderable`; dynamic facts stay here.
+  const eligible = Prisma.sql`(
+    ai."renderable" = TRUE
+    AND intervention."status" = 'pending'
+    AND intervention."kind" IN ('input', 'approval', 'plan_review')
+    AND length(intervention."id") > 0
+    AND length(intervention."spaceId") > 0
+    AND length(intervention."threadId") > 0
+    AND length(intervention."runId") > 0
+    AND length(intervention."messageId") > 0
+    AND length(intervention."botId") > 0
+    AND length(ai."interactionId") > 0
+    AND length(ai."threadId") > 0
+    AND length(ai."botId") > 0
+    AND intervention."revision" > 0
+    AND (
+      intervention."kind" = 'plan_review'
+      OR (
+        intervention."kind" = 'input'
+        AND (
+          intervention."inputMode" IN ('text', 'secret')
+          OR (
+            intervention."inputMode" = 'choice'
+            AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                CASE
+                  WHEN jsonb_typeof(intervention."inputActions") = 'array'
+                    THEN intervention."inputActions"
+                  ELSE '[]'::jsonb
+                END
+              ) AS action
+              WHERE jsonb_typeof(action) = 'object'
+                AND jsonb_typeof(action -> 'id') = 'string'
+                AND length(action ->> 'id') > 0
+            )
+          )
+        )
+      )
+      OR (
+        intervention."kind" = 'approval'
+        AND (
+          EXISTS (
+            SELECT 1 FROM "group_membership_requests" AS request
+            WHERE request."interventionId" = intervention."id"
+          )
+          OR (
+            intervention."effectId" IS NOT NULL
+            AND (effect."id" IS NULL OR effect."status" <> '')
+          )
+        )
+      )
+    )
+  )`;
+  if (!input.cursor) {
+    return Prisma.sql`${visibleThread} AND source_bot."archivedAt" IS NULL AND ${pastExpiry} AND ${eligible} AND ${manageableMembership}`;
+  }
+  const afterCursor =
+    input.cursor.expiresAt === null
+      ? Prisma.sql`ai."expiresAt" IS NULL AND (
+          ai."attentionAt" > ${new Date(input.cursor.attentionAt)}
+          OR (
+            ai."attentionAt" = ${new Date(input.cursor.attentionAt)}
+            AND ai."interactionId" > ${input.cursor.stableId}
+          )
+        )`
+      : Prisma.sql`(
+          ai."expiresAt" > ${new Date(input.cursor.expiresAt)}
+          OR (
+            ai."expiresAt" = ${new Date(input.cursor.expiresAt)}
+            AND (
+              ai."attentionAt" > ${new Date(input.cursor.attentionAt)}
+              OR (
+                ai."attentionAt" = ${new Date(input.cursor.attentionAt)}
+                AND ai."interactionId" > ${input.cursor.stableId}
+              )
+            )
+          )
+          OR ai."expiresAt" IS NULL
+        )`;
+  return Prisma.sql`${visibleThread} AND source_bot."archivedAt" IS NULL AND ${pastExpiry} AND ${eligible} AND ${manageableMembership} AND ${afterCursor}`;
+}
+
+async function projectDurableRows(
+  tx: Prisma.TransactionClient,
+  rows: readonly DurableProjectionRow[],
+  spaceId: string,
+): Promise<AttentionItem[]> {
+  const ids = rows.map((row) => row.interactionId);
+  const interventions = await tx.intervention.findMany({ where: { id: { in: ids } } });
+  const interventionById = new Map(interventions.map((row) => [row.id, row]));
+  const effectIds = interventions
     .map((row) => row.effectId)
     .filter((id): id is string => Boolean(id));
   const effects =
@@ -129,16 +361,9 @@ async function loadPendingViews(
   const effectStatus = new Map(effects.map((effect) => [effect.id, effect.status]));
   // RT-12 membership requests project through their strict business facts; the
   // generic Intervention projection intentionally yields nothing for them.
-  const membershipRequests =
-    pendingRows.length > 0
-      ? await tx.groupMembershipRequest.findMany({
-          where: {
-            spaceId: input.spaceId,
-            userId: input.userId,
-            interventionId: { in: pendingRows.map((row) => row.id) },
-          },
-        })
-      : [];
+  const membershipRequests = await tx.groupMembershipRequest.findMany({
+    where: { spaceId, interventionId: { in: ids } },
+  });
   const membershipByIntervention = new Map(
     membershipRequests
       .filter((row): row is typeof row & { interventionId: string } => Boolean(row.interventionId))
@@ -146,42 +371,69 @@ async function loadPendingViews(
   );
   const membershipGroups = await loadManagedMembershipGroupIds(
     tx,
-    input.spaceId,
-    input.userId,
     membershipRequests.map((row) => row.groupId),
   );
-  for (const row of pendingRows) {
-    const membership = membershipByIntervention.get(row.id);
-    if (membership) {
-      const presentation = membership.presentation as GroupMembershipApprovalFacts["presentation"];
-      const projected = projectGroupMembershipApproval({
-        interactionId: row.id,
-        revision: row.revision,
-        groupId: membership.groupId,
-        botId: membership.botId,
-        messageGroupRequestId: membership.id,
-        requestRevision: membership.requestRevision,
-        sourceSpaceId: membership.spaceId,
-        sourceThreadId: membership.sourceThreadId,
-        sourceMessageId: membership.cardMessageId ?? row.messageId,
-        sourceRunId: membership.sourceRunId,
-        sourceBotId: membership.botId,
-        createdAt: row.createdAt.toISOString(),
-        expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
-        status: "pending",
-        presentation,
-        canManageMembers: membershipGroups.has(membership.groupId),
-      });
-      if (projected) views.push(projected);
-      continue;
-    }
-    const projected = interactionViewFromIntervention(
-      interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined),
-    );
-    if (projected) views.push(projected);
-  }
 
-  // 2. Current SessionControls from active Runs.
+  const items: AttentionItem[] = [];
+  for (const projectionRow of rows) {
+    const row = interventionById.get(projectionRow.interactionId);
+    if (!row || row.status !== "pending") continue;
+    const membership = membershipByIntervention.get(row.id);
+    const view = membership
+      ? projectGroupMembershipApproval({
+          interactionId: row.id,
+          revision: row.revision,
+          groupId: membership.groupId,
+          botId: membership.botId,
+          messageGroupRequestId: membership.id,
+          requestRevision: membership.requestRevision,
+          sourceSpaceId: membership.spaceId,
+          sourceThreadId: membership.sourceThreadId,
+          sourceMessageId: membership.cardMessageId ?? row.messageId,
+          sourceRunId: membership.sourceRunId,
+          sourceBotId: membership.botId,
+          createdAt: row.createdAt.toISOString(),
+          expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+          status: "pending",
+          presentation: membership.presentation as GroupMembershipApprovalFacts["presentation"],
+          canManageMembers: membershipGroups.has(membership.groupId),
+        })
+      : interactionViewFromIntervention(
+          interventionView(row, row.effectId ? effectStatus.get(row.effectId) : undefined),
+        );
+    if (!view) continue;
+    const item = projectAttentionItems([view])[0];
+    if (item) items.push(item);
+  }
+  return items;
+}
+
+async function loadManagedMembershipGroupIds(
+  tx: Prisma.TransactionClient,
+  groupIds: readonly string[],
+): Promise<Set<string>> {
+  const unique = [...new Set(groupIds)];
+  if (unique.length === 0) return new Set();
+  const groups = await tx.chatGroup.findMany({
+    where: { id: { in: unique }, kind: "standard", archivedAt: null },
+    select: { id: true },
+  });
+  return new Set(groups.map((group) => group.id));
+}
+
+async function loadLiveAttention(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    userId: string;
+    threadIds: string[];
+    threadById: Map<string, { id: string; botId: string | null; groupId: string | null }>;
+    now: Date;
+  },
+): Promise<{ views: InteractionView[] }> {
+  const views: InteractionView[] = [];
+
+  // 1. Current SessionControls from active Runs.
   const runs = await tx.run.findMany({
     where: {
       threadId: { in: input.threadIds },
@@ -202,36 +454,41 @@ async function loadPendingViews(
     },
   });
   if (runs.length > 0) {
-    const computers = await loadBotComputerFacts(tx, {
-      spaceId: input.spaceId,
-      botIds: runs.map((run) => run.botId),
-    });
-    const runFacts: SessionControlRunFact[] = runs.map((run) => ({
-      id: run.id,
-      spaceId: run.spaceId,
-      threadId: run.threadId,
-      botId: run.botId,
-      status: run.status,
-      waitKind: run.waitKind,
-      createdAt: run.createdAt,
-      waitStartedAt: run.waitStartedAt,
-      executionLeaseActive: Boolean(
-        (run.status === "leased" || run.status === "running") &&
-          run.leaseOwner &&
-          (!run.leaseExpiresAt || run.leaseExpiresAt.getTime() > Date.now()),
-      ),
-    }));
-    const computerFacts: SessionControlComputerFact[] = computers;
-    views.push(
-      ...deriveSessionControlViews({ runs: runFacts, computers: computerFacts, now: new Date() }),
+    const activeBots = await loadActiveBotIds(
+      tx,
+      input.spaceId,
+      runs.map((run) => run.botId),
     );
+    const activeRuns = runs.filter((run) => activeBots.has(run.botId));
+    if (activeRuns.length > 0) {
+      const computers = await loadBotComputerFacts(tx, {
+        spaceId: input.spaceId,
+        botIds: activeRuns.map((run) => run.botId),
+      });
+      const runFacts: SessionControlRunFact[] = activeRuns.map((run) => ({
+        id: run.id,
+        spaceId: run.spaceId,
+        threadId: run.threadId,
+        botId: run.botId,
+        status: run.status,
+        waitKind: run.waitKind,
+        createdAt: run.createdAt,
+        waitStartedAt: run.waitStartedAt,
+        executionLeaseActive: Boolean(
+          (run.status === "leased" || run.status === "running") &&
+            run.leaseOwner &&
+            (!run.leaseExpiresAt || run.leaseExpiresAt.getTime() > Date.now()),
+        ),
+      }));
+      const computerFacts: SessionControlComputerFact[] = computers;
+      views.push(
+        ...deriveSessionControlViews({ runs: runFacts, computers: computerFacts, now: input.now }),
+      );
+    }
   }
-  // Delegated Runs execute in hidden pair Threads; project their live controls
-  // into the visible origin Thread the user can actually open. Discovery starts
-  // from the Runs that are active somewhere in a chain and walks the hidden
-  // lineage back up: requiring the hop delegated from the visible Thread to
-  // still be active would drop a nested takeover whose first hop completed,
-  // which loadOriginControlFacts deliberately traverses.
+
+  // 2. Delegated Runs execute in hidden pair Threads; project their live
+  // controls into the visible origin Thread the user can actually open.
   const visibleThreadIds = new Set(input.threadIds);
   const activeDelegated = await tx.run.findMany({
     where: {
@@ -282,7 +539,7 @@ async function loadPendingViews(
       ...deriveSessionControlViews({
         runs: originControls.runs,
         computers: originControls.computers,
-        now: new Date(),
+        now: input.now,
       }),
     );
   }
@@ -327,69 +584,57 @@ async function loadPendingViews(
       blocks: true,
     },
   });
-  const messageFacts: CardMessageFact[] = approvalMessages.map((message) =>
-    cardMessageFact(
-      {
-        id: message.id,
-        threadId: message.threadId,
-        botId: message.botId ?? undefined,
-        runId: message.runId ?? undefined,
-        createdAt: message.createdAt.toISOString(),
-        role: message.role as "bot" | "user" | "system",
-        blocks: message.blocks as MessageBlock[],
-      },
+  if (approvalMessages.length > 0) {
+    const activeBots = await loadActiveBotIds(
+      tx,
       input.spaceId,
-    ),
-  );
-  for (const view of interactionViewsFromMessages(messageFacts).interactions) {
-    if (view.status !== "pending" || view.kind !== "action_approval") continue;
-    const kind = (view as ActionApprovalView).approval.kind;
-    if (
-      kind !== "connect.app_authorization" &&
-      kind !== "connect.mcp_assignment" &&
-      kind !== "skill_save"
-    ) {
-      continue;
+      approvalMessages.map((message) => message.botId),
+    );
+    const messageFacts: CardMessageFact[] = approvalMessages
+      .filter((message) => !message.botId || activeBots.has(message.botId))
+      .map((message) =>
+        cardMessageFact(
+          {
+            id: message.id,
+            threadId: message.threadId,
+            botId: message.botId ?? undefined,
+            runId: message.runId ?? undefined,
+            createdAt: message.createdAt.toISOString(),
+            role: message.role as "bot" | "user" | "system",
+            blocks: message.blocks as MessageBlock[],
+          },
+          input.spaceId,
+        ),
+      );
+    for (const view of interactionViewsFromMessages(messageFacts).interactions) {
+      if (view.status !== "pending" || view.kind !== "action_approval") continue;
+      const kind = (view as ActionApprovalView).approval.kind;
+      if (
+        kind !== "connect.app_authorization" &&
+        kind !== "connect.mcp_assignment" &&
+        kind !== "skill_save"
+      ) {
+        continue;
+      }
+      views.push(view);
     }
-    views.push(view);
   }
 
-  return views;
+  return { views };
 }
 
-async function loadManagedMembershipGroupIds(
+async function loadActiveBotIds(
   tx: Prisma.TransactionClient,
   spaceId: string,
-  userId: string,
-  groupIds: readonly string[],
+  botIds: readonly (string | null | undefined)[],
 ): Promise<Set<string>> {
-  const unique = [...new Set(groupIds)];
+  const unique = [...new Set(botIds.filter((id): id is string => Boolean(id)))];
   if (unique.length === 0) return new Set();
-  const groups = await tx.chatGroup.findMany({
-    where: { id: { in: unique }, spaceId, userId, kind: "standard", archivedAt: null },
+  const bots = await tx.bot.findMany({
+    where: { id: { in: unique }, spaceId, archivedAt: null },
     select: { id: true },
   });
-  return new Set(groups.map((group) => group.id));
-}
-
-function pageItems(
-  items: AttentionItem[],
-  cursor: string | null,
-  limit: number,
-): { page: AttentionItem[]; hasMore: boolean } {
-  if (!cursor) return { page: items.slice(0, limit), hasMore: items.length > limit };
-  const decoded = decodeAttentionCursor(cursor);
-  if (!decoded) return { page: items.slice(0, limit), hasMore: items.length > limit };
-  // Compare against the cursor's sort tuple instead of locating the anchor row:
-  // it may have settled between page requests and would otherwise restart the
-  // list at page one.
-  const anchor = {
-    expiresAt: decoded.expiresAt,
-    attentionAt: decoded.attentionAt,
-    stableId: decoded.stableId,
-  } as AttentionItem;
-  const rest = items.filter((item) => compareAttentionItems(item, anchor) > 0);
-  return { page: rest.slice(0, limit), hasMore: rest.length > limit };
+  return new Set(bots.map((bot) => bot.id));
 }
 
 async function loadDisplayFacts(

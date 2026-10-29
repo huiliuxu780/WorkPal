@@ -206,6 +206,7 @@ const POSTGRES_ONLY = [
   "packages/adapters/src/wakeup.postgres.test.ts",
   "packages/db/src/agent-pairs.postgres.test.ts",
   "packages/db/src/avatar-activity.postgres.test.ts",
+  "packages/db/src/attention-renderable-migration.postgres.test.ts",
   "packages/db/src/attention.postgres.test.ts",
   "packages/db/src/avatar-changes.postgres.test.ts",
   "packages/db/src/avatar-migration.postgres.test.ts",
