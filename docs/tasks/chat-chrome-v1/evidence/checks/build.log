@@ -1,0 +1,71 @@
+
+> @rakazo/web@0.1.0 build <worktree>/apps/web
+> cross-env NODE_ENV=production vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+[BABEL] Note: The code generator has deoptimised the styling of <worktree>/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+✓ 3767 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/site.webmanifest                                          0.43 kB
+dist/index.html                                                2.57 kB │ gzip:   0.93 kB
+dist/assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2      7.42 kB
+dist/assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2        8.00 kB
+dist/assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2         15.08 kB
+dist/assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2        16.51 kB
+dist/assets/geist-latin-wght-normal-BgDaEnEv.woff2            29.40 kB
+dist/assets/TerminalApp-BrP-ENHg.css                           3.93 kB │ gzip:   1.01 kB
+dist/assets/src-BEU3exBz.css                                   6.82 kB │ gzip:   1.26 kB
+dist/assets/index-DxlXiPy0.css                               162.74 kB │ gzip:  26.91 kB
+dist/assets/async-BxkU_5Ss.js                                  0.21 kB │ gzip:   0.17 kB
+dist/assets/desktop-BYVFiiOx.js                                0.42 kB │ gzip:   0.27 kB
+dist/assets/Welcome-BmQLgF9F.js                                1.43 kB │ gzip:   0.65 kB
+dist/assets/events-D4A4KpWH.js                                 2.58 kB │ gzip:   1.09 kB
+dist/assets/ScratchpadSection-BV0Ytqhg.js                      3.50 kB │ gzip:   1.30 kB
+dist/assets/BotContextMenu-CzwRif-2.js                         3.56 kB │ gzip:   1.55 kB
+dist/assets/use-model-oauth-signin-BNH_3-Xn.js                 3.75 kB │ gzip:   1.54 kB
+dist/assets/PeerMessagesOverlay-Df-Iq0oa.js                    6.67 kB │ gzip:   2.47 kB
+dist/assets/Auth-C8MjxpNy.js                                   8.85 kB │ gzip:   3.24 kB
+dist/assets/McpServersOverlay-Cn9yyfIC.js                      9.33 kB │ gzip:   3.18 kB
+dist/assets/Onboarding-BnaE5EHO.js                            11.55 kB │ gzip:   4.08 kB
+dist/assets/rpc-B4wCXBkp.js                                   11.86 kB │ gzip:   4.47 kB
+dist/assets/dist-BkK1X_yJ.js                                  11.95 kB │ gzip:   4.64 kB
+dist/assets/MessagingSettingsOverlay-BM1DDa2u.js              12.41 kB │ gzip:   3.45 kB
+dist/assets/KnowledgeSection-CUZyHESN.js                      17.44 kB │ gzip:   4.37 kB
+dist/assets/Artifacts-BqLftO30.js                             19.42 kB │ gzip:   5.54 kB
+dist/assets/PluginsOverlay-SBzvNOem.js                        20.94 kB │ gzip:   5.93 kB
+dist/assets/src-BSKVg49i.js                                   23.34 kB │ gzip:  10.72 kB
+dist/assets/messages-CkRO2Q4R.js                              39.67 kB │ gzip:  18.71 kB
+dist/assets/chunk-BV7QT456-DLbn5MRv.js                        40.09 kB │ gzip:  14.43 kB
+dist/assets/messages-BJPdYnSm.js                              40.18 kB │ gzip:  16.84 kB
+dist/assets/messages-NunCcbSz.js                              42.11 kB │ gzip:  18.26 kB
+dist/assets/messages-CexgUBir.js                              43.24 kB │ gzip:  18.28 kB
+dist/assets/messages-rlBOkvRv.js                              43.63 kB │ gzip:  18.31 kB
+dist/assets/messages-C6D8oPkW.js                              43.94 kB │ gzip:  18.38 kB
+dist/assets/SettingsOverlay-BJrATPRf.js                       44.26 kB │ gzip:  12.14 kB
+dist/assets/messages-DMz2RAs_.js                              45.80 kB │ gzip:  19.23 kB
+dist/assets/messages-yFv8aCTX.js                              46.42 kB │ gzip:  18.58 kB
+dist/assets/messages-D7Ji32DS.js                              59.00 kB │ gzip:  20.73 kB
+dist/assets/messages-B-Zy6HT9.js                              60.57 kB │ gzip:  20.09 kB
+dist/assets/src-COJq9jN-.js                                  175.81 kB │ gzip:  49.13 kB
+dist/assets/TerminalApp-HLv44iw5.js                          337.13 kB │ gzip:  85.50 kB
+dist/assets/plot-spec-YCWoShEW.js                            379.65 kB │ gzip: 127.48 kB
+dist/assets/index-B8C4lXJ5.js                                950.04 kB │ gzip: 279.85 kB
+dist/assets/src-CKDM5Lq6.js                                1,034.73 kB │ gzip: 131.14 kB
+
+✓ built in 3.31s
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 3.1s of this 3.3s build (93%).
+The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - @rolldown/plugin-babel transform (77%, 2.5s, 327 calls)
+Additional hook time came from the hooks below and from hooks under 1s.
+3 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - vite-plugin-lingui-load-catalog transform (10 calls)
+  - vite:css transform (7 calls)
+  - @tailwindcss/vite:generate:build transform (7 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.

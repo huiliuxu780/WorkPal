@@ -1,0 +1,12 @@
+# CHAT-CHROME-01 green summary
+
+- pnpm check: exit 0 (18/18)
+- unit/integration: 8 files, 71 tests passed
+- PostgreSQL: 2 files, 16 tests passed
+- web build: exit 0
+- biome changed files: exit 0 (6 pre-existing warnings)
+- scripted E2E + regressions: 7 passed
+- UI pagination E2E (100-message fixture): 1 passed
+- Java AgentScope + deterministic model fixture: 1 passed
+- Real DashScope qwen3.8-flash: 1 passed
+- Real DashScope qwen3.8-max: 1 passed

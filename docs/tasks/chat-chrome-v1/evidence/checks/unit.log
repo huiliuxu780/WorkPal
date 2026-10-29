@@ -1,0 +1,16 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m<worktree>[39m
+
+ [32m✓[39m apps/web/src/lib/message-bubble-shape.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/core/src/message-pages.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/ui-tokens/src/appearance.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/core/src/attachments.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m apps/api/src/thread-message-pages.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m apps/api/src/artifact-families.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/adapters/src/thread-artifacts.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m apps/api/src/artifacts.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m8 passed[39m[22m[90m (8)[39m
+[2m      Tests [22m [1m[32m71 passed[39m[22m[90m (71)[39m
+[2m   Start at [22m 01:20:59
+[2m   Duration [22m 1.69s[2m (transform 4.03s, setup 182ms, import 5.80s, tests 95ms, environment 1ms)[22m

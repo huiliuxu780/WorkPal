@@ -1,0 +1,3 @@
+  ✓  1 [chromium] › e2e/chat-chrome-v1.pagination.spec.ts:18:1 › old page restores stale state and opens the latest page (5.6s)
+::notice title=🎭 Playwright Run Summary::  1 passed (7.2s)
+  1 passed (7.2s)

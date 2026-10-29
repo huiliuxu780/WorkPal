@@ -1,6 +1,6 @@
 # 聊天交互验收对照图（挂在 chat-chrome-v1-acceptance.md）
 
-截图目录：`/workspace/WorkPal-room/acceptance/refs/`  
+截图目录：本任务目录下的 `refs/`
 源：宽度原型 v3 shots + cards-hifi-v3/v4
 
 ## 链路一眼看完

@@ -1,0 +1,4 @@
+  ✓  1 [chromium] › e2e/chat-chrome-v1.real-model.spec.ts:33:3 › real DashScope qwen3.8-flash publishes and updates a page (50.5s)
+  ✓  2 [chromium] › e2e/chat-chrome-v1.real-model.spec.ts:33:3 › real DashScope qwen3.8-max publishes and updates a page (27.9s)
+::notice title=🎭 Playwright Run Summary::  2 passed (1.3m)
+  2 passed (1.3m)
