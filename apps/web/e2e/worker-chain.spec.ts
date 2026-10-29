@@ -1222,7 +1222,7 @@ test("a Worker killed mid-Run parks chat admission in recovering without retryin
   }
 });
 
-test("a model failure stays attributable per attempt and never surfaces provider text", async ({
+test("a provider failure is recorded without its own text and the Run is stopped, not left running", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -1230,6 +1230,7 @@ test("a model failure stays attributable per attempt and never surfaces provider
   const db = createDb(process.env.DATABASE_URL!);
   let intro: Emulator | undefined;
   let task: Emulator | undefined;
+  let botId = "";
   try {
     await expect.poll(async () => (await workerStatus()).running).toBe(true);
     await assertTopologyHealth();
@@ -1240,15 +1241,15 @@ test("a model failure stays attributable per attempt and never surfaces provider
       "Worker Chain Model Failure",
     );
     intro = setup.intro;
-    const { botId } = setup;
+    botId = setup.botId;
     task = await startModelEmulator({
       apiKey,
-      // One error step per possible model call. A provider 5xx is re-driven by
-      // the product's recovery paths more often than the two-entry automatic
-      // retry budget (RUN_RETRY_DELAYS_MS) alone would suggest, so the count is
-      // generous rather than exact; no assertion below depends on it.
+      // A handful of identical error replies. The count is not asserted: how
+      // often a failing Run gets re-driven is the recovery paths' behaviour, is
+      // the subject of a separate defect, and must not become this test's
+      // contract. assertComplete is deliberately not called for the same reason.
       steps: Array.from(
-        { length: 12 },
+        { length: 4 },
         (): ModelEmulatorStep => ({
           expect(request) {
             expect(JSON.stringify(request.messages)).toContain(MODEL_FAILURE_MARKER);
@@ -1266,29 +1267,54 @@ test("a model failure stays attributable per attempt and never surfaces provider
     const thread = await db.prisma.thread.findUniqueOrThrow({ where: { botId } });
     const created = await waitUserRun(db, thread.id);
 
-    // This deliberately does not wait for a terminal Run status. A persistently
-    // failing model is re-driven well past the automatic retry budget, so when
-    // the Run settles belongs to the recovery paths, not to this test's claim,
-    // and settling is not what makes the failure attributable. What is asserted
-    // is that the failure is recorded per attempt and that the provider's own
-    // words never reach persisted, user-visible state.
+    // One real provider failure, observed as a persisted error on this thread.
+    // Scoped to the thread rather than to the first Run because which Run the
+    // failure lands on belongs to the recovery paths, not to this test.
+    const persistedErrors = async () => {
+      const runs = await db.prisma.run.findMany({
+        where: { threadId: thread.id },
+        select: { id: true, error: true },
+      });
+      const attempts = await db.prisma.attempt.findMany({
+        where: { runId: { in: runs.map((run) => run.id) } },
+        select: { error: true },
+      });
+      return [...runs.map((run) => run.error), ...attempts.map((attempt) => attempt.error)].filter(
+        (error): error is string => typeof error === "string" && error.length > 0,
+      );
+    };
     await expect
-      .poll(async () => db.prisma.attempt.count({ where: { runId: created.id } }), {
+      .poll(async () => (await persistedErrors()).length, {
         timeout: 120_000,
-        message: "the failing Run must be attempted more than once",
+        message: "the provider failure must be recorded on the Run or one of its attempts",
       })
-      .toBeGreaterThan(1);
-
-    const attempts = await db.prisma.attempt.findMany({ where: { runId: created.id } });
-    const run = await db.prisma.run.findUniqueOrThrow({ where: { id: created.id } });
+      .toBeGreaterThan(0);
     expect(task.requests.length, "the model fixture answered the failing Run").toBeGreaterThan(0);
-    for (const attempt of attempts) {
-      expect(attempt.error ?? "").not.toContain(MODEL_FAILURE_SECRET);
-      expect(attempt.error ?? "").not.toContain(MODEL_FAILURE_HOST);
+
+    const errors = await persistedErrors();
+    for (const error of errors) {
+      expect(error).not.toContain(MODEL_FAILURE_SECRET);
+      expect(error).not.toContain(MODEL_FAILURE_HOST);
     }
-    expect(run.error ?? "").not.toContain(MODEL_FAILURE_SECRET);
-    expect(run.error ?? "").not.toContain(MODEL_FAILURE_HOST);
+
+    // Stop through the product's own path and prove the Run does not keep
+    // running behind the test: nothing may call the model again afterwards.
+    await rpc(page, "threads/stop", { botId });
+    await expect
+      .poll(
+        async () =>
+          db.prisma.run.count({
+            where: { threadId: thread.id, status: { notIn: ["completed", "failed", "cancelled"] } },
+          }),
+        { timeout: 90_000, message: "every Run of the thread must reach a terminal state" },
+      )
+      .toBe(0);
+    const requestsAtStop = task.requests.length;
+    await page.waitForTimeout(10_000);
+    expect(task.requests.length, "no model call may follow the stop").toBe(requestsAtStop);
+    expect(created.id).toBeTruthy();
   } finally {
+    if (botId) await rpc(page, "threads/stop", { botId }).catch(() => undefined);
     await task?.close();
     await intro?.close();
     await db.prisma.$disconnect();
