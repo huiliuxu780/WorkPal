@@ -1,8 +1,8 @@
 # CARD-01E delivery record
 
-状态：`in-progress`（复审发现的 Attention total、请求内全量投影和 UTF-16 长度语义问题均已修复；本地门禁在最终提交全绿，等待负责人复审；PR 未创建，生产 gate 仍关闭）
+状态：`in-progress`（PR #154 复审发现的 Attention input mode 资格问题已修复并证红转绿；等待最终 head CI，生产 gate 仍关闭）
 
-- 任务书：`docs/tasks/second-batch-20261028/CARD-01E.md`（第二批；该目录在主工作区未跟踪，本分支不新增）+ [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
+- 任务书：[第二批 CARD-01E](../tasks/second-batch-20261028/CARD-01E.md) + [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
 - 分支：`codex/card-system-completion`
 - 基线：`a29c71123d50929faa05d2df588f487169eaad79`（最新本地 `origin/main`，PR #149 后；分支已 rebase 到该点。原始红基线 A/B 使用 `8054cac`）
 - 门禁 head：本次 UTF-16 资格修复提交（持久化 renderable + UTF-16 长度语义 + 迁移回填用例；代码、测试、文档与证据在同一提交）
@@ -35,7 +35,7 @@
 - **FIX-127 后的过期 E2E 断言**：`apps/web/e2e/approval-resume.spec.ts` 仍期待“回答后再次提问”的旧脚本行为，自 `b08c6e1`（FIX-127）起与持久化 Runtime 契约相反。已在 base `8054cac` 上复现同一红，再按“回答后同一 Run 完成、不再产生第二张 pending 卡”更新断言；更新后通过。
 - **UTF-16 长度语义**：复审复现 plan goal 600 个 emoji——PostgreSQL `length()` 算 600（码点），Zod `.max(1000)` 算 1200（UTF-16 单元），导致 `renderable=true` 但投影拒绝。新增 `attention_utf16_length` 并替换 plan/membership 所有长度限制；astral 回归覆盖 goal/item id/title/feedback/membership text/detail/credential name/origin，旧码点语义红、新语义 `renderable=false` 且 total 不增。
 - **choice 答案 label**：真模型验证暴露 selected choice 恢复时把 `choice-N` wire id 交给模型（用户选 Berlin，`qwen3.8-max` 回复 Seoul）。`resumeAnswerFromAsk` 现在只把 choice 的 id 解析成 label；free-text、approval/plan/budget action id 保持原样。单测 4/4，max 复跑回复 Berlin。
-- **Attention total 与严格投影同资格（持久化资格位）**：复审复现 `items=0,total=1`；第二版复审指出“请求内读取并分批投影全部复杂 pending 行”仍违反规模边界。新迁移 `20261028230000_attention_renderable_projection` 给投影表加 `renderable`，由 interventions / membership 触发器用 SQL 严格校验器维护并回填历史行；读路径只过滤 `renderable` + 动态 SQL，**不再在请求里物化全部复杂 pending 行**。PG 回归：旧实现 total 多 4，新实现持平；删掉 `renderable` 过滤的变异 total 多 3 转红；attention 17/17。
+- **Attention total 与严格投影同资格（持久化资格位）**：复审复现 `items=0,total=1`；第二版复审指出“请求内读取并分批投影全部复杂 pending 行”仍违反规模边界。新迁移 `20261028230000_attention_renderable_projection` 给投影表加 `renderable`，由 interventions / membership 触发器用 SQL 严格校验器维护并回填历史行；读路径只过滤 `renderable` + 动态 SQL，**不再在请求里物化全部复杂 pending 行**。PR #154 复审再补 input mode 资格：只允许 `text`、`secret`，或带可用 action 的 `choice`；`NULL`/未知模式不再计入 total。PG 同一回归旧实现多算 2，新实现 attention 18/18。
 
 ### 3. Gate 与兼容
 

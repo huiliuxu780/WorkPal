@@ -53,7 +53,7 @@ Branch: `codex/card-system-completion`
 `logs/` 中：
 
 - `attention-postgres.txt`：`VERIFY_DATABASE=1 pnpm exec vitest run packages/db/src/attention.postgres.test.ts` → **18/18**。
-- `attention-total-red-green.txt`：不可投影 pending 行（无 plan、坏 plan content、无 action 的 choice、无 effect/无 membership 的 approval、坏 membership presentation）在旧实现红（total 多 4）；持久化 `renderable` 资格绿；删掉 `renderable` 过滤的变异红（total 多 3）。
+- `attention-total-red-green.txt`：不可投影 pending 行（无 plan、坏 plan content、无 action 的 choice、`inputMode` 为空或未知、无 effect/无 membership 的 approval、坏 membership presentation）在旧实现转红；持久化 `renderable` 与严格 input mode 资格转绿；删掉 `renderable` 过滤的变异红。
 - `attention-renderable-migration.txt`：迁移回填测试 1/1（旧投影 → 新迁移后 renderable 正确）。
 - `attention-utf16-red-green.txt`：SQL 码点长度 vs UTF-16 单元的红绿（astral plan/membership 回归与字段矩阵）。
 - `attention-mutation-expiry.txt`：删掉 `expiresAt` 过滤后，过期即时退出用例转红。

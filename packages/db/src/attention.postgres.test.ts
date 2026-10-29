@@ -919,6 +919,10 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     });
     // Choice input whose action list has no usable id.
     await drop("input", { inputMode: "choice" });
+    // Historical or malformed input modes are not representable by the strict
+    // card projector and must not inflate the badge count.
+    await drop("input", {});
+    await drop("input", { inputMode: "unsupported" });
     // Approval without an ExternalEffect or a RT-12 membership request.
     await drop("approval", {});
 

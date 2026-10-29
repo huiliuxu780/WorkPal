@@ -277,19 +277,22 @@ function durableFilters(input: {
       OR (
         intervention."kind" = 'input'
         AND (
-          intervention."inputMode" IS DISTINCT FROM 'choice'
-          OR EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements(
-              CASE
-                WHEN jsonb_typeof(intervention."inputActions") = 'array'
-                  THEN intervention."inputActions"
-                ELSE '[]'::jsonb
-              END
-            ) AS action
-            WHERE jsonb_typeof(action) = 'object'
-              AND jsonb_typeof(action -> 'id') = 'string'
-              AND length(action ->> 'id') > 0
+          intervention."inputMode" IN ('text', 'secret')
+          OR (
+            intervention."inputMode" = 'choice'
+            AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                CASE
+                  WHEN jsonb_typeof(intervention."inputActions") = 'array'
+                    THEN intervention."inputActions"
+                  ELSE '[]'::jsonb
+                END
+              ) AS action
+              WHERE jsonb_typeof(action) = 'object'
+                AND jsonb_typeof(action -> 'id') = 'string'
+                AND length(action ->> 'id') > 0
+            )
           )
         )
       )
