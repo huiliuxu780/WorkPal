@@ -34,7 +34,7 @@
 - **过期/归档/失权即时退出**：`attention.postgres.test.ts` 新增过期即时移除、群内发卡 Bot 归档、目标群失去管理权限三个用例；总数在三种情况下都精确回落。
 - **FIX-127 后的过期 E2E 断言**：`apps/web/e2e/approval-resume.spec.ts` 仍期待“回答后再次提问”的旧脚本行为，自 `b08c6e1`（FIX-127）起与持久化 Runtime 契约相反。已在 base `8054cac` 上复现同一红，再按“回答后同一 Run 完成、不再产生第二张 pending 卡”更新断言；更新后通过。
 - **choice 答案 label**：真模型验证暴露 selected choice 恢复时把 `choice-N` wire id 交给模型（用户选 Berlin，`qwen3.8-max` 回复 Seoul）。`resumeAnswerFromAsk` 现在只把 choice 的 id 解析成 label；free-text、approval/plan/budget action id 保持原样。单测 4/4，max 复跑回复 Berlin。
-- **Attention total 与严格投影同资格**：复审复现 `items=0,total=1`——SQL 先数投影行、严格投影随后丢弃不可渲染行。现在 `durableFilters` 把结构性不可渲染条件放进 count 和分页共用的 SQL；plan review / 成员审批的嵌套 payload 在同一快照内批量严格校验并从 total 扣除。历史回填的坏行既不显示也不计数。PostgreSQL 回归：旧实现 total 比基线多 4，新实现持平；attention 套件 17/17。
+- **Attention total 与严格投影同资格（持久化资格位）**：复审复现 `items=0,total=1`；第二版复审指出“请求内读取并分批投影全部复杂 pending 行”仍违反规模边界。新迁移 `20261028230000_attention_renderable_projection` 给投影表加 `renderable`，由 interventions / membership 触发器用 SQL 严格校验器维护并回填历史行；读路径只过滤 `renderable` + 动态 SQL，**不再在请求里物化全部复杂 pending 行**。PG 回归：旧实现 total 多 4，新实现持平；删掉 `renderable` 过滤的变异 total 多 3 转红；attention 17/17。
 
 ### 3. Gate 与兼容
 
@@ -111,7 +111,7 @@ Attention 变异验证（`logs/attention-mutation-*.txt`）：
 
 ## 已知限制
 
-- Attention 的 `total` 与分页共用同一资格规则；成本 ∝ 当前 pending 投影行数（即用户待处理队列本身），plan review/成员审批的嵌套严格校验只物化这两类行，不是 O(1)。消息内审批仍按 pending 块集合读取（GIN 命中，不随历史消息量增长）。详见 [attention query bounds](./attention-query-bounds.md#6-card-01e-落地2026-10-28)。
+- Attention 的 `total` 与分页共用持久化资格位 + 动态 SQL；请求路径不加载全部 pending 候选，成本 ∝ 当前 pending 投影行数（即用户待处理队列本身），不是 O(1)。plan review/成员审批的严格校验在写入/回填时固化，需与 TS strict 契约同步。消息内审批仍按 pending 块集合读取（GIN 命中，不随历史消息量增长）。详见 [attention query bounds](./attention-query-bounds.md#6-card-01e-落地2026-10-28)。
 - 本机真模型补充验证：AgentScope Java Runtime + DashScope `qwen3.8-flash` 与 `qwen3.8-max`，`card-real-model.spec.ts` 1/1 通过；该 spec 需要 `REAL_MODEL_API_KEY` 才执行，CI/无 key 环境跳过。其余 E2E 使用仓库 deterministic scripted runtime，API/Worker/PostgreSQL/Web 都是真实进程。
 - 视觉证据是实际页面截图与批准原型的人工并排检查，仓库当前没有 `toHaveScreenshot` 像素基线，因此不是像素级 diff。
 - 生产 gate 是否开启由产品负责人决定；本分支保持 `false`。

@@ -900,13 +900,59 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
 
     // Plan review without its embedded content: the strict projector returns
     // null, so it must not inflate the badge.
-    await drop("plan_review", {});
+    const missingPlan = await drop("plan_review", {});
     // Plan review with a content object that fails the strict plan schema.
-    await drop("plan_review", { planReview: { content: {} } });
+    const malformedPlan = await drop("plan_review", { planReview: { content: {} } });
     // Choice input whose action list has no usable id.
     await drop("input", { inputMode: "choice" });
     // Approval without an ExternalEffect or a RT-12 membership request.
     await drop("approval", {});
+
+    // A membership approval whose request presentation fails the strict
+    // projection: the request trigger must persist renderable=false.
+    const membershipRun = await taskRun(dmThreadId, "Unrenderable membership");
+    const membershipMessage = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Unrenderable membership", status: "pending" },
+    ]);
+    const membershipGroup = await prisma.chatGroup.create({
+      data: { spaceId, userId: ownerId, kind: "standard", name: "Unrenderable join" },
+    });
+    const membership = await pendingIntervention({
+      threadId: dmThreadId,
+      runId: membershipRun.id,
+      messageId: membershipMessage.id,
+      kind: "approval",
+      presentation: { text: "Unrenderable membership" },
+    });
+    unrenderable.push(membership.id);
+    await prisma.groupMembershipRequest.create({
+      data: {
+        id: randomUUID(),
+        spaceId,
+        userId: ownerId,
+        botId: bot.id,
+        groupId: membershipGroup.id,
+        groupName: membershipGroup.name,
+        sourceThreadId: dmThreadId,
+        sourceRunId: membershipRun.id,
+        cardMessageId: membershipMessage.id,
+        interventionId: membership.id,
+        deliveryKey: randomUUID(),
+        requestRevision: 1,
+        message: "Check the build.",
+        presentation: { text: "Add Scout", extra: true } as never,
+      },
+    });
+    const flags = await prisma.attentionIntervention.findMany({
+      where: { interactionId: { in: unrenderable } },
+      select: { interactionId: true, renderable: true },
+    });
+    const hiddenFlags = new Set(
+      flags.filter((row) => !row.renderable).map((row) => row.interactionId),
+    );
+    expect(hiddenFlags.has(missingPlan.id)).toBe(true);
+    expect(hiddenFlags.has(malformedPlan.id)).toBe(true);
+    expect(hiddenFlags.has(membership.id)).toBe(true);
 
     const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
     expect(after.total).toBe(before.total);
@@ -928,6 +974,9 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     } while (cursor);
     expect(ids.filter((id) => unrenderable.includes(id))).toEqual([]);
 
+    await prisma.groupMembershipRequest.deleteMany({
+      where: { interventionId: { in: unrenderable } },
+    });
     await prisma.intervention.deleteMany({ where: { id: { in: unrenderable } } });
   });
 

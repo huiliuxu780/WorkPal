@@ -158,14 +158,12 @@ export async function loadAttentionPage(
  * loads those Intervention rows, their effect statuses, and the RT-12 facts for
  * the rows it will actually render.
  *
- * `total` uses the same eligibility rule as the page query. The SQL predicate
- * covers the structural cases (pending kind, choice actions, approval source,
- * current thread/bot/group, expiry, membership permission); the two complex
- * projections (plan reviews and RT-12 membership approvals) carry nested
- * payloads that only the strict TypeScript projector can validate, so those
- * rows are validated in batches and subtracted from the SQL count. A
- * historical row that cannot render therefore disappears from both the page and
- * the badge instead of inflating the count.
+ * `total` uses the same eligibility rule as the page query. Static
+ * renderability (plan-review content, membership presentation) is persisted in
+ * `attention_interventions.renderable` by the database triggers; dynamic facts
+ * (thread/bot/group archival, expiry, membership permission, effect status)
+ * stay in this SQL predicate. No request path loads or projects the full
+ * pending set in Node.
  */
 async function loadDurableAttention(
   tx: Prisma.TransactionClient,
@@ -182,9 +180,7 @@ async function loadDurableAttention(
     ${durableFrom(input)}
     WHERE ${durableFilters({ ...input, cursor: null })}
   `);
-  const eligibleCount = Number(countRows[0]?.count ?? 0);
-  const unrenderable = eligibleCount > 0 ? await countUnrenderableComplex(tx, input) : 0;
-  const total = Math.max(eligibleCount - unrenderable, 0);
+  const total = Number(countRows[0]?.count ?? 0);
   if (total === 0) return { items: [], total: 0 };
 
   const wanted = input.limit + 1;
@@ -229,48 +225,6 @@ function durableFrom(input: { spaceId: string; userId: string }): Prisma.Sql {
   `;
 }
 
-/**
- * Plan reviews and membership approvals are the only pending rows whose strict
- * projection depends on nested JSON. Validate every such row in the user's
- * eligible set (not just the page) so `total` cannot include a card the page
- * will drop. Other kinds are fully decided by the SQL eligibility predicate.
- */
-async function countUnrenderableComplex(
-  tx: Prisma.TransactionClient,
-  input: {
-    spaceId: string;
-    userId: string;
-    now: Date;
-  },
-): Promise<number> {
-  const rows = await tx.$queryRaw<DurableProjectionRow[]>(Prisma.sql`
-    SELECT ai."interactionId", ai."expiresAt", ai."attentionAt"
-    ${durableFrom(input)}
-    WHERE ${durableFilters({ ...input, cursor: null })}
-      AND (
-        intervention."kind" = 'plan_review'
-        OR (
-          intervention."kind" = 'approval'
-          AND (
-            intervention."effectId" IS NULL
-            OR EXISTS (
-              SELECT 1 FROM "group_membership_requests" AS request
-              WHERE request."interventionId" = intervention."id"
-            )
-          )
-        )
-      )
-  `);
-  let unrenderable = 0;
-  const batchSize = 200;
-  for (let index = 0; index < rows.length; index += batchSize) {
-    const batch = rows.slice(index, index + batchSize);
-    const items = await projectDurableRows(tx, batch, input.spaceId);
-    unrenderable += batch.length - items.length;
-  }
-  return unrenderable;
-}
-
 function durableFilters(input: {
   spaceId: string;
   userId: string;
@@ -301,12 +255,12 @@ function durableFilters(input: {
         )
     )
   )`;
-  // The one eligibility rule shared by count, complex validation and paging.
-  // Anything the strict projector can reject without reading nested JSON is
-  // excluded here; plan reviews and membership payloads are validated in
-  // countUnrenderableComplex.
+  // The one eligibility rule shared by count and paging. Static renderability
+  // (plan reviews, membership presentations) is persisted in
+  // `attention_interventions.renderable`; dynamic facts stay here.
   const eligible = Prisma.sql`(
-    intervention."status" = 'pending'
+    ai."renderable" = TRUE
+    AND intervention."status" = 'pending'
     AND intervention."kind" IN ('input', 'approval', 'plan_review')
     AND length(intervention."id") > 0
     AND length(intervention."spaceId") > 0

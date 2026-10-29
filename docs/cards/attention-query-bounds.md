@@ -55,22 +55,22 @@
 
 CARD-01E 按方案 B 落地持久化读模型，并把查询边界写进测试：
 
-- 新表 `attention_interventions`（迁移 `20261028210000_attention_intervention_projection`）只保存 pending 持久 Intervention 的 frozen 排序元组：`interactionId / spaceId / userId / threadId / botId / kind / attentionAt / expiresAt`。由 `interventions_attention_projection` 行级触发器维护，`userId` 从所属 Run 派生；触发器同时覆盖当前和后续写入路径、`createMany/deleteMany` 以及迁移时的回填，不依赖某一条 TypeScript 结算路径。Intervention 离开 `pending` 的同一事务会删除投影行。
+- 新表 `attention_interventions`（迁移 `20261028210000_attention_intervention_projection`）保存 pending 持久 Intervention 的 frozen 排序元组：`interactionId / spaceId / userId / threadId / botId / kind / attentionAt / expiresAt`；复审修复的 `20261028230000_attention_renderable_projection` 增加持久化的 `renderable` 资格位。由 `interventions_attention_projection` 行级触发器维护，`userId` 从所属 Run 派生；触发器同时覆盖当前和后续写入路径、`createMany/deleteMany` 以及迁移时的回填，不依赖某一条 TypeScript 结算路径。Intervention 离开 `pending` 的同一事务会删除投影行。
 - 读路径 `packages/db/src/attention.ts:loadDurableAttention`：分页是投影表上的 keyset 切片（`expiresAt ASC NULLS LAST → attentionAt ASC → interactionId ASC`），`total` 是对同一过滤条件的精确 `COUNT(*)`；只有当前页的 Interaction 行、effect 状态和 RT-12 membership facts 会被加载。整个读取在同一 `RepeatableRead` 事务快照内完成，避免计数与分页在结算并发下答出不同快照。用户线程可见性、Bot 归档、目标群成员管理权限和 `expiresAt` 都在 SQL 内过滤，过期条目在 timeout job 结算前就不再出现在队列。
 - 其余三类来源保持「当前事实」有界读取：可见线程上的活跃 Run（takeover/return）、活跃委托 Run 的 origin 链（深度上限 8）、以及经 `messages_blocks_gin` 命中的 pending 业务审批。它们不读取普通 Run 历史，也不把已完成消息当候选。
-- 证据：`packages/db/src/attention.postgres.test.ts` 的 520 行分页/精确 total、分页锚点结算后继续、过期即时移除、归档 Bot（含群内 post bot）、失去群管理权限、5,001 条历史消息下 `EXPLAIN (ANALYZE, BUFFERS)` 走 `messages_blocks_gin` 且扫描 <500 行，以及 520 行 pending 投影的第一页 `EXPLAIN` 走 `attention_interventions_user_order` 且扫描 <100 行。整套 15/15。
+- 证据：`packages/db/src/attention.postgres.test.ts` 的 520 行分页/精确 total、分页锚点结算后继续、过期即时移除、归档 Bot（含群内 post bot）、失去群管理权限、5,001 条历史消息下 `EXPLAIN (ANALYZE, BUFFERS)` 走 `messages_blocks_gin` 且扫描 <500 行，以及 520 行 pending 投影的第一页 `EXPLAIN` 走 `attention_interventions_user_order` 且扫描 <100 行。整套 17/17。
 
 ### 资格统一（2026-10-28 复审修复）
 
 `total`、分页和严格投影现在使用同一套资格规则，不再先统计后丢弃：
 
 - `durableFilters` 在 SQL 里排除结构性不可渲染行：非 pending、未知 kind、空 ID/非法 revision、过期、不可见线程/Bot/群、失去管理权限的成员审批、没有 ExternalEffect 且没有 RT-12 请求的 approval、没有可用 action id 的 choice input。分页查询直接使用该条件，这些行不会进入页。
-- plan review 与 RT-12 成员审批带有嵌套 JSON，只有 strict TypeScript 投影能判定合法性。`countUnrenderableComplex` 在同一个 `RepeatableRead` 快照内取出这两类复杂行（不只是当前页），批量跑 `projectDurableRows`，把投影失败数从 SQL 计数扣除。历史/回填的坏行因此既不出现在页里，也不抬高角标。
-- 回归：`attention.postgres.test.ts` 新增“不可投影 pending 行不增加 total”用例（无 plan 内容、坏 plan content、无 action 的 choice、无 effect/无 membership 的 approval）；旧实现红（total 比基线多 4），新实现绿。全套 17/17。
+- plan review 与 RT-12 成员审批的嵌套 JSON 在写入侧固化：`20261028230000_attention_renderable_projection` 增加 `attention_interventions.renderable`，`sync_attention_intervention` / `sync_attention_membership` 触发器用 SQL 严格校验器（`attention_plan_review_valid`、`attention_membership_renderable`）维护；迁移回填所有历史投影行。读路径只做 `ai.renderable = TRUE` + 动态事实过滤，**不再在请求里读取、分批或投影全部复杂 pending 行**，进程内存只与当前页有关。
+- 回归：`attention.postgres.test.ts` 的“不可投影 pending 行不增加 total”覆盖无 plan 内容、坏 plan content、无 action 的 choice、无 effect/无 membership 的 approval、坏 membership presentation；旧实现红（total 比基线多 4），持久化资格绿；再删掉读路径的 `renderable` 过滤做变异，total 多 3 转红。全套 17/17。
 
 本方案仍有明确残余，不写成 O(1)：
 
 - `total` 的 `COUNT(*)` 是窄表索引扫描，成本 ∝ 当前 pending 投影行数（仍是用户待处理队列本身），不是与队列规模无关的常数；要 O(1) 需要写侧维持计数器，本卡不承担。
-- plan review / 成员审批的严格校验会物化这两类 pending 行（通常远少于全部 pending）；text/secret input 与 effect approval 不进入该校验。
+- SQL 严格校验器与 TypeScript strict 契约必须保持同步；回归覆盖 plan/membership 的已知坏形态，新增卡片字段时需要同时更新校验器和用例。
 - 消息内业务审批的候选仍来自 GIN 命中集合；命中量 ∝ pending 审批块数（不是历史消息数）。它们没有持久化投影。
 - 投影触发器要求所属 Run 行存在（缺失会抛错，而不是静默漏行）；这是数据完整性前提，不是兼容分支。

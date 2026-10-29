@@ -1283,6 +1283,8 @@ model AttentionIntervention {
   kind          String
   attentionAt   DateTime
   expiresAt     DateTime?
+  /// Strict-renderability decided by the intervention/membership triggers.
+  renderable    Boolean   @default(true)
 
   @@index([userId, spaceId, expiresAt, attentionAt, interactionId])
   @@index([threadId])

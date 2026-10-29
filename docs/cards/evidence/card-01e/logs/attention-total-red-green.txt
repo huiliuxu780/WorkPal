@@ -1,7 +1,11 @@
-Red baseline: old attention.ts (HEAD ba4bed4) with the new regression
- FAIL  packages/db/src/attention.postgres.test.ts > CARD-01D attention query (PostgreSQL) > does not count pending rows the strict projection cannot render
+Red baseline: old attention.ts before the eligibility fix + the new regression
+FAIL  packages/db/src/attention.postgres.test.ts > CARD-01D attention query (PostgreSQL) > does not count pending rows the strict projection cannot render
 AssertionError: expected 4 to be +0 // Object.is equality
- Test Files  1 failed (1)
 
-Green: new eligibility rule
- Test Files  1 passed (1)
+Green: persisted renderable eligibility
+Test Files  1 passed (1)
+Tests  17 passed (17)
+
+Mutation: remove ai.renderable from the read predicate
+FAIL  packages/db/src/attention.postgres.test.ts > CARD-01D attention query (PostgreSQL) > does not count pending rows the strict projection cannot render
+AssertionError: expected 3 to be +0 // Object.is equality
