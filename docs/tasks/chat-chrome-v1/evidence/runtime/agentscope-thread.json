@@ -1,0 +1,160 @@
+{
+  "source": "Java AgentScope E2E with deterministic OpenAI-compatible model fixture",
+  "threadId": "cmvttaed700050kx0uklmb27c",
+  "run": {
+    "id": "cmvttag1p001c0kx0713gchh3",
+    "status": "completed",
+    "trigger": "user",
+    "modelProvider": "openai-compatible",
+    "modelId": "offline-fixture",
+    "botId": "a32e7edc-c81a-4581-b064-336b7c916c4c",
+    "botName": "Chief",
+    "createdAt": "2026-10-29T17:22:57.853Z",
+    "completedAt": "2026-10-29T17:22:58.191Z"
+  },
+  "artifactFamily": {
+    "familyId": "cmvttafmc000z0kx0yishz8bj",
+    "latestPublishedArtifactId": "cmvttag96001p0kx0wa5h1qpe",
+    "latestPublishedVersion": 2,
+    "versions": [
+      {
+        "id": "cmvttafmc000z0kx0yishz8bj",
+        "rootArtifactId": "cmvttafmc000z0kx0yishz8bj",
+        "version": 1,
+        "runId": "cmvttafcf000m0kx0g3zgvwna",
+        "name": "report.html",
+        "mimeType": "text/html",
+        "size": 86,
+        "createdAt": "2026-10-29T17:22:57.300Z"
+      },
+      {
+        "id": "cmvttag96001p0kx0wa5h1qpe",
+        "rootArtifactId": "cmvttafmc000z0kx0yishz8bj",
+        "version": 2,
+        "runId": "cmvttag1p001c0kx0713gchh3",
+        "name": "report.html",
+        "mimeType": "text/html",
+        "size": 86,
+        "createdAt": "2026-10-29T17:22:58.122Z"
+      }
+    ]
+  },
+  "messages": [
+    {
+      "id": "cmvttaeer000b0kx0okm5ztb4",
+      "seq": 0,
+      "role": "bot",
+      "runId": null,
+      "createdAt": "2026-10-29T17:22:55.731Z",
+      "blocks": [
+        {
+          "kind": "choice"
+        }
+      ]
+    },
+    {
+      "id": "cmvttaf4a000g0kx078zcja3f",
+      "seq": 1,
+      "role": "bot",
+      "runId": "cmvttaedj00090kx0hoor3cwo",
+      "createdAt": "2026-10-29T17:22:56.650Z",
+      "blocks": [
+        {
+          "kind": "text",
+          "text": "Ready to help."
+        }
+      ]
+    },
+    {
+      "id": "cmvttafcd000k0kx0751zd462",
+      "seq": 2,
+      "role": "user",
+      "runId": "cmvttafcf000m0kx0g3zgvwna",
+      "createdAt": "2026-10-29T17:22:56.941Z",
+      "blocks": [
+        {
+          "kind": "text",
+          "text": "Publish report A as report.html and attach it."
+        }
+      ]
+    },
+    {
+      "id": "cmvttafmi00110kx0s5mxhfiy",
+      "seq": 3,
+      "role": "bot",
+      "runId": "cmvttafcf000m0kx0g3zgvwna",
+      "createdAt": "2026-10-29T17:22:57.306Z",
+      "blocks": [
+        {
+          "kind": "file",
+          "artifactId": "cmvttafmc000z0kx0yishz8bj",
+          "rootArtifactId": "cmvttafmc000z0kx0yishz8bj",
+          "version": 1,
+          "latestVersion": 1
+        }
+      ]
+    },
+    {
+      "id": "cmvttafos00170kx0egx9p175",
+      "seq": 4,
+      "role": "bot",
+      "runId": "cmvttafcf000m0kx0g3zgvwna",
+      "createdAt": "2026-10-29T17:22:57.388Z",
+      "blocks": [
+        {
+          "kind": "steps"
+        },
+        {
+          "kind": "text",
+          "text": "Published report A."
+        }
+      ]
+    },
+    {
+      "id": "cmvttag1n001a0kx03kd9fa54",
+      "seq": 5,
+      "role": "user",
+      "runId": "cmvttag1p001c0kx0713gchh3",
+      "createdAt": "2026-10-29T17:22:57.851Z",
+      "blocks": [
+        {
+          "kind": "text",
+          "text": "Update report B in the same report.html and attach it."
+        }
+      ]
+    },
+    {
+      "id": "cmvttag9c001r0kx011kawhtz",
+      "seq": 6,
+      "role": "bot",
+      "runId": "cmvttag1p001c0kx0713gchh3",
+      "createdAt": "2026-10-29T17:22:58.128Z",
+      "blocks": [
+        {
+          "kind": "file",
+          "artifactId": "cmvttag96001p0kx0wa5h1qpe",
+          "rootArtifactId": "cmvttafmc000z0kx0yishz8bj",
+          "version": 2,
+          "latestVersion": 2
+        }
+      ]
+    },
+    {
+      "id": "cmvttagb9001x0kx0gr743aab",
+      "seq": 7,
+      "role": "bot",
+      "runId": "cmvttag1p001c0kx0713gchh3",
+      "createdAt": "2026-10-29T17:22:58.197Z",
+      "blocks": [
+        {
+          "kind": "steps"
+        },
+        {
+          "kind": "text",
+          "text": "Updated report B."
+        }
+      ]
+    }
+  ],
+  "note": "Persisted blocks show the version each message carried. The read projection backfills latestVersion from published family rows; see the PostgreSQL projection test."
+}

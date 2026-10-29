@@ -1,0 +1,15 @@
+请用 Chrome / Edge / Safari 打开本文件夹里的：
+
+  index-v3-standalone.html   ← 推荐：双击即可，不需要联网、不需要其它文件
+
+或（需同目录有 icons.js / avatar*.svg / geist.woff2）：
+  index-v3.html              ← 提案 v3 全量
+  index-v2.html              ← 上一版宽度提案
+  index.html?mode=before     ← 现状
+  compare-v3.html            ← 左右对比：现状 vs v3 全量
+
+操作提示：
+  · 悬停消息气泡旁 → 反应 / 回复 / 更多
+  · 悬停页面卡、文件卡、交付卡 → 阴影抬起；整卡可点
+  · 点旧页面卡、「已在下方更新」、或气泡里的文档 chip → 满屏详情（只看最新，无版本侧栏）
+  · Esc 或点遮罩关闭弹窗

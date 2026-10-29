@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WorkPal 卡片全家福 · cards_unified_v2</title>
+<style>
+@font-face{font-family:Geist;src:local("Geist"),local("Geist Variable");font-weight:100 900;font-display:swap}
+:root{
+  --tx:#1c1c1c;--tx2:#1c1c1cad;--tx3:#1c1c1c8f;--tx4:#1c1c1c66;--inv:#fcfcfc;
+  --fill:#1c1c1c0f;--fill-dis:#1c1c1c0a;--fill-hov:#1c1c1c1a;
+  --ln2:#1c1c1c1f;--ln3:#1c1c1c14;--ln4:#1c1c1c0f;
+  --accent:#1680f3;--accent-tx:#0b6dd3;--accent-bg:#1e86fc17;
+  --ok:#00854a;--ok-bg:#00854a17;
+  --err:#cd2834;--err-bg:#fb2b3e17;
+  --elev:#fff;--cw:704px;
+  --page:#fff;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--page);color:var(--tx);
+  font:13px/18px Geist,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif;
+  -webkit-font-smoothing:antialiased;padding:0 0 80px}
+code,.kind{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+
+/* page chrome */
+header.top{padding:36px 0 18px;border-bottom:1px solid var(--ln4)}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600}
+h1 small{display:block;font-size:13px;line-height:20px;font-weight:400;color:var(--tx2);margin-top:4px}
+.frozen{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.frozen span{font-size:12px;line-height:16px;background:var(--fill);border-radius:9999px;padding:3px 10px;color:var(--tx2)}
+.frozen span.no{color:var(--tx4);text-decoration:line-through}
+.wbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0 0;padding:10px 12px;background:var(--fill);border-radius:12px}
+.wbar .lbl{font-size:12px;color:var(--tx3)}
+.wbtn{font:inherit;font-size:12px;height:26px;padding:0 12px;border:0;border-radius:13px;background:transparent;color:var(--tx3);cursor:pointer}
+.wbtn.on{background:var(--tx);color:var(--inv);font-weight:500}
+.wbtn.ghost{opacity:.55}
+.wbar .hint{font-size:11px;color:var(--tx4);margin-left:auto}
+
+nav.toc{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--ln4);margin:0 -28px;padding:10px 28px;display:flex;gap:6px;flex-wrap:wrap}
+nav.toc a{font-size:12px;line-height:16px;text-decoration:none;color:var(--tx2);background:var(--fill);
+  border-radius:9999px;padding:4px 11px}
+nav.toc a:hover{color:var(--tx);background:var(--fill-hov)}
+
+section{margin:36px 0 0;scroll-margin-top:56px}
+.sec-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.sec-h h2{margin:0;font-size:18px;line-height:24px;font-weight:600}
+.sec-h .no{font-size:12px;color:var(--tx4)}
+.sec-h .badge{font-size:12px;line-height:16px;border-radius:9999px;padding:2px 8px;background:var(--fill-dis);color:var(--tx3)}
+.sec-h .badge.p{background:var(--accent-bg);color:var(--accent-tx)}
+.sec-d{color:var(--tx3);font-size:13px;line-height:20px;margin:0 0 16px;max-width:56rem}
+.note{background:var(--fill);border-radius:12px;padding:10px 14px;font-size:13px;line-height:20px;color:var(--tx2);margin:0 0 16px}
+.note b{font-weight:500;color:var(--tx)}
+
+.grid{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+
+.demo{background:var(--elev);border-radius:16px;padding:14px;box-shadow:inset 0 0 0 1px var(--ln4)}
+.demo-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cn{font-weight:500;font-size:13px;color:var(--tx)}
+.kind{font-size:11px;color:var(--tx3);background:var(--fill-dis);padding:2px 7px;border-radius:6px}
+.tag{font-size:11px;line-height:16px;border-radius:9999px;padding:2px 8px;background:var(--fill-dis);color:var(--tx3)}
+.tag.approve{background:var(--ok-bg);color:var(--ok)}
+.tag.input{background:var(--accent-bg);color:var(--accent-tx)}
+.tag.expand{background:var(--fill-hov);color:var(--tx2)}
+.when{color:var(--tx4);font-size:12px;line-height:16px;margin:10px 2px 0}
+
+/* ===== card shell (STYLE-SPEC) ===== */
+.k{width:min(var(--cw),100%);background:var(--fill);border-radius:16px;padding:12px;
+  display:flex;flex-direction:column;gap:10px;position:relative;cursor:pointer}
+.k:hover{background:var(--fill-hov)}
+.k .h{display:flex;align-items:center;gap:8px;min-width:0}
+.k .h b{font-size:15px;line-height:22px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ic{width:22px;height:22px;border-radius:7px;background:transparent;display:grid;place-items:center;
+  color:var(--tx2);flex:none;box-shadow:none}
+.ic svg{width:14px;height:14px;display:block}
+.k .s{color:var(--tx2);font-size:13px;line-height:20px}
+.t{font-size:12px;line-height:16px;color:var(--tx3)}
+.body{display:flex;flex-direction:column;gap:10px}
+
+/* status pill */
+.bd{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:9999px;
+  background:var(--fill-dis);color:var(--tx3);font-size:12px;line-height:16px;flex:none;white-space:nowrap}
+.bd i{width:6px;height:6px;border-radius:50%;background:var(--tx3);display:block}
+.wait .bd{background:var(--accent-bg);color:var(--accent-tx)}.wait .bd i{background:var(--accent)}
+.ok .bd{background:var(--ok-bg);color:var(--ok)}.ok .bd i{background:var(--ok)}
+.fail .bd{background:var(--err-bg);color:var(--err)}.fail .bd i{background:var(--err)}
+.run .bd i{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.25}}
+
+/* buttons */
+.bt{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:15px;
+  font-size:13px;font-weight:500;background:var(--elev);color:var(--tx);
+  box-shadow:inset 0 0 0 1px var(--ln3);border:0;cursor:pointer;font-family:inherit}
+.btn.p{background:var(--tx);color:var(--inv);box-shadow:none}
+.btn.l{margin-right:auto;background:transparent;color:var(--tx3);padding:0 2px;font-weight:400;box-shadow:none}
+.btn.dg{background:var(--err)!important;color:var(--inv);box-shadow:none!important}
+.btn.x{background:transparent!important;box-shadow:none!important;color:var(--accent-tx)}
+
+.kv{display:grid;grid-template-columns:56px 1fr;gap:6px 12px;margin:0;font-size:13px;line-height:18px}
+.kv dt{color:var(--tx3)}.kv dd{margin:0}
+.mask{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px;letter-spacing:.5px;color:var(--tx2)}
+.in{background:var(--elev);border-radius:12px;padding:7px 10px;box-shadow:inset 0 0 0 1px var(--ln3);
+  border:0;width:100%;font:inherit;color:var(--tx);outline:none}
+.in:focus{box-shadow:inset 0 0 0 1px var(--accent)}
+.in::placeholder{color:var(--tx4)}
+.opt{display:flex;flex-direction:column;gap:6px}
+.opt label{display:flex;align-items:center;gap:8px;background:var(--elev);border-radius:12px;padding:7px 10px;
+  font-size:13px;box-shadow:inset 0 0 0 1px var(--ln4);cursor:pointer}
+.opt label.on{box-shadow:inset 0 0 0 1px var(--tx)}
+.opt label kbd{font:12px/16px inherit;color:var(--tx3);background:var(--fill-hov);border-radius:5px;width:18px;text-align:center}
+.r{width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--ln2);flex:none}
+label.on .r{box-shadow:inset 0 0 0 4px var(--tx)}
+.fm{display:flex;flex-direction:column;gap:8px}
+.fm label{display:flex;flex-direction:column;gap:3px;font-size:12px;line-height:16px;color:var(--tx3)}
+.fm .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mail{background:var(--elev);border-radius:12px;padding:10px;box-shadow:inset 0 0 0 1px var(--ln4);
+  display:flex;flex-direction:column;gap:6px;font-size:13px;line-height:18px}
+.mail p{margin:0;color:var(--tx2)}.mail .sj{font-weight:500;color:var(--tx)}
+.mail .to{font-size:12px;color:var(--tx2)}.mail .to span{color:var(--tx3);margin-right:6px}
+.clip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:11px;line-height:18px;padding:0 8px;border-radius:9999px;background:var(--fill-dis);color:var(--tx3)}
+.steps{margin:0;padding-left:18px;font-size:13px;line-height:20px;color:var(--tx)}
+.steps li{margin-bottom:2px}
+.quote{border-left:2px solid var(--ln3);padding:2px 0 2px 10px;color:var(--tx2);font-size:13px;line-height:18px}
+.box{background:var(--elev);border-radius:12px;padding:10px;font-size:13px;line-height:20px;
+  box-shadow:inset 0 0 0 1px var(--ln4);color:var(--tx2)}
+.box.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:20px;white-space:pre-wrap;color:var(--tx)}
+table.tb{border-collapse:collapse;width:100%;font-size:13px;line-height:18px}
+table.tb th,table.tb td{padding:6px 0;border-bottom:1px solid var(--ln4);text-align:left}
+table.tb th{color:var(--tx3);font-weight:400;font-size:12px}
+table.tb tr:last-child td{border-bottom:0}
+.chart{display:flex;align-items:flex-end;gap:8px;height:72px;border-bottom:1px solid var(--ln3);padding:0 4px}
+.chart i{flex:1;background:var(--tx);opacity:.18;border-radius:4px 4px 0 0;display:block}
+.chart i.on{opacity:.75}
+.lst{display:flex;flex-direction:column;gap:6px}
+.lst div{display:flex;gap:8px;align-items:center;background:var(--elev);border-radius:12px;padding:8px 10px}
+.lst .fi{width:32px;height:38px;border-radius:8px;background:var(--elev);display:grid;place-items:center;
+  font-size:10px;color:var(--tx3);font-weight:600;box-shadow:inset 0 0 0 1px var(--ln3);flex:none}
+.lst b{display:block;font-size:13px;font-weight:500}.lst span{font-size:12px;color:var(--tx3)}
+.img{height:120px;border-radius:12px;background:linear-gradient(135deg,#e9ecef,#f4f1ee);
+  display:grid;place-items:center;color:var(--tx4);font-size:12px}
+.sb{border-radius:16px;overflow:hidden;background:var(--elev);box-shadow:inset 0 0 0 1px var(--ln3)}
+.sbh{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ln4);font-size:13px;font-weight:500}
+.gen{display:inline-flex;align-items:center;padding:2px 7px;border-radius:9999px;background:var(--fill-dis);
+  color:var(--tx3);font-size:12px;line-height:16px;font-weight:400}
+.sbb{padding:14px;font-size:13px;line-height:18px;color:var(--tx2)}
+.bar{height:2px;background:var(--ln3);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--tx3)}
+.pg{display:flex;gap:10px;align-items:center}
+.pg .th{width:88px;height:60px;border-radius:10px;background:var(--elev);box-shadow:inset 0 0 0 1px var(--ln3);
+  flex:none;padding:6px;display:flex;flex-direction:column;gap:4px}
+.pg .th i{display:block;height:5px;border-radius:3px;background:var(--fill-hov)}.pg .th i:first-child{width:60%;background:var(--ln2)}
+.pg .th .c{flex:1;display:flex;align-items:flex-end;gap:3px}
+.pg .th .c b{flex:1;background:var(--accent);opacity:.35;border-radius:2px 2px 0 0;display:block}
+.vo{display:flex;align-items:center;gap:10px;background:var(--elev);border-radius:18px;padding:6px 12px 6px 6px;width:260px;
+  box-shadow:inset 0 0 0 1px var(--ln4)}
+.vo .pl{width:28px;height:28px;border-radius:50%;background:var(--tx);color:var(--inv);display:grid;place-items:center;
+  font-size:11px;flex:none}
+.wv{display:flex;align-items:center;gap:2px;flex:1;height:22px}
+.wv i{width:3px;border-radius:2px;background:var(--tx4);display:block}
+.wv i.p{background:var(--tx)}
+.vo .tm{font-size:12px;color:var(--tx3);font-variant-numeric:tabular-nums;flex:none}
+.vo .nd{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+.sub{display:flex;align-items:center;gap:8px;font-size:13px;line-height:18px}
+.d{width:6px;height:6px;border-radius:50%;flex:none;background:var(--tx4)}
+.d.ok{background:var(--ok)}.d.on{background:var(--accent);animation:pulse 1.2s infinite}
+
+/* Attention */
+.att{background:var(--fill);border-radius:16px;padding:12px;width:min(360px,100%);
+  box-shadow:0 12px 40px #1c1c1c26}
+.att-h{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.att-h b{font-size:14px;font-weight:500}
+.att-h .cnt{font-size:12px;line-height:16px;padding:1px 7px;border-radius:9999px;background:var(--accent-bg);color:var(--accent-tx)}
+.att-h .not{font-size:11px;color:var(--tx4);margin-left:auto}
+.att ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.att li{display:flex;align-items:center;gap:8px;background:var(--elev);border-radius:12px;padding:8px 10px;cursor:pointer}
+.att li:hover{background:var(--fill-dis)}
+.att li .tx{font-size:13px;flex:1;min-width:0}.att li .tx span{color:var(--tx3);font-size:12px}
+.att li .go{color:var(--tx3);font-size:12px}
+.att .foot{font-size:12px;color:var(--tx4);margin:10px 2px 0}
+
+/* lifecycle */
+.k.stale{opacity:1;background:var(--fill-dis)}
+.k.stale .body,.k.stale .h b{opacity:.55}
+.stale-mark{font-size:12px;line-height:16px;color:var(--tx4);margin-top:2px}
+.flow{display:flex;flex-direction:column;gap:10px;max-width:var(--cw)}
+.arrow-note{font-size:12px;color:var(--tx3);margin:0 0 12px}
+
+.safety{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.safety .box b{display:block;font-size:13px;font-weight:500;color:var(--tx);margin-bottom:4px}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:#1c1c1c66;opacity:0;pointer-events:none;transition:opacity .2s;z-index:40;backdrop-filter:blur(1px)}
+.scrim.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:440px;max-width:94vw;background:var(--elev);z-index:50;
+  border-left:1px solid var(--ln3);transform:translateX(103%);transition:transform .24s ease;
+  display:flex;flex-direction:column;box-shadow:0 0 0 1px var(--ln3)}
+.drawer.open{transform:none}
+.drawer .dh{display:flex;align-items:center;gap:8px;height:48px;padding:0 12px 0 16px;border-bottom:1px solid var(--ln4)}
+.drawer .dh b{font-size:15px;font-weight:500;flex:1}
+.drawer .ib{width:28px;height:28px;border-radius:14px;display:grid;place-items:center;color:var(--tx2);
+  font-size:16px;background:var(--fill);border:0;cursor:pointer}
+.drawer .latest{margin:12px 16px 0;font-size:12px;line-height:16px;color:var(--ok);background:var(--ok-bg);
+  border-radius:8px;padding:6px 10px}
+.drawer .dbd{padding:16px 18px;overflow:auto;flex:1}
+.drawer .dbd .k{width:100%;cursor:default}
+.drawer .dbd .k:hover{background:var(--fill)}
+.drawer .foot{border-top:1px solid var(--ln4);padding:11px 16px;font-size:12px;color:var(--tx4)}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,18px);background:var(--tx);color:var(--inv);
+  font-size:13px;border-radius:10px;padding:8px 14px;opacity:0;pointer-events:none;transition:.22s;z-index:60}
+.toast.open{opacity:1;transform:translate(-50%,0)}
+footer.end{margin-top:48px;padding-top:18px;border-top:1px solid var(--ln4);color:var(--tx3);font-size:13px;line-height:20px}
+footer.end b{color:var(--tx2);font-weight:500}
+.viewing{box-shadow:inset 0 0 0 1px var(--tx)!important}
+
+/* event preview (calendar.create_event) */
+.evt{background:var(--elev);border-radius:12px;padding:12px;box-shadow:inset 0 0 0 1px var(--ln4);display:flex;flex-direction:column;gap:8px}
+.evt-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.date-chip{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:var(--fill);flex:none}
+.date-chip .mo{font-size:10px;line-height:12px;color:var(--tx3);font-weight:500}
+.date-chip .dy{font-size:18px;line-height:22px;font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums}
+.evt .meta{flex:1;min-width:0}
+.evt .meta .when{font-size:12px;line-height:16px;color:var(--tx3)}
+.evt .meta .ttl{font-size:14px;line-height:20px;font-weight:500;color:var(--tx);margin-top:2px}
+.evt .people{font-size:12px;line-height:16px;color:var(--tx2);display:flex;align-items:center;gap:6px}
+.avatars{display:inline-flex}
+.avatars span{width:18px;height:18px;border-radius:50%;background:var(--fill-hov);box-shadow:inset 0 0 0 1px var(--ln3);margin-left:-4px;font-size:9px;display:grid;place-items:center;color:var(--tx3);font-weight:600}
+.avatars span:first-child{margin-left:0}
+.t.kind{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:14px;color:var(--tx4)}
+.k .h .titles{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.k .h .titles b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subk{font-size:11px;line-height:14px;color:var(--tx4);font-weight:400;font-family:ui-monospace,Menlo,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>WorkPal 卡片全家福<small>本页是目标样式总览（cards_unified_v2）；对齐 Interaction + Display 协议四类卡，不是旧 AskCard。视觉对标 Grok Bot：无描边浅底、圆角 16、深色主按钮、Phosphor。</small></h1>
+  <div class="frozen">
+    <span>B3 卡宽 = 704px</span>
+    <span>C3 点旧卡 = 开最新</span>
+    <span>Phosphor 图标</span>
+    <span>input_request 仅私聊</span>
+    <span class="no">人侧 @我 角标</span>
+    <span class="no">群聊问题卡</span>
+    <span class="no">卡面版本号</span>
+  </div>
+  <div class="wbar">
+    <span class="lbl">卡宽对照（B3）：</span>
+    <button class="wbtn ghost" data-w="360" type="button">360</button>
+    <button class="wbtn ghost" data-w="528" type="button">528</button>
+    <button class="wbtn on" data-w="704" type="button">704 · 默认</button>
+    <span class="hint">灰显对照；选中 / 默认 = 704</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#attention">Attention 待处理</a>
+  <a href="#s1">1 input_request</a>
+  <a href="#s2">2 action_approval</a>
+  <a href="#s3">3 plan + session</a>
+  <a href="#s4">4 display</a>
+  <a href="#s5">生命周期 C3</a>
+  <a href="#s6">安全展示</a>
+</nav>
+
+<section id="attention">
+  <div class="sec-h"><h2>Attention ·「待处理」</h2><span class="badge">轻量队列</span></div>
+  <p class="sec-d">有等你拍板的事时出现的浮层入口，不是 Task Center：无列表页、无筛选、无归属人。</p>
+  <div class="att">
+    <div class="att-h"><span class="ic"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></span><b>待处理</b><span class="cnt">3</span><span class="not">不是 Task Center</span></div>
+    <ul>
+      <li data-jump="#pay"><span class="ic"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,16V88H32V64Zm0,128H32V104H224v88Zm-16-24a8,8,0,0,1-8,8H168a8,8,0,0,1,0-16h32A8,8,0,0,1,208,168Zm-64,0a8,8,0,0,1-8,8H120a8,8,0,0,1,0-16h16A8,8,0,0,1,144,168Z"/></svg></span><span class="tx">付款批准 · 云端服务 <span>· ¥1,280.00</span></span><span class="bd wait"><i></i>等你</span><span class="go">↗</span></li>
+      <li data-jump="#plan"><span class="ic"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></svg></span><span class="tx">计划确认 · 周报数据回填 <span>· 4 步</span></span><span class="bd wait"><i></i>等你</span><span class="go">↗</span></li>
+      <li data-jump="#return"><span class="ic"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8Zm-48,48a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,224Z"/></svg></span><span class="tx">交还桌面 <span>· 12306 验证码</span></span><span class="bd wait"><i></i>等你</span><span class="go">↗</span></li>
+    </ul>
+    <p class="foot">清空即消失；处理完一条就少一条。</p>
+  </div>
+</section>
+
+<section id="s1">
+  <div class="sec-h"><h2>1 · input_request</h2><span class="badge p">仅私聊</span><span class="no">5 卡</span></div>
+  <p class="sec-d">助手缺信息、要用户填 / 选时出的卡。只走私聊；群里用文字反问，不出问题卡。</p>
+  <div class="note"><b>群聊不画这一类</b> —— 群里的反问是普通文字，不落成卡，也不带 @我 角标。</div>
+  <div class="grid" data-slot="in"></div>
+</section>
+
+<section id="s2">
+  <div class="sec-h"><h2>2 · action_approval</h2><span class="badge">决策类</span><span class="no">11 卡</span></div>
+  <p class="sec-d">有后果的动作之前停下来等你批准。主按钮只决定放行 / 不放行。</p>
+  <div class="grid" data-slot="ap"></div>
+</section>
+
+<section id="s3">
+  <div class="sec-h"><h2>3 · plan_review + session_control</h2><span class="badge">先对齐、再换手</span><span class="no">3 卡</span></div>
+  <p class="sec-d">plan_review 动手前摊开步骤；session_control 管「谁在开车」：takeover / return。</p>
+  <div class="grid" data-slot="pl"></div>
+</section>
+
+<section id="s4">
+  <div class="sec-h"><h2>4 · display</h2><span class="badge p">只展示、不决策</span><span class="no">9 卡</span></div>
+  <p class="sec-d">结果呈现。没有批准语义；按钮只做展开 / 打开 / 复制。</p>
+  <div class="grid" data-slot="dp"></div>
+</section>
+
+<section id="s5">
+  <div class="sec-h"><h2>流里的生命周期（C3）</h2></div>
+  <p class="sec-d">内容变了就在下方出新卡；旧卡变灰、加「已在下方更新」。卡面不露版本号。<b>点旧卡一律打开最新详情</b>。</p>
+  <p class="arrow-note">点下面这张旧卡 —— 侧栏打开的是最新内容。</p>
+  <div class="flow">
+    <div class="k stale wait" data-old="1" id="old-card">
+      <div class="h"><span class="ic"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM40,112H80v32H40Zm56,0H216v32H96ZM216,64V96H40V64ZM40,160H80v32H40Zm176,32H96V160H216v32Z"/></svg></span><b>候选供应商报价</b><span class="bd"><i></i>已过期</span></div>
+      <div class="body">
+        <div class="s">当前整理到 2 家，等待剩余报价回填。</div>
+        <dl class="kv"><dt>已收录</dt><dd>2 家</dd><dt>更新</dt><dd>昨天 18:04</dd></dl>
+      </div>
+      <div class="stale-mark">已在下方更新 · 点开看最新</div>
+    </div>
+    <div class="k wait" data-new="1" id="new-card">
+      <div class="h"><span class="ic"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM40,112H80v32H40Zm56,0H216v32H96ZM216,64V96H40V64ZM40,160H80v32H40Zm176,32H96V160H216v32Z"/></svg></span><b>候选供应商报价</b><span class="bd"><i></i>等你</span></div>
+      <div class="body">
+        <div class="s">5 家全部回填，其中 2 家超预算。</div>
+        <dl class="kv"><dt>已收录</dt><dd>5 家（超预算 2 家）</dd><dt>最低单价</dt><dd>¥ 3.20 / 件</dd><dt>更新</dt><dd>今天 09:12</dd></dl>
+      </div>
+      <div class="bt"><button class="btn l" type="button" data-demo="演示：看明细">看明细</button><button class="btn" type="button" data-demo="演示：稍后">稍后</button><button class="btn p" type="button" data-demo="演示：按这版继续">按这版继续</button></div>
+    </div>
+  </div>
+  <div class="note">只画这一种行为：旧卡不提供「打开当时那一版」；卡面不显示 v2 / 第 N 次更新。</div>
+</section>
+
+<section id="s6">
+  <div class="sec-h"><h2>安全展示约定</h2></div>
+  <div class="safety">
+    <div class="box"><b>payment</b>只展示金额、商户名、卡号后四位；不出现完整卡号、CVV、到期日。</div>
+    <div class="box"><b>secret</b>输入框是 password 型：不回显明文、不以纯文本回显在卡上。</div>
+    <div class="box"><b>outbound</b>批准前的收件人 / 正文只是预览，点按钮不会真的发出去。</div>
+    <div class="box"><b>本页所有按钮</b>都是假动作：只出底部「演示」提示，不产生真实副作用。</div>
+  </div>
+</section>
+
+<footer class="end">
+  <b>读图顺序：</b>Attention → 四类协议卡 → 生命周期 → 安全约定。<br>
+  视觉 SSOT：cards-hifi-v4 STYLE-SPEC · Phosphor 内联 · 默认卡宽 704。
+</footer>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dh"><b id="dw-title">最新详情</b><button class="ib" id="dw-x" type="button" title="关闭">×</button></div>
+  <div class="latest" id="dw-latest">当前展示：这张卡的最新内容（点旧卡也到这里）</div>
+  <div class="dbd" id="dw-body"></div>
+  <div class="foot">侧栏示意 = 满屏详情的轻量版；Esc / 点遮罩关闭。</div>
+</aside>
+<div class="toast" id="toast"></div>
+
+<script>
+var ICONS={'chat':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z\"/></svg></span>",'choice':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm0-144a56,56,0,1,0,56,56A56.06,56.06,0,0,0,128,72Zm0,96a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\"/></svg></span>",'form':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M168,128a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,128Zm-8,24H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16ZM216,40V200a32,32,0,0,1-32,32H72a32,32,0,0,1-32-32V40a8,8,0,0,1,8-8H72V24a8,8,0,0,1,16,0v8h32V24a8,8,0,0,1,16,0v8h32V24a8,8,0,0,1,16,0v8h24A8,8,0,0,1,216,40Zm-16,8H184v8a8,8,0,0,1-16,0V48H136v8a8,8,0,0,1-16,0V48H88v8a8,8,0,0,1-16,0V48H56V200a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16Z\"/></svg></span>",'lock':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z\"/></svg></span>",'saved':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M200,112a8,8,0,0,1-8,8H152a8,8,0,0,1,0-16h40A8,8,0,0,1,200,112Zm-8,24H152a8,8,0,0,0,0,16h40a8,8,0,0,0,0-16Zm40-80V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Zm-80.26-34a8,8,0,1,1-15.5,4c-2.63-10.26-13.06-18-24.25-18s-21.61,7.74-24.25,18a8,8,0,1,1-15.5-4,39.84,39.84,0,0,1,17.19-23.34,32,32,0,1,1,45.12,0A39.76,39.76,0,0,1,135.75,166ZM96,136a16,16,0,1,0-16-16A16,16,0,0,0,96,136Z\"/></svg></span>",'cal':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Zm-48-56a8,8,0,0,1-8,8H136v16a8,8,0,0,1-16,0V160H104a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16A8,8,0,0,1,160,152Z\"/></svg></span>",'tool':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M226.76,69a8,8,0,0,0-12.84-2.88l-40.3,37.19-17.23-3.7-3.7-17.23,37.19-40.3A8,8,0,0,0,187,29.24,72,72,0,0,0,88,96,72.34,72.34,0,0,0,94,124.94L33.79,177c-.15.12-.29.26-.43.39a32,32,0,0,0,45.26,45.26c.13-.13.27-.28.39-.42L131.06,162A72,72,0,0,0,232,96,71.56,71.56,0,0,0,226.76,69ZM160,152a56.14,56.14,0,0,1-27.07-7,8,8,0,0,0-9.92,1.77L67.11,211.51a16,16,0,0,1-22.62-22.62L109.18,133a8,8,0,0,0,1.77-9.93,56,56,0,0,1,58.36-82.31l-31.2,33.81a8,8,0,0,0-1.94,7.1L141.83,108a8,8,0,0,0,6.14,6.14l26.35,5.66a8,8,0,0,0,7.1-1.94l33.81-31.2A56.06,56.06,0,0,1,160,152Z\"/></svg></span>",'pay':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,16V88H32V64Zm0,128H32V104H224v88Zm-16-24a8,8,0,0,1-8,8H168a8,8,0,0,1,0-16h32A8,8,0,0,1,208,168Zm-64,0a8,8,0,0,1-8,8H120a8,8,0,0,1,0-16h16A8,8,0,0,1,144,168Z\"/></svg></span>",'mail':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM203.43,64,128,133.15,52.57,64ZM216,192H40V74.19l82.59,75.71a8,8,0,0,0,10.82,0L216,74.19V192Z\"/></svg></span>",'msg':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M227.32,28.68a16,16,0,0,0-15.66-4.08l-.15,0L19.57,82.84a16,16,0,0,0-2.49,29.8L102,154l41.3,84.87A15.86,15.86,0,0,0,157.74,248q.69,0,1.38-.06a15.88,15.88,0,0,0,14-11.51l58.2-191.94c0-.05,0-.1,0-.15A16,16,0,0,0,227.32,28.68ZM157.83,231.85l-.05.14,0-.07-40.06-82.3,48-48a8,8,0,0,0-11.31-11.31l-48,48L24.08,98.25l-.07,0,.14,0L216,40Z\"/></svg></span>",'post':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M228.54,86.66l-176.06-54A16,16,0,0,0,32,48V192a16,16,0,0,0,16,16,16,16,0,0,0,4.52-.65L136,181.73V192a16,16,0,0,0,16,16h32a16,16,0,0,0,16-16v-29.9l28.54-8.75A16.09,16.09,0,0,0,240,138V102A16.09,16.09,0,0,0,228.54,86.66ZM136,165,48,192V48l88,27Zm48,27H152V176.82L184,167Zm40-54-.11,0L152,160.08V79.92l71.89,22,.11,0v36Z\"/></svg></span>",'routine':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z\"/></svg></span>",'install':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z\"/></svg></span>",'skill':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M184,32H72A16,16,0,0,0,56,48V224a8,8,0,0,0,12.24,6.78L128,193.43l59.77,37.35A8,8,0,0,0,200,224V48A16,16,0,0,0,184,32Zm0,177.57-51.77-32.35a8,8,0,0,0-8.48,0L72,209.57V48H184Z\"/></svg></span>",'app':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"/></svg></span>",'mcp':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M149.66,138.34a8,8,0,0,0-11.32,0L120,156.69,99.31,136l18.35-18.34a8,8,0,0,0-11.32-11.32L88,124.69,69.66,106.34a8,8,0,0,0-11.32,11.32L64.69,124,41.37,147.31a32,32,0,0,0,0,45.26l5.38,5.37-28.41,28.4a8,8,0,0,0,11.32,11.32l28.4-28.41,5.37,5.38a32,32,0,0,0,45.26,0L132,191.31l6.34,6.35a8,8,0,0,0,11.32-11.32L131.31,168l18.35-18.34A8,8,0,0,0,149.66,138.34Zm-52.29,65a16,16,0,0,1-22.62,0L52.69,181.25a16,16,0,0,1,0-22.62L76,135.31,120.69,180Zm140.29-185a8,8,0,0,0-11.32,0l-28.4,28.41-5.37-5.38a32.05,32.05,0,0,0-45.26,0L124,64.69l-6.34-6.35a8,8,0,0,0-11.32,11.32l80,80a8,8,0,0,0,11.32-11.32L191.31,132l23.32-23.31a32,32,0,0,0,0-45.26l-5.38-5.37,28.41-28.4A8,8,0,0,0,237.66,18.34Zm-34.35,79L180,120.69,135.31,76l23.32-23.31a16,16,0,0,1,22.62,0l22.06,22A16,16,0,0,1,203.31,97.37Z\"/></svg></span>",'group':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M244.8,150.4a8,8,0,0,1-11.2-1.6A51.6,51.6,0,0,0,192,128a8,8,0,0,1-7.37-4.89,8,8,0,0,1,0-6.22A8,8,0,0,1,192,112a24,24,0,1,0-23.24-30,8,8,0,1,1-15.5-4A40,40,0,1,1,219,117.51a67.94,67.94,0,0,1,27.43,21.68A8,8,0,0,1,244.8,150.4ZM190.92,212a8,8,0,1,1-13.84,8,57,57,0,0,0-98.16,0,8,8,0,1,1-13.84-8,72.06,72.06,0,0,1,33.74-29.92,48,48,0,1,1,58.36,0A72.06,72.06,0,0,1,190.92,212ZM128,176a32,32,0,1,0-32-32A32,32,0,0,0,128,176ZM72,120a8,8,0,0,0-8-8A24,24,0,1,1,87.24,82a8,8,0,1,0,15.5-4A40,40,0,1,0,37,117.51,67.94,67.94,0,0,0,9.6,139.19a8,8,0,1,0,12.8,9.61A51.6,51.6,0,0,1,64,128,8,8,0,0,0,72,120Z\"/></svg></span>",'plan':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z\"/></svg></span>",'desktop':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24H208a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8Zm-48,48a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,224Z\"/></svg></span>",'return':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z\"/></svg></span>",'md':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM184,96a8,8,0,0,1-8,8H80a8,8,0,0,1,0-16h96A8,8,0,0,1,184,96Zm0,32a8,8,0,0,1-8,8H80a8,8,0,0,1,0-16h96A8,8,0,0,1,184,128Zm0,32a8,8,0,0,1-8,8H80a8,8,0,0,1,0-16h96A8,8,0,0,1,184,160Z\"/></svg></span>",'table':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM40,112H80v32H40Zm56,0H216v32H96ZM216,64V96H40V64ZM40,160H80v32H40Zm176,32H96V160H216v32Z\"/></svg></span>",'chart':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M224,200h-8V40a8,8,0,0,0-8-8H152a8,8,0,0,0-8,8V80H96a8,8,0,0,0-8,8v40H48a8,8,0,0,0-8,8v64H32a8,8,0,0,0,0,16H224a8,8,0,0,0,0-16ZM160,48h40V200H160ZM104,96h40V200H104ZM56,144H88v56H56Z\"/></svg></span>",'files':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M216,72H130.67L102.93,51.2a16.12,16.12,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V200a16,16,0,0,0,16,16H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72Zm0,128H40V64H93.33L123.2,86.4A8,8,0,0,0,128,88h88Z\"/></svg></span>",'image':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"/></svg></span>",'html':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84A12,12,0,1,1,68,72,12,12,0,0,1,80,84Zm40,0a12,12,0,1,1-12-12A12,12,0,0,1,120,84Z\"/></svg></span>",'task':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z\"/></svg></span>",'page':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z\"/></svg></span>",'voice':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V240a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z\"/></svg></span>",'warning':"<span class=\"ic\"><svg viewBox=\"0 0 256 256\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z\"/></svg></span>"};
+var TAGN={approve:'可批准',input:'可输入',readonly:'只读',expand:'可展开'};
+var CARDS=[
+{s:'in',cn:'提问卡',kind:'input_request.question',tag:'input',pill:'等你',st:'wait',icon:'chat',title:'这次订哪一天的会议室？',body:'<div class="s">我看到你有 3 天都能开，想确认一下具体日期再下单。</div>\n<input class="in" placeholder="输入回答，例如「周四下午」">',when:'私聊里助手缺一个信息、必须用户回答才能继续时。',aid:'',sec:'',pri:'提交'},
+{s:'in',cn:'选项卡',kind:'input_request.choice',tag:'input',pill:'等你',st:'wait',icon:'choice',title:'选一个会议时间',body:'<div class="opt"><label class="on"><kbd>A</kbd>周三 10:00 – 11:00</label>\n<label><kbd>B</kbd>周三 15:00 – 16:00</label>\n<label><kbd>C</kbd>周五 09:30 – 10:30</label></div>',when:'助手给出有限候选、需要用户挑一个时。',aid:'',sec:'都不合适',pri:'确认选择'},
+{s:'in',cn:'表单卡',kind:'input_request.form',tag:'input',pill:'填写中',st:'wait',icon:'form',title:'结账信息 · 京东',body:'<div class="fm"><label>收货地址<span class="in">上海市徐汇区漕溪北路 88 号</span></label>\n<div class="row"><label>电话<span class="in">138 0013 8000</span></label><label>邮编<span class="in">200030</span></label></div>\n<label>银行卡<span class="in"><span class="mask">•••• •••• •••• </span></span></label></div>',when:'一次要收多个字段，用文字来回问会碎成十几条消息时。',aid:'',sec:'取消',pri:'提交'},
+{s:'in',cn:'密文输入卡',kind:'input_request.secret',tag:'input',pill:'等你',st:'wait',icon:'lock',title:'报表平台的 API Key',body:'<div class="s">用于只读拉取月报；保存后不回显明文。</div>\n<div class="fm"><label>API Key<input class="in" type="password" value="sk-placeholder-not-secret" autocomplete="off"></label></div>',when:'需要用户给 API Key、密码一类敏感值时（仅私聊）。',aid:'',sec:'',pri:'保存密钥'},
+{s:'in',cn:'已存项选择卡',kind:'input_request.saved_item',tag:'expand',pill:'选择中',st:'wait',icon:'saved',title:'用哪张卡、寄到哪？',body:'<div class="opt"><div class="t">付款卡</div>\n<label class="on"><span class="r"></span>招商银行 信用卡 <span class="mask">•••• 4821</span></label>\n<label><span class="r"></span>工商银行 借记卡 <span class="mask">•••• 0937</span></label></div>\n<div class="opt"><div class="t">收货地址</div>\n<label class="on"><span class="r"></span>家 · 徐汇区漕溪北路 88 号</label>\n<label><span class="r"></span>公司 · 浦东新区世纪大道 100 号</label></div>',when:'从已保存的卡 / 地址里挑一个，而不是重新手打。',aid:'',sec:'拒绝',pri:'允许一次'},
+{s:'ap',cn:'工具批准卡',kind:'action_approval.tool',tag:'approve',pill:'等你',st:'wait',icon:'cal',title:'创建日程',sub:'calendar.create_event',body:'<div class="evt"><div class="evt-top"><div class="date-chip"><span class="mo">10月</span><span class="dy">30</span></div><div class="meta"><div class="when">周四 · 14:00 – 15:00</div><div class="ttl">供应商评审会</div></div></div><div class="people"><span class="avatars"><span>王</span><span>李</span><span>外</span></span>3 人 · 含外部 1 人</div></div>',when:'助手要调用有写副作用的外部工具之前。',aid:'',sec:'拒绝',pri:'允许一次'},
+{s:'ap',cn:'付款批准卡',kind:'action_approval.payment',tag:'approve',pill:'等你',st:'wait',icon:'pay',title:'代我支付 · 云端服务',body:'<dl class="kv"><dt>金额</dt><dd><b>¥ 1,280.00</b></dd><dt>商户</dt><dd>云端服务</dd><dt>付款</dt><dd><span class="mask">•••• 4321</span></dd><dt>周期</dt><dd>月度续费</dd></dl>\n<div class="t">只展示金额 / 商户 / 后四位</div>',when:'助手要用已绑定的付款方式真实扣款时。',aid:'pay',sec:'拒绝',pri:'允许一次'},
+{s:'ap',cn:'外发批准 · 邮件',kind:'action_approval.outbound.email',tag:'approve',pill:'待发送',st:'wait',icon:'mail',title:'邮件草稿 · 王敏',body:'<div class="mail"><div class="to"><span>收件人</span>王敏 wangmin@acme.cn</div>\n<div class="sj">评审改期到周五 15:00</div>\n<p class="clip">周五评审改到 15:00，地点不变。请把 Q3 数据整理成一页带过来。</p></div>',when:'助手写好了邮件、要点「发送」离开本机之前。',aid:'',sec:'取消',pri:'发送'},
+{s:'ap',cn:'外发批准 · 消息',kind:'action_approval.outbound.message',tag:'approve',pill:'等你',st:'wait',icon:'msg',title:'发给李翔？',body:'<dl class="kv"><dt>发往</dt><dd>李翔（私聊）</dd><dt>身份</dt><dd>以你的账号发出</dd></dl>\n<div class="quote">「评审会改到周四 15:00，方便的话回我一句。」</div>',when:'助手要在私聊或群里替你把一条消息发出去之前。',aid:'',sec:'取消',pri:'批准发送'},
+{s:'ap',cn:'外发批准 · 动态',kind:'action_approval.outbound.post',tag:'approve',pill:'等你',st:'wait',icon:'post',title:'这条动态要公开吗？',body:'<dl class="kv"><dt>发往</dt><dd>公开主页</dd><dt>可见</dt><dd>所有人</dd><dt>附件</dt><dd>图表 1 张</dd></dl>\n<div class="quote">季度产能小结，含 2 个内部数字（未脱敏）。</div>',when:'助手要替你公开发一条动态之前。',aid:'',sec:'取消',pri:'批准发布'},
+{s:'ap',cn:'例程批准卡',kind:'action_approval.routine',tag:'approve',pill:'等你',st:'wait',icon:'routine',title:'新建定时任务 · AI 新闻摘要',body:'<dl class="kv"><dt>触发</dt><dd>每天 08:30</dd><dt>要做</dt><dd>汇总 X / 36氪 AI 新闻，私信发你</dd></dl>',when:'助手要把一件事变成定时 / 自动执行的例程之前。',aid:'',sec:'拒绝',pri:'确认'},
+{s:'ap',cn:'安装批准卡',kind:'action_approval.install',tag:'approve',pill:'等你',st:'wait',icon:'install',title:'安装连接器 · Notion',body:'<div class="s">读写你选定的页面和数据库</div>\n<div class="sub"><span class="d"></span>安装</div>\n<div class="sub"><span class="d"></span>授权 Notion 账号</div>\n<div class="sub"><span class="d"></span>完成</div>',when:'助手想装一个插件 / 连接器，会引入新权限时。',aid:'',sec:'不用了',pri:'安装并授权'},
+{s:'ap',cn:'技能保存卡',kind:'action_approval.skill_save',tag:'approve',pill:'等你',st:'wait',icon:'skill',title:'把这套流程存成技能？',body:'<dl class="kv"><dt>技能名</dt><dd>周报数据回填</dd><dt>触发词</dt><dd>「跑周报」</dd></dl>\n<ol class="steps"><li>取上周告警与工单量</li><li>按产品线聚合</li><li>写回周报表第三个 sheet</li></ol>',when:'这轮流程值得复用、助手想沉淀成技能时。',aid:'',sec:'改一下再存',pri:'保存技能'},
+{s:'ap',cn:'应用授权卡',kind:'connect.app_authorization',tag:'approve',pill:'待授权',st:'wait',icon:'app',title:'允许「报表平台」连你的账号？',body:'<dl class="kv"><dt>应用</dt><dd>报表平台</dd><dt>权限</dt><dd>读取报表 · 只读</dd><dt>有效期</dt><dd>90 天</dd></dl>',when:'要把第三方应用跟账号连起来（OAuth）时。',aid:'',sec:'拒绝',pri:'去授权'},
+{s:'ap',cn:'MCP 指派卡',kind:'connect.mcp_assignment',tag:'approve',pill:'等你',st:'wait',icon:'mcp',title:'把 tickets MCP 接到本会话？',body:'<dl class="kv"><dt>Server</dt><dd>tickets</dd><dt>工具数</dt><dd>6 个</dd><dt>作用域</dt><dd>仅当前会话</dd></dl>\n<div class="chips"><span class="chip">search_ticket</span><span class="chip">create_comment</span><span class="chip">+4</span></div>',when:'要把某个 MCP server 挂到当前会话时。',aid:'',sec:'',pri:'接入本会话'},
+{s:'ap',cn:'群成员关系卡',kind:'group_membership',tag:'approve',pill:'等你',st:'wait',icon:'group',title:'让助手加入「供应链协作群」？',body:'<dl class="kv"><dt>群</dt><dd>供应链协作群 · 12 人</dd><dt>入群后</dt><dd>可读群消息</dd><dt>不做</dt><dd>不代发、不@全员</dd></dl>\n<div class="t">入群后助手缺信息时用文字反问，不出 input_request。</div>',when:'助手要进某个群、或群里要给它加/减权限时。',aid:'',sec:'拒绝',pri:'同意入群'},
+{s:'pl',cn:'计划确认卡',kind:'plan_review',tag:'approve',pill:'等你',st:'wait',icon:'plan',title:'按这个计划执行？',body:'<div class="t">4 步 · 预计 6 分钟 · 写操作 1 处</div>\n<ol class="steps"><li>取上周告警与工单原始数据</li><li>按产品线聚合、算环比</li><li>写回周报表第三个 sheet</li><li>把差异摘要发回本会话</li></ol>\n<div class="box">风险：第 3 步会覆盖旧单元格。写入前先备份。</div>',when:'多步、耗时或有风险的活儿，动手前把步骤摊开。',aid:'plan',sec:'要改一下',pri:'按计划执行'},
+{s:'pl',cn:'会话接管卡',kind:'session_control.takeover',tag:'approve',pill:'等你',st:'wait',icon:'desktop',title:'交还桌面 · 12306 验证码',body:'<div class="s">在桌面里输入发到 138••••8000 的验证码，完成后点「我做完了」</div>\n<dl class="kv"><dt>桌面</dt><dd>Box · 小橙的桌面</dd><dt>时限</dt><dd>10 分钟内</dd></dl>',when:'需要用户亲自在桌面上操作（验证码等）时。主按钮「打开桌面」。',aid:'',sec:'不做了',pri:'打开桌面'},
+{s:'pl',cn:'会话交还卡',kind:'session_control.return',tag:'approve',pill:'等你',st:'wait',icon:'return',title:'把会话交还给助手？',body:'<dl class="kv"><dt>交还人</dt><dd>李翔</dd><dt>接管时长</dt><dd>21 分钟</dd><dt>恢复后</dt><dd>继续第 3 步写入</dd></dl>\n<div class="quote">接管期间的补充：预算上限调到 1200。</div>',when:'接管的人处理完了，把控制权交还给助手时。',aid:'return',sec:'我再看一会儿',pri:'确认交还'},
+{s:'dp',cn:'Markdown 卡',kind:'display.markdown',tag:'expand',pill:'',st:'wait',icon:'md',title:'本周结论',body:'<div class="s">告警量环比 <b>−18%</b>，主要在网关侧收敛。<br>工单首响中位 26 分钟。<br>遗留 2 个未闭环，责任人已指派。</div>',when:'助手的正文结果成块、又长又带格式时。',aid:'',sec:'复制',pri:'展开全部'},
+{s:'dp',cn:'表格卡',kind:'display.table',tag:'expand',pill:'',st:'wait',icon:'table',title:'候选供应商对比',body:'<table class="tb"><tr><th>供应商</th><th>单价</th><th>交期</th><th>预算</th></tr>\n<tr><td>甲</td><td>¥3.20</td><td>7 天</td><td>内</td></tr>\n<tr><td>乙</td><td>¥3.85</td><td>5 天</td><td>内</td></tr>\n<tr><td>丙</td><td>¥4.60</td><td>10 天</td><td>超</td></tr></table>',when:'结果天然是一堆同构行时。',aid:'',sec:'',pri:'展开全部'},
+{s:'dp',cn:'图表卡',kind:'display.chart',tag:'readonly',pill:'',st:'wait',icon:'chart',title:'近 6 周告警量',body:'<div class="chart"><i style="height:90%"></i><i style="height:74%"></i><i style="height:82%"></i><i style="height:55%"></i><i style="height:44%"></i><i class="on" style="height:30%"></i></div>\n<div class="t">纵轴 0 – 240 条 · 单位：条 / 周</div>',when:'趋势、占比用眼睛看比用数字读快时。',aid:'',sec:'',pri:'查看数值'},
+{s:'dp',cn:'合集卡',kind:'display.collection',tag:'expand',pill:'',st:'wait',icon:'files',title:'找了 3 份相关资料',body:'<div class="lst">\n<div><span class="fi">PDF</span><div><b>2026 产能规划</b><span>内部 · 12 页</span></div></div>\n<div><span class="fi">XLS</span><div><b>历史报价明细</b><span>3 个 sheet</span></div></div>\n<div><span class="fi">DOC</span><div><b>供应商评估模板</b><span>你上次改过</span></div></div>\n</div>',when:'一次要交多条同类结果，摊开会淹没会话时。',aid:'',sec:'',pri:'全部展开'},
+{s:'dp',cn:'媒体卡',kind:'display.media',tag:'readonly',pill:'',st:'wait',icon:'image',title:'包装打样图',body:'<div class="img">图片 · 1200×900</div>\n<div class="t">2.1 MB · 今天 08:55 由助手取回</div>',when:'要给用户看一张图、一段视频或一个文件时。',aid:'',sec:'下载原件',pri:'放大'},
+{s:'dp',cn:'HTML 卡',kind:'display.html',tag:'expand',pill:'',st:'wait',icon:'app',title:'Q3 销售看板',body:'<div class="sb"><div class="sbh">预览 <span class="gen">Agent 生成</span></div>\n<div class="sbb"><b>甲 / 乙 / 丙 三家对比</b><br>柱高 = 单价，颜色 = 是否超预算。</div></div>',when:'助手生成了一段网页 / 可视化，需要就地预览时。',aid:'',sec:'复制地址',pri:'打开预览'},
+{s:'dp',cn:'任务状态卡',kind:'display.task_status',tag:'readonly',pill:'执行中',st:'run',icon:'task',title:'周报数据回填中',body:'<div class="sub"><span class="d ok"></span>取数、聚合、算环比 · 完成</div>\n<div class="sub"><span class="d on"></span>写回 sheet（覆盖 B2:F40）· 进行中</div>\n<div class="sub"><span class="d"></span>发差异摘要 · 待做</div>\n<div class="bar"><i style="width:72%"></i></div>',when:'有件事在后台跑、不阻塞聊天，进度要有个落点时。',aid:'',sec:'',pri:'看日志'},
+{s:'dp',cn:'页面卡',kind:'display.page',tag:'expand',pill:'已生成',st:'ok',icon:'page',title:'供应链对比看板',body:'<div class="pg"><div class="th"><i></i><i style="width:80%"></i><div class="c"><b style="height:40%"></b><b style="height:70%"></b><b style="height:55%"></b><b style="height:90%"></b></div></div>\n<div><div class="s">5 家供应商 · 6 个指标</div><div class="t" style="margin-top:4px">Page · 仅链接可见</div></div></div>',when:'结果值得单独成页，在会话里只留一个入口时。',aid:'',sec:'分享',pri:'打开'},
+{s:'dp',cn:'语音卡',kind:'display.voice',tag:'readonly',pill:'',st:'wait',icon:'voice',title:'李翔的语音 0:42',body:'<div class="vo"><span class="pl">▶</span><span class="wv"><i class="p" style="height:11px"></i><i class="p" style="height:22px"></i><i class="p" style="height:18px"></i><i style="height:8px"></i><i style="height:15px"></i><i style="height:19px"></i><i style="height:22px"></i><i style="height:6px"></i><i style="height:14px"></i><i style="height:19px"></i><i style="height:12px"></i><i style="height:21px"></i><i style="height:11px"></i><i style="height:16px"></i></span><span class="tm">0:42</span><span class="nd"></span></div>\n<div class="quote">转写：「预算上限调到 1200，超的那两家先别走流程。」</div>',when:'结果是语音，需要先能听再能读时。',aid:'',sec:'看全文',pri:'播放'},
+];
+
+var slots={};
+Array.prototype.forEach.call(document.querySelectorAll("[data-slot]"),function(el){slots[el.getAttribute("data-slot")]=el});
+CARDS.forEach(function(c,i){
+  var d=document.createElement("div");d.className="demo";
+  var pill=c.pill?'<span class="bd'+(c.st==="wait"?" wait-pill":"")+'"><i></i>'+c.pill+'</span>':'';
+  // show pill in demo-head as status sample; real pill is on card
+  var headPill=c.pill?'':'';
+  var bt="";
+  if(c.sec) bt+='<button class="btn" type="button" data-demo="演示：'+c.sec+'">'+c.sec+'</button>';
+  if(c.pri) bt+='<button class="btn p" type="button" data-demo="演示：'+c.pri+'（假动作）">'+c.pri+'</button>';
+  var stClass=c.st?(" "+c.st):"";
+  var aid=c.aid?(' id="'+c.aid+'"'):"";
+  var cardPill=c.pill?'<span class="bd"><i></i>'+c.pill+'</span>':'';
+  var titleBlock=c.sub?('<div class="titles"><b>'+c.title+'</b><span class="subk">'+c.sub+'</span></div>'):('<b>'+c.title+'</b>');
+  d.innerHTML='<div class="demo-head"><span class="cn">'+c.cn+'</span><span class="kind">'+c.kind+'</span>'+
+    '<span class="tag '+c.tag+'">'+TAGN[c.tag]+'</span></div>'+
+    '<div class="k'+stClass+'" data-i="'+i+'"'+aid+'>'+
+      '<div class="h">'+ICONS[c.icon]+titleBlock+cardPill+'</div>'+
+      '<div class="body">'+c.body+'</div>'+
+      (bt?'<div class="bt">'+bt+'</div>':'')+
+    '</div>'+
+    '<p class="when">'+c.when+'</p>';
+  slots[c.s].appendChild(d);
+});
+
+/* option pick */
+document.addEventListener("click",function(e){
+  var lab=e.target.closest(".opt label");
+  if(lab){
+    var box=lab.parentElement;
+    Array.prototype.forEach.call(box.querySelectorAll("label"),function(o){o.classList.remove("on")});
+    lab.classList.add("on");
+  }
+});
+
+/* drawer */
+var drawer=document.getElementById("drawer"),scrim=document.getElementById("scrim"),
+    dwTitle=document.getElementById("dw-title"),dwBody=document.getElementById("dw-body"),
+    dwLatest=document.getElementById("dw-latest");
+function openDrawer(title,html,label){
+  dwTitle.textContent=title;
+  dwBody.innerHTML=html;
+  dwLatest.textContent=label||"当前展示：这张卡的最新内容（点旧卡也到这里）";
+  drawer.classList.add("open");scrim.classList.add("open");drawer.setAttribute("aria-hidden","false");
+}
+function closeDrawer(){
+  drawer.classList.remove("open");scrim.classList.remove("open");drawer.setAttribute("aria-hidden","true");
+  Array.prototype.forEach.call(document.querySelectorAll(".k.viewing"),function(el){el.classList.remove("viewing")});
+}
+document.getElementById("dw-x").addEventListener("click",closeDrawer);
+scrim.addEventListener("click",closeDrawer);
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDrawer()});
+
+var toast=document.getElementById("toast"),tt;
+function say(msg){toast.textContent=msg;toast.classList.add("open");clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove("open")},2200)}
+
+document.addEventListener("click",function(e){
+  var b=e.target.closest("[data-demo]");
+  if(b){e.stopPropagation();say(b.getAttribute("data-demo"));return}
+  if(e.target.matches("input,textarea,select,label,kbd,.r"))return;
+  var jump=e.target.closest("[data-jump]");
+  if(jump){var t=document.querySelector(jump.getAttribute("data-jump"));if(t){t.scrollIntoView({behavior:"smooth",block:"center"});t.classList.add("viewing");setTimeout(function(){t.classList.remove("viewing")},1200)}return}
+  var old=e.target.closest("[data-old]");
+  if(old){
+    var nw=document.querySelector("[data-new]");
+    var clone=nw.cloneNode(true);clone.removeAttribute("data-new");clone.classList.remove("viewing");
+    openDrawer("候选供应商报价 · 最新",clone.outerHTML,"点旧卡 → 一律打开最新详情（不提供「看当时那一版」）");
+    nw.classList.add("viewing");
+    return;
+  }
+  var nd=e.target.closest("[data-new]");
+  if(nd){
+    var clone2=nd.cloneNode(true);clone2.removeAttribute("data-new");
+    openDrawer("候选供应商报价 · 最新",clone2.outerHTML,"当前展示：这张卡的最新内容");
+    nd.classList.add("viewing");
+    return;
+  }
+  var c=e.target.closest(".k[data-i]");
+  if(c){
+    var d=CARDS[+c.getAttribute("data-i")];
+    var clone3=c.cloneNode(true);clone3.removeAttribute("data-i");
+    openDrawer(d.cn+" · 最新详情",clone3.outerHTML);
+    c.classList.add("viewing");
+  }
+});
+
+
+/* auto-open C3 for evidence */
+if(/[?&]c3=1\b/.test(location.search)){
+  setTimeout(function(){
+    var nw=document.querySelector("[data-new]");
+    if(!nw) return;
+    var clone=nw.cloneNode(true);clone.removeAttribute("data-new");
+    openDrawer("候选供应商报价 · 最新",clone.outerHTML,"点旧卡 → 一律打开最新详情（不提供「看当时那一版」）");
+    nw.classList.add("viewing");
+    document.getElementById("s5").scrollIntoView({block:"start"});
+  },50);
+}
+
+Array.prototype.forEach.call(document.querySelectorAll(".wbtn"),function(btn){
+  btn.addEventListener("click",function(){
+    
+/* auto-open C3 for evidence */
+if(/[?&]c3=1\b/.test(location.search)){
+  setTimeout(function(){
+    var nw=document.querySelector("[data-new]");
+    if(!nw) return;
+    var clone=nw.cloneNode(true);clone.removeAttribute("data-new");
+    openDrawer("候选供应商报价 · 最新",clone.outerHTML,"点旧卡 → 一律打开最新详情（不提供「看当时那一版」）");
+    nw.classList.add("viewing");
+    document.getElementById("s5").scrollIntoView({block:"start"});
+  },50);
+}
+
+Array.prototype.forEach.call(document.querySelectorAll(".wbtn"),function(b){b.classList.remove("on");b.classList.add("ghost")});
+    btn.classList.add("on");btn.classList.remove("ghost");
+    document.documentElement.style.setProperty("--cw",btn.getAttribute("data-w")+"px");
+  });
+});
+</script>
+</body>
+</html>
