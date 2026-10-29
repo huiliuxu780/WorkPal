@@ -276,7 +276,7 @@ async function releaseCancelledOwnerAdmission(
   // Only a session the runtime never entered can be handed back on the cancelled
   // status alone: there is no shared session state for a successor to inherit.
   // Once the runtime started, release requires the RT-26 clean/detached proof,
-  // which this layer cannot obtain — see listCancelledSessionsToRecover.
+  // which this layer cannot obtain — see listTerminalSessionsToRecover.
   if (row.runtimeStartedAt !== null) return false;
   const cancelledOwner = await tx.run.findFirst({
     where: { id: row.ownerRunId, status: "cancelled" },
@@ -671,18 +671,20 @@ export async function releaseCancelledSessionsThatNeverStarted(
 }
 
 /**
- * FIX-STOP-01 classification for sessions a cancelled Run holds after the runtime
- * started. An absent `run_abort` revocation only means the runtime accepted the
- * abort request, so this returns the owners whose proof should be attempted — it
- * does not release anything. The caller re-dispatches `runContinueJob(ownerRunId)`
- * and the existing RT-26 terminal-owner hook does the rest: inspectAndDetach,
- * checkpoint proof, acknowledgement, `releaseRecoveredSessionAdmission`, wake the
- * successor.
+ * Classification for sessions a terminal Run still holds after the runtime
+ * started. Cancelled owners become eligible only after their `run_abort`
+ * revocation is delivered; failed owners are already authoritative terminal
+ * outcomes and need the same durable proof retry when the executor's first probe
+ * could not settle the session. This returns owners whose proof should be
+ * attempted — it never releases anything. The caller re-dispatches
+ * `runContinueJob(ownerRunId)` and the existing RT-26 terminal-owner hook does the
+ * rest: inspectAndDetach, checkpoint proof, acknowledgement,
+ * `releaseRecoveredSessionAdmission`, wake the successor.
  *
  * Keep the revocation in the predicate so a session is not probed while the abort
  * is still outstanding; pending owners stay parked either way.
  */
-export async function listCancelledSessionsToRecover(
+export async function listTerminalSessionsToRecover(
   prisma: PrismaClient,
   now = new Date(),
   limit = 100,
@@ -693,11 +695,14 @@ export async function listCancelledSessionsToRecover(
       JOIN "runs" run ON run."id" = admission."ownerRunId"
       WHERE admission."state" IN ('owned', 'recovering')
         AND admission."runtimeStartedAt" IS NOT NULL
-        AND run."status" = 'cancelled'
-        AND NOT EXISTS (
-          SELECT 1 FROM "execution_revocations" revocation
-          WHERE revocation."kind" = 'run_abort'
-            AND revocation."subjectId" = admission."ownerRunId"
+        AND run."status" IN ('cancelled', 'failed')
+        AND (
+          run."status" = 'failed'
+          OR NOT EXISTS (
+            SELECT 1 FROM "execution_revocations" revocation
+            WHERE revocation."kind" = 'run_abort'
+              AND revocation."subjectId" = admission."ownerRunId"
+          )
         )
       ORDER BY admission."updatedAt" ASC, admission."sessionKey" ASC
       LIMIT ${limit}
@@ -712,7 +717,7 @@ export async function listCancelledSessionsToRecover(
       // parkRunForRecovery's leased/running guard matches nothing and the Run is
       // not re-queued.
       if (row.state === "owned") {
-        await parkRunForRecovery(tx, row, "cancelled_after_runtime_start", now);
+        await parkRunForRecovery(tx, row, "terminal_after_runtime_start", now);
       }
       // `updatedAt` is also the recovery-attempt cursor. Rotate every selected
       // owner to the back before dispatching it; otherwise an unprovable oldest

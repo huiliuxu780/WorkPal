@@ -1,0 +1,46 @@
+RUN-FAILURE-01 final-review P1: durable proof retry for failed terminal owners
+Date: 2026-10-29
+
+Finding:
+  packages/adapters/src/executor.ts makes an immediate RT-26 proof attempt in
+  finally. If the Runtime is briefly unavailable, the Run is already failed and
+  the admission remains recovering. The durable reconciler previously selected
+  cancelled terminal owners only, so this failed owner had no later proof attempt.
+
+Red — same PostgreSQL regression before the classifier change:
+  DATABASE_URL=postgresql://rakazo:localtestpassword@127.0.0.1:5433/rakazo \
+  VERIFY_DATABASE=1 pnpm exec vitest run --no-file-parallelism \
+  packages/db/src/stop-session-release.postgres.test.ts
+
+  Test Files  1 failed (1)
+  Tests       1 failed | 8 passed (9)
+  Failure: expected the recovery candidates to contain the failed terminal owner;
+           the old cancelled-only classifier omitted it.
+
+Green — same command after listTerminalSessionsToRecover:
+  Test Files  1 passed (1)
+  Tests       9 passed (9)
+
+Supporting checks:
+  apps/worker/src/session-admission-reconciler.test.ts              4 passed
+  packages/adapters/src/session-checkpoint-recovery.postgres.test.ts 5 passed
+  @rakazo/db typecheck                                               passed
+  @rakazo/worker typecheck                                           passed
+  biome (touched TypeScript files)                                   passed
+
+Real worker-chain product paths:
+  --grep='Routine failure delivers once'                             1 passed
+  --grep='Routine failure delivers once|outbox restart recovers'     1 passed, 1
+                                                                      pre-fix-
+                                                                      assertion red
+  outbox restart after semantics update                              1 passed
+  full pnpm test:worker-chain                                        11 passed
+                                                                      (6.1m)
+
+The production rule remains proof-gated:
+  - cancelled owner: eligible only after run_abort is delivered;
+  - failed owner: eligible for durable proof retry;
+  - classifier/reconciler never releases admission;
+  - only inspectAndDetach -> checkpoint proof -> ack ->
+    releaseRecoveredSessionAdmission can release it;
+  - no elapsed-time, lease-expiry, or DELETE-200 fallback was added.

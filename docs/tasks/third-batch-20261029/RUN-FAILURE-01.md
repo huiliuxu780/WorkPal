@@ -83,4 +83,5 @@
 - 证据与门禁：[`docs/evidence/RUN-FAILURE-01/README.md`](../../evidence/RUN-FAILURE-01/README.md)。
 - 根因：AgentScope 把 provider 500 报成固定文案 + `internal` 类别；adapter 用正则猜 `provider_5xx` 猜不到，executor 把结果当作“Runtime 未确认”，return 后把 Run 停回 `queued`（admission `recovering`），job reconciler 每轮重新投递，RT-26 hook 释放会话后再次执行模型调用，完全绕过自动重试预算。
 - 修复：Runtime 在 stream 边界按 `ModelHttpException` 的稳定 HTTP 状态和异常类型给出 `provider_unavailable` / `provider_timeout` / `provider_rejected`；adapter 不再解析文案；executor 先读唯一重试预算再判断结果是否未确认；预算耗尽和确定性失败都走 `finalizeRun({ outcome: "failed" })`，随后仅在拿到 RT-26 proof 时释放会话，终态 Run 不再执行。
+- 最终复审修复：failed terminal owner 的一次即时 proof 若因 Runtime 短暂不可达失败，durable reconciler 会重投该 owner 继续走既有 RT-26 proof 链；cancelled owner 仍须先送达 `run_abort`。分类器不释放 admission，也没有时间兜底。PostgreSQL 同一回归旧实现 8/9、新实现 9/9；真实 worker-chain 常规与 Worker restart 两条链路均在 proof 后只投递一次。
 - 门禁：见证据 README 的“本地门禁”表。

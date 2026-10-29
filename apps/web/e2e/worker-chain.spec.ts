@@ -694,7 +694,7 @@ test("a retry after an in-flight cancellation waits for the RT-26 detach proof, 
   }
 });
 
-test("a Routine failure queues one delivery behind recovering chat admission", async ({ page }) => {
+test("a Routine failure delivers once after terminal-owner proof recovery", async ({ page }) => {
   test.setTimeout(600_000);
   const apiKey = "worker-chain-routine-key";
   const db = createDb(process.env.DATABASE_URL!);
@@ -728,6 +728,12 @@ test("a Routine failure queues one delivery behind recovering chat admission", a
               releaseRoutineHold = release;
             },
           },
+        },
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(DELIVERY_INSTRUCTION);
+          },
+          response: { type: "text", text: DELIVERY_TEXT },
         },
       ],
     });
@@ -778,8 +784,16 @@ test("a Routine failure queues one delivery behind recovering chat admission", a
     expect(record.threadId).toBe(thread.id);
     expect(record.status).toBe("pending");
 
+    const terminalAdmission = await db.prisma.agentSessionAdmission.findFirstOrThrow({
+      where: { ownerRunId: runId },
+    });
+    expect(["available", "recovering"]).toContain(terminalAdmission.state);
+    expect(task.requests).toHaveLength(1);
+
     // The bounded DELETE frees the Java process slot, but RT-25 deliberately
     // does not treat that transport response as RT-26 clean/detached proof.
+    // The durable reconciler must re-dispatch this failed terminal owner until
+    // RT-26 records and acknowledges a proof; only then may delivery execute.
     const released = await releaseNativeRun(runId);
     if (released === -1) {
       try {
@@ -789,8 +803,24 @@ test("a Routine failure queues one delivery behind recovering chat admission", a
       }
     }
 
+    await expect
+      .poll(
+        async () => {
+          const proof = await db.prisma.agentSessionCheckpoint.findFirst({
+            where: { runId },
+            orderBy: { createdAt: "desc" },
+            select: { proofKind: true, ackedAt: true, status: true },
+          });
+          return proof
+            ? `${proof.proofKind}/${proof.status}/${proof.ackedAt ? "acked" : "unacked"}`
+            : "none";
+        },
+        { timeout: 180_000 },
+      )
+      .toMatch(/^(clean|detached)\/(recorded|consumed)\/acked$/);
     // Outbox merge window (30s) + the Worker's dispatch sweep (10s): the
-    // Worker itself claims the record and creates the trigger=delivery Run.
+    // Worker claims the record, creates the delivery Run, and executes it only
+    // after the proof gate opens.
     await expect
       .poll(
         async () =>
@@ -802,29 +832,19 @@ test("a Routine failure queues one delivery behind recovering chat admission", a
           )?.status ?? "none",
         { timeout: 180_000 },
       )
-      .toBe("queued");
-    const inFlight = await db.prisma.run.findFirstOrThrow({
-      where: { threadId: thread.id, trigger: "delivery" },
-    });
-    expect(inFlight).toMatchObject({ status: "queued", leaseOwner: null, error: null });
-    await expect(
-      db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),
-    ).resolves.toMatchObject({ state: "recovering", ownerRunId: runId });
-
-    // The durable chain reaches delivery.created → queued delivery Run. It
-    // cannot produce a bot message or delivery.sent before RT-26 releases the owner.
+      .toBe("completed");
     const deliveryRun = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
-    expect(deliveryRun.id).toBe(inFlight.id);
+    expect(deliveryRun).toMatchObject({ status: "completed", error: null });
     const deliveryTask = await db.prisma.task.findUniqueOrThrow({
       where: { id: deliveryRun.taskId },
     });
     expect(deliveryTask.prompt).toContain(DELIVERY_INSTRUCTION);
-    const claimed = await db.prisma.deliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
-    expect(claimed.status).toBe("claimed");
-    expect(claimed.deliveryRunId).toBe(deliveryRun.id);
-    expect(claimed.deliveredAt).toBeNull();
+    const sent = await db.prisma.deliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
+    expect(sent.status).toBe("sent");
+    expect(sent.deliveryRunId).toBe(deliveryRun.id);
+    expect(sent.deliveredAt).not.toBeNull();
     const createdEvent = await db.prisma.event.findFirstOrThrow({
       where: { runId, type: "delivery.created" },
       select: { payload: true, seq: true },
@@ -834,31 +854,36 @@ test("a Routine failure queues one delivery behind recovering chat admission", a
     const summaries = await db.prisma.message.findMany({
       where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
     });
-    expect(summaries).toHaveLength(0);
+    expect(summaries).toHaveLength(1);
+    expect(JSON.stringify(summaries[0]?.blocks)).toContain(DELIVERY_TEXT);
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(0);
+    ).toBe(1);
     // Delivery never fabricates a user turn.
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "user" } })).toBe(
       userMessagesBefore,
     );
-    expect(task.requests.length).toBe(1);
+    expect(task.requests.length).toBe(2);
+    await expect(page.getByTestId("transcript").getByText(DELIVERY_TEXT)).toBeVisible({
+      timeout: 120_000,
+    });
 
-    // Duplicate scheduling: further dispatch sweeps redeliver nothing.
+    // Duplicate scheduling: further dispatch sweeps and a Worker restart do
+    // not redeliver the already-settled outbox record.
     await page.waitForTimeout(25_000);
     expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
       1,
     );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(0);
+    ).toBe(1);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(0);
+    ).toBe(1);
 
-    // Worker restart cannot bypass the recovering admission or duplicate the Run.
+    // Worker restart cannot duplicate the Run or sent result.
     await stopWorker();
     await startWorker();
     await page.waitForTimeout(15_000);
@@ -867,16 +892,16 @@ test("a Routine failure queues one delivery behind recovering chat admission", a
     );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(0);
+    ).toBe(1);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(0);
+    ).toBe(1);
     const afterRestart = await db.prisma.deliveryRecord.findUniqueOrThrow({
       where: { id: record.id },
     });
-    expect(afterRestart.status).toBe("claimed");
+    expect(afterRestart.status).toBe("sent");
     expect(afterRestart.deliveryRunId).toBe(deliveryRun.id);
 
     // Cross-Space isolation: a second user's fresh Space/Thread never sees the
@@ -933,9 +958,7 @@ test("a Routine failure queues one delivery behind recovering chat admission", a
   }
 });
 
-test("an outbox restart creates one queued delivery behind recovering admission", async ({
-  page,
-}) => {
+test("an outbox restart recovers the terminal owner and delivers once", async ({ page }) => {
   test.setTimeout(600_000);
   const apiKey = "worker-chain-crash-key";
   const db = createDb(process.env.DATABASE_URL!);
@@ -966,6 +989,12 @@ test("an outbox restart creates one queued delivery behind recovering admission"
               releaseRoutineHold = release;
             },
           },
+        },
+        {
+          expect(request) {
+            expect(JSON.stringify(request.messages)).toContain(DELIVERY_INSTRUCTION);
+          },
+          response: { type: "text", text: DELIVERY_TEXT },
         },
       ],
     });
@@ -1031,72 +1060,88 @@ test("an outbox restart creates one queued delivery behind recovering admission"
     );
     expect(task.requests.length, "no model activity while the Worker is dead").toBe(1);
 
-    // Restart: the durable outbox row alone drives recovery.
+    // Restart: durable outbox and admission state drive recovery. The terminal
+    // owner is re-dispatched for an RT-26 proof before the delivery Run may use
+    // the same chat session.
     const restartStart = Date.now();
     await startWorker();
     await expect
       .poll(
         async () => {
-          const run = await db.prisma.run.findFirst({
-            where: { threadId: thread.id, trigger: "delivery" },
-            select: { id: true, status: true, leaseOwner: true },
+          const proof = await db.prisma.agentSessionCheckpoint.findFirst({
+            where: { runId },
+            orderBy: { createdAt: "desc" },
+            select: { proofKind: true, ackedAt: true, status: true },
           });
-          if (!run) return "none";
-          const queuedAdmissions = await db.prisma.agentSessionAdmissionRequest.count({
-            where: { runId: run.id, state: "queued" },
-          });
-          return `${run.status}:${run.leaseOwner ?? "none"}:${queuedAdmissions}`;
+          return proof
+            ? `${proof.proofKind}/${proof.status}/${proof.ackedAt ? "acked" : "unacked"}`
+            : "none";
         },
         { timeout: 180_000 },
       )
-      .toBe("queued:none:1");
+      .toMatch(/^(clean|detached)\/(recorded|consumed)\/acked$/);
+    await expect
+      .poll(
+        async () => {
+          const run = await db.prisma.run.findFirst({
+            where: { threadId: thread.id, trigger: "delivery" },
+            select: { status: true },
+          });
+          return run?.status ?? "none";
+        },
+        { timeout: 180_000 },
+      )
+      .toBe("completed");
     const recovery = await db.prisma.deliveryRecord.findUniqueOrThrow({
       where: { id: pending.id },
     });
-    timings.crashRestartToQueuedMs = Date.now() - restartStart;
+    timings.crashRestartToDeliveredMs = Date.now() - restartStart;
 
     const deliveryRun = await db.prisma.run.findFirstOrThrow({
       where: { threadId: thread.id, trigger: "delivery" },
     });
-    expect(recovery.status).toBe("claimed");
+    expect(recovery.status).toBe("sent");
     expect(recovery.deliveryRunId).toBe(deliveryRun.id);
-    expect(recovery.deliveredAt).toBeNull();
-    expect(deliveryRun).toMatchObject({ status: "queued", leaseOwner: null, error: null });
-    await expect(
-      db.prisma.agentSessionAdmission.findFirstOrThrow({ where: { ownerRunId: runId } }),
-    ).resolves.toMatchObject({ state: "recovering", ownerRunId: runId });
-    // Exactly once up to RT-25's admission boundary.
+    expect(recovery.deliveredAt).not.toBeNull();
+    expect(deliveryRun).toMatchObject({ status: "completed", error: null });
+    // Exactly once across the restart and proof recovery.
     expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
       1,
     );
     expect(await db.prisma.deliveryRecord.count({ where: { runId } })).toBe(1);
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(0);
+    ).toBe(1);
     const summaries = await db.prisma.message.findMany({
       where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
     });
-    expect(summaries).toHaveLength(0);
+    expect(summaries).toHaveLength(1);
+    expect(JSON.stringify(summaries[0]?.blocks)).toContain(DELIVERY_TEXT);
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "bot" } })).toBe(
-      botMessagesBefore,
+      botMessagesBefore + 1,
     );
     expect(await db.prisma.message.count({ where: { threadId: thread.id, role: "user" } })).toBe(
       userMessagesBefore,
     );
 
-    // More sweep cycles after the restart still redeliver nothing.
+    expect(task.requests).toHaveLength(2);
+    await expect(page.getByTestId("transcript").getByText(DELIVERY_TEXT)).toBeVisible({
+      timeout: 120_000,
+    });
+
+    // More sweep cycles after the restart do not redeliver the settled row.
     await page.waitForTimeout(25_000);
     expect(await db.prisma.run.count({ where: { threadId: thread.id, trigger: "delivery" } })).toBe(
       1,
     );
     expect(
       await db.prisma.event.count({ where: { threadId: thread.id, type: "delivery.sent" } }),
-    ).toBe(0);
+    ).toBe(1);
     expect(
       await db.prisma.message.count({
         where: { threadId: thread.id, role: "bot", runId: deliveryRun.id },
       }),
-    ).toBe(0);
+    ).toBe(1);
     task.assertComplete();
     await recordTimings();
   } finally {

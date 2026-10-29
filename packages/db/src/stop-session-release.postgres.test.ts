@@ -10,7 +10,7 @@ import {
   createThreadMessage,
   type IsolatedPostgresDatabase,
   listAvailableSessionAdmissionHeads,
-  listCancelledSessionsToRecover,
+  listTerminalSessionsToRecover,
   markSessionAdmissionRecovering,
   markSessionRuntimeStarted,
   type PrismaClient,
@@ -352,7 +352,7 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     });
 
     // The owner is classified for recovery rather than released.
-    const toRecover = await listCancelledSessionsToRecover(prisma);
+    const toRecover = await listTerminalSessionsToRecover(prisma);
     expect(toRecover.map((row) => row.runId)).toContain(stopped.id);
   });
 
@@ -381,6 +381,31 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
     expect(await terminalHolders(sessionKey)).toHaveLength(1);
   });
 
+  it("re-dispatches a failed terminal owner whose first proof attempt could not settle", async () => {
+    const { bot, thread, sessionKey } = await newDirectSession();
+    const failed = await newRun(bot.id, thread.id);
+    const admission = await ownAdmission(failed, await claimRun(failed), {
+      runtimeStarted: true,
+    });
+    await prisma.$transaction([
+      prisma.run.update({
+        where: { id: failed.id },
+        data: { status: "failed", error: "provider_unavailable", leaseOwner: null },
+      }),
+      prisma.task.update({
+        where: { id: failed.taskId },
+        data: { status: "failed" },
+      }),
+    ]);
+    await markSessionAdmissionRecovering(prisma, admission, "agentscope_runtime_failed");
+
+    const toRecover = await listTerminalSessionsToRecover(prisma);
+    expect(toRecover).toContainEqual({ sessionKey, runId: failed.id });
+    expect(await holders(sessionKey)).toEqual([
+      { state: "recovering", ownerRunId: failed.id, runStatus: "failed" },
+    ]);
+  });
+
   it("rotates proof recovery candidates so one blocked batch cannot starve later sessions", async () => {
     const candidates: Array<{ sessionKey: string; runId: string }> = [];
     const oldest = Date.parse("2020-01-01T00:00:00.000Z");
@@ -403,7 +428,7 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
       candidates.push({ sessionKey, runId: stopped.id });
     }
 
-    const firstBatch = await listCancelledSessionsToRecover(
+    const firstBatch = await listTerminalSessionsToRecover(
       prisma,
       new Date("2030-01-01T00:00:00.000Z"),
       2,
@@ -412,7 +437,7 @@ describePostgres("Stop must hand the session execution right back (PostgreSQL)",
       candidates.slice(0, 2).map((row) => row.runId),
     );
 
-    const secondBatch = await listCancelledSessionsToRecover(
+    const secondBatch = await listTerminalSessionsToRecover(
       prisma,
       new Date("2030-01-01T00:00:01.000Z"),
       2,

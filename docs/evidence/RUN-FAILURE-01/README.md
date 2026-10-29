@@ -18,6 +18,7 @@
 | `db-facts.txt` | 该 Run 的 Run / Task / Attempt / Event / job / checkpoint / admission 最终数据库事实 |
 | `baseline-journey-54.txt` | `pnpm test:integration` 唯一红的基线对照 |
 | `gates.txt` | 本地门禁命令与结果 |
+| `final-review-proof-retry.txt` | 最终复审 P1 的同一 PostgreSQL 回归红绿、proof 重试边界与定向链路结果 |
 
 ## 根因（已由复现与数据库事实确认）
 
@@ -76,6 +77,13 @@ Attempt 消费了下一次 provider 请求。
    - 既有护栏不变：有 `agent.tool.called` 或 committed/executing/completed/uncertain
      ExternalEffect 时不自动重试；RT-25/RT-26 proof gate 没有增加时间后门；
      DELETE 200/租约过期仍不是 clean 证明。
+4. **最终复审补齐 failed terminal owner 的持久 proof 重试。** executor 的 `finally`
+   只能做一次即时 proof；Runtime 短暂不可达时，Run 已经 `failed`，但 admission 会留在
+   `recovering`。原 reconciler 只重投 cancelled owner，因此后继会永久排队。
+   `listTerminalSessionsToRecover` 现在统一分类 terminal owner：cancelled 仍须先送达
+   `run_abort`，failed 则直接进入 proof 重试；两者都只重投 owner 的 `runContinueJob`，
+   最终释放仍只能走原有 RT-26 `inspectAndDetach → checkpoint proof → ack → release` 链。
+   没有 proof 时继续停在 `recovering`，没有新增时间兜底。
 
 改动文件：`services/agent-runtime`（`RuntimeEngine`、`FailureCategory`、
 `ModelStreamFailure` 与测试）、`packages/adapters/src/agentscope-runtime.ts`、
@@ -90,6 +98,11 @@ Attempt 消费了下一次 provider 请求。
   `Received: "attempts: 5"` / Run 未终态。红由调用次数超预算与 Run 未终态触发，
   不是人为 sleep 失败。
 - 绿：`green-worker-chain.txt`，修复后同一场景 1.1m 通过，且完整套件 11 passed。
+- 最终复审回归：同一 PostgreSQL 用例在旧 classifier 上 **8 passed / 1 failed**（failed
+  terminal owner 不在候选中），修复后 **9/9**；reconciler 单测 **4/4**、既有
+  checkpoint recovery **5/5**。真实 worker-chain 的 Routine failure 与 Worker restart
+  两条链路都验证 proof 后只投递一次，不再把“永久 queued”写成成功契约；最终整套
+  `pnpm test:worker-chain` **11/11 passed（6.1m）**。
 
 ## 验收场景（真实链路）
 
@@ -117,9 +130,9 @@ stream.failed → run.failed`（`error.category=provider_unavailable`）。
    这是刻意的保守选择：无法稳定识别为可重试的失败不会被重放。Java 侧由
    `ModelUtils` 包装的超时（`ModelException`，无 cause）也不会被识别为 timeout。
 3. **拿不到 RT-26 proof 时仍停在 `recovering`。** 与既有一致：不按时间强制释放；
-   本任务没有新增后门。预算失败发生在 executor 之外的路径（如 `enforceRunBudgets`
-   先 finalize）保持原有的 park 行为，`a Routine failure queues one delivery behind
-   recovering chat admission` 场景继续通过。
+   本任务没有新增后门。区别是 failed terminal owner 不再只尝试一次：reconciler 会持久
+   重投 proof 恢复，Runtime 恢复后释放 admission 并唤醒后继。Runtime 持续不可达、旧 binding
+   无法认领、manifest 缺失或 proof 冲突时仍需人工/运维出口。
 4. **`pnpm test:integration` 的 journey 54 是基线红**（群聊多人 mention 的 owner 语义，
    与本 diff 无关，baseline-journey-54.txt 有对照）。
 5. **`409 Session already has an active run` 未处理**，与本卡根因无直接关系（任务卡明确
