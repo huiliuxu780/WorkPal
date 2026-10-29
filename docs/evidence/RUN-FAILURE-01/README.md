@@ -5,7 +5,7 @@
 - 分支：`codex/run-failure-terminality`
 - PR：[#157](https://github.com/huiliuxu780/WorkPal/pull/157)
 - 基线：`origin/main @ dceae3234c84b110407f893e7e4e158c2e299536`
-- 状态：`ready-to-merge`（PR 见下方交付记录，未合并）
+- 状态：`done`（PR [#157](https://github.com/huiliuxu780/WorkPal/pull/157) 已合入 `main`，merge commit `fdcaefe8ada620899c959a88f3fdd670f05bc965`）
 - 环境：macOS arm64、Node 24、pnpm 9.15.0、JDK 21、PostgreSQL 16（Colima 容器）、真实 Worker 进程、真实 Java AgentScope Runtime、回环模型 HTTP fixture
 
 证据文件：
@@ -141,7 +141,7 @@ stream.failed → run.failed`（`error.category=provider_unavailable`）。
 
 ## 交付记录
 
-- 最终 head：见 PR（分支 `codex/run-failure-terminality`）。
-- 任务卡状态：`ready-to-merge`；未合并、未部署、未改 GitHub 设置。
+- 最终交付 head：`58f9d3cfc96d2dd2064bf8680daecfba7a2ab07c`（分支 `codex/run-failure-terminality`）。
+- PR [#157](https://github.com/huiliuxu780/WorkPal/pull/157) 最终 head 的相关检查在同一 CI attempt 内全部通过；任务卡状态为 `done`，已合入 `main`，未部署、未改 GitHub 设置。
 - diff 中无密钥、无真实用户数据、无私有 URL、无本机路径；测试用的 provider 合成密钥与
   合成主机只作为“必须不出现”的断言输入。
