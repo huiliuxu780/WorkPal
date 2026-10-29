@@ -21,12 +21,15 @@ COPY --from=build /runtime /app
 # The dependency store is copied separately from the pruned sources: it is the
 # one part of the build stage too large to assemble twice.
 COPY --from=build /app/node_modules /app/node_modules
-# `corepack enable` only installs a shim. Without prepare, the first pnpm
-# invocation downloads the package manager at runtime — which the build stage
-# used to hide because it installed and ran in the same layer, and which a
-# production network will not allow. The version comes from package.json so it
+# `corepack enable` only installs a shim, and `corepack prepare` caches under the
+# invoking user's home — /root, which is 0700 and therefore invisible to the
+# USER node that actually runs the services. Pin COREPACK_HOME to a shared path
+# so the prepared package manager is the one the runtime resolves, and starting
+# a container never needs the network. The version comes from package.json so it
 # cannot drift from the lockfile.
-RUN corepack prepare "$(node -p "require('/app/package.json').packageManager")" --activate
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack prepare "$(node -p "require('/app/package.json').packageManager")" --activate \
+    && chmod -R a+rX "$COREPACK_HOME"
 RUN install -d -m 750 -o node -g node /data /app/apps/web/node_modules/.vite-temp
 ARG GIT_SHA
 ENV NODE_ENV=production
