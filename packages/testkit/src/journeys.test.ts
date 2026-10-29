@@ -108,7 +108,7 @@ describeJourneys("required product journeys", () => {
         );
       }
     }
-    return rpc<Snap>(app, cookie, "threads/get", { groupId });
+    return { snapshot: await rpc<Snap>(app, cookie, "threads/get", { groupId }), runIds: targets };
   }
 
   beforeAll(async () => {
@@ -2050,7 +2050,42 @@ describeJourneys("required product journeys", () => {
       expect.arrayContaining([botA.id, botB.id, botC.id, botD.id]),
     );
 
-    await sendGroupAndWait(app, ada, group.id, "@BotA gather sources. @BotB summarize.");
+    // Product default: several plain mentions name ONE response owner (mention
+    // precedence), so the turn must not fan out into one Run per mentioned Bot.
+    const plainMention = await sendGroupAndWait(
+      app,
+      ada,
+      group.id,
+      "@BotA gather sources. @BotB summarize.",
+    );
+    const plainRuns = await prisma.run.findMany({
+      where: {
+        threadId: group.threadId,
+        id: { in: plainMention.runIds },
+      },
+      select: { botId: true },
+    });
+    // Exactly one owner: the turn must not fan out per mention, whichever
+    // member the router/lead picks.
+    expect(plainRuns).toHaveLength(1);
+    expect([botA.id, botB.id, botC.id, botD.id]).toContain(plainRuns[0]!.botId);
+
+    // Only an explicit separate-answers request makes both mentions owners.
+    const separate = await sendGroupAndWait(
+      app,
+      ada,
+      group.id,
+      "@BotA gather sources. @BotB summarize. Reply separately.",
+    );
+    const separateRuns = await prisma.run.findMany({
+      where: {
+        threadId: group.threadId,
+        id: { in: separate.runIds },
+      },
+      select: { botId: true },
+    });
+    expect(new Set(separateRuns.map((run) => run.botId))).toEqual(new Set([botA.id, botB.id]));
+
     const mentioned = await rpc<Snap & { threadId: string }>(app, ada, "threads/get", {
       groupId: group.id,
     });
@@ -2193,7 +2228,10 @@ describeJourneys("required product journeys", () => {
     const replayNonce = `group-replay-${stamp}`;
     const firstSend = await rpc<{ runId: string; runIds?: string[] }>(app, ada, "threads/send", {
       groupId: group.id,
-      text: "@BotA gather updates. @BotB compare them.",
+      // BotB is busy, so an owned turn must fold into its run as steering; the
+      // explicit separate-answers request keeps BotB an owner (plain multiple
+      // mentions resolve to one owner by product default).
+      text: "@BotA gather updates. @BotB compare them. Reply separately.",
       clientNonce: replayNonce,
     });
     await rpc(app, ada, "groups/update", {
