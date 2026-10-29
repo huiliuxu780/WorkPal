@@ -1,6 +1,6 @@
 # CARD-01E：无障碍、旧消息回放、视觉回归与总 Gate
 
-状态：`in-progress`（复审发现 Attention 的 total/严格投影资格与请求内全量投影问题；已改为持久化 `renderable` 资格位并在 head `f123089` 重跑本地门禁，等待负责人复审。第二批扩展范围与交付记录见 [CARD-01E delivery](../cards/CARD-01E-delivery.md)）
+状态：`in-progress`（复审发现 Attention 的 total/严格投影资格与请求内全量投影问题；已改为持久化 `renderable` 资格位、补齐 UTF-16 长度语义并重跑本地门禁，等待负责人复审。第二批扩展范围与交付记录见 [CARD-01E delivery](../cards/CARD-01E-delivery.md)）
 
 父任务：[CARD-01 卡片统一与拓展](./CARD-01.md)
 

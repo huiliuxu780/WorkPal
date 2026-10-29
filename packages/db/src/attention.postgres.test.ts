@@ -903,6 +903,20 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     const missingPlan = await drop("plan_review", {});
     // Plan review with a content object that fails the strict plan schema.
     const malformedPlan = await drop("plan_review", { planReview: { content: {} } });
+    // Astral characters count as two UTF-16 units in Zod: 600 emoji exceed the
+    // 1000-unit goal cap even though PostgreSQL length() sees 600 code points.
+    const astralPlan = await drop("plan_review", {
+      planReview: {
+        content: {
+          planId: "plan-astral",
+          contentVersion: 1,
+          revision: 1,
+          goal: "😀".repeat(600),
+          items: [{ id: "item-1", title: "Ship", status: "pending" }],
+          source: "publish_run_plan",
+        },
+      },
+    });
     // Choice input whose action list has no usable id.
     await drop("input", { inputMode: "choice" });
     // Approval without an ExternalEffect or a RT-12 membership request.
@@ -943,6 +957,37 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
         presentation: { text: "Add Scout", extra: true } as never,
       },
     });
+    const astralMembershipRun = await taskRun(dmThreadId, "Astral membership");
+    const astralMembershipMessage = await botMessage(dmThreadId, [
+      { kind: "ask", text: "Astral membership", status: "pending" },
+    ]);
+    const astralMembership = await pendingIntervention({
+      threadId: dmThreadId,
+      runId: astralMembershipRun.id,
+      messageId: astralMembershipMessage.id,
+      kind: "approval",
+      presentation: { text: "Astral membership" },
+    });
+    unrenderable.push(astralMembership.id);
+    await prisma.groupMembershipRequest.create({
+      data: {
+        id: randomUUID(),
+        spaceId,
+        userId: ownerId,
+        botId: bot.id,
+        groupId: membershipGroup.id,
+        groupName: membershipGroup.name,
+        sourceThreadId: dmThreadId,
+        sourceRunId: astralMembershipRun.id,
+        cardMessageId: astralMembershipMessage.id,
+        interventionId: astralMembership.id,
+        deliveryKey: randomUUID(),
+        requestRevision: 1,
+        message: "Check the build.",
+        // 3000 emoji are 6000 UTF-16 units, above the 4000-unit presentation cap.
+        presentation: { text: "😀".repeat(3000) } as never,
+      },
+    });
     const flags = await prisma.attentionIntervention.findMany({
       where: { interactionId: { in: unrenderable } },
       select: { interactionId: true, renderable: true },
@@ -953,6 +998,8 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     expect(hiddenFlags.has(missingPlan.id)).toBe(true);
     expect(hiddenFlags.has(malformedPlan.id)).toBe(true);
     expect(hiddenFlags.has(membership.id)).toBe(true);
+    expect(hiddenFlags.has(astralPlan.id)).toBe(true);
+    expect(hiddenFlags.has(astralMembership.id)).toBe(true);
 
     const after = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
     expect(after.total).toBe(before.total);
@@ -978,6 +1025,81 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
       where: { interventionId: { in: unrenderable } },
     });
     await prisma.intervention.deleteMany({ where: { id: { in: unrenderable } } });
+  });
+
+  it("applies UTF-16 length semantics to every bounded plan and membership field", async () => {
+    const astral = "😀";
+    const plan = (
+      contentPatch: Record<string, unknown>,
+      rootPatch: Record<string, unknown> = {},
+    ) => ({
+      ...rootPatch,
+      content: {
+        planId: "plan",
+        contentVersion: 1,
+        revision: 1,
+        goal: "goal",
+        items: [{ id: "item", title: "title", status: "pending" }],
+        source: "publish_run_plan",
+        ...contentPatch,
+      },
+    });
+    const item = (patch: Record<string, unknown>) =>
+      plan({ items: [{ id: "item", title: "title", status: "pending", ...patch }] });
+    async function planOk(value: unknown) {
+      const rows = await prisma.$queryRaw<Array<{ ok: boolean }>>`
+        SELECT attention_plan_review_valid(${JSON.stringify(value)}::jsonb) AS ok
+      `;
+      return rows[0]!.ok;
+    }
+
+    expect(await planOk(plan({}))).toBe(true);
+    expect(await planOk(plan({ goal: astral.repeat(500) }))).toBe(true); // 1000 UTF-16 units
+    expect(await planOk(plan({ goal: astral.repeat(501) }))).toBe(false); // 1002
+    expect(await planOk(item({ id: astral.repeat(33) }))).toBe(false); // 66 > 64
+    expect(await planOk(item({ title: astral.repeat(101) }))).toBe(false); // 202 > 200
+    expect(await planOk(plan({}, { feedback: astral.repeat(1001) }))).toBe(false); // 2002 > 2000
+
+    const membership = (patch: Record<string, unknown>) => ({ text: "Add the Bot", ...patch });
+    async function membershipOk(presentation: unknown) {
+      const rows = await prisma.$queryRaw<Array<{ ok: boolean }>>`
+        SELECT attention_membership_renderable(
+          ${JSON.stringify(presentation)}::jsonb,
+          ${"group"},
+          ${"bot"},
+          ${"request"},
+          ${"thread"},
+          ${"run"},
+          ${"message"},
+          ${"space"},
+          ${1}
+        ) AS ok
+      `;
+      return rows[0]!.ok;
+    }
+
+    expect(await membershipOk(membership({}))).toBe(true);
+    expect(await membershipOk(membership({ text: astral.repeat(2000) }))).toBe(true); // 4000
+    expect(await membershipOk(membership({ text: astral.repeat(2001) }))).toBe(false); // 4002
+    expect(await membershipOk(membership({ detail: astral.repeat(4001) }))).toBe(false); // 8002
+    expect(
+      await membershipOk(
+        membership({
+          credential: {
+            name: astral.repeat(33),
+            origin: "https://example.test",
+            authType: "bearer",
+          },
+        }),
+      ),
+    ).toBe(false); // 66 > 64
+    expect(
+      await membershipOk(
+        membership({
+          credential: { name: "n", origin: astral.repeat(1025), authType: "bearer" },
+        }),
+      ),
+    ).toBe(false); // 2050 > 2048
   });
 
   it("orders by expiresAt ASC NULLS LAST, then attentionAt, then stableId", async () => {

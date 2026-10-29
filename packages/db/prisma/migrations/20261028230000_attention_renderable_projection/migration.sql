@@ -48,6 +48,27 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
+
+-- JavaScript string length is UTF-16 code units, not Unicode code points.
+-- PostgreSQL length() counts code points, so an astral character (for example
+-- an emoji) would pass a max check that the strict Zod contract rejects.
+CREATE FUNCTION "attention_utf16_length"(value text) RETURNS integer AS $$
+DECLARE
+  total integer := 0;
+  position integer;
+  code_point integer;
+BEGIN
+  IF value IS NULL THEN
+    RETURN NULL;
+  END IF;
+  FOR position IN 1..char_length(value) LOOP
+    code_point := ascii(substr(value, position, 1));
+    total := total + CASE WHEN code_point > 65535 THEN 2 ELSE 1 END;
+  END LOOP;
+  RETURN total;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 CREATE FUNCTION "attention_plan_review_valid"(review jsonb) RETURNS boolean AS $$
 DECLARE
   content jsonb;
@@ -85,7 +106,7 @@ BEGIN
   ) THEN
     RETURN false;
   END IF;
-  IF jsonb_typeof(content -> 'planId') <> 'string' OR length(content ->> 'planId') = 0 THEN
+  IF jsonb_typeof(content -> 'planId') <> 'string' OR attention_utf16_length(content ->> 'planId') = 0 THEN
     RETURN false;
   END IF;
   IF NOT attention_jsonb_positive_int(content -> 'contentVersion')
@@ -93,8 +114,8 @@ BEGIN
     RETURN false;
   END IF;
   IF jsonb_typeof(content -> 'goal') <> 'string'
-     OR length(content ->> 'goal') < 1
-     OR length(content ->> 'goal') > 1000 THEN
+     OR attention_utf16_length(content ->> 'goal') < 1
+     OR attention_utf16_length(content ->> 'goal') > 1000 THEN
     RETURN false;
   END IF;
   IF jsonb_typeof(content -> 'items') <> 'array'
@@ -111,13 +132,13 @@ BEGIN
       RETURN false;
     END IF;
     IF jsonb_typeof(item -> 'id') <> 'string'
-       OR length(item ->> 'id') < 1
-       OR length(item ->> 'id') > 64 THEN
+       OR attention_utf16_length(item ->> 'id') < 1
+       OR attention_utf16_length(item ->> 'id') > 64 THEN
       RETURN false;
     END IF;
     IF jsonb_typeof(item -> 'title') <> 'string'
-       OR length(item ->> 'title') < 1
-       OR length(item ->> 'title') > 200 THEN
+       OR attention_utf16_length(item ->> 'title') < 1
+       OR attention_utf16_length(item ->> 'title') > 200 THEN
       RETURN false;
     END IF;
     IF jsonb_typeof(item -> 'status') <> 'string' THEN
@@ -146,7 +167,7 @@ BEGIN
   END IF;
   IF review ? 'feedback' THEN
     IF jsonb_typeof(review -> 'feedback') <> 'string'
-       OR length(review ->> 'feedback') > 2000 THEN
+       OR attention_utf16_length(review ->> 'feedback') > 2000 THEN
       RETURN false;
     END IF;
   END IF;
@@ -177,12 +198,12 @@ BEGIN
   END IF;
   IF NOT (presentation ? 'text')
      OR jsonb_typeof(presentation -> 'text') <> 'string'
-     OR length(presentation ->> 'text') > 4000 THEN
+     OR attention_utf16_length(presentation ->> 'text') > 4000 THEN
     RETURN false;
   END IF;
   IF presentation ? 'detail' THEN
     IF jsonb_typeof(presentation -> 'detail') <> 'string'
-       OR length(presentation ->> 'detail') > 8000 THEN
+       OR attention_utf16_length(presentation ->> 'detail') > 8000 THEN
       RETURN false;
     END IF;
   END IF;
@@ -194,13 +215,13 @@ BEGIN
       RETURN false;
     END IF;
     IF jsonb_typeof(credential -> 'name') <> 'string'
-       OR length(credential ->> 'name') < 1
-       OR length(credential ->> 'name') > 64 THEN
+       OR attention_utf16_length(credential ->> 'name') < 1
+       OR attention_utf16_length(credential ->> 'name') > 64 THEN
       RETURN false;
     END IF;
     IF jsonb_typeof(credential -> 'origin') <> 'string'
-       OR length(credential ->> 'origin') < 1
-       OR length(credential ->> 'origin') > 2048 THEN
+       OR attention_utf16_length(credential ->> 'origin') < 1
+       OR attention_utf16_length(credential ->> 'origin') > 2048 THEN
       RETURN false;
     END IF;
     IF jsonb_typeof(credential -> 'authType') <> 'string' THEN
@@ -211,15 +232,15 @@ BEGIN
       RETURN false;
     END IF;
   END IF;
-  IF group_id IS NULL OR length(group_id) = 0
-     OR bot_id IS NULL OR length(bot_id) = 0
-     OR request_id IS NULL OR length(request_id) = 0
-     OR source_thread_id IS NULL OR length(source_thread_id) = 0
-     OR source_run_id IS NULL OR length(source_run_id) = 0
-     OR source_space_id IS NULL OR length(source_space_id) = 0 THEN
+  IF group_id IS NULL OR attention_utf16_length(group_id) = 0
+     OR bot_id IS NULL OR attention_utf16_length(bot_id) = 0
+     OR request_id IS NULL OR attention_utf16_length(request_id) = 0
+     OR source_thread_id IS NULL OR attention_utf16_length(source_thread_id) = 0
+     OR source_run_id IS NULL OR attention_utf16_length(source_run_id) = 0
+     OR source_space_id IS NULL OR attention_utf16_length(source_space_id) = 0 THEN
     RETURN false;
   END IF;
-  IF source_message_id IS NOT NULL AND length(source_message_id) = 0 THEN
+  IF source_message_id IS NOT NULL AND attention_utf16_length(source_message_id) = 0 THEN
     RETURN false;
   END IF;
   IF request_revision IS NULL OR request_revision < 1 THEN

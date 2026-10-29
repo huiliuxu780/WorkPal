@@ -65,6 +65,7 @@ CARD-01E 按方案 B 落地持久化读模型，并把查询边界写进测试�
 `total`、分页和严格投影现在使用同一套资格规则，不再先统计后丢弃：
 
 - `durableFilters` 在 SQL 里排除结构性不可渲染行：非 pending、未知 kind、空 ID/非法 revision、过期、不可见线程/Bot/群、失去管理权限的成员审批、没有 ExternalEffect 且没有 RT-12 请求的 approval、没有可用 action id 的 choice input。分页查询直接使用该条件，这些行不会进入页。
+- 所有持久化校验器的字符串长度使用 `attention_utf16_length`（按 UTF-16 code unit 计数），与 JavaScript/Zod 的 `.max()` 完全一致；PostgreSQL `length()` 按码点计数，astral 字符（emoji 等）会少算一半，该边界由 `attention.postgres.test.ts` 的 plan goal / item id / title / feedback / membership text / detail / credential name / origin 用例覆盖。
 - plan review 与 RT-12 成员审批的嵌套 JSON 在写入侧固化：`20261028230000_attention_renderable_projection` 增加 `attention_interventions.renderable`，`sync_attention_intervention` / `sync_attention_membership` 触发器用 SQL 严格校验器（`attention_plan_review_valid`、`attention_membership_renderable`）维护；迁移回填所有历史投影行。读路径只做 `ai.renderable = TRUE` + 动态事实过滤，**不再在请求里读取、分批或投影全部复杂 pending 行**，进程内存只与当前页有关。
 - 回归：`attention.postgres.test.ts` 的“不可投影 pending 行不增加 total”覆盖无 plan 内容、坏 plan content、无 action 的 choice、无 effect/无 membership 的 approval、坏 membership presentation；旧实现红（total 比基线多 4），持久化资格绿；再删掉读路径的 `renderable` 过滤做变异，total 多 3 转红。全套 17/17。
 

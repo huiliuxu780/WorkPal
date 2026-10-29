@@ -1,4 +1,4 @@
-$ REAL_MODEL_ID=qwen3.8-max ... pnpm test:e2e --runtime=agentscope --spec="card-real-model.spec.ts" (persisted renderable head)
-  ✓  1 [chromium] › e2e/card-real-model.spec.ts:25:1 › real DashScope model creates an ask card that reaches attention and resumes (29.0s)
-::notice title=🎭 Playwright Run Summary::  1 passed (30.4s)
-  1 passed (30.4s)
+$ REAL_MODEL_ID=qwen3.8-max ... pnpm test:e2e --runtime=agentscope --spec="card-real-model.spec.ts" (UTF-16 head)
+  ✓  1 [chromium] › e2e/card-real-model.spec.ts:25:1 › real DashScope model creates an ask card that reaches attention and resumes (23.4s)
+::notice title=🎭 Playwright Run Summary::  1 passed (24.6s)
+  1 passed (24.6s)

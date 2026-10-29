@@ -1,11 +1,11 @@
 # CARD-01E delivery record
 
-状态：`in-progress`（复审发现的 Attention total 与请求内全量投影问题已修复；本地门禁在 head `f123089` 全绿，等待负责人复审；PR 未创建，生产 gate 仍关闭）
+状态：`in-progress`（复审发现的 Attention total、请求内全量投影和 UTF-16 长度语义问题均已修复；本地门禁在最终提交全绿，等待负责人复审；PR 未创建，生产 gate 仍关闭）
 
 - 任务书：`docs/tasks/second-batch-20261028/CARD-01E.md`（第二批；该目录在主工作区未跟踪，本分支不新增）+ [旧 CARD-01E](../tasks/CARD-01E.md) 的无障碍/旧消息/视觉验收项
 - 分支：`codex/card-system-completion`
 - 基线：`a29c71123d50929faa05d2df588f487169eaad79`（最新本地 `origin/main`，PR #149 后；分支已 rebase 到该点。原始红基线 A/B 使用 `8054cac`）
-- 门禁 head：`f123089`（持久化 renderable 设计 + 迁移回填用例；本文件与截图/日志在随后的 docs/evidence 提交中定稿）
+- 门禁 head：本次 UTF-16 资格修复提交（持久化 renderable + UTF-16 长度语义 + 迁移回填用例；代码、测试、文档与证据在同一提交）
 
 ## 用户现在能完成的流程
 
@@ -33,6 +33,7 @@
 - **旧 `connect` 只读回放**：`apps/web/src/pages/Shell.tsx` 渲染存量的连接状态卡（名称、首字母、Connected/Not connected），没有按钮或链接；E2E fixture 与 `card-display-content.spec.ts` 断言零可操作元素。
 - **过期/归档/失权即时退出**：`attention.postgres.test.ts` 新增过期即时移除、群内发卡 Bot 归档、目标群失去管理权限三个用例；总数在三种情况下都精确回落。
 - **FIX-127 后的过期 E2E 断言**：`apps/web/e2e/approval-resume.spec.ts` 仍期待“回答后再次提问”的旧脚本行为，自 `b08c6e1`（FIX-127）起与持久化 Runtime 契约相反。已在 base `8054cac` 上复现同一红，再按“回答后同一 Run 完成、不再产生第二张 pending 卡”更新断言；更新后通过。
+- **UTF-16 长度语义**：复审复现 plan goal 600 个 emoji——PostgreSQL `length()` 算 600（码点），Zod `.max(1000)` 算 1200（UTF-16 单元），导致 `renderable=true` 但投影拒绝。新增 `attention_utf16_length` 并替换 plan/membership 所有长度限制；astral 回归覆盖 goal/item id/title/feedback/membership text/detail/credential name/origin，旧码点语义红、新语义 `renderable=false` 且 total 不增。
 - **choice 答案 label**：真模型验证暴露 selected choice 恢复时把 `choice-N` wire id 交给模型（用户选 Berlin，`qwen3.8-max` 回复 Seoul）。`resumeAnswerFromAsk` 现在只把 choice 的 id 解析成 label；free-text、approval/plan/budget action id 保持原样。单测 4/4，max 复跑回复 Berlin。
 - **Attention total 与严格投影同资格（持久化资格位）**：复审复现 `items=0,total=1`；第二版复审指出“请求内读取并分批投影全部复杂 pending 行”仍违反规模边界。新迁移 `20261028230000_attention_renderable_projection` 给投影表加 `renderable`，由 interventions / membership 触发器用 SQL 严格校验器维护并回填历史行；读路径只过滤 `renderable` + 动态 SQL，**不再在请求里物化全部复杂 pending 行**。PG 回归：旧实现 total 多 4，新实现持平；删掉 `renderable` 过滤的变异 total 多 3 转红；attention 17/17。
 
@@ -76,14 +77,14 @@
 | `pnpm lint` | 0 error（76 warning / 5 info，均为既有） |
 | `pnpm check` | 18/18 tasks successful |
 | `pnpm test:unit` | 460/461 files；**5550 passed / 2 skipped / 4 failed**（最终 head `f123089`）。4 条失败全部是 `infra/sandboxes/supervisor/src/computer-loopback.test.ts` 的 401；在 base `8054cac` 上同红（`logs/supervisor-baseline-red.txt`），与本 diff 无关 |
-| `pnpm test:postgres` | 最终 head `f123089` 无并发完整重跑：**53/53 files, 475/475 passed**（`logs/postgres-full.txt`）。`attention.postgres.test.ts` **17/17**（含资格红绿与变异），新增 `attention-renderable-migration.postgres.test.ts` **1/1**（历史投影回填） |
+| `pnpm test:postgres` | 最终 head 无并发完整重跑：**53/53 files, 476/476 passed**（`logs/postgres-full.txt`）。`attention.postgres.test.ts` **18/18**（含资格红绿、UTF-16 astral 回归、字段矩阵与变异），新增 `attention-renderable-migration.postgres.test.ts` **1/1**（历史投影回填） |
 | `pnpm test:inventory` | 0 errors |
 | `pnpm test:ci-select` | pass |
 | `pnpm test:docs` | pass |
-| `pnpm --filter @rakazo/web build` | 最终 head `✓ built in 4.50s`（首次 16.33s） |
-| gate-on E2E（任务书指定 5 个 spec） | 最终 head **13/13 passed**（2.7m）；`logs/e2e-gate-on.txt` |
-| 真模型 E2E（AgentScope Java Runtime + DashScope） | `qwen3.8-flash` 修复后 **1/1 passed**（36.3s）；`qwen3.8-max` 修复前 **1/1 passed**（30.8s）、choice label 修复后 **1/1 passed**（29.8s）；最终 head 复跑 **1/1 passed**（29.0s）：真实模型调用 `ask_user` → 统一 Input 卡 → Attention 行 → 选择答案 → Run 恢复并终态；`logs/real-model-e2e*.txt`、`logs/executor-resume-answer.txt` |
-| gate-off legacy E2E（intervention-region / plan-review / mcp-approval-card / approval-resume） | 最终 head **9/9 passed**（38.4s）；`approval-resume` 的过期断言曾按 FIX-127 契约修正，红基线见 `logs/approval-resume-base-red.txt` |
+| `pnpm --filter @rakazo/web build` | 最终 head `✓ built in 1.57s`（首次 16.33s） |
+| gate-on E2E（任务书指定 5 个 spec） | 最终 head **13/13 passed**（2.6m）；`logs/e2e-gate-on.txt` |
+| 真模型 E2E（AgentScope Java Runtime + DashScope） | `qwen3.8-flash` 修复后 **1/1 passed**（36.3s）；`qwen3.8-max` 修复前 **1/1 passed**（30.8s）、choice label 修复后 **1/1 passed**（29.8s）；最终 head 复跑 **1/1 passed**（23.4s）：真实模型调用 `ask_user` → 统一 Input 卡 → Attention 行 → 选择答案 → Run 恢复并终态；`logs/real-model-e2e*.txt`、`logs/executor-resume-answer.txt` |
+| gate-off legacy E2E（intervention-region / plan-review / mcp-approval-card / approval-resume） | 最终 head **9/9 passed**（38.3s）；`approval-resume` 的过期断言曾按 FIX-127 契约修正，红基线见 `logs/approval-resume-base-red.txt` |
 
 Attention 变异验证（`logs/attention-mutation-*.txt`）：
 
