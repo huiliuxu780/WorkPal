@@ -79,7 +79,7 @@
 
 ## 交付记录（Coding Agent）
 
-- 分支：`codex/run-failure-terminality`，基线 `origin/main @ dceae3234c84b110407f893e7e4e158c2e299536`。
+- 分支：`codex/run-failure-terminality`，PR [#157](https://github.com/huiliuxu780/WorkPal/pull/157)，基线 `origin/main @ dceae3234c84b110407f893e7e4e158c2e299536`。
 - 证据与门禁：[`docs/evidence/RUN-FAILURE-01/README.md`](../../evidence/RUN-FAILURE-01/README.md)。
 - 根因：AgentScope 把 provider 500 报成固定文案 + `internal` 类别；adapter 用正则猜 `provider_5xx` 猜不到，executor 把结果当作“Runtime 未确认”，return 后把 Run 停回 `queued`（admission `recovering`），job reconciler 每轮重新投递，RT-26 hook 释放会话后再次执行模型调用，完全绕过自动重试预算。
 - 修复：Runtime 在 stream 边界按 `ModelHttpException` 的稳定 HTTP 状态和异常类型给出 `provider_unavailable` / `provider_timeout` / `provider_rejected`；adapter 不再解析文案；executor 先读唯一重试预算再判断结果是否未确认；预算耗尽和确定性失败都走 `finalizeRun({ outcome: "failed" })`，随后仅在拿到 RT-26 proof 时释放会话，终态 Run 不再执行。

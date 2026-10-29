@@ -3,6 +3,7 @@
 任务卡：[`docs/tasks/third-batch-20261029/RUN-FAILURE-01.md`](../../tasks/third-batch-20261029/RUN-FAILURE-01.md)。
 
 - 分支：`codex/run-failure-terminality`
+- PR：[#157](https://github.com/huiliuxu780/WorkPal/pull/157)
 - 基线：`origin/main @ dceae3234c84b110407f893e7e4e158c2e299536`
 - 状态：`ready-to-merge`（PR 见下方交付记录，未合并）
 - 环境：macOS arm64、Node 24、pnpm 9.15.0、JDK 21、PostgreSQL 16（Colima 容器）、真实 Worker 进程、真实 Java AgentScope Runtime、回环模型 HTTP fixture
