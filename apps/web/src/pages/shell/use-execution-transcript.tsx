@@ -158,6 +158,17 @@ export function useExecutionTranscript({
   const [detailRequests, setDetailRequests] = useState<DetailRequestMap>({});
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<{ runId: string; message: string } | null>(null);
+  // PD-01 P2: predecessors this session already retried, mapped to the
+  // successor the server returned. A predecessor merged from an older history
+  // page keeps its cached `manualRetry.allowed=true` after a refresh, because
+  // the fresh snapshot cannot contain a Run outside its window; this map stands
+  // in for the successor fact the stale summary lacks. It follows the server
+  // rule (projectManualRetryEligibility): a successor that is active or
+  // completed hides the entry, a failed/cancelled one makes it retryable again
+  // — a repeat click only replays that successor, never creates a second.
+  const [retriedSuccessors, setRetriedSuccessors] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
   const retryNonceByRun = useRef(new Map<string, string>());
   const detailInFlight = useRef<Set<string>>(new Set());
   // UX-01B core rule 1: only Runs with a structured Plan, a semantic Step, a
@@ -201,12 +212,17 @@ export function useExecutionTranscript({
       if (!summary.sourceMessageId) continue;
       if (eligibleRunIds.has(summary.runId)) continue;
       if (summary.manualRetry?.allowed !== true) continue;
+      const successorId = retriedSuccessors.get(summary.runId);
+      if (successorId) {
+        const successorStatus = serverSummaries.get(successorId)?.status;
+        if (successorStatus !== "failed" && successorStatus !== "cancelled") continue;
+      }
       const list = entries.get(summary.sourceMessageId) ?? [];
       list.push({ runId: summary.runId, botId: summary.botId });
       entries.set(summary.sourceMessageId, list);
     }
     return entries;
-  }, [serverSummaries, eligibleRunIds]);
+  }, [serverSummaries, eligibleRunIds, retriedSuccessors]);
   // Message ids whose bubble ask block already carries a settled status: a
   // settled Intervention of a surface-less Run yields its ask back to the
   // bubble (honest history) instead of vanishing with the region.
@@ -534,6 +550,7 @@ export function useExecutionTranscript({
         .retry({ runId, clientNonce: nonce })
         .then(async (result) => {
           retryNonceByRun.current.delete(runId);
+          setRetriedSuccessors((current) => new Map(current).set(runId, result.runId));
           setExecutionNavIntent({
             threadId: result.threadId,
             runId: result.runId,

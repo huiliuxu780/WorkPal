@@ -45,6 +45,7 @@ import {
 const rpcMocks = vi.hoisted(() => ({
   executionSnapshot: vi.fn(),
   executionActivityPage: vi.fn(),
+  retry: vi.fn(),
 }));
 
 vi.mock("@lingui/core/macro", () => ({
@@ -76,6 +77,7 @@ vi.mock("../lib/rpc", async (importOriginal) => {
       runs: {
         executionSnapshot: rpcMocks.executionSnapshot,
         executionActivityPage: rpcMocks.executionActivityPage,
+        retry: rpcMocks.retry,
       },
     },
   };
@@ -700,6 +702,64 @@ describe("Shell execution region smoke (UX-01A baseline)", () => {
     expect(host.textContent).toContain("CARDED-CANCEL");
     // A denied projection yields no actionable entry (D4).
     expect(retriesFor("m3")).toHaveLength(0);
+  });
+
+  // P2 regression (review finding on PR #100): an entry merged from an older
+  // history page keeps its cached `manualRetry.allowed=true` after a successful
+  // retry, because the fresh snapshot cannot contain a predecessor outside its
+  // window and the history merge therefore preserves the old summary. The entry
+  // must disappear on success and mirror the server rule again once the
+  // locally-known successor ends failed/cancelled (the predecessor becomes
+  // retryable again). Reloading is not available in this test on purpose: the
+  // stale summary is exactly what the merge keeps supplying.
+  it("drops a stale paged retry entry after success and restores it only when the successor fails (PD-01 P2)", async () => {
+    const predecessor = summary({
+      runId: "run-paged",
+      status: "cancelled",
+      title: "PAGED-CANCEL",
+      sourceMessageId: "m1",
+      manualRetry: { allowed: true },
+    });
+    rpcMocks.retry.mockResolvedValue({ threadId: THREAD, runId: "run-successor" });
+    const onRefresh = vi.fn(async () => undefined);
+    const host = renderTranscript({
+      messages: [message("m1", "user", [{ kind: "text", text: "PAGED-CANCEL-ASK" }])],
+      runs: [],
+      executions: [predecessor],
+      onRefresh,
+    });
+    const retryButton = host.querySelector(
+      '[data-message-id="m1"] [data-testid="message-retry"]',
+    ) as HTMLButtonElement | null;
+    expect(retryButton).not.toBeNull();
+
+    await act(async () => {
+      retryButton!.click();
+      // Flush the retry promise chain through onRefresh and the finally state.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(rpcMocks.retry).toHaveBeenCalledTimes(1);
+    expect(onRefresh).toHaveBeenCalled();
+
+    // The stale merged summary still says allowed=true; the entry must be gone.
+    rerenderTranscript({ executions: [predecessor] });
+    expect(
+      host.querySelectorAll('[data-message-id="m1"] [data-testid="message-retry"]'),
+    ).toHaveLength(0);
+
+    // Server parity: a failed successor makes the predecessor retryable again.
+    rerenderTranscript({
+      executions: [
+        predecessor,
+        summary({ runId: "run-successor", status: "failed", sourceMessageId: "m1" }),
+      ],
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(
+      host.querySelectorAll('[data-message-id="m1"] [data-testid="message-retry"]'),
+    ).toHaveLength(1);
   });
 
   it("creates no execution surface for Todo-only, Activity-only or plain active Runs", () => {
