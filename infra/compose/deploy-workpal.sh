@@ -27,13 +27,26 @@ HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
 [[ -f "$SSH_KEY" ]] || { echo "SSH key not found: $SSH_KEY" >&2; exit 1; }
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# The snapshot follows APP_DIR so a rehearsal deployment (APP_DIR=/srv/workpal-dr)
+# never shares prod's rollback archive, and rollback always restores the exact
+# tree the rsync replaced. Defaults keep the historical prod paths byte-identical.
+APP_PARENT="$(dirname "$APP_DIR")"
+APP_BASE="$(basename "$APP_DIR")"
+ROLLBACK_TAR="${ROLLBACK_TAR:-${APP_PARENT}/${APP_BASE}-rollback.tar.gz}"
+
 # Layer order matters: prod base, then local-Docker computers, then AgentScope.
 COMPOSE='docker compose --env-file .env \
   -f infra/compose/docker-compose.prod.yml \
   -f infra/compose/docker-compose.prod.docker.yml \
   -f infra/compose/docker-compose.prod.agentscope.yml'
 
-remote() { ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 "$ECS_HOST" "cd ${APP_DIR} && $*"; }
+# Long builds ride a single ssh channel; keepalives stop a quiet-looking
+# connection from being dropped by a flaky link (observed during the DEP-01
+# rehearsal: "Connection closed by <host> port 22" aborted a deploy mid-phase).
+SSH_OPTS=(-i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=8)
+
+remote() { ssh "${SSH_OPTS[@]}" "$ECS_HOST" "cd ${APP_DIR} && $*"; }
+remote_nocd() { ssh "${SSH_OPTS[@]}" "$ECS_HOST" "$*"; }
 
 healthy() { curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null 2>&1; }
 
@@ -45,17 +58,43 @@ poll_health() {
   return 1
 }
 
+have_snapshot=0
 rollback() {
   trap - ERR
-  echo "Rolling back: restoring snapshot /srv/workpal-rollback.tar.gz." >&2
-  remote "tar -xzf /srv/workpal-rollback.tar.gz -C /srv"
+  if (( ! have_snapshot )); then
+    echo "Rollback impossible: ${APP_DIR} did not exist before this deploy, so no snapshot was taken." >&2
+    echo "The half-synced tree and any containers this attempt started are left in place for inspection." >&2
+    exit 1
+  fi
+  echo "Rolling back: restoring snapshot ${ROLLBACK_TAR} into ${APP_DIR} (wholesale tree replacement)." >&2
+  # The restore helper must not come from the remote tree (it may be half-updated);
+  # ship this checkout's copy next to the snapshot, then run it. The helper
+  # replaces the directory wholesale, so files rsync ADDED are removed, and it
+  # leaves APP_DIR untouched (with a loud error) if the snapshot is unusable.
+  restore_helper="${ROLLBACK_TAR}.restore.sh"
+  if ! ssh "${SSH_OPTS[@]}" "$ECS_HOST" \
+      "cat > '${restore_helper}'" < "${REPO_DIR}/infra/compose/restore-deploy-snapshot.sh"; then
+    echo "SNAPSHOT RESTORE FAILED: could not stage the restore helper on the host." >&2
+    echo "${APP_DIR} still holds the failed deploy's tree; the stack may be down." >&2
+    echo "Manual path: ssh -i ${SSH_KEY} ${ECS_HOST} and restore ${ROLLBACK_TAR} by hand." >&2
+    exit 1
+  fi
+  if ! remote_nocd "bash '${restore_helper}' '${ROLLBACK_TAR}' '${APP_DIR}'"; then
+    echo "SNAPSHOT RESTORE FAILED: ${APP_DIR} was left untouched; the stack may be down or on the failed revision." >&2
+    echo "Verify ${ROLLBACK_TAR} and restore manually (backups: /var/backups/rakazo): ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
+    exit 1
+  fi
   # Rebuild from restored sources without contacting registries (mirrorbuilder
   # cache + prior image layers make this far faster than the failed build).
-  remote "timeout --kill-after=30s ${BUILD_TIMEOUT} ${COMPOSE} up -d --build --pull never"
-  if poll_health; then
-    echo "Rollback complete: production is healthy at the previous revision."
+  if remote "timeout --kill-after=30s ${BUILD_TIMEOUT} ${COMPOSE} up -d --build --pull never"; then
+    if poll_health; then
+      echo "Rollback complete: production is healthy at the previous revision."
+    else
+      echo "ROLLBACK ALSO FAILED HEALTH CHECK. Investigate manually: ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
+    fi
   else
-    echo "ROLLBACK ALSO FAILED HEALTH CHECK. Investigate manually: ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
+    echo "ROLLBACK REBUILD FAILED: ${ROLLBACK_TAR} was restored to ${APP_DIR}, but 'up --build' did not succeed." >&2
+    echo "Previous-revision sources are in place; the stack may be down. Inspect build/container logs: ssh -i ${SSH_KEY} ${ECS_HOST}" >&2
   fi
   exit 1
 }
@@ -78,15 +117,24 @@ fi
 echo "ECS reachable, ${free_mb} MB free, deploying ${stamp}."
 
 # --- snapshot, then sync -----------------------------------------------------
-remote "tar --exclude=.git -czf /srv/workpal-rollback.tar.gz -C /srv workpal"
-echo "Remote tree snapshotted to /srv/workpal-rollback.tar.gz."
+# Arm the rollback trap from the snapshot onward: an rsync or `compose config`
+# failure leaves a half-updated remote tree, which must roll back too — not only
+# a failed `up`.
+if remote_nocd "test -d '${APP_DIR}'"; then
+  remote_nocd "tar --exclude=.git -czf '${ROLLBACK_TAR}' -C '${APP_PARENT}' '${APP_BASE}'"
+  have_snapshot=1
+  echo "Remote tree snapshotted to ${ROLLBACK_TAR}."
+  trap rollback ERR
+else
+  echo "First deploy: ${APP_DIR} does not exist yet; failures before 'up' cannot roll back." >&2
+fi
 
 rsync -az --delete \
   --exclude .git \
   --exclude .env \
   --exclude node_modules \
   --exclude 'infra/compose/Caddyfile.ip-http' \
-  -e "ssh -i ${SSH_KEY} -o BatchMode=yes" \
+  -e "ssh -i ${SSH_KEY} -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8" \
   "${REPO_DIR}/" "${ECS_HOST}:${APP_DIR}/"
 echo "Tree synced to ${ECS_HOST}:${APP_DIR}."
 
@@ -95,7 +143,6 @@ echo "Tree synced to ${ECS_HOST}:${APP_DIR}."
 # .env already supplies DEBIAN_MIRROR / RAKAZO_ALLOW_DEV_SECRETS / image tags,
 # and prod compose declares name: rakazo-prod, so no -p is needed.
 remote "${COMPOSE} config --quiet"
-trap rollback ERR
 remote "GIT_SHA=${stamp} timeout --kill-after=30s ${BUILD_TIMEOUT} ${COMPOSE} up -d --build --pull never"
 
 if poll_health; then
