@@ -3,7 +3,12 @@ import type { Actor } from "@rakazo/contracts";
 import { parseGroupPageQuery } from "@rakazo/core";
 import { IsolationError, type PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
-import { ArtifactListCursorError, deleteArtifactFamily, listSpaceArtifacts } from "./artifacts.js";
+import {
+  ArtifactListCursorError,
+  deleteArtifactFamily,
+  getLatestOwnedArtifact,
+  listSpaceArtifacts,
+} from "./artifacts.js";
 import { createGroupPanelQueries } from "./group-queries.js";
 
 const actor: Actor = {
@@ -572,5 +577,63 @@ describe("GroupQueries.listArtifacts", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+function artifactRow(id: string, version: number, rootArtifactId: string | null = "artifact-1") {
+  return {
+    id,
+    botId: "bot-1",
+    groupId: null,
+    runId: `run-${version}`,
+    name: "report.html",
+    description: null,
+    mimeType: "text/html",
+    size: 2,
+    storageKey: `storage-${version}`,
+    version,
+    createdAt: new Date("2026-10-30T00:00:00.000Z"),
+    rootArtifactId,
+  };
+}
+
+describe("getLatestOwnedArtifact", () => {
+  it("reads the latest published family version, not the clicked row", async () => {
+    const queryRaw = vi.fn().mockResolvedValue([artifactRow("artifact-3", 3)]);
+    const get = vi.fn(async () => new Uint8Array([104, 105]));
+    const result = await getLatestOwnedArtifact(
+      {
+        prisma: {
+          artifact: { findFirst: vi.fn().mockResolvedValue(artifactRow("artifact-1", 1, null)) },
+          $queryRaw: queryRaw,
+        } as unknown as PrismaClient,
+        artifacts: { get } as unknown as ArtifactStore,
+      },
+      actor,
+      { botId: "bot-1", artifactId: "artifact-1" },
+    );
+    expect(result.id).toBe("artifact-3");
+    expect(result.version).toBe(3);
+    expect(result.contentBase64).toBe(Buffer.from("hi").toString("base64"));
+    const sql = queryRaw.mock.calls[0]?.[0] as { strings: string[]; values: unknown[] };
+    expect(sql.values).toContain("artifact-1");
+  });
+
+  it("falls back to the clicked row when no later version has a message", async () => {
+    const queryRaw = vi.fn().mockResolvedValue([]);
+    const result = await getLatestOwnedArtifact(
+      {
+        prisma: {
+          artifact: { findFirst: vi.fn().mockResolvedValue(artifactRow("artifact-1", 1, null)) },
+          $queryRaw: queryRaw,
+        } as unknown as PrismaClient,
+        artifacts: {
+          get: vi.fn(async () => new Uint8Array([104, 105])),
+        } as unknown as ArtifactStore,
+      },
+      actor,
+      { botId: "bot-1", artifactId: "artifact-1" },
+    );
+    expect(result.id).toBe("artifact-1");
   });
 });

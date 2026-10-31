@@ -518,9 +518,10 @@ function answeredAskBlock(
 }
 
 function transcriptOf(host: HTMLElement): Element {
-  const transcript = host.querySelector('[data-testid="transcript"]');
-  if (!transcript) throw new Error("transcript container missing");
-  return transcript;
+  // B3: transcript rows live in the 704-wide column inside the scroll region.
+  const column = host.querySelector('[data-testid="transcript"] [data-testid="chat-column"]');
+  if (!column) throw new Error("transcript column missing");
+  return column;
 }
 
 function countOccurrences(haystack: string | null, needle: string): number {

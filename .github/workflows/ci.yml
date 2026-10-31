@@ -250,7 +250,7 @@ jobs:
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
       - run: pnpm --filter @rakazo/web exec playwright install --with-deps chromium
-      - run: pnpm test:e2e --runtime=agentscope --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts|capability-rules.spec.ts"
+      - run: pnpm test:e2e --runtime=agentscope --spec="agentscope-product.spec.ts|budget-acceptance.spec.ts|capability-rules.spec.ts|chat-chrome-v1.agentscope.spec.ts"
         env:
           AGENT_RUNTIME_SKIP_BUILD: "1"
       - name: Upload Playwright failure evidence

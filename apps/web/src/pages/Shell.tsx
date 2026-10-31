@@ -150,6 +150,7 @@ import {
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
+import { ArtifactPageCard } from "../components/ArtifactPageCard";
 import { AskCard } from "../components/AskCard";
 import { BackgroundTaskActivity } from "../components/activity/BackgroundTaskActivity";
 import { MessageText } from "../components/ai/AgentMentionText";
@@ -223,6 +224,12 @@ import {
 } from "../lib/execution-nav";
 import { scheduleFocusPrompt } from "../lib/focus-prompt";
 import { localTimezone } from "../lib/local-timezone";
+import {
+  type BubbleShape,
+  bubbleRadiusClass,
+  bubbleShapeForTextBlock,
+  computeMessageBubbleShapes,
+} from "../lib/message-bubble-shape";
 import { copyableMessageText } from "../lib/message-text";
 import { messageProviderLabel } from "../lib/messaging";
 import { useConnectedModelOptions } from "../lib/model-options";
@@ -5153,6 +5160,9 @@ export const Transcript = memo(function Transcript({
 }) {
   const { t } = useLingui();
   const [atEnd, setAtEnd] = useState(true);
+  const [pageDetailOpen, setPageDetailOpen] = useState(false);
+  const pageDetailOpenRef = useRef(false);
+  const pageDetailScrollTop = useRef<number | null>(null);
   const following = useRef(true);
   const autoScrolling = useRef(false);
   const lastScrollTop = useRef<number | null>(null);
@@ -5251,6 +5261,46 @@ export const Transcript = memo(function Transcript({
     }
     return { mergedAnchorMemberIds: ids, memberToGroupFirst: firstOfMember };
   }, [publicDelegations]);
+  const transcriptItems = useMemo(
+    () => groupVoiceChats(reactionView.visibleMessages),
+    [reactionView.visibleMessages],
+  );
+  const bubbleShapes = useMemo(() => {
+    const isGroupable = (message: ThreadMessage) => {
+      if (message.role !== "bot" || message.id.startsWith("progress:")) return false;
+      const visible = renderableMessageBlocks(message.blocks, showToolActivity);
+      if (visible.length === 0 || !visible.every((block) => block.kind === "text")) return false;
+      if (peerReceipts.groupByMessageId.has(message.id)) return false;
+      if (publicDelegations?.groupsByFirstMessageId.has(message.id)) return false;
+      if (publicDelegations?.hiddenMessageIds.has(message.id)) return false;
+      if (cardsUnifiedV2 && (displayBlocksByMessage.get(message.id)?.length ?? 0) > 0) return false;
+      return true;
+    };
+    return computeMessageBubbleShapes(
+      transcriptItems.map((item) => (item.kind === "voiceChat" ? null : item.message)),
+      isGroupable,
+    );
+  }, [
+    transcriptItems,
+    peerReceipts,
+    publicDelegations,
+    cardsUnifiedV2,
+    displayBlocksByMessage,
+    showToolActivity,
+  ]);
+  const artifactLatestByFamily = useMemo(() => {
+    const latest = new Map<string, number>();
+    for (const message of messages) {
+      for (const block of message.blocks) {
+        if (block.kind !== "file" || !block.rootArtifactId) continue;
+        const version = Math.max(block.version ?? 0, block.latestVersion ?? 0);
+        if (version > (latest.get(block.rootArtifactId) ?? 0)) {
+          latest.set(block.rootArtifactId, version);
+        }
+      }
+    }
+    return latest;
+  }, [messages]);
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -5367,6 +5417,33 @@ export const Transcript = memo(function Transcript({
     );
   }, [scrollRef]);
 
+  const handlePageDetailOpenChange = useCallback(
+    (open: boolean) => {
+      pageDetailOpenRef.current = open;
+      setPageDetailOpen(open);
+      if (open) {
+        pageDetailScrollTop.current = scrollRef.current?.scrollTop ?? null;
+        following.current = false;
+        autoScrolling.current = false;
+        return;
+      }
+      const scrollTop = pageDetailScrollTop.current;
+      // Focus restoration can scroll the transcript; put the reader back on the
+      // message they opened, and use the transcript itself if the card unmounted.
+      window.requestAnimationFrame(() => {
+        const element = scrollRef.current;
+        if (!element) return;
+        if (scrollTop !== null && element.scrollTop !== scrollTop) {
+          element.scrollTop = scrollTop;
+        }
+        if (document.activeElement === document.body) {
+          element.focus({ preventScroll: true });
+        }
+      });
+    },
+    [scrollRef],
+  );
+
   const scrolledJump = useRef<number | null>(null);
   const jumpScrolling = useRef(false);
   const jumpScrollTimer = useRef<number | undefined>(undefined);
@@ -5416,7 +5493,7 @@ export const Transcript = memo(function Transcript({
   ]);
 
   useLayoutEffect(() => {
-    if (following.current) snapToEnd();
+    if (following.current && !pageDetailOpenRef.current) snapToEnd();
   }, [messages, plans, steps, todos, running, snapToEnd]);
 
   useLayoutEffect(() => {
@@ -5456,6 +5533,8 @@ export const Transcript = memo(function Transcript({
       <div
         ref={scrollRef}
         data-testid="transcript"
+        data-page-detail-open={pageDetailOpen ? "true" : undefined}
+        tabIndex={-1}
         onPointerDown={(event) => {
           lastScrollTop.current = event.currentTarget.scrollTop;
           autoScrolling.current = false;
@@ -5494,7 +5573,7 @@ export const Transcript = memo(function Transcript({
             following.current = false;
           }
         }}
-        className={`rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-5 md:px-7 md:pb-6 ${
+        className={`rk-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-5 focus:outline-none md:px-7 md:pb-6 ${
           // UX-03 §5 collision avoidance: while the floating identity pill is
           // up it occupies the top ~48px of this column (top-2.5 + h-[38px]);
           // reserve its band as scroll-top padding so "Load earlier messages"
@@ -5502,6 +5581,10 @@ export const Transcript = memo(function Transcript({
           reservePillBand ? "pt-16" : "pt-5 md:pt-6"
         }`}
       >
+        <div
+          data-testid="chat-column"
+          className="mx-auto flex w-full max-w-[704px] flex-col gap-2"
+        >
         {olderCursor != null ? (
           <button
             type="button"
@@ -5512,7 +5595,7 @@ export const Transcript = memo(function Transcript({
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
         ) : null}
-        {groupVoiceChats(reactionView.visibleMessages).map((item) => {
+        {transcriptItems.map((item) => {
           if (item.kind === "voiceChat") {
             if (cardsUnifiedV2) {
               // Recompute from the merged group: per-page projections only
@@ -5683,13 +5766,27 @@ export const Transcript = memo(function Transcript({
           }
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           const messageReactions = reactionView.reactions.get(message.id);
+          const messageShape = bubbleShapes.get(message.id) ?? "solo";
+          const hasPageCard =
+            message.role === "bot" &&
+            "botId" in artifactTarget &&
+            message.blocks.some(
+              (block) => block.kind === "file" && block.mimeType === "text/html",
+            );
           return (
             <Fragment key={message.id}>
               {renderExecutions(`before:${message.id}`)}
               <div
                 key={message.id}
                 data-message-id={message.id}
-                className={peerReceipt ? "relative py-0.5" : "group/message relative hover:z-20"}
+                className={
+                  peerReceipt
+                    ? "relative py-0.5"
+                    : cn(
+                        "group/message relative hover:z-20",
+                        (messageShape === "middle" || messageShape === "last") && "-mt-[5px]",
+                      )
+                }
               >
                 {!peerReceipt && !message.id.startsWith("progress:") ? (
                   <time
@@ -5718,10 +5815,12 @@ export const Transcript = memo(function Transcript({
                     className={
                       peerReceipt
                         ? undefined
-                        : `relative w-fit min-w-0 ${
+                        : `relative min-w-0 ${
                             message.role === "user"
-                              ? "max-w-[min(84%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[84%]"
-                              : "max-w-[min(88%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[88%]"
+                              ? "w-fit max-w-[min(84%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[84%]"
+                              : hasPageCard
+                                ? "w-full max-w-full"
+                                : "w-fit max-w-[min(88%,calc(100%_-_6rem))] [@media(hover:none)]:max-w-[88%]"
                           }`
                     }
                   >
@@ -5732,6 +5831,9 @@ export const Transcript = memo(function Transcript({
                       displayBlocks={selectedDisplayBlocks}
                       markdownCandidates={markdownByMessage.get(message.id)}
                       onMarkdownMeasure={onMarkdownMeasure}
+                      bubbleShape={messageShape}
+                      artifactLatestByFamily={artifactLatestByFamily}
+                      onPageDetailOpenChange={handlePageDetailOpenChange}
                       canAnswer
                       suppressAsk={suppressAsk}
                       onOpenBot={onOpenBot}
@@ -5810,6 +5912,7 @@ export const Transcript = memo(function Transcript({
         {backgroundTasks && backgroundTasks.length > 0 ? (
           <BackgroundTaskActivity items={backgroundTasks} onCancel={onCancelBackgroundTask} />
         ) : null}
+        </div>
       </div>
       {quoteDraft ? (
         <QuoteSelectionButton
@@ -7104,6 +7207,9 @@ const MessageView = memo(function MessageView({
   displayBlocks,
   markdownCandidates,
   onMarkdownMeasure,
+  bubbleShape = "solo",
+  artifactLatestByFamily,
+  onPageDetailOpenChange,
   onAnswer,
   onOpenBot,
   speakerName,
@@ -7133,6 +7239,9 @@ const MessageView = memo(function MessageView({
   /** CARD-01C markdown candidates whose source text still renders in-bubble. */
   markdownCandidates?: ThreadSnapshot["displayBlocks"];
   onMarkdownMeasure?: (blockId: string, height: number) => void;
+  bubbleShape?: BubbleShape;
+  artifactLatestByFamily?: Map<string, number>;
+  onPageDetailOpenChange?: (open: boolean) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
   speakerName?: string;
@@ -7153,6 +7262,7 @@ const MessageView = memo(function MessageView({
 }) {
   const { t } = useLingui();
   const messageBlocks = blocks ?? message.blocks;
+  const shapeBlocks = renderableMessageBlocks(messageBlocks, showToolActivity);
   const isNarration =
     message.role === "bot" &&
     messageBlocks.length > 0 &&
@@ -7243,15 +7353,22 @@ const MessageView = memo(function MessageView({
         {messageContext}
         <div className="flex w-fit max-w-full items-start justify-start gap-2 [@media(hover:none)]:w-full">
           {!speakerName && message.botId ? (
-            <BotAvatar
-              color={speakerBot?.color ?? FALLBACK_BOT_COLOR}
-              identity={message.botId}
-              size={32}
-            />
+            bubbleShape === "middle" || bubbleShape === "last" ? (
+              <span aria-hidden className="h-8 w-8 shrink-0" />
+            ) : (
+              <BotAvatar
+                color={speakerBot?.color ?? FALLBACK_BOT_COLOR}
+                identity={message.botId}
+                size={32}
+              />
+            )
           ) : null}
           <div
             data-testid="message-bot-bubble"
-            className="max-w-full space-y-2.5 rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+            className={cn(
+              "max-w-full space-y-2.5 bg-muted px-[14px] py-2.5 text-[15.5px] leading-[1.5] text-foreground",
+              bubbleRadiusClass(bubbleShape, "bot"),
+            )}
             dir="auto"
           >
             {visibleNarrationBlocks.map((block, i) => {
@@ -7401,7 +7518,10 @@ const MessageView = memo(function MessageView({
             >
               <div
                 data-testid="message-bot-bubble"
-                className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+                className={cn(
+                  "max-w-full bg-muted px-[14px] py-2.5 text-[15.5px] leading-[1.5] text-foreground",
+                  bubbleRadiusClass("solo", "bot"),
+                )}
                 dir="auto"
               >
                 <ChatMarkdown streaming>{block.text}</ChatMarkdown>
@@ -7601,6 +7721,31 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "file") {
+          if (
+            message.role === "bot" &&
+            "botId" in artifactTarget &&
+            block.mimeType === "text/html"
+          ) {
+            const familyId = block.rootArtifactId;
+            const latestVersion = Math.max(
+              (familyId ? artifactLatestByFamily?.get(familyId) : undefined) ?? 0,
+              block.latestVersion ?? 0,
+              block.version ?? 0,
+            );
+            const superseded =
+              block.version !== undefined && latestVersion > block.version;
+            return (
+              <div key={i} className="flex w-full justify-start">
+                <ArtifactPageCard
+                  target={artifactTarget}
+                  artifactId={block.artifactId}
+                  name={block.name}
+                  superseded={superseded}
+                  onOpenChange={onPageDetailOpenChange}
+                />
+              </div>
+            );
+          }
           return (
             <div
               key={i}
@@ -7625,7 +7770,10 @@ const MessageView = memo(function MessageView({
               <div
                 data-testid="message-user-bubble"
                 data-quote-message-id={quoteMessageId}
-                className="max-w-full whitespace-pre-wrap wrap-anywhere rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground"
+                className={cn(
+                  "max-w-full whitespace-pre-wrap wrap-anywhere bg-chat-user px-[14px] py-2.5 text-[15.5px] leading-[1.45] text-chat-user-foreground",
+                  bubbleRadiusClass("solo", "user"),
+                )}
                 dir="auto"
               >
                 <MessageText
@@ -7647,6 +7795,11 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "text") {
+          const textShape = bubbleShapeForTextBlock({
+            messageShape: bubbleShape,
+            blocks: shapeBlocks,
+            blockIndex: shapeBlocks.indexOf(block),
+          });
           const markdownCandidate = (markdownCandidates ?? []).find(
             (candidate) => candidate.kind === "markdown" && candidate.text === block.text,
           );
@@ -7667,7 +7820,10 @@ const MessageView = memo(function MessageView({
             >
               <div
                 data-testid="message-bot-bubble"
-                className="max-w-full rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
+                className={cn(
+                  "max-w-full bg-muted px-[14px] py-2.5 text-[15.5px] leading-[1.5] text-foreground",
+                  bubbleRadiusClass(textShape, "bot"),
+                )}
                 dir="auto"
               >
                 <div data-quote-message-id={quoteMessageId}>{markdownNode}</div>

@@ -30,7 +30,8 @@
       "!**/docs/cards/source/card-unification-v2/mockup/cards-hifi-v4/**",
       "!**/docs/avatar/source/final/demo/**",
       "!**/docs/avatar/source/final/work/**",
-      "!**/docs/avatar/review/compact-v0.7.html"
+      "!**/docs/avatar/review/compact-v0.7.html",
+      "!**/docs/tasks/chat-chrome-v1/*.html"
     ]
   },
   "formatter": {

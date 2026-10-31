@@ -1,0 +1,432 @@
+{
+  "source": "Real DashScope model E2E through Java AgentScope",
+  "models": {
+    "qwen3.8-flash": {
+      "threadId": "cmvtu64fa0005uqx0k6e4ergi",
+      "run": {
+        "id": "cmvtu6yam002auqx0o4r0tw94",
+        "status": "completed",
+        "modelProvider": "dashscope",
+        "modelId": "qwen3.8-flash",
+        "botId": "9b519e04-1a2e-4d3a-b3c9-2b498e065dc4",
+        "createdAt": "2026-10-29T17:48:14.494Z",
+        "completedAt": "2026-10-29T17:48:19.897Z"
+      },
+      "artifactFamily": {
+        "familyId": "cmvtu6v9f001uuqx0c8u8mk8y",
+        "latestPublishedArtifactId": "cmvtu718z002puqx0mfseckkv",
+        "latestPublishedVersion": 2,
+        "versions": [
+          {
+            "id": "cmvtu6v9f001uuqx0c8u8mk8y",
+            "rootArtifactId": "cmvtu6v9f001uuqx0c8u8mk8y",
+            "version": 1,
+            "runId": "cmvtu6r5s001fuqx0b3ptefc3",
+            "name": "report.html",
+            "mimeType": "text/html",
+            "size": 90,
+            "createdAt": "2026-10-29T17:48:10.563Z"
+          },
+          {
+            "id": "cmvtu718z002puqx0mfseckkv",
+            "rootArtifactId": "cmvtu6v9f001uuqx0c8u8mk8y",
+            "version": 2,
+            "runId": "cmvtu6yam002auqx0o4r0tw94",
+            "name": "report.html",
+            "mimeType": "text/html",
+            "size": 90,
+            "createdAt": "2026-10-29T17:48:18.323Z"
+          }
+        ]
+      },
+      "messages": [
+        {
+          "id": "cmvtu64gn000buqx0cfgks0oc",
+          "seq": 0,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:47:35.831Z",
+          "blocks": [
+            {
+              "kind": "choice"
+            }
+          ]
+        },
+        {
+          "id": "cmvtu655w000guqx08b9av2bn",
+          "seq": 1,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:47:36.740Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Got it. Slack, calendar, and email. I’ll see what’s already connected so I don’t make you set something up twice."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu6565000iuqx0co3va3su",
+          "seq": 2,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:47:36.749Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Slack, Gmail, and Google Calendar are a good place to start. Connect them here and I’ll use what you already have."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu656d000kuqx0jxzmbkb5",
+          "seq": 3,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:47:36.757Z",
+          "blocks": [
+            {
+              "kind": "app_connect"
+            },
+            {
+              "kind": "app_connect"
+            },
+            {
+              "kind": "app_connect"
+            }
+          ]
+        },
+        {
+          "id": "cmvtu657a000muqx0moxlo1qh",
+          "seq": 4,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:47:36.790Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Hit those three and I’ll start pulling the picture."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu6r07001auqx0tjimvzqj",
+          "seq": 5,
+          "role": "bot",
+          "runId": "cmvtu64fm0009uqx0jrl7ja0f",
+          "createdAt": "2026-10-29T17:48:05.047Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "[Redacted onboarding message: contained a local test worktree path unrelated to CHAT-CHROME-01 behavior.]"
+            }
+          ]
+        },
+        {
+          "id": "cmvtu6r5q001duqx0tv4o5kfm",
+          "seq": 6,
+          "role": "user",
+          "runId": "cmvtu6r5s001fuqx0b3ptefc3",
+          "createdAt": "2026-10-29T17:48:05.246Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Use the write_file tool to create report.html with this exact content: <!doctype html><html><body><main><h1>Qwen Flash A</h1><p>marker-A</p></main></body></html>. Then use the attach_file tool with path \"report.html\". Do not call any other tool."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu6v9n001wuqx09miatw7g",
+          "seq": 7,
+          "role": "bot",
+          "runId": "cmvtu6r5s001fuqx0b3ptefc3",
+          "createdAt": "2026-10-29T17:48:10.571Z",
+          "blocks": [
+            {
+              "kind": "file",
+              "artifactId": "cmvtu6v9f001uuqx0c8u8mk8y",
+              "rootArtifactId": "cmvtu6v9f001uuqx0c8u8mk8y",
+              "version": 1,
+              "latestVersion": 1
+            }
+          ]
+        },
+        {
+          "id": "cmvtu6wzx0025uqx02cyv1ar9",
+          "seq": 8,
+          "role": "bot",
+          "runId": "cmvtu6r5s001fuqx0b3ptefc3",
+          "createdAt": "2026-10-29T17:48:12.813Z",
+          "blocks": [
+            {
+              "kind": "steps"
+            },
+            {
+              "kind": "text",
+              "text": "Done. `report.html` is written with the exact content you specified and attached to the chat. No other tools were called."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu6yak0028uqx0l8n8n6nk",
+          "seq": 9,
+          "role": "user",
+          "runId": "cmvtu6yam002auqx0o4r0tw94",
+          "createdAt": "2026-10-29T17:48:14.492Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Use the write_file tool to overwrite report.html with this exact content: <!doctype html><html><body><main><h1>Qwen Flash B</h1><p>marker-B</p></main></body></html>. Then use the attach_file tool with path \"report.html\". Do not call any other tool."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7194002ruqx03i9om04p",
+          "seq": 10,
+          "role": "bot",
+          "runId": "cmvtu6yam002auqx0o4r0tw94",
+          "createdAt": "2026-10-29T17:48:18.328Z",
+          "blocks": [
+            {
+              "kind": "file",
+              "artifactId": "cmvtu718z002puqx0mfseckkv",
+              "rootArtifactId": "cmvtu6v9f001uuqx0c8u8mk8y",
+              "version": 2,
+              "latestVersion": 2
+            }
+          ]
+        },
+        {
+          "id": "cmvtu72gu002zuqx0t1vbd55x",
+          "seq": 11,
+          "role": "bot",
+          "runId": "cmvtu6yam002auqx0o4r0tw94",
+          "createdAt": "2026-10-29T17:48:19.902Z",
+          "blocks": [
+            {
+              "kind": "steps"
+            },
+            {
+              "kind": "text",
+              "text": "Done. `report.html` now contains the \"Qwen Flash B\" / marker-B content and is attached. No other tools were called."
+            }
+          ]
+        }
+      ]
+    },
+    "qwen3.8-max": {
+      "threadId": "cmvtu76og0037uqx04i3s4nok",
+      "run": {
+        "id": "cmvtu7jwr004xuqx0dq6fuij6",
+        "status": "completed",
+        "modelProvider": "dashscope",
+        "modelId": "qwen3.8-max",
+        "botId": "90ec3abc-39cf-4260-a304-7590cc7c8a3e",
+        "createdAt": "2026-10-29T17:48:42.507Z",
+        "completedAt": "2026-10-29T17:48:48.888Z"
+      },
+      "artifactFamily": {
+        "familyId": "cmvtu7h16004iuqx0g1kvxtci",
+        "latestPublishedArtifactId": "cmvtu7n0j005cuqx0apxmvc7o",
+        "latestPublishedVersion": 2,
+        "versions": [
+          {
+            "id": "cmvtu7h16004iuqx0g1kvxtci",
+            "rootArtifactId": "cmvtu7h16004iuqx0g1kvxtci",
+            "version": 1,
+            "runId": "cmvtu7djw0043uqx0c6seu88c",
+            "name": "report.html",
+            "mimeType": "text/html",
+            "size": 88,
+            "createdAt": "2026-10-29T17:48:38.778Z"
+          },
+          {
+            "id": "cmvtu7n0j005cuqx0apxmvc7o",
+            "rootArtifactId": "cmvtu7h16004iuqx0g1kvxtci",
+            "version": 2,
+            "runId": "cmvtu7jwr004xuqx0dq6fuij6",
+            "name": "report.html",
+            "mimeType": "text/html",
+            "size": 88,
+            "createdAt": "2026-10-29T17:48:46.531Z"
+          }
+        ]
+      },
+      "messages": [
+        {
+          "id": "cmvtu76pg003duqx0xfx2vxtg",
+          "seq": 0,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:48:25.396Z",
+          "blocks": [
+            {
+              "kind": "choice"
+            }
+          ]
+        },
+        {
+          "id": "cmvtu778c003iuqx0krkxdlhx",
+          "seq": 1,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:48:26.077Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Got it. Slack, calendar, and email. I’ll see what’s already connected so I don’t make you set something up twice."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu778k003kuqx0zs9dsexe",
+          "seq": 2,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:48:26.084Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Slack, Gmail, and Google Calendar are a good place to start. Connect them here and I’ll use what you already have."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu778t003muqx0qywuc129",
+          "seq": 3,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:48:26.093Z",
+          "blocks": [
+            {
+              "kind": "app_connect"
+            },
+            {
+              "kind": "app_connect"
+            },
+            {
+              "kind": "app_connect"
+            }
+          ]
+        },
+        {
+          "id": "cmvtu779n003ouqx01kmgty70",
+          "seq": 4,
+          "role": "bot",
+          "runId": null,
+          "createdAt": "2026-10-29T17:48:26.123Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Hit those three and I’ll start pulling the picture."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7awi003yuqx0md8hpxmn",
+          "seq": 5,
+          "role": "bot",
+          "runId": "cmvtu76om003buqx0sxdpz251",
+          "createdAt": "2026-10-29T17:48:30.834Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Hello! I’m Chief. My title, description, and instructions are currently blank, so I don’t have a predefined role or specialty yet — I’m essentially a fresh assistant ready to be shaped around your needs.\n\nTo get started, it would help to know:\n\n1.  **What should my focus be?** (e.g., project management, development support, research, personal assistance)\n2.  **Are there specific tools, workflows, or knowledge bases** you’d like me to prioritize or learn first?\n3.  **Any preferences for how I communicate?** (e.g., brevity, tone, level of detail)\n\nOnce I understand your goals, I can set up my memory and skills to serve you effectively. What would you like to tackle first?"
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7dju0041uqx0amr74qdn",
+          "seq": 6,
+          "role": "user",
+          "runId": "cmvtu7djw0043uqx0c6seu88c",
+          "createdAt": "2026-10-29T17:48:34.266Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Use the write_file tool to create report.html with this exact content: <!doctype html><html><body><main><h1>Qwen Max A</h1><p>marker-A</p></main></body></html>. Then use the attach_file tool with path \"report.html\". Do not call any other tool."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7h1a004kuqx06olq4c8b",
+          "seq": 7,
+          "role": "bot",
+          "runId": "cmvtu7djw0043uqx0c6seu88c",
+          "createdAt": "2026-10-29T17:48:38.782Z",
+          "blocks": [
+            {
+              "kind": "file",
+              "artifactId": "cmvtu7h16004iuqx0g1kvxtci",
+              "rootArtifactId": "cmvtu7h16004iuqx0g1kvxtci",
+              "version": 1,
+              "latestVersion": 1
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7iwv004suqx00mfoxkql",
+          "seq": 8,
+          "role": "bot",
+          "runId": "cmvtu7djw0043uqx0c6seu88c",
+          "createdAt": "2026-10-29T17:48:41.215Z",
+          "blocks": [
+            {
+              "kind": "steps"
+            },
+            {
+              "kind": "text",
+              "text": "Done. I’ve created `report.html` with the exact content you specified and attached it to this chat. You can open or download it from the attachment above."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7jwq004vuqx08k4i8710",
+          "seq": 9,
+          "role": "user",
+          "runId": "cmvtu7jwr004xuqx0dq6fuij6",
+          "createdAt": "2026-10-29T17:48:42.506Z",
+          "blocks": [
+            {
+              "kind": "text",
+              "text": "Use the write_file tool to overwrite report.html with this exact content: <!doctype html><html><body><main><h1>Qwen Max B</h1><p>marker-B</p></main></body></html>. Then use the attach_file tool with path \"report.html\". Do not call any other tool."
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7n0o005euqx02ael0qjs",
+          "seq": 10,
+          "role": "bot",
+          "runId": "cmvtu7jwr004xuqx0dq6fuij6",
+          "createdAt": "2026-10-29T17:48:46.536Z",
+          "blocks": [
+            {
+              "kind": "file",
+              "artifactId": "cmvtu7n0j005cuqx0apxmvc7o",
+              "rootArtifactId": "cmvtu7h16004iuqx0g1kvxtci",
+              "version": 2,
+              "latestVersion": 2
+            }
+          ]
+        },
+        {
+          "id": "cmvtu7ou3005muqx0wmuev895",
+          "seq": 11,
+          "role": "bot",
+          "runId": "cmvtu7jwr004xuqx0dq6fuij6",
+          "createdAt": "2026-10-29T17:48:48.891Z",
+          "blocks": [
+            {
+              "kind": "steps"
+            },
+            {
+              "kind": "text",
+              "text": "Done. I’ve overwritten `report.html` with the new content (Qwen Max B / marker-B) and attached the updated file to this chat."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "note": "Each family has two published versions in one Thread. The old card's read projection backfills latestVersion; the UI screenshots show the stale label and the B detail."
+}

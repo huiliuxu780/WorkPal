@@ -1,0 +1,112 @@
+
+> workpal@0.1.0 check <worktree>
+> turbo check
+
+• turbo 2.10.12
+
+   • Packages in scope: @rakazo/adapter-kit, @rakazo/adapters, @rakazo/api, @rakazo/auth, @rakazo/chat-ui, @rakazo/contracts, @rakazo/core, @rakazo/db, @rakazo/logging, @rakazo/memory, @rakazo/sandbox-supervisor, @rakazo/testkit, @rakazo/ui-tokens, @rakazo/ui-web, @rakazo/web, @rakazo/worker
+   • Running check in 16 packages
+   • Remote caching disabled, using shared worktree cache
+
+@rakazo/db:generate: cache bypass, force executing 705eb66820daa976
+@rakazo/ui-tokens:generate: cache bypass, force executing 480cfc237f0790a6
+@rakazo/contracts:check: cache hit, replaying logs e2fe192dfa7b0110
+@rakazo/contracts:check:
+@rakazo/contracts:check: > @rakazo/contracts@0.1.0 check <worktree>/packages/contracts
+@rakazo/contracts:check: > tsc --noEmit -p tsconfig.json
+@rakazo/contracts:check:
+@rakazo/logging:check: cache hit, replaying logs aa3204f159487337
+@rakazo/logging:check:
+@rakazo/logging:check: > @rakazo/logging@0.1.0 check <other-worktree>/packages/logging
+@rakazo/logging:check: > tsc --noEmit -p tsconfig.json
+@rakazo/logging:check:
+@rakazo/adapter-kit:check: cache hit, replaying logs c8706f5183ae7fee
+@rakazo/adapter-kit:check:
+@rakazo/adapter-kit:check: > @rakazo/adapter-kit@0.1.0 check <worktree>/packages/adapter-kit
+@rakazo/adapter-kit:check: > tsc --noEmit -p tsconfig.json
+@rakazo/adapter-kit:check:
+@rakazo/core:check: cache miss, executing 3899a12044dd0e1d
+@rakazo/core:check:
+@rakazo/core:check: > @rakazo/core@0.1.0 check <worktree>/packages/core
+@rakazo/core:check: > tsc --noEmit -p tsconfig.json
+@rakazo/core:check:
+@rakazo/ui-tokens:generate:
+@rakazo/ui-tokens:generate: > @rakazo/ui-tokens@0.1.0 generate <worktree>/packages/ui-tokens
+@rakazo/ui-tokens:generate: > tsx src/generate-css.ts
+@rakazo/ui-tokens:generate:
+@rakazo/db:generate:
+@rakazo/db:generate: > @rakazo/db@0.1.0 generate <worktree>/packages/db
+@rakazo/db:generate: > prisma generate
+@rakazo/db:generate:
+@rakazo/ui-tokens:check: cache miss, executing 27dc5b3d9610e0f3
+@rakazo/sandbox-supervisor:check: cache miss, executing ddc5b8ea01c20ec1
+@rakazo/ui-tokens:check:
+@rakazo/ui-tokens:check: > @rakazo/ui-tokens@0.1.0 check <worktree>/packages/ui-tokens
+@rakazo/ui-tokens:check: > tsc --noEmit -p tsconfig.json
+@rakazo/ui-tokens:check:
+@rakazo/ui-web:check: cache miss, executing 44d1b39e1eb671a2
+@rakazo/db:generate: ◇ injected env (28) from ../../.env // tip: ⌘ override existing { override: true }
+@rakazo/db:generate: ◇ injected env (0) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+@rakazo/db:generate: Loaded Prisma config from prisma.config.ts.
+@rakazo/db:generate:
+@rakazo/sandbox-supervisor:check:
+@rakazo/sandbox-supervisor:check: > @rakazo/sandbox-supervisor@0.1.0 check <worktree>/infra/sandboxes/supervisor
+@rakazo/sandbox-supervisor:check: > tsc --noEmit -p tsconfig.json
+@rakazo/sandbox-supervisor:check:
+@rakazo/db:generate: Prisma schema loaded from prisma/schema.prisma.
+@rakazo/ui-web:check:
+@rakazo/ui-web:check: > @rakazo/ui-web@0.1.0 check <worktree>/packages/ui-web
+@rakazo/ui-web:check: > tsc --noEmit -p tsconfig.json
+@rakazo/ui-web:check:
+@rakazo/chat-ui:check: cache miss, executing 56be118c31f4b250
+@rakazo/db:generate:
+@rakazo/db:generate: ✔ Generated Prisma Client (7.10.0) to ./src/generated/prisma in 823ms
+@rakazo/db:generate:
+@rakazo/chat-ui:check:
+@rakazo/chat-ui:check: > @rakazo/chat-ui@0.1.0 check <worktree>/packages/chat-ui
+@rakazo/chat-ui:check: > tsc --noEmit -p tsconfig.json
+@rakazo/chat-ui:check:
+@rakazo/db:check: cache miss, executing fc4bac25e2b25938
+@rakazo/db:check:
+@rakazo/db:check: > @rakazo/db@0.1.0 check <worktree>/packages/db
+@rakazo/db:check: > tsc --noEmit -p tsconfig.json
+@rakazo/db:check:
+@rakazo/web:check: cache miss, executing 0df700eedaa296c7
+@rakazo/web:check:
+@rakazo/web:check: > @rakazo/web@0.1.0 check <worktree>/apps/web
+@rakazo/web:check: > tsc --noEmit -p tsconfig.json
+@rakazo/web:check:
+@rakazo/memory:check: cache miss, executing 363fa5bed26b0b8e
+@rakazo/auth:check: cache miss, executing 5bf7f55ab54ebc75
+@rakazo/memory:check:
+@rakazo/memory:check: > @rakazo/memory@0.1.0 check <worktree>/packages/memory
+@rakazo/memory:check: > tsc --noEmit -p tsconfig.json
+@rakazo/memory:check:
+@rakazo/auth:check:
+@rakazo/auth:check: > @rakazo/auth@0.1.0 check <worktree>/packages/auth
+@rakazo/auth:check: > tsc --noEmit -p tsconfig.json
+@rakazo/auth:check:
+@rakazo/adapters:check: cache miss, executing 8e6cf3e184e17886
+@rakazo/adapters:check:
+@rakazo/adapters:check: > @rakazo/adapters@0.1.0 check <worktree>/packages/adapters
+@rakazo/adapters:check: > tsc --noEmit -p tsconfig.json
+@rakazo/adapters:check:
+@rakazo/testkit:check: cache miss, executing 440f74ffcfc2c0b0
+@rakazo/api:check: cache miss, executing e081fa2c5b6ae832
+@rakazo/worker:check: cache miss, executing 820194d1c43f199c
+@rakazo/api:check:
+@rakazo/api:check: > @rakazo/api@0.1.0 check <worktree>/apps/api
+@rakazo/api:check: > tsc --noEmit -p tsconfig.json
+@rakazo/api:check:
+@rakazo/testkit:check:
+@rakazo/testkit:check: > @rakazo/testkit@0.1.0 check <worktree>/packages/testkit
+@rakazo/testkit:check: > tsc --noEmit -p tsconfig.json
+@rakazo/testkit:check:
+@rakazo/worker:check:
+@rakazo/worker:check: > @rakazo/worker@0.1.0 check <worktree>/apps/worker
+@rakazo/worker:check: > tsc --noEmit -p tsconfig.json
+@rakazo/worker:check:
+
+ Tasks:    18 successful, 18 total
+Cached:    3 cached, 18 total
+  Time:    25.945s

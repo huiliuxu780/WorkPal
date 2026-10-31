@@ -70,6 +70,9 @@ export function messageBlockForArtifact(artifact: {
   name: string;
   mimeType: string;
   size: number;
+  rootArtifactId?: string;
+  version?: number;
+  latestVersion?: number;
 }): Extract<MessageBlock, { kind: "image" | "file" }> {
   if (attachmentKindForMimeType(artifact.mimeType) === "image") {
     return {
@@ -85,6 +88,9 @@ export function messageBlockForArtifact(artifact: {
     mimeType: artifact.mimeType,
     name: artifact.name,
     size: artifact.size,
+    ...(artifact.rootArtifactId ? { rootArtifactId: artifact.rootArtifactId } : {}),
+    ...(artifact.version !== undefined ? { version: artifact.version } : {}),
+    ...(artifact.latestVersion !== undefined ? { latestVersion: artifact.latestVersion } : {}),
   };
 }
 

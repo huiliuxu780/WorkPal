@@ -1,0 +1,127 @@
+apps/api/src/thread-target.ts:77:3 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+
+    75 │   loadCurrentRunSteps,
+    76 │   loadCurrentRunTodos,
+  > 77 │   loadExecutionSnapshot,
+       │   ^^^^^^^^^^^^^^^^^^^^^
+    78 │   loadExecutionSummariesForMessages,
+    79 │   loadGroupMembershipApprovalFacts,
+
+  i Unused imports might be the result of an incomplete refactoring.
+
+  i Unsafe fix: Remove the unused imports.
+
+      75   75 │     loadCurrentRunSteps,
+      76   76 │     loadCurrentRunTodos,
+      77      │ - ··loadExecutionSnapshot,
+      78   77 │     loadExecutionSummariesForMessages,
+      79   78 │     loadGroupMembershipApprovalFacts,
+
+
+apps/web/src/pages/Shell.tsx:113:3 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+
+    111 │   Menu,
+    112 │   Mic,
+  > 113 │   Monitor,
+        │   ^^^^^^^
+    114 │   MoreHorizontal,
+    115 │   PanelLeftClose,
+
+  i Unused imports might be the result of an incomplete refactoring.
+
+  i Unsafe fix: Remove the unused imports.
+
+     111  111 │     Menu,
+     112  112 │     Mic,
+     113      │ - ··Monitor,
+     114  113 │     MoreHorizontal,
+     115  114 │     PanelLeftClose,
+
+
+apps/web/src/pages/Shell.tsx:159:3 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Several of these imports are unused.
+
+    157 │ import {
+    158 │   DisplayBlockList,
+  > 159 │   DisplayBlockView,
+        │   ^^^^^^^^^^^^^^^^
+    160 │   displayBlockMessageIndex,
+    161 │   groupDisplayBlocksByMessage,
+
+  i Unused imports might be the result of an incomplete refactoring.
+
+  i Unsafe fix: Remove the unused imports.
+
+     157  157 │   import {
+     158  158 │     DisplayBlockList,
+     159      │ - ··DisplayBlockView,
+     160  159 │     displayBlockMessageIndex,
+     161  160 │     groupDisplayBlocksByMessage,
+
+
+apps/web/src/pages/Shell.tsx:179:8 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This import is unused.
+
+    177 │ import { ComputerWorkspace } from "../components/computer/ComputerWorkspace";
+    178 │ import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
+  > 179 │ import { ModelTreePicker } from "../components/ModelTreePicker";
+        │        ^^^^^^^^^^^^^^^^^^^
+    180 │ import {
+    181 │   LIVE_TOOL_STEP_WINDOW,
+
+  i Unused imports might be the result of an incomplete refactoring.
+
+  i Unsafe fix: Remove the unused imports.
+
+     177  177 │   import { ComputerWorkspace } from "../components/computer/ComputerWorkspace";
+     178  178 │   import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
+     179      │ - import·{·ModelTreePicker·}·from·"../components/ModelTreePicker";
+     180  179 │   import {
+     181  180 │     LIVE_TOOL_STEP_WINDOW,
+
+
+apps/web/src/pages/Shell.tsx:1962:20 lint/correctness/noUnusedVariables ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This variable modelSwitchCatalog is unused.
+
+    1960 │   const activeBotLiveStatus =
+    1961 │     activeSnapshot?.run?.status ?? currentRuns[0]?.status ?? active?.status;
+  > 1962 │   const { catalog: modelSwitchCatalog } = useConnectedModelOptions();
+         │                    ^^^^^^^^^^^^^^^^^^
+    1963 │
+    1964 │   async function switchConversationModel(next: { provider: string; modelId: string } | null) {
+
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+
+
+apps/web/src/pages/Shell.tsx:1964:18 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━━━━━━━━━
+
+  ! This function switchConversationModel is unused.
+
+    1962 │   const { catalog: modelSwitchCatalog } = useConnectedModelOptions();
+    1963 │
+  > 1964 │   async function switchConversationModel(next: { provider: string; modelId: string } | null) {
+         │                  ^^^^^^^^^^^^^^^^^^^^^^^
+    1965 │     if (!active) return;
+    1966 │     await rpc.bots
+
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+
+  i Unsafe fix: If this is intentional, prepend switchConversationModel with an underscore.
+
+    1962 1962 │     const { catalog: modelSwitchCatalog } = useConnectedModelOptions();
+    1963 1963 │
+    1964      │ - ··async·function·switchConversationModel(next:·{·provider:·string;·modelId:·string·}·|·null)·{
+         1964 │ + ··async·function·_switchConversationModel(next:·{·provider:·string;·modelId:·string·}·|·null)·{
+    1965 1965 │       if (!active) return;
+    1966 1966 │       await rpc.bots
+
+
+Checked 22 files in 215ms. No fixes applied.
+Found 6 warnings.

@@ -4,6 +4,7 @@ import {
   mergeExecutionsByRun,
   mergeThreadHistory,
   prependThreadHistoryPage,
+  upsertMessageById,
 } from "./message-pages.js";
 
 type Message = { id: string; seq: number };
@@ -116,5 +117,17 @@ describe("displayBlocks merge", () => {
     };
     const merged = mergeThreadHistory(previous, recent, true);
     expect(merged.displayBlocks).toEqual([displayBlock("m9:0:markdown", "fresh")]);
+  });
+});
+
+describe("upsertMessageById", () => {
+  it("replays one message id as an update instead of a duplicate card row", () => {
+    const first = { id: "m1", seq: 1, text: "first" };
+    const second = { id: "m2", seq: 2, text: "second" };
+    const replayed = { id: "m1", seq: 1, text: "updated" };
+    const once = upsertMessageById([first, second], replayed);
+    const twice = upsertMessageById(once, replayed);
+    expect(twice).toHaveLength(2);
+    expect(twice).toEqual([replayed, second]);
   });
 });

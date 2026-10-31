@@ -13,8 +13,8 @@
   --primary-foreground: #0b0c0e;
   --secondary: #18191e;
   --secondary-foreground: #ececee;
-  --chat-user: #22242b;
-  --chat-user-foreground: #ececee;
+  --chat-user: #405de6;
+  --chat-user-foreground: #f8faff;
   --muted: #141518;
   --muted-foreground: #85858a;
   --accent: #1a1b20;
@@ -50,8 +50,8 @@
   --primary-foreground: #f1f1ef;
   --secondary: #f0f0ed;
   --secondary-foreground: #1a1a1a;
-  --chat-user: #e2e2dc;
-  --chat-user-foreground: #1a1a1a;
+  --chat-user: #4a66f0;
+  --chat-user-foreground: #ffffff;
   --muted: #f0f0ed;
   --muted-foreground: #6c6c70;
   --accent: #eaeae6;

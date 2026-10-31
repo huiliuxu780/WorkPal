@@ -88,6 +88,7 @@ import {
   touchGroupUpdatedAt,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
+import { enrichFileArtifactBlocks } from "./artifact-families.js";
 import {
   buildSendPrompt,
   buildUserMessageBlocks,
@@ -924,7 +925,10 @@ export async function threadSnapshot(
             })
           : null;
         return {
-          messagePage,
+          messagePage: {
+            ...messagePage,
+            messages: await enrichFileArtifactBlocks(tx, messagePage.messages),
+          },
           last,
           run: currentRun,
           recentTerminals,
@@ -1092,7 +1096,10 @@ export async function threadSnapshot(
         })
       : null;
     return {
-      messagePage,
+      messagePage: {
+        ...messagePage,
+        messages: await enrichFileArtifactBlocks(tx, messagePage.messages),
+      },
       last,
       activeRuns,
       terminalRun: pickLatestTerminalRun(recentTerminals),
@@ -1171,21 +1178,23 @@ export async function threadMessagePage(
       input.includePeerRuns,
       input.includePeerReceipts,
     );
+    const messages = await enrichFileArtifactBlocks(tx, page.messages);
     const executions = await loadExecutionSummariesForMessages(tx, {
       threadId: target.threadId,
       spaceId: target.spaceId,
-      messageIds: page.messages.map((message) => message.id),
-      runIds: page.messages.flatMap((message) => (message.runId ? [message.runId] : [])),
+      messageIds: messages.map((message) => message.id),
+      runIds: messages.flatMap((message) => (message.runId ? [message.runId] : [])),
     });
     // CARD-01C: a history page carries the same display projection as the
     // snapshot's recent window, so paginated history renders identically.
     const displayBlocks = deps.cardsUnifiedV2
       ? interactionViewsFromMessages(
-          page.messages.map((message) => cardMessageFact(message, target.spaceId)),
+          messages.map((message) => cardMessageFact(message, target.spaceId)),
         ).displayBlocks
       : undefined;
     return {
       ...page,
+      messages,
       executions,
       ...(displayBlocks && displayBlocks.length > 0 ? { displayBlocks } : {}),
     };
