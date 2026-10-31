@@ -460,6 +460,20 @@ function readCollapsedRosterParents(userId: string | null | undefined): Set<stri
   return readCollapsedIdSet(collapsedRosterParentsStorageKey(userId));
 }
 
+/** Tailwind `md`. Only one Attention queue may run, or both would notify. */
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return isDesktop;
+}
+
 export function ShellPage() {
   const { t } = useLingui();
   const { botId, groupId } = useParams();
@@ -1884,6 +1898,7 @@ export function ShellPage() {
       : null;
   const attentionEnabled = activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true;
   cardsUnifiedV2Ref.current = attentionEnabled;
+  const isDesktop = useIsDesktop();
   const openAttentionItem = useCallback(
     (item: AttentionQueueItem) => {
       const params = new URLSearchParams();
@@ -3139,7 +3154,7 @@ export function ShellPage() {
         </InputGroup>
         <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
           <AttentionQueue
-            enabled={attentionEnabled}
+            enabled={attentionEnabled && isDesktop}
             activeTarget={
               inGroup && groupId
                 ? { groupId }
@@ -3759,6 +3774,25 @@ export function ShellPage() {
               >
                 <Menu size={19} strokeWidth={1.7} />
               </button>
+              <div className="md:hidden" data-testid="attention-topbar">
+                <AttentionQueue
+                  enabled={attentionEnabled && !isDesktop}
+                  variant="topbar"
+                  activeTarget={
+                    inGroup && groupId
+                      ? { groupId }
+                      : !inGroup && active
+                        ? { botId: active.id }
+                        : null
+                  }
+                  botNotificationsEnabled={(botId) =>
+                    Boolean(bots.find((bot) => bot.id === botId)?.notifyOnFinish)
+                  }
+                  refreshToken={attentionRefresh}
+                  onOpenItem={openAttentionItem}
+                  onItems={setAttentionItems}
+                />
+              </div>
               {botsSidebarCollapsed ? (
                 <button
                   type="button"

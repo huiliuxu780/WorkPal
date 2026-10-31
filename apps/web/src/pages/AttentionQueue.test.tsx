@@ -341,7 +341,7 @@ describe("AttentionQueue", () => {
       (host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
     );
     expect(document.querySelector('[data-testid="attention-empty"]')?.textContent).toContain(
-      "Nothing needs you",
+      "没有需要你处理的事项",
     );
 
     list.mockRejectedValue(new Error("boom"));
