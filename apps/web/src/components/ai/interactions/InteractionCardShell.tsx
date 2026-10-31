@@ -114,7 +114,7 @@ export function InteractionSourceLine({
 }) {
   const parts: string[] = [];
   if (botName) parts.push(t`Bot: ${botName}`);
-  if (conversationName) parts.push(conversationName);
+  if (conversationName && conversationName !== botName) parts.push(conversationName);
   if (replyTarget) parts.push(replyTarget);
   const time = new Date(createdAt);
   if (!Number.isNaN(time.getTime())) {
