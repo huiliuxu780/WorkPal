@@ -1,0 +1,12 @@
+{
+  "_queried_at": "2026-10-28",
+  "_query": [
+    "GET /repos/{owner}/{repo}/branches/main/protection",
+    "GET /repos/{owner}/{repo}/rulesets",
+    "GET /repos/{owner}/{repo}/rules/branches/main"
+  ],
+  "_note": "repository owner and name redacted; responses are verbatim",
+  "branch_protection_main": { "http_status": 404, "message": "Branch not protected" },
+  "rulesets": [],
+  "rules_for_main": []
+}

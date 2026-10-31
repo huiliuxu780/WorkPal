@@ -1,6 +1,21 @@
 # HARNESS-01：修正 Agent 开发、验证和交付工作流
 
-状态：`not-started`。
+状态：`in-progress`。H1、H2、H4 已合入 `main`；H3 在 `codex/harness-delivery-gates` 交付中（GitHub 设置变更待授权）；H5、H6 未开始。
+
+## 已核实的交付记录
+
+2026-10-28 在 `main @ a409140` 用 GitHub API 核对，不再按批次表推断：
+
+| 批次 | 状态 | PR / 合并提交 |
+| --- | --- | --- |
+| H1 测试清单与 CI 基础门禁 | 已合入 | [#137](https://github.com/huiliuxu780/WorkPal/pull/137)，`810a223`（2026-10-25） |
+| H2 失败证据与每日视觉入口 | 已合入 | [#138](https://github.com/huiliuxu780/WorkPal/pull/138)，`5e2676f`（2026-10-25）；`nightly-verification.yml` 已删除 |
+| H3 交付门禁与规则落库 | 交付中 | `codex/harness-delivery-gates`；仓库内变更见 [H3 证据](../harness/evidence/H3/README.md)，GitHub 设置仍待授权 |
+| H4 多 worktree 本地隔离 | 已合入 | [#140](https://github.com/huiliuxu780/WorkPal/pull/140)，`b6e4343`（2026-10-25） |
+| H5 Run 级可观测性 | 未开始 | — |
+| H6 worktree 与分支审计清理 | 未开始 | 依赖 H3；删除操作需单独授权 |
+
+本卡的批次规则写于 2026-10-25 评审之后、当前交付规则落库之前。凡与 [AGENTS.md](../../AGENTS.md) 和 [开发与验收流程](../development-workflow.md) 冲突之处，以后两者为准；本卡保留为历史依据，其中 H3/H5/H6 的范围描述仍然有效。
 
 决策依据：[WorkPal AI 编码工作流评审与清理方案](../agent-workflow-harness-review-2026-10-25.md)。评审基线是 `origin/main @ ff2fd2a`，日期为 2026-10-25。实施者必须从开工时的最新 `origin/main` 重新核对事实。评审中的数量是时间点快照，不是永久常量。
 
@@ -147,12 +162,12 @@ CI 失败后可以直接下载诊断证据。已确认的 `budget-acceptance` �
     - 禁止 force push。
     - 不要求分支始终与 main 同步。
     - 暂不启用 merge queue。只有并发合并证据表明需要时再启用。
-11. 在 H3 完成前收口 H1F 的临时排除：五组已确认原型路径，以及 `biome.json` 中记录的 188 个 formatter/import-sort 历史文件。逐项选择修复并重跑原型验证、截图和哈希，或证明其为生成、冻结或历史设计资产并取得负责人永久排除批准；不得让排除无主。
+11. 在 H3 完成前收口 H1F 的临时排除：五组已确认原型路径，以及 `biome.json` 中记录的 188 个 formatter/import-sort 历史文件。逐项选择修复并重跑原型验证、截图和哈希，或证明其为生成、冻结或历史设计资产并取得负责人永久排除批准；不得让排除无主。2026-10-28 在 `a409140` 实测：188 项 = 14 个 docs + 174 个 source，解除排除后 188 个文件全部仍会触发诊断（共 283 条），五组原型路径解除后再增 27 个文件、约 380 条诊断。逐项分类与处置见 [排除审计](../harness/evidence/H3/exclusion-audit.md)。
 12. 将集中 worktree、禁止嵌套、使用 Git 方式删除 worktree 等规则写入 `AGENTS.md` 和 `docs/agent-verification.md`，并在文档中给出可验证的检查入口。
 
 ### 验收
 
-- H1F 的五组原型路径和 188 个 formatter/import-sort 临时排除已全部收口，或有负责人批准的永久排除记录。
+- H1F 的五组原型路径和 188 个 formatter/import-sort 临时排除已全部收口，或有负责人批准的永久排除记录。截至 2026-10-28：逐项审计已交付（[exclusion-audit.md](../harness/evidence/H3/exclusion-audit.md)），永久排除批准与 174 个 source 文件的格式化批次仍待负责人决定，本项未闭合。
 - `AGENTS.md` 和 `docs/agent-verification.md` 包含集中 worktree、禁止嵌套和使用 Git 方式删除 worktree 的规则。
 - docs-only、Web、backend 和 full 四种 PR 样例都出现同名 `CI result`。
 - 故意让已选 job 失败时，`CI result` 失败且 PR 不能合并。

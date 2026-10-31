@@ -1,0 +1,1531 @@
+{
+  "generatedFrom": "biome check . with the formatter/assist override lifted",
+  "biomeBaselineSha": "a409140d5b62fd1bba2c1cd4aa242520a3e1b759",
+  "totalExcluded": 188,
+  "flagged": 188,
+  "groups": {
+    "formatOnly": 122,
+    "assistOnly": 10,
+    "formatAndAssist": 36,
+    "withLintRules": 20
+  },
+  "lintRules": [
+    ["style/noDescendingSpecificity", 12],
+    ["complexity/useOptionalChain", 8],
+    ["correctness/noUnusedImports", 7],
+    ["style/useImportType", 5],
+    ["correctness/noUnusedVariables", 4],
+    ["complexity/noBannedTypes", 3],
+    ["complexity/noImportantStyles", 3],
+    ["correctness/noUnusedFunctionParameters", 2],
+    ["style/useTemplate", 1],
+    ["suspicious/noTemplateCurlyInString", 1],
+    ["suspicious/noPrototypeBuiltins", 1]
+  ],
+  "files": [
+    {
+      "file": "apps/api/src/app.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/memory-facts-api.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/runs.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/team-chat-judge.integration.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/team-chat-judge.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/thread-message-pages.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/thread-message-pages.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/thread-target.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/thread-target.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "correctness/noUnusedImports:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/turn-routing.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/api/src/turn-routing.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/avatar-studio.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/bot-crud.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/budget-acceptance.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/capability-rules.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "correctness/noUnusedFunctionParameters:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/computer-screen-error.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/computer-update.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/computer-workspace.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/golden.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/group-panel.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/memory-facts.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/message-group.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/message-quote.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/model-settings.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/routine-crud.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/routine-execution.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/teach-task.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/team-computer.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/e2e/tool-activity.spec.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/ApprovalRulesSettings.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "correctness/noUnusedVariables:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/ApprovalRulesSettings.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/AskCard.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/activity/BackgroundTaskActivity.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/activity/BackgroundTaskActivity.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/activity/RunActivityDisclosure.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/activity/RunActivityDisclosure.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/ai/CollaborationMarker.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/ai/ExecutionActivity.test.tsx",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/ai/GroupDestinationReceipt.test.tsx",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/components/ai/RunStepsDisclosure.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/activity-view.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/ask-draft.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/avatar-runtime.tsx",
+      "format": 0,
+      "assist": 1,
+      "lint": "style/useImportType:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/effect-view.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/effect-view.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/execution-activity.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/execution-surface.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/intervention-view.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/lib/usage-loader.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/pages/Shell.tsx",
+      "format": 1,
+      "assist": 1,
+      "lint": "correctness/noUnusedImports:3,correctness/noUnusedVariables:2",
+      "errors": true,
+      "pr147": true
+    },
+    {
+      "file": "apps/web/src/pages/UsageSettingsPanel.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/pages/memory-facts.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/pages/memory-facts.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/pages/shell/bot-panel.tsx",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "apps/web/src/pages/shell/use-execution-transcript.tsx",
+      "format": 0,
+      "assist": 1,
+      "lint": "correctness/noUnusedImports:1",
+      "errors": true,
+      "pr147": true
+    },
+    {
+      "file": "apps/worker/src/index.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/avatar/source/final/assets/anchors.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/avatar/source/final/assets/eyes.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/avatar/source/final/assets/palette.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/audits/ui-prototype-conformance.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/library-capsule-final/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/library-capsule/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/ui-restore-1/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/ui-restore-2/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/ui-restore-before/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/ui-restore-file/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/ui-restore-tabs/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/prototype/evidence/ui-restore-task-detail/report.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/verify-implementation-plan.mjs",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "docs/roundtable/verify-implementation-plan.test.mjs",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/__fixtures__/scenarios/case-registry.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/agently-mail.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/agentscope-abort.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/agentscope-consumers.integration.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/agentscope-provenance.integration.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/agentscope-tool-visibility.integration.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/agentscope-untrusted-content.integration.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/approval-effect.test.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/auto-review.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/background-job-handlers.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/bot-messages-pair.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/bot-messages.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/capability-permission.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/capability-permission.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/child-bots.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/compaction-mode.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/compaction-mode.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/execution-contract.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/executor-bot-directory.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/executor-effect-idempotency.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/executor-readonly-approval.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/executor.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "complexity/useOptionalChain:3,correctness/noUnusedImports:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/history-compaction.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "style/useImportType:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/history-compaction.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "complexity/useOptionalChain:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/index.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/job-reconciler.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/lease-loss-recovery.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "style/useImportType:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/manual-retry-reuse.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-authorization-quote-review.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-extraction.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-extraction.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "complexity/useOptionalChain:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-file-save-authorization-review.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-injection.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "style/useTemplate:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-injection.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-jobs-config.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-outbox.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-outbox.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "complexity/useOptionalChain:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-recall.test.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-recall.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-review-repro.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-summary.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/memory-summary.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/message-group.postgres.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/message-group.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/message-group.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "complexity/useOptionalChain:2,correctness/noUnusedFunctionParameters:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/product-harness/group-router.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/product-harness/group-router.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/result-delivery.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/result-delivery.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/result-delivery.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/revoke-cancelled-work.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/run-budget-enforcement.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/scenario-contract.integration.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/scenario-contract.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "suspicious/noTemplateCurlyInString:1,suspicious/noPrototypeBuiltins:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/scripted-runtime.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/session-checkpoint-lost-input.postgres.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/session-checkpoint-recovery.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/session-checkpoint-watermark.postgres.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/task-catalog.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/thread-artifacts.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/adapters/src/turnpolicy-v2-agentscope.integration.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "complexity/noBannedTypes:3",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/contracts/src/execution-snapshot.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/contracts/src/intervention.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/agent-skill.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/capability-rules.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/capability-rules.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/intervention-match.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/intervention-match.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/message-pages.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/node/desktop-runtime.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/activity/grouping.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/collaboration.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/collaboration.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/group-routing.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/group-routing.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/orchestration.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/orchestration.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/response-owner.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/response-owner.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/turn-policy.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/product-harness/turn-policy.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/roundtable-contracts.ts",
+      "format": 0,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/run-budget.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/core/src/run-budget.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/cancel-child-runs.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/delivery-records.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/effect-execution-fence.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/execution-contract.postgres.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "style/useImportType:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/execution-fenced-events.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/execution-revocations.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/memory-facts.postgres.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/memory-facts.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/messages.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/postgres-test-database.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/repos.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/retry-runs.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/session-checkpoint.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/usage-stats.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/wait-timeouts.postgres.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "style/useImportType:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/db/src/wait-timeouts.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/memory/src/facts.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/memory/src/facts.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/testkit/src/agentscope-offline.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/testkit/src/cli/harness.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": true
+    },
+    {
+      "file": "packages/testkit/src/computer-replay.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/testkit/src/playwright-artifact-publication.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/testkit/src/prompt-files-baseline.integration.test.ts",
+      "format": 1,
+      "assist": 1,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/testkit/src/scenario-contract.postgres.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "correctness/noUnusedImports:1,correctness/noUnusedVariables:1",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-tokens/src/tokens.css",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/agent-avatar.css",
+      "format": 1,
+      "assist": 0,
+      "lint": "style/noDescendingSpecificity:12,complexity/noImportantStyles:3",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/agent-avatar.test.tsx",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/assets/anchors.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/assets/eyes.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/assets/palette.json",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/dom-motion.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/motion.test.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "packages/ui-web/src/agent-avatar/motion.ts",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    },
+    {
+      "file": "scripts/generate-prompt-texts.mjs",
+      "format": 1,
+      "assist": 0,
+      "lint": "",
+      "errors": true,
+      "pr147": false
+    }
+  ]
+}

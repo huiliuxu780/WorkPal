@@ -342,3 +342,52 @@ Dev Compose reads `COMPOSE_PROJECT_NAME`, `API_HOST_PORT`, `WEB_HOST_PORT`,
 project-scoped. `pnpm agent:doctor --compose-down` removes only the current
 project. After a crash, `pnpm agent:doctor` reports that lease as stale and
 `pnpm agent:doctor --recover` clears only the current worktree's stale lease.
+
+## Worktree layout and removal
+
+Create every worktree outside the main checkout, one directory per delivery
+unit. Never nest a worktree inside the repository: a nested checkout is picked
+up by lint, by the tracked test inventory, and by CI path selection as if it
+were product source, and its own `.git` file makes the duplication hard to
+see. Remove a worktree with `git worktree remove <path>` and clean stale
+administrative entries with `git worktree prune`. Do not delete a worktree with
+a recursive file removal, and never delete one that has uncommitted changes,
+unmerged commits, or an open PR referencing it (see
+[HARNESS-01 H6](tasks/HARNESS-01.md)).
+
+The verifiable entry is `pnpm repo:hygiene`, which lists any worktree nested
+inside the current checkout along with the credential, restricted-path, and
+file-size violations below. It exits non-zero and names each offending path.
+
+## Repository hygiene gate
+
+`pnpm repo:hygiene` (`scripts/ci/check-repo-hygiene.mjs`) is the CI-equivalent
+of the local pre-commit reminder, so a clone with no hook installed is still
+blocked. It runs in the `select-checks` job on every event; a violation fails
+`select-checks`, and a failed selector can never be aggregated into a passing
+`CI result`.
+
+| Rule | Rejects | Allows |
+| --- | --- | --- |
+| `credential-file` | any tracked `.env` or `.env.*` | `*.example`, such as `.env.example` and `infra/compose/.env.images.example` |
+| `key-material` | `.pem`, `.p12`, `.pfx`, `.keystore`, `.jks`, `id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa` | source and docs about secrets, e.g. `packages/adapters/src/secrets.ts`, `docs/bot-secrets.md` |
+| `restricted-path` | `apps/mobile/`, `apps/www/`, `apps/desktop/`, `node_modules/`, `.qoder/worktrees/`, `.codex/worktrees/` | everything else in this web-only product |
+| `file-too-large` | any tracked file over 1 MiB that is not in `LARGE_FILE_BASELINE`, and anything over 5 MiB even if it is | the five committed design/demo assets listed in `LARGE_FILE_BASELINE`, and normal assets under 1 MiB |
+| `nested-worktree` | a worktree registered inside the current checkout | the checkout itself and sibling worktrees outside it |
+
+The size rule uses an explicit baseline instead of one global threshold so that
+fonts, images, and test fixtures are not rejected wholesale. Adding a large
+asset means adding its path and reason to `LARGE_FILE_BASELINE` in the script,
+which shows up in review; the 5 MiB hard limit still applies to baselined
+files.
+
+`pnpm hooks:install` copies `scripts/hooks/pre-commit` into the resolved Git
+hooks path, refusing to overwrite an unrelated existing hook. The hook checks
+staged paths only and is a reminder: CI is the gate, and `--no-verify` does not
+make a violation acceptable.
+
+Tests: `node --test scripts/ci/check-repo-hygiene.test.mjs`, included in
+`pnpm test:ci-select`. The fixture creates a throwaway local Git repository,
+stages a synthetic credential file, a restricted path, an allowed asset, and an
+oversized blob, then asserts the block, the clean re-run, `--base/--head`
+detection after a commit, and that an installed hook actually stops the commit.

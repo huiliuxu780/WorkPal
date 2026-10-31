@@ -1,0 +1,52 @@
+# H3-03 repository hygiene gate — actual runs
+
+Unit: H3, branch codex/harness-delivery-gates, baseline main a409140d5b62fd1bba2c1cd4aa242520a3e1b759
+Date: 2026-10-28. Host paths and the machine user name are redacted; command output is otherwise verbatim.
+
+## 1. Synthetic restricted set in a throwaway local Git repository, no hook installed
+
+$ node --test scripts/ci/check-repo-hygiene.test.mjs
+
+    ok 1 - rejects tracked environment files but allows the committed examples
+    ok 2 - rejects key material and does not flag source files about secrets
+    ok 3 - rejects restricted directories of a web-only product
+    ok 4 - rejects unexpectedly large files while allowing normal assets
+    ok 5 - keeps the committed large-asset baseline working and bounded
+    ok 6 - skips the size rule when the file is gone from the working tree
+ok 1 - inspectEntry
+    ok 1 - flags worktrees nested inside the checkout
+    ok 2 - allows the checkout itself and sibling worktrees outside it
+    ok 3 - parses porcelain worktree list output
+ok 2 - inspectWorktrees
+    ok 1 - is ok for a clean entry set
+ok 3 - checkRepoHygiene
+    ok 1 - blocks a synthetic restricted set staged in a repository without any hook
+    ok 2 - accepts the same tree once the violations are removed
+    ok 3 - reports tracked violations in --base/--head mode after they are committed
+    ok 4 - blocks the commit when the reminder hook is installed
+ok 4 - repository fixture
+# tests 14
+# suites 4
+# pass 14
+# fail 0
+# skipped 0
+exit=0 (node --test)
+
+## 2. Same gate on the H3 worktree itself (clean baseline)
+
+$ node scripts/ci/check-repo-hygiene.mjs
+repository hygiene: no violations
+exit=0
+
+## 3. Positive control: the main checkout, which has worktrees nested inside it
+
+$ node <h3-worktree>/scripts/ci/check-repo-hygiene.mjs    # cwd = main checkout
+repository hygiene: 7 violation(s)
+  [nested-worktree] .qoder/worktrees/agent-general-purpose-1e07a423 — worktree is nested inside the repository; create it outside the checkout and remove it with `git worktree remove`
+  [nested-worktree] .qoder/worktrees/agent-general-purpose-3c09e081 — worktree is nested inside the repository; create it outside the checkout and remove it with `git worktree remove`
+  [nested-worktree] .qoder/worktrees/agent-general-purpose-a3797ad4 — worktree is nested inside the repository; create it outside the checkout and remove it with `git worktree remove`
+  [nested-worktree] .qoder/worktrees/agent-general-purpose-b79484f0 — worktree is nested inside the repository; create it outside the checkout and remove it with `git worktree remove`
+  [nested-worktree] .qoder/worktrees/fix-127 — worktree is nested inside the repository; create it outside the checkout and remove it with `git worktree remove`
+  [nested-worktree] .qoder/worktrees/rt-05f — worktree is nested inside the repository; create it outside the checkout and remove it with `git worktree remove`
+  [nested-worktree] .qoder/worktrees/rt-26f — worktree is nested inside the repository; create it outside the checkout and remove it with `git worktree remove`
+exit=1

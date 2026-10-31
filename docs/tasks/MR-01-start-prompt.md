@@ -1,5 +1,7 @@
 # MR-01 开工提示词
 
+> **历史提示词。** MR-01 已交付并合入 `main`（PR [#73](https://github.com/huiliuxu780/WorkPal/pull/73)，见 [MR-01.md](./MR-01.md)）。现行的交付单元划分、真实运行证据、bug 先红后绿与最终 head CI 口径以 [AGENTS.md](../../AGENTS.md) 和 [开发与验收流程](../development-workflow.md) 为准；与本提示词不一致时以后两者为准。
+
 你负责交付 WorkPal 的 MR-01 手动重试功能。目标是用户在任务中心或失败执行卡点击“重试”，在原 Task、原 Thread 中创建新 Run，由真实 Worker 执行并显示结果；旧记录可回看，已完成的相同外部操作复用真实结果。
 
 按 docs/tasks/MR-01.md 完整交付，不止写方案、API 或 UI。可与另一条 AG-03→AG-04 分支并行，不需等待其完成。
