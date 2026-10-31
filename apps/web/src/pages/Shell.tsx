@@ -286,7 +286,7 @@ import {
 import { speaker } from "../lib/tts";
 import { createUsageLoader, type UsageLoader, type UsageLoadState } from "../lib/usage-loader";
 import { ActivityList } from "./ActivityList";
-import { AttentionQueue } from "./AttentionQueue";
+import { AttentionQueue, type AttentionNotificationState } from "./AttentionQueue";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
@@ -1899,6 +1899,12 @@ export function ShellPage() {
   const attentionEnabled = activeSnapshot?.interactionCapabilities?.cardsUnifiedV2 === true;
   cardsUnifiedV2Ref.current = attentionEnabled;
   const isDesktop = useIsDesktop();
+  // One notifier for both triggers: whichever queues polls must not re-announce
+  // what the other already announced, nor swallow a request into a new baseline.
+  const attentionNotificationState = useRef<AttentionNotificationState>({
+    baseline: null,
+    notified: new Set<string>(),
+  }).current;
   const openAttentionItem = useCallback(
     (item: AttentionQueueItem) => {
       const params = new URLSearchParams();
@@ -3154,7 +3160,8 @@ export function ShellPage() {
         </InputGroup>
         <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
           <AttentionQueue
-            enabled={attentionEnabled && isDesktop}
+            enabled={attentionEnabled && (isDesktop || mobileSidebarOpen)}
+            notificationState={attentionNotificationState}
             activeTarget={
               inGroup && groupId
                 ? { groupId }
@@ -3778,6 +3785,7 @@ export function ShellPage() {
                 <AttentionQueue
                   enabled={attentionEnabled && !isDesktop}
                   variant="topbar"
+                  notificationState={attentionNotificationState}
                   activeTarget={
                     inGroup && groupId
                       ? { groupId }

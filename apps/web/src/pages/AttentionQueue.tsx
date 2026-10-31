@@ -13,6 +13,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { requestBrowserNotificationPermission } from "../lib/browser-notifications";
 import { rpc } from "../lib/rpc";
 
+/**
+ * Shared by the sidebar and top-bar queues: whichever one is polling must never
+ * re-announce what the other already announced, and a fresh mount must not
+ * swallow requests into a new baseline.
+ */
+export type AttentionNotificationState = {
+  baseline: Set<string> | null;
+  notified: Set<string>;
+};
+
 /** 15s is the repository's cross-thread polling cadence (ActivityList). */
 const POLL_MS = 15_000;
 const SUMMARY_MAX = 140;
@@ -23,6 +33,7 @@ export function AttentionQueue({
   botNotificationsEnabled,
   refreshToken,
   variant = "sidebar",
+  notificationState,
   onOpenItem,
   onItems,
 }: {
@@ -33,6 +44,8 @@ export function AttentionQueue({
   refreshToken: number;
   /** Narrow screens put the same queue behind a top-bar trigger. */
   variant?: "sidebar" | "topbar";
+  /** Shared across both triggers; a per-instance value is used when omitted. */
+  notificationState?: AttentionNotificationState;
   onOpenItem: (item: AttentionQueueItem) => void;
   onItems: (items: AttentionQueueItem[]) => void;
 }) {
@@ -46,8 +59,11 @@ export function AttentionQueue({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
-  const baseline = useRef<Set<string> | null>(null);
-  const notified = useRef(new Set<string>());
+  const localNotificationState = useRef<AttentionNotificationState>({
+    baseline: null,
+    notified: new Set<string>(),
+  });
+  const notifier = notificationState ?? localNotificationState.current;
   const requestSeq = useRef(0);
   const permissionRequested = useRef(false);
   const activeTargetRef = useRef(activeTarget);
@@ -62,25 +78,25 @@ export function AttentionQueue({
   const notifyNewItems = useCallback(
     (next: AttentionQueueItem[], options?: { complete?: boolean; silent?: boolean }) => {
       const keys = new Set(next.map(attentionKey));
-      if (baseline.current === null) {
-        baseline.current = keys;
-        notified.current = new Set(keys);
+      if (notifier.baseline === null) {
+        notifier.baseline = keys;
+        notifier.notified = new Set(keys);
         return;
       }
       if (options?.silent) {
         // Loading an older page is navigation, not new work.
-        for (const key of keys) notified.current.add(key);
+        for (const key of keys) notifier.notified.add(key);
       }
       const fresh = options?.silent
         ? []
-        : next.filter((item) => !notified.current.has(attentionKey(item)));
-      for (const item of fresh) notified.current.add(attentionKey(item));
+        : next.filter((item) => !notifier.notified.has(attentionKey(item)));
+      for (const item of fresh) notifier.notified.add(attentionKey(item));
       // Only a complete snapshot can prove a row settled. A single page (or a
       // later page) must never prune keys from other pages, or the next poll
       // would replay every existing request as new.
       if (options?.complete) {
-        for (const key of [...notified.current]) {
-          if (!keys.has(key)) notified.current.delete(key);
+        for (const key of [...notifier.notified]) {
+          if (!keys.has(key)) notifier.notified.delete(key);
         }
       }
       if (fresh.length === 0) return;

@@ -195,6 +195,50 @@ describe("AttentionQueue", () => {
     expect(onOpenItem).toHaveBeenCalledWith(second);
   });
 
+  it("announces a new request once when both triggers poll", async () => {
+    // The sidebar and top-bar queues run as separate components; sharing the
+    // notifier is what keeps a breakpoint switch from re-announcing work.
+    const notificationState = {
+      baseline: null as Set<string> | null,
+      notified: new Set<string>(),
+    };
+    const shared = {
+      activeTarget: { botId: "other-bot" },
+      botNotificationsEnabled: () => true,
+      refreshToken: 0,
+      notificationState,
+      onOpenItem: () => undefined,
+      onItems: () => undefined,
+    };
+    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });
+    const sidebar = await render(<AttentionQueue enabled {...shared} />);
+    await render(<AttentionQueue enabled variant="topbar" {...shared} />);
+    await flush();
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    list.mockResolvedValue({
+      items: [
+        item(),
+        item({
+          interactionId: "i-2",
+          stableId: "i-2",
+          taskTitle: null,
+          presentation: { text: "Ship the release?" },
+        }),
+      ],
+      total: 2,
+      nextCursor: null,
+    });
+    await act(async () => {
+      sidebar.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
+    });
+    await flush();
+
+    // Both instances polled the same new request; it may only be announced once.
+    expect(FakeNotification.instances).toHaveLength(1);
+    expect([...notificationState.notified].sort()).toEqual(["i-1:1", "i-2:1"]);
+  });
+
   it("suppresses a notification for the source thread in the foreground", async () => {
     list.mockResolvedValue({ items: [], total: 0, nextCursor: null });
     const host = await render(
