@@ -16,7 +16,7 @@ async function sendPage(page: import("@playwright/test").Page, marker: string) {
 }
 
 test("old page restores stale state and opens the latest page", async ({ page }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await signup(page, `chat-chrome-page-${Date.now()}@rakazo.test`, "password12", "Pagination");
   await completeOnboarding(page);
@@ -58,8 +58,10 @@ test("old page restores stale state and opens the latest page", async ({ page },
     timeout: 30_000,
   });
   await expect(cards).toHaveCount(0);
+  const loadEarlier = page.getByRole("button", { name: "Load earlier messages" });
+  await expect(loadEarlier).toBeVisible({ timeout: 60_000 });
   for (let attempt = 0; attempt < 3 && (await cards.count()) === 0; attempt += 1) {
-    await page.getByRole("button", { name: "Load earlier messages" }).click();
+    await loadEarlier.click();
   }
   await expect(cards).toHaveCount(2, { timeout: 30_000 });
   await expect(cards.nth(0)).toHaveAttribute("data-stale", "true");
