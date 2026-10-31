@@ -1,4 +1,5 @@
 import { t } from "@lingui/core/macro";
+import type { Icon } from "@phosphor-icons/react";
 import type { InteractionView } from "@rakazo/contracts";
 import { Button, cn } from "@rakazo/ui-web";
 import type { ReactNode } from "react";
@@ -51,7 +52,7 @@ export function interactionTone(view: InteractionView): InteractionTone {
 }
 
 export function interactionStatusLabel(view: InteractionView): string {
-  if (view.status === "superseded") return t`Replaced`;
+  if (view.status === "superseded") return t`已在下方更新`;
   if (view.status === "expired") return t`Expired`;
   if (view.status === "cancelled") return t`Ended`;
   if (view.status === "answered") {
@@ -105,19 +106,16 @@ export function InteractionSourceLine({
   conversationName,
   replyTarget,
   createdAt,
-  revision,
 }: {
   botName?: string;
   conversationName?: string;
   replyTarget?: string | null;
   createdAt: string;
-  revision?: number;
 }) {
   const parts: string[] = [];
   if (botName) parts.push(t`Bot: ${botName}`);
   if (conversationName) parts.push(conversationName);
   if (replyTarget) parts.push(replyTarget);
-  if (revision && revision > 1) parts.push(t`v${revision}`);
   const time = new Date(createdAt);
   if (!Number.isNaN(time.getTime())) {
     parts.push(
@@ -198,11 +196,10 @@ export function InteractionCardShell({
   children,
   source,
   actions,
-  expanded = false,
   testId,
 }: {
   kind: InteractionView["kind"];
-  icon: string;
+  icon: Icon;
   title: ReactNode;
   status: string;
   tone: InteractionTone;
@@ -210,29 +207,27 @@ export function InteractionCardShell({
   children?: ReactNode;
   source?: ReactNode;
   actions?: ReactNode;
-  /** Terminal cards keep readable text and use an inset outline instead of opacity. */
-  expanded?: boolean;
   testId?: string;
 }) {
   const terminal = tone !== "wait";
+  const IconComponent = icon;
   return (
     <article
       data-testid={testId ?? "interaction-card"}
       data-kind={kind}
       data-tone={tone}
       className={cn(
-        "flex w-full max-w-[360px] min-w-0 flex-col gap-2.5 rounded-2xl p-3 text-foreground",
+        "flex w-full min-w-0 flex-col gap-2.5 rounded-2xl p-3 text-foreground",
         terminal ? "bg-transparent shadow-[inset_0_0_0_1px_var(--border)]" : "bg-muted/70",
-        expanded && "max-w-[520px]",
       )}
       aria-label={typeof title === "string" ? title : undefined}
     >
       <header className="flex min-w-0 items-start gap-2">
         <span
           aria-hidden="true"
-          className="grid size-[22px] shrink-0 place-items-center rounded-[7px] bg-background text-[12px] text-muted-foreground shadow-[inset_0_0_0_1px_var(--border)]"
+          className="grid size-[22px] shrink-0 place-items-center text-muted-foreground"
         >
-          {icon}
+          <IconComponent size={18} />
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="min-w-0 text-[15px] font-medium leading-[22px]" dir="auto">

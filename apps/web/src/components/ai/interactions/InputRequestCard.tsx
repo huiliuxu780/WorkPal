@@ -1,4 +1,6 @@
 import { t } from "@lingui/core/macro";
+import type { Icon } from "@phosphor-icons/react";
+import { CreditCard, Key, ListChecks, Question, Rows } from "@phosphor-icons/react";
 import type { InputRequestView } from "@rakazo/contracts";
 import { Input, Label, Textarea } from "@rakazo/ui-web";
 import { type FormEvent, useEffect, useRef, useState } from "react";
@@ -14,12 +16,12 @@ import {
   interactionTone,
 } from "./InteractionCardShell";
 
-const ICONS: Record<InputRequestView["input"]["mode"], string> = {
-  question: "?",
-  choice: "A",
-  form: "≡",
-  secret: "◇",
-  saved_item: "¥",
+const ICONS: Record<InputRequestView["input"]["mode"], Icon> = {
+  question: Question,
+  choice: ListChecks,
+  form: Rows,
+  secret: Key,
+  saved_item: CreditCard,
 };
 
 function secretFieldLabel(purpose: "otp" | "password" | "api_key" | null): string {
@@ -134,7 +136,6 @@ export function InputRequestCard({
           botName={botName}
           conversationName={conversationName}
           createdAt={view.createdAt}
-          revision={view.revision}
         />
       }
       actions={
