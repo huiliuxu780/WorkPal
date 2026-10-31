@@ -10,7 +10,7 @@
 
 - pnpm（仓库锁定）；Node 22（本机）
 - PostgreSQL 16 由 testcontainers 起一次性实例；Docker 走 colima，需显式：
-  `DOCKER_HOST=unix:///Users/rivers/.colima/default/docker.sock`
+  `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock`
   `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`
 - e2e runtime：`--runtime=scripted`（确定性夹具，无真实模型）
 - 卡片 gate：`CARDS_UNIFIED_V2_ENABLED=true`，由 `packages/testkit/src/cli/harness.ts` 对 gated spec 自动开启；
