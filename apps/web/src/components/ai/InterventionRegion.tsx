@@ -185,6 +185,7 @@ export function InterventionRegion({
   botNameOf,
   conversationName,
   groupNameOf,
+  inGroup = false,
   onOpenComputer,
   onSettled,
   onRefresh,
@@ -199,6 +200,7 @@ export function InterventionRegion({
   botNameOf?: (botId: string) => string | undefined;
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
+  inGroup?: boolean;
   onOpenComputer?: (botId: string) => void;
   onSettled: (view: InterventionView) => void;
   onRefresh?: () => Promise<void>;
@@ -211,6 +213,7 @@ export function InterventionRegion({
         botNameOf={botNameOf}
         conversationName={conversationName}
         groupNameOf={groupNameOf}
+        inGroup={inGroup}
         onOpenComputer={onOpenComputer}
         onRefresh={onRefresh}
       />

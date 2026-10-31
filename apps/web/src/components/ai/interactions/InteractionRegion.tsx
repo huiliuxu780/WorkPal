@@ -34,6 +34,7 @@ export function InteractionRegion({
   botNameOf,
   conversationName,
   groupNameOf,
+  inGroup = false,
   onRefresh,
   onOpenComputer,
 }: {
@@ -42,6 +43,8 @@ export function InteractionRegion({
   botNameOf?: (botId: string) => string | undefined;
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
+  /** Group chats answer in text and never expose an always-allow decision. */
+  inGroup?: boolean;
   onRefresh?: () => Promise<void>;
   onOpenComputer?: (botId: string) => void;
 }) {
@@ -66,9 +69,16 @@ export function InteractionRegion({
         if (view.kind === "plan_review") {
           card = <PlanReviewInteractionCard view={view} {...shared} />;
         } else if (view.kind === "input_request") {
-          card = <InputRequestCard view={view} {...shared} />;
+          card = <InputRequestCard view={view} {...shared} inGroup={inGroup} />;
         } else if (view.kind === "action_approval") {
-          card = <ActionApprovalCard view={view} {...shared} groupNameOf={groupNameOf} />;
+          card = (
+            <ActionApprovalCard
+              view={view}
+              {...shared}
+              groupNameOf={groupNameOf}
+              inGroup={inGroup}
+            />
+          );
         }
         return (
           <div

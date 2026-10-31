@@ -5218,6 +5218,7 @@ export const Transcript = memo(function Transcript({
     cardsUnifiedV2,
     conversationName,
     groupNameOf,
+    inGroup: "groupId" in artifactTarget,
     executions,
     activity,
     showActivityAvatars,

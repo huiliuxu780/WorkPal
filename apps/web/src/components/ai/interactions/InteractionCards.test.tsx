@@ -613,6 +613,37 @@ describe("input request card", () => {
     expect(host.textContent ?? "").not.toContain("hunter2");
   });
 
+  it("never hosts an addressable input inside a group thread", async () => {
+    const host = await render(
+      <InputRequestCard
+        view={inputView({ mode: "question", prompt: "Which city?", placeholder: null })}
+        target={{ groupId: "group-1" }}
+        inGroup
+      />,
+    );
+
+    expect(host.querySelector('textarea[aria-label="Your answer"]')).toBeNull();
+    expect(byTestId(host, "input-card-submit")).toBeNull();
+    expect(host.textContent ?? "").toContain("Open the direct chat with this Bot");
+  });
+
+  it("keeps always-allow in a direct chat and drops it from a group decision", async () => {
+    const direct = await render(
+      <ActionApprovalCard view={actionView(toolApproval())} target={target} />,
+    );
+    expect(byTestId(direct, "approval-more")).not.toBeNull();
+
+    const group = await render(
+      <ActionApprovalCard
+        view={actionView(toolApproval())}
+        target={{ groupId: "group-1" }}
+        inGroup
+      />,
+    );
+    expect(byTestId(group, "approval-more")).toBeNull();
+    expect(byTestId(group, "approval-primary")?.textContent).toContain("Allow once");
+  });
+
   it("validates required form fields locally before calling the server", async () => {
     const host = await render(
       <InputRequestCard

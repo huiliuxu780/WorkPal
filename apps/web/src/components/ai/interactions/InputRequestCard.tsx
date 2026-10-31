@@ -35,16 +35,20 @@ export function InputRequestCard({
   target,
   botName,
   conversationName,
+  inGroup = false,
   onRefresh,
 }: {
   view: InputRequestView;
   target: ArtifactTarget;
   botName?: string;
   conversationName?: string;
+  /** A group thread never hosts an addressable input; it guides to the direct chat. */
+  inGroup?: boolean;
   onRefresh?: () => Promise<void>;
 }) {
   const input = view.input;
   const terminal = view.status !== "pending";
+  const groupBlocked = inGroup && !terminal;
   const draftEnabled = input.mode === "question" && !terminal;
   const draftStorage = useRef(availableAskDraftStorage());
   const initialDraft = useRef(
@@ -139,7 +143,7 @@ export function InputRequestCard({
         />
       }
       actions={
-        terminal ? undefined : input.mode === "question" ? (
+        terminal || groupBlocked ? undefined : input.mode === "question" ? (
           <InteractionAction
             kind="primary"
             disabled={!text.trim()}
@@ -212,6 +216,10 @@ export function InputRequestCard({
       {terminal || submitted ? (
         <InteractionNote>
           {submitted ? t`Submitted. Syncing the current state…` : interactionStatusLabel(view)}
+        </InteractionNote>
+      ) : groupBlocked ? (
+        <InteractionNote>
+          {t`Open the direct chat with this Bot to answer. Nothing was sent from this group.`}
         </InteractionNote>
       ) : input.mode === "question" ? (
         <form

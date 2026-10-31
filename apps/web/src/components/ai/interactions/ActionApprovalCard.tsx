@@ -220,6 +220,7 @@ function ToolApprovalCard({
   target,
   botName,
   conversationName,
+  inGroup = false,
   onRefresh,
 }: {
   view: ActionApprovalView;
@@ -227,9 +228,14 @@ function ToolApprovalCard({
   target: ArtifactTarget;
   botName?: string;
   conversationName?: string;
+  inGroup?: boolean;
   onRefresh?: () => Promise<void>;
 }) {
   const { busyAnswer, submitted, error, decide } = useDecision({ view, target, onRefresh });
+  // A group can approve once; "always allow" stays a direct-chat decision.
+  const actions = inGroup
+    ? approval.actions.filter((action) => action.id !== "always")
+    : approval.actions;
   return (
     <InteractionCardShell
       kind="action_approval"
@@ -248,7 +254,7 @@ function ToolApprovalCard({
       actions={
         <DecisionButtons
           view={view}
-          actions={approval.actions}
+          actions={actions}
           busyAnswer={busyAnswer}
           onDecide={(answer) => void decide(answer)}
           toolActions
@@ -1550,6 +1556,7 @@ export function ActionApprovalCard({
   botName,
   conversationName,
   groupNameOf,
+  inGroup = false,
   onRefresh,
 }: {
   view: ActionApprovalView;
@@ -1557,6 +1564,7 @@ export function ActionApprovalCard({
   botName?: string;
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
+  inGroup?: boolean;
   onRefresh?: () => Promise<void>;
 }) {
   const approval = view.approval;
@@ -1569,6 +1577,7 @@ export function ActionApprovalCard({
           target={target}
           botName={botName}
           conversationName={conversationName}
+          inGroup={inGroup}
           onRefresh={onRefresh}
         />
       );
