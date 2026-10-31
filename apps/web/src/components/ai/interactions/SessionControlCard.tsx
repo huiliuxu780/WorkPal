@@ -47,7 +47,7 @@ export function SessionControlCard({
     <InteractionCardShell
       kind="session_control"
       icon={Desktop}
-      title={takeover ? t`Needs you at the desktop` : t`You are operating the desktop`}
+      title={view.presentation.text || (takeover ? t`打开桌面` : t`交还桌面`)}
       status={takeover ? t`Waiting for takeover` : t`Waiting to hand back`}
       tone={interactionTone(view)}
       subtitle={
@@ -70,7 +70,7 @@ export function SessionControlCard({
             onClick={() => onOpenComputer?.(view.botId)}
             testId="session-control-takeover"
           >
-            {t`Open desktop`}
+            {t`打开桌面`}
           </InteractionAction>
         ) : (
           <InteractionAction
@@ -80,7 +80,7 @@ export function SessionControlCard({
             onClick={() => void returnControl()}
             testId="session-control-return"
           >
-            {t`Hand back to Bot`}
+            {t`交还桌面`}
           </InteractionAction>
         )
       }

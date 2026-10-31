@@ -1365,7 +1365,8 @@ describe("plan review and session control", () => {
     const takeoverHost = await render(
       <SessionControlCard view={sessionView("takeover")} onOpenComputer={onOpenComputer} />,
     );
-    expect(takeoverHost.textContent).toContain("Needs you at the desktop");
+    expect(takeoverHost.textContent).toContain("打开桌面");
+    expect(byTestId(takeoverHost, "session-control-takeover")?.textContent).toBe("打开桌面");
     expect(takeoverHost.textContent).toContain("Closing the desktop does not abandon");
     await act(async () =>
       (byTestId(takeoverHost, "session-control-takeover") as HTMLButtonElement).click(),
@@ -1375,6 +1376,7 @@ describe("plan review and session control", () => {
 
     const returnHost = await render(<SessionControlCard view={sessionView("return")} />);
     expect(returnHost.textContent).toContain("Closing this card does not hand control back");
+    expect(byTestId(returnHost, "session-control-return")?.textContent).toBe("交还桌面");
     await act(async () =>
       (byTestId(returnHost, "session-control-return") as HTMLButtonElement).click(),
     );
