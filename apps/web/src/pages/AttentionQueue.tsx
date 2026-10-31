@@ -1,10 +1,27 @@
 import { t } from "@lingui/core/macro";
+import {
+  CaretRight,
+  ClipboardText,
+  Desktop,
+  Question,
+  Warning,
+  Wrench,
+} from "@phosphor-icons/react";
 import type { AttentionQueueItem } from "@rakazo/contracts";
 import { Popover, PopoverContent, PopoverTrigger } from "@rakazo/ui-web";
-import { Bell, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { requestBrowserNotificationPermission } from "../lib/browser-notifications";
 import { rpc } from "../lib/rpc";
+
+/**
+ * Shared by the sidebar and top-bar queues: whichever one is polling must never
+ * re-announce what the other already announced, and a fresh mount must not
+ * swallow requests into a new baseline.
+ */
+export type AttentionNotificationState = {
+  baseline: Set<string> | null;
+  notified: Set<string>;
+};
 
 /** 15s is the repository's cross-thread polling cadence (ActivityList). */
 const POLL_MS = 15_000;
@@ -15,6 +32,8 @@ export function AttentionQueue({
   activeTarget,
   botNotificationsEnabled,
   refreshToken,
+  variant = "sidebar",
+  notificationState,
   onOpenItem,
   onItems,
 }: {
@@ -23,6 +42,10 @@ export function AttentionQueue({
   botNotificationsEnabled: (botId: string | null) => boolean;
   /** Shell bumps this after a local decision settles. */
   refreshToken: number;
+  /** Narrow screens put the same queue behind a top-bar trigger. */
+  variant?: "sidebar" | "topbar";
+  /** Shared across both triggers; a per-instance value is used when omitted. */
+  notificationState?: AttentionNotificationState;
   onOpenItem: (item: AttentionQueueItem) => void;
   onItems: (items: AttentionQueueItem[]) => void;
 }) {
@@ -36,8 +59,11 @@ export function AttentionQueue({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
-  const baseline = useRef<Set<string> | null>(null);
-  const notified = useRef(new Set<string>());
+  const localNotificationState = useRef<AttentionNotificationState>({
+    baseline: null,
+    notified: new Set<string>(),
+  });
+  const notifier = notificationState ?? localNotificationState.current;
   const requestSeq = useRef(0);
   const permissionRequested = useRef(false);
   const activeTargetRef = useRef(activeTarget);
@@ -52,25 +78,25 @@ export function AttentionQueue({
   const notifyNewItems = useCallback(
     (next: AttentionQueueItem[], options?: { complete?: boolean; silent?: boolean }) => {
       const keys = new Set(next.map(attentionKey));
-      if (baseline.current === null) {
-        baseline.current = keys;
-        notified.current = new Set(keys);
+      if (notifier.baseline === null) {
+        notifier.baseline = keys;
+        notifier.notified = new Set(keys);
         return;
       }
       if (options?.silent) {
         // Loading an older page is navigation, not new work.
-        for (const key of keys) notified.current.add(key);
+        for (const key of keys) notifier.notified.add(key);
       }
       const fresh = options?.silent
         ? []
-        : next.filter((item) => !notified.current.has(attentionKey(item)));
-      for (const item of fresh) notified.current.add(attentionKey(item));
+        : next.filter((item) => !notifier.notified.has(attentionKey(item)));
+      for (const item of fresh) notifier.notified.add(attentionKey(item));
       // Only a complete snapshot can prove a row settled. A single page (or a
       // later page) must never prune keys from other pages, or the next poll
       // would replay every existing request as new.
       if (options?.complete) {
-        for (const key of [...notified.current]) {
-          if (!keys.has(key)) notified.current.delete(key);
+        for (const key of [...notifier.notified]) {
+          if (!keys.has(key)) notifier.notified.delete(key);
         }
       }
       if (fresh.length === 0) return;
@@ -183,16 +209,22 @@ export function AttentionQueue({
   if (!enabled) return null;
 
   const countLabel = total > 99 ? "99+" : String(total);
+  const compact = variant === "topbar";
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         data-testid="attention-entry"
+        data-variant={variant}
         aria-expanded={open}
-        aria-label={total > 0 ? t`Attention queue, ${total} pending` : t`Attention queue`}
-        className="mb-1 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[13px] font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+        aria-label={total > 0 ? t`待处理，${total} 项` : t`待处理`}
+        className={
+          compact
+            ? "flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-foreground/85 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+            : "mb-1 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[13px] font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+        }
       >
-        <Bell size={15} strokeWidth={1.8} aria-hidden="true" />
-        <span className="flex-1 truncate">{t`Attention`}</span>
+        <Warning size={15} aria-hidden="true" />
+        <span className={compact ? "truncate" : "flex-1 truncate"}>{t`待处理`}</span>
         {total > 0 ? (
           <span
             data-testid="attention-count"
@@ -204,25 +236,23 @@ export function AttentionQueue({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        side="right"
-        sideOffset={10}
+        side={compact ? "bottom" : "right"}
+        sideOffset={compact ? 6 : 10}
         className="w-[min(360px,calc(100vw-24px))] gap-0 overflow-hidden p-0"
       >
         <section
           data-testid="attention-queue"
-          aria-label={t`Attention queue`}
+          aria-label={t`待处理`}
           className="flex max-h-[min(70vh,520px)] flex-col"
         >
           <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
-            <span className="text-[13px] font-semibold text-foreground">{t`Attention queue`}</span>
+            <span className="text-[13px] font-semibold text-foreground">{t`待处理`}</span>
             {total > 0 ? (
               <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
                 {countLabel}
               </span>
             ) : null}
-            <span className="ms-auto text-[11px] text-muted-foreground">
-              {t`Only requests for you`}
-            </span>
+            <span className="ms-auto text-[11px] text-muted-foreground">{t`仅本人待处理`}</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {loading ? (
@@ -246,7 +276,7 @@ export function AttentionQueue({
                 data-testid="attention-empty"
                 className="px-2 py-3 text-[12.5px] text-muted-foreground"
               >
-                {t`Nothing needs you right now.`}
+                {t`没有需要你处理的事项`}
               </p>
             ) : (
               <ul className="flex flex-col">
@@ -265,9 +295,12 @@ export function AttentionQueue({
                     >
                       <span
                         aria-hidden="true"
-                        className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground"
+                        className="mt-0.5 grid size-6 shrink-0 place-items-center text-muted-foreground"
                       >
-                        {kindGlyph(item.kind)}
+                        {(() => {
+                          const KindIcon = kindGlyph(item.kind);
+                          return <KindIcon size={15} />;
+                        })()}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span
@@ -283,7 +316,7 @@ export function AttentionQueue({
                           {metaText(item)}
                         </span>
                       </span>
-                      <ChevronRight
+                      <CaretRight
                         size={14}
                         aria-hidden="true"
                         className="mt-1 shrink-0 text-muted-foreground/70"
@@ -320,11 +353,11 @@ export function attentionKey(item: Pick<AttentionQueueItem, "interactionId" | "r
   return `${item.interactionId}:${item.revision}`;
 }
 
-function kindGlyph(kind: AttentionQueueItem["kind"]): string {
-  if (kind === "action_approval") return "!";
-  if (kind === "plan_review") return "▤";
-  if (kind === "session_control") return "▣";
-  return "?";
+function kindGlyph(kind: AttentionQueueItem["kind"]) {
+  if (kind === "action_approval") return Wrench;
+  if (kind === "plan_review") return ClipboardText;
+  if (kind === "session_control") return Desktop;
+  return Question;
 }
 
 function kindLabel(kind: AttentionQueueItem["kind"]): string {

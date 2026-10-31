@@ -80,6 +80,12 @@ test.describe("attention queue (N1-N4)", () => {
     // itself on the frame after the resize, so a single read can catch the
     // pre-clamp position; poll the measurement instead of racing the relayout.
     await page.setViewportSize({ width: 375, height: 900 });
+    // The trigger swaps at the md breakpoint, so the panel closes with its
+    // trigger; re-open from the narrow top-bar entry (AT-F13) and re-measure.
+    const narrowEntry = page.getByTestId("attention-entry");
+    await expect(narrowEntry).toBeVisible({ timeout: 20_000 });
+    await expect(narrowEntry).toHaveAttribute("data-variant", "topbar");
+    await narrowEntry.click();
     await expect(queue).toBeVisible();
     await expect
       .poll(
@@ -107,6 +113,9 @@ test.describe("attention queue (N1-N4)", () => {
 
     await page.emulateMedia({ colorScheme: "light" });
     await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(entry).toHaveAttribute("data-variant", "sidebar");
+    await entry.click();
+    await expect(queue).toBeVisible();
 
     // Keyboard: Escape closes the panel and returns focus to the entry.
     await page.keyboard.press("Escape");
