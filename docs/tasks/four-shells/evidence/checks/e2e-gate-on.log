@@ -1,0 +1,13 @@
+
+> workpal@0.1.0 test:e2e <worktree>
+> tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=card-ui-interactions.spec.ts|card-display-content.spec.ts|four-shells-visual.spec.ts"
+
+◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+ResourceConflictError: lease:wt-four-shells-01-39716be1b9:e2e
+    at <anonymous> (<worktree>/packages/testkit/src/resources/leases.ts:430:13)
+    at async withAllocLock (<worktree>/packages/testkit/src/resources/leases.ts:204:18)
+    at async main (<worktree>/packages/testkit/src/cli/harness.ts:105:21) {
+  conflicts: [ 'lease:wt-four-shells-01-39716be1b9:e2e' ]
+}
+ ELIFECYCLE  Command failed with exit code 1.
+EXIT=1

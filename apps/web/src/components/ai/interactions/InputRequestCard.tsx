@@ -1,4 +1,6 @@
 import { t } from "@lingui/core/macro";
+import type { Icon } from "@phosphor-icons/react";
+import { CreditCard, Key, ListChecks, Question, Rows } from "@phosphor-icons/react";
 import type { InputRequestView } from "@rakazo/contracts";
 import { Input, Label, Textarea } from "@rakazo/ui-web";
 import { type FormEvent, useEffect, useRef, useState } from "react";
@@ -14,12 +16,12 @@ import {
   interactionTone,
 } from "./InteractionCardShell";
 
-const ICONS: Record<InputRequestView["input"]["mode"], string> = {
-  question: "?",
-  choice: "A",
-  form: "≡",
-  secret: "◇",
-  saved_item: "¥",
+const ICONS: Record<InputRequestView["input"]["mode"], Icon> = {
+  question: Question,
+  choice: ListChecks,
+  form: Rows,
+  secret: Key,
+  saved_item: CreditCard,
 };
 
 function secretFieldLabel(purpose: "otp" | "password" | "api_key" | null): string {
@@ -33,16 +35,20 @@ export function InputRequestCard({
   target,
   botName,
   conversationName,
+  inGroup = false,
   onRefresh,
 }: {
   view: InputRequestView;
   target: ArtifactTarget;
   botName?: string;
   conversationName?: string;
+  /** A group thread never hosts an addressable input; it guides to the direct chat. */
+  inGroup?: boolean;
   onRefresh?: () => Promise<void>;
 }) {
   const input = view.input;
   const terminal = view.status !== "pending";
+  const groupBlocked = inGroup && !terminal;
   const draftEnabled = input.mode === "question" && !terminal;
   const draftStorage = useRef(availableAskDraftStorage());
   const initialDraft = useRef(
@@ -134,11 +140,10 @@ export function InputRequestCard({
           botName={botName}
           conversationName={conversationName}
           createdAt={view.createdAt}
-          revision={view.revision}
         />
       }
       actions={
-        terminal ? undefined : input.mode === "question" ? (
+        terminal || groupBlocked ? undefined : input.mode === "question" ? (
           <InteractionAction
             kind="primary"
             disabled={!text.trim()}
@@ -199,9 +204,22 @@ export function InputRequestCard({
           {view.presentation.detail}
         </pre>
       ) : null}
+      {secretMode && (view.status === "answered" || submitted) ? (
+        <div
+          data-testid="secret-masked"
+          aria-hidden="true"
+          className="font-mono text-[15px] tracking-[0.35em] text-muted-foreground"
+        >
+          ••••
+        </div>
+      ) : null}
       {terminal || submitted ? (
         <InteractionNote>
           {submitted ? t`Submitted. Syncing the current state…` : interactionStatusLabel(view)}
+        </InteractionNote>
+      ) : groupBlocked ? (
+        <InteractionNote>
+          {t`Open the direct chat with this Bot to answer. Nothing was sent from this group.`}
         </InteractionNote>
       ) : input.mode === "question" ? (
         <form

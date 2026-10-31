@@ -1,4 +1,5 @@
 import { t } from "@lingui/core/macro";
+import { Desktop } from "@phosphor-icons/react";
 import type { SessionControlView } from "@rakazo/contracts";
 import { useState } from "react";
 import { rpc } from "../../../lib/rpc";
@@ -45,8 +46,8 @@ export function SessionControlCard({
   return (
     <InteractionCardShell
       kind="session_control"
-      icon="▭"
-      title={takeover ? t`Needs you at the desktop` : t`You are operating the desktop`}
+      icon={Desktop}
+      title={view.presentation.text || (takeover ? t`打开桌面` : t`交还桌面`)}
       status={takeover ? t`Waiting for takeover` : t`Waiting to hand back`}
       tone={interactionTone(view)}
       subtitle={
@@ -59,7 +60,6 @@ export function SessionControlCard({
           botName={botName}
           conversationName={conversationName}
           createdAt={view.createdAt}
-          revision={view.revision}
         />
       }
       actions={
@@ -70,7 +70,7 @@ export function SessionControlCard({
             onClick={() => onOpenComputer?.(view.botId)}
             testId="session-control-takeover"
           >
-            {t`Open desktop`}
+            {t`打开桌面`}
           </InteractionAction>
         ) : (
           <InteractionAction
@@ -80,7 +80,7 @@ export function SessionControlCard({
             onClick={() => void returnControl()}
             testId="session-control-return"
           >
-            {t`Hand back to Bot`}
+            {t`交还桌面`}
           </InteractionAction>
         )
       }

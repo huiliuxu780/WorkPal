@@ -1,4 +1,5 @@
 import { t } from "@lingui/core/macro";
+import { ClipboardText } from "@phosphor-icons/react";
 import type { PlanItemStatus, PlanReviewView } from "@rakazo/contracts";
 import { Textarea } from "@rakazo/ui-web";
 import { useRef, useState } from "react";
@@ -89,7 +90,7 @@ export function PlanReviewInteractionCard({
   return (
     <InteractionCardShell
       kind="plan_review"
-      icon="≡"
+      icon={ClipboardText}
       title={title}
       status={terminal ? decisionLabel(view) : t`Waiting for your review`}
       tone={interactionTone(view)}
@@ -99,7 +100,6 @@ export function PlanReviewInteractionCard({
           botName={botName}
           conversationName={conversationName}
           createdAt={view.createdAt}
-          revision={view.revision}
         />
       }
       actions={

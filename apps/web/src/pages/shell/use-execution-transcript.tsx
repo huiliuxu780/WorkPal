@@ -104,6 +104,7 @@ export type UseExecutionTranscriptInput = {
   cardsUnifiedV2?: boolean;
   conversationName?: string;
   groupNameOf?: (groupId: string) => string | undefined;
+  inGroup?: boolean;
   onOpenComputer?: (botId: string) => void;
   /** Server per-Run summaries (HISTORY-001); absent on older servers. */
   executions?: ThreadSnapshot["executions"];
@@ -130,6 +131,7 @@ export function useExecutionTranscript({
   cardsUnifiedV2,
   conversationName,
   groupNameOf,
+  inGroup,
   onOpenComputer,
   executions,
   activity,
@@ -804,6 +806,7 @@ export function useExecutionTranscript({
                 botNameOf={botNameOf}
                 conversationName={conversationName}
                 groupNameOf={groupNameOf}
+                inGroup={inGroup}
                 onOpenComputer={onOpenComputer}
                 onSettled={(view) =>
                   setSettledInterventions((current) => [
@@ -919,6 +922,7 @@ export function useExecutionTranscript({
         botNameOf={botNameOf}
         conversationName={conversationName}
         groupNameOf={groupNameOf}
+        inGroup={inGroup}
         onOpenComputer={onOpenComputer}
         onRefresh={onRefresh}
       />

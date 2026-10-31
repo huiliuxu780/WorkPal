@@ -576,6 +576,74 @@ describe("input request card", () => {
     expect(host.querySelector('input[type="password"]')).toBeNull();
   });
 
+  it("binds a submission to the interaction, the Bot target and a submission id", async () => {
+    const host = await render(
+      <InputRequestCard
+        view={inputView({ mode: "question", prompt: "Which city?", placeholder: null })}
+        target={target}
+      />,
+    );
+    await typeInto(host.querySelector('textarea[aria-label="Your answer"]'), "Paris");
+    await act(async () => (byTestId(host, "input-card-submit") as HTMLButtonElement).click());
+    await flush();
+
+    expect(mocks.resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botId: "bot-1",
+        interventionId: "i-input",
+        clientSubmissionId: expect.any(String),
+        answer: "Paris",
+      }),
+    );
+  });
+
+  it("shows only a mask once a saved secret is answered", async () => {
+    const host = await render(
+      <InputRequestCard
+        view={inputView(
+          { mode: "secret", prompt: "Sign in", purpose: "password", credential: null },
+          { status: "answered" },
+        )}
+        target={target}
+      />,
+    );
+
+    expect(host.querySelector('[data-testid="secret-masked"]')?.textContent).toBe("••••");
+    expect(host.querySelector('input[type="password"]')).toBeNull();
+    expect(host.textContent ?? "").not.toContain("hunter2");
+  });
+
+  it("never hosts an addressable input inside a group thread", async () => {
+    const host = await render(
+      <InputRequestCard
+        view={inputView({ mode: "question", prompt: "Which city?", placeholder: null })}
+        target={{ groupId: "group-1" }}
+        inGroup
+      />,
+    );
+
+    expect(host.querySelector('textarea[aria-label="Your answer"]')).toBeNull();
+    expect(byTestId(host, "input-card-submit")).toBeNull();
+    expect(host.textContent ?? "").toContain("Open the direct chat with this Bot");
+  });
+
+  it("keeps always-allow in a direct chat and drops it from a group decision", async () => {
+    const direct = await render(
+      <ActionApprovalCard view={actionView(toolApproval())} target={target} />,
+    );
+    expect(byTestId(direct, "approval-more")).not.toBeNull();
+
+    const group = await render(
+      <ActionApprovalCard
+        view={actionView(toolApproval())}
+        target={{ groupId: "group-1" }}
+        inGroup
+      />,
+    );
+    expect(byTestId(group, "approval-more")).toBeNull();
+    expect(byTestId(group, "approval-primary")?.textContent).toContain("Allow once");
+  });
+
   it("validates required form fields locally before calling the server", async () => {
     const host = await render(
       <InputRequestCard
@@ -1297,7 +1365,8 @@ describe("plan review and session control", () => {
     const takeoverHost = await render(
       <SessionControlCard view={sessionView("takeover")} onOpenComputer={onOpenComputer} />,
     );
-    expect(takeoverHost.textContent).toContain("Needs you at the desktop");
+    expect(takeoverHost.textContent).toContain("打开桌面");
+    expect(byTestId(takeoverHost, "session-control-takeover")?.textContent).toBe("打开桌面");
     expect(takeoverHost.textContent).toContain("Closing the desktop does not abandon");
     await act(async () =>
       (byTestId(takeoverHost, "session-control-takeover") as HTMLButtonElement).click(),
@@ -1307,6 +1376,7 @@ describe("plan review and session control", () => {
 
     const returnHost = await render(<SessionControlCard view={sessionView("return")} />);
     expect(returnHost.textContent).toContain("Closing this card does not hand control back");
+    expect(byTestId(returnHost, "session-control-return")?.textContent).toBe("交还桌面");
     await act(async () =>
       (byTestId(returnHost, "session-control-return") as HTMLButtonElement).click(),
     );
