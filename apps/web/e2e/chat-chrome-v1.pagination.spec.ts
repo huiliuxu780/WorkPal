@@ -60,10 +60,10 @@ test("old page restores stale state and opens the latest page", async ({ page },
   await expect(cards).toHaveCount(0);
   const loadEarlier = page.getByRole("button", { name: "Load earlier messages" });
   await expect(loadEarlier).toBeVisible({ timeout: 60_000 });
-  for (let attempt = 0; attempt < 3 && (await cards.count()) === 0; attempt += 1) {
-    await loadEarlier.click();
-  }
-  await expect(cards).toHaveCount(2, { timeout: 30_000 });
+  // One click loads the remaining page; re-clicking races the button, whose
+  // label becomes "Loading…" and then unmounts once the history is exhausted.
+  await loadEarlier.click();
+  await expect(cards).toHaveCount(2, { timeout: 60_000 });
   await expect(cards.nth(0)).toHaveAttribute("data-stale", "true");
   await captureScreenshot(page, testInfo, "pagination-AC08-old-page");
   await cards.nth(0).click();
