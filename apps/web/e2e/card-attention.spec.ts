@@ -331,6 +331,40 @@ test.describe("attention queue (N1-N4)", () => {
     );
     await captureScreenshot(page, testInfo, "N1-queue-denied-1440");
   });
+
+  test("marks the conversation row and jumps from the marker", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    const stamp = Date.now();
+    await signup(page, `badges-${stamp}@rakazo.test`, "password12", "Badges E2E");
+    await completeOnboarding(page);
+    await page.goto("/app");
+    await page.waitForURL(/\/app\/[^/]+$/);
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    const joy = await createBot(page, "Joy");
+    await page.goto(`/app/${joy.id}`);
+    await page.waitForURL(new RegExp(`/app/${joy.id}$`));
+    const composer = page.getByTestId("composer-bar").getByRole("combobox");
+    await expect(composer).toBeVisible();
+    await composer.fill(ASK_PROMPT);
+    await composer.press("Enter");
+
+    // BD-F01: the waiting conversation row carries an amber pending marker that
+    // is its own control inside the row (div row + span role=button).
+    const marker = page.locator(
+      `[data-roster-bot-id="${joy.id}"] [data-testid="conversation-pending"]`,
+    );
+    await expect(marker).toBeVisible({ timeout: 60_000 });
+    await expect(marker).toHaveAttribute("role", "button");
+    await expect(marker).toHaveAccessibleName("待处理，跳回来源卡");
+    await captureScreenshot(page, testInfo, "BD-F01-row-pending");
+
+    // BD-F08: the marker jumps to the source card without opening the drawer or
+    // a second task list.
+    await marker.click();
+    await page.waitForURL(new RegExp(`/app/${joy.id}\\?.*i=`), { timeout: 20_000 });
+    await expect(page.getByTestId("attention-queue")).toHaveCount(0);
+  });
 });
 
 async function groupTexts(page: Parameters<typeof rpc>[0], groupId: string) {
