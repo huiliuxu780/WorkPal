@@ -1907,6 +1907,9 @@ export function ShellPage() {
   }).current;
   const openAttentionItem = useCallback(
     (item: AttentionQueueItem) => {
+      // On narrow screens the trigger usually sits inside the navigation
+      // drawer; the destination must not stay covered by it.
+      setMobileSidebarOpen(false);
       const params = new URLSearchParams();
       if (item.source.messageId) params.set("m", item.source.messageId);
       params.set("i", item.interactionId);
