@@ -5,6 +5,7 @@
 export const E2E_GATE_SPECS = [
   "card-ui-interactions.spec.ts",
   "card-display-content.spec.ts",
+  "four-shells-visual.spec.ts",
   "peer-messages.spec.ts",
   "card-attention.spec.ts",
   "group-membership.spec.ts",
