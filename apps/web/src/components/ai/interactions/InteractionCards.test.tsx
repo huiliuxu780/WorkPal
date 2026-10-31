@@ -576,6 +576,43 @@ describe("input request card", () => {
     expect(host.querySelector('input[type="password"]')).toBeNull();
   });
 
+  it("binds a submission to the interaction, the Bot target and a submission id", async () => {
+    const host = await render(
+      <InputRequestCard
+        view={inputView({ mode: "question", prompt: "Which city?", placeholder: null })}
+        target={target}
+      />,
+    );
+    await typeInto(host.querySelector('textarea[aria-label="Your answer"]'), "Paris");
+    await act(async () => (byTestId(host, "input-card-submit") as HTMLButtonElement).click());
+    await flush();
+
+    expect(mocks.resolveIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botId: "bot-1",
+        interventionId: "i-input",
+        clientSubmissionId: expect.any(String),
+        answer: "Paris",
+      }),
+    );
+  });
+
+  it("shows only a mask once a saved secret is answered", async () => {
+    const host = await render(
+      <InputRequestCard
+        view={inputView(
+          { mode: "secret", prompt: "Sign in", purpose: "password", credential: null },
+          { status: "answered" },
+        )}
+        target={target}
+      />,
+    );
+
+    expect(host.querySelector('[data-testid="secret-masked"]')?.textContent).toBe("••••");
+    expect(host.querySelector('input[type="password"]')).toBeNull();
+    expect(host.textContent ?? "").not.toContain("hunter2");
+  });
+
   it("validates required form fields locally before calling the server", async () => {
     const host = await render(
       <InputRequestCard

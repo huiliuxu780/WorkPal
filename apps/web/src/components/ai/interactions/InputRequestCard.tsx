@@ -200,6 +200,15 @@ export function InputRequestCard({
           {view.presentation.detail}
         </pre>
       ) : null}
+      {secretMode && (view.status === "answered" || submitted) ? (
+        <div
+          data-testid="secret-masked"
+          aria-hidden="true"
+          className="font-mono text-[15px] tracking-[0.35em] text-muted-foreground"
+        >
+          ••••
+        </div>
+      ) : null}
       {terminal || submitted ? (
         <InteractionNote>
           {submitted ? t`Submitted. Syncing the current state…` : interactionStatusLabel(view)}
