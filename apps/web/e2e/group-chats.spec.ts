@@ -14,7 +14,9 @@ async function createBot(page: Page, name: string) {
 
 /** Group rows carry BotAvatar role="img" labels before the name, so match on text. */
 function sidebarRow(page: Page, name: string) {
-  return page.locator("aside").first().locator("button", { hasText: name });
+  // Roster rows are div role="button" so a pending marker can be its own
+  // control inside the row (BADGES-01); locate by role, not by tag.
+  return page.locator("aside").first().getByRole("button", { name });
 }
 
 test("create group from + and see two bots in one transcript", async ({ page }, testInfo) => {

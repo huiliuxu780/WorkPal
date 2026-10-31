@@ -1954,6 +1954,16 @@ export function ShellPage() {
       window.cancelAnimationFrame(frame);
     };
   }, [searchParams, activeSnapshot?.threadId]);
+  // One pending marker per conversation row, from the same Attention projection
+  // that feeds the queue and the member tags (BD-F15).
+  const pendingByConversation = useMemo(() => {
+    const byConversation = new Map<string, AttentionQueueItem>();
+    for (const item of attentionItems) {
+      const key = `${item.conversationKind}:${item.conversationId}`;
+      if (!byConversation.has(key)) byConversation.set(key, item);
+    }
+    return byConversation;
+  }, [attentionItems]);
   const waitingMembers = useMemo(() => {
     const waiting = new Map<string, AttentionQueueItem>();
     if (!activeGroup) return waiting;
@@ -3309,6 +3319,9 @@ export function ShellPage() {
                         const selected =
                           (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
                           (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id);
+                        const pendingItem = pendingByConversation.get(
+                          `${item.kind === "bot" ? "direct" : "group"}:${item.chat.id}`,
+                        );
                         return (
                           <div
                             key={`${item.kind}:${item.chat.id}`}
@@ -3347,8 +3360,11 @@ export function ShellPage() {
                             ) : null}
                             <RosterRowCatalog botId={item.kind === "bot" ? item.chat.id : null}>
                               {(avatarState) => (
-                                <button
-                                  type="button"
+                                <>
+                                  {/* biome-ignore lint/a11y/useSemanticElements: BADGES-01 freezes a div row so the pending marker can be its own control; nesting a button is invalid HTML. */}
+                                  <div
+                                    role="button"
+                                  tabIndex={0}
                                   draggable={item.kind === "bot"}
                                   data-roster-bot-id={
                                     item.kind === "bot" ? item.chat.id : undefined
@@ -3389,6 +3405,13 @@ export function ShellPage() {
                                   }}
                                   onDragEnd={() => setDraggedBotId(null)}
                                   onKeyDown={(event) => {
+                                    // A div row loses the native button's
+                                    // activation keys; keep them equivalent.
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      event.currentTarget.click();
+                                      return;
+                                    }
                                     if (
                                       item.kind !== "bot" ||
                                       !event.altKey ||
@@ -3443,7 +3466,7 @@ export function ShellPage() {
                                       position: { x: event.clientX, y: event.clientY },
                                     });
                                   }}
-                                  className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-start ${
+                                  className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-start focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${
                                     item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
                                   } ${
                                     selected
@@ -3508,11 +3531,40 @@ export function ShellPage() {
                                         <span className="text-[11.5px] text-muted-foreground/60 tabular-nums">
                                           {formatRosterTime(item.chat.updatedAt)}
                                         </span>
+                                        {pendingItem ? (
+                                          <>
+                                            {/* biome-ignore lint/a11y/useSemanticElements: the marker is a control inside the row; the frozen structure uses a span. */}
+                                            <span
+                                              role="button"
+                                            tabIndex={0}
+                                            data-testid="conversation-pending"
+                                            title={t`跳回来源卡`}
+                                            aria-label={t`待处理，跳回来源卡`}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              openAttentionItem(pendingItem);
+                                            }}
+                                            onKeyDown={(event) => {
+                                              if (event.key !== "Enter" && event.key !== " ") return;
+                                              event.preventDefault();
+                                              event.stopPropagation();
+                                              openAttentionItem(pendingItem);
+                                            }}
+                                            className="inline-flex items-center gap-1 rounded-full bg-warning/20 px-1.5 py-0.5 text-[10.5px] leading-none font-medium text-warning hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                                          >
+                                            <span
+                                              aria-hidden="true"
+                                              className="h-1.5 w-1.5 rounded-full bg-warning"
+                                            />
+                                            {t`待处理`}
+                                            </span>
+                                          </>
+                                        ) : null}
                                         {item.chat.unread ? (
                                           <span
                                             data-testid="bot-unread-dot"
                                             aria-hidden="true"
-                                            className="inline-block h-2 w-2 rounded-full bg-foreground"
+                                            className="inline-block h-2 w-2 rounded-full bg-link"
                                           />
                                         ) : null}
                                       </div>
@@ -3535,7 +3587,8 @@ export function ShellPage() {
                                           item.chat.members.map((member) => member.name).join(", ")}
                                     </div>
                                   </div>
-                                </button>
+                                  </div>
+                                </>
                               )}
                             </RosterRowCatalog>
                           </div>
