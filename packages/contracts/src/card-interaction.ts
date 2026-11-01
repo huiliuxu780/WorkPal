@@ -489,7 +489,10 @@ export function attentionDedupeKey(item: Pick<AttentionItem, "interactionId" | "
 }
 
 /** expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC. */
-export function compareAttentionItems(left: AttentionItem, right: AttentionItem): number {
+/** The frozen attention order, usable on any row that carries the tuple. */
+export type AttentionOrder = Pick<AttentionItem, "expiresAt" | "attentionAt" | "stableId">;
+
+export function compareAttentionOrder(left: AttentionOrder, right: AttentionOrder): number {
   if (left.expiresAt !== right.expiresAt) {
     if (left.expiresAt === null) return 1;
     if (right.expiresAt === null) return -1;
@@ -500,6 +503,10 @@ export function compareAttentionItems(left: AttentionItem, right: AttentionItem)
   }
   if (left.stableId === right.stableId) return 0;
   return left.stableId < right.stableId ? -1 : 1;
+}
+
+export function compareAttentionItems(left: AttentionItem, right: AttentionItem): number {
+  return compareAttentionOrder(left, right);
 }
 
 /**
@@ -557,8 +564,9 @@ export const AttentionQueueItemSchema = z.strictObject({
 export type AttentionQueueItem = z.infer<typeof AttentionQueueItemSchema>;
 
 /**
- * One pending request per conversation, independent of queue pagination, so a
- * sidebar badge can exist for a conversation whose rows are past the first page.
+ * The earliest pending request per conversation and requesting Bot, independent
+ * of queue pagination: a sidebar badge exists for a conversation whose rows are
+ * past the first page, and every waiting Bot in a group keeps its own target.
  * Only jump identity travels: the badge needs existence and a target, never the
  * request text.
  */

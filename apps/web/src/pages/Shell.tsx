@@ -1975,12 +1975,15 @@ export function ShellPage() {
       window.cancelAnimationFrame(frame);
     };
   }, [searchParams, activeSnapshot?.threadId]);
-  // Row markers read the complete per-conversation heads, not the queue page:
-  // a conversation whose requests sit past page 1 still gets its marker.
+  // Row markers read the complete heads, not the queue page: a conversation
+  // whose requests sit past page 1 still gets its marker, and it points at the
+  // earliest pending request there.
   const pendingByConversation = useMemo(() => {
     const byConversation = new Map<string, AttentionConversationHead>();
     for (const head of attentionHeads) {
-      byConversation.set(`${head.conversationKind}:${head.conversationId}`, head);
+      const key = `${head.conversationKind}:${head.conversationId}`;
+      // Heads arrive in the frozen order, so the first one is the earliest.
+      if (!byConversation.has(key)) byConversation.set(key, head);
     }
     return byConversation;
   }, [attentionHeads]);

@@ -1280,6 +1280,63 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     });
   });
 
+  it("keeps one head per waiting Bot inside a single group", async () => {
+    const secondBot = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Second waiter", color: "test" },
+    });
+    await prisma.chatGroupMember.create({ data: { groupId: group.id, botId: secondBot.id } });
+    const groupRun = await taskRun(group.threadId, "Group wait");
+    const groupMessage = await botMessage(group.threadId, [{ kind: "text", text: "g" }]);
+    const base = Date.now() - 3_000_000;
+    await prisma.intervention.createMany({
+      data: [
+        {
+          id: "group-head-a",
+          revision: 1,
+          kind: "input",
+          status: "pending",
+          spaceId,
+          threadId: group.threadId,
+          runId: groupRun.id,
+          attemptId: "legacy",
+          botId: bot.id,
+          messageId: groupMessage.id,
+          expiresAt: null,
+          inputMode: "text",
+          presentation: { text: "A" },
+          createdAt: new Date(base),
+        },
+        {
+          id: "group-head-b",
+          revision: 1,
+          kind: "input",
+          status: "pending",
+          spaceId,
+          threadId: group.threadId,
+          runId: groupRun.id,
+          attemptId: "legacy",
+          botId: secondBot.id,
+          messageId: groupMessage.id,
+          expiresAt: null,
+          inputMode: "text",
+          presentation: { text: "B" },
+          createdAt: new Date(base + 1_000),
+        },
+      ],
+    });
+
+    const page = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const groupHeads = page.conversationHeads.filter(
+      (head) => head.conversationKind === "group" && head.conversationId === group.id,
+    );
+    // Two Bots waiting in one group must both keep a target for the member tag.
+    expect(groupHeads.map((head) => head.botId).sort()).toEqual([bot.id, secondBot.id].sort());
+
+    await prisma.intervention.deleteMany({
+      where: { id: { in: ["group-head-a", "group-head-b"] } },
+    });
+  });
+
   it("reads pending approvals without scanning message history", async () => {
     const historyBot = await prisma.bot.create({
       data: { spaceId, userId: ownerId, name: "History", color: "test" },
