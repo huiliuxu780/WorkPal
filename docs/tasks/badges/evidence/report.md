@@ -24,7 +24,7 @@
 
 | AC | 状态 | 依据 |
 |---|---|---|
-| BD-F01 会话待处理角标 | 通过 | 新增用例断言琥珀「待处理」可见、`role=button`、可访问名「待处理，跳回来源卡」；截图 `BD-F01-row-pending.png` |
+| BD-F01 会话待处理角标 | 通过（第 1 页范围内） | 新增用例断言琥珀「待处理」可见、`role=button`、可访问名「待处理，跳回来源卡」；截图 `BD-F01-row-pending.png`。**边界：见下「角标数据边界」** |
 | BD-F02 未读标记可分 | 通过（本批降级口径） | 未读为蓝色圆点；与琥珀胶囊色相 + 文案两项不同。**未读计数不在本批**（BD-F02 降级），仍为布尔 |
 | BD-F03 中继不计未读 | 通过 | 两处 bot 中继写入改为 `markUnread: false`；协作回执/成员变更原本即 `false` |
 | BD-F04 无标记态 | 通过 | 截图 `N3-badges-1440.png`：Chief / Joy 行无任何标记 |
@@ -41,7 +41,20 @@
 | BD-F15 与 Attention 同源 | 通过 | `pendingByConversation` 由 `attentionItems` 按会话投影，未新增数据源 |
 | BD-F16 通知边界 | 通过（沿用） | 通知实现未改；ATTENTION-01 已验脱敏 |
 
+## 角标数据边界（本批明确不宣称全量准确）
+
+角标（会话行「待处理」与成员「等你批准」）都由 `attentionItems` 投影，而该投影是 **Attention 队列的第 1 页**：
+
+- `attention.list` 的 `limit` 上限为 **50**（web 请求 50；`packages/db/src/attention.ts` `MAX_LIMIT = 50`）。
+- 每 15s 轮询以第 1 页**替换**列表（非 append 路径 `base = []`），手动「加载更多」翻出的页会在下一次轮询被丢掉。
+
+由此：
+
+- 待处理条目**排在第 1 页之外**（>50 条 pending）的会话**不会亮琥珀角标**；成员「等你批准」同样受限（该限制自 ATTENTION-01 起存在）。
+- 这不是 BADGES 本刀引入的缺陷，而是「每会话完整投影」缺口；完整投影还需携带 `interactionId` / `messageId` 作为跳转目标，属独立任务 **BADGES-01b**。
+
 ## 未覆盖 / 待补
 
 - BD-F13 会话行角标 390/375 截图、BD-F14 会话行深色截图：本轮未单独采集。
 - 未读计数（`Thread.unread` boolean → 计数）按裁决**不在本批**。
+- 每会话完整 pending 投影（带跳转目标）→ **BADGES-01b**。
