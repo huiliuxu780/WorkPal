@@ -10,6 +10,7 @@ import { type ArtifactTarget, fetchArtifactBytes } from "../../../lib/artifact-o
 import { ArtifactImage, ChartBlockView } from "../../../pages/shell/message-cards";
 import { ArtifactFileCard } from "../../ArtifactFileCard";
 import { SandboxedHtmlViewer } from "../../SandboxedHtmlViewer";
+import { ShareSheet } from "../../share/ShareSheet";
 
 function DisplayCard({
   kind,
@@ -384,7 +385,14 @@ function TaskStatusDisplay({
   );
 }
 
-function PageDisplay({ block }: { block: Extract<DisplayBlock, { kind: "page" }> }) {
+function PageDisplay({
+  block,
+  target,
+}: {
+  block: Extract<DisplayBlock, { kind: "page" }>;
+  target: ArtifactTarget;
+}) {
+  const [shareOpen, setShareOpen] = useState(false);
   return (
     <DisplayCard kind="page">
       <div className="flex items-start justify-between gap-3">
@@ -397,14 +405,31 @@ function PageDisplay({ block }: { block: Extract<DisplayBlock, { kind: "page" }>
           </DisplayNote>
         </div>
         {block.available ? (
-          <a
-            href={`/app/artifacts/${encodeURIComponent(block.pageId)}`}
-            className="inline-flex min-h-8 items-center rounded-full px-3 text-[12px] font-medium text-link hover:underline"
-          >
-            {t`Open page`}
-          </a>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              data-testid="page-display-share"
+              onClick={() => setShareOpen(true)}
+              className="inline-flex min-h-8 items-center rounded-full px-3 text-[12px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {t`分享`}
+            </button>
+            <a
+              href={`/app/artifacts/${encodeURIComponent(block.pageId)}`}
+              className="inline-flex min-h-8 items-center rounded-full px-3 text-[12px] font-medium text-link hover:underline"
+            >
+              {t`Open page`}
+            </a>
+          </div>
         ) : null}
       </div>
+      <ShareSheet
+        target={target}
+        artifactId={block.pageId}
+        name={block.title}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
     </DisplayCard>
   );
 }
@@ -524,7 +549,7 @@ export function DisplayBlockView({
     case "task_status":
       return <TaskStatusDisplay block={block} onOpenRun={onOpenRun} />;
     case "page":
-      return <PageDisplay block={block} />;
+      return <PageDisplay block={block} target={target} />;
     case "voice":
       return <VoiceDisplay block={block} target={target} />;
   }

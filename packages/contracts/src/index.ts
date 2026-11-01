@@ -29,5 +29,6 @@ export * from "./run-steps.js";
 export * from "./run-todos.js";
 export * from "./runs.js";
 export * from "./search.js";
+export * from "./share.js";
 export * from "./task-instructions.js";
 export * from "./terminal.js";

@@ -296,6 +296,13 @@ import {
   readServerUpdateStatus,
   UpdaterProxyError,
 } from "./server-update.js";
+import {
+  createPublicShare,
+  getArtifactShare,
+  PageNotShareableError,
+  resolvePublicShare,
+  revokePublicShare,
+} from "./shares.js";
 import { assertTeachingSendAllowed, createTaughtSkillsService } from "./taught-skills.js";
 import {
   isPeerRun,
@@ -5997,6 +6004,28 @@ export function createRouter(deps: RouterDeps) {
         return deleteArtifactFamily(deps, context.actor, { familyId: input.artifactId });
       }),
     },
+    share: {
+      get: authed.share.get.handler(async ({ context, input }) => {
+        try {
+          return await getArtifactShare(deps, context.actor, input);
+        } catch (error) {
+          throw shareRpcError(error);
+        }
+      }),
+      createPublic: authed.share.createPublic.handler(async ({ context, input }) => {
+        try {
+          return await createPublicShare(deps, context.actor, input);
+        } catch (error) {
+          throw shareRpcError(error);
+        }
+      }),
+      revoke: authed.share.revoke.handler(async ({ context, input }) => {
+        return revokePublicShare(deps, context.actor, input);
+      }),
+      resolvePublic: os.share.resolvePublic.handler(async ({ input }) => {
+        return resolvePublicShare(deps, input.token);
+      }),
+    },
     usage: {
       list: authed.usage.list.handler(async ({ context }) => {
         const rows = await deps.prisma.usageRecord.findMany({
@@ -7003,6 +7032,15 @@ async function messagingIdentityDto(
     botId: identity.botId,
     botName: bot?.name ?? "Assistant",
   };
+}
+
+function shareRpcError(error: unknown): unknown {
+  if (error instanceof IsolationError)
+    return new ORPCError("NOT_FOUND", { message: error.message });
+  if (error instanceof PageNotShareableError) {
+    return new ORPCError("BAD_REQUEST", { message: error.message });
+  }
+  return error;
 }
 
 function isUniqueViolation(error: unknown): boolean {

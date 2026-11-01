@@ -986,6 +986,29 @@ model CancelOutcomeOutbox {
   @@map("cancel_outcome_outbox")
 }
 
+/// Anonymous read-only link to one published page family. The row stores the
+/// owner's scope so resolve can re-find the latest published version without an
+/// actor; the page content itself is never copied here. No foreign keys: a
+/// deleted family or bot must still resolve the token to its dead-link state.
+model ShareLink {
+  id               String    @id @default(cuid())
+  token            String    @unique
+  spaceId          String
+  userId           String
+  artifactFamilyId String
+  /// Display label only (page title), never page content.
+  artifactName     String
+  botId            String?
+  groupId          String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([spaceId, artifactFamilyId])
+  @@index([expiresAt])
+  @@map("share_links")
+}
+
 model SteeringMessage {
   id        String   @id @default(cuid())
   messageId String
