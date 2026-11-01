@@ -946,6 +946,9 @@ model DeliveryRecord {
   lastError        String?   @db.Text
   claimedBy        String?
   deliveryRunId    String?
+  /// Visible result message this record projects its envelope onto; the envelope
+  /// itself stays a read-time projection.
+  resultMessageId  String?
   nextAttemptAt    DateTime  @default(now())
   createdAt        DateTime  @default(now())
   deliveredAt      DateTime?

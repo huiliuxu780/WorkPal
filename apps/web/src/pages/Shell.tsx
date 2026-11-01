@@ -256,6 +256,7 @@ import { sharedInflight } from "../lib/shared-inflight";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
+  claimDeliveryRefresh,
   clearActiveThreadRuns,
   computerPanelAutoBoot,
   computerPanelAutoUsesBoot,
@@ -575,6 +576,7 @@ export function ShellPage() {
   // A very fast run can finish over SSE while its threads.send response is still
   // returning. Do not let that late receipt resurrect terminal work as queued.
   const terminalRunReceipts = useRef(new Set<string>());
+  const refreshedDeliveries = useRef(new Set<string>());
   // Last-known computer/screen per bot, so switching back to an already-seen
   // bot paints its computer pane instantly instead of blanking it while the
   // thread + screen RPCs round-trip again (see refreshThread / refreshComputerScreen).
@@ -1474,6 +1476,10 @@ export function ShellPage() {
         ) {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
+        } else if (claimDeliveryRefresh(event, refreshedDeliveries.current)) {
+          // The result message arrives before its envelope is attached; only the
+          // authoritative snapshot carries the tag and provenance.
+          void refreshThread(active.id).catch(() => undefined);
         } else if (isComputerStatusEvent(event)) {
           if (isSessionControlLifecycleEvent(event)) {
             // The session-control card is derived from the authoritative
@@ -1577,6 +1583,8 @@ export function ShellPage() {
         }
         if (isRunTerminalEvent(event) || event.type === "run.waiting_input") {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
+          void refreshGroupThread(groupId).catch(() => undefined);
+        } else if (claimDeliveryRefresh(event, refreshedDeliveries.current)) {
           void refreshGroupThread(groupId).catch(() => undefined);
         }
       },
@@ -7398,8 +7406,42 @@ const MessageView = memo(function MessageView({
     () => resolvePersonaColorDef(message.botId ?? "bot", speakerBot?.color),
     [message.botId, speakerBot?.color],
   );
+  const reportTag = message.report ? (
+    <div
+      data-testid="report-flow-tag"
+      data-state={message.report.state}
+      className="mb-1 text-[11.5px] font-medium text-muted-foreground"
+      dir="auto"
+    >
+      {message.report.state === "failed" ? t`回应 · 失败可见` : t`回应 · 交来的结果`}
+    </div>
+  ) : null;
+  const reportEnvelope = message.report ? (
+    <dl
+      data-testid="report-envelope"
+      className="mb-2 grid max-w-[74%] grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.5 rounded-[14px] border border-border bg-background px-3 py-2 text-[12px] text-muted-foreground"
+    >
+      <dt>{t`来自`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.from.name}
+      </dd>
+      <dt>{t`会话`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.room}
+      </dd>
+      <dt>{t`工作`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.work}
+      </dd>
+      <dt>{t`结果回给`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.to.name}
+      </dd>
+    </dl>
+  ) : null;
   const messageContext = (
     <>
+      {reportTag}
       {speakerName ? (
         <div
           className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold tracking-tight"
@@ -7438,6 +7480,7 @@ const MessageView = memo(function MessageView({
               : t`Earlier message`}
         </button>
       ) : null}
+      {reportEnvelope}
     </>
   );
   if (isNarration) {

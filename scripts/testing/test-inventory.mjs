@@ -188,6 +188,7 @@ const POSTGRES_ONLY = [
   "apps/api/src/artifact-families.postgres.test.ts",
   "apps/api/src/group-queries.postgres.test.ts",
   "apps/api/src/group-thread-lock.postgres.test.ts",
+  "apps/api/src/report-envelope.postgres.test.ts",
   "apps/api/src/thread-execution-projection.postgres.test.ts",
   "apps/api/src/thread-execution-snapshot-window.postgres.test.ts",
   "apps/api/src/thread-target.postgres.test.ts",

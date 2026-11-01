@@ -315,6 +315,25 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
   );
 }
 
+/**
+ * The result message exists before settlement attaches its delivery pointer, so
+ * the tag and envelope only appear after an authoritative refetch. A merged
+ * batch emits one `delivery.sent` per source Run for the same message; the
+ * first claim per message is enough.
+ */
+export function claimDeliveryRefresh(event: ProductEvent, seen: Set<string>): boolean {
+  if (event.type === "delivery.failed") return true;
+  if (event.type !== "delivery.sent") return false;
+  const messageId = typeof event.payload.messageId === "string" ? event.payload.messageId : "";
+  if (!messageId || seen.has(messageId)) return false;
+  seen.add(messageId);
+  if (seen.size > 100) {
+    const oldest = seen.values().next().value;
+    if (oldest !== undefined) seen.delete(oldest);
+  }
+  return true;
+}
+
 /** Takeover lifecycle changes can add, replace or remove a session-control card. */
 export function isSessionControlLifecycleEvent(event: ProductEvent): boolean {
   return (
