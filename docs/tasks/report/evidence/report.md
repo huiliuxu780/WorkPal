@@ -7,18 +7,30 @@
 
 1. **结果消息形态**：**不新增 `MessageBlock` kind**。投递结果是模型写的普通 bot 消息，消息在 settle 前就已写入；新增块类型只能回写消息或再写一条，会把产品文案塞进模型输出。改为在 `ThreadMessage` 上增加可选 `report` 描述子，**读路径投影**产出。
 2. **信封来源边界**：`DeliveryRecord` 只增加一个指针 `resultMessageId`（指向可见消息），信封字段仍不落库，由 `DeliveryRecord → Run → Task → Thread → Bot/User` 在读取时拼装；解析不到就整条省略，不假造。导出/复制消息不带信封，已与负责人确认可接受。
-3. **迟到信号**：**持久系统条**，复用既有 `meta` 块（居中系统行），文案「迟到结果 · 已不收」，无正文、不标未读、不进卡族。
+3. **迟到信号**：**持久系统条**，复用既有 `meta` 块（居中系统行），文案「迟到结果 · 已不收」，无正文、不标未读、不进卡族；消息与事件都是 `system` role，不触发 Bot 通知。
 4. **失败可见**：重试用尽时在来源会话写一条可见消息，正文为固定安全句「这次工作没有完成。」，技术原因只留在服务端；记录回填同一指针，信封 `state = failed`。
+5. **合并投递不猜来源**：同一 30 秒窗口的多条结果会合并成一条消息；这条消息没有唯一的执行方/工作/派活方，因此**不挂单来源信封**（宁缺勿错），而不是取最后一条记录。
+
+## 复审修复（PR #164）
+
+| 发现 | 修复 | 回归证据 |
+|---|---|---|
+| 失败行/迟到行只写库、不发 `thread.message.created`，开着的会话看不到 | 两处插入后在同一事务追加 `thread.message.created`（带 `messageId`/`role`/`blocks`）并把事件 seq 交给 `notify` | `result-delivery.postgres.test.ts` 断言两类行的 created 事件；`checks/red.log` |
+| settle 之后才回填 `resultMessageId`，客户端可能停在无 `report` 的旧快照 | `delivery.sent`（按 messageId 去重，合并批只刷一次）与 `delivery.failed` 触发权威快照重取 | `claimDeliveryRefresh` 单测；实页 e2e |
+| 合并消息被贴上任意一条来源 Run 的信封 | 同一消息指向多个 source Run 时整条省略信封 | `report-envelope.postgres.test.ts` 合并用例；`checks/red.log` |
 
 ## 检查结果
 
 | 检查 | 结果 | 日志 |
 |---|---|---|
-| contracts / db / adapters / api / web 类型检查 | 0 | — |
-| `pnpm --filter @rakazo/web test` | 101 files / 810 tests | `checks/unit.log` |
+| adapters / api / web 类型检查 | 0 | — |
+| `pnpm --filter @rakazo/web test` | 101 files / 812 tests | `checks/unit.log` |
 | `result-delivery.postgres.test.ts` | 7 passed | `checks/postgres.log` |
-| `report-envelope.postgres.test.ts` | 3 passed | `checks/postgres.log` |
+| `report-envelope.postgres.test.ts` | 4 passed | `checks/postgres.log` |
+| 新回归用例先红（3 failed） | 3 failed / 8 passed | `checks/red.log` |
+| `pnpm test:postgres`（db-postgres 全组） | 56 files / 487 tests | `checks/postgres-group.log` |
 | `report-delivery.spec.ts`（实页） | 1 passed | `checks/e2e-report.log` |
+| `pnpm test:inventory` | 574 files / 0 errors | — |
 
 截图（实页，1440）：
 `RP-01-tag-envelope.png`、`RP-02-failure-visible.png`、`RP-03-late-row.png`。
@@ -30,6 +42,7 @@
 | 成功结果落原会话 + 流内标签「回应 · 交来的结果」+ 来源信封（来自 / 会话 / 工作 / 结果回给） | 实页截图 RP-01；postgres envelope 用例断言字段 |
 | 失败可见「回应 · 失败可见」+ 正文 + 信封 state=failed | 实页截图 RP-02；delivery 用例断言消息与指针 |
 | 叫停/取消/顶掉后迟到：不写结果正文，只留「迟到结果 · 已不收」系统条 | 实页截图 RP-03；delivery 用例断言只写 meta 行、无结果正文 |
+| 开着的会话能收到失败行/迟到行并补上标签与信封 | 失败/迟到行发 `thread.message.created`；`delivery.sent` / `delivery.failed` 触发快照重取（合并批按 messageId 只刷一次） |
 | 与提醒分家、无分享入口、无汇总条、不双投私聊、不新增卡族 | 未引入任何对应代码路径；`GroupDestinationReceipt` / `HtmlDisplay` 未改动 |
 
 ## 未覆盖 / 待补
@@ -37,4 +50,5 @@
 - **失败正文**目前是固定句，未展示具体失败原因（避免内部错误外泄）；若产品要更具体的用户文案需另行定稿。
 - **派活方解析**：当前规则为「有 origin Run 且触发为 bot_message → 派活 Bot；否则该 Run 的所属用户」。群内 `@Bot` 派活的更细语义未单独建模。
 - 信封在**读路径**投影，导出/复制消息不带信封（已确认可接受）。
+- 合并投递（多 source Run 共用一条结果消息）不挂单来源信封；要做「本轮汇总」信封需产品另定字段。
 - 迟到系统条目前每个 stale 批次一条；未做跨批次合并展示。
