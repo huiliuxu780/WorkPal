@@ -191,7 +191,14 @@ describePostgres("background result delivery (PostgreSQL)", () => {
       lastError: "stale_generation",
     });
     expect(await prisma.run.count({ where: { threadId, trigger: "delivery" } })).toBe(beforeRuns);
-    expect(await prisma.message.count({ where: { threadId } })).toBe(0);
+    // The result body never lands, but the user still sees that it was refused.
+    const late = await prisma.message.findMany({
+      where: { threadId },
+      select: { role: true, blocks: true },
+    });
+    expect(late).toHaveLength(1);
+    expect(late[0]?.role).toBe("bot");
+    expect(late[0]?.blocks).toEqual([{ kind: "meta", text: "迟到结果 · 已不收" }]);
   });
 
   it("emits an activity-visible failure after five retries", async () => {
@@ -209,6 +216,15 @@ describePostgres("background result delivery (PostgreSQL)", () => {
     expect(final.status).toBe("failed");
     expect(final.lastError).toBe("Model unavailable");
     expect(await prisma.event.count({ where: { threadId, type: "delivery.failed" } })).toBe(1);
+    // A failed delivery is visible in the conversation, without the technical
+    // reason, and the record points at the message its envelope is projected on.
+    expect(final.resultMessageId).toBeTruthy();
+    const failedMessage = await prisma.message.findUniqueOrThrow({
+      where: { id: final.resultMessageId! },
+      select: { blocks: true, role: true },
+    });
+    expect(failedMessage.role).toBe("bot");
+    expect(failedMessage.blocks).toEqual([{ kind: "text", text: "这次工作没有完成。" }]);
   });
 
   // ---------------------------------------------------------------------------
@@ -502,9 +518,15 @@ describePostgres("background result delivery (PostgreSQL)", () => {
       1,
     );
     await completeDeliveryRun(fresh[0]!.deliveryRunId!, "One summary for the fresh generation");
-    expect(
-      await prisma.message.count({ where: { threadId: targetThread, role: "bot" } }),
-    ).toBe(1);
+    const generations = await prisma.message.findMany({
+      where: { threadId: targetThread, role: "bot" },
+      select: { blocks: true },
+    });
+    // The stale generation left one body-free marker; the fresh one delivered.
+    expect(generations).toHaveLength(2);
+    expect(generations.map((message) => message.blocks)).toContainEqual([
+      { kind: "meta", text: "迟到结果 · 已不收" },
+    ]);
     expect(
       await prisma.event.count({ where: { threadId: targetThread, type: "delivery.sent" } }),
     ).toBe(2);

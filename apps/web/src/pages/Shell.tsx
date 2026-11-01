@@ -7398,8 +7398,42 @@ const MessageView = memo(function MessageView({
     () => resolvePersonaColorDef(message.botId ?? "bot", speakerBot?.color),
     [message.botId, speakerBot?.color],
   );
+  const reportTag = message.report ? (
+    <div
+      data-testid="report-flow-tag"
+      data-state={message.report.state}
+      className="mb-1 text-[11.5px] font-medium text-muted-foreground"
+      dir="auto"
+    >
+      {message.report.state === "failed" ? t`回应 · 失败可见` : t`回应 · 交来的结果`}
+    </div>
+  ) : null;
+  const reportEnvelope = message.report ? (
+    <dl
+      data-testid="report-envelope"
+      className="mb-2 grid max-w-[74%] grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.5 rounded-[14px] border border-border bg-background px-3 py-2 text-[12px] text-muted-foreground"
+    >
+      <dt>{t`来自`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.from.name}
+      </dd>
+      <dt>{t`会话`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.room}
+      </dd>
+      <dt>{t`工作`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.work}
+      </dd>
+      <dt>{t`结果回给`}</dt>
+      <dd className="m-0 truncate" dir="auto">
+        {message.report.to.name}
+      </dd>
+    </dl>
+  ) : null;
   const messageContext = (
     <>
+      {reportTag}
       {speakerName ? (
         <div
           className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold tracking-tight"
@@ -7438,6 +7472,7 @@ const MessageView = memo(function MessageView({
               : t`Earlier message`}
         </button>
       ) : null}
+      {reportEnvelope}
     </>
   );
   if (isNarration) {

@@ -648,6 +648,25 @@ export const ProductEventSchema = z.object({
 });
 export type ProductEvent = z.infer<typeof ProductEventSchema>;
 
+/**
+ * Read-path descriptor for delegated work that finished back in its origin
+ * conversation. Composed from DeliveryRecord → Run → Task → Thread when the
+ * thread is read; it is never persisted and the body stays model-authored, so a
+ * copy or export of the message does not carry the envelope.
+ */
+export const MessageReportSchema = z.strictObject({
+  state: z.enum(["ok", "failed"]),
+  /** The executor. */
+  from: z.strictObject({ botId: Id.nullable(), name: z.string().min(1).max(200) }),
+  /** The conversation the work was dispatched from. */
+  room: z.string().min(1).max(200),
+  /** The dispatched work's title. */
+  work: z.string().min(1).max(200),
+  /** Who the result belongs to. */
+  to: z.strictObject({ kind: z.enum(["user", "bot"]), name: z.string().min(1).max(200) }),
+});
+export type MessageReport = z.infer<typeof MessageReportSchema>;
+
 export const ThreadMessageSchema = z.object({
   id: Id,
   threadId: Id,
@@ -660,6 +679,8 @@ export const ThreadMessageSchema = z.object({
   runId: Id.optional(),
   /** Set when the message was sent from a live voice call; groups one call's transcript. */
   callId: z.string().optional(),
+  /** Present only when this message is a delegated-work result read back here. */
+  report: MessageReportSchema.optional(),
   createdAt: z.string(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;

@@ -3,6 +3,7 @@ import { runContinueJob } from "@rakazo/adapter-kit";
 import {
   appendEventInTransaction,
   claimDueDeliveryBatch,
+  createThreadMessageInTransaction,
   currentThreadGeneration,
   type Prisma,
   type PrismaClient,
@@ -28,8 +29,11 @@ async function lockThread(tx: Prisma.TransactionClient, threadId: string) {
   return rows.length > 0;
 }
 
+export const LATE_REPORT_MARKER = "迟到结果 · 已不收" as const;
+export const FAILED_REPORT_BODY = "这次工作没有完成。";
+
 async function markStale(tx: Prisma.TransactionClient, records: DeliveryRow[], now = new Date()) {
-  await tx.deliveryRecord.updateMany({
+  const updated = await tx.deliveryRecord.updateMany({
     where: { id: { in: records.map((row) => row.id) }, status: "claimed" },
     data: {
       status: "sent",
@@ -37,6 +41,17 @@ async function markStale(tx: Prisma.TransactionClient, records: DeliveryRow[], n
       deliveredAt: now,
       lastError: "stale_generation",
     },
+  });
+  const first = records[0];
+  // The batch was already claimed: its result belongs to stopped work, so only a
+  // body-free system row may reach the conversation, and only once.
+  if (!first || updated.count === 0) return;
+  await createThreadMessageInTransaction(tx, {
+    threadId: first.threadId,
+    role: "bot",
+    originKind: "system",
+    blocks: [{ kind: "meta", text: LATE_REPORT_MARKER }],
+    markUnread: false,
   });
 }
 
@@ -116,6 +131,7 @@ async function failBatch(deps: DeliveryDeps, records: DeliveryRow[], reason: str
       return null;
     }
     let lastSeq: number | null = null;
+    const finalFailures: DeliveryRow[] = [];
     for (const row of records) {
       const released = await releaseDeliveryBatch(
         tx,
@@ -124,7 +140,9 @@ async function failBatch(deps: DeliveryDeps, records: DeliveryRow[], reason: str
         row.attempts,
         reason,
       );
-      if (!released.updatedCount || released.retryAt) continue;
+      if (!released.updatedCount) continue;
+      if (!released.retryAt) finalFailures.push(row);
+      if (released.retryAt) continue;
       const source = await tx.run.findUnique({
         where: { id: row.runId },
         select: { spaceId: true, botId: true, status: true },
@@ -139,6 +157,21 @@ async function failBatch(deps: DeliveryDeps, records: DeliveryRow[], reason: str
         payload: { deliveryId: row.id, reason },
       });
       lastSeq = event.seq;
+    }
+    // Once the retries are exhausted the failure has to be visible in the
+    // conversation it was dispatched from; the technical reason never leaves
+    // the server.
+    if (finalFailures.length > 0) {
+      const message = await createThreadMessageInTransaction(tx, {
+        threadId: first.threadId,
+        role: "bot",
+        originKind: "system",
+        blocks: [{ kind: "text", text: FAILED_REPORT_BODY }],
+      });
+      await tx.deliveryRecord.updateMany({
+        where: { id: { in: finalFailures.map((row) => row.id) } },
+        data: { resultMessageId: message.id },
+      });
     }
     return lastSeq;
   });
@@ -284,7 +317,13 @@ export async function settleDeliveryRun(deps: DeliveryDeps, deliveryRunId: strin
     for (const row of records) {
       const updated = await tx.deliveryRecord.updateMany({
         where: { id: row.id, status: "claimed", deliveryRunId },
-        data: { status: "sent", claimedBy: null, deliveredAt: new Date(), lastError: null },
+        data: {
+          status: "sent",
+          claimedBy: null,
+          deliveredAt: new Date(),
+          lastError: null,
+          resultMessageId: message.id,
+        },
       });
       if (!updated.count) continue;
       const source = await tx.run.findUnique({

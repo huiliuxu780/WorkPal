@@ -89,6 +89,7 @@ import {
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { enrichFileArtifactBlocks } from "./artifact-families.js";
+import { attachReportEnvelopes } from "./report-envelope.js";
 import {
   buildSendPrompt,
   buildUserMessageBlocks,
@@ -927,7 +928,7 @@ export async function threadSnapshot(
         return {
           messagePage: {
             ...messagePage,
-            messages: await enrichFileArtifactBlocks(tx, messagePage.messages),
+            messages: await attachReportEnvelopes(tx, await enrichFileArtifactBlocks(tx, messagePage.messages)),
           },
           last,
           run: currentRun,
@@ -1098,7 +1099,7 @@ export async function threadSnapshot(
     return {
       messagePage: {
         ...messagePage,
-        messages: await enrichFileArtifactBlocks(tx, messagePage.messages),
+        messages: await attachReportEnvelopes(tx, await enrichFileArtifactBlocks(tx, messagePage.messages)),
       },
       last,
       activeRuns,
@@ -1178,7 +1179,10 @@ export async function threadMessagePage(
       input.includePeerRuns,
       input.includePeerReceipts,
     );
-    const messages = await enrichFileArtifactBlocks(tx, page.messages);
+    const messages = await attachReportEnvelopes(
+      tx,
+      await enrichFileArtifactBlocks(tx, page.messages),
+    );
     const executions = await loadExecutionSummariesForMessages(tx, {
       threadId: target.threadId,
       spaceId: target.spaceId,
