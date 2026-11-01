@@ -84,9 +84,19 @@ export async function attachReportEnvelopes<T extends ThreadMessage>(
   });
   const userName = new Map(users.map((user) => [user.id, user.name]));
 
-  const reportByMessage = new Map<string, MessageReport>();
+  const recordsByMessage = new Map<string, typeof records>();
   for (const record of records) {
     if (!record.resultMessageId) continue;
+    const list = recordsByMessage.get(record.resultMessageId) ?? [];
+    list.push(record);
+    recordsByMessage.set(record.resultMessageId, list);
+  }
+  const reportByMessage = new Map<string, MessageReport>();
+  for (const [messageId, messageRecords] of recordsByMessage) {
+    // A window-merged batch answers several source Runs from one message; no
+    // single work title, executor or recipient is the truth for all of them.
+    if (new Set(messageRecords.map((record) => record.runId)).size > 1) continue;
+    const record = messageRecords[0]!;
     const source = sourceById.get(record.runId);
     const thread = threadById.get(record.threadId);
     if (!source || !thread) continue;
@@ -100,7 +110,7 @@ export async function attachReportEnvelopes<T extends ThreadMessage>(
     const to =
       dispatcher ?? (humanDispatcher ? { kind: "user" as const, name: humanDispatcher } : null);
     if (!from || !room || !work || !to) continue;
-    reportByMessage.set(record.resultMessageId, {
+    reportByMessage.set(messageId, {
       state: record.status === "failed" ? "failed" : "ok",
       from: { botId: source.botId, name: from },
       room,

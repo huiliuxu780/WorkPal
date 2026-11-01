@@ -194,11 +194,21 @@ describePostgres("background result delivery (PostgreSQL)", () => {
     // The result body never lands, but the user still sees that it was refused.
     const late = await prisma.message.findMany({
       where: { threadId },
-      select: { role: true, blocks: true },
+      select: { id: true, role: true, blocks: true },
     });
     expect(late).toHaveLength(1);
-    expect(late[0]?.role).toBe("bot");
+    expect(late[0]?.role).toBe("system");
     expect(late[0]?.blocks).toEqual([{ kind: "meta", text: "迟到结果 · 已不收" }]);
+    // An open conversation only learns about the row from its event.
+    const createdEvents = await prisma.event.findMany({
+      where: { threadId, type: "thread.message.created" },
+      select: { payload: true },
+    });
+    expect(createdEvents.map((event) => event.payload)).toContainEqual({
+      messageId: late[0]!.id,
+      role: "system",
+      blocks: [{ kind: "meta", text: "迟到结果 · 已不收" }],
+    });
   });
 
   it("emits an activity-visible failure after five retries", async () => {
@@ -225,6 +235,17 @@ describePostgres("background result delivery (PostgreSQL)", () => {
     });
     expect(failedMessage.role).toBe("bot");
     expect(failedMessage.blocks).toEqual([{ kind: "text", text: "这次工作没有完成。" }]);
+    // The row has to reach an open conversation; the delivery events alone do
+    // not refresh a transcript.
+    const createdEvents = await prisma.event.findMany({
+      where: { threadId, type: "thread.message.created" },
+      select: { payload: true },
+    });
+    expect(createdEvents.map((event) => event.payload)).toContainEqual({
+      messageId: final.resultMessageId,
+      role: "bot",
+      blocks: [{ kind: "text", text: "这次工作没有完成。" }],
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -519,7 +540,7 @@ describePostgres("background result delivery (PostgreSQL)", () => {
     );
     await completeDeliveryRun(fresh[0]!.deliveryRunId!, "One summary for the fresh generation");
     const generations = await prisma.message.findMany({
-      where: { threadId: targetThread, role: "bot" },
+      where: { threadId: targetThread, role: { in: ["bot", "system"] } },
       select: { blocks: true },
     });
     // The stale generation left one body-free marker; the fresh one delivered.

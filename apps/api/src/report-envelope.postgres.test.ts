@@ -162,6 +162,44 @@ describePostgres("report envelope projection (PostgreSQL)", () => {
     expect(withReport?.report?.to).toEqual({ kind: "bot", name: "Broker" });
   });
 
+  it("omits provenance when one message merges results from several Runs", async () => {
+    const message = await seedDelivery({ prompt: "Compare supplier landed costs", state: "ok" });
+    const task = await prisma.task.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId,
+        threadId: groupThreadId,
+        prompt: "Quote renewal",
+        status: "completed",
+      },
+    });
+    const secondRun = await prisma.run.create({
+      data: {
+        spaceId: id,
+        userId: id,
+        botId,
+        threadId: groupThreadId,
+        taskId: task.id,
+        status: "completed",
+        trigger: "message",
+      },
+    });
+    await prisma.deliveryRecord.create({
+      data: {
+        runId: secondRun.id,
+        threadId: groupThreadId,
+        threadGeneration: 0,
+        kind: "run_result",
+        status: "sent",
+        idempotencyKey: `report-${randomUUID()}`,
+        resultMessageId: message.id,
+      },
+    });
+    const [merged] = await attachReportEnvelopes(prisma, [message]);
+    expect(merged?.report).toBeUndefined();
+  });
+
   it("leaves messages without a delivery record untouched", async () => {
     const plain = await prisma.$transaction((tx) =>
       tx.message.create({

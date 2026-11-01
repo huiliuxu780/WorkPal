@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
+  claimDeliveryRefresh,
   clearActiveThreadRuns,
   computerPanelAutoBoot,
   computerPanelAutoUsesBoot,
@@ -2465,6 +2466,33 @@ function message(id: string, blocks: ThreadMessage["blocks"], seq = 3): ThreadMe
     createdAt: "2026-08-16T00:00:00.000Z",
   };
 }
+
+describe("delivery refresh claims", () => {
+  it("refreshes once per settled message across a merged batch", () => {
+    const seen = new Set<string>();
+    const sent = (deliveryId: string, messageId: string) =>
+      event({ type: "delivery.sent", payload: { deliveryId, messageId } });
+    expect(claimDeliveryRefresh(sent("delivery-1", "message-1"), seen)).toBe(true);
+    expect(claimDeliveryRefresh(sent("delivery-2", "message-1"), seen)).toBe(false);
+    expect(claimDeliveryRefresh(sent("delivery-3", "message-2"), seen)).toBe(true);
+  });
+
+  it("refreshes for every failed attempt and ignores unrelated events", () => {
+    const seen = new Set<string>();
+    expect(
+      claimDeliveryRefresh(
+        event({ type: "delivery.failed", payload: { deliveryId: "delivery-1", reason: "boom" } }),
+        seen,
+      ),
+    ).toBe(true);
+    expect(
+      claimDeliveryRefresh(
+        event({ type: "thread.progress", payload: { runId: "run-1", text: "working" } }),
+        seen,
+      ),
+    ).toBe(false);
+  });
+});
 
 function event(overrides: Partial<ProductEvent>): ProductEvent {
   return {

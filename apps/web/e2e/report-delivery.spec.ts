@@ -81,8 +81,7 @@ test("renders delegated results with the tag, the envelope and the late row", as
       data: {
         threadId: snapshot.threadId,
         seq: seq++,
-        role: "bot",
-        botId: scout.id,
+        role: "system",
         blocks: [{ kind: "meta", text: LATE_TEXT }],
       },
     });

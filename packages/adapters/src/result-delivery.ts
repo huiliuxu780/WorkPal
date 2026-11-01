@@ -32,7 +32,11 @@ async function lockThread(tx: Prisma.TransactionClient, threadId: string) {
 export const LATE_REPORT_MARKER = "迟到结果 · 已不收" as const;
 export const FAILED_REPORT_BODY = "这次工作没有完成。";
 
-async function markStale(tx: Prisma.TransactionClient, records: DeliveryRow[], now = new Date()) {
+async function markStale(
+  tx: Prisma.TransactionClient,
+  records: DeliveryRow[],
+  now = new Date(),
+): Promise<number | null> {
   const updated = await tx.deliveryRecord.updateMany({
     where: { id: { in: records.map((row) => row.id) }, status: "claimed" },
     data: {
@@ -45,14 +49,32 @@ async function markStale(tx: Prisma.TransactionClient, records: DeliveryRow[], n
   const first = records[0];
   // The batch was already claimed: its result belongs to stopped work, so only a
   // body-free system row may reach the conversation, and only once.
-  if (!first || updated.count === 0) return;
-  await createThreadMessageInTransaction(tx, {
+  if (!first || updated.count === 0) return null;
+  const blocks = [{ kind: "meta" as const, text: LATE_REPORT_MARKER }];
+  const message = await createThreadMessageInTransaction(tx, {
     threadId: first.threadId,
-    role: "bot",
+    role: "system",
     originKind: "system",
-    blocks: [{ kind: "meta", text: LATE_REPORT_MARKER }],
+    blocks,
     markUnread: false,
   });
+  const thread = await tx.thread.findUnique({
+    where: { id: first.threadId },
+    select: { spaceId: true },
+  });
+  const source = await tx.run.findUnique({
+    where: { id: first.runId },
+    select: { botId: true },
+  });
+  if (!thread || !source) return null;
+  const event = await appendEventInTransaction(tx, {
+    spaceId: thread.spaceId,
+    threadId: first.threadId,
+    botId: source.botId,
+    type: "thread.message.created",
+    payload: { messageId: message.id, role: "system", blocks },
+  });
+  return event.seq;
 }
 
 /**
@@ -127,11 +149,11 @@ async function failBatch(deps: DeliveryDeps, records: DeliveryRow[], reason: str
     if (!(await lockThread(tx, first.threadId))) return null;
     const generation = await currentThreadGeneration(tx, first.threadId);
     if (generation !== first.threadGeneration) {
-      await markStale(tx, records);
-      return null;
+      return await markStale(tx, records);
     }
     let lastSeq: number | null = null;
     const finalFailures: DeliveryRow[] = [];
+    let eventSource: { spaceId: string; botId: string } | null = null;
     for (const row of records) {
       const released = await releaseDeliveryBatch(
         tx,
@@ -147,7 +169,9 @@ async function failBatch(deps: DeliveryDeps, records: DeliveryRow[], reason: str
         where: { id: row.runId },
         select: { spaceId: true, botId: true, status: true },
       });
-      if (!source || source.status === "cancelled") continue;
+      if (!source) continue;
+      eventSource ??= source;
+      if (source.status === "cancelled") continue;
       const event = await appendEventInTransaction(tx, {
         spaceId: source.spaceId,
         botId: source.botId,
@@ -162,16 +186,29 @@ async function failBatch(deps: DeliveryDeps, records: DeliveryRow[], reason: str
     // conversation it was dispatched from; the technical reason never leaves
     // the server.
     if (finalFailures.length > 0) {
+      const blocks = [{ kind: "text" as const, text: FAILED_REPORT_BODY }];
       const message = await createThreadMessageInTransaction(tx, {
         threadId: first.threadId,
         role: "bot",
         originKind: "system",
-        blocks: [{ kind: "text", text: FAILED_REPORT_BODY }],
+        blocks,
       });
       await tx.deliveryRecord.updateMany({
         where: { id: { in: finalFailures.map((row) => row.id) } },
         data: { resultMessageId: message.id },
       });
+      // A cancelled source emits no delivery event, but the row still needs an
+      // event of its own to reach an open transcript.
+      if (eventSource) {
+        const event = await appendEventInTransaction(tx, {
+          spaceId: eventSource.spaceId,
+          threadId: first.threadId,
+          botId: eventSource.botId,
+          type: "thread.message.created",
+          payload: { messageId: message.id, role: "bot", blocks },
+        });
+        lastSeq = event.seq;
+      }
     }
     return lastSeq;
   });
@@ -242,11 +279,10 @@ export async function dispatchOneDeliveryBatch(deps: DeliveryDeps): Promise<bool
     taskById,
     new Map(sourceRuns.map((run) => [run.id, run])),
   );
-  const runId = await deps.prisma.$transaction(async (tx) => {
-    if (!(await lockThread(tx, first.threadId))) return null;
+  const dispatched = await deps.prisma.$transaction(async (tx) => {
+    if (!(await lockThread(tx, first.threadId))) return { runId: null, staleSeq: null };
     if ((await currentThreadGeneration(tx, first.threadId)) !== first.threadGeneration) {
-      await markStale(tx, records);
-      return null;
+      return { runId: null, staleSeq: await markStale(tx, records) };
     }
     const task = await tx.task.create({
       data: {
@@ -279,9 +315,12 @@ export async function dispatchOneDeliveryBatch(deps: DeliveryDeps): Promise<bool
       data: { deliveryRunId: run.id },
     });
     if (claimed.count !== records.length) throw new Error("Delivery claim changed during dispatch");
-    return run.id;
+    return { runId: run.id, staleSeq: null };
   });
-  if (runId) await deps.jobs.enqueue(runContinueJob(runId));
+  if (dispatched.staleSeq !== null) {
+    await deps.events.notify(first.threadId, dispatched.staleSeq);
+  }
+  if (dispatched.runId) await deps.jobs.enqueue(runContinueJob(dispatched.runId));
   return true;
 }
 
@@ -296,8 +335,7 @@ export async function settleDeliveryRun(deps: DeliveryDeps, deliveryRunId: strin
   const committed = await deps.prisma.$transaction(async (tx) => {
     if (!(await lockThread(tx, first.threadId))) return null;
     if ((await currentThreadGeneration(tx, first.threadId)) !== first.threadGeneration) {
-      await markStale(tx, records);
-      return null;
+      return { error: null, seq: await markStale(tx, records) };
     }
     const run = await tx.run.findUnique({
       where: { id: deliveryRunId },

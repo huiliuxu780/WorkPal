@@ -256,6 +256,7 @@ import { sharedInflight } from "../lib/shared-inflight";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
+  claimDeliveryRefresh,
   clearActiveThreadRuns,
   computerPanelAutoBoot,
   computerPanelAutoUsesBoot,
@@ -575,6 +576,7 @@ export function ShellPage() {
   // A very fast run can finish over SSE while its threads.send response is still
   // returning. Do not let that late receipt resurrect terminal work as queued.
   const terminalRunReceipts = useRef(new Set<string>());
+  const refreshedDeliveries = useRef(new Set<string>());
   // Last-known computer/screen per bot, so switching back to an already-seen
   // bot paints its computer pane instantly instead of blanking it while the
   // thread + screen RPCs round-trip again (see refreshThread / refreshComputerScreen).
@@ -1474,6 +1476,10 @@ export function ShellPage() {
         ) {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
+        } else if (claimDeliveryRefresh(event, refreshedDeliveries.current)) {
+          // The result message arrives before its envelope is attached; only the
+          // authoritative snapshot carries the tag and provenance.
+          void refreshThread(active.id).catch(() => undefined);
         } else if (isComputerStatusEvent(event)) {
           if (isSessionControlLifecycleEvent(event)) {
             // The session-control card is derived from the authoritative
@@ -1577,6 +1583,8 @@ export function ShellPage() {
         }
         if (isRunTerminalEvent(event) || event.type === "run.waiting_input") {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
+          void refreshGroupThread(groupId).catch(() => undefined);
+        } else if (claimDeliveryRefresh(event, refreshedDeliveries.current)) {
           void refreshGroupThread(groupId).catch(() => undefined);
         }
       },
