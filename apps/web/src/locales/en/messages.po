@@ -5076,4 +5076,4 @@ msgstr "1 tool"
 
 #: src/components/connections
 msgid "{toolCount} tools"
-msgstr "{0} tools"
+msgstr "{toolCount} tools"

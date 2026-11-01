@@ -267,6 +267,7 @@ export function PluginsOverlay({
     const matches = catalog.filter((item) => matchesConnectionCatalogQuery(item, query));
     return chip === "connected" ? matches.filter((item) => itemActive(item)) : matches;
   }, [catalog, query, chip, connections]);
+  const visibleSearch = searchMatches.slice(0, visibleCount);
 
   async function notifyAppConnected(item: ConnectionCatalogItem) {
     if (!activeBotId) return;
@@ -533,6 +534,23 @@ export function PluginsOverlay({
     );
   }
 
+  function renderShowMore(shown: number, total: number) {
+    if (shown >= total) return null;
+    return (
+      <div className="mt-4 flex justify-center">
+        <Button
+          type="button"
+          variant="secondary"
+          className="rounded-full"
+          size="sm"
+          onClick={() => setVisibleCount((count) => count + CONNECTION_CATALOG_PAGE_SIZE)}
+        >
+          <Trans>Show more</Trans>
+        </Button>
+      </div>
+    );
+  }
+
   const detailState = detailItem ? itemState(detailItem) : "idle";
 
   return (
@@ -665,10 +683,13 @@ export function PluginsOverlay({
               onOpenMcp={() => setSetupOpen(true)}
             />
           ) : searching || chip === "connected" ? (
-            searchMatches.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2">
-                {searchMatches.map((item) => renderTile(item))}
-              </div>
+            visibleSearch.length > 0 ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {visibleSearch.map((item) => renderTile(item))}
+                </div>
+                {renderShowMore(visibleSearch.length, searchMatches.length)}
+              </>
             ) : (
               <p className="text-muted-foreground/80">
                 {chip === "connected" && !searching ? (
@@ -720,21 +741,7 @@ export function PluginsOverlay({
                   <div className="grid grid-cols-2 gap-2">
                     {visibleAll.map((item) => renderTile(item))}
                   </div>
-                  {visibleAll.length < allItems.length ? (
-                    <div className="mt-4 flex justify-center">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="rounded-full"
-                        size="sm"
-                        onClick={() =>
-                          setVisibleCount((count) => count + CONNECTION_CATALOG_PAGE_SIZE)
-                        }
-                      >
-                        <Trans>Show more</Trans>
-                      </Button>
-                    </div>
-                  ) : null}
+                  {renderShowMore(visibleAll.length, allItems.length)}
                 </section>
               ) : null}
             </>
