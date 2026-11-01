@@ -556,11 +556,32 @@ export const AttentionQueueItemSchema = z.strictObject({
 });
 export type AttentionQueueItem = z.infer<typeof AttentionQueueItemSchema>;
 
+/**
+ * One pending request per conversation, independent of queue pagination, so a
+ * sidebar badge can exist for a conversation whose rows are past the first page.
+ * Only jump identity travels: the badge needs existence and a target, never the
+ * request text.
+ */
+export const AttentionConversationHeadSchema = z.strictObject({
+  conversationKind: z.enum(["direct", "group"]),
+  conversationId: Id,
+  interactionId: Id,
+  messageId: Id.nullable(),
+  /** The Bot that asked; the member panel matches its waiting tag on this. */
+  botId: Id,
+  kind: InteractionViewKindSchema,
+  attentionAt: z.string(),
+  expiresAt: z.string().nullable(),
+});
+export type AttentionConversationHead = z.infer<typeof AttentionConversationHeadSchema>;
+
 export const AttentionQueuePageSchema = z.strictObject({
   items: z.array(AttentionQueueItemSchema),
   /** Total matching rows under the same filters, never the page length. */
   total: z.number().int().nonnegative(),
   nextCursor: z.string().nullable(),
+  /** Complete per-conversation heads from the same snapshot as the page. */
+  conversationHeads: z.array(AttentionConversationHeadSchema),
 });
 export type AttentionQueuePage = z.infer<typeof AttentionQueuePageSchema>;
 

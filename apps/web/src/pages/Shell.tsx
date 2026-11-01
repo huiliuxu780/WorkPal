@@ -5,6 +5,7 @@ import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
   ActivityItem,
   AgentSkillCatalogEntry,
+  AttentionConversationHead,
   AttentionQueueItem,
   Bot,
   BotSection,
@@ -538,6 +539,7 @@ export function ShellPage() {
   const [panel, setPanel] = useState<Panel>(null);
   const [groupTab, setGroupTab] = useState<GroupPanelTab>("details");
   const [attentionItems, setAttentionItems] = useState<AttentionQueueItem[]>([]);
+  const [attentionHeads, setAttentionHeads] = useState<AttentionConversationHead[]>([]);
   const [attentionRefresh, setAttentionRefresh] = useState(0);
   const [settingsTab, setSettingsTab] = useState<"detail" | "library" | "computer">("detail");
   const [peerConversation, setPeerConversation] = useState<{
@@ -1905,25 +1907,41 @@ export function ShellPage() {
     baseline: null,
     notified: new Set<string>(),
   }).current;
-  const openAttentionItem = useCallback(
-    (item: AttentionQueueItem) => {
+  const openAttentionJump = useCallback(
+    (jump: {
+      conversationKind: "direct" | "group";
+      conversationId: string;
+      interactionId: string;
+      messageId?: string | null;
+    }) => {
       // On narrow screens the trigger usually sits inside the navigation
       // drawer; the destination must not stay covered by it.
       setMobileSidebarOpen(false);
       const params = new URLSearchParams();
-      if (item.source.messageId) params.set("m", item.source.messageId);
-      params.set("i", item.interactionId);
+      if (jump.messageId) params.set("m", jump.messageId);
+      params.set("i", jump.interactionId);
       // Each open is a distinct focus attempt, even for the same interaction.
       params.set("r", String(Date.now()));
       navigate({
         pathname:
-          item.conversationKind === "group"
-            ? `/app/g/${item.conversationId}`
-            : `/app/${item.conversationId}`,
+          jump.conversationKind === "group"
+            ? `/app/g/${jump.conversationId}`
+            : `/app/${jump.conversationId}`,
         search: `?${params.toString()}`,
       });
     },
     [navigate],
+  );
+  const openAttentionItem = useCallback(
+    (item: AttentionQueueItem) => {
+      openAttentionJump({
+        conversationKind: item.conversationKind,
+        conversationId: item.conversationId,
+        interactionId: item.interactionId,
+        messageId: item.source.messageId,
+      });
+    },
+    [openAttentionJump],
   );
   const focusedAttentionInteraction = useRef<string | null>(null);
   useEffect(() => {
@@ -1957,26 +1975,24 @@ export function ShellPage() {
       window.cancelAnimationFrame(frame);
     };
   }, [searchParams, activeSnapshot?.threadId]);
-  // One pending marker per conversation row, from the same Attention projection
-  // that feeds the queue and the member tags (BD-F15).
+  // Row markers read the complete per-conversation heads, not the queue page:
+  // a conversation whose requests sit past page 1 still gets its marker.
   const pendingByConversation = useMemo(() => {
-    const byConversation = new Map<string, AttentionQueueItem>();
-    for (const item of attentionItems) {
-      const key = `${item.conversationKind}:${item.conversationId}`;
-      if (!byConversation.has(key)) byConversation.set(key, item);
+    const byConversation = new Map<string, AttentionConversationHead>();
+    for (const head of attentionHeads) {
+      byConversation.set(`${head.conversationKind}:${head.conversationId}`, head);
     }
     return byConversation;
-  }, [attentionItems]);
+  }, [attentionHeads]);
   const waitingMembers = useMemo(() => {
-    const waiting = new Map<string, AttentionQueueItem>();
+    const waiting = new Map<string, AttentionConversationHead>();
     if (!activeGroup) return waiting;
-    for (const item of attentionItems) {
-      if (item.conversationKind !== "group" || item.conversationId !== activeGroup.id) continue;
-      const botId = item.source.botId;
-      if (botId && !waiting.has(botId)) waiting.set(botId, item);
+    for (const head of attentionHeads) {
+      if (head.conversationKind !== "group" || head.conversationId !== activeGroup.id) continue;
+      if (!waiting.has(head.botId)) waiting.set(head.botId, head);
     }
     return waiting;
-  }, [activeGroup, attentionItems]);
+  }, [activeGroup, attentionHeads]);
   // Keep the armed reply even when its parent leaves the loaded page: the
   // server resolves a paged-out target and degrades a deleted one to a plain
   // reply instead of failing the send.
@@ -3188,6 +3204,7 @@ export function ShellPage() {
             refreshToken={attentionRefresh}
             onOpenItem={openAttentionItem}
             onItems={setAttentionItems}
+            onConversationHeads={setAttentionHeads}
           />
           {showSpaceSearch ? (
             <SpaceSearchResults
@@ -3322,7 +3339,7 @@ export function ShellPage() {
                         const selected =
                           (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
                           (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id);
-                        const pendingItem = pendingByConversation.get(
+                        const pendingHead = pendingByConversation.get(
                           `${item.kind === "bot" ? "direct" : "group"}:${item.chat.id}`,
                         );
                         return (
@@ -3534,7 +3551,7 @@ export function ShellPage() {
                                         <span className="text-[11.5px] text-muted-foreground/60 tabular-nums">
                                           {formatRosterTime(item.chat.updatedAt)}
                                         </span>
-                                        {pendingItem ? (
+                                        {pendingHead ? (
                                           <>
                                             {/* biome-ignore lint/a11y/useSemanticElements: the marker is a control inside the row; the frozen structure uses a span. */}
                                             <span
@@ -3545,13 +3562,13 @@ export function ShellPage() {
                                             aria-label={t`待处理，跳回来源卡`}
                                             onClick={(event) => {
                                               event.stopPropagation();
-                                              openAttentionItem(pendingItem);
+                                              openAttentionJump(pendingHead);
                                             }}
                                             onKeyDown={(event) => {
                                               if (event.key !== "Enter" && event.key !== " ") return;
                                               event.preventDefault();
                                               event.stopPropagation();
-                                              openAttentionItem(pendingItem);
+                                              openAttentionJump(pendingHead);
                                             }}
                                             className="inline-flex items-center gap-1 rounded-full bg-warning/20 px-1.5 py-0.5 text-[10.5px] leading-none font-medium text-warning hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                                           >
@@ -3855,6 +3872,7 @@ export function ShellPage() {
                   refreshToken={attentionRefresh}
                   onOpenItem={openAttentionItem}
                   onItems={setAttentionItems}
+                  onConversationHeads={setAttentionHeads}
                 />
               </div>
               {botsSidebarCollapsed ? (
@@ -4216,7 +4234,7 @@ export function ShellPage() {
                 }}
                 onManageMembers={() => setPanel("group-settings")}
                 waitingMembers={waitingMembers}
-                onOpenAttentionItem={openAttentionItem}
+                onOpenAttentionItem={openAttentionJump}
                 routines={groupPanel.routines}
                 routinesError={groupPanel.routinesError}
                 artifacts={groupPanel.artifacts}

@@ -1203,6 +1203,83 @@ describePostgres("CARD-01D attention query (PostgreSQL)", () => {
     );
   });
 
+  it("reports one conversation head per conversation regardless of the page", async () => {
+    const headA = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Head A", color: "test" },
+    });
+    const headAThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, botId: headA.id },
+    });
+    const headARun = await taskRun(headAThread.id, "Head A work");
+    const headAMessage = await botMessage(headAThread.id, [{ kind: "text", text: "a" }]);
+    const headB = await prisma.bot.create({
+      data: { spaceId, userId: ownerId, name: "Head B", color: "test" },
+    });
+    const headBThread = await prisma.thread.create({
+      data: { spaceId, userId: ownerId, botId: headB.id },
+    });
+    const headBRun = await taskRun(headBThread.id, "Head B work");
+    const headBMessage = await botMessage(headBThread.id, [{ kind: "text", text: "b" }]);
+
+    const base = Date.now() - 5_000_000;
+    await prisma.intervention.createMany({
+      data: [
+        ...Array.from({ length: 2 }, (_unused, index) => ({
+          id: `head-a-${index}`,
+          revision: 1,
+          kind: "input",
+          status: "pending",
+          spaceId,
+          threadId: headAThread.id,
+          runId: headARun.id,
+          attemptId: "legacy",
+          botId: headA.id,
+          messageId: headAMessage.id,
+          expiresAt: null,
+          inputMode: "text",
+          presentation: { text: `A ${index}` },
+          createdAt: new Date(base + index * 1_000),
+        })),
+        {
+          id: "head-b-0",
+          revision: 1,
+          kind: "input",
+          status: "pending",
+          spaceId,
+          threadId: headBThread.id,
+          runId: headBRun.id,
+          attemptId: "legacy",
+          botId: headB.id,
+          messageId: headBMessage.id,
+          expiresAt: null,
+          inputMode: "text",
+          presentation: { text: "B 0" },
+          createdAt: new Date(base + 10_000),
+        },
+      ],
+    });
+
+    const complete = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 50 });
+    const completeConversations = new Set(
+      complete.conversationHeads.map((head) => `${head.conversationKind}:${head.conversationId}`),
+    );
+    // A page that cannot hold every conversation must still publish every head.
+    const firstPage = await loadAttentionPage(prisma, { spaceId, userId: ownerId, limit: 1 });
+    const firstPageConversations = new Set(
+      firstPage.conversationHeads.map((head) => `${head.conversationKind}:${head.conversationId}`),
+    );
+    expect(firstPage.items.length).toBeLessThanOrEqual(1);
+    expect(firstPageConversations).toEqual(completeConversations);
+    expect(completeConversations.size).toBeGreaterThanOrEqual(2);
+    const headForB = complete.conversationHeads.find((head) => head.conversationId === headB.id);
+    expect(headForB?.interactionId).toBe("head-b-0");
+    expect(headForB?.messageId).toBe(headBMessage.id);
+
+    await prisma.intervention.deleteMany({
+      where: { id: { in: ["head-a-0", "head-a-1", "head-b-0"] } },
+    });
+  });
+
   it("reads pending approvals without scanning message history", async () => {
     const historyBot = await prisma.bot.create({
       data: { spaceId, userId: ownerId, name: "History", color: "test" },

@@ -7,7 +7,7 @@ import {
   Warning,
   Wrench,
 } from "@phosphor-icons/react";
-import type { AttentionQueueItem } from "@rakazo/contracts";
+import type { AttentionConversationHead, AttentionQueueItem } from "@rakazo/contracts";
 import { Popover, PopoverContent, PopoverTrigger } from "@rakazo/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { requestBrowserNotificationPermission } from "../lib/browser-notifications";
@@ -36,6 +36,7 @@ export function AttentionQueue({
   notificationState,
   onOpenItem,
   onItems,
+  onConversationHeads,
 }: {
   enabled: boolean;
   activeTarget: { botId?: string; groupId?: string } | null;
@@ -46,6 +47,8 @@ export function AttentionQueue({
   variant?: "sidebar" | "topbar";
   /** Shared across both triggers; a per-instance value is used when omitted. */
   notificationState?: AttentionNotificationState;
+  /** Every page reports the complete per-conversation heads for the badges. */
+  onConversationHeads?: (heads: AttentionConversationHead[]) => void;
   onOpenItem: (item: AttentionQueueItem) => void;
   onItems: (items: AttentionQueueItem[]) => void;
 }) {
@@ -74,6 +77,8 @@ export function AttentionQueue({
   openItemRef.current = onOpenItem;
   const onItemsRef = useRef(onItems);
   onItemsRef.current = onItems;
+  const onConversationHeadsRef = useRef(onConversationHeads);
+  onConversationHeadsRef.current = onConversationHeads;
 
   const notifyNewItems = useCallback(
     (next: AttentionQueueItem[], options?: { complete?: boolean; silent?: boolean }) => {
@@ -151,6 +156,7 @@ export function AttentionQueue({
         setNextCursor(page.nextCursor);
         setError(false);
         onItemsRef.current(merged);
+        onConversationHeadsRef.current?.(page.conversationHeads);
         notifyNewItems(merged, {
           complete: !page.nextCursor,
           silent: Boolean(options?.append),
