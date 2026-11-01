@@ -2,7 +2,7 @@
 
 分支：`codex/connections-01`
 基线：`origin/main` @ `7457961b4018e18248732f8df2bb577ce5cb3b23`（SHARE 合入后）
-代码 head：`00518431`（本报告随后续 docs 提交）
+代码 head：`29dd743a`（本报告随后续 docs 提交）
 交付形式：**推 PR / CI；不自行 merge，等徐哥点头**（任务书 §8）
 
 ## 1. 开工决策
@@ -28,7 +28,7 @@
 | `pnpm --filter @rakazo/web build` | ✓ built | `checks/build.log` |
 | `pnpm test:inventory` | 578 files / 0 errors | `checks/inventory.log` |
 | e2e 回归：golden + graphql-integrations + mcp-oauth | 6 passed | `checks/regression-e2e.log` |
-| e2e：connections-ui | 1 passed（10.6s，含视频） | `checks/connections-e2e.log`、`flow/CN-flow.webm` |
+| e2e：connections-ui | 1 passed（9.3s，含视频） | `checks/connections-e2e.log`、`flow/CN-flow.webm` |
 
 本单元无既有缺陷修复，无先红后绿项；新逻辑的纯函数（featured 判定 / 搜索匹配）有单测。
 
@@ -51,20 +51,27 @@
 | AC-CN13 加载失败 | 通过：加载失败错误 + 重试；不出现 EmptyHero | `CN-13-load-error.png` |
 | AC-CN14 0 已连接 | 通过：已连接段隐藏；chip 可点并给空提示 | `CN-14-zero-connected.png` |
 
-## 4. 已知边界（如实说明）
+## 4. 复审修复（PR #166）
+
+| 发现 | 修复 |
+|---|---|
+| 搜索分支一次挂载全部命中项，绕过 `CONNECTION_CATALOG_PAGE_SIZE`（宽搜索/按 connectorId 可命中数千项） | 搜索与「已连接」chip 结果同样按 `visibleCount` 分页并提供 Show more；与「全部应用」段共用同一个按钮，切换 chip/搜索时重置页数 |
+| en 目录的 `{toolCount} tools` 占位符仍写 `{0}`，英文界面显示不出真实数量 | en msgstr 改为 `{toolCount} tools`；zh 保持 `{toolCount} 个工具` |
+
+## 5. 已知边界（如实说明）
 
 - **没有 provider 下发 description**：Composio toolkit list 与 Pipedream app 类型都没有该字段；所以当前实际目录全部 name-only。合约/UI 路径已通，等 provider 有货即可显示，未写假描述。
 - **failed 状态**：ConnectionStatus 支持 failed（tile / account row），但连接 RPC 不返回失败原因，因此未做 DS 的「查看原因」链接；不发明原因文案。
 - **chip 组合**：chip 是目录过滤；「已连接」chip 下为平铺结果，无分段；搜索在两种 chip 下都生效。已在 e2e 覆盖。
 - 目录空/失败的截图在 zh 语境（同一套产品页）；英文默认语境的截图见 CN-01/03/04/06/08。
 
-## 5. 明确未做
+## 6. 明确未做
 
 - 未重做 `McpServersOverlay` / `IntegrationSetup` 视觉；未改 OAuth popup 协议；未加卸载确认；未改 PAGE_SIZE；未改侧栏「集成」文案。
 - 未发明分类 taxonomy / 第三方 Logo / 连接专用色盘；未混入 SHARE / REPORT / BRAND。
 - 未自行 merge。
 
-## 6. 证据索引
+## 7. 证据索引
 
 ```text
 evidence/
