@@ -36,6 +36,9 @@ const ArtifactsPage = lazy(() =>
 const PublicSharePage = lazy(() =>
   import("./pages/PublicSharePage").then((module) => ({ default: module.PublicSharePage })),
 );
+const SpaceSharePage = lazy(() =>
+  import("./pages/SpaceSharePage").then((module) => ({ default: module.SpaceSharePage })),
+);
 
 export function App() {
   if (window.location.pathname === LOCAL_SETTINGS_PAGE) return <LocalSettingsPage />;
@@ -133,6 +136,10 @@ function SessionApp() {
             <Route
               path="/app/artifacts/:artifactId"
               element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
+            />
+            <Route
+              path="/app/shared/:spaceId/:familyId"
+              element={user ? <SpaceSharePage /> : <Navigate to="/sign-in" replace />}
             />
             <Route path="/p/:token" element={<PublicSharePage />} />
             <Route

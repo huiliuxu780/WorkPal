@@ -41,6 +41,7 @@ export function ShareSheet({
   const { t } = useLingui();
   const closeButton = useRef<HTMLButtonElement>(null);
   const [step, setStep] = useState<Step>("space");
+  const [spaceId, setSpaceId] = useState<string | null>(null);
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [existing, setExisting] = useState<ShareLink | null>(null);
   const [generated, setGenerated] = useState<ShareLink | null>(null);
@@ -57,6 +58,7 @@ export function ShareSheet({
     if (!open) return;
     let cancelled = false;
     setStep("space");
+    setSpaceId(null);
     setFamilyId(null);
     setExisting(null);
     setGenerated(null);
@@ -70,6 +72,7 @@ export function ShareSheet({
       .get({ ...target, artifactId })
       .then((overview) => {
         if (cancelled) return;
+        setSpaceId(overview.spaceId);
         setFamilyId(overview.familyId);
         setExisting(overview.publicLink);
       })
@@ -94,9 +97,10 @@ export function ShareSheet({
 
   const customDays = customDaysFromInput(customDaysInput);
   const customInvalid = preset === "custom" && customDays === null;
-  const spaceUrl = familyId
-    ? `${window.location.origin}/app/artifacts/${encodeURIComponent(familyId)}`
-    : null;
+  const spaceUrl =
+    spaceId && familyId
+      ? `${window.location.origin}/app/shared/${encodeURIComponent(spaceId)}/${encodeURIComponent(familyId)}`
+      : null;
   const shownLink = generated ?? existing;
   const shownPublicUrl = shownLink
     ? `${window.location.origin}/p/${encodeURIComponent(shownLink.token)}`

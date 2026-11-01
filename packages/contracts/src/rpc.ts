@@ -144,6 +144,7 @@ import {
   ShareExpirySchema,
   ShareLinkSchema,
   ShareOverviewSchema,
+  SpaceShareViewSchema,
 } from "./share.js";
 import { TaskInstructionViewSchema } from "./task-instructions.js";
 
@@ -1131,6 +1132,10 @@ export const appContract = {
     revoke: oc
       .input(threadTarget.and(z.object({ artifactId: Id })))
       .output(z.object({ ok: z.literal(true) })),
+    /** Login-scoped link: any member of the page's Space may read the published page. */
+    openSpace: oc
+      .input(z.object({ spaceId: Id, artifactFamilyId: Id }))
+      .output(SpaceShareViewSchema),
     /** Anonymous: the token is the only credential, and expiry/revocation are enforced here. */
     resolvePublic: oc
       .input(z.object({ token: z.string().min(20).max(128) }))

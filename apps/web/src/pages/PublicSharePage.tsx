@@ -4,7 +4,7 @@ import { Button } from "@rakazo/ui-web";
 import { Clock, Link2, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { SandboxedHtmlViewer } from "../components/SandboxedHtmlViewer";
+import { ReadOnlyPageView } from "../components/share/ReadOnlyPageView";
 import { rpc } from "../lib/rpc";
 
 type PageState =
@@ -143,30 +143,11 @@ export function PublicSharePage() {
   }
 
   return (
-    <div
-      className="flex min-h-dvh flex-col bg-background text-foreground"
-      data-testid="public-share-view"
-      data-state="ok"
-    >
-      <header className="flex flex-none items-center gap-2 border-b border-border px-5 py-3">
-        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-          <Link2 size={16} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[14px] leading-5 font-semibold" dir="auto">
-            {view.name}
-          </h1>
-          <p className="text-[11.5px] leading-4 text-muted-foreground">
-            {t`只读 · 有效期至`} {new Date(view.expiresAt).toLocaleDateString()}
-          </p>
-        </div>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {t`只读`}
-        </span>
-      </header>
-      <div className="min-h-0 flex-1 overflow-hidden bg-white">
-        <SandboxedHtmlViewer html={view.html} title={view.name} />
-      </div>
-    </div>
+    <ReadOnlyPageView
+      testId="public-share-view"
+      name={view.name}
+      meta={`${t`只读 · 有效期至`} ${new Date(view.expiresAt).toLocaleDateString()}`}
+      html={view.html}
+    />
   );
 }

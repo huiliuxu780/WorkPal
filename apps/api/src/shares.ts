@@ -8,9 +8,14 @@ import {
   type ShareExpiry,
   type ShareLink,
   type ShareOverview,
+  type SpaceShareView,
 } from "@rakazo/contracts";
 import { IsolationError, Prisma, type PrismaClient } from "@rakazo/db";
-import { findLatestPublishedArtifactRow } from "./artifact-families.js";
+import {
+  findLatestPublishedArtifactInSpace,
+  findLatestPublishedArtifactRow,
+  type LatestPublishedArtifactRow,
+} from "./artifact-families.js";
 
 /** The artifact exists for the actor but is not a published HTML page. */
 export class PageNotShareableError extends Error {
@@ -116,9 +121,61 @@ export async function getArtifactShare(
     orderBy: { createdAt: "desc" },
   });
   return {
+    spaceId: actor.spaceId,
     familyId: page.familyId,
     publicLink: link ? linkDto(link) : null,
   };
+}
+
+/**
+ * Login-scoped Space link. Any current member of the page's Space may read the
+ * latest published version; the artifacts library itself stays owner-scoped.
+ */
+export async function openSpaceShare(
+  deps: ShareDeps,
+  actor: Actor,
+  input: { spaceId: string; artifactFamilyId: string },
+): Promise<SpaceShareView> {
+  const membership = await deps.prisma.spaceMember.findFirst({
+    where: { userId: actor.userId, spaceId: input.spaceId },
+    select: { id: true },
+  });
+  if (!membership) throw new IsolationError();
+  const latest = await findLatestPublishedArtifactInSpace(
+    deps.prisma,
+    input.spaceId,
+    input.artifactFamilyId,
+  );
+  if (latest?.mimeType !== "text/html") throw new PageNotShareableError();
+  const html = await readHtml(
+    deps,
+    latest,
+    { spaceId: input.spaceId, userId: actor.userId, botId: latest.botId },
+    `share-space:${latest.id}`,
+  );
+  if (html === null) throw new PageNotShareableError();
+  return { name: latest.name, html };
+}
+
+async function readHtml(
+  deps: Pick<ShareDeps, "artifacts">,
+  row: Pick<LatestPublishedArtifactRow, "storageKey">,
+  context: { spaceId: string; userId: string; botId?: string | null },
+  operationId: string,
+): Promise<string | null> {
+  const bytes = await deps.artifacts.get(row.storageKey, {
+    operationId,
+    traceId: operationId,
+    spaceId: context.spaceId,
+    userId: context.userId,
+    ...(context.botId ? { botId: context.botId } : {}),
+    signal: new AbortController().signal,
+  });
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -216,20 +273,13 @@ export async function resolvePublicShare(
     link.artifactFamilyId,
   );
   if (latest?.mimeType !== "text/html") return { state: "invalid" };
-  const bytes = await deps.artifacts.get(latest.storageKey, {
-    operationId: `share-resolve:${link.id}`,
-    traceId: `share-resolve:${link.id}`,
-    spaceId: link.spaceId,
-    userId: link.userId,
-    ...(link.botId ? { botId: link.botId } : {}),
-    signal: new AbortController().signal,
-  });
-  let html: string;
-  try {
-    html = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return { state: "invalid" };
-  }
+  const html = await readHtml(
+    deps,
+    latest,
+    { spaceId: link.spaceId, userId: link.userId, botId: link.botId },
+    `share-resolve:${link.id}`,
+  );
+  if (html === null) return { state: "invalid" };
   return {
     state: "ok",
     name: latest.name,

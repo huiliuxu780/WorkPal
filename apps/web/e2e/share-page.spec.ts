@@ -49,7 +49,7 @@ test("shares a page inside the Space and through a revocable expiring public lin
   await page.getByTestId("page-detail-share").click();
   const detailSheet = page.getByTestId("share-sheet");
   await expect(detailSheet).toBeVisible();
-  await expect(detailSheet.getByTestId("share-space-link")).toContainText("/app/artifacts/", {
+  await expect(detailSheet.getByTestId("share-space-link")).toContainText("/app/shared/", {
     timeout: 30_000,
   });
   await page.keyboard.press("Escape");
@@ -59,7 +59,7 @@ test("shares a page inside the Space and through a revocable expiring public lin
   const sheet = await openShare(page);
   await expect(sheet.getByText("分享页面", { exact: true })).toBeVisible();
   const spaceLink = sheet.getByTestId("share-space-link");
-  await expect(spaceLink).toContainText("/app/artifacts/", { timeout: 30_000 });
+  await expect(spaceLink).toContainText("/app/shared/", { timeout: 30_000 });
   await expect(sheet.getByRole("checkbox")).toHaveCount(0);
   await expect(sheet).not.toContainText("marker-share");
   await expect(sheet).not.toContainText("12,345");
@@ -71,7 +71,7 @@ test("shares a page inside the Space and through a revocable expiring public lin
   await sheet.getByTestId("share-copy-space").click();
   await expect(sheet.getByTestId("share-copy-space")).toContainText("已复制");
   const spaceUrl = await page.evaluate(() => navigator.clipboard.readText());
-  expect(spaceUrl).toMatch(/\/app\/artifacts\/[^/]+$/);
+  expect(spaceUrl).toMatch(/\/app\/shared\/[^/]+\/[^/]+$/);
 
   // Independent confirmation, then the expiry presets.
   await sheet.getByTestId("share-public-entry").click();
@@ -184,7 +184,7 @@ test("shares a page inside the Space and through a revocable expiring public lin
   // Dark appearance.
   await setAppearance(page, "dark");
   const darkSheet = await openShare(page);
-  await expect(darkSheet.getByTestId("share-space-link")).toContainText("/app/artifacts/");
+  await expect(darkSheet.getByTestId("share-space-link")).toContainText("/app/shared/");
   await captureScreenshot(page, testInfo, "SH-F17-dark-space");
   await page.keyboard.press("Escape");
   await expect(darkSheet).toBeHidden();
@@ -211,10 +211,78 @@ test("shares a page inside the Space and through a revocable expiring public lin
   // Sharing never opens the attention queue or a task list.
   await expect(page.getByTestId("attention-queue")).toHaveCount(0);
 
-  // The login-scoped link still opens for the owner in the same Space.
+  // The login-scoped link opens as a read-only page for the owner...
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(spaceUrl);
-  await expect(page.getByRole("heading", { name: "board.html" })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.getByTestId("space-share-view")).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.frameLocator("iframe").frameLocator("#preview").getByRole("heading", { name: "Board" }),
+  ).toBeVisible({ timeout: 20_000 });
+
+  // ...and for another member of the same Space, not just the artifact owner.
+  // Signup gives the second human their own Personal Space; add a real
+  // membership in the sharer's Space, which is what an invited teammate has.
+  const spaceId = new URL(spaceUrl).pathname.split("/").at(-2)!;
+  const memberEmail = `share-member-${Date.now()}@rakazo.test`;
+  const memberContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const memberPage = await memberContext.newPage();
+  await signup(memberPage, memberEmail, "password12", "Share Member");
+  await completeOnboarding(memberPage);
+  const membershipDb = createDb(process.env.DATABASE_URL!);
+  try {
+    const space = await membershipDb.prisma.space.findUniqueOrThrow({
+      where: { id: spaceId },
+      select: { organizationId: true },
+    });
+    const memberUser = await membershipDb.prisma.user.findUniqueOrThrow({
+      where: { email: memberEmail },
+      select: { id: true },
+    });
+    const created = new Date();
+    await membershipDb.prisma.member.upsert({
+      where: {
+        organizationId_userId: { organizationId: space.organizationId, userId: memberUser.id },
+      },
+      update: {},
+      create: {
+        id: `share-member-${memberUser.id}`,
+        organizationId: space.organizationId,
+        userId: memberUser.id,
+        role: "member",
+        createdAt: created,
+      },
+    });
+    await membershipDb.prisma.spaceMember.upsert({
+      where: { spaceId_userId: { spaceId, userId: memberUser.id } },
+      update: {},
+      create: {
+        id: `share-space-member-${memberUser.id}`,
+        spaceId,
+        organizationId: space.organizationId,
+        userId: memberUser.id,
+        role: "member",
+        createdAt: created,
+      },
+    });
+  } finally {
+    await membershipDb.prisma.$disconnect().catch(() => undefined);
+    await membershipDb.pool.end().catch(() => undefined);
+  }
+  await memberPage.goto(spaceUrl);
+  await expect(memberPage.getByTestId("space-share-view")).toBeVisible({ timeout: 30_000 });
+  await expect(
+    memberPage
+      .frameLocator("iframe")
+      .frameLocator("#preview")
+      .getByRole("heading", { name: "Board" }),
+  ).toBeVisible({ timeout: 20_000 });
+  await captureScreenshot(memberPage, testInfo, "SH-F04-same-space-member");
+  await memberContext.close();
+
+  // The Space link still requires a session.
+  const anonymousContext = await browser.newContext();
+  const anonymousPage = await anonymousContext.newPage();
+  await anonymousPage.goto(spaceUrl);
+  await expect(anonymousPage).toHaveURL(/\/sign-in/);
+  await anonymousContext.close();
 });

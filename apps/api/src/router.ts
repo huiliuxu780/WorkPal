@@ -299,6 +299,7 @@ import {
 import {
   createPublicShare,
   getArtifactShare,
+  openSpaceShare,
   PageNotShareableError,
   resolvePublicShare,
   revokePublicShare,
@@ -6021,6 +6022,13 @@ export function createRouter(deps: RouterDeps) {
       }),
       revoke: authed.share.revoke.handler(async ({ context, input }) => {
         return revokePublicShare(deps, context.actor, input);
+      }),
+      openSpace: authed.share.openSpace.handler(async ({ context, input }) => {
+        try {
+          return await openSpaceShare(deps, context.actor, input);
+        } catch (error) {
+          throw shareRpcError(error);
+        }
       }),
       resolvePublic: os.share.resolvePublic.handler(async ({ input }) => {
         return resolvePublicShare(deps, input.token);

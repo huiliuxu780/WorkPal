@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { ArtifactStore } from "@rakazo/adapter-kit";
 import type { Actor } from "@rakazo/contracts";
-import { createIsolatedPostgresDatabase, type IsolatedPostgresDatabase } from "@rakazo/db";
+import {
+  createIsolatedPostgresDatabase,
+  type IsolatedPostgresDatabase,
+  IsolationError,
+} from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createPublicShare,
   getArtifactShare,
+  openSpaceShare,
   PageNotShareableError,
   resolvePublicShare,
   revokePublicShare,
@@ -23,6 +28,7 @@ const artifacts = {
 
 type Owner = {
   label: string;
+  orgId: string;
   userId: string;
   spaceId: string;
   botId: string;
@@ -102,12 +108,47 @@ describePostgres("page share links (PostgreSQL)", () => {
     });
     return {
       label,
+      orgId: id,
       userId,
       spaceId,
       botId: bot.id,
       threadId: thread.id,
       runId: run.id,
       actor: { userId, spaceId, email: `${id}@example.test`, isDeploymentOwner: true },
+    };
+  }
+
+  /** A second human in the owner's organization + Space. */
+  async function addSpaceMember(owner: Owner, label: string): Promise<Actor> {
+    const id = `${owner.label}-${label}-${randomUUID().slice(0, 8)}`;
+    const userId = `${id}-user`;
+    await prisma.user.create({
+      data: { id: userId, name: "Member", email: `${id}@example.test`, emailVerified: true },
+    });
+    await prisma.member.create({
+      data: {
+        id: `${id}-member`,
+        organizationId: owner.orgId,
+        userId,
+        role: "member",
+        createdAt: new Date(),
+      },
+    });
+    await prisma.spaceMember.create({
+      data: {
+        id: `${id}-sm`,
+        spaceId: owner.spaceId,
+        organizationId: owner.orgId,
+        userId,
+        role: "member",
+        createdAt: new Date(),
+      },
+    });
+    return {
+      userId,
+      spaceId: owner.spaceId,
+      email: `${id}@example.test`,
+      isDeploymentOwner: false,
     };
   }
 
@@ -317,6 +358,43 @@ describePostgres("page share links (PostgreSQL)", () => {
         botId: owner.botId,
         artifactId: text.id,
         expiry: { preset: "7d" },
+      }),
+    ).rejects.toThrow(PageNotShareableError);
+  });
+
+  it("any member of the Space can read a Space link, outsiders cannot", async () => {
+    const owner = await createOwner("space-read");
+    const page = await createPage(owner);
+    const member = await addSpaceMember(owner, "reader");
+    expect(
+      await openSpaceShare({ prisma, artifacts }, member, {
+        spaceId: owner.spaceId,
+        artifactFamilyId: page.id,
+      }),
+    ).toEqual({ name: "board.html", html: HTML });
+    expect(
+      await openSpaceShare({ prisma, artifacts }, owner.actor, {
+        spaceId: owner.spaceId,
+        artifactFamilyId: page.id,
+      }),
+    ).toMatchObject({ name: "board.html" });
+
+    const outsider = await createOwner("space-outsider");
+    await expect(
+      openSpaceShare({ prisma, artifacts }, outsider.actor, {
+        spaceId: owner.spaceId,
+        artifactFamilyId: page.id,
+      }),
+    ).rejects.toThrow(IsolationError);
+  });
+
+  it("a Space link only exposes the latest published HTML page", async () => {
+    const owner = await createOwner("space-scope");
+    const unpublished = await createPage(owner, { published: false });
+    await expect(
+      openSpaceShare({ prisma, artifacts }, owner.actor, {
+        spaceId: owner.spaceId,
+        artifactFamilyId: unpublished.id,
       }),
     ).rejects.toThrow(PageNotShareableError);
   });

@@ -41,11 +41,19 @@ export type ShareLink = z.infer<typeof ShareLinkSchema>;
 
 /** Owner-side view of one page family's sharing state. */
 export const ShareOverviewSchema = z.object({
+  spaceId: Id,
   familyId: Id,
   /** Unrevoked, unexpired public link; null when the page has none. */
   publicLink: ShareLinkSchema.nullable(),
 });
 export type ShareOverview = z.infer<typeof ShareOverviewSchema>;
+
+/** Login-scoped Space link payload: readable by any member of that Space. */
+export const SpaceShareViewSchema = z.strictObject({
+  name: z.string(),
+  html: z.string(),
+});
+export type SpaceShareView = z.infer<typeof SpaceShareViewSchema>;
 
 export const PublicShareViewSchema = z.discriminatedUnion("state", [
   z
