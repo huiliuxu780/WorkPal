@@ -7,7 +7,7 @@
 
 ## 1. 开工选定（任务书 §2.2 要求写进交付说明）
 
-1. **Space 内 URL**：复用登录态 `/app/artifacts/{artifactFamilyId}`。打开动作仍走既有 artifacts RPC，天然要求登录 + 本 Space + 该产物属主；分享 RPC 另外校验 owner/space/scope。不新造 `/s/...` 短链，避免第二套权限面。
+1. **Space 内 URL**：`/app/shared/{spaceId}/{artifactFamilyId}` + `share.openSpace`。第一版曾复用 `/app/artifacts/{familyId}`，但 artifacts 读取 RPC 按 `userId` 过滤，同 Space 的其他成员打不开，违背 sheet 的承诺（PR #165 复审 P2）；改为独立的成员授权只读路由：校验该用户属于链接所在 Space，再读最新已发布页面。artifacts 库本身仍保持 owner 维度，不扩大列表/下载权限。
 2. **公开 URL / 路由**：`/p/{token}`，token 为 32 字节随机数的 base64url（43 字符），不可枚举；`App.tsx` 新增匿名可访问路由。
 3. **DB**：新增 `ShareLink`（`share_links`）：token、spaceId、userId、artifactFamilyId、artifactName（仅标题）、botId/groupId、expiresAt、revokedAt。**不**拷贝页面正文；无外键，页面族或 Bot 删除后 token 仍落到失效态而不是报错。
 4. **过期档位**：服务端只接受 `24h / 7d / 30d / custom(1–90)`；`custom` 必须给天数，`>90`/`<1` 服务端拒绝。契约里**不存在**「永不过期」或客户端自定义 `expiresAt` 的入口。
@@ -31,6 +31,7 @@
 | `share.get` | 登录 + owner/space/scope | 返回 `{ familyId, publicLink }`；publicLink 只含未撤销且未过期的链 |
 | `share.createPublic` | 登录 + owner/space/scope | 校验页面为最新已发布 `text/html`；撤销旧链后生成新链；到期时间由服务端计算 |
 | `share.revoke` | 登录 + owner/space | 幂等撤销该页面族当前公开链；不依赖页面仍可读 |
+| `share.openSpace` | 登录 + 该 Space 成员 | Space 链只读：成员校验后返回最新已发布页面；不要求是产物 owner |
 | `share.resolvePublic` | **匿名** | 服务端先判撤销/过期，再解析最新已发布页面；失效态不返回正文 |
 
 ## 4. 检查结果
@@ -40,11 +41,11 @@
 | contracts / db / api / web 类型检查 | 0 | — |
 | `pnpm --filter @rakazo/contracts test` | 16 files / 147 tests | `checks/contracts.log` |
 | `pnpm --filter @rakazo/web test` | 101 files / 812 tests | `checks/unit.log` |
-| `apps/api/src/shares.postgres.test.ts` | 8 passed | `checks/postgres-group.log` |
-| `pnpm test:postgres`（db-postgres 全组） | 57 files / 495 tests | `checks/postgres-group.log` |
+| `apps/api/src/shares.postgres.test.ts` | 10 passed | `checks/postgres-group.log` |
+| `pnpm test:postgres`（db-postgres 全组） | 57 files / 497 tests | `checks/postgres-group.log` |
 | `pnpm --filter @rakazo/web build` | ✓ built | `checks/build.log` |
 | `pnpm test:inventory` | 0 errors | `checks/inventory.log` |
-| `share-page.spec.ts`（实页 + 匿名上下文 + 视频） | 1 passed（24.5s） | `checks/e2e.log`、`flow/SH-main-flow.webm` |
+| `share-page.spec.ts`（实页 + 匿名上下文 + 视频） | 1 passed（37.0s，含同 Space 第二成员） | `checks/e2e.log`、`flow/SH-main-flow.webm` |
 | `chat-chrome-v1.spec.ts`（页面卡回归） | 3 passed | `checks/chat-chrome-regression.log` |
 
 本单元是新增能力，无既有缺陷修复，因此**无先红后绿项**。首轮 E2E 两次失败均为测试侧问题（sheet 开启动画未结束时量底边、窄屏下 artifacts 详情标题被响应式隐藏），已改为轮询与桌面视口复测，不涉及产品缺陷。
@@ -56,7 +57,7 @@
 | AC-01 页面卡入口 / 非 page 无入口 | 通过 | `SH-F01-1440-light-entry.png`；卡与详情壳都有入口（E2E 先走详情入口）；分享入口只存在于页面卡、页面详情、`display.page` 三个 page 表面，其它块无挂载点 |
 | AC-02 弹出 sheet / Esc 关闭 | 通过 | `SH-F02-sheet.png`；E2E 多次 `Escape` 后断言 sheet 隐藏并继续操作 |
 | AC-03 Space 默认在前 / 无公开默认勾选 | 通过 | `SH-F03-space-default.png`；E2E 断言 sheet 内 checkbox 数为 0 |
-| AC-04 复制 Space 链 / 同 Space 打开 | 通过 | 剪贴板读到 `/app/artifacts/...`；结尾在同一账号打开该链并断言页面标题；`flow/SH-main-flow.webm` |
+| AC-04 复制 Space 链 / 同 Space 打开 | 通过 | 剪贴板读到 `/app/shared/{spaceId}/{familyId}`；owner 与**同 Space 第二成员**分别打开并看到只读页；匿名打开被送回登录；`SH-F04-same-space-member.png`、`flow/SH-main-flow.webm` |
 | AC-05 公开入口进独立确认 | 通过 | `SH-F05-to-confirm.png` |
 | AC-06 取消回 Space / 确认无 checkbox | 通过 | `SH-F06-confirm.png`；E2E 取消后断言回到「分享页面」 |
 | AC-07 仅四档 / 无永不过期选项 | 通过 | `SH-F07-chips.png`；断言四颗芯片可见、无「永不过期」按钮 |
@@ -72,7 +73,13 @@
 | AC-17 深色可读 | 通过 | `SH-F17-dark-space.png`（data-theme=dark） |
 | AC-18 非任务中心 | 通过 | `SH-F18-no-task-center.png`；全程无 `attention-queue`，未跳 Attention |
 
-## 6. 待 UI 五项（未发明正式视觉）
+## 6. 复审修复（PR #165）
+
+| 发现 | 修复 | 回归证据 |
+|---|---|---|
+| Space 链只有产物 owner 能打开，同 Space 其他成员被 `artifacts.getById/listVersions` 的 `userId` 过滤挡住 | 新增 `share.openSpace` + `/app/shared/{spaceId}/{familyId}` 只读页：先校验请求者属于该 Space，再按 Space 读最新已发布页面；artifacts 库仍保持 owner 维度 | `shares.postgres.test.ts` 新增「成员可读 / 外部人拒绝 / 未发布或非 HTML 拒绝」；E2E 用第二个真实账号（加入同一 Space）打开 Space 链：`SH-F04-same-space-member.png`，匿名打开被送回登录 |
+
+## 7. 待 UI 五项（未发明正式视觉）
 
 1. Space 打开失败（未登录/非本 Space）：服务端拒绝；前端只有通用加载失败提示。
 2. 生成/撤销/网络失败的 sheet 内错态：最小诚实文案 + 可重试，未做美化稿。
@@ -80,21 +87,21 @@
 4. 页面「更新中/不可用」时分享按钮策略：`available=false` 的 page 表面不渲染分享入口；其它 loading 策略未做。
 5. i18n 终稿键表：本波按可点稿用中文源串占位，未扩文案设计。
 
-## 7. 明确未做
+## 8. 明确未做
 
 - 未默认开公开分享；未提供「永不过期」；未扩 display 其它块。
 - 未给公开链写/审批/付款能力；未做第二任务中心 / Attention 入口。
 - 未默认开启 `cards_unified_v2`，未改任何 gate 默认值。
 - 未推远程、未提 PR、未合 main、未部署（等授权）。
 
-## 8. 证据索引
+## 9. 证据索引
 
 ```text
 evidence/
   report.md
   baseline/README.md
   checks/{contracts,unit,postgres-group,build,inventory,e2e,chat-chrome-regression}.log
-  screenshots/SH-F01…SH-F18（17 张实页截图，1440/390/375，含深色）
+  screenshots/SH-F01…SH-F18（18 张实页截图，含第二成员 Space 链）
   flow/SH-main-flow.webm（分享 → Space 复制 → 公开确认 → 7 天生成 → 复制 → 撤销失效 → 过期 → 390/375）
   runtime/share-links.txt（迁移记录 + 脱敏后的 share_links 状态）
 ```
