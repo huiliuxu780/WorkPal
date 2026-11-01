@@ -1,5 +1,9 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { AttentionQueueItem, GroupMembers, GroupRoutineSummary } from "@rakazo/contracts";
+import type {
+  AttentionConversationHead,
+  GroupMembers,
+  GroupRoutineSummary,
+} from "@rakazo/contracts";
 import { formatCron } from "@rakazo/core";
 import { AgentAvatar, cn } from "@rakazo/ui-web";
 import { Repeat2 } from "lucide-react";
@@ -178,8 +182,8 @@ export function GroupPanel({
   onRename: (next: string) => Promise<void>;
   onManageMembers: () => void;
   /** CARD-01D: this group's real pending requests, keyed by the waiting Bot. */
-  waitingMembers?: ReadonlyMap<string, AttentionQueueItem>;
-  onOpenAttentionItem?: (item: AttentionQueueItem) => void;
+  waitingMembers?: ReadonlyMap<string, AttentionConversationHead>;
+  onOpenAttentionItem?: (target: AttentionConversationHead) => void;
   routines: readonly GroupRoutineSummary[] | null;
   routinesError: string | null;
   artifacts: readonly GroupArtifactItem[];

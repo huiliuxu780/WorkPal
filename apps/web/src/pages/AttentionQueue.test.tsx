@@ -144,7 +144,7 @@ describe("AttentionQueue", () => {
   });
 
   it("loads the queue, establishes a baseline, and notifies only new revisions", async () => {
-    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });
+    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null, conversationHeads: [] });
     const onOpenItem = vi.fn();
     const onItems = vi.fn();
     const host = await render(
@@ -169,7 +169,12 @@ describe("AttentionQueue", () => {
       taskTitle: null,
       presentation: { text: "Ship the release?" },
     });
-    list.mockResolvedValue({ items: [item(), second], total: 2, nextCursor: null });
+    list.mockResolvedValue({
+      items: [item(), second],
+      total: 2,
+      nextCursor: null,
+      conversationHeads: [],
+    });
     await act(async () => {
       host.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
     });
@@ -195,6 +200,36 @@ describe("AttentionQueue", () => {
     expect(onOpenItem).toHaveBeenCalledWith(second);
   });
 
+  it("reports per-conversation heads independently of the page", async () => {
+    const onConversationHeads = vi.fn();
+    const head = {
+      conversationKind: "direct" as const,
+      conversationId: "bot-2",
+      interactionId: "i-9",
+      messageId: "message-9",
+      botId: "bot-2",
+      kind: "input_request" as const,
+      attentionAt: ISO,
+      expiresAt: null,
+    };
+    list.mockResolvedValue({ items: [], total: 1, nextCursor: null, conversationHeads: [head] });
+    await render(
+      <AttentionQueue
+        enabled
+        activeTarget={{ botId: "other-bot" }}
+        botNotificationsEnabled={() => true}
+        refreshToken={0}
+        onOpenItem={() => undefined}
+        onItems={() => undefined}
+        onConversationHeads={onConversationHeads}
+      />,
+    );
+    await flush();
+
+    // The page carries no rows, yet the conversation still gets a badge target.
+    expect(onConversationHeads).toHaveBeenCalledWith([head]);
+  });
+
   it("announces a new request once when both triggers poll", async () => {
     // The sidebar and top-bar queues run as separate components; sharing the
     // notifier is what keeps a breakpoint switch from re-announcing work.
@@ -210,7 +245,7 @@ describe("AttentionQueue", () => {
       onOpenItem: () => undefined,
       onItems: () => undefined,
     };
-    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });
+    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null, conversationHeads: [] });
     const sidebar = await render(<AttentionQueue enabled {...shared} />);
     await render(<AttentionQueue enabled variant="topbar" {...shared} />);
     await flush();
@@ -228,6 +263,7 @@ describe("AttentionQueue", () => {
       ],
       total: 2,
       nextCursor: null,
+      conversationHeads: [],
     });
     await act(async () => {
       sidebar.ownerDocument.defaultView!.dispatchEvent(new Event("focus"));
@@ -240,7 +276,7 @@ describe("AttentionQueue", () => {
   });
 
   it("suppresses a notification for the source thread in the foreground", async () => {
-    list.mockResolvedValue({ items: [], total: 0, nextCursor: null });
+    list.mockResolvedValue({ items: [], total: 0, nextCursor: null, conversationHeads: [] });
     const host = await render(
       <AttentionQueue
         enabled
@@ -256,6 +292,7 @@ describe("AttentionQueue", () => {
       items: [item({ interactionId: "i-3", stableId: "i-3" })],
       total: 1,
       nextCursor: null,
+      conversationHeads: [],
     });
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
@@ -287,6 +324,7 @@ describe("AttentionQueue", () => {
       items: [item(), item({ interactionId: "i-2", stableId: "i-2" })],
       total: 2,
       nextCursor: null,
+      conversationHeads: [],
     });
     await act(async () =>
       (host.querySelector('[data-testid="attention-entry"]') as HTMLButtonElement).click(),
@@ -326,6 +364,7 @@ describe("AttentionQueue", () => {
       items: [item({ interactionId: "page-2-1", stableId: "page-2-1" })],
       total: 51,
       nextCursor: null,
+      conversationHeads: [],
     });
     await act(async () =>
       (document.querySelector('[data-testid="attention-load-more"]') as HTMLButtonElement).click(),
@@ -345,7 +384,7 @@ describe("AttentionQueue", () => {
 
   it("opens a row without submitting any decision", async () => {
     const onOpenItem = vi.fn();
-    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null });
+    list.mockResolvedValue({ items: [item()], total: 1, nextCursor: null, conversationHeads: [] });
     const host = await render(
       <AttentionQueue
         enabled
@@ -368,7 +407,7 @@ describe("AttentionQueue", () => {
   });
 
   it("shows the empty and error states", async () => {
-    list.mockResolvedValueOnce({ items: [], total: 0, nextCursor: null });
+    list.mockResolvedValueOnce({ items: [], total: 0, nextCursor: null, conversationHeads: [] });
     const host = await render(
       <AttentionQueue
         enabled
@@ -430,12 +469,12 @@ describe("AttentionQueue", () => {
 
     // The newer request settles first and proves the queue is empty.
     await act(async () => {
-      fresh.resolve({ items: [], total: 0, nextCursor: null });
+      fresh.resolve({ items: [], total: 0, nextCursor: null, conversationHeads: [] });
       await Promise.resolve();
     });
     // The superseded response lands afterwards with the request still pending.
     await act(async () => {
-      stale.resolve({ items: [item()], total: 1, nextCursor: null });
+      stale.resolve({ items: [item()], total: 1, nextCursor: null, conversationHeads: [] });
       await Promise.resolve();
     });
     await flush();

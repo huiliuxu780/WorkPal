@@ -489,7 +489,10 @@ export function attentionDedupeKey(item: Pick<AttentionItem, "interactionId" | "
 }
 
 /** expiresAt ASC NULLS LAST → attentionAt ASC → stableId ASC. */
-export function compareAttentionItems(left: AttentionItem, right: AttentionItem): number {
+/** The frozen attention order, usable on any row that carries the tuple. */
+export type AttentionOrder = Pick<AttentionItem, "expiresAt" | "attentionAt" | "stableId">;
+
+export function compareAttentionOrder(left: AttentionOrder, right: AttentionOrder): number {
   if (left.expiresAt !== right.expiresAt) {
     if (left.expiresAt === null) return 1;
     if (right.expiresAt === null) return -1;
@@ -500,6 +503,10 @@ export function compareAttentionItems(left: AttentionItem, right: AttentionItem)
   }
   if (left.stableId === right.stableId) return 0;
   return left.stableId < right.stableId ? -1 : 1;
+}
+
+export function compareAttentionItems(left: AttentionItem, right: AttentionItem): number {
+  return compareAttentionOrder(left, right);
 }
 
 /**
@@ -556,11 +563,33 @@ export const AttentionQueueItemSchema = z.strictObject({
 });
 export type AttentionQueueItem = z.infer<typeof AttentionQueueItemSchema>;
 
+/**
+ * The earliest pending request per conversation and requesting Bot, independent
+ * of queue pagination: a sidebar badge exists for a conversation whose rows are
+ * past the first page, and every waiting Bot in a group keeps its own target.
+ * Only jump identity travels: the badge needs existence and a target, never the
+ * request text.
+ */
+export const AttentionConversationHeadSchema = z.strictObject({
+  conversationKind: z.enum(["direct", "group"]),
+  conversationId: Id,
+  interactionId: Id,
+  messageId: Id.nullable(),
+  /** The Bot that asked; the member panel matches its waiting tag on this. */
+  botId: Id,
+  kind: InteractionViewKindSchema,
+  attentionAt: z.string(),
+  expiresAt: z.string().nullable(),
+});
+export type AttentionConversationHead = z.infer<typeof AttentionConversationHeadSchema>;
+
 export const AttentionQueuePageSchema = z.strictObject({
   items: z.array(AttentionQueueItemSchema),
   /** Total matching rows under the same filters, never the page length. */
   total: z.number().int().nonnegative(),
   nextCursor: z.string().nullable(),
+  /** Complete per-conversation heads from the same snapshot as the page. */
+  conversationHeads: z.array(AttentionConversationHeadSchema),
 });
 export type AttentionQueuePage = z.infer<typeof AttentionQueuePageSchema>;
 

@@ -1,9 +1,11 @@
 import {
   type ActionApprovalView,
+  type AttentionConversationHead,
   type AttentionItem,
   type AttentionQueueItem,
   type AttentionQueuePage,
   compareAttentionItems,
+  compareAttentionOrder,
   decodeAttentionCursor,
   deriveSessionControlViews,
   encodeAttentionCursor,
@@ -92,7 +94,8 @@ export async function loadAttentionPage(
         },
         select: { id: true, botId: true, groupId: true },
       });
-      if (threads.length === 0) return { items: [], total: 0, nextCursor: null };
+      if (threads.length === 0)
+        return { items: [], total: 0, nextCursor: null, conversationHeads: [] };
       const threadById = new Map(threads.map((thread) => [thread.id, thread]));
 
       const durable = await loadDurableAttention(tx, {
@@ -135,10 +138,18 @@ export async function loadAttentionPage(
         threads: threadById,
         items: page,
       });
+      const conversationHeads = await loadAttentionConversationHeads(tx, {
+        spaceId: input.spaceId,
+        userId: input.userId,
+        now,
+        threadById,
+        liveItems: allLiveItems,
+      });
       return {
         items: page.map((item) => display.get(item.interactionId) ?? fallbackDisplay(item)),
         total: durable.total + allLiveItems.length,
         nextCursor: merged.length > limit ? encodeAttentionCursor(page[page.length - 1]!) : null,
+        conversationHeads,
       };
     },
     {
@@ -149,6 +160,110 @@ export async function loadAttentionPage(
       // `total` disagree with the list the client is about to page through.
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
     },
+  );
+}
+
+const DURABLE_KIND_TO_VIEW_KIND: Record<string, AttentionConversationHead["kind"]> = {
+  input: "input_request",
+  approval: "action_approval",
+  plan_review: "plan_review",
+};
+
+/**
+ * One head per conversation and requesting Bot from the same snapshot as the
+ * page. The durable source is aggregated in SQL by the frozen sort tuple, so it
+ * never grows with the number of pending rows; live session controls are already
+ * complete in memory. Per-Bot heads are what keep every waiting member tagged
+ * when a single group has several bots waiting. This is also what lets a sidebar
+ * badge exist for a conversation whose rows sit past the first page.
+ */
+function orderOf(head: AttentionConversationHead) {
+  return {
+    expiresAt: head.expiresAt,
+    attentionAt: head.attentionAt,
+    stableId: head.interactionId,
+  };
+}
+
+async function loadAttentionConversationHeads(
+  tx: Prisma.TransactionClient,
+  input: {
+    spaceId: string;
+    userId: string;
+    now: Date;
+    threadById: Map<string, { id: string; botId: string | null; groupId: string | null }>;
+    liveItems: readonly AttentionItem[];
+  },
+): Promise<AttentionConversationHead[]> {
+  const rows = await tx.$queryRaw<
+    Array<{
+      threadBotId: string | null;
+      threadGroupId: string | null;
+      interactionId: string;
+      messageId: string | null;
+      requesterBotId: string;
+      kind: string;
+      attentionAt: Date;
+      expiresAt: Date | null;
+    }>
+  >(Prisma.sql`
+    SELECT DISTINCT ON (thread."botId", thread."groupId", ai."botId")
+      thread."botId" AS "threadBotId",
+      thread."groupId" AS "threadGroupId",
+      ai."interactionId" AS "interactionId",
+      intervention."messageId" AS "messageId",
+      ai."botId" AS "requesterBotId",
+      intervention."kind" AS "kind",
+      ai."attentionAt" AS "attentionAt",
+      ai."expiresAt" AS "expiresAt"
+    ${durableFrom(input)}
+    WHERE ${durableFilters({ ...input, cursor: null })}
+    ORDER BY thread."botId", thread."groupId", ai."botId",
+      ai."expiresAt" ASC NULLS LAST, ai."attentionAt" ASC, ai."interactionId" ASC
+  `);
+
+  const heads = new Map<string, AttentionConversationHead>();
+  for (const row of rows) {
+    const conversationId = row.threadGroupId ?? row.threadBotId;
+    const kind = DURABLE_KIND_TO_VIEW_KIND[row.kind];
+    if (!conversationId || !kind) continue;
+    const conversationKind = row.threadGroupId ? "group" : "direct";
+    heads.set(`${conversationKind}:${conversationId}:${row.requesterBotId}`, {
+      conversationKind,
+      conversationId,
+      interactionId: row.interactionId,
+      messageId: row.messageId,
+      botId: row.requesterBotId,
+      kind,
+      attentionAt: row.attentionAt.toISOString(),
+      expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+    });
+  }
+
+  for (const item of [...input.liveItems].sort(compareAttentionItems)) {
+    const thread = input.threadById.get(item.source.threadId);
+    const conversationId = thread?.groupId ?? thread?.botId;
+    const requesterBotId = item.source.botId;
+    if (!conversationId || !requesterBotId) continue;
+    const conversationKind = thread?.groupId ? "group" : "direct";
+    const key = `${conversationKind}:${conversationId}:${requesterBotId}`;
+    const candidate: AttentionConversationHead = {
+      conversationKind,
+      conversationId,
+      interactionId: item.interactionId,
+      messageId: item.source.messageId ?? null,
+      botId: requesterBotId,
+      kind: item.kind,
+      attentionAt: item.attentionAt,
+      expiresAt: item.expiresAt,
+    };
+    const existing = heads.get(key);
+    if (existing && compareAttentionOrder(orderOf(existing), orderOf(candidate)) <= 0) continue;
+    heads.set(key, candidate);
+  }
+
+  return [...heads.values()].sort((left, right) =>
+    compareAttentionOrder(orderOf(left), orderOf(right)),
   );
 }
 
