@@ -500,9 +500,10 @@ export function GroupPanel({
                     {waiting ? (
                       <span
                         data-testid="group-member-waiting"
-                        className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[10.5px] leading-none text-foreground"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/20 px-1.5 py-0.5 text-[10.5px] leading-none font-medium text-warning"
                       >
-                        ● {t`Pending`}
+                        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-warning" />
+                        {t`等你批准`}
                       </span>
                     ) : null}
                   </>

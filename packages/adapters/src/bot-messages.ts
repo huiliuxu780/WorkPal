@@ -636,7 +636,9 @@ async function messageBotInAgentPair(
             ? context.sourceContext.returnToMessageId
             : undefined,
         clientNonce: deliveryKey,
-        markUnread: true,
+        // Bot relay carries no unread badge (BD-F03): only human-facing
+        // activity may light a thread row.
+        markUnread: false,
       });
 
       const task = await tx.task.create({
@@ -1209,7 +1211,8 @@ export async function messageBot(
           intent,
           returnToMessageId: outbound.id,
         };
-        // This is the recipient's prompt, but it is still unread peer activity.
+        // Bot relay carries no unread badge (BD-F03); the prompt still reaches
+        // the recipient, it just does not light the human's thread row.
         const inbound = await createThreadMessageInTransaction(tx, {
           threadId: targetThreadId,
           role: "user",
@@ -1220,7 +1223,7 @@ export async function messageBot(
               ? sourceContext.returnToMessageId
               : undefined,
           clientNonce: deliveryKey,
-          markUnread: true,
+          markUnread: false,
         });
         const task = await tx.task.create({
           data: {
