@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { LoadingState } from "./components/ai/primitives";
 import { authClient } from "./lib/auth";
+import { safeNextPath } from "./lib/auth-redirect";
 import { AvatarRuntime } from "./lib/avatar-runtime";
 import { markAfterPaint, markOnce } from "./lib/performance";
 import {
@@ -47,8 +48,7 @@ export function App() {
 
 function SessionApp() {
   const [searchParams] = useSearchParams();
-  const signInDestination =
-    searchParams.get("next") === "/integrations/setup" ? "/integrations/setup" : "/app";
+  const signInDestination = safeNextPath(searchParams.get("next")) ?? "/app";
   const session = authClient.useSession();
   const gate = sessionGate(session);
   const [holdingUnreachable, setHoldingUnreachable] = useState(false);
@@ -139,7 +139,7 @@ function SessionApp() {
             />
             <Route
               path="/app/shared/:spaceId/:familyId"
-              element={user ? <SpaceSharePage /> : <Navigate to="/sign-in" replace />}
+              element={<SpaceSharePage signedIn={Boolean(user)} />}
             />
             <Route path="/p/:token" element={<PublicSharePage />} />
             <Route

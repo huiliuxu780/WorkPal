@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import type { PublicShareView } from "@rakazo/contracts";
 import { Button } from "@rakazo/ui-web";
-import { Clock, Link2, Lock } from "lucide-react";
+import { Clock, Info, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ReadOnlyPageView } from "../components/share/ReadOnlyPageView";
@@ -93,8 +93,8 @@ export function PublicSharePage() {
           data-testid="public-share-view"
           data-state="invalid"
         >
-          <div className="mx-auto mb-3.5 grid size-11 place-items-center rounded-[14px] bg-destructive/10 text-destructive">
-            <Link2 size={22} />
+          <div className="mx-auto mb-3.5 grid size-11 place-items-center rounded-[14px] bg-muted text-muted-foreground">
+            <Info size={22} />
           </div>
           <h1 className="text-[17px] leading-6 font-medium">{t`链接已失效`}</h1>
           <p className="mt-2 text-[13.5px] leading-5 text-muted-foreground">
@@ -148,6 +148,7 @@ export function PublicSharePage() {
       name={view.name}
       meta={`${t`只读 · 有效期至`} ${new Date(view.expiresAt).toLocaleDateString()}`}
       html={view.html}
+      banner={t`公开只读页面 · 不含审批或付款`}
     />
   );
 }

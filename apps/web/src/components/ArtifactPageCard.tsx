@@ -110,7 +110,8 @@ export function ArtifactPageCard(props: ArtifactPageCardProps) {
           target={props.target}
           artifactId={props.artifactId}
           name={props.name}
-          label={t`Share page ${props.name}`}
+          label={t`分享 ${props.name}`}
+          opensLatest={props.superseded}
           className="absolute top-1/2 right-2.5 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <Share2 size={15} />
@@ -122,6 +123,7 @@ export function ArtifactPageCard(props: ArtifactPageCardProps) {
         name={props.name}
         open={shareOpen}
         onOpenChange={setShareOpen}
+        opensLatest={props.superseded}
       />
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
@@ -228,8 +230,8 @@ function PageDialogBody({
           variant="ghost"
           size="icon-lg"
           className="rounded-full text-muted-foreground"
-          aria-label={t`Share page`}
-          title={t`Share page`}
+          aria-label={t`分享`}
+          title={t`分享`}
           data-testid="page-detail-share"
           onClick={onShare}
         >

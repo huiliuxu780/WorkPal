@@ -1,27 +1,90 @@
 import { useLingui } from "@lingui/react/macro";
 import type { SpaceShareView } from "@rakazo/contracts";
-import { Button } from "@rakazo/ui-web";
-import { Link2 } from "lucide-react";
+import { Button, cn } from "@rakazo/ui-web";
+import { TriangleAlert, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { ReadOnlyPageView } from "../components/share/ReadOnlyPageView";
 import { rpc } from "../lib/rpc";
 
 type PageState =
   | { status: "loading" }
   | { status: "ready"; view: SpaceShareView }
+  | { status: "denied" }
   | { status: "error" };
 
-/** Login-scoped Space link: any member of the page's Space may read it. */
-export function SpaceSharePage() {
+function errorCode(error: unknown): string | null {
+  return error && typeof error === "object" && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : null;
+}
+
+/** Formal Space-link failure surfaces (F1 login, F2 wrong Space). */
+function SpaceFailPage({ kind, nextPath }: { kind: "login" | "space"; nextPath: string }) {
   const { t } = useLingui();
+  const login = kind === "login";
+  const primaryHref = login ? `/sign-in?next=${encodeURIComponent(nextPath)}` : "/app";
+  return (
+    <div className="grid min-h-dvh place-items-center bg-background px-6">
+      <div
+        className="w-full max-w-[400px] rounded-[18px] bg-card p-7 text-center text-foreground ring-1 ring-border"
+        data-testid="space-share-fail"
+        data-state={kind}
+      >
+        <div
+          className={cn(
+            "mx-auto mb-3.5 grid size-11 place-items-center rounded-[14px]",
+            login ? "bg-link/10 text-link" : "bg-warning/10 text-warning",
+          )}
+        >
+          {login ? <UserRound size={22} /> : <TriangleAlert size={22} />}
+        </div>
+        <h1 className="text-[17px] leading-6 font-medium">{login ? t`需要登录` : t`无法打开`}</h1>
+        <p className="mt-2 text-[13.5px] leading-5 text-muted-foreground">
+          {login
+            ? t`此链接仅本 Space 成员可打开。请登录后再试。`
+            : t`你不属于该 Space，无法打开此页面。请联系所有者将你加入后再试。`}
+        </p>
+        <div
+          className="mt-4 rounded-xl bg-muted p-3 text-left text-[12px] text-muted-foreground"
+          data-testid="space-share-fail-card"
+        >
+          {t`页面 · Space 内 · 无法打开`}
+        </div>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <a
+            href={primaryHref}
+            className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-2.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/80"
+          >
+            {login ? t`去登录` : t`返回`}
+          </a>
+          {login ? (
+            <a
+              href="/"
+              className="inline-flex h-8 items-center justify-center rounded-lg px-2.5 text-[13px] text-link hover:underline"
+            >
+              {t`返回`}
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Login-scoped Space link: any member of the page's Space may read it. */
+export function SpaceSharePage({ signedIn }: { signedIn: boolean }) {
+  const { t } = useLingui();
+  const location = useLocation();
   const { spaceId, familyId } = useParams<{ spaceId: string; familyId: string }>();
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<PageState>({ status: "loading" });
+  const nextPath = `${location.pathname}${location.search}`;
 
   useEffect(() => {
+    if (!signedIn) return;
     if (!spaceId || !familyId) {
-      setState({ status: "error" });
+      setState({ status: "denied" });
       return;
     }
     let cancelled = false;
@@ -31,13 +94,21 @@ export function SpaceSharePage() {
       .then((view) => {
         if (!cancelled) setState({ status: "ready", view });
       })
-      .catch(() => {
-        if (!cancelled) setState({ status: "error" });
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const code = errorCode(error);
+        setState({ status: code === "NOT_FOUND" || code === "BAD_REQUEST" ? "denied" : "error" });
       });
     return () => {
       cancelled = true;
     };
-  }, [spaceId, familyId, attempt]);
+  }, [signedIn, spaceId, familyId, attempt]);
+
+  if (!signedIn) return <SpaceFailPage kind="login" nextPath={nextPath} />;
+
+  if (state.status === "denied") {
+    return <SpaceFailPage kind="space" nextPath={nextPath} />;
+  }
 
   if (state.status === "loading") {
     return (
@@ -51,24 +122,17 @@ export function SpaceSharePage() {
     return (
       <div className="grid min-h-dvh place-items-center bg-background px-6">
         <div className="w-full max-w-[400px] rounded-[18px] bg-card p-7 text-center text-foreground ring-1 ring-border">
-          <div className="mx-auto mb-3.5 grid size-11 place-items-center rounded-[14px] bg-destructive/10 text-destructive">
-            <Link2 size={22} />
-          </div>
-          <h1 className="text-[17px] leading-6 font-medium">{t`无法打开此页`}</h1>
+          <h1 className="text-[17px] leading-6 font-medium">{t`无法打开此链接`}</h1>
           <p className="mt-2 text-[13.5px] leading-5 text-muted-foreground">
-            {t`请确认你已登录，并且属于此页面所在的 Space。`}
+            {t`网络异常，请检查后重试。`}
           </p>
-          <div className="mt-4 flex items-center justify-center gap-2">
-            <Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>
-              {t`重试`}
-            </Button>
-            <a
-              href="/"
-              className="inline-flex h-8 items-center rounded-lg px-2.5 text-[13px] text-link hover:underline"
-            >
-              {t`返回 WorkPal`}
-            </a>
-          </div>
+          <Button
+            className="mt-4"
+            variant="outline"
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            {t`重试`}
+          </Button>
         </div>
       </div>
     );

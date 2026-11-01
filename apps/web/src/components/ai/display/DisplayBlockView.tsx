@@ -401,7 +401,7 @@ function PageDisplay({
             {block.title}
           </div>
           <DisplayNote>
-            {block.available ? t`Document page` : t`This page is unavailable.`}
+            {block.available ? t`Document page` : t`页面不可用时无法分享。`}
           </DisplayNote>
         </div>
         {block.available ? (

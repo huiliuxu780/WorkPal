@@ -100,9 +100,19 @@ test("shares a page inside the Space and through a revocable expiring public lin
   await customDays.fill("14");
   await expect(sheet.getByTestId("share-generate")).toBeEnabled();
 
-  // Generate a 7-day link and copy it.
-  await sheet.getByRole("button", { name: "7 天", exact: true }).click();
+  // U3: a failed generate keeps the expiry step and offers a retry, with copy
+  // distinct from the revoke failure.
+  await page.route("**/rpc/share/createPublic", (route) => route.abort());
   await sheet.getByTestId("share-generate").click();
+  const generateError = sheet.getByTestId("share-error");
+  await expect(generateError).toContainText("公开链接生成失败，请重试。");
+  await expect(generateError).not.toContainText("撤销失败");
+  await captureScreenshot(page, testInfo, "SH-U3-gen-fail");
+  await page.unroute("**/rpc/share/createPublic");
+
+  // Retry generates the 7-day link; copy it.
+  await sheet.getByRole("button", { name: "7 天", exact: true }).click();
+  await generateError.getByTestId("share-error-retry").click();
   await expect(sheet.getByText("公开链接已生成", { exact: true })).toBeVisible({
     timeout: 30_000,
   });
@@ -129,6 +139,9 @@ test("shares a page inside the Space and through a revocable expiring public lin
   await anonPage.goto(publicUrl);
   await expect(anonPage.getByTestId("public-share-view")).toHaveAttribute("data-state", "ok");
   await expect(anonPage.getByText("只读", { exact: true })).toBeVisible();
+  await expect(anonPage.getByTestId("readonly-banner")).toContainText(
+    "公开只读页面 · 不含审批或付款",
+  );
   await expect(
     anonPage
       .frameLocator("iframe")
@@ -136,12 +149,29 @@ test("shares a page inside the Space and through a revocable expiring public lin
       .getByRole("heading", { name: "Board" }),
   ).toBeVisible({ timeout: 20_000 });
   await captureScreenshot(anonPage, testInfo, "SH-F13-readonly");
+  await captureScreenshot(anonPage, testInfo, "SH-U5-visitor-ok");
+
+  // U6: an unknown token is the invalid page, not a page body.
+  await anonPage.goto(`${new URL(publicUrl).origin}/p/${"x".repeat(43)}`);
+  await expect(anonPage.getByTestId("public-share-view")).toHaveAttribute("data-state", "invalid");
+  await expect(anonPage.getByText("链接已失效", { exact: true })).toBeVisible();
+  await captureScreenshot(anonPage, testInfo, "SH-U6-invalid");
+  await anonPage.goto(publicUrl);
 
   // Revoke: the old URL dies immediately, with only the desensitized card.
   const sheetAgain = await openShare(page);
   await sheetAgain.getByTestId("share-manage").click();
   await expect(sheetAgain.getByText("公开链接已生成", { exact: true })).toBeVisible();
+  // U4: a failed revoke keeps the link alive, says so, and can be retried.
+  await page.route("**/rpc/share/revoke", (route) => route.abort());
   await sheetAgain.getByTestId("share-revoke").click();
+  const revokeError = sheetAgain.getByTestId("share-error");
+  await expect(revokeError).toContainText("撤销失败，请重试。");
+  await expect(revokeError).toContainText("链接仍然有效，可稍后再撤。");
+  await expect(revokeError).not.toContainText("生成失败");
+  await captureScreenshot(page, testInfo, "SH-U4-revoke-fail");
+  await page.unroute("**/rpc/share/revoke");
+  await revokeError.getByTestId("share-error-retry").click();
   await expect(sheetAgain.getByText("分享页面", { exact: true })).toBeVisible();
   await expect(sheetAgain.getByTestId("share-existing")).toHaveCount(0);
   await anonPage.goto(publicUrl);
@@ -220,14 +250,22 @@ test("shares a page inside the Space and through a revocable expiring public lin
   ).toBeVisible({ timeout: 20_000 });
 
   // ...and for another member of the same Space, not just the artifact owner.
-  // Signup gives the second human their own Personal Space; add a real
-  // membership in the sharer's Space, which is what an invited teammate has.
+  // Signup gives the second human their own Personal Space; before joining the
+  // sharer's Space they must see the formal "can't open" page (U2).
   const spaceId = new URL(spaceUrl).pathname.split("/").at(-2)!;
   const memberEmail = `share-member-${Date.now()}@rakazo.test`;
   const memberContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const memberPage = await memberContext.newPage();
   await signup(memberPage, memberEmail, "password12", "Share Member");
   await completeOnboarding(memberPage);
+  await memberPage.goto(spaceUrl);
+  const wrongSpace = memberPage.getByTestId("space-share-fail");
+  await expect(wrongSpace).toHaveAttribute("data-state", "space");
+  await expect(wrongSpace).toContainText("无法打开");
+  await expect(wrongSpace).toContainText("页面 · Space 内 · 无法打开");
+  await captureScreenshot(memberPage, testInfo, "SH-U2-space-wrong");
+
+  // Joining the Space (what an invited teammate gets) makes the same link read-only.
   const membershipDb = createDb(process.env.DATABASE_URL!);
   try {
     const space = await membershipDb.prisma.space.findUniqueOrThrow({
@@ -268,7 +306,7 @@ test("shares a page inside the Space and through a revocable expiring public lin
     await membershipDb.prisma.$disconnect().catch(() => undefined);
     await membershipDb.pool.end().catch(() => undefined);
   }
-  await memberPage.goto(spaceUrl);
+  await memberPage.reload();
   await expect(memberPage.getByTestId("space-share-view")).toBeVisible({ timeout: 30_000 });
   await expect(
     memberPage
@@ -279,10 +317,40 @@ test("shares a page inside the Space and through a revocable expiring public lin
   await captureScreenshot(memberPage, testInfo, "SH-F04-same-space-member");
   await memberContext.close();
 
-  // The Space link still requires a session.
+  // U1: the Space link still requires a session, with a formal page and a CTA
+  // that returns to this exact link after sign-in.
   const anonymousContext = await browser.newContext();
   const anonymousPage = await anonymousContext.newPage();
   await anonymousPage.goto(spaceUrl);
-  await expect(anonymousPage).toHaveURL(/\/sign-in/);
+  const loginGate = anonymousPage.getByTestId("space-share-fail");
+  await expect(loginGate).toHaveAttribute("data-state", "login");
+  await expect(loginGate).toContainText("需要登录");
+  await expect(loginGate).toContainText("页面 · Space 内 · 无法打开");
+  await expect(loginGate.getByRole("link", { name: "去登录" })).toHaveAttribute(
+    "href",
+    /^\/sign-in\?next=%2Fapp%2Fshared%2F/,
+  );
+  await captureScreenshot(anonymousPage, testInfo, "SH-U1-space-login");
   await anonymousContext.close();
+
+  // U7 / R1: a superseded card keeps its share entry and says the link opens
+  // the latest published version.
+  await page.goto(`/app/${botId}`);
+  await page.waitForURL(new RegExp(`/app/${botId}$`));
+  await page
+    .getByPlaceholder(/Message/)
+    .fill(
+      `write path board.html and attach it to the thread says ${pageHtml.replace("marker-share", "marker-updated")}`,
+    );
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("artifact-page-card")).toHaveCount(2, { timeout: 60_000 });
+  await expect(page.getByTestId("artifact-page-card").nth(0)).toHaveAttribute("data-stale", "true");
+  await page.getByTestId("page-share-trigger").nth(0).click();
+  const updatingSheet = page.getByTestId("share-sheet");
+  await expect(updatingSheet.getByTestId("share-latest-note")).toContainText(
+    "链指向当前已发布版本（开最新）。",
+  );
+  await captureScreenshot(page, testInfo, "SH-U7-updating-sheet");
+  await page.keyboard.press("Escape");
+  await expect(updatingSheet).toBeHidden();
 });

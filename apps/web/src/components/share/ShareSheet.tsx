@@ -8,6 +8,7 @@ import { rpc } from "../../lib/rpc";
 
 type Step = "space" | "confirm" | "expiry" | "done";
 type Preset = ShareExpiry["preset"];
+type ShareError = { kind: "load" | "copy" | "gen" | "revoke"; message: string };
 
 const CUSTOM_DAYS_MIN = 1;
 const CUSTOM_DAYS_MAX = 90;
@@ -25,18 +26,56 @@ function customDaysFromInput(value: string): number | null {
   return Number.isInteger(days) && days >= CUSTOM_DAYS_MIN && days <= CUSTOM_DAYS_MAX ? days : null;
 }
 
+function ShareErrorBox({
+  message,
+  keepNote,
+  onRetry,
+}: {
+  message: string;
+  keepNote?: string;
+  onRetry?: () => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <div
+      role="alert"
+      data-testid="share-error"
+      className="flex flex-col gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-[12px] leading-[18px] text-destructive"
+    >
+      <div>
+        <p>{message}</p>
+        {keepNote ? <p className="mt-1 text-destructive/90">{keepNote}</p> : null}
+      </div>
+      {onRetry ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          data-testid="share-error-retry"
+          onClick={onRetry}
+        >
+          {t`重试`}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function ShareSheet({
   target,
   artifactId,
   name,
   open,
   onOpenChange,
+  opensLatest = false,
 }: {
   target: ArtifactTarget;
   artifactId: string;
   name: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** A newer version exists; the link will resolve the latest published page. */
+  opensLatest?: boolean;
 }) {
   const { t } = useLingui();
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -49,7 +88,8 @@ export function ShareSheet({
   const [customDaysInput, setCustomDaysInput] = useState("14");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [error, setError] = useState<ShareError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState<"space" | "public" | null>(null);
   const copyTimer = useRef<number | null>(null);
@@ -78,7 +118,7 @@ export function ShareSheet({
       })
       .catch(() => {
         if (cancelled) return;
-        setError(t`无法加载此页面的分享信息，请重试。`);
+        setError({ kind: "load", message: t`无法加载此页面的分享信息，请重试。` });
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -86,7 +126,7 @@ export function ShareSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, target, artifactId, t]);
+  }, [open, target, artifactId, t, loadAttempt]);
 
   useEffect(
     () => () => {
@@ -114,7 +154,7 @@ export function ShareSheet({
       if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
       copyTimer.current = window.setTimeout(() => setCopied(null), 1_800);
     } catch {
-      setError(t`复制失败，请重试。`);
+      setError({ kind: "copy", message: t`复制失败，请重试。` });
     }
   }
 
@@ -133,7 +173,7 @@ export function ShareSheet({
       setExisting(link);
       setStep("done");
     } catch {
-      setError(t`公开链接生成失败，请重试。`);
+      setError({ kind: "gen", message: t`公开链接生成失败，请重试。` });
     } finally {
       setBusy(false);
     }
@@ -150,7 +190,7 @@ export function ShareSheet({
       setNotice(t`公开链接已撤销。`);
       setStep("space");
     } catch {
-      setError(t`撤销失败，请重试。`);
+      setError({ kind: "revoke", message: t`撤销失败，请重试。` });
     } finally {
       setBusy(false);
     }
@@ -176,7 +216,7 @@ export function ShareSheet({
           </DialogTitle>
           <DialogClose
             ref={closeButton}
-            aria-label={t`Close share`}
+            aria-label={t`关闭分享`}
             render={
               <Button variant="ghost" size="icon-sm" className="rounded-lg text-muted-foreground" />
             }
@@ -196,12 +236,28 @@ export function ShareSheet({
               <div className="mt-0.5 text-[12px] text-muted-foreground">
                 {t`页面交付物 · 只读 · 不含审批/付款`}
               </div>
+              {opensLatest ? (
+                <div
+                  className="mt-0.5 text-[12px] text-muted-foreground"
+                  data-testid="share-latest-note"
+                >
+                  {t`链指向当前已发布版本（开最新）。`}
+                </div>
+              ) : null}
             </div>
           </div>
 
-          {error ? (
+          {error?.kind === "load" ? (
+            <ShareErrorBox
+              message={error.message}
+              onRetry={() => {
+                setError(null);
+                setLoadAttempt((value) => value + 1);
+              }}
+            />
+          ) : error?.kind === "copy" ? (
             <p role="alert" className="text-[12px] leading-[18px] text-destructive">
-              {error}
+              {error.message}
             </p>
           ) : null}
 
@@ -226,7 +282,7 @@ export function ShareSheet({
                     data-testid="share-space-link"
                     title={spaceUrl ?? undefined}
                   >
-                    {spaceUrl ?? t`Loading…`}
+                    {spaceUrl ?? t`加载中…`}
                   </div>
                   <Button
                     variant="outline"
@@ -321,11 +377,21 @@ export function ShareSheet({
                   variant="outline"
                   size="sm"
                   data-testid="share-confirm-cancel"
-                  onClick={() => setStep("space")}
+                  onClick={() => {
+                    setError(null);
+                    setStep("space");
+                  }}
                 >
                   {t`取消`}
                 </Button>
-                <Button size="sm" data-testid="share-confirm" onClick={() => setStep("expiry")}>
+                <Button
+                  size="sm"
+                  data-testid="share-confirm"
+                  onClick={() => {
+                    setError(null);
+                    setStep("expiry");
+                  }}
+                >
                   {t`我确认公开`}
                 </Button>
               </div>
@@ -335,6 +401,9 @@ export function ShareSheet({
 
           {step === "expiry" ? (
             <>
+              {error?.kind === "gen" ? (
+                <ShareErrorBox message={error.message} onRetry={() => void generate()} />
+              ) : null}
               <section className="flex flex-col gap-2">
                 <div className={SECTION_TITLE_CLASS}>
                   <span>{t`公开链过期档位`}</span>
@@ -401,7 +470,10 @@ export function ShareSheet({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setStep("confirm")}
+                  onClick={() => {
+                    setError(null);
+                    setStep("confirm");
+                  }}
                   disabled={busy}
                 >
                   {t`上一步`}
@@ -420,6 +492,13 @@ export function ShareSheet({
 
           {step === "done" && shownLink ? (
             <>
+              {error?.kind === "revoke" ? (
+                <ShareErrorBox
+                  message={error.message}
+                  keepNote={t`链接仍然有效，可稍后再撤。`}
+                  onRetry={() => void revoke()}
+                />
+              ) : null}
               <section className="flex flex-col gap-2">
                 <div className={SECTION_TITLE_CLASS}>
                   <span>{t`公开只读链接`}</span>
@@ -464,6 +543,7 @@ export function ShareSheet({
                   size="sm"
                   onClick={() => {
                     setGenerated(null);
+                    setError(null);
                     setStep("space");
                   }}
                 >
@@ -485,6 +565,7 @@ export function ShareSheetButton({
   name,
   className,
   label,
+  opensLatest,
   children,
 }: {
   target: ArtifactTarget;
@@ -492,6 +573,7 @@ export function ShareSheetButton({
   name: string;
   className?: string;
   label: string;
+  opensLatest?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -514,6 +596,7 @@ export function ShareSheetButton({
         name={name}
         open={open}
         onOpenChange={setOpen}
+        opensLatest={opensLatest}
       />
     </>
   );
