@@ -712,6 +712,8 @@ export const ConnectionCatalogItemSchema = z.object({
   connectorId: z.string(),
   slug: z.string(),
   name: z.string(),
+  /** Optional one-line purpose from the provider directory; omit rather than invent. */
+  description: z.string().optional(),
   logo: z.string().nullable(),
   connected: z.boolean(),
   noAuth: z.boolean(),

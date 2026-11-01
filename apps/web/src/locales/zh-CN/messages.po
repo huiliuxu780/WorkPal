@@ -432,7 +432,7 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Accounts"
-msgstr ""
+msgstr "账户"
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Action review"
@@ -502,7 +502,7 @@ msgstr "请填写 HTTPS 服务器 URL。"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Add another"
-msgstr ""
+msgstr "添加另一个账户"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Add Executor"
@@ -559,7 +559,7 @@ msgstr "添加触发器"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Added"
-msgstr ""
+msgstr "已添加"
 
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -891,7 +891,7 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Browse MCP servers"
-msgstr ""
+msgstr "浏览 MCP 服务器"
 
 #: src/components/computer/ComputerWorkspace.tsx
 msgid "Browser"
@@ -2750,7 +2750,7 @@ msgstr "正在加载规则…"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Loading tools…"
-msgstr ""
+msgstr "正在加载工具…"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Loading usage…"
@@ -3215,7 +3215,7 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "No tools available."
-msgstr ""
+msgstr "没有可用工具。"
 
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/group-panel.tsx
@@ -4017,7 +4017,7 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Search by domain"
-msgstr ""
+msgstr "按域名搜索"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Search integrations.sh"
@@ -4569,7 +4569,7 @@ msgstr "工具源"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Tools"
-msgstr ""
+msgstr "工具"
 
 #: src/components/call/CallCard.tsx
 msgid "Transcript"
@@ -4623,7 +4623,7 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Uninstall"
-msgstr ""
+msgstr "卸载"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Unlink"
@@ -5017,3 +5017,63 @@ msgstr "「{groupName}」中的工作已取消"
 #: src/components/ai/GroupDestinationReceipt.tsx
 msgid "Work in “{groupName}” was not completed"
 msgstr "「{groupName}」中的工作未完成"
+
+#: src/components/connections
+msgid "All apps"
+msgstr "全部应用"
+
+#: src/components/connections
+msgid "Recommended"
+msgstr "推荐"
+
+#: src/components/connections
+msgid "Connected · 1 account"
+msgstr "已连接 · 1 账户"
+
+#: src/components/connections
+msgid "Connected · {accountCount} accounts"
+msgstr "已连接 · {accountCount} 账户"
+
+#: src/components/connections
+msgid "Waiting for authorization"
+msgstr "等待授权"
+
+#: src/components/connections
+msgid "Connection failed"
+msgstr "连接失败"
+
+#: src/components/connections
+msgid "No connected apps yet."
+msgstr "还没有已连接的应用。"
+
+#: src/components/connections
+msgid "Connect your first app"
+msgstr "连接你的第一个应用"
+
+#: src/components/connections
+msgid "Bots need tools to get work done. Connect an app and it can use those tools right in the chat — read mail, look up docs, send messages."
+msgstr "Bot 需要工具才能替你做事。连接应用后，它可以在对话里直接使用这些工具——读写邮件、查文档、发消息。"
+
+#: src/components/connections
+msgid "This deployment has no app catalog configured. Ask the server admin to enable one, or add a tool source under Advanced."
+msgstr "此部署未配置插件目录——联系服务器管理员开启，或在“高级”里手动添加工具源。"
+
+#: src/components/connections
+msgid "Connect remote MCP tools and data sources"
+msgstr "直连远程 MCP 工具与数据源"
+
+#: src/components/connections
+msgid "Connect remote MCP tools and data sources, or add a self-hosted server"
+msgstr "直连远程 MCP 工具与数据源，或添加自托管服务器"
+
+#: src/components/connections
+msgid "{configuredCount} tool sources configured"
+msgstr "已配置 {configuredCount} 个工具源"
+
+#: src/components/connections
+msgid "1 tool"
+msgstr "1 个工具"
+
+#: src/components/connections
+msgid "{toolCount} tools"
+msgstr "{toolCount} 个工具"
