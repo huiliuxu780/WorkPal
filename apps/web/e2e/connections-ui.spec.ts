@@ -27,9 +27,9 @@ test("connections catalog IA, chips, detail, MCP entry, empty/error and zh", asy
   await page.getByTestId("integrations-entry").click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  const dialogBox = await dialog.boundingBox();
-  expect(dialogBox?.width).toBeCloseTo(1080, 0);
-  expect(dialogBox?.height).toBeCloseTo(760, 0);
+  // The dialog zooms in over ~100ms; poll until the box settles.
+  await expect.poll(async () => Math.round((await dialog.boundingBox())?.width ?? 0)).toBe(1080);
+  await expect.poll(async () => Math.round((await dialog.boundingBox())?.height ?? 0)).toBe(760);
   await captureScreenshot(page, testInfo, "CN-01-shell-open");
   await expect(page.getByTestId("integrations-filter-all")).toBeVisible();
   await expect(page.getByTestId("integrations-filter-connected")).toContainText("0");
