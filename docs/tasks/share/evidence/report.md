@@ -1,13 +1,13 @@
-# SHARE-01 证据报告
+# SHARE-01 / SHARE-01b 证据报告
 
 分支：`codex/share-01`
 基线：`origin/main` @ `66ef4b6ab296f80ca99847f15079f88d012b9023`（REPORT-01 合入后）
-代码 head：`62dbde85`（证据与报告随后续 docs 提交）
-交付形式：**本地交付，待最终 CI 与审核**（任务书 §8）
+代码 head：`893ab7a8`（本报告随后续 docs 提交；主体 head 见 PR #165 历史）
+交付形式：**推 #165 可审；CI 绿；合入等徐哥点头**（01b §7）
 
 ## 1. 开工选定（任务书 §2.2 要求写进交付说明）
 
-1. **Space 内 URL**：`/app/shared/{spaceId}/{artifactFamilyId}` + `share.openSpace`。第一版曾复用 `/app/artifacts/{familyId}`，但 artifacts 读取 RPC 按 `userId` 过滤，同 Space 的其他成员打不开，违背 sheet 的承诺（PR #165 复审 P2）；改为独立的成员授权只读路由：校验该用户属于链接所在 Space，再读最新已发布页面。artifacts 库本身仍保持 owner 维度，不扩大列表/下载权限。
+1. **Space 内 URL**：`/app/shared/{spaceId}/{artifactFamilyId}` + `share.openSpace`。第一版曾复用 `/app/artifacts/{familyId}`，但 artifacts 读取 RPC 按 `userId` 过滤，同 Space 的其他成员打不开，违背 sheet 的承诺（PR #165 复审 P2）；改为独立的成员授权只读路由：校验该用户属于链接所在 Space，再读最新已发布页面。artifacts 库本身仍保持 owner 维度，不扩大列表/下载权限。**SHARE-01b 已与负责人确认**：01b §1.5 的字面路径与上述只读/开最新/无下载删除语义冲突，选择保留 `/app/shared` 只读页（2026-11-02 确认）。
 2. **公开 URL / 路由**：`/p/{token}`，token 为 32 字节随机数的 base64url（43 字符），不可枚举；`App.tsx` 新增匿名可访问路由。
 3. **DB**：新增 `ShareLink`（`share_links`）：token、spaceId、userId、artifactFamilyId、artifactName（仅标题）、botId/groupId、expiresAt、revokedAt。**不**拷贝页面正文；无外键，页面族或 Bot 删除后 token 仍落到失效态而不是报错。
 4. **过期档位**：服务端只接受 `24h / 7d / 30d / custom(1–90)`；`custom` 必须给天数，`>90`/`<1` 服务端拒绝。契约里**不存在**「永不过期」或客户端自定义 `expiresAt` 的入口。
@@ -40,12 +40,12 @@
 |---|---|---|
 | contracts / db / api / web 类型检查 | 0 | — |
 | `pnpm --filter @rakazo/contracts test` | 16 files / 147 tests | `checks/contracts.log` |
-| `pnpm --filter @rakazo/web test` | 101 files / 812 tests | `checks/unit.log` |
+| `pnpm --filter @rakazo/web test` | 103 files / 816 tests | `checks/unit.log` |
 | `apps/api/src/shares.postgres.test.ts` | 10 passed | `checks/postgres-group.log` |
 | `pnpm test:postgres`（db-postgres 全组） | 57 files / 497 tests | `checks/postgres-group.log` |
 | `pnpm --filter @rakazo/web build` | ✓ built | `checks/build.log` |
-| `pnpm test:inventory` | 0 errors | `checks/inventory.log` |
-| `share-page.spec.ts`（实页 + 匿名上下文 + 视频） | 1 passed（37.0s，含同 Space 第二成员） | `checks/e2e.log`、`flow/SH-main-flow.webm` |
+| `pnpm test:inventory` | 576 files / 0 errors | `checks/inventory.log` |
+| `share-page.spec.ts`（实页 + 匿名上下文 + 视频 + U1–U7） | 1 passed（51.8s） | `checks/e2e.log`、`flow/SH-main-flow.webm` |
 | `chat-chrome-v1.spec.ts`（页面卡回归） | 3 passed | `checks/chat-chrome-regression.log` |
 
 本单元是新增能力，无既有缺陷修复，因此**无先红后绿项**。首轮 E2E 两次失败均为测试侧问题（sheet 开启动画未结束时量底边、窄屏下 artifacts 详情标题被响应式隐藏），已改为轮询与桌面视口复测，不涉及产品缺陷。
@@ -79,29 +79,49 @@
 |---|---|---|
 | Space 链只有产物 owner 能打开，同 Space 其他成员被 `artifacts.getById/listVersions` 的 `userId` 过滤挡住 | 新增 `share.openSpace` + `/app/shared/{spaceId}/{familyId}` 只读页：先校验请求者属于该 Space，再按 Space 读最新已发布页面；artifacts 库仍保持 owner 维度 | `shares.postgres.test.ts` 新增「成员可读 / 外部人拒绝 / 未发布或非 HTML 拒绝」；E2E 用第二个真实账号（加入同一 Space）打开 Space 链：`SH-F04-same-space-member.png`，匿名打开被送回登录 |
 
-## 7. 待 UI 五项（未发明正式视觉）
+## 7. SHARE-01b · 五项落地 + 入口默认可见
 
-1. Space 打开失败（未登录/非本 Space）：服务端拒绝；前端只有通用加载失败提示。
-2. 生成/撤销/网络失败的 sheet 内错态：最小诚实文案 + 可重试，未做美化稿。
-3. 公开访客成功壳：复用现有 `SandboxedHtmlViewer` + 顶栏「只读」，未另造访客设计语言。
-4. 页面「更新中/不可用」时分享按钮策略：`available=false` 的 page 表面不渲染分享入口；其它 loading 策略未做。
-5. i18n 终稿键表：本波按可点稿用中文源串占位，未扩文案设计。
+| 项 | 落地 | 证据 |
+|---|---|---|
+| 3.1 Space 失败态 | `/app/shared/...` 不再重定向：未登录 → 「需要登录」页 + 去登录（`next` 回原链）+ 脱敏卡；已登录非本 Space → 「无法打开」页 + 返回；网络错误单独给重试 | `SH-U1-space-login.png`、`SH-U2-space-wrong.png` |
+| 3.2 生成/撤销错态 | 选档步红框「公开链接生成失败，请重试。」+ 重试；已生成步「撤销失败，请重试。」+「链接仍然有效，可稍后再撤。」+ 重试；两套文案不混用 | `SH-U3-gen-fail.png`、`SH-U4-revoke-fail.png`（E2E 用 route abort 造失败再重试成功） |
+| 3.3 访客高保真 | `/p/:token` 成功：顶栏「只读 · 有效期至」+ 徽章 + 沙箱只读内容 + 底栏「公开只读页面 · 不含审批或付款」；无效态用 I2 的中性图标与文案 | `SH-U5-visitor-ok.png`、`SH-U6-invalid.png`、`SH-F10/F11` |
+| 3.4 更新中 = R1 | 仅 `available === false` 不挂分享（display.page）；页面卡无 unavailable 态。`superseded`（有新版本）映射为「更新中」：分享可点，sheet 对象区注「链指向当前已发布版本（开最新）。」；组件测试锁住 unavailable 无入口 / available 有入口 | `SH-U7-updating-sheet.png`；`DisplayBlockView.test.tsx`、`ArtifactPageCard.test.tsx` |
+| 3.5 i18n | 本波新增/改动文案全部走 `t\`\``，逐条对齐 `I18N.md`（Space 失败、G/H、R1 note、访客 banner、关闭/加载）；未新增非 `t` 的中文串、未扩文案设计 | 代码 + `I18N.md` 对照 |
+| 3.6 入口默认开 | 分享入口不挂 `cards_unified_v2`（也未改任何 gate 默认值）；页面卡/详情/`display.page` 在默认配置可见。share e2e 本身在 gate-off 批次运行，整条分享路径即默认配置证据 | `SH-F01-1440-light-entry.png`、`SH-U7-updating-sheet.png` |
 
-## 8. 明确未做
+**R1 状态映射说明**：产品当前没有独立的「更新中」字段；`ArtifactPageCard` 的 `superseded`（同一页面已有更新版本）就是用户能遇到的「更新中/已在下方更新」状态，分享链本就读最新已发布版本，因此在该卡上给出「开最新」注。`DisplayBlockView` 的 `available=false` 才隐藏分享。无其它 loading 策略，未发明 R2/R3。
+
+## 8. SHARE-01b U 矩阵
+
+| ID | 结果 | 证据 |
+|---|---|---|
+| AC-U1 未登录打开 Space 链 | 通过：需要登录页 + 去登录（href 带 `next=%2Fapp%2Fshared%2F...`）+ 返回 | `SH-U1-space-login.png` |
+| AC-U2 他 Space 账号打开 | 通过：无法打开页 + 脱敏卡 + 返回 | `SH-U2-space-wrong.png` |
+| AC-U3 生成失败 | 通过：route abort → 红框 + 重试；重试后生成成功；文案 ≠ 撤销 | `SH-U3-gen-fail.png`、`checks/e2e.log` |
+| AC-U4 撤销失败 | 通过：route abort → 撤销失败 + 链接仍有效；重试后撤销成功 | `SH-U4-revoke-fail.png` |
+| AC-U5 匿名有效 `/p/:token` | 通过：只读顶栏 + 有效期 + 内容 + 底栏；无写/审批/付款 | `SH-U5-visitor-ok.png`、`SH-F13-readonly.png` |
+| AC-U6 无效 token | 通过：失效页 | `SH-U6-invalid.png` |
+| AC-U7 页面 updating | 通过：superseded 卡仍可分享，sheet 有开最新注 | `SH-U7-updating-sheet.png` |
+| AC-U8 `available=false` | 通过（组件测）：`display.page` 无分享入口 + 不可用提示 | `DisplayBlockView.test.tsx` |
+| AC-U9 默认配置可见分享 | 通过：share e2e 在 gate-off 批次全流程（默认配置）；入口不挂 gate | `SH-F01`、`SH-U7`；报告 §7.3.6 |
+| AC-U10 原 SHARE 回归 | 通过：确认步、档位 ≤90、一页一链、撤销/过期仍绿 | `checks/e2e.log`，原 F 系列截图 |
+
+## 9. 明确未做
 
 - 未默认开公开分享；未提供「永不过期」；未扩 display 其它块。
 - 未给公开链写/审批/付款能力；未做第二任务中心 / Attention 入口。
 - 未默认开启 `cards_unified_v2`，未改任何 gate 默认值。
-- 未推远程、未提 PR、未合 main、未部署（等授权）。
+- 未合 main、未部署（等徐哥点头）；已推 `codex/share-01` 并在 #165 可审。
 
-## 9. 证据索引
+## 10. 证据索引
 
 ```text
 evidence/
   report.md
   baseline/README.md
   checks/{contracts,unit,postgres-group,build,inventory,e2e,chat-chrome-regression}.log
-  screenshots/SH-F01…SH-F18（18 张实页截图，含第二成员 Space 链）
-  flow/SH-main-flow.webm（分享 → Space 复制 → 公开确认 → 7 天生成 → 复制 → 撤销失效 → 过期 → 390/375）
+  screenshots/SH-F01…SH-U7（25 张实页截图，含 F1/F2、G/H 错态、访客壳、更新中）
+  flow/SH-main-flow.webm（分享 → Space 复制 → 默认配置入口 → 公开确认 → 生成失败/重试 → 7 天生成 → 撤销失败/重试 → 失效/过期 → 同 Space 成员/非成员/未登录 → 更新中 → 390/375）
   runtime/share-links.txt（迁移记录 + 脱敏后的 share_links 状态）
 ```
