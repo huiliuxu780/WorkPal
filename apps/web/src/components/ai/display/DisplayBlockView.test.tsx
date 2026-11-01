@@ -193,6 +193,24 @@ describe("DisplayBlockView", () => {
       />,
     );
     expect(pageHost.querySelector("a")?.getAttribute("href")).toBe("/app/artifacts/a-3");
+    // R1: an available page keeps its share entry (a superseded card still shares
+    // the latest published version); an unavailable page has none.
+    expect(pageHost.querySelectorAll('[data-testid="page-display-share"]')).toHaveLength(1);
+
+    const unavailableHost = await render(
+      <DisplayBlockView
+        block={{
+          kind: "page",
+          blockId: "m:8:file",
+          pageId: "a-4",
+          title: "Brief",
+          available: false,
+        }}
+        target={target}
+      />,
+    );
+    expect(unavailableHost.querySelectorAll('[data-testid="page-display-share"]')).toHaveLength(0);
+    expect(unavailableHost.textContent).toContain("页面不可用时无法分享。");
   });
 
   it("renders voice duration and transcript without faking audio", async () => {

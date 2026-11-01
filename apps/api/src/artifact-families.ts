@@ -75,6 +75,35 @@ export async function findLatestPublishedArtifactRow(
   return rows[0] ?? null;
 }
 
+/**
+ * Latest published version of a family for a Space member read. The family id
+ * already pins one owner's family; Space membership is the authorization, so
+ * no per-owner filter belongs here.
+ */
+export async function findLatestPublishedArtifactInSpace(
+  prisma: Pick<Db, "$queryRaw">,
+  spaceId: string,
+  familyId: string,
+): Promise<LatestPublishedArtifactRow | null> {
+  const rows = await prisma.$queryRaw<LatestPublishedArtifactRow[]>(Prisma.sql`
+    SELECT a.id, a."botId", a."groupId", a."runId", a.name, a.description,
+           a."mimeType", a.size, a."storageKey", a.version, a."createdAt"
+    FROM "artifacts" a
+    WHERE (a.id = ${familyId} OR a."rootArtifactId" = ${familyId})
+      AND a."spaceId" = ${spaceId}
+      AND a."runId" IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM "messages" m
+        WHERE m."runId" = a."runId"
+          AND m."blocks" @> jsonb_build_array(jsonb_build_object('artifactId', a.id))
+      )
+    ORDER BY a.version DESC, a."createdAt" DESC
+    LIMIT 1
+  `);
+  return rows[0] ?? null;
+}
+
 /** Backfills family/version fields onto file blocks loaded from old rows. */
 export async function enrichFileArtifactBlocks(
   prisma: Pick<Db, "artifact" | "$queryRaw">,

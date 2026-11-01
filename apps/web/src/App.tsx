@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { LoadingState } from "./components/ai/primitives";
 import { authClient } from "./lib/auth";
+import { safeNextPath } from "./lib/auth-redirect";
 import { AvatarRuntime } from "./lib/avatar-runtime";
 import { markAfterPaint, markOnce } from "./lib/performance";
 import {
@@ -33,6 +34,12 @@ const WelcomePage = lazy(() =>
 const ArtifactsPage = lazy(() =>
   import("./pages/Artifacts").then((module) => ({ default: module.ArtifactsPage })),
 );
+const PublicSharePage = lazy(() =>
+  import("./pages/PublicSharePage").then((module) => ({ default: module.PublicSharePage })),
+);
+const SpaceSharePage = lazy(() =>
+  import("./pages/SpaceSharePage").then((module) => ({ default: module.SpaceSharePage })),
+);
 
 export function App() {
   if (window.location.pathname === LOCAL_SETTINGS_PAGE) return <LocalSettingsPage />;
@@ -41,8 +48,7 @@ export function App() {
 
 function SessionApp() {
   const [searchParams] = useSearchParams();
-  const signInDestination =
-    searchParams.get("next") === "/integrations/setup" ? "/integrations/setup" : "/app";
+  const signInDestination = safeNextPath(searchParams.get("next")) ?? "/app";
   const session = authClient.useSession();
   const gate = sessionGate(session);
   const [holdingUnreachable, setHoldingUnreachable] = useState(false);
@@ -131,6 +137,11 @@ function SessionApp() {
               path="/app/artifacts/:artifactId"
               element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
             />
+            <Route
+              path="/app/shared/:spaceId/:familyId"
+              element={<SpaceSharePage signedIn={Boolean(user)} />}
+            />
+            <Route path="/p/:token" element={<PublicSharePage />} />
             <Route
               path="/app/:botId"
               element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}

@@ -139,6 +139,13 @@ import {
 import { MessageReactionSchema } from "./reactions.js";
 import { RunsDetailOutputSchema, RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
+import {
+  PublicShareViewSchema,
+  ShareExpirySchema,
+  ShareLinkSchema,
+  ShareOverviewSchema,
+  SpaceShareViewSchema,
+} from "./share.js";
 import { TaskInstructionViewSchema } from "./task-instructions.js";
 
 const botId = z.object({ botId: Id });
@@ -1116,6 +1123,23 @@ export const appContract = {
       .output(ArtifactWithContentSchema),
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
+  },
+  share: {
+    get: oc.input(threadTarget.and(z.object({ artifactId: Id }))).output(ShareOverviewSchema),
+    createPublic: oc
+      .input(threadTarget.and(z.object({ artifactId: Id, expiry: ShareExpirySchema })))
+      .output(ShareLinkSchema),
+    revoke: oc
+      .input(threadTarget.and(z.object({ artifactId: Id })))
+      .output(z.object({ ok: z.literal(true) })),
+    /** Login-scoped link: any member of the page's Space may read the published page. */
+    openSpace: oc
+      .input(z.object({ spaceId: Id, artifactFamilyId: Id }))
+      .output(SpaceShareViewSchema),
+    /** Anonymous: the token is the only credential, and expiry/revocation are enforced here. */
+    resolvePublic: oc
+      .input(z.object({ token: z.string().min(20).max(128) }))
+      .output(PublicShareViewSchema),
   },
   usage: {
     list: oc.output(z.array(UsageRecordSchema)),

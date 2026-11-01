@@ -1,0 +1,16 @@
+# share_links migration + rows in the E2E database (tokens/ids omitted)
+       migration_name       | applied 
+----------------------------+---------
+ 20261101160000_share_links | t
+(1 row)
+
+    page    | revoked | expired | seven_day_window 
+------------+---------+---------+------------------
+ board.html | f       | t       | f
+ board.html | t       | f       | t
+ board.html | f       | t       | f
+ board.html | t       | f       | t
+ board.html | f       | t       | f
+ board.html | t       | f       | t
+(6 rows)
+

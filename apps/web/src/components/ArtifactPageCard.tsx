@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { Button, cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-web";
-import { Download, X } from "lucide-react";
+import { Download, Share2, X } from "lucide-react";
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import {
@@ -9,6 +9,7 @@ import {
   type LatestArtifact,
 } from "../lib/artifact-open";
 import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
+import { ShareSheet, ShareSheetButton } from "./share/ShareSheet";
 
 type ArtifactPageCardProps = {
   target: ArtifactTarget;
@@ -54,6 +55,7 @@ export function ArtifactPageCard(props: ArtifactPageCardProps) {
   const trigger = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const onOpenChangeRef = useRef(props.onOpenChange);
   onOpenChangeRef.current = props.onOpenChange;
 
@@ -66,43 +68,63 @@ export function ArtifactPageCard(props: ArtifactPageCardProps) {
 
   return (
     <>
-      <button
-        ref={trigger}
-        type="button"
-        data-testid="artifact-page-card"
-        data-stale={props.superseded ? "true" : undefined}
-        aria-label={
-          props.superseded ? t`Open updated page ${props.name}` : t`Open page ${props.name}`
-        }
-        onClick={() => handleOpenChange(true)}
-        className={cn(
-          "group/page-card flex w-full items-start gap-3 rounded-[14px] border border-border bg-card px-4 py-3.5 text-left text-foreground transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
-          props.superseded && "opacity-95",
-        )}
-      >
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-          <PageArtifactIcon />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span
-            className={cn(
-              "block truncate text-[14.5px] leading-5 font-semibold",
-              props.superseded && "text-muted-foreground",
-            )}
-            dir="auto"
-          >
-            {props.name}
+      <div className="relative w-full">
+        <button
+          ref={trigger}
+          type="button"
+          data-testid="artifact-page-card"
+          data-stale={props.superseded ? "true" : undefined}
+          aria-label={
+            props.superseded ? t`Open updated page ${props.name}` : t`Open page ${props.name}`
+          }
+          onClick={() => handleOpenChange(true)}
+          className={cn(
+            "group/page-card flex w-full items-start gap-3 rounded-[14px] border border-border bg-card py-3.5 pr-12 pl-4 text-left text-foreground transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
+            props.superseded && "opacity-95",
+          )}
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+            <PageArtifactIcon />
           </span>
-          <span
-            className={cn(
-              "mt-1 block text-[12.5px] leading-4 text-muted-foreground",
-              props.superseded && "underline underline-offset-2",
-            )}
-          >
-            {props.superseded ? t`已在下方更新` : t`页面`}
+          <span className="min-w-0 flex-1">
+            <span
+              className={cn(
+                "block truncate text-[14.5px] leading-5 font-semibold",
+                props.superseded && "text-muted-foreground",
+              )}
+              dir="auto"
+            >
+              {props.name}
+            </span>
+            <span
+              className={cn(
+                "mt-1 block text-[12.5px] leading-4 text-muted-foreground",
+                props.superseded && "underline underline-offset-2",
+              )}
+            >
+              {props.superseded ? t`已在下方更新` : t`页面`}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        <ShareSheetButton
+          target={props.target}
+          artifactId={props.artifactId}
+          name={props.name}
+          label={t`分享 ${props.name}`}
+          opensLatest={props.superseded}
+          className="absolute top-1/2 right-2.5 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <Share2 size={15} />
+        </ShareSheetButton>
+      </div>
+      <ShareSheet
+        target={props.target}
+        artifactId={props.artifactId}
+        name={props.name}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        opensLatest={props.superseded}
+      />
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
           showCloseButton={false}
@@ -116,6 +138,10 @@ export function ArtifactPageCard(props: ArtifactPageCardProps) {
             fallbackName={props.name}
             open={open}
             closeButton={closeButton}
+            onShare={() => {
+              handleOpenChange(false);
+              setShareOpen(true);
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -129,12 +155,14 @@ function PageDialogBody({
   fallbackName,
   open,
   closeButton,
+  onShare,
 }: {
   target: ArtifactTarget;
   artifactId: string;
   fallbackName: string;
   open: boolean;
   closeButton: RefObject<HTMLButtonElement | null>;
+  onShare: () => void;
 }) {
   const { t } = useLingui();
   const [attempt, setAttempt] = useState(0);
@@ -198,6 +226,17 @@ function PageDialogBody({
         <DialogTitle className="min-w-0 flex-1 truncate text-[15px] leading-5 font-semibold text-foreground">
           {state.status === "ready" ? state.artifact.name : fallbackName}
         </DialogTitle>
+        <Button
+          variant="ghost"
+          size="icon-lg"
+          className="rounded-full text-muted-foreground"
+          aria-label={t`分享`}
+          title={t`分享`}
+          data-testid="page-detail-share"
+          onClick={onShare}
+        >
+          <Share2 />
+        </Button>
         <Button
           variant="ghost"
           size="icon-lg"

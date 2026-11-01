@@ -9,6 +9,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../lib/auth";
+import { safeNextPath } from "../lib/auth-redirect";
 import { clearSpaceSelection } from "../lib/rpc";
 
 type AuthMode = "in" | "up" | "forgot";
@@ -111,13 +112,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         return;
       }
       clearSpaceSelection();
-      navigate(
-        mode === "up"
-          ? "/onboarding"
-          : searchParams.get("next") === "/integrations/setup"
-            ? "/integrations/setup"
-            : "/app",
-      );
+      navigate(mode === "up" ? "/onboarding" : (safeNextPath(searchParams.get("next")) ?? "/app"));
     } catch {
       setError(t`Could not reach the server`);
     } finally {
