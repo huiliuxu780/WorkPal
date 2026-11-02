@@ -9,7 +9,11 @@ import {
   pauseRunForInput,
   resolveIntervention,
 } from "./events.js";
-import { loadInterventionViews } from "./interventions.js";
+import {
+  GROUP_INPUT_REQUEST_REJECTED,
+  GroupInputRequestRejectedError,
+  loadInterventionViews,
+} from "./interventions.js";
 import { createThreadMessage } from "./messages.js";
 import {
   createIsolatedPostgresDatabase,
@@ -371,6 +375,16 @@ describePostgres("intervention contract (PostgreSQL)", () => {
         answer: decision,
       });
       expect(forbidden).toMatchObject({ outcome: "rejected", reason: "forbidden" });
+      // A rejected non-owner submission must not advance any state.
+      expect(await prisma.intervention.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({
+        status: "pending",
+      });
+      expect(
+        await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } }),
+      ).toMatchObject({ status: "intended" });
+      expect(await prisma.run.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({
+        status: "waiting_input",
+      });
       const accepted = await resolveIntervention(prisma, {
         spaceId: id,
         threadId,
@@ -1762,5 +1776,71 @@ describePostgres("intervention contract (PostgreSQL)", () => {
     expect(await prisma.runPlan.findUniqueOrThrow({ where: { runId: run.id } })).toMatchObject({
       reviewStatus: "cancelled",
     });
+  });
+
+  it("rejects addressable group inputs and keeps group approvals owner-scoped", async () => {
+    const group = await prisma.chatGroup.create({
+      data: { spaceId: id, userId: id, kind: "standard", name: "Gate group" },
+    });
+    const groupThreadId = (
+      await prisma.thread.create({ data: { spaceId: id, userId: id, groupId: group.id } })
+    ).id;
+
+    // FS-F10: a plain ask in a group is rejected before any write.
+    const groupRun = await runningRun(groupThreadId);
+    const rejected = pause(
+      groupRun.run,
+      groupRun.attempt,
+      [{ kind: "ask", text: "Which city?", status: "pending" }],
+      groupThreadId,
+    );
+    await expect(rejected).rejects.toBeInstanceOf(GroupInputRequestRejectedError);
+    await expect(rejected).rejects.toMatchObject({ code: GROUP_INPUT_REQUEST_REJECTED });
+    expect(await prisma.intervention.count({ where: { runId: groupRun.run.id } })).toBe(0);
+    expect(await prisma.message.count({ where: { runId: groupRun.run.id } })).toBe(0);
+    expect(await prisma.run.findUniqueOrThrow({ where: { id: groupRun.run.id } })).toMatchObject({
+      status: "running",
+    });
+
+    // A direct chat still pauses on the same ask.
+    const directRun = await runningRun();
+    expect(
+      await pause(directRun.run, directRun.attempt, [
+        { kind: "ask", text: "Which city?", status: "pending" },
+      ]),
+    ).toBe(true);
+
+    // Approvals are decisions, not addressable inputs: the group may host them.
+    const approvalRun = await runningRun(groupThreadId);
+    const effect = await prisma.externalEffect.create({
+      data: {
+        spaceId: id,
+        runId: approvalRun.run.id,
+        kind: `group-approval-${approvalRun.run.id}`,
+        idempotencyKey: `group-effect-${approvalRun.run.id}`,
+        status: "intended",
+        request: { token: SECRET },
+      },
+    });
+    expect(
+      await pause(
+        approvalRun.run,
+        approvalRun.attempt,
+        [
+          {
+            kind: "ask",
+            text: "Approve?",
+            status: "pending",
+            approvalEffectId: effect.id,
+            actions: [
+              { id: "allow", label: "Allow once" },
+              { id: "deny", label: "Deny" },
+            ],
+          },
+        ],
+        groupThreadId,
+      ),
+    ).toBe(true);
+    expect(await prisma.intervention.count({ where: { runId: approvalRun.run.id } })).toBe(1);
   });
 });

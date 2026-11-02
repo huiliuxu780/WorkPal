@@ -1,0 +1,921 @@
+
+> workpal@0.1.0 test:e2e /repo
+> tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=card-ui-interactions.spec.ts"
+
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+
+> @rakazo/db@0.1.0 generate /repo/packages/db
+> prisma generate
+
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+
+✔ Generated Prisma Client (7.10.0) to ./src/generated/prisma in 289ms
+
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+Datasource "db": PostgreSQL database "workpal_e2e_groupdm05", schema "public" at "127.0.0.1:5432"
+
+135 migrations found in prisma/migrations
+
+Applying migration `0001_init`
+Applying migration `0002_bot_parent`
+Applying migration `0003_computer_host`
+Applying migration `0004_thread_sequences`
+Applying migration `0005_bot_pinned`
+Applying migration `0005_reconciliation_cursor_index`
+Applying migration `0006_computer_control_lease_expiry`
+Applying migration `0006_thread_unread`
+Applying migration `0007_computer_control_lease_expiry_index`
+Applying migration `0008_bot_deletions`
+Applying migration `0008_bot_spawn_key`
+Applying migration `0008_team_computers`
+Applying migration `0009_computer_execution_leases`
+Applying migration `0010_add_history_compacted_up_to_seq`
+Applying migration `0010_taught_skills`
+Applying migration `0010_voice`
+Applying migration `0011_action_approval_rules`
+Applying migration `0011_taught_skills_one_recording`
+Applying migration `0011_voice_credential_provider_unique`
+Applying migration `0012_bot_sections`
+Applying migration `0013_group_chats`
+Applying migration `0013_mcp_registry`
+Applying migration `20260819054109_add_workspace_memory_config`
+Applying migration `20260821091013_add_history_compaction_summary`
+Applying migration `20260823030000_harden_group_chat_sends`
+Applying migration `20260823120000_multiple_connectors`
+Applying migration `20260823133000_add_message_reply_index`
+Applying migration `20260823151500_bind_control_leases_to_runs`
+Applying migration `20260823180000_validate_bot_memory_scope`
+Applying migration `20260823200000_generalize_workspace_memory_provider`
+Applying migration `20260824120000_persist_mcp_oauth_sessions`
+Applying migration `20260825080000_bot_model_override`
+Applying migration `20260825100000_agent_skills`
+Applying migration `20260825103000_agent_skills_name_ci`
+Applying migration `20260825120000_scratchpad_items`
+Applying migration `20260825140000_routine_multi_schedule_and_run_routine_id`
+Applying migration `20260825140001_runs_routineid_idx_concurrent`
+Applying migration `20260825140002_runs_routineid_fkey_not_valid`
+Applying migration `20260825140003_runs_routineid_fkey_validate`
+Applying migration `20260827140000_add_avatar_style`
+Applying migration `20260827170000_bot_webhook_secret`
+Applying migration `20260828010000_initialize_signup_policy`
+Applying migration `20260828013000_routine_webhook_enabled`
+Applying migration `20260828090000_group_organization`
+Applying migration `20260828090001_group_organization_list_idx_concurrent`
+Applying migration `20260828090002_group_organization_section_idx_concurrent`
+Applying migration `20260828090002a_group_organization_repair_invalid_idx`
+Applying migration `20260828090003_group_organization_section_fkey_not_valid`
+Applying migration `20260828090004_group_organization_section_fkey_validate`
+Applying migration `20260828090005_group_organization_old_idx_drop_concurrent`
+Applying migration `20260828120000_phone_surface`
+Applying migration `20260828130000_agent_connections`
+Applying migration `20260828130000_auto_review`
+Applying migration `20260828214500_bot_outcome_return`
+Applying migration `20260828214501_bot_outcome_return_idx_concurrent`
+Applying migration `20260829120000_phone_outbound_attempts`
+Applying migration `20260829210000_phone_outbound_next_attempt`
+Applying migration `20260829210001_phone_outbound_next_attempt_idx_concurrent`
+Applying migration `20260829210002_phone_outbound_status_idx_drop_concurrent`
+Applying migration `20260830010000_bot_position`
+Applying migration `20260830010000_routine_thread_target_fkey_not_valid`
+Applying migration `20260830010001_routine_thread_target_fkey_validate`
+Applying migration `20260830150000_organization_spaces`
+Applying migration `20260830200000_space_scope_names_and_user_credentials`
+Applying migration `20260831090000_message_thumbs_up`
+Applying migration `20260831235900_steering_messages`
+Applying migration `20260901040000_messaging_mirror_recovery`
+Applying migration `20260901040001_messaging_mirror_recovery_idx_concurrent`
+Applying migration `20260901120000_messaging_surface`
+Applying migration `20260906010000_cloud_agents`
+Applying migration `20260906020000_bot_secrets`
+Applying migration `20260906120000_messaging_team_chat`
+Applying migration `20260906120100_agent_secrets`
+Applying migration `20260907010000_routine_github_enabled`
+Applying migration `20260907020000_user_model_vision`
+Applying migration `20260907120000_routine_message_provider`
+Applying migration `20260907130000_usage_records_keep_bot_attribution`
+Applying migration `20260907200000_invitation_created_at`
+Applying migration `20260908000000_integration_provider_configs`
+Applying migration `20260908010000_computer_updates`
+Applying migration `20260908090000_message_reaction`
+Applying migration `20260908120000_space_lifecycle_state`
+Applying migration `20260909000000_screen_generation`
+Applying migration `20260914150000_ai_data_consent`
+Applying migration `20260915000000_message_reply_quote`
+Applying migration `20260925120000_artifact_versions`
+Applying migration `20260925130000_usage_record_cache_tokens`
+Applying migration `20260925223000_steering_origin_trigger`
+Applying migration `20260927170000_voice_speech_model`
+Applying migration `20261008000000_background_agent_tasks`
+Applying migration `20261008100000_product_harness_phase1`
+Applying migration `20261012000000_avatar_style_bloub_default`
+Applying migration `20261013000000_task18_event_envelope`
+Applying migration `20261013010000_task18_delivery_outbox`
+Applying migration `20261013015000_task18_run_retry`
+Applying migration `20261013016000_task18_run_budget`
+Applying migration `20261013020000_task18_capability_rules`
+Applying migration `20261013030000_structured_run_plans`
+Applying migration `20261013040000_semantic_run_steps`
+Applying migration `20261013050000_run_todos`
+Applying migration `20261013060000_run_wait_started_at`
+Applying migration `20261013070000_attempt_fence_uniqueness`
+Applying migration `20261013080000_execution_revocation_outbox`
+Applying migration `20261013090000_background_task_lookup_indexes`
+Applying migration `20261013100000_interventions`
+Applying migration `20261013110000_intervention_presentation`
+Applying migration `20261013120000_execution_history_indexes`
+Applying migration `20261013130000_run_snapshot_rev`
+Applying migration `20261016100000_message_provenance`
+Applying migration `20261017000000_bot_avatar_identity`
+Applying migration `20261017010000_avatar_failure_receipts`
+Applying migration `20261017020000_convert_legacy_bot_avatars`
+Applying migration `20261017030000_bot_avatar_changes`
+Applying migration `20261017040000_bot_avatar_changes_write_order`
+Applying migration `20261019090000_manual_retry_lineage`
+Applying migration `20261019120000_avatar_body_color`
+Applying migration `20261019150000_manual_retry_operation_identity`
+Applying migration `20261020090000_unified_plan_review`
+Applying migration `20261020100000_memory_facts_three_layer`
+Applying migration `20261022000000_agent_pair_chat_groups`
+Applying migration `20261023120000_task_instruction_envelope`
+Applying migration `20261023130000_agent_pair_message_origins`
+Applying migration `20261023150000_session_admission_lease`
+Applying migration `20261023150000_task_amendment_followup`
+Applying migration `20261024090000_session_checkpoint`
+Applying migration `20261024100000_run_private_pair_origin`
+Applying migration `20261025120000_cancel_terminal_policy`
+Applying migration `20261025130000_cancel_outcome_retry_rotation`
+Applying migration `20261026090000_outbound_draft_revisions`
+Applying migration `20261027120000_group_membership_requests`
+Applying migration `20261028150000_messages_blocks_gin`
+Applying migration `20261028210000_attention_intervention_projection`
+Applying migration `20261028230000_attention_renderable_projection`
+Applying migration `20261101120000_delivery_result_message`
+Applying migration `20261101160000_share_links`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 0001_init/
+    └─ migration.sql
+  └─ 0002_bot_parent/
+    └─ migration.sql
+  └─ 0003_computer_host/
+    └─ migration.sql
+  └─ 0004_thread_sequences/
+    └─ migration.sql
+  └─ 0005_bot_pinned/
+    └─ migration.sql
+  └─ 0005_reconciliation_cursor_index/
+    └─ migration.sql
+  └─ 0006_computer_control_lease_expiry/
+    └─ migration.sql
+  └─ 0006_thread_unread/
+    └─ migration.sql
+  └─ 0007_computer_control_lease_expiry_index/
+    └─ migration.sql
+  └─ 0008_bot_deletions/
+    └─ migration.sql
+  └─ 0008_bot_spawn_key/
+    └─ migration.sql
+  └─ 0008_team_computers/
+    └─ migration.sql
+  └─ 0009_computer_execution_leases/
+    └─ migration.sql
+  └─ 0010_add_history_compacted_up_to_seq/
+    └─ migration.sql
+  └─ 0010_taught_skills/
+    └─ migration.sql
+  └─ 0010_voice/
+    └─ migration.sql
+  └─ 0011_action_approval_rules/
+    └─ migration.sql
+  └─ 0011_taught_skills_one_recording/
+    └─ migration.sql
+  └─ 0011_voice_credential_provider_unique/
+    └─ migration.sql
+  └─ 0012_bot_sections/
+    └─ migration.sql
+  └─ 0013_group_chats/
+    └─ migration.sql
+  └─ 0013_mcp_registry/
+    └─ migration.sql
+  └─ 20260819054109_add_workspace_memory_config/
+    └─ migration.sql
+  └─ 20260821091013_add_history_compaction_summary/
+    └─ migration.sql
+  └─ 20260823030000_harden_group_chat_sends/
+    └─ migration.sql
+  └─ 20260823120000_multiple_connectors/
+    └─ migration.sql
+  └─ 20260823133000_add_message_reply_index/
+    └─ migration.sql
+  └─ 20260823151500_bind_control_leases_to_runs/
+    └─ migration.sql
+  └─ 20260823180000_validate_bot_memory_scope/
+    └─ migration.sql
+  └─ 20260823200000_generalize_workspace_memory_provider/
+    └─ migration.sql
+  └─ 20260824120000_persist_mcp_oauth_sessions/
+    └─ migration.sql
+  └─ 20260825080000_bot_model_override/
+    └─ migration.sql
+  └─ 20260825100000_agent_skills/
+    └─ migration.sql
+  └─ 20260825103000_agent_skills_name_ci/
+    └─ migration.sql
+  └─ 20260825120000_scratchpad_items/
+    └─ migration.sql
+  └─ 20260825140000_routine_multi_schedule_and_run_routine_id/
+    └─ migration.sql
+  └─ 20260825140001_runs_routineid_idx_concurrent/
+    └─ migration.sql
+  └─ 20260825140002_runs_routineid_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260825140003_runs_routineid_fkey_validate/
+    └─ migration.sql
+  └─ 20260827140000_add_avatar_style/
+    └─ migration.sql
+  └─ 20260827170000_bot_webhook_secret/
+    └─ migration.sql
+  └─ 20260828010000_initialize_signup_policy/
+    └─ migration.sql
+  └─ 20260828013000_routine_webhook_enabled/
+    └─ migration.sql
+  └─ 20260828090000_group_organization/
+    └─ migration.sql
+  └─ 20260828090001_group_organization_list_idx_concurrent/
+    └─ migration.sql
+  └─ 20260828090002_group_organization_section_idx_concurrent/
+    └─ migration.sql
+  └─ 20260828090002a_group_organization_repair_invalid_idx/
+    └─ migration.sql
+  └─ 20260828090003_group_organization_section_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260828090004_group_organization_section_fkey_validate/
+    └─ migration.sql
+  └─ 20260828090005_group_organization_old_idx_drop_concurrent/
+    └─ migration.sql
+  └─ 20260828120000_phone_surface/
+    └─ migration.sql
+  └─ 20260828130000_agent_connections/
+    └─ migration.sql
+  └─ 20260828130000_auto_review/
+    └─ migration.sql
+  └─ 20260828214500_bot_outcome_return/
+    └─ migration.sql
+  └─ 20260828214501_bot_outcome_return_idx_concurrent/
+    └─ migration.sql
+  └─ 20260829120000_phone_outbound_attempts/
+    └─ migration.sql
+  └─ 20260829210000_phone_outbound_next_attempt/
+    └─ migration.sql
+  └─ 20260829210001_phone_outbound_next_attempt_idx_concurrent/
+    └─ migration.sql
+  └─ 20260829210002_phone_outbound_status_idx_drop_concurrent/
+    └─ migration.sql
+  └─ 20260830010000_bot_position/
+    └─ migration.sql
+  └─ 20260830010000_routine_thread_target_fkey_not_valid/
+    └─ migration.sql
+  └─ 20260830010001_routine_thread_target_fkey_validate/
+    └─ migration.sql
+  └─ 20260830150000_organization_spaces/
+    └─ migration.sql
+  └─ 20260830200000_space_scope_names_and_user_credentials/
+    └─ migration.sql
+  └─ 20260831090000_message_thumbs_up/
+    └─ migration.sql
+  └─ 20260831235900_steering_messages/
+    └─ migration.sql
+  └─ 20260901040000_messaging_mirror_recovery/
+    └─ migration.sql
+  └─ 20260901040001_messaging_mirror_recovery_idx_concurrent/
+    └─ migration.sql
+  └─ 20260901120000_messaging_surface/
+    └─ migration.sql
+  └─ 20260906010000_cloud_agents/
+    └─ migration.sql
+  └─ 20260906020000_bot_secrets/
+    └─ migration.sql
+  └─ 20260906120000_messaging_team_chat/
+    └─ migration.sql
+  └─ 20260906120100_agent_secrets/
+    └─ migration.sql
+  └─ 20260907010000_routine_github_enabled/
+    └─ migration.sql
+  └─ 20260907020000_user_model_vision/
+    └─ migration.sql
+  └─ 20260907120000_routine_message_provider/
+    └─ migration.sql
+  └─ 20260907130000_usage_records_keep_bot_attribution/
+    └─ migration.sql
+  └─ 20260907200000_invitation_created_at/
+    └─ migration.sql
+  └─ 20260908000000_integration_provider_configs/
+    └─ migration.sql
+  └─ 20260908010000_computer_updates/
+    └─ migration.sql
+  └─ 20260908090000_message_reaction/
+    └─ migration.sql
+  └─ 20260908120000_space_lifecycle_state/
+    └─ migration.sql
+  └─ 20260909000000_screen_generation/
+    └─ migration.sql
+  └─ 20260914150000_ai_data_consent/
+    └─ migration.sql
+  └─ 20260915000000_message_reply_quote/
+    └─ migration.sql
+  └─ 20260925120000_artifact_versions/
+    └─ migration.sql
+  └─ 20260925130000_usage_record_cache_tokens/
+    └─ migration.sql
+  └─ 20260925223000_steering_origin_trigger/
+    └─ migration.sql
+  └─ 20260927170000_voice_speech_model/
+    └─ migration.sql
+  └─ 20261008000000_background_agent_tasks/
+    └─ migration.sql
+  └─ 20261008100000_product_harness_phase1/
+    └─ migration.sql
+  └─ 20261012000000_avatar_style_bloub_default/
+    └─ migration.sql
+  └─ 20261013000000_task18_event_envelope/
+    └─ migration.sql
+  └─ 20261013010000_task18_delivery_outbox/
+    └─ migration.sql
+  └─ 20261013015000_task18_run_retry/
+    └─ migration.sql
+  └─ 20261013016000_task18_run_budget/
+    └─ migration.sql
+  └─ 20261013020000_task18_capability_rules/
+    └─ migration.sql
+  └─ 20261013030000_structured_run_plans/
+    └─ migration.sql
+  └─ 20261013040000_semantic_run_steps/
+    └─ migration.sql
+  └─ 20261013050000_run_todos/
+    └─ migration.sql
+  └─ 20261013060000_run_wait_started_at/
+    └─ migration.sql
+  └─ 20261013070000_attempt_fence_uniqueness/
+    └─ migration.sql
+  └─ 20261013080000_execution_revocation_outbox/
+    └─ migration.sql
+  └─ 20261013090000_background_task_lookup_indexes/
+    └─ migration.sql
+  └─ 20261013100000_interventions/
+    └─ migration.sql
+  └─ 20261013110000_intervention_presentation/
+    └─ migration.sql
+  └─ 20261013120000_execution_history_indexes/
+    └─ migration.sql
+  └─ 20261013130000_run_snapshot_rev/
+    └─ migration.sql
+  └─ 20261016100000_message_provenance/
+    └─ migration.sql
+  └─ 20261017000000_bot_avatar_identity/
+    └─ migration.sql
+  └─ 20261017010000_avatar_failure_receipts/
+    └─ migration.sql
+  └─ 20261017020000_convert_legacy_bot_avatars/
+    └─ migration.sql
+  └─ 20261017030000_bot_avatar_changes/
+    └─ migration.sql
+  └─ 20261017040000_bot_avatar_changes_write_order/
+    └─ migration.sql
+  └─ 20261019090000_manual_retry_lineage/
+    └─ migration.sql
+  └─ 20261019120000_avatar_body_color/
+    └─ migration.sql
+  └─ 20261019150000_manual_retry_operation_identity/
+    └─ migration.sql
+  └─ 20261020090000_unified_plan_review/
+    └─ migration.sql
+  └─ 20261020100000_memory_facts_three_layer/
+    └─ migration.sql
+  └─ 20261022000000_agent_pair_chat_groups/
+    └─ migration.sql
+  └─ 20261023120000_task_instruction_envelope/
+    └─ migration.sql
+  └─ 20261023130000_agent_pair_message_origins/
+    └─ migration.sql
+  └─ 20261023150000_session_admission_lease/
+    └─ migration.sql
+  └─ 20261023150000_task_amendment_followup/
+    └─ migration.sql
+  └─ 20261024090000_session_checkpoint/
+    └─ migration.sql
+  └─ 20261024100000_run_private_pair_origin/
+    └─ migration.sql
+  └─ 20261025120000_cancel_terminal_policy/
+    └─ migration.sql
+  └─ 20261025130000_cancel_outcome_retry_rotation/
+    └─ migration.sql
+  └─ 20261026090000_outbound_draft_revisions/
+    └─ migration.sql
+  └─ 20261027120000_group_membership_requests/
+    └─ migration.sql
+  └─ 20261028150000_messages_blocks_gin/
+    └─ migration.sql
+  └─ 20261028210000_attention_intervention_projection/
+    └─ migration.sql
+  └─ 20261028230000_attention_renderable_projection/
+    └─ migration.sql
+  └─ 20261101120000_delivery_result_message/
+    └─ migration.sql
+  └─ 20261101160000_share_links/
+    └─ migration.sql
+
+All migrations have been successfully applied.
+2026-11-02T02:55:50.029Z WARN [Better Auth]: [better-auth] Warning: your BETTER_AUTH_SECRET appears low-entropy. Use a randomly generated secret for production.
+02:55:50.045 INFO  http.request.completed service.name=rakazo-api request.id=f38b3fa5-2fda-4e0c-9362-35126143f3ab trace.id=6a581a0d10f6ee25ed41197da28cd85b span.id=888583f3c27f2880 http.method=GET http.route=/health http.status=200 http.duration_ms=1
+
+Running 4 tests using 1 worker
+
+[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /repo/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+02:55:54.337 INFO  http.request.completed service.name=rakazo-api request.id=a0e7ab74-6fd6-412b-89cd-1649b1c31a6a trace.id=cd6050d8194ad4631ce242fe03ff3b96 span.id=9d5a0edb5d9aef7e http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=9
+02:55:54.857 INFO  http.request.completed service.name=rakazo-api request.id=81a8fb24-bfb5-4490-9839-1f59ee0e1cf4 trace.id=dc44956057ce3714515c6719b76a3b8b span.id=b8b30b8b96bbb4b9 http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=94
+02:55:54.867 INFO  http.request.completed service.name=rakazo-api request.id=c0d36e73-ab03-4c76-995a-59a63f53259e trace.id=c3da9390774ba8cb6eeab91f8bc10b45 span.id=c5d739ed0554b801 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:55:54.869 INFO  http.request.completed service.name=rakazo-api request.id=9e6ac1e9-1977-4886-912b-ebe5c9209ad6 trace.id=2b55dc41b1b447d553455175344b61ca span.id=6d2f87e46c36b551 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:55:54.877 INFO  http.request.completed service.name=rakazo-api request.id=d064939b-aa75-4e3d-b121-0cbf5830f236 trace.id=5538c418738def7d838c5adeb599501a span.id=865af79f89381c9a http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=5
+02:55:54.913 INFO  http.request.completed service.name=rakazo-api request.id=550864d1-c500-4fe4-95a5-05500e08b800 trace.id=30ef24e43381e92f6f4f601b905385fe span.id=7712af3f91aebb85 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=27
+02:55:54.914 INFO  http.request.completed service.name=rakazo-api request.id=e708d3cb-f8f2-4672-a4b2-919c9ff9d50d trace.id=1c188eddb18f5375237d2e1bd226ca43 span.id=6c2bbb7cc3927138 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=30
+02:55:54.917 INFO  http.request.completed service.name=rakazo-api request.id=afe70038-9847-4cf2-b5ec-758885f28e1c trace.id=a5753c4101f27605d168609ed3c2e4b6 span.id=e351d5b18f01b1c1 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=32
+02:55:54.920 INFO  http.request.completed service.name=rakazo-api request.id=3caa298a-f77a-4151-a62e-dab0299a3aab trace.id=b6856ca861608041c1ebf91f1a1754d0 span.id=be99e96534e6a147 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=31
+02:55:54.922 INFO  http.request.completed service.name=rakazo-api request.id=d631f4a7-e076-4759-a987-1c0e1253babf trace.id=87463927041e972402e9c5e041034c70 span.id=260f74e6b7950e17 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=30
+02:55:54.925 INFO  http.request.completed service.name=rakazo-api request.id=66d8e0aa-843d-4696-8745-ef61485fe713 trace.id=698c5aaa034c8eed88738bdf0b3a0558 span.id=df1608215ef28408 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=30
+02:55:54.933 INFO  http.request.completed service.name=rakazo-api request.id=f4cd4b1c-7f0e-4bcf-aa03-5e99d8d241c9 trace.id=6dc08ebff1a03ae13cdf57d9be96282c span.id=bdcba1ba07b6e304 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:54.938 INFO  http.request.completed service.name=rakazo-api request.id=b1045423-5cd6-4b7f-a851-7d451bbc4c09 trace.id=499c2f3cd493c2a6816b3e04bdc9c41f span.id=a580169e75b8cffe user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:54.939 INFO  http.request.completed service.name=rakazo-api request.id=bf9b824d-fa73-429c-bd1e-758c440f4961 trace.id=5fd9fea5a01e2cd7081c46d6a89f541e span.id=bdbe1efbc059eb26 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:54.943 INFO  http.request.completed service.name=rakazo-api request.id=a8bc6854-0afe-40bd-bbcb-8bf30e5b263d trace.id=1061667770fe9a63cd1b96991a03b29d span.id=05777385b9bb8104 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:55:54.948 INFO  http.request.completed service.name=rakazo-api request.id=f5a4781d-5e25-4386-85b0-969cd64c51ea trace.id=4f94db884c68c246daa4ee7d862f7346 span.id=066b2af215298619 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:55:54.961 INFO  http.request.completed service.name=rakazo-api request.id=c68ed0bf-c1f0-4bd7-a8b0-0cdb6673360c trace.id=26f38794333752401fe276f2af66120f span.id=33c5970422059aab user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=37
+02:55:54.976 INFO  http.request.completed service.name=rakazo-api request.id=d54840d6-d2cb-4e3a-a120-9da7106d1f62 trace.id=29f1be9a9f75d1208847db1eaf292534 span.id=07b2c0786a8162c7 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=31
+02:55:54.978 INFO  http.request.completed service.name=rakazo-api request.id=d7762152-80ae-4db9-8d14-f4de730b5bee trace.id=e602277cfed569d0cc0d98daa79ca9fa span.id=53a1fc39fa89c9c1 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=37
+02:55:54.981 INFO  http.request.completed service.name=rakazo-api request.id=1ba34ef1-ac8d-4f75-8a7c-5d01dd201c0d trace.id=2d3e4f56413b48ae063ecbb035d2b07a span.id=0ce74ce288c30308 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=34
+02:55:54.981 INFO  http.request.completed service.name=rakazo-api request.id=8f6caa1c-6f02-4108-adc9-a78fe9b6b5d4 trace.id=35de9a2265a10fc13e95bd7c7e3ec04d span.id=fe7c3112c1245bcb user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=34
+02:55:54.983 INFO  http.request.completed service.name=rakazo-api request.id=deba269f-6cd8-42a8-81dc-23a6b1f6e33e trace.id=f0edd6ac5a2fdbcf5ba99ec848090a84 span.id=b4e366d9f9cf154a user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:55:54.988 INFO  http.request.completed service.name=rakazo-api request.id=4aaed4d3-0d62-4928-bf3d-8ad1f5145215 trace.id=1a700a0e1d459beb113869189dcf648d span.id=a4f9492c77d75dd8 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=24
+02:55:54.990 INFO  http.request.completed service.name=rakazo-api request.id=676f00f0-257a-4dcf-b001-40c0c3864bdf trace.id=f7c8eeac4290c6ddea8026e01a5fc245 span.id=e831e96e8f9fbace user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:55:54.995 INFO  http.request.completed service.name=rakazo-api request.id=9683d682-c1c5-4bf3-8b9e-78036b590230 trace.id=e6cee861ef3ba21fa580ce3bedd8db2c span.id=2c7710477c3da30b user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:54.998 INFO  http.request.completed service.name=rakazo-api request.id=a9a2c2fa-1a54-47f7-981c-0c1efeb8e164 trace.id=495a45be516f1dece4d9e7f8cf182b5f span.id=681cabb7e688d6ec user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:55.000 INFO  http.request.completed service.name=rakazo-api request.id=69d4c0c0-25bb-4603-af88-3e96238ba556 trace.id=4f1d4d8f079c8439f3e208e77cacac55 span.id=119c0f2155e8134b user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:55.004 INFO  http.request.completed service.name=rakazo-api request.id=1e32fd28-755a-4e6f-aadb-94177d06a419 trace.id=c8c4bc7c5884e5322536d86458d9bae2 span.id=2e67d720cd8bf866 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:55.005 INFO  http.request.completed service.name=rakazo-api request.id=1b662360-a70f-4c98-a857-888c218b3a97 trace.id=3a865e61a4da94e180dd2b3f181336fd span.id=fa9e0b441bc1ab66 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:55:55.014 INFO  http.request.completed service.name=rakazo-api request.id=5e258fc3-91df-4b33-9414-d21bed3fb26e trace.id=e5fd8a980bba58f4095e04d682938ee3 span.id=87ecc5668839e1ae user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:55:55.036 INFO  http.request.completed service.name=rakazo-api request.id=11228a9d-1b0d-4b0c-853d-9c949b88e133 trace.id=a170abc3e12e9b7164eed8388966c1b8 span.id=4815e04d13b27430 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:55.037 INFO  http.request.completed service.name=rakazo-api request.id=954833ba-d7aa-496b-b146-d14b79bf9f55 trace.id=c5b2e8854593d4955618bc0e1bc3a356 span.id=92879030255e353c user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:55.038 INFO  http.request.completed service.name=rakazo-api request.id=b8119fc6-d10b-47ce-9f2e-ce803916291d trace.id=2677a0a9b5e8c291e1f5e9c5621e1a09 span.id=d89cc72bc3dcf5ff user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:55:55.343 INFO  http.request.completed service.name=rakazo-api request.id=fc74128b-fabe-40ea-896b-2587fd732a67 trace.id=ba1eb2f180d375207f182f555a2fd9e0 span.id=f89a37d596c8b3b1 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:55:55.346 INFO  http.request.completed service.name=rakazo-api request.id=155a87bc-e1b1-4967-9edb-f1e728613031 trace.id=b95c36ae096fdf6f627d39e1425d420f span.id=d1a91977c777a999 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=31
+02:55:55.348 INFO  http.request.completed service.name=rakazo-api request.id=f41934fd-48fa-46ba-b154-e0539c9df4e9 trace.id=9d707dcee78e72de285460480e98108a span.id=092fdc3e10daf4b8 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=31
+02:55:55.351 INFO  http.request.completed service.name=rakazo-api request.id=d9b78e45-e6f7-42b2-80c3-1fa38c73a803 trace.id=971eafdbc687123b8bd4238a3b67f90e span.id=1d3029f7d1bbcbd5 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=30
+02:55:55.356 INFO  http.request.completed service.name=rakazo-api request.id=6d3a7e20-cf17-4437-91d0-e5c2c05c4153 trace.id=becca4d9c5a05c2cd3645ee6c4dd73fd span.id=b9a068895d268458 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=33
+02:55:55.357 INFO  http.request.completed service.name=rakazo-api request.id=d0e86212-def2-49c1-9108-cf233c09cfbb trace.id=d017af584897d490902a5c5701722db2 span.id=4c6dcdae0b749aa9 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=30
+02:55:55.366 INFO  http.request.completed service.name=rakazo-api request.id=f3b678ce-f85d-4f0c-b437-775c5eac0485 trace.id=75d7cf2e3d3d07e5b283077134198585 span.id=f088d1aeec44875e user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:55.394 INFO  http.request.completed service.name=rakazo-api request.id=9056d969-c730-4549-b7a9-4e68cc56cc65 trace.id=a5ea3a09110e57ddc5c1970d6ddcd657 span.id=96e1925b88fe385a user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:55:55.401 INFO  http.request.completed service.name=rakazo-api request.id=15d4c341-0766-41be-81b4-b2ff97dd804e trace.id=f80f5d2c03104acf1c40b13023d74e3a span.id=fe726102b9ab4e4d user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:55:55.415 INFO  http.request.completed service.name=rakazo-api request.id=7fa6307b-2b52-4fc3-b721-88d3ea029cbb trace.id=0cad75f5e827d70b26f7dabcdba0e136 span.id=9cfcac25c64971f4 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:55.443 INFO  http.request.completed service.name=rakazo-api request.id=3dad1205-6999-4e38-80b6-e3284db040fe trace.id=4485806097198520bcb80c60731a4740 span.id=12721f3f37acb349 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:55:55.443 INFO  http.request.completed service.name=rakazo-api request.id=5dec6fca-23f0-49e8-bee2-3fa0fb4775ac trace.id=82831a66874b61b57a8cc5e389c0ce14 span.id=5e47376b21a52159 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:55:55.447 INFO  http.request.completed service.name=rakazo-api request.id=878aaf89-6a06-42b3-a0ca-fb2e6de492e7 trace.id=758a0de629852c7b616a9668d175052c span.id=c4caf9f18592c216 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:55.449 INFO  http.request.completed service.name=rakazo-api request.id=908b1034-d6ed-46eb-bc9d-656c9cae605b trace.id=1fb44747161906e4e7856d68f25dbad0 span.id=ecdbe0137f5f3dd9 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:55.454 INFO  http.request.completed service.name=rakazo-api request.id=29ad203b-6f83-476c-96f7-cbc1fe5f804e trace.id=beb809575af1593971bfba7bc86ad604 span.id=5dc28e089bb7bc75 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:55:55.465 INFO  http.request.completed service.name=rakazo-api request.id=3c108f31-a6a5-44bc-9208-6726703283ac trace.id=58badc30439abad4a107fa2a7686db67 span.id=d89c5610d8e0f84e user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:55.469 INFO  http.request.completed service.name=rakazo-api request.id=fc0f8f44-e1a2-43d1-9e61-03b725e90be3 trace.id=bc5f38bdcb01446b4fa107b8a7750e3e span.id=8b4632055a29a605 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:55:55.476 INFO  http.request.completed service.name=rakazo-api request.id=1c5177c8-00a7-43d0-b608-059757c3330b trace.id=85b7c02cccadd21310fb7c3916551ce8 span.id=15633b18446d44c0 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=27
+02:55:55.477 INFO  http.request.completed service.name=rakazo-api request.id=27b635d7-d694-4085-b32b-da5eecf2e92b trace.id=ab9ae3c37bc3e5817ed192f516ed85af span.id=affaaca6763e5381 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:55:55.489 INFO  http.request.completed service.name=rakazo-api request.id=6d0cbb4a-d6ba-4d02-8ca1-c55bbec7ba9e trace.id=9c6a8dea00286c5933969754d0e3f916 span.id=b1cb79975a8562e8 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=33
+02:55:55.489 INFO  http.request.completed service.name=rakazo-api request.id=3af63884-e24a-48eb-a1b0-abdf7158e8bb trace.id=42026add96d124dfeea13fa626c7e740 span.id=eff626f5625cba96 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:55:55.492 INFO  http.request.completed service.name=rakazo-api request.id=566338f8-1320-4944-a831-802554e871f1 trace.id=a73a8af8b7b60e567bfc69d7358c9ac4 span.id=e4dd4e3bea587017 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:55.498 INFO  http.request.completed service.name=rakazo-api request.id=3e9a709c-5e89-4bef-8aa0-faf039756150 trace.id=48f7c5c487910998f89c3d009d92ea2e span.id=1bf539b0964b0f6a user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:55.513 INFO  http.request.completed service.name=rakazo-api request.id=b9ca79bd-e302-4c8d-a94d-b67b30e88a0e trace.id=a2ac692dbb0f7a113f8fd1f3321dfccb span.id=c3aadf044689cf54 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=76
+02:55:55.514 INFO  http.request.completed service.name=rakazo-api request.id=8d004f8a-f6ba-4359-a5bf-46c5f69d12e7 trace.id=46c2d0ddfabadf6bbe583a771a94780c span.id=b6c49dd59f48e8fd user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:55:55.516 INFO  http.request.completed service.name=rakazo-api request.id=1860dc78-f1a7-46ca-8f57-2aac1b132633 trace.id=04f5d02c972f1ba822294a095c2ee681 span.id=c2f14b3927dfc5e5 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:55.517 INFO  http.request.completed service.name=rakazo-api request.id=2fe63f3e-3b18-4235-87df-4048e198c471 trace.id=14672fa41b959912e50213e5a772a0ca span.id=f5ab37829a08eaa0 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:55.522 INFO  http.request.completed service.name=rakazo-api request.id=7eaf050f-5dab-484e-8536-ba20b1386a44 trace.id=53a215ac7fb9cab3d6a79e37cf688ed7 span.id=debbd9cee277b155 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:55.532 INFO  http.request.completed service.name=rakazo-api request.id=e52826cc-e31c-402c-893e-f6c7368d7baa trace.id=65c8abe6edf47fca6a304391ccfed874 span.id=5f43e7d047696199 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=50
+02:55:55.613 INFO  http.request.completed service.name=rakazo-api request.id=423fe15e-0f30-4481-98cf-9407c93c0293 trace.id=92a027a678685d11d38c9b2d4a0c09f4 span.id=9f645c1319b7012c user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:55.613 INFO  http.request.completed service.name=rakazo-api request.id=1f3215b0-73ae-453b-954a-4c2350e217ee trace.id=000dff34e080044474b0452ba083a9b5 span.id=48f7a2f0f03c7bd6 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:55.616 INFO  http.request.completed service.name=rakazo-api request.id=e9c9a6bb-865b-43cc-aca9-e3edaa9e246b trace.id=e90d0f0c05a31e1a3d4850f885fa2330 span.id=7bd020f3e98e7f6c user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:55.617 INFO  http.request.completed service.name=rakazo-api request.id=44f79ac1-d1b8-4f91-91c0-9e85070d8607 trace.id=8f0d053bd64a9b29a32e9045f63f0988 span.id=d93107733ae28a52 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:55:55.621 INFO  http.request.completed service.name=rakazo-api request.id=b981d3a7-950f-4346-81a9-c609d86bf2e1 trace.id=c39b6ebe55793a18b351675a77a1d777 span.id=29bf144e246c0cc7 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:55.630 INFO  http.request.completed service.name=rakazo-api request.id=175303be-2f65-4b39-bc09-981b56056189 trace.id=e3d1cff76f781ba63fc6fec8d6979e0c span.id=fb32915a775adf50 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=32
+02:55:55.717 INFO  http.request.completed service.name=rakazo-api request.id=df59c319-bfae-4cb6-a84e-6e3eaef993f9 trace.id=524d268eaf635cc0a738a01a07b24bd8 span.id=f77e7409dc7e7aa4 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=24
+02:55:55.735 INFO  http.request.completed service.name=rakazo-api request.id=ff98fa7a-ccb1-4a54-9ef9-f95193a0bc5e trace.id=d5b76b50e78e18356b1df6b1daccf172 span.id=1870dfbf721b5ed1 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:55.737 INFO  http.request.completed service.name=rakazo-api request.id=83345efa-a662-4f0c-b52e-a04fdfa0c9ae trace.id=49b1c9fbe22a45ee5240dfb853c9c4d0 span.id=e26a432aeaf8af59 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:55.739 INFO  http.request.completed service.name=rakazo-api request.id=628a98c8-99c5-41de-95f9-feaa9a86c753 trace.id=b690b7cd3e82a238b83a19484d1cac93 span.id=e400787f0072914b user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:55.741 INFO  http.request.completed service.name=rakazo-api request.id=0d8a60f8-cfc4-42ab-bdde-d588a22fdb4b trace.id=1ec13120c5ccbbc2b81a5821eaa91b3d span.id=ccfb050e4ccddde0 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:55.753 INFO  http.request.completed service.name=rakazo-api request.id=669dd119-969c-41f7-acb0-5f265d9ab3ce trace.id=266567de9862de4738fb2115fbd92f74 span.id=68ef3d8f93ce308c user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=34
+02:55:55.781 INFO  http.request.completed service.name=rakazo-api request.id=75fa00db-65ce-4174-a70b-17e2b21c53c9 trace.id=2088cd9c4fb50fa7007b2b6d682ed35d span.id=18fc749e11211cec user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:55.788 INFO  http.request.completed service.name=rakazo-api request.id=bce3e59a-339e-4cc3-9199-32f2aa1e9463 trace.id=0fef7f43c09de8f8e710f5df95a6b2ba span.id=ee740e19a43bf6e8 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=23
+02:55:55.821 INFO  http.request.completed service.name=rakazo-api request.id=0b10cef9-1426-4699-bf7c-0e3d191558c2 trace.id=40393013a96de06f43c2d0c84615cab6 span.id=476573572208c4a9 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=56
+02:55:55.840 INFO  http.request.completed service.name=rakazo-api request.id=f8e0827f-03a7-4774-ba9b-cd2c98800787 trace.id=ecc8289c42e3ff3220e8556c5474396a span.id=82635e857e03cdb8 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:55.845 INFO  http.request.completed service.name=rakazo-api request.id=c5815be5-e92c-459e-abd8-ac6f9d04e383 trace.id=d2d35a5de3d97bcdced9584fb313038d span.id=0ee1807eab821f37 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:55.857 INFO  memory.injection assembled service.name=rakazo-api request.id=669dd119-969c-41f7-acb0-5f265d9ab3ce trace.id=266567de9862de4738fb2115fbd92f74 span.id=1362897548d8ce94 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc job.id=1196e87e-99b1-43d1-9ff4-0028c03e47ca job.type=run.continue run.id=cmvyo2u72000jdbx0ll90n6rk parent.span.id=68ef3d8f93ce308c memory.injection.estimated_tokens=[Redacted] memory.injection.total_budget=4000 memory.injection.summary_included=false memory.injection.summary_stale_blocked=false memory.injection.selected_facts=0 memory.injection.omitted_facts=0 memory.injection.selected_legacy=2 memory.injection.omitted_legacy=0 thread.id=cmvyo2tx60003dbx039xsuw5i
+02:55:55.864 INFO  http.request.completed service.name=rakazo-api request.id=532c2a64-ba11-4056-982c-bd3deb731aec trace.id=fe8bb44ed95cdd3d142de646eac91370 span.id=effa81b1c2f2e15a user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:55:55.889 INFO  http.request.completed service.name=rakazo-api request.id=939f6416-55be-436f-9287-2ee6e633b064 trace.id=24f037214eb1c7de8747409a2e90b258 span.id=660528ec393378b5 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:55.929 INFO  http.request.completed service.name=rakazo-api request.id=4f700034-8c2e-43e2-a094-495365d76f7c trace.id=5de478a0c0142ec8dd70b99a6f981665 span.id=a1addfec606b195b user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:55:55.937 INFO  job.completed service.name=rakazo-api request.id=669dd119-969c-41f7-acb0-5f265d9ab3ce trace.id=266567de9862de4738fb2115fbd92f74 span.id=4cf377b11af75387 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc job.id=bcb7e757-9e5d-465d-a5cb-5e3cdee29152 job.type=memory.extract run.id=cmvyo2u72000jdbx0ll90n6rk parent.span.id=1362897548d8ce94 attempt.id=cmvyo2u82000mdbx07lfsp3d8 thread.id=cmvyo2tx60003dbx039xsuw5i job.duration_ms=3 job.outcome=ok
+02:55:55.942 INFO  job.completed service.name=rakazo-api request.id=669dd119-969c-41f7-acb0-5f265d9ab3ce trace.id=266567de9862de4738fb2115fbd92f74 span.id=1362897548d8ce94 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc job.id=1196e87e-99b1-43d1-9ff4-0028c03e47ca job.type=run.continue run.id=cmvyo2u72000jdbx0ll90n6rk parent.span.id=68ef3d8f93ce308c attempt.id=cmvyo2u82000mdbx07lfsp3d8 job.duration_ms=188 job.outcome=ok
+02:55:55.947 INFO  http.request.completed service.name=rakazo-api request.id=941a81a1-5841-43f1-94be-c62d03b26bb1 trace.id=77fa62f083ab0ff062c996c20fbdeea0 span.id=f98054d030e54b8c user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:55:55.952 INFO  http.request.completed service.name=rakazo-api request.id=983ffae2-12e1-49d0-9be6-e68694e1dbe3 trace.id=a94a77098d1511da79c051925a447fcd span.id=cf3fb96ce505f266 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:55:55.968 INFO  http.request.completed service.name=rakazo-api request.id=19e9501c-053c-48a3-9bbf-4707d8fea081 trace.id=d792f0d9b68513636adf605e0d95d69a span.id=f2810761afcb0f61 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:55:55.976 INFO  http.request.completed service.name=rakazo-api request.id=9ae86779-700d-4a30-94cd-39d19c266ae0 trace.id=2ab2cd4e5ef1c59edeb5d23a9bb0e2f2 span.id=2863bcdc71bdecd8 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:55.976 INFO  http.request.completed service.name=rakazo-api request.id=c39fdc23-ea3a-4428-886e-30e4cbfc74db trace.id=cff7a5b356c1b502132f66a29e7f329f span.id=6dd31c6889d178e0 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:56.172 INFO  http.request.completed service.name=rakazo-api request.id=4fa8e0f4-3f6a-457f-8242-2d0bec421b0f trace.id=b6f745109d60ad05c10f05000d32f89e span.id=8a2dceafd5f7dcc8 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:55:56.565 INFO  http.request.completed service.name=rakazo-api request.id=d2a26161-be54-4347-a052-38c22358f08f trace.id=49a1d1444188d2c14adf3c0aedfa895e span.id=735ded67edceedb3 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:56.794 INFO  http.request.completed service.name=rakazo-api request.id=83e88207-e2e1-4638-bff6-3e1d99ec1a78 trace.id=7182c57561e6de42b16a3dd3eb666dc2 span.id=53218cc9a19f3b68 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:56.850 INFO  http.request.completed service.name=rakazo-api request.id=39db0c85-6b2d-41d7-8d3d-80d7065689c3 trace.id=d7a16f3d0dec5fe3021ceeaa52a95984 span.id=15641795f5717a94 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:56.857 INFO  http.request.completed service.name=rakazo-api request.id=3d0bacdf-fad7-4b07-811d-d2c0b2de7d79 trace.id=093e18acb1b5d905f40e86bcd06a323d span.id=7becaf2a2c5573f1 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=3
+02:55:56.857 INFO  http.request.completed service.name=rakazo-api request.id=377535a1-e44e-40cd-a1e6-f0639187dd0f trace.id=03956be81f97bf1f7fd2568e5518d4d4 span.id=fe0dc9f0812d07c2 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=4
+02:55:56.888 INFO  http.request.completed service.name=rakazo-api request.id=ead68d5f-f4a4-4172-9a0f-618cdcad245b trace.id=fde406a4ab51b9fe2817ace2320f2129 span.id=5d3227f288061f31 user.id=FaJwxTgZetpL8rmB3Jnvfu5gGloAYttx space.id=4b17084381d1bc4cd70d0fb47a3054bc http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+  ✓  1 [chromium] › e2e/card-ui-interactions.spec.ts:46:1 › renders an MCP assignment as the unified CARD-01B card and settles it (5.2s)
+02:55:58.201 INFO  http.request.completed service.name=rakazo-api request.id=3fe1bd37-76ed-41fb-95ec-99d83602b33e trace.id=8fdfd517a5ef1ee550643fb5162bd070 span.id=58d2bc507668db00 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=1
+02:55:58.688 INFO  http.request.completed service.name=rakazo-api request.id=0bc1b8ba-ac11-4259-bc07-5ecd8d566c72 trace.id=64fc01b5e35363af93530745b8317d38 span.id=5174f547dc58eb1c http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=59
+02:55:58.698 INFO  http.request.completed service.name=rakazo-api request.id=578ed84c-7a1e-4c94-8cfc-950ff484a9df trace.id=eceb79f7bb0b5893bffdefde74284887 span.id=783fef07e570db6d http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:55:58.700 INFO  http.request.completed service.name=rakazo-api request.id=801def1a-54ed-4269-9c2d-686a6bf2adcb trace.id=02710f68390c20495e119ad7772199dd span.id=678a83b2fbd0da89 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:55:58.705 INFO  http.request.completed service.name=rakazo-api request.id=26999bee-4d3e-4059-b506-1a189373b3dd trace.id=cd95d25191ee510428124465fa52924e span.id=1083fd4a76d43036 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=3
+02:55:58.720 INFO  http.request.completed service.name=rakazo-api request.id=8b527a87-adb3-4573-9a59-787b88133928 trace.id=c2f419f75c83d7942790bc9f52e7ebfb span.id=433186effc2ee9ab user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:58.721 INFO  http.request.completed service.name=rakazo-api request.id=342df97c-973e-477e-a370-d78806f1e57b trace.id=da582c8436f1c9387046bafc733a152e span.id=44ee078ea98ae141 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:58.721 INFO  http.request.completed service.name=rakazo-api request.id=8ce2c06f-2865-4d51-8ba4-df79d1bf4948 trace.id=c521fd25de1ddd563d2486f8dd119883 span.id=4dca6b6ac1811655 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:58.722 INFO  http.request.completed service.name=rakazo-api request.id=8b1cc259-04a1-4736-805d-2236192eebc1 trace.id=7b6fe612406c27888294b55da8be6f12 span.id=f28c53555e8a46e1 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:58.723 INFO  http.request.completed service.name=rakazo-api request.id=bc073374-e2dc-4618-8742-9c6b58ed482f trace.id=5af88db272ccfd8cc09df57ba61c23a1 span.id=03a885b5ff58e218 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:58.724 INFO  http.request.completed service.name=rakazo-api request.id=0001be2e-dcc4-43e4-b859-262940b57ad1 trace.id=111f6881bc6377add31e536cb1f00671 span.id=1abf213728b09a99 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:58.744 INFO  http.request.completed service.name=rakazo-api request.id=39af1fec-dda3-4c5c-96aa-409662dd6e20 trace.id=0e7dfb5597ca071596bdf8ba6e750f12 span.id=9a65ddc729d3b05c user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:58.745 INFO  http.request.completed service.name=rakazo-api request.id=ae124ede-b333-406f-a27a-67745a9ff5de trace.id=79975bd8a260c159eb934cff3d5d69c2 span.id=5ec3571be642d1e2 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:58.750 INFO  http.request.completed service.name=rakazo-api request.id=7c3572de-67bf-453f-ae59-86643d2c506c trace.id=addece39d7903e58740ed288bf7ac4ca span.id=7e6c63dfdc6fc028 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:55:58.751 INFO  http.request.completed service.name=rakazo-api request.id=1efa099b-5572-4ed0-b70e-b9c62d5b4981 trace.id=f6a12163075dd8dcdb4423ea78e5605b span.id=b2b639f94dbbd0e5 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:58.754 INFO  http.request.completed service.name=rakazo-api request.id=4f0b8f1e-02b3-42d2-8394-d6d5cda53113 trace.id=e5bd24b97fa69fa25535dfd882634efc span.id=0859ad9ad385fc1c user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:55:58.758 INFO  http.request.completed service.name=rakazo-api request.id=1b7e9324-5d1b-4ee9-b038-27f4603815cf trace.id=90fc69d121c7441ca641600c59eb9032 span.id=f23372a47b862869 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:55:58.763 INFO  http.request.completed service.name=rakazo-api request.id=67c7f3bb-57aa-4810-a0c9-425b4155b859 trace.id=32400dc46b3039d4ec3b67396601eabb span.id=f44956505b2f2806 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:55:58.772 INFO  http.request.completed service.name=rakazo-api request.id=2b1ecb05-aa44-4d10-90df-7d8982024f72 trace.id=49f0310963ca3abc74dd2bb90f40a17f span.id=a75fb7598a44834c user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=24
+02:55:58.776 INFO  http.request.completed service.name=rakazo-api request.id=35e50372-ee82-4899-bae0-58b4d1bf1918 trace.id=f7db11895209285444b25230aea14eca span.id=225e526019be7748 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=23
+02:55:58.779 INFO  http.request.completed service.name=rakazo-api request.id=1de13218-b1dc-45b7-a0bd-94584c8f3177 trace.id=b4e25d536792d74f4bfaa08d510916e8 span.id=e17c55f1292b543d user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:55:58.783 INFO  http.request.completed service.name=rakazo-api request.id=2205e12a-28a8-49b6-86e0-ca00ed8b7937 trace.id=72e7d33b9780df732d4170329565b4f5 span.id=e6e32d1133ccc75e user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=26
+02:55:58.785 INFO  http.request.completed service.name=rakazo-api request.id=fb73bf71-e15f-4cd7-936a-e4e05361ab49 trace.id=369a9d8def47501e50f890a4b251030f span.id=fd14131ebe679d42 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:55:58.787 INFO  http.request.completed service.name=rakazo-api request.id=79eb94b7-84fa-4092-849b-4d7d933ddc20 trace.id=6a7c665402b309ca41b7ae285d2aea3f span.id=864a8691e57f2d21 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:58.791 INFO  http.request.completed service.name=rakazo-api request.id=2a7b5e64-1054-4c2a-957b-7875d05b6e36 trace.id=0dc4956ddd75d2dd41aa2897c92881f7 span.id=480af0c316c519fa user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:58.795 INFO  http.request.completed service.name=rakazo-api request.id=62c93181-ccb8-42f5-b23e-dbac36f3428b trace.id=bead8f9d8030b4a60903a18ca09963e7 span.id=53b8eae35c1e3c60 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:58.797 INFO  http.request.completed service.name=rakazo-api request.id=ee47fda0-6d27-4c88-96f0-34e38bce1216 trace.id=be02ecee8d69389ff5bfb466e417874b span.id=b8f7c6415a322a66 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:58.798 INFO  http.request.completed service.name=rakazo-api request.id=7b9d4d7d-3390-44a6-a52f-fc4af47536e3 trace.id=ce4a5d661a78b797a3d1411aa96fad54 span.id=17ee6102b31ea001 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:58.799 INFO  http.request.completed service.name=rakazo-api request.id=1949aeaf-a8af-4ff9-87ee-8a0a364fd4a8 trace.id=20943f25c135086872f2f8bddcf64458 span.id=216e325a556bf2f4 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:58.803 INFO  http.request.completed service.name=rakazo-api request.id=3a4fef91-fd34-4f56-bbbb-fac409b558d8 trace.id=85bac92207a9b62b360616f7ab5c3961 span.id=4056c47286739e70 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:55:58.814 INFO  http.request.completed service.name=rakazo-api request.id=eea9b9de-330a-4108-97b6-25adba2c7166 trace.id=6de802877062cae13128a96fb5f34085 span.id=484836502e169c39 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:58.814 INFO  http.request.completed service.name=rakazo-api request.id=51760af3-3f1d-4b2d-a8cb-45ef119d0d40 trace.id=dfe3e7202438e99a8c47955dd33fecb7 span.id=43d329ed2c2d1981 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:55:58.814 INFO  http.request.completed service.name=rakazo-api request.id=a6c2f3fd-8d3c-457e-ab6d-ac6b981b0d84 trace.id=c600d9cedd594bf46df29759f37fe59a span.id=d0c68483143da331 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:55:59.124 INFO  http.request.completed service.name=rakazo-api request.id=a8d8ca9d-d5df-4cd0-a42f-71f0378325a8 trace.id=f637ae53c623faf04b30c6114be803a2 span.id=63428bedacb6039a user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:55:59.126 INFO  http.request.completed service.name=rakazo-api request.id=65815c70-1721-4f28-b86d-1d7c05c54529 trace.id=edcf4df1ad792298e91eee563b094ba6 span.id=d06358400bbe9216 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:55:59.130 INFO  http.request.completed service.name=rakazo-api request.id=5fe2c175-de5f-47fe-81b2-dab3505873aa trace.id=57b0393d9af92defff52414e00a34281 span.id=2692df3c28d78b49 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:59.136 INFO  http.request.completed service.name=rakazo-api request.id=a8f0dd67-baae-4bcf-b01b-580340f090fd trace.id=55027a9aeb8a7d6da10111c3d25b1b10 span.id=1d14699985247710 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:55:59.136 INFO  http.request.completed service.name=rakazo-api request.id=ff589bbc-4a13-4842-b219-804042c7712a trace.id=72f0c2f7e62ed2c3734acf4e995ad85d span.id=446cc39d0e74cdee user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:55:59.142 INFO  http.request.completed service.name=rakazo-api request.id=4a207728-9c96-41d6-86fd-3431fa0be11f trace.id=4ee22cbae98f75f2eeda4f74e199d1b8 span.id=24c5370bad68eec1 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=27
+02:55:59.151 INFO  http.request.completed service.name=rakazo-api request.id=a0b49968-8352-435f-9295-abebc51a717b trace.id=88542232f7db1281d0b4cb80192dc86a span.id=a1a1a4aa1e06ff57 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:59.167 INFO  http.request.completed service.name=rakazo-api request.id=b0d912e2-bf22-4769-ab78-422b4a264df8 trace.id=12cfdcb43a599e2e9c11e1e435e20108 span.id=56862e6c2b245e37 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:59.174 INFO  http.request.completed service.name=rakazo-api request.id=f62f61b5-168b-4c45-a5d2-b5285182cc86 trace.id=f5c719168c139dd839e01b683dea416a span.id=f66353ff6d91808e user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:59.186 INFO  http.request.completed service.name=rakazo-api request.id=dd1c20e8-efe9-4f2b-82f6-76bc6dafe32c trace.id=9b6f99e7fb89f63a123ea3bd6d9b897a span.id=c3536ea475b0ba70 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.213 INFO  http.request.completed service.name=rakazo-api request.id=78912845-8fde-46cf-93f5-5565811fb5eb trace.id=df28e8e4e80955e2b3a02c27bb8b0cfa span.id=14868df31cf36474 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.214 INFO  http.request.completed service.name=rakazo-api request.id=3d479225-8ebe-4edd-9627-f1e3b9e83157 trace.id=0dc923d708d1edc6dcd7ea7e7c8031a4 span.id=dd660e3520331174 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.216 INFO  http.request.completed service.name=rakazo-api request.id=05f10003-cc37-49bb-92f2-4f9e07a22d72 trace.id=f1d1e79c5ef3940ead9a7ad1737587b9 span.id=c6fe0ec5f5b9f2b1 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:55:59.217 INFO  http.request.completed service.name=rakazo-api request.id=e479ee08-c3cc-4aef-8ab6-773f83eb2130 trace.id=7636701b54e1b71c2547640de0e8a8d0 span.id=99d20e098aa8183f user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:59.222 INFO  http.request.completed service.name=rakazo-api request.id=8925a369-86fb-416d-9360-6b6e31bb45f6 trace.id=65de7edb69e5671881cffbe7b8290b1b span.id=1e82f2af5e888d59 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:55:59.235 INFO  http.request.completed service.name=rakazo-api request.id=d7eae345-47cc-4b92-9e7d-5f4a6d0b111d trace.id=198fcb3a2a01afedf3b1480ff96d403b span.id=7acd87a54d0da2c0 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:55:59.237 INFO  http.request.completed service.name=rakazo-api request.id=972208b3-a617-47ee-950a-47bb368b42c6 trace.id=5335e0a785e5cd232c9ea46bbad792de span.id=51eb75eb7311de41 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:55:59.239 INFO  http.request.completed service.name=rakazo-api request.id=716fef77-759e-435b-be0a-102a0b01c692 trace.id=0d0afb0f092d5123c2cae9a848dd7a4f span.id=0f04beb414d75f28 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:55:59.240 INFO  http.request.completed service.name=rakazo-api request.id=8f827c03-3be7-4a6a-bb0c-ea5e0333246a trace.id=f45e05576615f7df0f98ab76e35e4082 span.id=c2f624356280c2f7 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:59.244 INFO  http.request.completed service.name=rakazo-api request.id=b690da3b-a374-4a3f-8f1b-41aba9b464ef trace.id=d482415ee08d30b34e6f6921fdc58490 span.id=0b28e4f345adcd19 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:55:59.250 INFO  http.request.completed service.name=rakazo-api request.id=c33cadfe-8863-4d37-8823-b2018acfd061 trace.id=e5b74a964ac564a9e45fa2479119c16d span.id=f398c2b3c37fca53 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.252 INFO  http.request.completed service.name=rakazo-api request.id=dd151e08-d5a6-4bc5-8fcb-9db15a1745d0 trace.id=b8e15c7ea5f1a0204fb4c7681367305b span.id=b812331564cb2727 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:59.252 INFO  http.request.completed service.name=rakazo-api request.id=4cb15186-7ec6-4914-943a-c2887a76d0f8 trace.id=596dd83c0d4daa9745b761506bbe889a span.id=13e97bafdf591d10 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.258 INFO  http.request.completed service.name=rakazo-api request.id=fe1cef5e-79d5-49f7-8881-b4c3f70ddb3f trace.id=feb0e4b0d0edf8bcc548a811989e610e span.id=fc755495a0f6ac17 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:55:59.259 INFO  http.request.completed service.name=rakazo-api request.id=5aa37c04-f1f4-4d8e-924d-6b69fe002cf8 trace.id=1d1ed762ae8a268e3d165377e7c5afe3 span.id=9f616b17bb5e6768 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=54
+02:55:59.267 INFO  http.request.completed service.name=rakazo-api request.id=96458e34-81ea-4e2f-9b2d-ee43f8947587 trace.id=3101a3929137fa279b0536d01f72fe69 span.id=e03f93a797b4bc3f user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:59.271 INFO  http.request.completed service.name=rakazo-api request.id=ec676cd9-655c-4a47-bdb5-cdb12a313146 trace.id=897d23e26f09ca9ed8b840cf2ff333ea span.id=4c6d33893be7448b user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:59.272 INFO  http.request.completed service.name=rakazo-api request.id=68078b82-031e-4b7f-b9d5-dc32b164b58d trace.id=e05368f65583cf1d36c034945151135c span.id=9a453293a6cad49f user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:55:59.279 INFO  http.request.completed service.name=rakazo-api request.id=a44a3bb0-19b4-486e-9478-2e3259d7684c trace.id=052c0ffd02e032b5fa2825dd039c2020 span.id=4d9ddbc5125d6650 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=34
+02:55:59.356 INFO  http.request.completed service.name=rakazo-api request.id=71488a08-0284-45d8-b045-3e671ca928ed trace.id=47ae9781d864e0cb4c322a89c93ffd64 span.id=77c035e1e51d77cd user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:55:59.360 INFO  http.request.completed service.name=rakazo-api request.id=87ef28ac-48d4-4c15-ac9b-2606e6d71338 trace.id=f98675ab4a507428ca590dc2a5e25878 span.id=e895d64a262d776e user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:59.361 INFO  http.request.completed service.name=rakazo-api request.id=491255fb-4eea-4930-aeea-487affcd423e trace.id=aaecdafd5ba6904866e6af5e35aff702 span.id=5ad88bdc2fcf05e3 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:59.361 INFO  http.request.completed service.name=rakazo-api request.id=d028017b-5cc5-4a6a-beac-39d037c7cbe6 trace.id=0a808693af662320149039e06ea7942c span.id=122ed44be3f00033 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:55:59.362 INFO  http.request.completed service.name=rakazo-api request.id=2d52ef0f-3150-4b4f-be9f-ad7fb5feae94 trace.id=bc805e1d31018836db1a1feeabbe0687 span.id=7ada7cbd816a1cbf user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:55:59.372 INFO  http.request.completed service.name=rakazo-api request.id=aeee7bbd-c26c-4006-81bb-29575cd6d055 trace.id=ab88fb18a49c751a31370e960c6a847c span.id=3f32eedfb8822e24 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=23
+02:55:59.544 INFO  http.request.completed service.name=rakazo-api request.id=c74237b1-56e4-479b-b868-cb2fa6751c05 trace.id=af00fc1c2afa491b73f29a6f474ec070 span.id=fe9d01a971c459e6 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:55:59.554 INFO  http.request.completed service.name=rakazo-api request.id=e5f9c772-46f1-4dc7-9188-32bc4acbac5f trace.id=a9364ffa6bda7fa05c261ac09af75a0f span.id=cb30116077b27dbe user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=26
+02:55:59.564 INFO  http.request.completed service.name=rakazo-api request.id=02ea8865-808b-4504-ae81-dfc12b9ef8bb trace.id=26e0b2cdeb2e524945c76938ce78b0c5 span.id=c3081348bb439609 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.566 INFO  http.request.completed service.name=rakazo-api request.id=8d113b28-1edd-4c8e-9a4b-aa164fc411ea trace.id=277fa3afbc168f54e69b8664e08821a1 span.id=ae974b265bd008c8 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.566 INFO  http.request.completed service.name=rakazo-api request.id=64136123-0fe1-45f9-9ec4-976808f76504 trace.id=470ce8f1da32c813dd92637e5075d26f span.id=ae139a165191ddd6 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:59.587 INFO  http.request.completed service.name=rakazo-api request.id=98c527a0-c4e8-4245-bbe5-dae17accdf94 trace.id=e91e1b58ee95fd45decdfa071f521ea7 span.id=3134000d5c2a7eb7 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:59.619 INFO  http.request.completed service.name=rakazo-api request.id=0db745c1-a91b-4e61-a457-8f13c7573af2 trace.id=09a00e99036ed047588dd6196bb21d1a span.id=25dcf27d73268c0b user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:55:59.650 INFO  http.request.completed service.name=rakazo-api request.id=f48d22bf-2da1-4ef0-bde5-653770d39b03 trace.id=467f6aa55c271de129fc361326aee112 span.id=148f11fd797bddd2 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:55:59.669 INFO  http.request.completed service.name=rakazo-api request.id=69c716f2-ef90-4c0a-bd0c-3d3a0ffe9c58 trace.id=4fc7da932375a8fe4673ca2ecac73202 span.id=73094ed00ee45ec4 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:55:59.672 INFO  http.request.completed service.name=rakazo-api request.id=e4d1d088-c51e-403d-bb45-5fb7f487bcc8 trace.id=fb871324bc2cce98253195097a8927fc span.id=075f3ec242187b74 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=33
+02:55:59.682 INFO  http.request.completed service.name=rakazo-api request.id=a53174f9-67a9-4998-8767-148d99037c67 trace.id=75b98c7a0d17d30d8c02a7e46904a020 span.id=f2b6ca0067e5acfe user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=29
+02:55:59.694 INFO  http.request.completed service.name=rakazo-api request.id=59357830-a9cc-44b4-a3b2-c8b1bf817c43 trace.id=45768012c02339f096dac8fefa233134 span.id=59c7d182140e802c user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:55:59.694 INFO  http.request.completed service.name=rakazo-api request.id=2117204e-b02a-45c5-8039-b4a6bcaa47b7 trace.id=1ef6e58428e65d4d7a8143f191d35687 span.id=2fd15ce225401c6c user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:55:59.699 INFO  memory.injection assembled service.name=rakazo-api request.id=f48d22bf-2da1-4ef0-bde5-653770d39b03 trace.id=467f6aa55c271de129fc361326aee112 span.id=1da089591e20a975 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 job.id=6c74d03c-2ca7-4fc3-99cb-a4da02d63a59 job.type=run.continue run.id=cmvyo2x7j001ndbx04ubutyir parent.span.id=148f11fd797bddd2 memory.injection.estimated_tokens=[Redacted] memory.injection.total_budget=4000 memory.injection.summary_included=false memory.injection.summary_stale_blocked=false memory.injection.selected_facts=0 memory.injection.omitted_facts=0 memory.injection.selected_legacy=2 memory.injection.omitted_legacy=0 thread.id=cmvyo2wu30016dbx0acpjhft8
+02:55:59.712 INFO  http.request.completed service.name=rakazo-api request.id=8522d6c8-2ce4-4144-8a1e-4f61b86419f9 trace.id=5b3b7e08a8c08db7e6b8e1f15624a960 span.id=341ea9b7c35e95c6 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:55:59.723 INFO  http.request.completed service.name=rakazo-api request.id=1e8940e2-be23-470f-86f6-c09a11a11323 trace.id=5f1cf337c81997558246e2506a60864e span.id=2a2a12d7448ebfa4 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:59.753 INFO  job.completed service.name=rakazo-api request.id=f48d22bf-2da1-4ef0-bde5-653770d39b03 trace.id=467f6aa55c271de129fc361326aee112 span.id=1da089591e20a975 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 job.id=6c74d03c-2ca7-4fc3-99cb-a4da02d63a59 job.type=run.continue run.id=cmvyo2x7j001ndbx04ubutyir parent.span.id=148f11fd797bddd2 attempt.id=cmvyo2x7w001qdbx0x4rc3pho job.duration_ms=102 job.outcome=ok
+02:55:59.760 INFO  http.request.completed service.name=rakazo-api request.id=ff57d943-7736-4959-95fb-7c399aad2350 trace.id=cfa302695a75eb7aff1b920cc8ab48c1 span.id=378e04e2e2bae2df user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:55:59.783 INFO  http.request.completed service.name=rakazo-api request.id=7abb8473-aa18-4f17-b234-f3947b5d769e trace.id=4b78f17ea711190f324a87b2075fe47d span.id=9eb1f59d3758f88f user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=33
+02:55:59.791 INFO  http.request.completed service.name=rakazo-api request.id=c02a13e5-0d0f-4a45-b46a-93830796c8ab trace.id=8c9be9128f2f63dc14f76e497c03521f span.id=94f536c1ec47fd59 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:55:59.793 INFO  http.request.completed service.name=rakazo-api request.id=313dfcb6-81ab-44a3-9eb3-17a04758d418 trace.id=e0d46319005f4a7ddc10b5b94df3a03c span.id=ea2c70fdccea87ad user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:55:59.807 INFO  http.request.completed service.name=rakazo-api request.id=f00de67a-a819-4d94-8e28-fe5fedf5d3f6 trace.id=2f8cf692a643f4fb48e5c93939310e36 span.id=63317ab4ea91da10 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:55:59.988 INFO  http.request.completed service.name=rakazo-api request.id=97a8f4ea-33c5-4c36-88f7-a89b98cf6295 trace.id=9307377ca0446ce00f9e75576ff99cf8 span.id=47df1a0cafe69890 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=26
+02:56:00.013 INFO  http.request.completed service.name=rakazo-api request.id=8f3c9585-8682-4372-a63b-9c1819f4ce52 trace.id=74734a8c82d3917d866d1f21216c92ed span.id=e0bd6742bc8a5ba1 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:56:00.024 INFO  http.request.completed service.name=rakazo-api request.id=d089f10c-5a44-4590-807f-bc0cb88b2d97 trace.id=9c81ad1521fb6ae80d1656cbdeba3f74 span.id=1e6917fd4a23a82d user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:00.025 INFO  http.request.completed service.name=rakazo-api request.id=3d8f31a7-8781-44e5-b0f2-331525203db3 trace.id=3f8f49fd0f61f8416e0f8ce79258ff32 span.id=082c5419c5ccd479 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:00.030 INFO  memory.injection assembled service.name=rakazo-api request.id=97a8f4ea-33c5-4c36-88f7-a89b98cf6295 trace.id=9307377ca0446ce00f9e75576ff99cf8 span.id=7cacd06768146a7f user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 job.id=5f325b37-ceb4-4308-bffb-e204e2621f79 job.type=run.continue run.id=cmvyo2x7j001ndbx04ubutyir parent.span.id=47df1a0cafe69890 memory.injection.estimated_tokens=[Redacted] memory.injection.total_budget=4000 memory.injection.summary_included=false memory.injection.summary_stale_blocked=false memory.injection.selected_facts=0 memory.injection.omitted_facts=0 memory.injection.selected_legacy=2 memory.injection.omitted_legacy=0 thread.id=cmvyo2wu30016dbx0acpjhft8
+02:56:00.030 INFO  job.completed service.name=rakazo-api job.id=3f372ba7-cbb0-4d2c-a88b-a2ba930b793d job.type=delivery.dispatch trace.id=40921d3d75ab5bda6587aca32f98c871 span.id=1005face4d96cc74 job.duration_ms=2 job.outcome=ok
+02:56:00.039 INFO  http.request.completed service.name=rakazo-api request.id=55a5c09f-d1c9-463f-bdcf-4643f9d40ef1 trace.id=42898917aad88d7fd2eefbfc4cdcaf2c span.id=47109b1ff3be8ae9 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:00.053 INFO  http.request.completed service.name=rakazo-api request.id=ee1f2362-a212-4538-94a5-f2c6ff67c7c0 trace.id=2f2164078181b048cd9945c036336b8c span.id=4fa64b618aeb762c user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:00.060 INFO  http.request.completed service.name=rakazo-api request.id=f2b4d6e7-8a5b-441f-b8e2-d7f65970369f trace.id=8c39df19c142f0f5265aabbd70f90eef span.id=c649e2ef2e08c28a user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:00.078 INFO  job.completed service.name=rakazo-api request.id=97a8f4ea-33c5-4c36-88f7-a89b98cf6295 trace.id=9307377ca0446ce00f9e75576ff99cf8 span.id=623e6103ae48258f user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 job.id=a2c59251-c936-4c5f-b6d5-64ed75d00d7b job.type=memory.extract run.id=cmvyo2x7j001ndbx04ubutyir parent.span.id=7cacd06768146a7f attempt.id=cmvyo2xh70027dbx0pvvphfxz thread.id=cmvyo2wu30016dbx0acpjhft8 job.duration_ms=0 job.outcome=ok
+02:56:00.078 INFO  job.completed service.name=rakazo-api request.id=97a8f4ea-33c5-4c36-88f7-a89b98cf6295 trace.id=9307377ca0446ce00f9e75576ff99cf8 span.id=7cacd06768146a7f user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 job.id=5f325b37-ceb4-4308-bffb-e204e2621f79 job.type=run.continue run.id=cmvyo2x7j001ndbx04ubutyir parent.span.id=47df1a0cafe69890 attempt.id=cmvyo2xh70027dbx0pvvphfxz job.duration_ms=90 job.outcome=ok
+02:56:00.096 INFO  http.request.completed service.name=rakazo-api request.id=ec496731-e2f5-436d-be13-2897fef8bacd trace.id=2c2c236f219e85f92b1f7549ba6af0a6 span.id=e2c7ae364c7062c8 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:00.108 INFO  http.request.completed service.name=rakazo-api request.id=4783ace1-c505-4df5-9f40-6d9191664cb2 trace.id=c882bd0a3bf8dfe9e655e1f8384d8c86 span.id=3c865e88efee2dee user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=23
+02:56:00.116 INFO  http.request.completed service.name=rakazo-api request.id=b1b94fb6-1c6b-4a4d-9047-57736b1b6037 trace.id=1364a15a95a30d0bca2e2a3269761df8 span.id=2a5ef030b14c9e03 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:00.117 INFO  http.request.completed service.name=rakazo-api request.id=37a031e4-f664-4653-9720-30ff515d40f2 trace.id=f88cee2448bbe5c12d5e2163b3b75be8 span.id=97eaac7a6b8410b6 user.id=DdXBLo0FJSiMo8qY4DLeehaJBwy0lFuF space.id=299483a3b8bfc12b9cf99ac005719765 http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+  ✓  2 [chromium] › e2e/card-ui-interactions.spec.ts:100:1 › replaces the legacy approval ask with one CARD-01B decision card (3.1s)
+02:56:01.285 INFO  http.request.completed service.name=rakazo-api request.id=e323a564-60db-4978-9aee-5ec701a45f61 trace.id=657d29d4fc4ca8ae60c7416e65b61389 span.id=2541dbc79e6862b2 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=1
+02:56:02.255 INFO  http.request.completed service.name=rakazo-api request.id=77ae3c92-7cb0-4b51-884a-9b3ca3bdf76c trace.id=f59dd88c3988eaa73a895f19f1c16190 span.id=b5af55b747815b66 http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=60
+02:56:02.266 INFO  http.request.completed service.name=rakazo-api request.id=520553af-8af1-4503-b045-62d0c5c7195d trace.id=892900d14263e9025a781a2dd3e40e2b span.id=e7f227b86949ef0f http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:56:02.267 INFO  http.request.completed service.name=rakazo-api request.id=cec275f8-152c-4271-b04a-bf08b745db00 trace.id=6b5c343146e4907ca3e0a81c3358a4fa span.id=8ad528dcdacdbdb7 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:56:02.273 INFO  http.request.completed service.name=rakazo-api request.id=6e7b4c9f-d5a7-4bbd-a8ba-278e2d4cae69 trace.id=d9eda7d48900e54e1f4f83b9eede7a40 span.id=42f4280d48358959 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=4
+02:56:02.303 INFO  http.request.completed service.name=rakazo-api request.id=ccc635ce-0382-4cd1-bd07-6fe6c0c95336 trace.id=26d2e212d7b19a66bebb9334d1111fe1 span.id=56b5314fb81baba8 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:56:02.304 INFO  http.request.completed service.name=rakazo-api request.id=69b6a3a2-70cc-4887-9fb7-f98af52d37a5 trace.id=2a9096a595dc5ddc4d90b5e0584e2252 span.id=5389074ea823470f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:56:02.305 INFO  http.request.completed service.name=rakazo-api request.id=defc89a7-b12c-4ccc-a077-413ec91f199c trace.id=7ab8b2f2d86452dd4f49d9493620bcaf span.id=d7e7cf30fa6b2785 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=24
+02:56:02.307 INFO  http.request.completed service.name=rakazo-api request.id=4e667754-463d-4043-b929-ce8557f291fb trace.id=ec71b1ab1ddf5942be651f86ba1a0042 span.id=0d4e731759659d47 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:02.308 INFO  http.request.completed service.name=rakazo-api request.id=af2088af-ffdc-4baf-b93f-ecbce213fc37 trace.id=7683464c6287897af294a513c110e405 span.id=9dd937e7afaf2174 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:56:02.312 INFO  http.request.completed service.name=rakazo-api request.id=222c2bd0-8cb1-4c76-9264-ecc0b22a33ef trace.id=7897f9fd28ce09ff61b6083d59ec1bf3 span.id=f77407e6ab864342 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:02.315 INFO  http.request.completed service.name=rakazo-api request.id=5f5f522e-f577-4b87-8842-9c45868b18b1 trace.id=330973fe56e7a107e28f88d0d90bd272 span.id=d973ddfc1408dbfe user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:02.316 INFO  http.request.completed service.name=rakazo-api request.id=4aa422b7-906d-4a1e-bdb4-b49497ee7b54 trace.id=cee36b31e2fa3bd726fc6b7928406618 span.id=2ec74be05291f847 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:02.317 INFO  http.request.completed service.name=rakazo-api request.id=dfc56d1d-86e9-41b4-9693-64b46e03582d trace.id=ad9748b118c3c941b46bb5fd7c3a1857 span.id=269ef68b9b9eaa4a user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:02.319 INFO  http.request.completed service.name=rakazo-api request.id=73328e7b-e12d-4624-8e48-4e3d40a79e98 trace.id=3c24e24fd92295292af026fbd089d616 span.id=b829ccf9ca1501fc user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:02.325 INFO  http.request.completed service.name=rakazo-api request.id=d9b35730-459d-4f0f-8d36-e41517057bf8 trace.id=b6d38cd3a3a2d6a2aedf2f153a387d99 span.id=3f0f9e86c5d1421b user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:02.327 INFO  http.request.completed service.name=rakazo-api request.id=0a48b11e-6636-4f85-9afa-f303124e72ab trace.id=857e6aa72676bc94583e8bbefd40043a span.id=a4be3e61d784eef1 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:02.332 INFO  http.request.completed service.name=rakazo-api request.id=9594c0c6-e1ff-40d8-96a9-6b2d441ce556 trace.id=67c7c2137d674330b3e7497fe4a4caec span.id=2d524c866d50fa82 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:02.332 INFO  http.request.completed service.name=rakazo-api request.id=a68b6d59-6dc5-4970-a0c5-ceefeac80016 trace.id=b1fc4bde7c0d637e153e0d1c1533ef88 span.id=75ece545a8ff264f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:02.339 INFO  http.request.completed service.name=rakazo-api request.id=5aec93e0-579f-4a82-81a2-4b74965809b7 trace.id=5739b2b887cd809c93a9c9eafcf23de5 span.id=2ade3961712d009f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:02.339 INFO  http.request.completed service.name=rakazo-api request.id=2dea4dcf-6958-4c9c-bd1a-87eeda1c4e55 trace.id=bd295f5bce290112033f8f56668564fc span.id=c5d6bea4c8818806 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:56:02.347 INFO  http.request.completed service.name=rakazo-api request.id=8a37c00b-620a-4b45-81b4-51c30b7ce0ca trace.id=30116879a1ce051715031168e9cdba9b span.id=6ae792dccd162696 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:02.348 INFO  http.request.completed service.name=rakazo-api request.id=cdd5ae2d-c5b5-472a-8ef8-721b2494a8ce trace.id=35f3c952c3058987fc45cc081094d4de span.id=6f791c7cd61c356c user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:02.350 INFO  http.request.completed service.name=rakazo-api request.id=82b57648-0379-4040-8d66-52d93830e1cc trace.id=88c208508314bcc58b7a351a335efd2a span.id=f9f46556f9d28446 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:02.352 INFO  http.request.completed service.name=rakazo-api request.id=5b1ca8ac-4f2d-4661-b023-ab80e9001b55 trace.id=d499d5b5b1225eb405dda56804a4e3d4 span.id=0aecd4c36f0f3185 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:02.355 INFO  http.request.completed service.name=rakazo-api request.id=d4b26097-82c1-4216-8555-447a974659df trace.id=7435ea17c85124890741ab460dc75f09 span.id=a492515f42d7fcb2 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:02.363 INFO  http.request.completed service.name=rakazo-api request.id=cff2e86a-841c-4bd3-80c2-d7d38779bb04 trace.id=b7524b4ea4b93554de8a77483936bb19 span.id=7023e30dad92445d user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:02.368 INFO  http.request.completed service.name=rakazo-api request.id=79e77010-fb84-46e5-ae27-050bdbc2ea4c trace.id=184e7789977d9a37446ec1c99cdc42a5 span.id=59e425e8f5662b9b user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:02.369 INFO  http.request.completed service.name=rakazo-api request.id=08cd7a52-5c64-4b6d-b420-a84631cc75e3 trace.id=8ecdc82157850047f240ea437792530a span.id=500bdd73d28614bb user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:56:02.370 INFO  http.request.completed service.name=rakazo-api request.id=27c02cd7-438f-4ce4-b9a5-bb7d2459e1f5 trace.id=2ee9560db293817dd81aecae87f600f1 span.id=05cfea2a1370448d user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:02.380 INFO  http.request.completed service.name=rakazo-api request.id=75a5b117-37a4-4a86-af3f-07532a0b8b9a trace.id=f75c8555d7f65043aacc78883c6f0ccb span.id=fe8dd94e41edbf4f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:02.381 INFO  http.request.completed service.name=rakazo-api request.id=0aaf738d-7891-4b73-95bd-4c052e905738 trace.id=688d28370de7b76fb1f939644ffcde11 span.id=066260a4440fc3b4 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:02.382 INFO  http.request.completed service.name=rakazo-api request.id=adff56dc-256f-4dd9-9a0d-ec3dfa6c996d trace.id=98a1daa48e042e7fac73888b5b111dc2 span.id=ea6dff9fcf96cc57 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:02.693 INFO  http.request.completed service.name=rakazo-api request.id=f4ea0b47-bbdd-4f32-8847-b4bea49be435 trace.id=b992d807a062ee6607d9c1ab5d1540cb span.id=a786b8571049b375 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:02.694 INFO  http.request.completed service.name=rakazo-api request.id=f6e65833-a1ab-4774-8b6d-6d629dab30d2 trace.id=e2fc19f44352c296b2f5ea37e08f41dc span.id=07dde7839be6b2cb user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:02.699 INFO  http.request.completed service.name=rakazo-api request.id=87d218e0-cbaf-4cbc-a7d3-7ae1350995c6 trace.id=c6228307d349603a488266d61b570658 span.id=ac96be3368d85640 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:56:02.702 INFO  http.request.completed service.name=rakazo-api request.id=f7ef11f6-203c-41b9-bd51-5dcbc300a6bf trace.id=09ab30973f2670906673bead4b535dbb span.id=09bfa9190069ceef user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:56:02.703 INFO  http.request.completed service.name=rakazo-api request.id=7462911b-ed98-4752-87f5-5e8e30dcebb4 trace.id=255d7c8c8073c40d8ceefbd4e14f9c2c span.id=a78722d3615b5d7a user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:02.709 INFO  http.request.completed service.name=rakazo-api request.id=a67f9627-78a9-45f5-ae82-ad77a8e29e98 trace.id=30b019f6fd5440941f117467f37bf2ca span.id=0073428b456df725 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:56:02.716 INFO  http.request.completed service.name=rakazo-api request.id=77673e4f-8ce4-40f4-8526-f3a0599c5916 trace.id=b5f23a196b4ba6e4ae936f570d055268 span.id=c07db3f63549487c user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=4
+02:56:02.730 INFO  http.request.completed service.name=rakazo-api request.id=028b887e-94f1-42b9-9ecd-78a163e4f0fa trace.id=0eb7c4e15717da0a7e68931e1e603712 span.id=06684982587a6c53 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:02.736 INFO  http.request.completed service.name=rakazo-api request.id=09b79c29-9e07-434e-bdf5-66a5b1730bce trace.id=5f262370bbb38c81f924e257c747cc76 span.id=eb63c07ab6ae4fb6 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:02.745 INFO  http.request.completed service.name=rakazo-api request.id=f117a989-de4f-4021-bc81-5a56be7ea3ca trace.id=401ebacf7b7a6ccb5e149ce4a26c5565 span.id=047f2460d5237761 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:02.773 INFO  http.request.completed service.name=rakazo-api request.id=de1b1dab-dd41-466f-beee-0a362093978c trace.id=b489a3949aa6a26a6b86883a17243a2a span.id=6d69d4c532a599a6 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:02.775 INFO  http.request.completed service.name=rakazo-api request.id=09d51f12-eaa4-466e-b1fa-d10433baf382 trace.id=fd751561209561a22ea3410cddc98288 span.id=f2cee86e8937d5b7 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:02.777 INFO  http.request.completed service.name=rakazo-api request.id=6977094c-fc74-4653-ad4f-8ddf9b82ec04 trace.id=765d94af7cefb095de389632d1819fe0 span.id=0d19fd4792dd1be9 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:02.779 INFO  http.request.completed service.name=rakazo-api request.id=14a43d57-0f2b-477e-8665-66678bffd1cb trace.id=65852f5eb29c4beb1b6118dee657b4f6 span.id=2bad1a672a41b4fa user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:02.784 INFO  http.request.completed service.name=rakazo-api request.id=0d2ad40c-24fb-40ca-86eb-06b805d8edb5 trace.id=bd1ca08ae1d69632181856b1487796f8 span.id=ed7f580d32862caa user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:02.794 INFO  http.request.completed service.name=rakazo-api request.id=25a62332-39f7-490f-939f-15fb81f7d0ee trace.id=bcc14580479e4c925e5d20972abf54ac span.id=c0c36320a12adba8 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:02.795 INFO  http.request.completed service.name=rakazo-api request.id=5055441a-6e8e-4a29-9f96-5707a94b57c6 trace.id=c70060a0e765a5f5a2ebab7368d50090 span.id=3acaa9341fa78e75 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:02.799 INFO  http.request.completed service.name=rakazo-api request.id=c7a6d6a4-2d01-4f17-94af-a598184e6962 trace.id=29f1c670d2343e6ed720325e7e86097b span.id=4ea4c98e10fe64cf user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:02.800 INFO  http.request.completed service.name=rakazo-api request.id=196a9369-1126-45a7-9d56-f7f591490b57 trace.id=b6ed8096e807a71b5ad71617624c9692 span.id=8190a1430d9cc9b8 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=21
+02:56:02.805 INFO  http.request.completed service.name=rakazo-api request.id=18a4d6e1-ae01-4b79-bb15-c323aadbde3f trace.id=fd66462402cd04007fe9b020a21b66dd span.id=e3025e813edcaa6d user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:02.807 INFO  http.request.completed service.name=rakazo-api request.id=f9922213-257d-4ce1-b211-d6d56e95b4a9 trace.id=c94f14e167525b1760e618ef13077d58 span.id=834d683c3a3ccc7b user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:56:02.808 INFO  http.request.completed service.name=rakazo-api request.id=8fa04b1a-f833-4b79-852c-e7c26dddb8e8 trace.id=c0dd7ff3d777a40863890fb2e59933b9 span.id=628366370f3094b7 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:02.811 INFO  http.request.completed service.name=rakazo-api request.id=f79eaed8-7685-40a0-ae70-91e5179de19b trace.id=1d750675ecfacf67b4123557f5f81240 span.id=657594226e96d286 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:02.820 INFO  http.request.completed service.name=rakazo-api request.id=a7bf3776-cb66-4b05-be33-c75c49eebf3f trace.id=f1842cf15fcb5307b6530f4ae5cd78b0 span.id=48331e6f4e4a0b7d user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=51
+02:56:02.822 INFO  http.request.completed service.name=rakazo-api request.id=25aea037-e31a-477f-ad9c-f74c61d231f5 trace.id=379c64b6505d1109630d44930223800e span.id=34132845de52f055 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:02.824 INFO  http.request.completed service.name=rakazo-api request.id=73707b81-a3fa-4aa6-8b04-9eae9fb85849 trace.id=bfbbce40ecb9d4a60e14940e424f72c2 span.id=e86774669f0d5dca user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:02.829 INFO  http.request.completed service.name=rakazo-api request.id=07ba7174-cb26-40d3-a0c1-f6c4fe1c0418 trace.id=7b1fbbe6b3a8bce977395eb946355ef1 span.id=a41b2774a83c6293 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:02.830 INFO  http.request.completed service.name=rakazo-api request.id=4963c6a4-7ddc-486a-9650-dd107247e917 trace.id=d1d2735a1a0dbafdef347060f262e4dc span.id=686d104e7c10684f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:02.837 INFO  http.request.completed service.name=rakazo-api request.id=5fc9a629-a3b8-4378-a721-8caff1f379d5 trace.id=0aec75b8be79a5e260c073694cd6a87b span.id=e88bec5f4478f401 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=34
+02:56:02.916 INFO  http.request.completed service.name=rakazo-api request.id=4322fa4f-f876-4bc6-acd3-a7145b918172 trace.id=b7b1b16ecdbc376965f08faf2c55695c span.id=7e720a6294ab742e user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:02.917 INFO  http.request.completed service.name=rakazo-api request.id=eb7cf929-851f-4706-b4db-c7e157314b0b trace.id=ab23c1e91a84963e00af88ce12d9bfce span.id=b011a1963b2aa370 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:02.918 INFO  http.request.completed service.name=rakazo-api request.id=3abd7d85-0899-4d66-8ca5-7a39f332cc60 trace.id=49a4385f4d753ced146a194e14020326 span.id=988827f08cdd44a4 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:02.919 INFO  http.request.completed service.name=rakazo-api request.id=56e6536f-bfa2-44de-b14e-682bc361035e trace.id=8963576e1d4aaf70acab6403e1db6d21 span.id=8ac216dd0e148e51 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:02.919 INFO  http.request.completed service.name=rakazo-api request.id=49785d8f-d6e4-4981-aa5b-255610e6d4c0 trace.id=9621efa336533487dca9d5c06b2e66ef span.id=656c15c239e8992f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:02.924 INFO  http.request.completed service.name=rakazo-api request.id=31086146-e50e-4928-836b-80d4bd706f57 trace.id=a3e4a913ada83ff27fac39d9af8b82e3 span.id=6be21fad55f85244 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:03.117 INFO  http.request.completed service.name=rakazo-api request.id=68af66e2-b8a5-455d-a75e-d9cc08d51c0b trace.id=9f2f84c9d742a9c3a30eaff3fa827b5f span.id=5a7a619c091fc041 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:03.128 INFO  http.request.completed service.name=rakazo-api request.id=72291673-2cc7-4887-82fe-86d42d9ccbf6 trace.id=ab301b0da584a2a1a6b8ae896c3f779d span.id=d36298720ddfdbc5 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=34
+02:56:03.143 INFO  http.request.completed service.name=rakazo-api request.id=fbc02271-4233-44b3-940d-b18975ace219 trace.id=ffa0fb80293712a3fe18b81dfb4b9d63 span.id=da457c77d1818bc8 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:56:03.153 INFO  http.request.completed service.name=rakazo-api request.id=7c45b055-9863-4663-a21b-132f1e9150fb trace.id=3eb081e99e24c70eb6d200db81f58e0f span.id=dbcbdd4f793b7dc1 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:03.153 INFO  http.request.completed service.name=rakazo-api request.id=b9db2179-f0ed-4b0b-a8ec-a2c5bd4cea7f trace.id=d0709ba6e548de8ca9627b93c0ea58be span.id=699375a37c807f78 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:03.153 INFO  http.request.completed service.name=rakazo-api request.id=c7c28a5f-d665-4a67-a689-dec6a77ead12 trace.id=09373784b054f97dd2037594f1549b26 span.id=7202f2f537c1feb6 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:03.184 INFO  http.request.completed service.name=rakazo-api request.id=e5db5cb2-69a8-407e-88ca-7840a7124150 trace.id=4a6cf0a7dfa79fe91fe4e25b76fa386d span.id=8b2cc369f802476f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:03.214 INFO  http.request.completed service.name=rakazo-api request.id=2d72fb7e-0660-4465-b10c-fdb49eb47808 trace.id=4de8a2ce5f1d109d73dcec2a617449ee span.id=d58ca76b47b0cf0c user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:56:04.132 INFO  http.request.completed service.name=rakazo-api request.id=777297be-a782-4d17-8042-19e799af0436 trace.id=5b9a5462c2761f6331c0f973a801b050 span.id=cf07cb3d79655a6e user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:56:04.161 INFO  http.request.completed service.name=rakazo-api request.id=1c9ee09d-53d0-4bd6-bede-006f6d9a0ee1 trace.id=4a6eb92b402e54d9c9c43ff9f3a4759c span.id=2179529c7b80d190 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=2
+02:56:04.182 INFO  http.request.completed service.name=rakazo-api request.id=8fdf42a7-548b-416c-b388-da8c288c6898 trace.id=bcdd1e23912c1caf29a0a6e4c3613e42 span.id=a85dacd3d5df45ee user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:04.182 INFO  http.request.completed service.name=rakazo-api request.id=a352ddc7-cd9f-4473-88d8-45425e7d99c7 trace.id=6bc4ea0856432cda3a887d009b8f37b9 span.id=2423486d6782b93c user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:04.184 INFO  http.request.completed service.name=rakazo-api request.id=1447e4b8-8a8f-49ec-ac52-d0ce3af75311 trace.id=9209119894ac0d8c24707e667cd0970f span.id=3cbb6aa03bd111ff user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:04.185 INFO  http.request.completed service.name=rakazo-api request.id=575a4e60-5b17-489a-9277-47504dc656f1 trace.id=c707b36023102116bdf60e0c3dd655b6 span.id=2857ac33ca3fee5b user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:04.186 INFO  http.request.completed service.name=rakazo-api request.id=8a063f5c-8613-47a8-b6de-0c8db0a0087a trace.id=03a78d724373d46a156a368989a1d35a span.id=7ef9285970c8182e user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:04.187 INFO  http.request.completed service.name=rakazo-api request.id=773156ab-e11d-41d0-8c99-be12bb662be3 trace.id=04e4255b0ccbb140cb78bea06a7aac1c span.id=8e0f617c689d24ad user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:04.210 INFO  http.request.completed service.name=rakazo-api request.id=79d7c9cd-de38-48b2-9bef-6732b3b68204 trace.id=c23b1816a53c781f7f34a0c0c196eaac span.id=b8166f1d1a04b33e user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=24
+02:56:04.212 INFO  http.request.completed service.name=rakazo-api request.id=07a66466-6201-4361-a16f-86f09bc460b3 trace.id=d590548e16c7b1565930fdb96c01fa01 span.id=a8eecdaa942eae84 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:56:04.213 INFO  http.request.completed service.name=rakazo-api request.id=2a219b55-747f-4265-899e-cfd1b79615a2 trace.id=e07fdb631a5019523497ab5d5dfb1dbf span.id=8f8cc9f001ec9596 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:56:04.213 INFO  http.request.completed service.name=rakazo-api request.id=a9b9faef-55df-47af-b126-d1ae94042314 trace.id=d12224fa2a3bebecbfecdd0e6748d071 span.id=93d5a1ef074a3ae2 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=23
+02:56:04.217 INFO  http.request.completed service.name=rakazo-api request.id=a368ba99-6e05-44ed-bb7a-d8868dd973ff trace.id=524cfe1f74901f91356bcb337e321932 span.id=cb824ab5adcea9e1 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:56:04.219 INFO  http.request.completed service.name=rakazo-api request.id=7f5d2d28-f628-43e0-9364-5cb45f37069d trace.id=6d6a618d17d8c3feed95ecb12f2116c5 span.id=6b72a026ca79f581 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=31
+02:56:04.222 INFO  http.request.completed service.name=rakazo-api request.id=8a425b9e-c2a5-49b5-8188-3f97e7f446c5 trace.id=ee3a738520afd24e3c2fc933f8f9c121 span.id=83f9304bfb136e1f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:04.224 INFO  http.request.completed service.name=rakazo-api request.id=7c262cb3-ad08-4a61-b969-585385dd726a trace.id=0ccef27b89afcc0d1a126b6442a64077 span.id=fe8c2012097bc855 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:04.226 INFO  http.request.completed service.name=rakazo-api request.id=dc67a1e2-0fe4-4b30-aef6-7c33421e8ffd trace.id=80cfe9c279e3011b8ee5b8cc7973bdf5 span.id=35031a1f43bfc33a user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:04.230 INFO  http.request.completed service.name=rakazo-api request.id=88f17f15-3637-44d1-bd39-eca03c451da7 trace.id=88ecae8602ceb5cc7a0ab4bebb66aa6b span.id=4309f879ebfc2965 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:04.234 INFO  http.request.completed service.name=rakazo-api request.id=9dcdba96-850f-4cc7-91a1-07ecfffbb9e1 trace.id=cde3b22c8c68df617d2043c6e9099af9 span.id=bc8e80eb7cc8d4dd user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:04.239 INFO  http.request.completed service.name=rakazo-api request.id=df413c4d-57aa-400f-a383-f879048b3986 trace.id=2cbc7f104655cdd87423f0075b3eb6b5 span.id=8dd8c81b599ebecc user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:04.240 INFO  http.request.completed service.name=rakazo-api request.id=640ddec7-6364-48c3-a642-640b2897be58 trace.id=550d3efebbd5b593ffb9b877d8ecc984 span.id=44d4f05db4881d7a user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:04.241 INFO  http.request.completed service.name=rakazo-api request.id=6f071e72-78b4-4389-a189-e1f98c0660ad trace.id=d8c6b9cc608c1e92434b37f2305314c3 span.id=8c4732e74a444ba9 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:04.255 INFO  http.request.completed service.name=rakazo-api request.id=e074c591-c943-4aeb-9123-30492e32006c trace.id=77cad3ac9b6ab6dcba2f5f4db41f52d2 span.id=a6be6a207c6244e0 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=39
+02:56:04.331 INFO  http.request.completed service.name=rakazo-api request.id=3f849e6a-d9b2-4425-884a-d9e02dc79a90 trace.id=194c5014f50e53a54d40d8ff78f71b83 span.id=d1125f246629bcec user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:04.332 INFO  http.request.completed service.name=rakazo-api request.id=73e0c3ee-f6d1-428a-9be3-4b67b394b72f trace.id=a17764890b4041a8902a27f5fc20f942 span.id=5aa115fd5c49c047 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:04.333 INFO  http.request.completed service.name=rakazo-api request.id=ffded5d2-febd-4a38-bf30-23f3627cf44e trace.id=6493ca37bc668120ccc0ff6ffd91a17c span.id=6a36f05d64624368 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:04.333 INFO  http.request.completed service.name=rakazo-api request.id=3554e734-5dcc-4e4f-a89a-56c12367c468 trace.id=3b69e79b7713c855024f8ca63a506c11 span.id=52f0ebf1d4ab2dba user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:04.334 INFO  http.request.completed service.name=rakazo-api request.id=ed0a1a4b-3d15-4ac5-afa5-7be127ce9bf7 trace.id=96b36635a454f54b16600c18bafd2736 span.id=b96edd069884cb0f user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:04.344 INFO  http.request.completed service.name=rakazo-api request.id=168ad05a-ed23-4dc7-940f-19aeb23b6927 trace.id=8b5e4ba75578dc39e05b35275fe42648 span.id=8b7bb35f9798ca8a user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=23
+02:56:04.772 INFO  http.request.completed service.name=rakazo-api request.id=57d7ff10-82a2-48b3-a492-b4a8b53a5288 trace.id=560ac281039a97e322190481b95f8c5d span.id=2195d2982d6b16d3 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=99
+02:56:04.801 INFO  http.request.completed service.name=rakazo-api request.id=8605f6ab-3703-4d4e-8d60-d7288d2d27b8 trace.id=034751d0f0600d219af0890f126d2e11 span.id=ced3b7c864f4ceb8 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=25
+02:56:04.815 INFO  http.request.completed service.name=rakazo-api request.id=14c3b963-8297-45f2-9ef6-6618d662a6e7 trace.id=d6b06e90159e773ec11c2ea0634116c8 span.id=398c87bf6585f760 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:04.815 INFO  http.request.completed service.name=rakazo-api request.id=0dac6614-7f98-4efd-a0be-663ede90c212 trace.id=9eb811ec7f191dd8feb427641a99c416 span.id=8caea6a7ca2503ff user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:04.834 INFO  http.request.completed service.name=rakazo-api request.id=7ae11be5-06b5-43ac-b931-01bd9d2ef18c trace.id=fadaabd387f83823a5c6d198d42f91a0 span.id=b649833ee1ae5f78 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:56:05.139 INFO  http.request.completed service.name=rakazo-api request.id=665bfc4c-53b5-4f8a-be90-6c0b9f653755 trace.id=66ffe39dbb1ee0a0d936b820b65e7433 span.id=4b5bf6b230fe9287 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:05.566 INFO  http.request.completed service.name=rakazo-api request.id=e06cb75e-1a17-4617-a619-47098c007882 trace.id=fcc187e24b67aa7d8b1965d2dff74ced span.id=d2a482271e2bd462 user.id=ZxrRDUCdVgyiDCXgrNRdIqYwJSFd0kX8 space.id=5cadf069062e36bf0d7a173a6e71dfad http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+  ✓  3 [chromium] › e2e/card-ui-interactions.spec.ts:142:1 › edits and confirms an A10 outbound draft in the same card (5.8s)
+02:56:07.115 INFO  http.request.completed service.name=rakazo-api request.id=21dcc440-9b4c-4391-89a4-26687745648c trace.id=381248f8cda1fe6ad088dc915a72051e span.id=9b5159ed4854cfb5 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=1
+02:56:07.584 INFO  http.request.completed service.name=rakazo-api request.id=6bbae35e-28bf-4398-b97e-6744a9d638f9 trace.id=ec0b7c16334a9edd00f07fd0f5bdb00e span.id=354e227736b4c706 http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=58
+02:56:07.594 INFO  http.request.completed service.name=rakazo-api request.id=9db8d140-4689-4e47-9664-adfbfc0750ec trace.id=b0c48aba8be97dd97363f3d714ac5c05 span.id=045cb4ff9d981c86 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:56:07.595 INFO  http.request.completed service.name=rakazo-api request.id=15a83e0d-5e3f-4a3a-ab15-c362c620ea76 trace.id=016eb88c7d6a262bbe3a5b7f796a46ca span.id=5fac1d632d34dfed http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0
+02:56:07.599 INFO  http.request.completed service.name=rakazo-api request.id=c53c1b62-3637-4c10-84eb-6f8a4f5b0f93 trace.id=1c3612f33a4debb71fba75c03c17fb6c span.id=505e38fa64a4da67 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=2
+02:56:07.614 INFO  http.request.completed service.name=rakazo-api request.id=1a7c0534-10c5-455c-b211-a9dcc1eb1112 trace.id=6d1448eb3d22ff7cba80667224224ee2 span.id=3fa7b8da39e79ccf user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:07.615 INFO  http.request.completed service.name=rakazo-api request.id=7fb17df8-cf64-4fad-a158-ae7a78506dfc trace.id=e0e9edab6aaa365ec0ed077295ec73bc span.id=64b1a054214bd072 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:07.616 INFO  http.request.completed service.name=rakazo-api request.id=f7dedae1-47db-4a09-aa96-db6ec94f7ee5 trace.id=eae45e6b56f3e3c6e5b664d956d40a9f span.id=af1fae4b8ad3758f user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:07.616 INFO  http.request.completed service.name=rakazo-api request.id=e68fe54b-51ab-4235-aea6-24b1ab60d885 trace.id=78e8f88b68ec543481eeaf08290302ab span.id=a2163fdf36b97257 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:07.617 INFO  http.request.completed service.name=rakazo-api request.id=2eb1dcdd-29df-4868-84b1-ea45d29d818f trace.id=7b3980757f0f1cd6035cfa667729907b span.id=a69ffc368c3a90cd user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:07.617 INFO  http.request.completed service.name=rakazo-api request.id=819ec7a3-a870-4fc5-8aaa-833626565a38 trace.id=ac81db4b977c17b24bed5457951c803e span.id=71b95f0209479ca0 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:07.638 INFO  http.request.completed service.name=rakazo-api request.id=7fd48e28-ddb6-48be-9fd2-ddca578957fe trace.id=9db4398535200ef95f998bbfc747081f span.id=e016fdcf360e26b1 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:07.641 INFO  http.request.completed service.name=rakazo-api request.id=4d1b25b5-b041-44f9-85ba-e84fa3d4161c trace.id=b0aed51fb65216b02a5fc259f876c772 span.id=ac009b0ee0e9daa0 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:07.642 INFO  http.request.completed service.name=rakazo-api request.id=c06fb5b5-a64d-4f27-80c5-f5c22a1653c2 trace.id=6b4d72dd38d0040b7febcd07cdd0083d span.id=84abdfe17f59a172 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:07.644 INFO  http.request.completed service.name=rakazo-api request.id=6733203f-a569-428b-bd4c-53cfa04be8e8 trace.id=8d3025430776d6eb50fb4dd27bf56b8f span.id=1608258e47c0255a user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:07.644 INFO  http.request.completed service.name=rakazo-api request.id=01edd248-2c6b-45e9-8081-04eeec45b82a trace.id=2511780682a17166e05dcd37b16f6133 span.id=16ad78f3bad70f42 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:07.648 INFO  http.request.completed service.name=rakazo-api request.id=3c910190-05be-4168-aecf-7f63dda8d8ae trace.id=6700293597bde7f878eb8a271056caaf span.id=7a63eebd0b565add user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:07.652 INFO  http.request.completed service.name=rakazo-api request.id=b776bc14-aafd-474a-8503-c61bd01acfc8 trace.id=3ae4c807b55af219c0e4036becfac3c4 span.id=fa0a06dc2eb828c6 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:07.656 INFO  http.request.completed service.name=rakazo-api request.id=1a8d8d0e-b8f9-4397-b6a7-6e46598fa9d8 trace.id=2c3855942ef612ee77fd425a0c926821 span.id=8dd0d3abcf6b8b3d user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:07.659 INFO  http.request.completed service.name=rakazo-api request.id=d545dc01-9805-42b9-9e9b-060b2b3ddaa8 trace.id=770d05acf35b0e7b26c909eb3ccbafd0 span.id=69eeb34755fe3807 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:07.659 INFO  http.request.completed service.name=rakazo-api request.id=5dfad8e5-aa2f-488d-b590-0078b71196b4 trace.id=f025ddc2bb6747cb992856520fecdbb8 span.id=58f17272a9536d68 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:07.660 INFO  http.request.completed service.name=rakazo-api request.id=489c5b91-948a-4bad-b611-d8ad6cb8cbb1 trace.id=acf990e31b8708032edda6ca34896f17 span.id=4f636e64487a88e2 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:07.664 INFO  http.request.completed service.name=rakazo-api request.id=62873186-39de-41ec-b9c8-d0a710abdfe6 trace.id=164b59aec7c6f33cbc441f163d8571cc span.id=cf56db704e1caa8e user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:07.667 INFO  http.request.completed service.name=rakazo-api request.id=54f9c51a-b9b9-49f8-9b67-c0a98d25a6a9 trace.id=24f323a7c60a56b8f90f3fa7722c6475 span.id=0bf19956ee69a573 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:07.669 INFO  http.request.completed service.name=rakazo-api request.id=dabe2a39-3e32-4dc2-9f12-2994e347bd23 trace.id=60567982537405d41e0523241b7399e7 span.id=1c5438f582f12335 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:07.672 INFO  http.request.completed service.name=rakazo-api request.id=e92168bb-023d-4d6d-bbf1-358f273d51c1 trace.id=0cf28d0622befa5c48ba1cfe09c8aca3 span.id=26e801d44422a444 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:07.674 INFO  http.request.completed service.name=rakazo-api request.id=08167b13-b550-4fae-bc62-4127f6308686 trace.id=4e429f8f5f85176b80f4938e8fca6849 span.id=8cf69e4b9423be87 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:07.676 INFO  http.request.completed service.name=rakazo-api request.id=b9261a39-6e43-47cd-bfb7-13b5c2d6dc35 trace.id=e8379525101a2038cec9700e20ca50b7 span.id=87f98e366b35e9da user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:07.677 INFO  http.request.completed service.name=rakazo-api request.id=7fcb89c6-0b85-4845-b5c5-bbb2e73be220 trace.id=8763a90d2760ec611e9d07c46eb7b8cd span.id=3dedd6c2738a26e3 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:07.681 INFO  http.request.completed service.name=rakazo-api request.id=00954ca3-6963-44f4-b054-dcd915d0f6ca trace.id=21d5e9e25557cde3750ebe6a0437fc2d span.id=f04387e56e0ffad1 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:07.702 INFO  http.request.completed service.name=rakazo-api request.id=e27c7496-bf78-44ea-9a00-99e92ef06c93 trace.id=8b20394ec1dfdf9218b00e530680fab8 span.id=5a2ceb143e41f3e9 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:07.703 INFO  http.request.completed service.name=rakazo-api request.id=f349861b-56ab-4447-9b51-1b6ce1ef00a7 trace.id=fdb2aba74db518f8cf82632f384505d8 span.id=fd364688448161d3 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:07.703 INFO  http.request.completed service.name=rakazo-api request.id=50f69b04-5834-4412-9473-8d3d281dfb8d trace.id=d5df6ce8ad353d5d23b6ea334b2299eb span.id=620eafd772ca4ea9 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:08.017 INFO  http.request.completed service.name=rakazo-api request.id=44d548cf-de80-4486-93b2-2adc29b297f1 trace.id=336dad98d385dc96d5ef455d98559b02 span.id=cede377023556a89 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:08.021 INFO  http.request.completed service.name=rakazo-api request.id=74a4fb6d-d9f4-4b65-9df1-6d6a4a5a6dd5 trace.id=ec943eb70ac1149c0559bfc14838d2b5 span.id=450852860d5731b1 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:08.021 INFO  http.request.completed service.name=rakazo-api request.id=e9f8ef72-8a4f-4004-8a3a-cc4f98ba79de trace.id=7a64c862b33b1b6043df9c388c196a5c span.id=e03cfca6654d9af5 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:08.023 INFO  http.request.completed service.name=rakazo-api request.id=266a234f-7e7e-4e06-9a24-dc6e08e5798a trace.id=63acc56ef5cafadfeab0c4b8f8e44040 span.id=8035f3d97b0a62d9 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:08.024 INFO  http.request.completed service.name=rakazo-api request.id=7fcb0a12-3b8e-4b71-a3d0-70e26373bfb0 trace.id=4ed704c268ca0c204c1be42e599c9457 span.id=82cc996a51e84fe9 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:08.029 INFO  http.request.completed service.name=rakazo-api request.id=2e3d0bf0-e07f-4310-a726-8fd4a80350a6 trace.id=e2133d2fb97049b521d056899a43cb7e span.id=4d30b4b3d7aa5081 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:08.035 INFO  http.request.completed service.name=rakazo-api request.id=20668fb8-bd19-43ee-ae00-8bac092c5493 trace.id=b480b23440ba52ec4fe7cfbe599b51d9 span.id=39297f671f18b7fb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:08.048 INFO  http.request.completed service.name=rakazo-api request.id=d6eaa69e-b357-4bee-92e9-7afe041607d7 trace.id=13be4d9758a2ce0da34824e18f4fdbb5 span.id=a4c23a3ae46994bb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:08.055 INFO  http.request.completed service.name=rakazo-api request.id=324b9caa-81f6-4105-8587-6cf3a1f16b05 trace.id=93cf7ea3ec303e2d8a10cd1d04dae12a span.id=7dfcc35c78c52290 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=4
+02:56:08.066 INFO  http.request.completed service.name=rakazo-api request.id=97bbe85c-fba3-4b71-99d0-8708a2b6c434 trace.id=3927559166e80afe8d45851a52f3c27b span.id=41e28e970ed4dc94 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:08.090 INFO  http.request.completed service.name=rakazo-api request.id=abc0849a-7d0d-4020-9b2a-601d3037b421 trace.id=ac48599973ce9a083cd57dccb5c7a4a3 span.id=8ab9c8af3dc83d34 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:08.090 INFO  http.request.completed service.name=rakazo-api request.id=1809a451-6119-41de-9dd5-3306b2e940e6 trace.id=2fe253f45b7bd9ec00cf91baf2ce0380 span.id=e6fcf9a815aec779 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:08.092 INFO  http.request.completed service.name=rakazo-api request.id=42f1cb5d-e7f6-48a9-98a6-bb057361480e trace.id=28ca234ba3740a0b64a6a49b0ffe5f57 span.id=12b5e907802919c3 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:08.095 INFO  http.request.completed service.name=rakazo-api request.id=c308c55f-7118-4f02-a9ca-4390acda98b1 trace.id=c8b02ad5e9f39451ae65f7ab3c66abc9 span.id=9482ec5cbfa56c60 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:08.095 INFO  http.request.completed service.name=rakazo-api request.id=ea6e40f5-f010-4302-9688-9f24c0b15d27 trace.id=2350399c2c2808c351445de33839b7cf span.id=78f8353cb42a2710 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:08.105 INFO  http.request.completed service.name=rakazo-api request.id=862749e0-4ada-4c84-a19f-ced3c1bec442 trace.id=c22d8ac7756f1ab1c4c3020df322ba10 span.id=275e2341fdfe547f user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:08.105 INFO  http.request.completed service.name=rakazo-api request.id=b104afd1-d043-4238-bed1-2df766a49d8e trace.id=aba53e05f27bf69d19b9923b77b21d76 span.id=368bbccc63c4f212 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:08.110 INFO  http.request.completed service.name=rakazo-api request.id=c41838ce-63bf-43ff-a8f8-305fe8c53b6b trace.id=ca84632c171240c6e4d3b0faae413907 span.id=b77f5588d8bf6e62 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:08.111 INFO  http.request.completed service.name=rakazo-api request.id=0ce6b84e-c05a-4989-be37-61a90cc85cfa trace.id=16b3947a3324720255134a9a3ec30fcd span.id=8c4ad705c7b638a0 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:08.114 INFO  http.request.completed service.name=rakazo-api request.id=a834fd3d-b20e-43b8-a6d7-a5c14b599cd5 trace.id=b0220d8a3400639227c31da5920ba7a2 span.id=725f9e89876dc0ec user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:08.115 INFO  http.request.completed service.name=rakazo-api request.id=1a4011eb-de5e-49cf-87f0-4fca98dd51c1 trace.id=5d99b2d09d20aabe324c4f2f40dbf1db span.id=003dbd1e5ac8964c user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:08.117 INFO  http.request.completed service.name=rakazo-api request.id=8bc47a5f-a257-4cf8-bc38-5b6b89a35363 trace.id=a93e4f7f3ec826da71b7ab8d36d0f4f9 span.id=e328ee2ac8556ec9 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:08.120 INFO  http.request.completed service.name=rakazo-api request.id=ec08db47-2ea9-4c37-8b83-cc09897b62ac trace.id=bca765834bca9e3a78a69251a8f34e10 span.id=0287d837a35610d9 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:08.125 INFO  http.request.completed service.name=rakazo-api request.id=aaf62c73-6912-4177-9e38-23e53163f035 trace.id=6316986d8dd8807f561d1fd400d5580e span.id=f56e378e09111ca4 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=38
+02:56:08.128 INFO  http.request.completed service.name=rakazo-api request.id=ff5b9d8d-9bb1-4681-a278-e32e919ab388 trace.id=ac5e94fb75bbe4616cb0f6046268a7ae span.id=f3b3d09d78e5fc3a user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:08.129 INFO  http.request.completed service.name=rakazo-api request.id=12f95680-e625-412a-9c94-7db93a434b1b trace.id=f62b63525d3f58315d9cc51703717d79 span.id=f89eb4aca324852b user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:08.130 INFO  http.request.completed service.name=rakazo-api request.id=e0a41411-51ca-4653-bcc9-16d3f99bd06e trace.id=dd2d151b740c0353d0aff3af78788315 span.id=262bf18c0d5c3a69 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:08.135 INFO  http.request.completed service.name=rakazo-api request.id=7f863aa2-ffca-4121-8540-bef88b7adb8b trace.id=3088b37fde6b7fe949fafb4c5854e397 span.id=3ab6270089eb7740 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:08.142 INFO  http.request.completed service.name=rakazo-api request.id=50f7ed58-f8f2-4f42-ab05-6e9b7f8bcd2b trace.id=2c23e9a854a2a71ccba7caca2dc47823 span.id=e9d7186bce168fa2 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=29
+02:56:08.221 INFO  http.request.completed service.name=rakazo-api request.id=d6087055-30d6-440d-905c-4aebb319321a trace.id=e12385596114ac0f242bb8f493be03cf span.id=5f1b84eaa7bc0fca user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:08.222 INFO  http.request.completed service.name=rakazo-api request.id=7b542914-8015-4d60-b9cf-9d1cdb21a5ff trace.id=30b498a4a4330ee397d6906e7bf44f4d span.id=55ff4624b3f6d239 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:08.223 INFO  http.request.completed service.name=rakazo-api request.id=8d90dbcb-9f37-4f33-ad56-f9fcfea768ac trace.id=6a357509551d72f9ab5685a5c59676a5 span.id=267e1b9de422a72e user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:08.224 INFO  http.request.completed service.name=rakazo-api request.id=11e277b3-6f2d-4310-b064-e77f3aace59a trace.id=33121e4a966b6b283fb758edf60f8450 span.id=40e592f70a713e08 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:08.224 INFO  http.request.completed service.name=rakazo-api request.id=8e106a3e-3ccd-488a-9320-ec2c372d8a72 trace.id=49aec7e555d4e8c48f7a02e85d3180b1 span.id=e09d802789522304 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:08.229 INFO  http.request.completed service.name=rakazo-api request.id=ffb8dff4-22cd-4a54-a579-501c0b13c8be trace.id=4d9eb1989949568fdf9790bce7f242da span.id=894004b9bb26c5d0 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=17
+02:56:08.443 INFO  http.request.completed service.name=rakazo-api request.id=e4db35f8-9f01-41dd-902e-75ee0739937e trace.id=fd5bb5200cd91c8990060775031e32b1 span.id=9035efa500fe42eb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:08.465 INFO  http.request.completed service.name=rakazo-api request.id=618b677a-9ec8-4e76-a646-9beffe1fb9c3 trace.id=d346f50f8f28cbcfb4ea529652bb46f0 span.id=c60cd7382b1011af user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=41
+02:56:08.480 INFO  http.request.completed service.name=rakazo-api request.id=545b0bf6-5651-43f8-b744-58c1dcc0c2a0 trace.id=cffafee4eff97d52fec4948104e7a507 span.id=f452d196e2c38841 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=28
+02:56:08.483 INFO  http.request.completed service.name=rakazo-api request.id=d4626554-3a6f-4d63-8a9b-8dc0ab1930a1 trace.id=11f5b0427db4dc99bea0b7f905f52a06 span.id=dc319797799b75cd user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=29
+02:56:08.486 INFO  http.request.completed service.name=rakazo-api request.id=7967050e-b110-4d2a-89fb-44364e7db346 trace.id=8e34fcfe04dc5c0a6319ce8c309fc3fc span.id=e41afef5149c12df user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:08.487 INFO  http.request.completed service.name=rakazo-api request.id=198819f4-e2ac-4f55-a379-8c48fe8ee763 trace.id=76e2587a9a162a325296a2df3a631b7f span.id=104737d5c749372c user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=40
+02:56:08.488 INFO  http.request.completed service.name=rakazo-api request.id=2d4dd83e-7ccb-4c93-a15a-36c6cb907b15 trace.id=e25c7f94ffa14bbbf7b20a6c15bdad26 span.id=285e6ea4feb42e3e user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:08.514 INFO  http.request.completed service.name=rakazo-api request.id=20373fbe-93d4-4733-8631-78ba4224344a trace.id=03cf29d96b3899634708739261decdc9 span.id=4d1bb2996cab8287 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:08.535 INFO  http.request.completed service.name=rakazo-api request.id=fcda3962-a50e-46d4-af2f-d308dee778b9 trace.id=f19eab8a48f00311416b182102546f19 span.id=f011a87684349e83 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:09.654 INFO  http.request.completed service.name=rakazo-api request.id=4527d765-cf77-497f-bc75-9015192000ea trace.id=92bad2a1e6cc5c71bff0ef7909546e9d span.id=e44003bcb75ac706 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:56:09.668 INFO  http.request.completed service.name=rakazo-api request.id=cd1c4bf1-fb59-480d-990b-d8015378588e trace.id=32d558a66c2a79b2d69ccf1fd8756281 span.id=c2c8958e26ba4bac http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=5
+02:56:09.712 INFO  http.request.completed service.name=rakazo-api request.id=985f286b-cd8e-4cbf-8add-de3c96d74396 trace.id=d08e11404dbb6afafe33cd09ba96396a span.id=1f941af93b6d63af user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:09.715 INFO  http.request.completed service.name=rakazo-api request.id=e49a30e2-1e0c-4f4a-ab7a-2934145bd314 trace.id=c746ff4ee961f8f45783387a47de383b span.id=08640d4b73b63cac user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.717 INFO  http.request.completed service.name=rakazo-api request.id=61336730-16a7-4b82-b90b-101a772d560f trace.id=863ff8e89aa466a18626361f35feef72 span.id=c49d6186c1bc9186 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:09.720 INFO  http.request.completed service.name=rakazo-api request.id=449e39d7-34f2-4c7f-8912-d44c7d40e9fe trace.id=8b4d4d663e627aebe142573b83a52bce span.id=5cf8a7e9c0315f4c user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:09.721 INFO  http.request.completed service.name=rakazo-api request.id=9692020b-ec6c-45b1-a46f-a9fe33f6919a trace.id=67ae1b8b828252d1f58111f1145a1a11 span.id=fad148b7640d9988 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.724 INFO  http.request.completed service.name=rakazo-api request.id=969a6351-23c0-45f7-959f-e0e0ad70dc14 trace.id=a135b42052fbc263a78138cf4047cc91 span.id=43fdddb0a343facb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:09.725 INFO  http.request.completed service.name=rakazo-api request.id=e2d4934b-9909-4ca1-a767-e4191c1c69a5 trace.id=eabd2e460dc04541db7b5910cfcc0b88 span.id=f0cbb6039dd5df6b user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:09.728 INFO  http.request.completed service.name=rakazo-api request.id=be7902e5-4887-4b88-9587-d3e30cffb758 trace.id=43ad5e0a73ef370144ca5ff80cbbb0ba span.id=e6019aa9483997ff user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:09.729 INFO  http.request.completed service.name=rakazo-api request.id=605d7899-6e31-4e8c-95be-ea3a0d2748b6 trace.id=f984fb082b5da9b86ee1be13b5c2e519 span.id=be208d0ee873c625 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:09.735 INFO  http.request.completed service.name=rakazo-api request.id=fbf29877-9233-431a-947c-400757b53c2a trace.id=d69d717d13afae0bbfcef36de0db3931 span.id=829c0374c4df67ce user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:09.739 INFO  http.request.completed service.name=rakazo-api request.id=90f57485-73a4-4212-ae77-bd96e10ec9c3 trace.id=b39ec013a4d520a6699edf34298625fd span.id=6aa46f62fe214ce5 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.741 INFO  http.request.completed service.name=rakazo-api request.id=39bb25fd-375a-40a2-a1c6-22d4dd8843a0 trace.id=dd76ce5efa9fae0e0a20d88ed899ad49 span.id=52b8f807ac0e9d23 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.745 INFO  http.request.completed service.name=rakazo-api request.id=498c4b52-af5c-4654-ab2f-eede93e93c17 trace.id=f8f0663455f9d9c54788e1b65601ea22 span.id=2e7454ed7605cd42 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:09.746 INFO  http.request.completed service.name=rakazo-api request.id=40027f04-3fb9-436e-8150-e6bafb5e11b1 trace.id=3d1dee5d1d5e48ba18843326e693d61d span.id=763088f10a20a71c user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:56:09.746 INFO  http.request.completed service.name=rakazo-api request.id=202e433b-2811-4268-a0cd-a1b1dda014f7 trace.id=48ab986309d9852a56477c846e4c7d32 span.id=a3720c400f6d9df8 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:09.750 INFO  http.request.completed service.name=rakazo-api request.id=13fbe1d4-6ad4-4828-8678-ac1949571637 trace.id=3e2a24ecae704a04cc864efa59efc83d span.id=a6836640629eaed8 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:09.750 INFO  http.request.completed service.name=rakazo-api request.id=7644697a-276e-4d38-885e-93b4cf082807 trace.id=e368e169a47865ae12f54d1a49bb5ffb span.id=046457c8508bb7d5 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:09.755 INFO  http.request.completed service.name=rakazo-api request.id=4fcb47f3-ccc9-459e-adeb-9272f6cd2cfb trace.id=4661c0a6a846d0a06455d71c5085a64d span.id=349f9352aa41763c user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:09.756 INFO  http.request.completed service.name=rakazo-api request.id=09d6f187-03e7-494d-a7a3-3eddbe2ba317 trace.id=a6f881bc5ca2fb35424b4d18a65f918f span.id=19761e35971e2b5d user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:09.756 INFO  http.request.completed service.name=rakazo-api request.id=371fdd81-093e-4eb8-aeec-6fa0133c6603 trace.id=7c89948388bbfa3ee875d09a5ab5c7a9 span.id=28d78952e68f808a user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:09.766 INFO  http.request.completed service.name=rakazo-api request.id=35bf9e53-ebe2-49b8-b6c0-51b9592c2d11 trace.id=edde36d886effb0c5d6546ee187d5cbc span.id=50367ecde0edb305 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:09.769 INFO  http.request.completed service.name=rakazo-api request.id=9d7aa44a-2eb2-466c-9f08-99edcc3163bd trace.id=3ee92267d333b8fc7d1a58730073429c span.id=8022e87dcc2adc07 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.773 INFO  http.request.completed service.name=rakazo-api request.id=1e71b65b-b07c-4dea-9208-745e376896a5 trace.id=b29f91fdced698209ec14a3df295ed9f span.id=8d7f955308a929a5 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.776 INFO  http.request.completed service.name=rakazo-api request.id=150203d8-5b95-47f9-8241-a912c40a0e46 trace.id=52e7b6ac29576041afbe1e82f38916fc span.id=1bb28e3e6053ab62 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=16
+02:56:09.776 INFO  http.request.completed service.name=rakazo-api request.id=7b2d1fa0-36f4-40b4-b20b-82591a91da1f trace.id=186c870cc2c21e00b7e0a94f53b513ba span.id=ef62c27e955a0e88 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.779 INFO  http.request.completed service.name=rakazo-api request.id=da1d9522-87c6-487e-b05e-614ad317449a trace.id=b6c62c840355d2535d1419187a89d25e span.id=33ac1fb40980d902 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:09.783 INFO  http.request.completed service.name=rakazo-api request.id=458c6038-087c-4801-93e3-78c813b78eb5 trace.id=2dd18f3cc46a940a1d01890fd3d59602 span.id=bae9c9ead21e0d39 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=35
+02:56:09.816 INFO  http.request.completed service.name=rakazo-api request.id=f10a625f-2a12-4267-8829-1054e61cbf05 trace.id=e9f36dcdbde6631b64c86ceac50c7a36 span.id=be53aa2cac6ea3c4 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=4
+02:56:09.816 INFO  http.request.completed service.name=rakazo-api request.id=2d0699d3-c40f-4a84-b29a-4206aff7dd69 trace.id=d125e9a10639fb7bbd1fd631b38e5fd8 span.id=17d35912c07346fb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:09.816 INFO  http.request.completed service.name=rakazo-api request.id=4850bc69-84b5-4f70-8a92-c67f74e34750 trace.id=c2dfa7575cf960c30e09cff562c66ca5 span.id=f6d6991f307d6751 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:09.817 INFO  http.request.completed service.name=rakazo-api request.id=7d5033df-ea1b-42b0-b25f-f5ee0f92e1dd trace.id=0d63a42751f4299ee61107380741a329 span.id=4a7a1886c158a765 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+02:56:09.818 INFO  http.request.completed service.name=rakazo-api request.id=893bc537-ac22-4cc6-bcb7-755a6a358469 trace.id=702447834f30f74b7d26c35af86914df span.id=5675e08f561a4885 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:09.827 INFO  http.request.completed service.name=rakazo-api request.id=0ce1b57c-35d3-4f4c-b215-6bc2c3e26662 trace.id=541735653c4a8018ac419f47a37b5710 span.id=e3e3dfe22b2591b6 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:09.843 INFO  http.request.completed service.name=rakazo-api request.id=ced3b3fc-6832-46be-aa8e-7bd00f08c35b trace.id=4269ac5de26e17396d8ae493348d29dc span.id=28a1641c3d69e1ad user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=3
+02:56:09.869 INFO  http.request.completed service.name=rakazo-api request.id=6eb586f6-e749-444d-995c-e389e20afdd2 trace.id=029f32bfcf01e00b5496e9cab35f72fc span.id=21dee083f3eb38d5 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:10.030 INFO  job.completed service.name=rakazo-api job.id=079231dc-cbd7-44cc-b6d2-d305695ca7e7 job.type=delivery.dispatch trace.id=6634b26f5a40f5738609a7129e3b0dbd span.id=6b6151e65a636789 job.duration_ms=1 job.outcome=ok
+02:56:10.134 INFO  http.request.completed service.name=rakazo-api request.id=46edf387-4983-4eba-9b07-81184e066a6b trace.id=3a2718a7faa9a32ea01ceb2e53224e9b span.id=f5e4ed55c3663182 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:56:10.830 INFO  http.request.completed service.name=rakazo-api request.id=3e227b83-d3a5-42b0-b46e-9f21624c0c1f trace.id=f807f3d3110fe44293e6047c1fd79640 span.id=854814c2f318d0ba user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=20
+02:56:11.095 INFO  http.request.completed service.name=rakazo-api request.id=27300eeb-8147-40cc-8c96-df9622dc1a8b trace.id=940c1610074a324f837bb239d865584f span.id=6d221abe88d44ca7 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=2
+02:56:11.116 INFO  http.request.completed service.name=rakazo-api request.id=e4322a15-7a5c-4477-8d2d-09cdd0c34b7d trace.id=3a0c7702bd559b625491e8914040c271 span.id=47efdba5c375491d user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:11.116 INFO  http.request.completed service.name=rakazo-api request.id=70c4a391-9a41-4d2d-9304-84d11af91a36 trace.id=7e293e21c1bb4b54d7dae7ca16102589 span.id=bc706b0f9ea018eb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:11.119 INFO  http.request.completed service.name=rakazo-api request.id=70405214-3133-4a61-855e-7b9f0dc71a22 trace.id=839b83308101f51ffbfd5e439b34d634 span.id=9b0fc4de1ca31f3a user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:11.120 INFO  http.request.completed service.name=rakazo-api request.id=1a3ce73b-d84c-405e-9be8-54712f8a0908 trace.id=a6fe3464726e3a8353009650c7c93d20 span.id=ab952a11e985a0f8 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:11.120 INFO  http.request.completed service.name=rakazo-api request.id=193adf9d-1a15-4995-9cf7-1c0672f203bf trace.id=c0834c6e2559a6b219da1a5557b65e0b span.id=c2aab6c4dec58b29 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:11.122 INFO  http.request.completed service.name=rakazo-api request.id=d84be84c-c620-419a-b2e8-2be842d9ada7 trace.id=2855bf627ba9aa9f11a285b8bba2de0d span.id=c15b4de5b5eb5b4e user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:11.132 INFO  http.request.completed service.name=rakazo-api request.id=3fe8feaa-763a-47bf-b738-504b6533b966 trace.id=2db4c0e87344abf4c41edd46336d4255 span.id=3cb54bc459e0745d user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:11.135 INFO  http.request.completed service.name=rakazo-api request.id=728f6ab4-93bc-46e4-a4aa-961375d4ca55 trace.id=c82c7ab87160c0e607b8bac7589eefe0 span.id=249d8d0a9c454ebc user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:11.137 INFO  http.request.completed service.name=rakazo-api request.id=6134a10e-b5fc-4506-a318-65f0bd90897d trace.id=96fc1113c14689bd49e0e5f6389b5121 span.id=49486fa1e0414ab3 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:11.138 INFO  http.request.completed service.name=rakazo-api request.id=1802d793-013f-423b-a825-72a104c1c4b1 trace.id=f9510612c9fa37c24acfefae89e40558 span.id=853383c1ef96edcc user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:11.139 INFO  http.request.completed service.name=rakazo-api request.id=ace87fb4-c701-4e26-8302-37565b56b973 trace.id=4d5ec4b076aac75564a1ba55efe1ca51 span.id=00fe6e3dab514174 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:11.142 INFO  http.request.completed service.name=rakazo-api request.id=b096d56a-b899-43bd-b671-216108d22825 trace.id=404837db2d67b6589397e20a36ccda6f span.id=bf603d340ca1b950 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=18
+02:56:11.147 INFO  http.request.completed service.name=rakazo-api request.id=8ade1dfa-9bb5-4f2a-9e04-b2a28d3c55bd trace.id=4b1f3d9ffeccbe2b613775184621bafd span.id=d6973604c5b794df user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:11.153 INFO  http.request.completed service.name=rakazo-api request.id=7781cbb8-247a-42d1-84eb-5ba49163a6a6 trace.id=747b36e392041efb354d7d1d83747a57 span.id=eaad5179d1ba2818 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:11.154 INFO  http.request.completed service.name=rakazo-api request.id=f50a877b-fb72-41d2-b2b1-ac55f5568c2a trace.id=8fcc84bc024a5b8de266c881b6ce00e8 span.id=37f957cb571baf41 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:11.154 INFO  http.request.completed service.name=rakazo-api request.id=c337d12a-ffad-439b-b877-edd49676488c trace.id=716e6927ae6c066d2617de64932d837d span.id=214a712080734c58 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=13
+02:56:11.159 INFO  http.request.completed service.name=rakazo-api request.id=6d116c0a-020b-45f0-b779-6935ba241088 trace.id=734376ac7a48624dca078212152aa929 span.id=f5e19165d87aa29a user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=14
+02:56:11.164 INFO  http.request.completed service.name=rakazo-api request.id=56f8dd81-cc23-4432-b34c-c00cd759fa39 trace.id=0a6fc03976ab373b031732ef42ab539e span.id=0af78d5b3afa3e94 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=15
+02:56:11.166 INFO  http.request.completed service.name=rakazo-api request.id=b0953f33-ffee-44ee-a4f5-58b2de585c6a trace.id=c3791d644792c2af6de0234407160e30 span.id=17ff8da47200ef1b user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:11.167 INFO  http.request.completed service.name=rakazo-api request.id=d1b01257-2cf8-48dd-87d4-9125477ea140 trace.id=2e73179d89e349f988bb7d62900f0eea span.id=88d809b41453391d user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:11.170 INFO  http.request.completed service.name=rakazo-api request.id=94286474-a65e-4807-862c-0f933c18b18c trace.id=915f515d767e8963f5b6a2554472fc3c span.id=bc91f099055df4cb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=33
+02:56:11.212 INFO  http.request.completed service.name=rakazo-api request.id=2de7ef66-7236-4cf0-b471-254de253df95 trace.id=f2979bb7ef248beed8b3b017cbbcb8ca span.id=30c5bdb1cf06e5ba user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:11.212 INFO  http.request.completed service.name=rakazo-api request.id=ce72be3f-b65e-49b5-8e87-8ac37c7153fb trace.id=d5624a96ae639e890645670e989c072b span.id=517a8234d9dedb14 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:11.214 INFO  http.request.completed service.name=rakazo-api request.id=b5046818-90ae-4965-aa3c-4590f90b6afa trace.id=ab941ce73f37607e7fe006aa844c1bea span.id=85b8f888c2f05291 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:11.214 INFO  http.request.completed service.name=rakazo-api request.id=72061197-43c2-4a7d-881e-1ab110b5e121 trace.id=1ef6845d1d7d58e832beec0893174412 span.id=f9bb4658843c60d8 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=11
+02:56:11.215 INFO  http.request.completed service.name=rakazo-api request.id=60603332-dfdf-47d8-b261-8aa1b5dc42dd trace.id=7c9e8594944d7eab45b8461384fee5fe span.id=a7d43accccd53443 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=12
+02:56:11.221 INFO  http.request.completed service.name=rakazo-api request.id=e65c8ec8-f98e-47a5-9f50-bc2cfc5cb531 trace.id=2b108acdfd05d17489d98f8774669ee6 span.id=2f04342df074a111 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:11.222 INFO  http.request.completed service.name=rakazo-api request.id=8e3fe2c3-64cb-4841-9a0c-f3bd065e1831 trace.id=37fb841f297f5796473c79e7938e29b5 span.id=b96d34bde6feaf19 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:56:11.269 INFO  http.request.completed service.name=rakazo-api request.id=141dd928-72df-4b6b-97b3-af4f4eba6fd4 trace.id=03477411b1726d3ac07de06f928c3fc7 span.id=680a82e5e7f615fa user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:11.281 INFO  http.request.completed service.name=rakazo-api request.id=49919a20-1c64-40f0-9e93-b9ee4cd64d23 trace.id=a472b80bfe2e0c66bcae7576840c5bb5 span.id=1567315477ef5b34 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=10
+02:56:11.292 INFO  http.request.completed service.name=rakazo-api request.id=f9fca37b-fafc-4944-9e44-3050fa1b2220 trace.id=5aab6de0f0e535b4bd97cd772689c2b7 span.id=1557aae686ff0613 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=19
+02:56:11.305 INFO  memory.injection assembled service.name=rakazo-api request.id=141dd928-72df-4b6b-97b3-af4f4eba6fd4 trace.id=03477411b1726d3ac07de06f928c3fc7 span.id=50fbad21249fc653 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b job.id=1493e084-3ee8-4e9b-857e-8723e33330dc job.type=run.continue run.id=cmvyo366a0041dbx0e73bmpdv parent.span.id=680a82e5e7f615fa memory.injection.estimated_tokens=[Redacted] memory.injection.total_budget=4000 memory.injection.summary_included=false memory.injection.summary_stale_blocked=false memory.injection.selected_facts=0 memory.injection.omitted_facts=0 memory.injection.selected_legacy=2 memory.injection.omitted_legacy=0 thread.id=cmvyo33zq003ldbx0ic2mzdo4
+02:56:11.310 INFO  http.request.completed service.name=rakazo-api request.id=e6b89800-c112-4416-afb4-04d958612ac5 trace.id=59756225c6dee230d4354061e4804b9e span.id=fec396c212e622fb user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=8
+02:56:11.323 INFO  http.request.completed service.name=rakazo-api request.id=30ae4b47-3bc2-433c-910e-5ebf95aa000d trace.id=b1a26a1df28c6b3834ae57ea6b525d07 span.id=aa9de0d83fde8595 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=5
+02:56:11.345 INFO  http.request.completed service.name=rakazo-api request.id=d38cde90-dd54-4a62-9169-9cf63203639c trace.id=a2ca5f209b5ca8c3ecd7a9892216a056 span.id=6daeb459d20e470b user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:11.345 INFO  http.request.completed service.name=rakazo-api request.id=bcc6b538-63ff-4d5d-9325-a9b84ca5b540 trace.id=44c8e2f32c070236cbb5309346d7df77 span.id=38d63144069399c2 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=9
+02:56:11.364 INFO  job.completed service.name=rakazo-api request.id=141dd928-72df-4b6b-97b3-af4f4eba6fd4 trace.id=03477411b1726d3ac07de06f928c3fc7 span.id=50fbad21249fc653 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b job.id=1493e084-3ee8-4e9b-857e-8723e33330dc job.type=run.continue run.id=cmvyo366a0041dbx0e73bmpdv parent.span.id=680a82e5e7f615fa attempt.id=cmvyo366m0044dbx0vpxxshcw job.duration_ms=95 job.outcome=ok
+02:56:11.388 INFO  http.request.completed service.name=rakazo-api request.id=edb2505d-03db-43a5-9a27-aef29201c8f4 trace.id=27f21b11f83aa628050cb54cc2ba8ed8 span.id=0c443bc0fba3bcfe user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=7
+02:56:11.405 INFO  http.request.completed service.name=rakazo-api request.id=c1a8949a-9575-4302-968e-194d4d558016 trace.id=8fd689f04a3e7ab040aa1b8bd1ab87e0 span.id=1456cda80866c7b9 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=22
+02:56:11.412 INFO  http.request.completed service.name=rakazo-api request.id=10ae27fe-0e1b-4a4c-b1d0-4031ea936d00 trace.id=3637d7e0b8cff373eb5603c0b6dccf1b span.id=dc3fb9c3f71b863d user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=4
+02:56:11.413 INFO  http.request.completed service.name=rakazo-api request.id=94e60947-628b-42c5-b77d-98b24599eedd trace.id=d249111207a7dcadd07829f24b39d76a span.id=e5d29e08d6db6343 user.id=Azg7aGtRQDQrqcuehAbB3d67x5C6BOCH space.id=5a11f6b72ec5ba3ba081772330066a8b http.method=POST http.route=/rpc/* http.status=200 http.duration_ms=6
+  ✓  4 [chromium] › e2e/card-ui-interactions.spec.ts:215:1 › group ask guidance, group approval without always, DM input and expired honesty (5.7s)
+::notice title=🎭 Playwright Run Summary::  4 passed (21.3s)
+
+  4 passed (21.3s)

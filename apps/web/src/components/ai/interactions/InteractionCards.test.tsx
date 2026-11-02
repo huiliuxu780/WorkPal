@@ -627,6 +627,44 @@ describe("input request card", () => {
     expect(host.textContent ?? "").toContain("Open the direct chat with this Bot");
   });
 
+  it("explains expired and unconfirmed outcomes without offering a re-run", async () => {
+    const expired = await render(
+      <ActionApprovalCard
+        view={actionView(toolApproval({ effectStatus: "expired" }), { status: "expired" })}
+        target={target}
+      />,
+    );
+    expect(expired.textContent ?? "").toContain("This approval expired before a decision");
+    expect(expired.textContent ?? "").not.toMatch(/retry|重新执行/i);
+    expect(byTestId(expired, "approval-primary")).toBeNull();
+
+    const uncertain = await render(
+      <ActionApprovalCard
+        view={actionView(toolApproval({ effectStatus: "uncertain" }), {
+          status: "answered",
+          decision: "approved",
+        })}
+        target={target}
+      />,
+    );
+    expect(uncertain.textContent ?? "").toContain("The result of this action is not confirmed");
+    expect(uncertain.textContent ?? "").not.toMatch(/retry|重新执行/i);
+
+    const expiredInput = await render(
+      <InputRequestCard
+        view={inputView(
+          { mode: "question", prompt: "Which city?", placeholder: null },
+          { status: "expired" },
+        )}
+        target={target}
+      />,
+    );
+    expect(expiredInput.querySelector("textarea")).toBeNull();
+    expect(byTestId(expiredInput, "input-card-submit")).toBeNull();
+    expect(expiredInput.textContent ?? "").toContain("This question is no longer open");
+    expect(expiredInput.textContent ?? "").not.toMatch(/retry|重新执行/i);
+  });
+
   it("keeps always-allow in a direct chat and drops it from a group decision", async () => {
     const direct = await render(
       <ActionApprovalCard view={actionView(toolApproval())} target={target} />,

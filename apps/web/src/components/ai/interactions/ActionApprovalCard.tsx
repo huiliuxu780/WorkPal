@@ -198,8 +198,22 @@ function DecisionButtons({
   );
 }
 
+function terminalApprovalNote(view: ActionApprovalView, effectStatus?: string): string | null {
+  if (view.status === "expired") {
+    return t`This approval expired before a decision. Ask the bot to start it again.`;
+  }
+  if (view.status === "cancelled") {
+    return t`This request was stopped. Ask the bot to start it again if you still need it.`;
+  }
+  if (effectStatus === "uncertain" || effectStatus === "ambiguous") {
+    return t`The result of this action is not confirmed. Check the outcome before asking the bot to try again.`;
+  }
+  return null;
+}
+
 function TerminalNote({ view, effectStatus }: { view: ActionApprovalView; effectStatus?: string }) {
   if (view.status !== "pending") {
+    const note = terminalApprovalNote(view, effectStatus);
     return (
       <div className="flex flex-col gap-1" role="status">
         <InteractionNote>{interactionStatusLabel(view)}</InteractionNote>
@@ -208,6 +222,7 @@ function TerminalNote({ view, effectStatus }: { view: ActionApprovalView; effect
             {effectLabel(effectStatus)}
           </p>
         ) : null}
+        {note ? <InteractionNote>{note}</InteractionNote> : null}
       </div>
     );
   }

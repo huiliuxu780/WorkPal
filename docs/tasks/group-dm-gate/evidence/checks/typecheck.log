@@ -1,0 +1,7 @@
+Scope: 3 of 17 workspace projects
+packages/db check$ tsc --noEmit -p tsconfig.json
+apps/web check$ tsc --noEmit -p tsconfig.json
+packages/db check: Done
+apps/web check: Done
+packages/adapters check$ tsc --noEmit -p tsconfig.json
+packages/adapters check: Done

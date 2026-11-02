@@ -1,0 +1,13 @@
+-[ RECORD 1 ]---------------------------------------------------------------------------
+id        | cmvyo4owc001fzrx0izmklgc8
+status    | failed
+error     | Group threads cannot open an addressable input request; ask in text instead.
+createdAt | 2026-11-02 02:57:22.188
+-[ RECORD 2 ]---------------------------------------------------------------------------
+id        | cmvyo3whe001fnkx0wnyccgff
+status    | failed
+error     | Group threads cannot open an addressable input request; ask in text instead.
+createdAt | 2026-11-02 02:56:45.362
+
+(0 行记录)
+

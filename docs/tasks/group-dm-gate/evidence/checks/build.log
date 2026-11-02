@@ -1,0 +1,65 @@
+
+> @rakazo/web@0.1.0 build /repo/apps/web
+> cross-env NODE_ENV=production vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+[BABEL] Note: The code generator has deoptimised the styling of /repo/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+✓ 8314 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/site.webmanifest                                          0.43 kB
+dist/index.html                                                2.57 kB │ gzip:   0.93 kB
+dist/assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2      7.42 kB
+dist/assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2        8.00 kB
+dist/assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2         15.08 kB
+dist/assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2        16.51 kB
+dist/assets/geist-latin-wght-normal-BgDaEnEv.woff2            29.40 kB
+dist/assets/TerminalApp-BrP-ENHg.css                           3.93 kB │ gzip:   1.01 kB
+dist/assets/src-BEU3exBz.css                                   6.82 kB │ gzip:   1.26 kB
+dist/assets/index-C1bNoLVB.css                               164.40 kB │ gzip:  27.13 kB
+dist/assets/async-BxkU_5Ss.js                                  0.21 kB │ gzip:   0.17 kB
+dist/assets/desktop-BYVFiiOx.js                                0.42 kB │ gzip:   0.27 kB
+dist/assets/ReadOnlyPageView-DqAHYh4Z.js                       1.27 kB │ gzip:   0.58 kB
+dist/assets/Welcome-DYMgMQHW.js                                1.43 kB │ gzip:   0.65 kB
+dist/assets/events-D4A4KpWH.js                                 2.58 kB │ gzip:   1.09 kB
+dist/assets/ScratchpadSection-Hh7tLpb5.js                      3.50 kB │ gzip:   1.30 kB
+dist/assets/BotContextMenu-pkTtKgyj.js                         3.56 kB │ gzip:   1.55 kB
+dist/assets/SpaceSharePage-BIljZnLf.js                         3.70 kB │ gzip:   1.55 kB
+dist/assets/use-model-oauth-signin-Bq4kyaFA.js                 3.75 kB │ gzip:   1.54 kB
+dist/assets/PublicSharePage-1zd6FRXc.js                        3.81 kB │ gzip:   1.21 kB
+dist/assets/PeerMessagesOverlay-DVBQRrB4.js                    6.67 kB │ gzip:   2.46 kB
+dist/assets/Auth-0S_qKOJS.js                                   8.81 kB │ gzip:   3.23 kB
+dist/assets/McpServersOverlay-D1ghlONF.js                      9.33 kB │ gzip:   3.18 kB
+dist/assets/Onboarding-DYOM2E1Z.js                            11.55 kB │ gzip:   4.08 kB
+dist/assets/rpc-DswFxjhA.js                                   11.86 kB │ gzip:   4.47 kB
+dist/assets/dist-BkK1X_yJ.js                                  11.95 kB │ gzip:   4.64 kB
+dist/assets/MessagingSettingsOverlay-Dl7_lCSn.js              12.41 kB │ gzip:   3.45 kB
+dist/assets/KnowledgeSection-BBrDi1-B.js                      17.44 kB │ gzip:   4.37 kB
+dist/assets/Artifacts-rtuOb0nt.js                             19.41 kB │ gzip:   5.53 kB
+dist/assets/PluginsOverlay-CYPj0h1A.js                        20.94 kB │ gzip:   5.93 kB
+dist/assets/src-Ca6wzW3y.js                                   23.34 kB │ gzip:  10.72 kB
+dist/assets/messages-CnJJ8vfA.js                              40.03 kB │ gzip:  18.91 kB
+dist/assets/chunk-BV7QT456-DLbn5MRv.js                        40.09 kB │ gzip:  14.43 kB
+dist/assets/messages-wE5alQOD.js                              40.57 kB │ gzip:  16.97 kB
+dist/assets/messages-DO26U7eJ.js                              42.50 kB │ gzip:  18.39 kB
+dist/assets/messages-z8Fm_u1t.js                              43.64 kB │ gzip:  18.41 kB
+dist/assets/messages-BPTYu49n.js                              44.03 kB │ gzip:  18.45 kB
+dist/assets/SettingsOverlay-DtoMa-YQ.js                       44.27 kB │ gzip:  12.14 kB
+dist/assets/messages-Dv2UJa-B.js                              44.33 kB │ gzip:  18.53 kB
+dist/assets/messages-D5OO_AFy.js                              46.20 kB │ gzip:  19.37 kB
+dist/assets/messages-Dugbto97.js                              46.82 kB │ gzip:  18.72 kB
+dist/assets/messages-C0QSA-yh.js                              59.39 kB │ gzip:  20.87 kB
+dist/assets/messages-BEcbOXun.js                              60.97 kB │ gzip:  20.24 kB
+dist/assets/src-Cz3iTPjS.js                                  177.22 kB │ gzip:  49.48 kB
+dist/assets/TerminalApp-y-uxbqE-.js                          337.13 kB │ gzip:  85.50 kB
+dist/assets/plot-spec-D6I8GqGD.js                            379.65 kB │ gzip: 127.48 kB
+dist/assets/index-nKnZRuZl.js                              1,021.04 kB │ gzip: 298.24 kB
+dist/assets/src-D-7a99NT.js                                1,034.73 kB │ gzip: 131.14 kB
+
+✓ built in 1.93s
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

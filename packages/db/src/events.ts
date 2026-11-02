@@ -42,6 +42,7 @@ import {
   assertSafeClientSubmissionId,
   emitInterventionCreated,
   findOrdinaryTextAsks,
+  GroupInputRequestRejectedError,
   INTERVENTION_WAIT_MS,
   InterventionRejected,
   insertPausedIntervention,
@@ -856,6 +857,10 @@ export async function commitAnswerRunInput(
   const approvalAsk = isApprovalAskBlock(pendingAsk);
   const secretAsk = isSecretAskBlock(pendingAsk);
   const choiceAsk = !approvalAsk && !secretAsk && Boolean(pendingAsk.actions?.length);
+  // A manual-retry review re-executes an external effect, so only the Run owner
+  // may authorize, confirm or cancel it (same rule as approvals).
+  const retryEffectId = choiceAsk ? manualRetryEffectIdFromCheckpoint(run.checkpoint) : null;
+  if (retryEffectId && run.userId !== input.answeredByUserId) return null;
   const selectedChoice = choiceAsk ? resolveAskChoice(input.answer, pendingAsk.actions) : undefined;
   const budgetAsk = parseBudgetAskCheckpoint(run.checkpoint);
   if (budgetAsk && !BUDGET_ACTIONS.some((action) => action.id === selectedChoice?.id)) return null;
@@ -1163,7 +1168,6 @@ export async function commitAnswerRunInput(
 
   const recordedAnswer = secretAsk ? "" : (selectedChoice?.id ?? input.answer);
 
-  const retryEffectId = manualRetryEffectIdFromCheckpoint(run.checkpoint);
   if (choiceAsk && retryEffectId && selectedChoice) {
     const reviewDecision =
       selectedChoice.id === "authorize_retry"
@@ -1658,6 +1662,33 @@ export async function pauseRunForInput(
     presentationThreadId: input.presentationThreadId,
     origin: input.origin,
   });
+  // FS-F10: the Run's own group Thread never hosts an addressable input;
+  // approvals, plan reviews, budget and manual-retry confirmations are
+  // decisions with their own owner-only paths. Fail before any write. A
+  // cross-Thread pair presentation is out of scope here: it is not the Run's
+  // own group thread and its card stays non-submittable through the group UI.
+  const systemDecision = Boolean(input.manualRetryEffectId) || Boolean(input.budgetExceeded);
+  const addressableAsk =
+    !systemDecision &&
+    input.blocks.some(
+      (block) =>
+        block.kind === "ask" &&
+        block.status !== "answered" &&
+        block.status !== "expired" &&
+        !block.approvalEffectId &&
+        !block.planReview,
+    );
+  if (addressableAsk) {
+    const groupThread = await prisma.thread.findUnique({
+      where: { id: threads.executionThreadId },
+      select: { id: true, groupId: true, group: { select: { kind: true } } },
+    });
+    // Agent-pair groups are hidden two-Bot collaboration Threads, not a human
+    // group conversation; the private-pair capability owns their presentation.
+    if (groupThread?.groupId && groupThread.group?.kind === CHAT_GROUP_KIND_STANDARD) {
+      throw new GroupInputRequestRejectedError(groupThread.id, groupThread.groupId);
+    }
+  }
   const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // Thread rows first, then run rows — the same order as clearThread and
     // finalizeRun, so a concurrent clear cannot deadlock against this
