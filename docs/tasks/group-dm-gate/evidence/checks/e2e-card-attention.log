@@ -1,10 +1,10 @@
 
-> workpal@0.1.0 test:e2e /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01
+> workpal@0.1.0 test:e2e /repo
 > tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=card-attention.spec.ts"
 
 ◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
 
-> @rakazo/db@0.1.0 generate /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/db
+> @rakazo/db@0.1.0 generate /repo/packages/db
 > prisma generate
 
 ◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
@@ -438,7 +438,7 @@ All migrations have been successfully applied.
 
 Running 3 tests using 1 worker
 
-[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /repo/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
 02:57:48.039 INFO  http.request.completed service.name=rakazo-api request.id=d0a404f5-cd40-4e7e-a275-2bbd3994d4b0 trace.id=7e46746135a696acb69afe46aed475fe span.id=889b59569c9cee91 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=6
 02:57:48.541 INFO  http.request.completed service.name=rakazo-api request.id=68735c59-30b2-4ba3-a7e9-9211c89b92bb trace.id=d0ecc2b55904ebcd8a293d80884c99ee span.id=b7dfd0716e8e4926 http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=81
 02:57:48.551 INFO  http.request.completed service.name=rakazo-api request.id=2ad0b090-9207-4924-aa3e-1ed5cde7495f trace.id=47e37f14a4083ee102546d5491bcba14 span.id=8ee3e8626dd23960 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0

@@ -1,5 +1,5 @@
 
-[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01[39m
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/repo[39m
 
  [32m✓[39m apps/web/src/lib/execution-card.test.ts [2m([22m[2m39 tests[22m[2m | [22m[33m36 skipped[39m[2m)[22m[32m 12[2mms[22m[39m
 

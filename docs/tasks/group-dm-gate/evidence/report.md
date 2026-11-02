@@ -2,8 +2,8 @@
 
 - Date: 2026-11-02 (Asia/Shanghai)
 - Baseline: `origin/main` @ `7457961b4018e18248732f8df2bb577ce5cb3b23` (merge of PR #165)
-- Code head: `0b0ff7e3ac4c685c662b5c7ced85e34ee00a8a63` (all checks below were run against this commit)
-- Branch: `codex/group-dm-gate-01` · worktree `/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01`
+- Code head: `38140fcc9bc36c1552df6c49352e6d471a02431a`. Product code is identical to `0b0ff7e3ac4c685c662b5c7ced85e34ee00a8a63`, where the full suites below ran; `38140fc` only adds the `prisma.thread` mock to `events.test.ts` after the harness job exposed it.
+- Branch: `codex/group-dm-gate-01`
 - Scope: only the hard-gate items left partial/unrun in #160. No four-shell visuals, no payment, no display updating, no card width, no CONNECTIONS/BRAND.
 
 ## 0. Verdict
@@ -64,6 +64,7 @@ The API already maps this reason to `ORPCError("FORBIDDEN")` in `apps/api/src/ro
 |---|---|---|
 | `pnpm --filter @rakazo/db --filter @rakazo/adapters --filter @rakazo/web check` | exit 0 | `checks/typecheck.log` |
 | `pnpm exec vitest run apps/web/src/components/ai/interactions/InteractionCards.test.tsx apps/web/src/lib/execution-card.test.ts` | 84 passed | `checks/unit-cards.log` |
+| `pnpm exec vitest run packages/db/src/events.test.ts` | 57 passed (after the harness job exposed the missing `prisma.thread` mock) | `checks/unit-db-events.log` |
 | `pnpm --filter @rakazo/web test` | 103 files / 817 tests passed | `checks/unit-web.log` |
 | `pnpm --filter @rakazo/web build` | exit 0 | `checks/build.log` |
 | `pnpm test:inventory` | 578 tracked files, 0 errors | `checks/inventory.log` |

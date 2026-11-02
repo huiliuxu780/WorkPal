@@ -1,9 +1,9 @@
 
-> @rakazo/web@0.1.0 test /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/apps/web
+> @rakazo/web@0.1.0 test /repo/apps/web
 > vitest run --root ../.. apps/web/src
 
 
-[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01[39m
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/repo[39m
 
  [32m✓[39m apps/web/src/lib/dictation.test.ts [2m([22m[2m45 tests[22m[2m)[22m[33m 805[2mms[22m[39m
 [90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mmembers load failure[2m > [22m[2mshows the error without an endless loading state

@@ -1,10 +1,10 @@
 
-> workpal@0.1.0 test:e2e /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01
+> workpal@0.1.0 test:e2e /repo
 > tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=group-membership.spec.ts"
 
 ◇ injected env (0) from .env // tip: ⌁ auth for agents [www.vestauth.com]
 
-> @rakazo/db@0.1.0 generate /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/db
+> @rakazo/db@0.1.0 generate /repo/packages/db
 > prisma generate
 
 ◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
@@ -438,7 +438,7 @@ All migrations have been successfully applied.
 
 Running 3 tests using 1 worker
 
-[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /repo/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
 02:59:53.872 INFO  http.request.completed service.name=rakazo-api request.id=d498e913-7289-4894-b1ce-2383c74f7f49 trace.id=3ad6b9f828a6511190736274a63e9f19 span.id=f8ff70d1b9a26244 http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=6
 02:59:54.394 INFO  http.request.completed service.name=rakazo-api request.id=feeefaf7-b1c3-4f43-8b31-a3a95194d0e5 trace.id=c98f25a8316262e04688f47d0f81f0fd span.id=5dd5190bdf919f60 http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=86
 02:59:54.407 INFO  http.request.completed service.name=rakazo-api request.id=c88c5945-491b-423c-bc46-6d00931c849f trace.id=f36f4c050e61b86e4c302aa1a97f3ee2 span.id=7b9e8328bc298351 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0

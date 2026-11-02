@@ -1,5 +1,5 @@
 
-> workpal@0.1.0 test:inventory /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01
+> workpal@0.1.0 test:inventory /repo
 > node scripts/testing/test-inventory.mjs
 
 Test inventory: 578 tracked test files

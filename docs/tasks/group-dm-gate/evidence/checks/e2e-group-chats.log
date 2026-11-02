@@ -1,10 +1,10 @@
 
-> workpal@0.1.0 test:e2e /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01
+> workpal@0.1.0 test:e2e /repo
 > tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=group-chats.spec.ts"
 
 ◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
 
-> @rakazo/db@0.1.0 generate /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/db
+> @rakazo/db@0.1.0 generate /repo/packages/db
 > prisma generate
 
 ◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
@@ -29,7 +29,7 @@ No pending migrations to apply.
 
 Running 1 test using 1 worker
 
-[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /repo/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
 02:57:11.377 INFO  http.request.completed service.name=rakazo-api request.id=5284260b-7a17-4f96-854e-c9b1b750859d trace.id=d45fcebf97059f975c6237b4ecaf8cf9 span.id=6c19d9350120f59b http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=6
 02:57:11.897 INFO  http.request.completed service.name=rakazo-api request.id=70e0ad52-afa7-45f2-814f-31d54436c224 trace.id=7fe990d77934e9bd32f1a53909123ecc span.id=96f3b6ab4f3c3efa http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=86
 02:57:11.908 INFO  http.request.completed service.name=rakazo-api request.id=4cc45923-e3c9-435d-9095-cb2aee95843f trace.id=2753e21791a5965a7c9d511f8efea27c span.id=1d18abb40ef4a5d1 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0

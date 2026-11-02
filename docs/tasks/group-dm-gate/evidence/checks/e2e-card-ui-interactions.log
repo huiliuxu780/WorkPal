@@ -1,10 +1,10 @@
 
-> workpal@0.1.0 test:e2e /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01
+> workpal@0.1.0 test:e2e /repo
 > tsx packages/testkit/src/cli/harness.ts --e2e "--runtime=scripted" "--spec=card-ui-interactions.spec.ts"
 
 ◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
 
-> @rakazo/db@0.1.0 generate /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/db
+> @rakazo/db@0.1.0 generate /repo/packages/db
 > prisma generate
 
 ◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
@@ -438,7 +438,7 @@ All migrations have been successfully applied.
 
 Running 4 tests using 1 worker
 
-[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
+[WebServer] [BABEL] Note: The code generator has deoptimised the styling of /repo/packages/ui-web/src/agent-avatar/assets.generated.ts as it exceeds the max of 500KB.
 02:55:54.337 INFO  http.request.completed service.name=rakazo-api request.id=a0e7ab74-6fd6-412b-89cd-1649b1c31a6a trace.id=cd6050d8194ad4631ce242fe03ff3b96 span.id=9d5a0edb5d9aef7e http.method=GET http.route=/api/auth/* http.status=200 http.duration_ms=9
 02:55:54.857 INFO  http.request.completed service.name=rakazo-api request.id=81a8fb24-bfb5-4490-9839-1f59ee0e1cf4 trace.id=dc44956057ce3714515c6719b76a3b8b span.id=b8b30b8b96bbb4b9 http.method=POST http.route=/api/auth/* http.status=200 http.duration_ms=94
 02:55:54.867 INFO  http.request.completed service.name=rakazo-api request.id=c0d36e73-ab03-4c76-995a-59a63f53259e trace.id=c3da9390774ba8cb6eeab91f8bc10b45 span.id=c5d739ed0554b801 http.method=GET http.route=/api/auth/capabilities http.status=200 http.duration_ms=0

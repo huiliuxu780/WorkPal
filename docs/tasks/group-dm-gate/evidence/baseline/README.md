@@ -3,7 +3,7 @@
 - Date: 2026-11-02 (Asia/Shanghai)
 - Baseline: `origin/main` @ `7457961b4018e18248732f8df2bb577ce5cb3b23` (`Merge pull request #165 from huiliuxu780/codex/share-01`, the merge of SHARE-01/01b)
 - Branch: `codex/group-dm-gate-01`
-- Worktree: `/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01`
+- Checkout: repository root of `codex/group-dm-gate-01`
 - #160 (`feat(web): deliver the four-shell interaction contract`) merge commit `4767b3c2a83ad76276a6b5b15c4db6e50f88b9f1` is an ancestor of the baseline.
 - No uncommitted changes were carried into the branch: it was created from the clean `origin/main` above.
 

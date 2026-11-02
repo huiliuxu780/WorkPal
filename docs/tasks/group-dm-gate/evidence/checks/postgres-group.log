@@ -1,15 +1,15 @@
 
-> workpal@0.1.0 test:postgres /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01
+> workpal@0.1.0 test:postgres /repo
 > node scripts/testing/run-test-group.mjs postgres
 
 
-[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01[39m
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/repo[39m
 
 [90mstderr[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mwaits for an active handler during graceful shutdown
 [22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mwaits for an active handler during graceful shutdown
-[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/crontab'; cron is disabled
+[22m[39m[core] INFO: Failed to read crontab file '/repo/crontab'; cron is disabled
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mwaits for an active handler during graceful shutdown
 [22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
@@ -21,7 +21,7 @@
 [22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mreplaces a keyed delayed job without running the old payload or schedule
-[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/crontab'; cron is disabled
+[22m[39m[core] INFO: Failed to read crontab file '/repo/crontab'; cron is disabled
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mreplaces a keyed delayed job without running the old payload or schedule
 [22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
@@ -33,7 +33,7 @@
 [22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mremoves a keyed delayed job before a worker can run it
-[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/crontab'; cron is disabled
+[22m[39m[core] INFO: Failed to read crontab file '/repo/crontab'; cron is disabled
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mremoves a keyed delayed job before a worker can run it
 [22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
@@ -42,7 +42,7 @@
 [22m[39mYour pool doesn't have error handlers! See: https://err.red/wpeh?v=0.17.3
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
-[22m[39m[core] INFO: Failed to read crontab file '/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/crontab'; cron is disabled
+[22m[39m[core] INFO: Failed to read crontab file '/repo/crontab'; cron is disabled
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
 [22m[39m[core] INFO: Worker connected and looking for jobs... (task names: 'run.continue', 'routine.wakeup', 'computer.update', 'computer.sleep', 'computer.control-expire', 'skill.teaching-expire', 'history.compact', 'memory.extract', 'memory.summary', 'memory.outbox', 'messaging.deliver', 'delivery.dispatch', 'cloud_agent.poll')
@@ -50,15 +50,15 @@
 [90mstderr[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
 [22m[39m[worker(worker-7123ea040e1659b61a)] ERROR: Failed task 10 (run.continue, 0.41ms, attempt 1 of 25) with error 'intentional contract-test failure':
   Error: intentional contract-test failure
-      at run.continue (/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/adapters/src/wakeup.postgres.test.ts:154:35)
-      at dispatchBackgroundJob (/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/adapter-kit/src/background-jobs.ts:54:9)
-      at Object.run (/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/adapters/src/wakeup.ts:112:24)
-      at /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/logging/src/jobs.ts:100:36
+      at run.continue (/repo/packages/adapters/src/wakeup.postgres.test.ts:154:35)
+      at dispatchBackgroundJob (/repo/packages/adapter-kit/src/background-jobs.ts:54:9)
+      at Object.run (/repo/packages/adapters/src/wakeup.ts:112:24)
+      at /repo/packages/logging/src/jobs.ts:100:36
       at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
-      at runWithLogContext (/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/logging/src/context.ts:11:18)
-      at runCorrelatedJob (/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/logging/src/jobs.ts:98:10)
-      at /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/packages/adapters/src/wakeup.ts:108:17
-      at doNext (/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/node_modules/.pnpm/graphile-worker@0.17.3_typescript@7.0.2/node_modules/graphile-worker/dist/worker.js:196:32)
+      at runWithLogContext (/repo/packages/logging/src/context.ts:11:18)
+      at runCorrelatedJob (/repo/packages/logging/src/jobs.ts:98:10)
+      at /repo/packages/adapters/src/wakeup.ts:108:17
+      at doNext (/repo/node_modules/.pnpm/graphile-worker@0.17.3_typescript@7.0.2/node_modules/graphile-worker/dist/worker.js:196:32)
       at processTicksAndRejections (node:internal/process/task_queues:103:5)
 
 [90mstdout[2m | packages/adapters/src/wakeup.postgres.test.ts[2m > [22m[2mGraphile background jobs (PostgreSQL contract)[2m > [22m[2mpersists a handler failure and retries the job successfully
