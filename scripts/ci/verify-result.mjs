@@ -4,7 +4,9 @@
  *
  * Selected jobs must be success. Skipped/cancelled/failure of a selected job
  * fails this check. Unselected jobs may be skipped. Selector failure never
- * counts as success.
+ * counts as success. Schedule-only jobs are required exactly when the workflow
+ * asked for them, so their skip never fails an unrelated PR run and their
+ * failure never passes the run that requested them.
  */
 import { ALL_JOBS } from "./select-checks.mjs";
 
@@ -18,9 +20,15 @@ const RESULT_ENV = {
   agentscope: "RESULT_AGENTSCOPE",
   "worker-chain": "RESULT_WORKER_CHAIN",
   "agent-runtime-image": "RESULT_AGENT_RUNTIME_IMAGE",
+  "visual-web": "RESULT_VISUAL_WEB",
 };
 
-export function verifyResult({ selectResult, selectChecksOutcome, jobResults }) {
+export function verifyResult({
+  selectResult,
+  selectChecksOutcome,
+  jobResults,
+  requiredConditional = {},
+}) {
   if (selectChecksOutcome !== "success") {
     return {
       ok: false,
@@ -53,6 +61,17 @@ export function verifyResult({ selectResult, selectChecksOutcome, jobResults }) 
     }
   }
 
+  for (const [job, required] of Object.entries(requiredConditional)) {
+    const outcome = jobResults[job] ?? "missing";
+    if (required) {
+      if (outcome !== "success") {
+        failures.push(`scheduled job ${job} was ${outcome}`);
+      }
+    } else if (outcome === "failure" || outcome === "cancelled") {
+      failures.push(`unscheduled job ${job} was ${outcome}`);
+    }
+  }
+
   if (failures.length) {
     return { ok: false, message: failures.join("; ") };
   }
@@ -75,6 +94,9 @@ if (process.argv[1]?.replaceAll("\\", "/").endsWith("verify-result.mjs")) {
     selectResult: process.env.SELECT_RESULT ?? "",
     selectChecksOutcome: process.env.RESULT_SELECT_CHECKS ?? "missing",
     jobResults: readJobResults(process.env),
+    requiredConditional: {
+      "visual-web": process.env.VISUAL_WEB_REQUIRED === "true",
+    },
   });
   console.log(verdict.message);
   if (process.env.GITHUB_STEP_SUMMARY) {

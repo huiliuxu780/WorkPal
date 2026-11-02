@@ -1,0 +1,15 @@
+#!/bin/sh
+# Local reminder only. CI runs scripts/ci/check-repo-hygiene.mjs as the gate, so
+# a clone without this hook installed is still blocked. Install with:
+#   pnpm hooks:install
+repo_root=$(git rev-parse --show-toplevel) || exit 1
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found; CI still enforces repository hygiene" >&2
+  exit 0
+fi
+
+if ! node "$repo_root/scripts/ci/check-repo-hygiene.mjs" --staged; then
+  echo "pre-commit: repository hygiene blocked this commit" >&2
+  exit 1
+fi

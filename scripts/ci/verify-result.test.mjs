@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { ALL_JOBS } from "./select-checks.mjs";
 import { verifyResult } from "./verify-result.mjs";
 
 const successJobs = {
@@ -107,5 +108,98 @@ describe("verifyResult", () => {
       assert.equal(verdict.ok, false, outcome);
       assert.match(verdict.message, /harness/);
     }
+  });
+});
+
+const allSucceeded = Object.fromEntries([
+  ...Object.keys(successJobs).map((job) => [job, "success"]),
+  ["visual-web", "skipped"],
+]);
+
+describe("verifyResult selection matrix", () => {
+  it("passes a docs-only selection without demanding web or backend", () => {
+    const verdict = verifyResult({
+      selectChecksOutcome: "success",
+      selectResult: { selected: ["docs"] },
+      jobResults: { ...allSucceeded, docs: "success", web: "skipped", backend: "skipped" },
+    });
+    assert.equal(verdict.ok, true, verdict.message);
+  });
+
+  it("fails when a selected web or backend job never ran", () => {
+    for (const [selected, job] of [
+      [["docs", "harness", "web"], "web"],
+      [["docs", "harness", "backend"], "backend"],
+    ]) {
+      for (const outcome of ["skipped", "missing", "cancelled", "failure"]) {
+        const verdict = verifyResult({
+          selectChecksOutcome: "success",
+          selectResult: { selected },
+          jobResults: { ...allSucceeded, [job]: outcome },
+        });
+        assert.equal(verdict.ok, false, `${job} ${outcome}`);
+        assert.match(verdict.message, new RegExp(job));
+      }
+    }
+  });
+
+  it("passes a full selection only when every job succeeded", () => {
+    const ok = verifyResult({
+      selectChecksOutcome: "success",
+      selectResult: { selected: [...ALL_JOBS] },
+      jobResults: Object.fromEntries([
+        ...ALL_JOBS.map((job) => [job, "success"]),
+        ["visual-web", "skipped"],
+      ]),
+    });
+    assert.equal(ok.ok, true, ok.message);
+
+    for (const job of ALL_JOBS) {
+      const verdict = verifyResult({
+        selectChecksOutcome: "success",
+        selectResult: { selected: [...ALL_JOBS] },
+        jobResults: {
+          ...Object.fromEntries(ALL_JOBS.map((other) => [other, "success"])),
+          [job]: "skipped",
+        },
+      });
+      assert.equal(verdict.ok, false, `full selection with ${job} skipped`);
+    }
+  });
+});
+
+describe("verifyResult scheduled visual job", () => {
+  it("fails when the daily visual run was requested and did not succeed", () => {
+    for (const outcome of ["failure", "cancelled", "skipped", "missing"]) {
+      const verdict = verifyResult({
+        selectChecksOutcome: "success",
+        selectResult: { selected: [...ALL_JOBS] },
+        jobResults: { ...allSucceeded, "visual-web": outcome },
+        requiredConditional: { "visual-web": true },
+      });
+      assert.equal(verdict.ok, false, outcome);
+      assert.match(verdict.message, /visual-web/);
+    }
+  });
+
+  it("does not fail an unrelated run for a skipped daily visual job", () => {
+    const verdict = verifyResult({
+      selectChecksOutcome: "success",
+      selectResult: { selected: ["docs"] },
+      jobResults: { ...allSucceeded, "visual-web": "skipped" },
+      requiredConditional: { "visual-web": false },
+    });
+    assert.equal(verdict.ok, true, verdict.message);
+  });
+
+  it("still reports a daily visual failure on a run that did not request it", () => {
+    const verdict = verifyResult({
+      selectChecksOutcome: "success",
+      selectResult: { selected: ["docs"] },
+      jobResults: { ...allSucceeded, "visual-web": "failure" },
+      requiredConditional: { "visual-web": false },
+    });
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.message, /visual-web was failure/);
   });
 });

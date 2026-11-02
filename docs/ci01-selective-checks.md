@@ -1,6 +1,6 @@
 # CI-01: selective checks
 
-Status: `in-progress` on `codex/ci01-selective-checks`. Baseline: `main @ c2dfea4` (2026-10-19). Not merged. Not deployed.
+Status: merged as `e4fd366` (PR [#67](https://github.com/huiliuxu780/WorkPal/pull/67), 2026-10-19). Baseline at the time: `main @ c2dfea4`. Not deployed. Branch protection is still not configured; the prepared change order lives in [H3 evidence](./harness/evidence/H3/settings-change-order.md).
 
 This is the maintenance note for the selector. The task card is [CI-01.md](./tasks/CI-01.md). Path rules live in `scripts/ci/select-checks.mjs` only.
 
@@ -19,20 +19,24 @@ Wall clock on `main` push `39185685190` (merge of #63): web-and-backend 52s, age
 **After:**
 
 ```
-select-checks     classify the PR or push range; print selected jobs and why
+select-checks     repository hygiene gate, classifier unit tests, then classify
+                  the PR or push range and print selected jobs and why
 docs              relative-link check only (no pnpm, no DB, no image)
+harness           lint, test inventory, selector tests, docs verifiers, and the
+                  hermetic unit group when the selection asks for it
 web               UI typecheck, web unit tests, web build, focused scripted E2E
 backend          TS checks/unit tests for adapters/api/worker/core/…
 runtime-jar       one `mvn package` for this SHA; artifact agent-runtime-jar-<sha>
 agentscope        previous runtime integrations/PG/E2E, using that jar (no worker-chain)
 worker-chain      previous `pnpm test:worker-chain` with AGENT_RUNTIME_SKIP_BUILD=1
 agent-runtime-image   unchanged build; push only on in-scope main
+Daily web screenshots   schedule and `mode=visual` only; the daily visual specs
 CI result         always runs; selected jobs must be success
 ```
 
 Feature-branch `push` no longer starts CI. PR `opened` / `synchronize` / `reopened` / `ready_for_review` starts one selective run. Same PR number cancels the previous run. `main` push, `schedule`, and `workflow_dispatch` use unique concurrency groups and are not cancelled by PR updates.
 
-Daily `17 3 * * *` and `workflow_dispatch` `mode=full` run the same job graph as a full selection. They do not reuse `.github/workflows/nightly-verification.yml` (that screenshot workflow still references a missing `playwright.yml`; CI-01 does not claim to have fixed it).
+Daily `17 3 * * *` and `workflow_dispatch` `mode=full` run the same job graph as a full selection. The separate `nightly-verification.yml` screenshot workflow was deleted by HARNESS-01 H2 (PR [#138](https://github.com/huiliuxu780/WorkPal/pull/138)); the `Daily web screenshots` job in `ci.yml` is the only daily visual entry, and `CI result` requires it exactly on the runs that asked for it.
 
 ## Path map
 
@@ -74,8 +78,9 @@ Force full without a path rule: `workflow_dispatch` with `mode=full`, or the dai
 ## How to read a run
 
 1. Open the workflow run. `select-checks` writes a job summary: compare SHAs, selected/skipped jobs, and why.
-2. `CI result` is the fixed check name. It fails if a **selected** job failed, skipped, or cancelled, or if `select-checks` itself failed. Unselected jobs may stay skipped.
-3. Do not treat a skipped `agentscope` on a docs PR as a missing required check unless an admin later makes `agentscope` required. This repository had **no** branch protection and **no** rulesets on 2026-10-19 (`main @ c2dfea4`).
+2. `CI result` is the fixed check name. It fails if a **selected** job failed, skipped, or cancelled, if `select-checks` itself failed, or if `Daily web screenshots` did not succeed on a run that requested it (schedule or `mode=visual`). Unselected jobs may stay skipped, and a skipped daily visual job never fails an unrelated PR run.
+3. Judge the **final** head SHA of the delivery. A green run on an older commit of the same PR does not substitute, and a required check that never ran is not a pass.
+4. Do not treat a skipped `agentscope` on a docs PR as a missing required check unless an admin later makes `agentscope` required. This repository had **no** branch protection and **no** rulesets on 2026-10-19 (`main @ c2dfea4`); the current values and the prepared target are recorded in the [H3 settings change order](./harness/evidence/H3/settings-change-order.md), which is not applied without owner approval.
 
 ### Job names (old → new)
 
@@ -86,7 +91,9 @@ Force full without a path rule: `workflow_dispatch` with `mode=full`, or the dai
 | `agent-runtime-image` | same name |
 | *(none)* | `select-checks`, `docs`, `CI result` |
 
-This PR does not change GitHub protection settings. If required checks are added later, require `CI result` and drop the old `web-and-backend` name.
+`harness` (HARNESS-01 H1, PR [#137](https://github.com/huiliuxu780/WorkPal/pull/137)) and `Daily web screenshots` (HARNESS-01 H2, PR [#138](https://github.com/huiliuxu780/WorkPal/pull/138)) were added after CI-01 merged; they are not part of this note's before/after comparison.
+
+CI-01 did not change GitHub protection settings. If required checks are added, require `CI result` and drop the old `web-and-backend` name; the exact target, bypass subjects, rollback, and verification plan are in the [H3 settings change order](./harness/evidence/H3/settings-change-order.md).
 
 ## GHCR
 
@@ -96,6 +103,8 @@ This PR does not change GitHub protection settings. If required checks are added
 
 ```bash
 pnpm test:ci-select
+pnpm test:inventory
+pnpm repo:hygiene
 node scripts/ci/select-checks.mjs --files README.md apps/web/src/App.tsx
 node scripts/ci/check-docs.mjs --all
 ```
@@ -127,13 +136,13 @@ GHCR: image jobs on PRs and on `workflow_dispatch` built without login/push. Pub
 
 Temporary proof PRs #68–#72 are closed after this note. They must not merge to `main`.
 
-Admin follow-up: none required for protection (none configured). Optional later: make `CI result` the required check.
+Admin follow-up: protection is still not configured, so a red `CI result` does not yet block a merge. The prepared target (require `CI result` on the current head, forbid force push, no mandatory main sync, no merge queue) with its current-value evidence, bypass subjects, rollback, and verification plan is in the [H3 settings change order](./harness/evidence/H3/settings-change-order.md); it is **not applied** without explicit owner approval.
 
 ## What this change does not do
 
 - Does not shorten or skip the five-minute worker lease recovery.
 - Does not delete or weaken product tests.
-- Does not fix the screenshot nightly workflow.
+- Does not fix the screenshot nightly workflow. *(Historical: HARNESS-01 H2 deleted `nightly-verification.yml` in PR [#138](https://github.com/huiliuxu780/WorkPal/pull/138) and moved the daily visual specs into `ci.yml`.)*
 - Does not deploy.
 
 ## Review fixes

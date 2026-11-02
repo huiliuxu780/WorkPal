@@ -1,0 +1,77 @@
+# H3-02 selector/aggregator matrix — real runs at a409140 + H3 working tree
+
+Date: 2026-10-28. Each block is the actual command and its actual output.
+
+## docs-only
+
+$ node scripts/ci/select-checks.mjs --files docs/tasks/HARNESS-01.md README.md
+
+mode: selective
+selected: docs
+skipped: harness, web, backend, db-postgres, agentscope, worker-chain, agent-runtime-image, runtime-jar
+harnessMode: null
+webE2eSpec: (none)
+reason: docs/tasks/HARNESS-01.md README.md: documentation or non-build explanation file
+
+## web-only
+
+$ node scripts/ci/select-checks.mjs --files apps/web/src/pages/Shell.tsx
+
+mode: selective
+selected: harness, web
+skipped: docs, backend, db-postgres, agentscope, worker-chain, agent-runtime-image, runtime-jar
+harnessMode: inventory
+webE2eSpec: card-ui-interactions.spec.ts|peer-messages.spec.ts|group-membership.spec.ts|card-display-content.spec.ts
+reason: apps/web/src/pages/Shell.tsx: pure UI surface (web / ui-web / ui-tokens / chat-ui)
+
+## backend-only
+
+$ node scripts/ci/select-checks.mjs --files packages/adapters/src/executor.ts
+
+mode: selective
+selected: harness, web, backend, agentscope, runtime-jar
+skipped: docs, db-postgres, worker-chain, agent-runtime-image
+harnessMode: inventory
+webE2eSpec: execution-card.spec.ts|task-center.spec.ts
+reason: packages/adapters/src/executor.ts: answered-ask resume path drives the Execution Card ask flow
+
+## ci-files-force-full
+
+$ node scripts/ci/select-checks.mjs --files .github/workflows/ci.yml
+
+mode: selective
+selected: docs, harness, web, backend, db-postgres, agentscope, worker-chain, agent-runtime-image, runtime-jar
+skipped: 
+harnessMode: full
+webE2eSpec: ui-appearance.spec.ts|settings-shell.spec.ts
+reason: .github/workflows/ci.yml: CI selector or workflow change forces full verification
+
+## postgres-test
+
+$ node scripts/ci/select-checks.mjs --files packages/db/src/attention.postgres.test.ts
+
+mode: selective
+selected: harness, backend, db-postgres, agentscope, runtime-jar
+skipped: docs, web, worker-chain, agent-runtime-image
+harnessMode: inventory
+webE2eSpec: (none)
+reason: packages/db/src/attention.postgres.test.ts: database access layer used by API, Worker, and journeys
+
+## worker-chain
+
+$ node scripts/ci/select-checks.mjs --files apps/worker/src/index.ts
+
+mode: selective
+selected: harness, backend, db-postgres, worker-chain, runtime-jar
+skipped: docs, web, agentscope, agent-runtime-image
+harnessMode: inventory
+webE2eSpec: (none)
+reason: apps/worker/src/index.ts: Worker process, lease, outbox, or Graphile handoff
+
+## full (workflow_dispatch mode=full / schedule)
+
+\$ EVENT_NAME=workflow_dispatch MODE_INPUT=full GITHUB_SHA=a409140 node scripts/ci/select-checks.mjs --github --format json
+
+mode: full
+selected: docs, harness, web, backend, db-postgres, agentscope, worker-chain, agent-runtime-image, runtime-jar
+skipped: (none)

@@ -1,0 +1,59 @@
+# H3-02 aggregator (CI result) — real CLI runs
+
+Date: 2026-10-28. Baseline main a409140 plus the H3 working-tree fix to scripts/ci/verify-result.mjs.
+Each case invokes the same script CI invokes, with the same environment variable names.
+
+## docs-only, docs succeeded
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=success VISUAL_WEB_REQUIRED=false node scripts/ci/verify-result.mjs
+selected docs all succeeded
+exit=0
+
+## docs-only, docs FAILED
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=failure VISUAL_WEB_REQUIRED=false node scripts/ci/verify-result.mjs
+selected job docs was failure
+exit=1
+
+## docs-only, docs SKIPPED (selected job never ran)
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=skipped VISUAL_WEB_REQUIRED=false node scripts/ci/verify-result.mjs
+selected job docs was skipped
+exit=1
+
+## docs-only, docs CANCELLED
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=cancelled VISUAL_WEB_REQUIRED=false node scripts/ci/verify-result.mjs
+selected job docs was cancelled
+exit=1
+
+## selector itself failed
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=failure RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=success VISUAL_WEB_REQUIRED=false node scripts/ci/verify-result.mjs
+select-checks ended as failure; selector failure cannot pass CI result
+exit=1
+
+## PR run: daily visual job skipped, not requested
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=success VISUAL_WEB_REQUIRED=false node scripts/ci/verify-result.mjs
+selected docs all succeeded
+exit=0
+
+## schedule run: daily visual job FAILED and was requested
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=success RESULT_VISUAL_WEB=failure VISUAL_WEB_REQUIRED=true node scripts/ci/verify-result.mjs
+scheduled job visual-web was failure
+exit=1
+
+## schedule run: daily visual job SKIPPED although requested
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=success RESULT_VISUAL_WEB=skipped VISUAL_WEB_REQUIRED=true node scripts/ci/verify-result.mjs
+scheduled job visual-web was skipped
+exit=1
+
+## schedule run: daily visual job succeeded
+
+$ SELECT_RESULT={"selected":["docs"]} RESULT_SELECT_CHECKS=success RESULT_DOCS=skipped RESULT_HARNESS=skipped RESULT_WEB=skipped RESULT_BACKEND=skipped RESULT_DB_POSTGRES=skipped RESULT_RUNTIME_JAR=skipped RESULT_AGENTSCOPE=skipped RESULT_WORKER_CHAIN=skipped RESULT_AGENT_RUNTIME_IMAGE=skipped RESULT_VISUAL_WEB=skipped RESULT_DOCS=success RESULT_VISUAL_WEB=success VISUAL_WEB_REQUIRED=true node scripts/ci/verify-result.mjs
+selected docs all succeeded
+exit=0
+

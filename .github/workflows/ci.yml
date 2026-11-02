@@ -49,8 +49,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Repository hygiene (credentials, restricted paths, oversized files)
+        run: node scripts/ci/check-repo-hygiene.mjs
       - name: Classifier unit tests
-        run: node --test scripts/ci/select-checks.test.mjs scripts/ci/verify-result.test.mjs scripts/ci/check-docs.test.mjs
+        run: node --test scripts/ci/*.test.mjs
       - name: Resolve origin/main
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -374,6 +376,7 @@ jobs:
       - agentscope
       - worker-chain
       - agent-runtime-image
+      - visual-web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -393,4 +396,8 @@ jobs:
           RESULT_AGENTSCOPE: ${{ needs.agentscope.result }}
           RESULT_WORKER_CHAIN: ${{ needs.worker-chain.result }}
           RESULT_AGENT_RUNTIME_IMAGE: ${{ needs.agent-runtime-image.result }}
+          RESULT_VISUAL_WEB: ${{ needs.visual-web.result }}
+          VISUAL_WEB_REQUIRED: >-
+            ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' &&
+            github.event.inputs.mode == 'visual') }}
         run: node scripts/ci/verify-result.mjs
