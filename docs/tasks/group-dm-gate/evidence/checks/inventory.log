@@ -1,0 +1,10 @@
+
+> workpal@0.1.0 test:inventory /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01
+> node scripts/testing/test-inventory.mjs
+
+Test inventory: 578 tracked test files
+Errors: 0
+Categories: unit-node=429, postgres=57, unit-jsdom=37, integration-harness=21, process=18, agentscope-request=9, node-test=6, docker-manual=2, computer-replay-cli=2, live-canary=2, computer-replay-java=1, live-computer=1
+Environments: Node=429, PostgreSQL=57, jsdom (Node)=37, PostgreSQL + app + JDK 21 (Testcontainers)=21, local process tools=18, JDK 21 AgentScope runtime=9, Node (node:test)=6, Docker=2, JDK 21 + Docker=2, live provider credentials=2, JDK 21 + Maven=1, live model + sandbox credentials=1
+Entrypoints: unit=466, postgres=57, integration=21, process=18, agentscope=9, ci-self-check=4, docs-verify=2, docker-manual=2, computer-replay-cli=2, canary=2, computer-replay-java=1, computer=1
+

@@ -1,0 +1,605 @@
+
+> @rakazo/web@0.1.0 test /Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01/apps/web
+> vitest run --root ../.. apps/web/src
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/Users/rivers/Documents/WorkPal-worktrees/group-dm-gate-01[39m
+
+ [32m✓[39m apps/web/src/lib/dictation.test.ts [2m([22m[2m45 tests[22m[2m)[22m[33m 805[2mms[22m[39m
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mmembers load failure[2m > [22m[2mshows the error without an endless loading state
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mmembers load failure[2m > [22m[2mshows the error without an endless loading state
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/bot-panel.test.tsx[2m > [22m[2mBotSettings three-tab layout[2m > [22m[2mrenders Details with routines, identity fields and model
+[22m[39mAn update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+[90mstderr[2m | apps/web/src/pages/shell/bot-panel.test.tsx[2m > [22m[2mBotSettings three-tab layout[2m > [22m[2mmoves focus with arrow keys across the tablist
+[22m[39mAn update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+[90mstderr[2m | apps/web/src/pages/shell/bot-panel.test.tsx[2m > [22m[2mBotSettings three-tab layout[2m > [22m[2mjumps to the first and last tab with Home and End
+[22m[39mAn update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to BotSettings inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ [32m✓[39m apps/web/src/pages/shell/bot-panel.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 185[2mms[22m[39m
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2mis read-only until clicked, then saves on Enter
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2mis read-only until clicked, then saves on Enter
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2msaves on blur
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2msaves on blur
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2mdrops the draft on Escape without saving
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2mdrops the draft on Escape without saving
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2mdoes not save an unchanged or empty name
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mgroup name inline edit (AC33)[2m > [22m[2mdoes not save an unchanged or empty name
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mpanel tabs (AC34)[2m > [22m[2mshows no count on any tab
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mpanel tabs (AC34)[2m > [22m[2mshows no count on any tab
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mpanel tabs (AC34)[2m > [22m[2mrenders the work view as an honest unconnected state
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mpanel tabs (AC34)[2m > [22m[2mrenders the work view as an honest unconnected state
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/components/ai/display/DisplayBlockView.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 321[2mms[22m[39m
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mmembers page (AC35)[2m > [22m[2mcounts Agents only and keeps rows and add entry borderless
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mmembers page (AC35)[2m > [22m[2mcounts Agents only and keeps rows and add entry borderless
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mlibrary page (AC36)[2m > [22m[2mgroups by day without an outer frame and keeps rows focusable
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-panel.test.tsx[2m > [22m[2mlibrary page (AC36)[2m > [22m[2mgroups by day without an outer frame and keeps rows focusable
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/pages/shell/group-panel.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 508[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/avatar-runtime.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 465[2mms[22m[39m
+     [33m[2m✓[22m[39m lands avatar states when every poll outlives the 2s interval [33m 465[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/PeerMessagesOverlay.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 637[2mms[22m[39m
+     [33m[2m✓[22m[39m reads only the narrow pair RPC and renders a read-only transcript [33m 309[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/AttentionQueue.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 822[2mms[22m[39m
+     [33m[2m✓[22m[39m does not replay older pages as new notifications [33m 317[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/interactions/InteractionCards.test.tsx [2m([22m[2m45 tests[22m[2m)[22m[33m 1147[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ArtifactPageCard.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 271[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/ExecutionShell.test.tsx [2m([22m[2m17 tests[22m[2m)[22m[32m 145[2mms[22m[39m
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2mrenders one real avatar per Agent plus the current user
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2mrenders one real avatar per Agent plus the current user
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2muses the stored user image when present instead of an initial
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2muses the stored user image when present instead of an initial
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2mkeeps capsule and panel identity identical for the same members
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2mkeeps capsule and panel identity identical for the same members
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2mnever renders more Agent avatars than the group member cap
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/group-identity-cluster.test.tsx[2m > [22m[2mGroupIdentityCluster[2m > [22m[2mnever renders more Agent avatars than the group member cap
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/pages/shell/group-identity-cluster.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 223[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/computer/TerminalApp.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 160[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ApprovalRulesSettings.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 313[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/Artifacts.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 138[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/RunPlanDisclosure.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[32m 93[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/PublicDelegationMessage.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 131[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/memory-facts.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 91[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/UsageSettingsPanel.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 72[2mms[22m[39m
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrenders the projected version binding with the three fixed actions and no always-allow
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/pages/VoiceSettingsOverlay.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 87[2mms[22m[39m
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mplaces approval before input and keeps the input card mounted
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mcollapses beyond eight items and expands on demand
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mplaces approval before input and keeps the input card mounted
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mcollapses beyond eight items and expands on demand
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mapproves with an idempotent submission id
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mapproves with an idempotent submission id
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mapproves with an idempotent submission id
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrequires concrete feedback for request changes and submits it
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrequires concrete feedback for request changes and submits it
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrequires concrete feedback for request changes and submits it
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mplaces approval before input and keeps the input card mounted
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mplaces approval before input and keeps the input card mounted
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrequires concrete feedback for request changes and submits it
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrequires concrete feedback for request changes and submits it
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mplaces approval before input and keeps the input card mounted
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mmoves focus to the authoritative status after another client handles the card
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrejects with an optional reason
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mmoves focus to the authoritative status after another client handles the card
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mmoves focus to the authoritative status after another client handles the card
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrejects with an optional reason
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mmoves focus to the authoritative status after another client handles the card
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrejects with an optional reason
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrejects with an optional reason
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mshows the honest failure and keeps the card operable after a raced decision
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/components/teach/TeachRecordingChrome.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 87[2mms[22m[39m
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mshows the honest failure and keeps the card operable after a raced decision
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mshows the honest failure and keeps the card operable after a raced decision
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mmoves focus to the authoritative status after another client handles the card
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mshows the honest failure and keeps the card operable after a raced decision
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrenders the terminal decision from the server projection without actions
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mbinds an edited outbound approval in the legacy card
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/PlanReviewCard.test.tsx[2m > [22m[2mPlanReviewCard[2m > [22m[2mrenders a rejection as rejected, not as a tool denial
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mbinds an edited outbound approval in the legacy card
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mbinds an edited outbound approval in the legacy card
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mbinds an edited outbound approval in the legacy card
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/components/ai/PlanReviewCard.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[32m 136[2mms[22m[39m
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mbinds an edited outbound approval in the legacy card
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mdoes not store a secret draft
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mdoes not store a secret draft
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mdoes not store a secret draft
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mstill renders a legacy pending id
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mstill renders a legacy pending id
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mrestores a terminal card from the projection when its message is off the page
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mrestores a terminal card from the projection when its message is off the page
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2manswers a pending card whose execution lives in another Thread
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2manswers a pending card whose execution lives in another Thread
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2manswers a pending card whose execution lives in another Thread
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2manswers a pending card whose execution lives in another Thread
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2manswers a pending card whose execution lives in another Thread
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mreports a decision made elsewhere instead of relying on a disabled button
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mreports a decision made elsewhere instead of relying on a disabled button
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mreports a decision made elsewhere instead of relying on a disabled button
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mreports a decision made elsewhere instead of relying on a disabled button
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mreports a decision made elsewhere instead of relying on a disabled button
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mshows a restored approval decision and the effect status separately
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mshows a restored approval decision and the effect status separately
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mrenders a cancelled restored card as inactive with the Cancelled authority
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/ai/InterventionRegion.test.tsx[2m > [22m[2mInterventionRegion[2m > [22m[2mrenders a cancelled restored card as inactive with the Cancelled authority
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/components/ai/InterventionRegion.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[32m 185[2mms[22m[39m
+[90mstderr[2m | apps/web/src/components/activity/BackgroundTaskActivity.test.tsx[2m > [22m[2mBackgroundTaskActivity[2m > [22m[2mdisables repeat cancellation while sending and reports an RPC failure
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/activity/BackgroundTaskActivity.test.tsx[2m > [22m[2mBackgroundTaskActivity[2m > [22m[2mdisables repeat cancellation while sending and reports an RPC failure
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/activity/BackgroundTaskActivity.test.tsx[2m > [22m[2mBackgroundTaskActivity[2m > [22m[2mdisables repeat cancellation while sending and reports an RPC failure
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/components/activity/BackgroundTaskActivity.test.tsx[2m > [22m[2mBackgroundTaskActivity[2m > [22m[2mdisables repeat cancellation while sending and reports an RPC failure
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/components/activity/BackgroundTaskActivity.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/call-session.test.ts [2m([22m[2m35 tests[22m[2m)[22m[32m 54[2mms[22m[39m
+Not implemented: navigation to another Document
+ [32m✓[39m apps/web/src/components/ai/AgentMentionText.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 102[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/chat-markdown.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/shell-execution-transcript.test.tsx [2m([22m[2m32 tests[22m[2m)[22m[33m 2184[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/KnowledgeSection.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 53[2mms[22m[39m
+ [32m✓[39m apps/web/src/screen-proxy.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ToolActivityDisclosure.test.tsx [2m([22m[2m17 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/SandboxedHtmlViewer.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 97[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/AccountSettingsOverlay.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 43[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/local-timezone.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/RunStepsDisclosure.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/i18n-catalog.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/tts.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/thread-events.test.ts [2m([22m[2m83 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/call/VoiceChatCard.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/computer-workspace.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/ExecutionCard.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/desktop.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/RunTodoList.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/GroupDestinationReceipt.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/execution-card.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/run-error-storage.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/MessageHoverMetadata.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/execution-history.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mreads members, routines and artifacts only through the group port
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mreads members, routines and artifacts only through the group port
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mreads members, routines and artifacts only through the group port
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mdoes not call the port without a group
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mdoes not call the port without a group
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2msurfaces a members failure instead of inventing identity
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2msurfaces a members failure instead of inventing identity
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2msurfaces a members failure instead of inventing identity
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mappends the next artifact page with the server cursor
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mappends the next artifact page with the server cursor
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mappends the next artifact page with the server cursor
+[22m[39mThe current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mappends the next artifact page with the server cursor
+[22m[39mThe current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+The current testing environment is not configured to support act(...)
+
+[90mstderr[2m | apps/web/src/pages/shell/use-group-panel.test.tsx[2m > [22m[2museGroupPanel[2m > [22m[2mappends the next artifact page with the server cursor
+[22m[39mThe current testing environment is not configured to support act(...)
+
+ [32m✓[39m apps/web/src/pages/shell/use-group-panel.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/i18n-activate.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/execution-surface.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/peer-transcript.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/PeerReceiptRow.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/focus-prompt.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/ui-locale.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/execution-detail-request.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/CollaborationMarker.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/browser-notifications.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/computer-screen.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/effect-view.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/activity-view.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/quote-selection.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/message-bubble-shape.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/novnc-html.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/pending-attachments.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/intervention-view.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/peer-receipts.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/message-text.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/client-id.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/tool-activity-preference.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/public-collaboration.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/memory-providers/registry.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/pages/shell/command-palette.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/tool-activity-view.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/activity/ActivityRows.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/updater-recreate.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/work-progress-view.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/ExecutionActivity.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/execution-status.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/transcript-scroll.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/execution-activity.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/ui-appearance.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/usage-loader.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/rpc.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/ask-draft.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/manual-retry.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/bootstrap-target.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/shared-inflight.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/performance.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/activity/RunActivityDisclosure.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/teach/teach-computer-input-chain.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/AskCard.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/index-html-theme.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/chart-viewport.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/session-gate.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/preload-recovery.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/bots-sidebar-pref.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/auth-redirect.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/execution-nav.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/optional-catalog-feed.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/model-auth.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/apply-ui-direction.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/lib/response-streaming.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m apps/web/src/components/ai/primitives.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m103 passed[39m[22m[90m (103)[39m
+[2m      Tests [22m [1m[32m817 passed[39m[22m[90m (817)[39m
+[2m   Start at [22m 11:03:49
+[2m   Duration [22m 11.59s[2m (transform 10.45s, setup 978ms, import 49.91s, tests 10.68s, environment 25.71s)[22m
+
