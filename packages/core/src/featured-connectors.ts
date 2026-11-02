@@ -85,24 +85,32 @@ export function buildFeaturedConnectorTiles(
   });
 }
 
+export function isFeaturedCatalogItem(item: Pick<ConnectionCatalogItem, "slug" | "name">): boolean {
+  return (
+    matchFeaturedConnectorId(item.slug) !== null || matchFeaturedConnectorId(item.name) !== null
+  );
+}
+
+export function matchesConnectionCatalogQuery(
+  item: Pick<ConnectionCatalogItem, "name" | "slug" | "connectorId">,
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return (
+    item.name.toLowerCase().includes(needle) ||
+    item.slug.toLowerCase().includes(needle) ||
+    item.connectorId.toLowerCase().includes(needle)
+  );
+}
+
+/** Browse rows exclude featured apps unless a search is narrowing the whole catalog. */
 export function filterConnectionCatalogItems(
   catalog: readonly ConnectionCatalogItem[],
   query: string,
 ): ConnectionCatalogItem[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) {
-    return catalog.filter(
-      (item) =>
-        matchFeaturedConnectorId(item.slug) === null &&
-        matchFeaturedConnectorId(item.name) === null,
-    );
-  }
-  return catalog.filter(
-    (item) =>
-      item.name.toLowerCase().includes(needle) ||
-      item.slug.toLowerCase().includes(needle) ||
-      item.connectorId.toLowerCase().includes(needle),
-  );
+  if (!query.trim()) return catalog.filter((item) => !isFeaturedCatalogItem(item));
+  return catalog.filter((item) => matchesConnectionCatalogQuery(item, query));
 }
 
 export const EMPTY_PLUGIN_CATALOG_MESSAGE =

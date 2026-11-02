@@ -4,6 +4,8 @@ import {
   buildFeaturedConnectorTiles,
   featuredConnectorProvidersMatch,
   filterConnectionCatalogItems,
+  isFeaturedCatalogItem,
+  matchesConnectionCatalogQuery,
   matchFeaturedConnectorId,
   resolveFeaturedCatalogItem,
 } from "./featured-connectors.js";
@@ -87,5 +89,19 @@ describe("featured connectors", () => {
     expect(filterConnectionCatalogItems(catalog, "pipedream").map(({ name }) => name)).toEqual([
       "Notion",
     ]);
+  });
+
+  it("identifies featured rows by slug or display name", () => {
+    expect(isFeaturedCatalogItem(item("gmail", "Gmail"))).toBe(true);
+    expect(isFeaturedCatalogItem(item("google_calendar", "Calendar"))).toBe(true);
+    expect(isFeaturedCatalogItem(item("linear", "Linear"))).toBe(false);
+  });
+
+  it("matches the chip search on name, slug and connector id", () => {
+    const linear = item("linear", "Linear");
+    expect(matchesConnectionCatalogQuery(linear, "")).toBe(true);
+    expect(matchesConnectionCatalogQuery(linear, "lin")).toBe(true);
+    expect(matchesConnectionCatalogQuery(linear, "composio")).toBe(true);
+    expect(matchesConnectionCatalogQuery(linear, "mail")).toBe(false);
   });
 });
