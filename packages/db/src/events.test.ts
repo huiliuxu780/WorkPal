@@ -673,6 +673,7 @@ describe("pauseRunForInput", () => {
       ...interventionPauseMocks(),
     };
     const prisma = {
+      thread: { findUnique: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
     } as unknown as PrismaClient;
 
@@ -764,6 +765,7 @@ describe("pauseRunForInput", () => {
       ),
     };
     const prisma = {
+      thread: { findUnique: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
     } as unknown as PrismaClient;
 
