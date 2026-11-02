@@ -2149,7 +2149,7 @@ msgstr ""
 
 #: src/components/ai/InterventionRegion.tsx
 msgid "Effect expired"
-msgstr ""
+msgstr "操作已过期"
 
 #: src/components/ai/InterventionRegion.tsx
 msgid "Effect failed"
@@ -2165,7 +2165,7 @@ msgstr ""
 
 #: src/components/ai/InterventionRegion.tsx
 msgid "Effect result unknown"
-msgstr ""
+msgstr "操作结果未确认"
 
 #: src/components/ai/InterventionRegion.tsx
 msgid "Effect running"
@@ -2261,7 +2261,7 @@ msgstr "已过期"
 
 #: src/pages/memory-facts.tsx
 msgid "Expired"
-msgstr "已失效"
+msgstr "已过期"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Export"
@@ -5017,3 +5017,23 @@ msgstr "「{groupName}」中的工作已取消"
 #: src/components/ai/GroupDestinationReceipt.tsx
 msgid "Work in “{groupName}” was not completed"
 msgstr "「{groupName}」中的工作未完成"
+
+#: src/components/ai/interactions
+msgid "Ended"
+msgstr "已结束"
+
+#: src/components/ai/interactions
+msgid "This approval expired before a decision. Ask the bot to start it again."
+msgstr "这次审批在决定前已过期。请让 Bot 重新发起。"
+
+#: src/components/ai/interactions
+msgid "This request was stopped. Ask the bot to start it again if you still need it."
+msgstr "这次请求已停止。如仍需处理，请让 Bot 重新发起。"
+
+#: src/components/ai/interactions
+msgid "The result of this action is not confirmed. Check the outcome before asking the bot to try again."
+msgstr "这次操作的结果尚未确认。请先核对结果，再让 Bot 重试。"
+
+#: src/components/ai/interactions
+msgid "This question is no longer open. Ask the bot to ask again in a new message."
+msgstr "这个问题已不再开放。请让 Bot 在新消息里重新提问。"

@@ -522,6 +522,22 @@ describePostgres("manual retry (PostgreSQL)", () => {
         where: { runId: waiting.id, role: "bot" },
         orderBy: { seq: "desc" },
       });
+      // A manual-retry review re-executes an effect: another member of the group
+      // cannot decide it, and the rejected submission must not advance state.
+      expect(
+        await answerRunInput(prisma, {
+          spaceId: ctx.spaceId,
+          threadId: groupThread,
+          runId: waiting.id,
+          messageId: message.id,
+          answeredByUserId: randomUUID(),
+          answer: choice,
+        }),
+      ).toBe(false);
+      expect(
+        (await prisma.externalEffect.findUniqueOrThrow({ where: { id: effect.id } }))
+          .reviewDecision,
+      ).toBeNull();
       expect(
         await answerRunInput(prisma, {
           spaceId: ctx.spaceId,

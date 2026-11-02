@@ -5017,3 +5017,23 @@ msgstr "Work in “{groupName}” was cancelled"
 #: src/components/ai/GroupDestinationReceipt.tsx
 msgid "Work in “{groupName}” was not completed"
 msgstr "Work in “{groupName}” was not completed"
+
+#: src/components/ai/interactions
+msgid "Ended"
+msgstr "Ended"
+
+#: src/components/ai/interactions
+msgid "This approval expired before a decision. Ask the bot to start it again."
+msgstr "This approval expired before a decision. Ask the bot to start it again."
+
+#: src/components/ai/interactions
+msgid "This request was stopped. Ask the bot to start it again if you still need it."
+msgstr "This request was stopped. Ask the bot to start it again if you still need it."
+
+#: src/components/ai/interactions
+msgid "The result of this action is not confirmed. Check the outcome before asking the bot to try again."
+msgstr "The result of this action is not confirmed. Check the outcome before asking the bot to try again."
+
+#: src/components/ai/interactions
+msgid "This question is no longer open. Ask the bot to ask again in a new message."
+msgstr "This question is no longer open. Ask the bot to ask again in a new message."

@@ -1051,6 +1051,22 @@ async function boundAttemptIsCurrent(
   return newer === 0;
 }
 
+/** FS-F10: a group Thread must ask in text, never with an addressable input. */
+export const GROUP_INPUT_REQUEST_REJECTED = "GROUP_INPUT_REQUEST_REJECTED" as const;
+
+export class GroupInputRequestRejectedError extends Error {
+  override readonly name = "GroupInputRequestRejectedError";
+  readonly code = GROUP_INPUT_REQUEST_REJECTED;
+  readonly threadId: string;
+  readonly groupId: string;
+
+  constructor(threadId: string, groupId: string) {
+    super("Group threads cannot open an addressable input request; ask in text instead.");
+    this.threadId = threadId;
+    this.groupId = groupId;
+  }
+}
+
 export async function resolveInterventionInTransaction(
   tx: InterventionTx,
   input: {
@@ -1152,7 +1168,7 @@ export async function resolveInterventionInTransaction(
   if (!committed) {
     const run = await tx.run.findUnique({
       where: { id: input.runId },
-      select: { userId: true },
+      select: { userId: true, checkpoint: true },
     });
     const messageId = row?.messageId ?? legacyMessageId(input.interventionId);
     const message = messageId
@@ -1162,9 +1178,19 @@ export async function resolveInterventionInTransaction(
         })
       : null;
     const ask = pendingAskBlocks(message?.blocks)[0];
+    let retryReview = false;
+    if (ask?.actions?.length && run?.checkpoint) {
+      try {
+        const parsed = JSON.parse(run.checkpoint) as { manualRetryEffectId?: unknown };
+        retryReview = typeof parsed.manualRetryEffectId === "string";
+      } catch {
+        retryReview = false;
+      }
+    }
     const ownerOnly =
       Boolean(ask && isApprovalAskBlock(ask)) ||
-      Boolean(ask && isSecretAskBlock(ask) && ask.credential);
+      Boolean(ask && isSecretAskBlock(ask) && ask.credential) ||
+      retryReview;
     if (ownerOnly && run && run.userId !== input.answeredByUserId) {
       return { outcome: "rejected", reason: "forbidden" };
     }

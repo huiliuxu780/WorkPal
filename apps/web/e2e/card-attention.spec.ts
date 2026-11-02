@@ -249,7 +249,14 @@ test.describe("attention queue (N1-N4)", () => {
     await page.waitForURL(/\/app\/g\/[^/]+$/);
     const groupComposer = page.getByTestId("composer-bar").getByRole("combobox");
     await expect(groupComposer).toBeVisible();
-    await groupComposer.fill(ASK_PROMPT);
+    // GROUP-DM-GATE-01: a standard group cannot open an addressable input, so
+    // the group's own pending item here is an owner-only tool approval.
+    await rpc(page, "approvalRules/set", {
+      effect: "require_approval",
+      matchKind: "connector",
+      matchValue: "destination.write",
+    });
+    await groupComposer.fill("write this to the destination crm as a note");
     await groupComposer.press("Enter");
     // Wait for this group's own pending item, not any earlier count: the
     // marker must come from that group's real queue row.

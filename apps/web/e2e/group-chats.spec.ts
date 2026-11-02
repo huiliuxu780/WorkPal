@@ -190,13 +190,11 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await expect(
     page.getByTestId("mention-chip").filter({ hasText: "Research Writer" }),
   ).toBeVisible();
-  // Keep the structured mention: replacing the draft would drop the chip and
-  // the message would be consumed as an answer to the open ask instead of
-  // starting a new Run.
   await composer.press("End");
   await composer.type("ask me which city to use");
   await composer.press("Enter");
-  // threads/get can observe waiting_input before the shell realtime feed paints the ask card.
+  // GROUP-DM-GATE-01: a group Run cannot open an addressable input. The
+  // producer rejects the pause, so the group never receives a submit card.
   await expect
     .poll(
       async () => {
@@ -207,23 +205,23 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
       },
       { timeout: 60_000 },
     )
-    .toBe("waiting_input");
-  // RT-04 projects the ask both into the execution transcript and the
-  // intervention card; target the card to avoid a strict-mode double match.
-  const cityAsk = page
-    .getByTestId("intervention-inputs")
-    .getByText("Which city should I use?", { exact: true });
-  if ((await cityAsk.count()) === 0) {
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("combobox", { name: "Message Draft team" })).toBeVisible({
-      timeout: 15_000,
-    });
-  }
-  await expect(cityAsk).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Edit first" }).click();
-  await page.getByRole("textbox", { name: "Answer" }).fill("Paris");
-  await page.getByRole("button", { name: "Send answer" }).click();
-  await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible({ timeout: 30_000 });
+    .toBe("failed");
+  await expect(page.getByTestId("intervention-inputs")).toHaveCount(0);
+  await expect(page.getByText("Which city should I use?", { exact: true })).toHaveCount(0);
+
+  // A normal mention keeps the transcript usable for the isolation checks below.
+  await composer.fill("@Res");
+  await page.getByRole("option", { name: "@Researcher", exact: true }).click();
+  await expect(page.getByTestId("mention-chip").filter({ hasText: "Researcher" })).toBeVisible();
+  await composer.press("End");
+  await composer.type("group isolation marker");
+  await composer.press("Enter");
+  await expect(
+    transcript
+      .getByTestId("message-user-bubble")
+      .filter({ hasText: "group isolation marker" })
+      .first(),
+  ).toBeVisible({ timeout: 30_000 });
 
   const firstMessage = transcript.locator("[data-message-id]").first();
   await firstMessage.hover();
@@ -253,12 +251,12 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await sidebarRow(page, "Review team").click();
   await reviewSnapshotIntercepted;
   await expect(page).toHaveURL(new RegExp(`/app/g/${reviewGroup.id}$`));
-  await expect(page.getByTestId("transcript")).not.toContainText("Answered: Paris");
+  await expect(page.getByTestId("transcript")).not.toContainText("group isolation marker");
   releaseReviewSnapshot();
   await expect(page.getByRole("combobox", { name: "Message Review team" })).toBeVisible();
   await page.unroute("**/rpc/threads/get");
   await sidebarRow(page, "Draft team").click();
-  await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("transcript")).toContainText("group isolation marker");
 
   await composer.fill("@Res");
   await page.getByRole("option", { name: "@Researcher", exact: true }).click();

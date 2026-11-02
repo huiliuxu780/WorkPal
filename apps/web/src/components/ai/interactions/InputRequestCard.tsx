@@ -214,9 +214,16 @@ export function InputRequestCard({
         </div>
       ) : null}
       {terminal || submitted ? (
-        <InteractionNote>
-          {submitted ? t`Submitted. Syncing the current state…` : interactionStatusLabel(view)}
-        </InteractionNote>
+        <>
+          <InteractionNote>
+            {submitted ? t`Submitted. Syncing the current state…` : interactionStatusLabel(view)}
+          </InteractionNote>
+          {!submitted && (view.status === "expired" || view.status === "cancelled") ? (
+            <InteractionNote>
+              {t`This question is no longer open. Ask the bot to ask again in a new message.`}
+            </InteractionNote>
+          ) : null}
+        </>
       ) : groupBlocked ? (
         <InteractionNote>
           {t`Open the direct chat with this Bot to answer. Nothing was sent from this group.`}
