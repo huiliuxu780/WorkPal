@@ -2,8 +2,24 @@
 
 分支：`codex/connections-01`
 基线：`origin/main` @ `7457961b4018e18248732f8df2bb577ce5cb3b23`（SHARE 合入后）
-代码 head：`29dd743a`（本报告随后续 docs 提交）
+代码/复验 head：`8440547c`（PR #166；base `origin/main` @ `7457961b`）
 交付形式：**推 PR / CI；不自行 merge，等徐哥点头**（任务书 §8）
+
+## 0. 审合复验（CONNECTIONS-01b · 2026-11-02 Asia/Shanghai）
+
+- 复验对象：#166 `codex/connections-01` @ `8440547c08072bb2d268cbc59dc79652bd91de9b`；base `origin/main` @ `7457961b4018e18248732f8df2bb577ce5cb3b23`。
+- PR 状态：OPEN / MERGEABLE / CLEAN；CI 11 success + 1 skipped。`worker-chain` 首轮红在 delivery outbox 恢复用例（与连接无关），**同一 SHA 重跑**后通过。
+- 复验方式：本机按 §7 重跑全部命令 + `connections-ui.spec.ts` 实页主链路（打开→分段→chip→添加→详情→MCP→Advanced→zh→空态/错误→0 已连接），并核对 Codex 两项修复仍在 tip。
+- 结论：**AC-CN01–14 全部复现通过**；额外硬查通过；未发现需要最小修补的缺口。**建议合入**，等徐哥点头。
+
+### 额外硬查
+
+| 查项 | 结果 |
+|---|---|
+| 搜索分页 | `searchMatches` 经 `visibleSearch` 按 `visibleCount` 截断并复用 Show more（`PluginsOverlay.tsx`） |
+| en toolCount | en 目录 `{toolCount} tools` 的 msgstr 保留具名占位符；详情工具数显示真实数字 |
+| testid 保留 | `featured-connectors`、`connection-tile-{slug}`（仅已连）、`integrations-advanced`、`integrations-advanced-add`、`connection-detail` / `accounts` / `tools`；新增 chip/empty/mcp/load-error 与 e2e 一致 |
+| 已知边界 | provider 无 description → name-only；failed 无「查看原因」（RPC 无原因）——按约定不算缺口，未发明 |
 
 ## 1. 开工决策
 
@@ -27,8 +43,8 @@
 | `@rakazo/web test` | 103 files / 816 tests | `checks/unit.log` |
 | `pnpm --filter @rakazo/web build` | ✓ built | `checks/build.log` |
 | `pnpm test:inventory` | 578 files / 0 errors | `checks/inventory.log` |
-| e2e 回归：golden + graphql-integrations + mcp-oauth | 6 passed | `checks/regression-e2e.log` |
-| e2e：connections-ui | 1 passed（9.3s，含视频） | `checks/connections-e2e.log`、`flow/CN-flow.webm` |
+| e2e 回归：golden + graphql-integrations + mcp-oauth | 6 passed（复验 43.2s） | `checks/regression-e2e.log` |
+| e2e：connections-ui | 1 passed（复验 11.2s，含视频） | `checks/connections-e2e.log`、`flow/CN-flow.webm` |
 
 本单元无既有缺陷修复，无先红后绿项；新逻辑的纯函数（featured 判定 / 搜索匹配）有单测。
 
