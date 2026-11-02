@@ -5037,3 +5037,63 @@ msgstr "The result of this action is not confirmed. Check the outcome before ask
 #: src/components/ai/interactions
 msgid "This question is no longer open. Ask the bot to ask again in a new message."
 msgstr "This question is no longer open. Ask the bot to ask again in a new message."
+
+#: src/components/connections
+msgid "All apps"
+msgstr "All apps"
+
+#: src/components/connections
+msgid "Recommended"
+msgstr "Recommended"
+
+#: src/components/connections
+msgid "Connected · 1 account"
+msgstr "Connected · 1 account"
+
+#: src/components/connections
+msgid "Connected · {accountCount} accounts"
+msgstr "Connected · {accountCount} accounts"
+
+#: src/components/connections
+msgid "Waiting for authorization"
+msgstr "Waiting for authorization"
+
+#: src/components/connections
+msgid "Connection failed"
+msgstr "Connection failed"
+
+#: src/components/connections
+msgid "No connected apps yet."
+msgstr "No connected apps yet."
+
+#: src/components/connections
+msgid "Connect your first app"
+msgstr "Connect your first app"
+
+#: src/components/connections
+msgid "Bots need tools to get work done. Connect an app and it can use those tools right in the chat — read mail, look up docs, send messages."
+msgstr "Bots need tools to get work done. Connect an app and it can use those tools right in the chat — read mail, look up docs, send messages."
+
+#: src/components/connections
+msgid "This deployment has no app catalog configured. Ask the server admin to enable one, or add a tool source under Advanced."
+msgstr "This deployment has no app catalog configured. Ask the server admin to enable one, or add a tool source under Advanced."
+
+#: src/components/connections
+msgid "Connect remote MCP tools and data sources"
+msgstr "Connect remote MCP tools and data sources"
+
+#: src/components/connections
+msgid "Connect remote MCP tools and data sources, or add a self-hosted server"
+msgstr "Connect remote MCP tools and data sources, or add a self-hosted server"
+
+#: src/components/connections
+msgid "{configuredCount} tool sources configured"
+msgstr "{configuredCount} tool sources configured"
+
+#: src/components/connections
+msgid "1 tool"
+msgstr "1 tool"
+
+#: src/components/connections
+msgid "{toolCount} tools"
+msgstr "{toolCount} tools"

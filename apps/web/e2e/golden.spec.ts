@@ -165,11 +165,14 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
     .getByText("Gmail", { exact: true })
     .locator("xpath=ancestor::*[.//button][1]");
   await gmailRow.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(gmailRow.getByRole("button", { name: "Added", exact: true })).toBeVisible();
-  await expect(page.getByTestId("connection-tile-gmail")).toBeVisible();
+  // Connected items move from Recommended into the Connected section and carry
+  // a static status pill instead of an Added button.
+  const gmailTile = page.getByTestId("connection-tile-gmail");
+  await expect(gmailTile).toBeVisible();
+  await expect(gmailTile).toContainText("Connected");
   await captureScreenshot(page, testInfo, "11a-connected-plugins");
 
-  await gmailRow.getByRole("button", { name: "Added", exact: true }).click();
+  await gmailTile.click();
   const detail = page.getByTestId("connection-detail");
   await expect(detail).toBeVisible();
   await expect(page.getByTestId("connection-accounts")).toBeVisible();
@@ -190,7 +193,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await page.getByText("Integrations").click();
   await expect(page.getByPlaceholder("Search apps")).toBeVisible();
   const gmailTileAgain = page.getByTestId("connection-tile-gmail");
-  await expect(gmailTileAgain.getByRole("button", { name: "Added", exact: true })).toBeVisible();
+  await expect(gmailTileAgain).toContainText("Connected");
   await gmailTileAgain.click();
   const detailAgain = page.getByTestId("connection-detail");
   await expect(detailAgain.getByLabel("Account label")).toHaveCount(2);
@@ -214,8 +217,9 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await linearRow.getByRole("button", { name: "Add", exact: true }).click();
   const popup = await connectPopup;
   await popup.close();
-  await expect(linearRow.getByRole("button", { name: "Added", exact: true })).toBeVisible();
-  await linearRow.getByRole("button", { name: "Added", exact: true }).click();
+  const linearTile = page.getByTestId("connection-tile-linear");
+  await expect(linearTile).toBeVisible();
+  await linearTile.click();
   const linearDetail = page.getByTestId("connection-detail");
   await expect(linearDetail).toBeVisible();
   await linearDetail.getByRole("button", { name: "Uninstall", exact: true }).click();
